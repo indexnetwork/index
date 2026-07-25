@@ -69,10 +69,25 @@ vi.mock('@/components/chat/OpportunityCardInChat', () => ({
 }));
 
 vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
-  InjectedQuestions: ({ questions }: { questions: Array<{ id: string; title: string }> }) => (
+  InjectedQuestions: ({
+    questions,
+    onAnswer,
+  }: {
+    questions: Array<{ id: string; payload?: { prompt: string }; title?: string }>;
+    onAnswer?: (id: string, body: { selectedOptions: string[] }) => Promise<void>;
+  }) => (
     <div>
       {questions.map((question) => (
-        <div key={question.id} data-testid={`question-${question.id}`}>{question.title}</div>
+        <div key={question.id} data-testid={`question-${question.id}`}>
+          {question.payload?.prompt ?? (question as { title?: string }).title}
+          {onAnswer && (
+            <button
+              onClick={() => onAnswer(question.id, { selectedOptions: ['Yes'] })}
+            >
+              Answer
+            </button>
+          )}
+        </div>
       ))}
     </div>
   ),
@@ -498,5 +513,121 @@ describe('intent lifecycle service', () => {
     const service = createIntentsService({ patch } as never);
 
     await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid signal status response');
+  });
+});
+
+describe('intent-mode answer outcome UI', () => {
+  const makeIntentQuestion = () => ({
+    id: 'q-intent-1',
+    payload: {
+      title: 'What kind of co-founder?',
+      prompt: 'What kind of co-founder?',
+      options: [],
+      multiSelect: false,
+    },
+    detection: {
+      mode: 'intent' as const,
+      sourceType: 'intent',
+      sourceId: 'intent-1',
+      timestamp: new Date().toISOString(),
+    },
+    actors: [{ userId: 'user-1', role: 'subject' as const }],
+    status: 'pending' as const,
+    answer: null,
+    expiresAt: null,
+    createdAt: new Date().toISOString(),
+    conversationId: null,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.intent.status = 'ACTIVE';
+    mocks.intent.payload = 'Looking for a co-founder';
+    mocks.intent.summary = 'Looking for a co-founder';
+    mocks.getIntent.mockResolvedValue({ ...mocks.intent });
+    mocks.getHomeView.mockResolvedValue({ sections: [] });
+    mocks.getNegotiationActivity.mockResolvedValue([]);
+    mocks.getAnswered.mockResolvedValue([]);
+    mocks.getPending.mockResolvedValue([makeIntentQuestion()]);
+    mocks.answerQuestion.mockResolvedValue({ success: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function clickAnswerAndFlush() {
+    const btn = await screen.findByRole('button', { name: 'Answer' });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(btn);
+      // Flush the questionsService.answer promise chain (resolved via microtask).
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  test('shows the pending spinner immediately after answering an intent-mode question', async () => {
+    renderIntentPage();
+    await clickAnswerAndFlush();
+
+    expect(screen.getByTestId('intent-refinement-pending')).toBeInTheDocument();
+    expect(screen.queryByTestId('intent-refinement-applied')).toBeNull();
+    expect(screen.queryByTestId('intent-refinement-fallback')).toBeNull();
+    expect(screen.queryByText('noted — updating the search.')).toBeNull();
+  });
+
+  test('resolves to ✓ applied when the intent description changes within the poll bound', async () => {
+    // Initial page load returns the old description; subsequent poll ticks return the updated one.
+    mocks.getIntent
+      .mockResolvedValueOnce({ ...mocks.intent, summary: 'Looking for a co-founder', payload: 'Looking for a co-founder' })
+      .mockResolvedValue({
+        ...mocks.intent,
+        summary: 'Looking for a technical co-founder, specifically with a B2B SaaS background',
+        payload: 'Looking for a technical co-founder, specifically with a B2B SaaS background',
+      });
+
+    renderIntentPage();
+    await clickAnswerAndFlush();
+
+    // Spinner shown while poll is pending.
+    expect(screen.getByTestId('intent-refinement-pending')).toBeInTheDocument();
+
+    // Advance one poll interval — intent now returns the updated description.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+
+    expect(screen.getByTestId('intent-refinement-applied')).toBeInTheDocument();
+    expect(screen.getByText(/signal updated/)).toBeInTheDocument();
+    expect(screen.queryByTestId('intent-refinement-pending')).toBeNull();
+    expect(screen.queryByTestId('intent-refinement-fallback')).toBeNull();
+  });
+
+  test('falls back to neutral text when intent description does not change within poll bound', async () => {
+    // getIntent always returns the same description — no refinement applied.
+    mocks.getIntent.mockResolvedValue({
+      ...mocks.intent,
+      summary: 'Looking for a co-founder',
+      payload: 'Looking for a co-founder',
+    });
+
+    renderIntentPage();
+    await clickAnswerAndFlush();
+
+    // Spinner is shown initially.
+    expect(screen.getByTestId('intent-refinement-pending')).toBeInTheDocument();
+
+    // Exhaust the full poll bound (90 s) without a description change.
+    await act(async () => {
+      // INTENT_POLL_MAX_MS = 90_000 ms; interval = 4_000 ms.
+      // The fallback fires on the 23rd tick (23 * 4_000 = 92_000 ms).
+      await vi.advanceTimersByTimeAsync(96_000);
+    });
+
+    expect(screen.getByTestId('intent-refinement-fallback')).toBeInTheDocument();
+    expect(screen.queryByTestId('intent-refinement-pending')).toBeNull();
+    expect(screen.queryByTestId('intent-refinement-applied')).toBeNull();
   });
 });
