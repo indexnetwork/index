@@ -12,6 +12,32 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+## [7.1.0] — 2026-07-25
+
+### Changed
+- Complete the MCP legacy-surface removal declared in 7.0.0 (IND-596/597/598).
+  `createToolRegistry` is now surface-aware: the default `'rest'` profile (direct
+  HTTP Tool API + chat) retains contact/Gmail-import tools, `scrape_url`, and the
+  deprecated `*_user_profile` / `*_profile_run` compatibility aliases, while the
+  restricted `'mcp'` profile omits all of them. The MCP server builds both its
+  `tools/list` metadata and its `tools/call` lookup from the `'mcp'` profile, so
+  the removed names are no longer registered on the MCP surface — a direct
+  `tools/call` for any of them now fails as an unknown tool before any work.
+- MCP `read_docs` guidance is sanitized by the MCP surface profile (never by
+  `CONTACTS_ENABLED`) so it no longer advertises the removed contact/Gmail
+  workflows; REST/chat `read_docs` retains the full guidance.
+- `CONTACTS_ENABLED` no longer shapes the MCP registry or its metadata cache key.
+
+### Removed
+- The `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`,
+  `remove_contact`, `search_contacts`, `scrape_url`, `read_user_profiles`,
+  `create_user_profile`, `update_user_profile`, `confirm_user_profile`,
+  `preview_user_profile`, `get_profile_run`, and `cancel_profile_run` entries are
+  removed from the canonical MCP capability matrix; the tools are omitted from the
+  MCP registry rather than classified. Their non-MCP implementations (REST Tool
+  API, dedicated contact REST endpoints, chat agent, shared runtime
+  classifications) are unchanged.
+
 ## [7.0.0] — 2026-07-25
 
 ### Breaking

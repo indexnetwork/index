@@ -333,7 +333,18 @@ describe('MCP capability permission extension point', () => {
     });
   });
 
-  test('canonical matrix explicitly classifies removed surfaces', () => {
+  test('report_agent_activity remains classified as removed', () => {
+    expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get('report_agent_activity')?.access).toBe('removed');
+  });
+
+  test('contact/Gmail, scrape_url, and deprecated profile aliases are unclassified and denied', () => {
+    // These surfaces are omitted from the MCP registry composition entirely
+    // (IND-596/597/598), so they carry no access rule and resolve to the
+    // fail-closed 'tool_unclassified' denial for even the broadest caller.
+    const sessionHuman = resolveMcpCapabilitySubject({
+      identity: identity({ isSessionAuth: true }),
+      isOnboarding: false,
+    });
     for (const toolName of [
       'add_contact',
       'import_contacts',
@@ -342,7 +353,6 @@ describe('MCP capability permission extension point', () => {
       'remove_contact',
       'search_contacts',
       'scrape_url',
-      'report_agent_activity',
       'read_user_profiles',
       'create_user_profile',
       'update_user_profile',
@@ -351,7 +361,11 @@ describe('MCP capability permission extension point', () => {
       'get_profile_run',
       'cancel_profile_run',
     ]) {
-      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(toolName)?.access).toBe('removed');
+      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(toolName)).toBeUndefined();
+      expect(policy.authorize(sessionHuman, toolName)).toEqual({
+        allowed: false,
+        reason: 'tool_unclassified',
+      });
     }
   });
 
