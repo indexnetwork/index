@@ -1850,10 +1850,10 @@ export interface AgentActivitySummary {
     title: string;
     count: number;
   }>;
-  /** Current, non-expired questions waiting for the user. */
-  pendingQuestionCount: number;
-  /** Questions answered by the user during the window. */
-  questionsAnswered: number;
+  /** Current, non-expired questions waiting for the user, grouped by affected mode (QuestionMode values). Meta-network. */
+  pendingQuestionsByMode: Record<string, number>;
+  /** Questions answered by the user during the window, grouped by affected mode (QuestionMode values). Meta-network. */
+  answeredQuestionsByMode: Record<string, number>;
   /** Distinct opportunity negotiations started during the window. */
   negotiationsStarted: number;
   /** Distinct opportunity negotiations completed during the window. */
@@ -2017,8 +2017,14 @@ export interface UserDatabase {
   // Agent reporting (own activity only)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Summarize the authenticated user's own agent activity without counterparty rows. */
-  getAgentActivitySummary(input: { sinceHours: number }): Promise<AgentActivitySummary>;
+  /**
+   * Summarize the authenticated user's own agent activity without counterparty rows.
+   * When `networkId` is present (a network agent's bound community), the
+   * network-bound aggregates (opportunity and negotiation counts) are narrowed
+   * to that community inside the query; own-signal and question aggregates are
+   * meta-network and stay global.
+   */
+  getAgentActivitySummary(input: { sinceHours: number; networkId?: string }): Promise<AgentActivitySummary>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Opportunity Operations (where user is actor)

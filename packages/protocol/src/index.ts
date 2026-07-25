@@ -283,8 +283,28 @@ export {
   McpToolAccessRuleSchema,
   defineMcpToolAccessRules,
   defineMcpToolPermissionMap,
+  resolveMcpActivityCaller,
   resolveMcpCapabilitySubject,
 } from "./mcp/mcp.authorization-policy.js";
+export {
+  ActivityQuestionCountsSchema,
+  ActivityQuestionDomainSchema,
+  ActivitySummaryDomainSchema,
+  ActivitySummaryResponseSchema,
+  McpActivityCallerSchema,
+  QUESTION_MODE_TO_DOMAIN,
+  READ_ACTIVITY_SUMMARY_TOOL_NAME,
+  activitySummaryNetworkId,
+  projectActivitySummary,
+  resolveActivitySummaryDomains,
+} from "./shared/agent/activity-projection.js";
+export type {
+  ActivityQuestionCounts,
+  ActivityQuestionDomain,
+  ActivitySummaryDomain,
+  McpActivityCaller,
+  ProjectedActivitySummary,
+} from "./shared/agent/activity-projection.js";
 export type {
   McpCapabilityDecision,
   McpCapabilityPolicyOptions,

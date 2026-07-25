@@ -490,7 +490,7 @@ describe('MCP Server Factory', () => {
     // handler runs. This is distinct from a policy denial (which returns a
     // result with isError + MCP_CAPABILITY_DENIED) or a handler error — both of
     // which must fail this assertion.
-    for (const removed of ['scrape_url', 'list_contacts', 'read_user_profiles', 'import_gmail_contacts', 'get_profile_run']) {
+    for (const removed of ['scrape_url', 'list_contacts', 'read_user_profiles', 'import_gmail_contacts', 'get_profile_run', 'report_agent_activity']) {
       const response = await invokeMcpRequest({
         server,
         method: 'tools/call',
@@ -629,5 +629,192 @@ describe('MCP Server Factory', () => {
     expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
     expect(chatDatabaseReads).toBe(0);
     expect(scopedDatabaseCreations).toBe(0);
+  });
+
+  it('projects read_activity_summary per caller and narrows network agents at the adapter input', async () => {
+    clearMcpToolMetadataCacheForTests();
+
+    const fullSummary = {
+      sinceHours: 24,
+      liveSignalsWatched: 2,
+      opportunitiesSurfaced: 4,
+      opportunitiesBySignal: [{ intentId: 'intent-1', title: 'Climate founders', count: 4 }],
+      pendingQuestionsByMode: { intent: 1, negotiation: 2, chat: 5 },
+      answeredQuestionsByMode: { enrichment: 3 },
+      negotiationsStarted: 5,
+      negotiationsCompleted: 6,
+    };
+    const summaryInputs: Array<{ sinceHours: number; networkId?: string }> = [];
+    const scopedFactory: ScopedDepsFactory = {
+      create: () => ({
+        userDb: {
+          getAgentActivitySummary: async (input: { sinceHours: number; networkId?: string }) => {
+            summaryInputs.push(input);
+            return { ...fullSummary, sinceHours: input.sinceHours };
+          },
+        } as unknown as ToolDeps['userDb'],
+        systemDb: {} as ToolDeps['systemDb'],
+      }),
+    };
+
+    const networkAgentDb: AgentDatabase = {
+      ...mockAgentDb,
+      getAgentWithRelations: async () => ({
+        id: 'agent-net',
+        ownerId: 'test-user-id',
+        name: 'Network Agent',
+        description: null,
+        type: 'external',
+        status: 'active',
+        metadata: {},
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        transports: [],
+        permissions: [{
+          id: 'permission-1',
+          agentId: 'agent-net',
+          userId: 'test-user-id',
+          scope: 'network',
+          scopeId: 'network-1',
+          actions: ['manage:intents', 'manage:opportunities'],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }],
+      }),
+    };
+    const deps = {
+      ...mockDeps,
+      database: resolvedContextDatabase,
+      agentDatabase: networkAgentDb,
+    };
+
+    const callSummary = async (
+      identity: Record<string, unknown>,
+      headers: Record<string, string>,
+    ) => {
+      const server = createMcpServer(
+        deps,
+        {
+          resolveIdentity: async () => identity,
+          resolveUserId: async () => 'test-user-id',
+        } as McpAuthResolver,
+        scopedFactory,
+      );
+      return invokeMcpRequest({
+        server,
+        method: 'tools/call',
+        requestParams: { name: 'read_activity_summary', arguments: {} },
+        headers,
+      });
+    };
+
+    // Session human: every domain, no network narrowing.
+    const humanResponse = await callSummary(
+      { userId: 'test-user-id', isSessionAuth: true },
+      { authorization: 'Bearer session-token' },
+    );
+    const humanPayload = JSON.parse(humanResponse.result?.content?.[0]?.text ?? '{}') as {
+      success: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(humanResponse.result?.isError).toBeUndefined();
+    expect(humanPayload.success).toBe(true);
+    expect(humanPayload.data).toEqual({
+      sinceHours: 24,
+      liveSignalsWatched: 2,
+      opportunitiesSurfaced: 4,
+      opportunitiesBySignal: fullSummary.opportunitiesBySignal,
+      pendingQuestionsByDomain: { intents: 1, negotiations: 2, chat: 5 },
+      answeredQuestionsByDomain: { identity: 3 },
+      negotiationsStarted: 5,
+      negotiationsCompleted: 6,
+    });
+    expect(summaryInputs.at(-1)).toEqual({ sinceHours: 24 });
+
+    // Network agent: per-domain projection, bound community passed to the adapter.
+    const agentResponse = await callSummary(
+      { userId: 'test-user-id', agentId: 'agent-net', networkScopeId: 'network-1' },
+      { 'x-api-key': 'agent-key' },
+    );
+    const agentPayload = JSON.parse(agentResponse.result?.content?.[0]?.text ?? '{}') as {
+      success: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(agentResponse.result?.isError).toBeUndefined();
+    expect(agentPayload.success).toBe(true);
+    // manage:intents + manage:opportunities release only intent-affected
+    // question counts; negotiation-mode and chat-mode counts stay hidden.
+    expect(agentPayload.data).toEqual({
+      sinceHours: 24,
+      liveSignalsWatched: 2,
+      opportunitiesSurfaced: 4,
+      opportunitiesBySignal: fullSummary.opportunitiesBySignal,
+      pendingQuestionsByDomain: { intents: 1 },
+    });
+    expect('negotiationsStarted' in agentPayload.data).toBe(false);
+    expect(summaryInputs.at(-1)).toEqual({ sinceHours: 24, networkId: 'network-1' });
+  });
+
+  it('denies read_activity_summary to agents without any activity-domain permission', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const networksOnlyAgentDb: AgentDatabase = {
+      ...mockAgentDb,
+      getAgentWithRelations: async () => ({
+        id: 'agent-1',
+        ownerId: 'test-user-id',
+        name: 'Agent',
+        description: null,
+        type: 'external',
+        status: 'active',
+        metadata: {},
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        transports: [],
+        permissions: [{
+          id: 'permission-1',
+          agentId: 'agent-1',
+          userId: 'test-user-id',
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:networks'],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }],
+      }),
+    };
+    const deps = {
+      ...mockDeps,
+      database: resolvedContextDatabase,
+      agentDatabase: networksOnlyAgentDb,
+    };
+    const server = createMcpServer(
+      deps,
+      {
+        resolveIdentity: async () => ({
+          userId: 'test-user-id',
+          agentId: 'agent-1',
+        }),
+        resolveUserId: async () => 'test-user-id',
+      },
+      mockScopedDepsFactory,
+    );
+
+    const listResponse = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
+      headers: { 'x-api-key': 'agent-key' },
+    });
+    const names = listResponse.result?.tools?.map((tool) => tool.name) ?? [];
+    expect(names).not.toContain('read_activity_summary');
+
+    const callResponse = await invokeMcpRequest({
+      server,
+      method: 'tools/call',
+      requestParams: { name: 'read_activity_summary', arguments: {} },
+      headers: { 'x-api-key': 'agent-key' },
+    });
+    const payload = JSON.parse(callResponse.result?.content?.[0]?.text ?? '{}') as {
+      code?: string;
+    };
+    expect(callResponse.result?.isError).toBe(true);
+    expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
   });
 });

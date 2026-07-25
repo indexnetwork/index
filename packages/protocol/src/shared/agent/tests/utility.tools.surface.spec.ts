@@ -77,13 +77,15 @@ describe("createUtilityTools surface profile", () => {
     createUtilityTools(rest.defineTool, stubDeps);
     expect(rest.tools.has("scrape_url")).toBe(true);
     expect(rest.tools.has("read_docs")).toBe(true);
-    expect(rest.tools.has("report_agent_activity")).toBe(true);
+    expect(rest.tools.has("read_activity_summary")).toBe(true);
+    expect(rest.tools.has("report_agent_activity")).toBe(false);
 
     const mcp = capture();
     createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
     expect(mcp.tools.has("scrape_url")).toBe(false);
     expect(mcp.tools.has("read_docs")).toBe(true);
-    expect(mcp.tools.has("report_agent_activity")).toBe(true);
+    expect(mcp.tools.has("read_activity_summary")).toBe(true);
+    expect(mcp.tools.has("report_agent_activity")).toBe(false);
   });
 
   test("REST read_docs retains contact-tool guidance", async () => {

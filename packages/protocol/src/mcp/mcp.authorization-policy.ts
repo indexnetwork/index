@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import type { McpResolvedIdentity } from '../shared/schemas/mcp-auth.schema.js';
+import { McpActivityCallerSchema } from '../shared/agent/activity-projection.js';
+import type { McpActivityCaller } from '../shared/agent/activity-projection.js';
 
 /** Canonical MCP permission actions. */
 export const MCP_PERMISSION_ACTIONS = [
@@ -184,14 +186,30 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   // Protocol guidance.
   read_docs: { access: 'informational', reach: 'principal' },
 
+  // Aggregate activity reporting. Any activity-domain permission admits the
+  // call; the handler then projects each domain by the caller's exact grants
+  // via the centralized activity projection, and a network agent's
+  // network-bound aggregates are narrowed to its bound community at the
+  // query/adapter layer.
+  read_activity_summary: {
+    access: 'permission',
+    actions: [
+      'manage:identity',
+      'manage:premises',
+      'manage:intents',
+      'manage:opportunities',
+      'manage:negotiations',
+    ],
+    reach: 'principal',
+  },
+
   // Restricted MCP surface still registered by the shared registry. The contact
-  // and Gmail-import tools, scrape_url, and the deprecated profile/profile-run
-  // aliases are no longer classified here because they are omitted from the MCP
-  // registry composition entirely (IND-596/597/598) — an unregistered tool is
-  // rejected as unknown before any authorization work. report_agent_activity
-  // remains registered on the MCP surface and stays denied via 'removed' until
-  // its owning sibling removes its registry exposure.
-  report_agent_activity: { access: 'removed', reach: 'principal' },
+  // and Gmail-import tools, scrape_url, the deprecated profile/profile-run
+  // aliases, and the retired report_agent_activity name are no longer
+  // classified here because they are omitted from the MCP registry composition
+  // entirely (IND-596/597/598/605) — an unregistered tool is rejected as
+  // unknown before any authorization work. read_activity_summary (above) is
+  // the only public activity-reporting name; no legacy alias is retained.
 });
 
 /** Tools visible while a session-authenticated human completes onboarding. */
@@ -361,6 +379,22 @@ export function resolveMcpCapabilitySubject(
     isOnboarding,
     networkScopeId: identity.networkScopeId ?? null,
     permissions: resolveAgentPermissions(identity, agent),
+  });
+}
+
+/**
+ * Maps a resolved capability subject to the typed caller context consumed by
+ * the centralized activity-summary projection. Session and onboarding humans
+ * own the summarized data and receive the full owner view; every other
+ * profile is projected as an agent bounded by its granted permissions and
+ * (for network agents) its bound community.
+ */
+export function resolveMcpActivityCaller(subject: McpCapabilitySubject): McpActivityCaller {
+  const isHuman = subject.profile === 'session_human' || subject.profile === 'onboarding_human';
+  return McpActivityCallerSchema.parse({
+    kind: isHuman ? 'human' : 'agent',
+    permissions: isHuman ? [] : subject.permissions,
+    networkScopeId: isHuman ? null : subject.networkScopeId,
   });
 }
 

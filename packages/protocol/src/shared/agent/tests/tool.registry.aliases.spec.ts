@@ -98,11 +98,13 @@ describe("tool registry surface profiles", () => {
     }
   });
 
-  test("read_docs and report_agent_activity stay registered on both surfaces", () => {
-    for (const name of ["read_docs", "report_agent_activity"]) {
+  test("read_docs and read_activity_summary stay registered on both surfaces; report_agent_activity retains no alias", () => {
+    for (const name of ["read_docs", "read_activity_summary"]) {
       expect(restRegistry.get(name)).toBeDefined();
       expect(mcpRegistry.get(name)).toBeDefined();
     }
+    expect(restRegistry.get("report_agent_activity")).toBeUndefined();
+    expect(mcpRegistry.get("report_agent_activity")).toBeUndefined();
   });
 
   test("REST aliases delegate to the exact same handler + schema as the canonical tool", () => {

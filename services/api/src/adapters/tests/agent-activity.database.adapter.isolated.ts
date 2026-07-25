@@ -19,20 +19,23 @@ const recentOpportunityId = uuidv4();
 const secondRecentOpportunityId = uuidv4();
 const oldOpportunityId = uuidv4();
 const unrelatedOpportunityId = uuidv4();
+const foreignNetworkOpportunityId = uuidv4();
 const conversationId = uuidv4();
 const questionIds = [uuidv4(), uuidv4(), uuidv4(), uuidv4(), uuidv4()];
-const taskIds = [uuidv4(), uuidv4(), uuidv4(), uuidv4()];
+const taskIds = [uuidv4(), uuidv4(), uuidv4(), uuidv4(), uuidv4()];
 
 const now = new Date();
 const recent = new Date(now.getTime() - 2 * 60 * 60 * 1000);
 const old = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+const boundNetworkId = uuidv4();
+const foreignNetworkId = uuidv4();
 
-function opportunity(id: string, createdAt: Date, actorUserId: string, intentId?: string) {
+function opportunity(id: string, createdAt: Date, actorUserId: string, intentId?: string, networkId?: string) {
   return {
     id,
     detection: { source: 'opportunity_graph' as const, timestamp: createdAt.toISOString() },
     actors: [
-      { userId: actorUserId, networkId: uuidv4(), role: 'patient', ...(intentId ? { intent: intentId } : {}) },
+      { userId: actorUserId, networkId: networkId ?? uuidv4(), role: 'patient', ...(intentId ? { intent: intentId } : {}) },
       { userId: otherUserId, networkId: uuidv4(), role: 'peer' },
     ],
     interpretation: { category: 'test', reasoning: 'test-only', confidence: 0.8 },
@@ -58,10 +61,14 @@ beforeAll(async () => {
     { id: archivedIntentId, userId, payload: 'Archived signal', summary: 'Archived', status: 'ACTIVE', archivedAt: old },
   ]);
   await db.insert(opportunities).values([
-    opportunity(recentOpportunityId, recent, userId, activeIntentId),
-    opportunity(secondRecentOpportunityId, recent, userId, activeIntentId),
-    opportunity(oldOpportunityId, old, userId, secondActiveIntentId),
+    opportunity(recentOpportunityId, recent, userId, activeIntentId, boundNetworkId),
+    opportunity(secondRecentOpportunityId, recent, userId, activeIntentId, boundNetworkId),
+    opportunity(oldOpportunityId, old, userId, secondActiveIntentId, boundNetworkId),
     opportunity(unrelatedOpportunityId, recent, unrelatedUserId),
+    // Same owner as the bound rows, but the owner's actor belongs to a foreign
+    // community — this is what proves query-layer network filtering (an
+    // unrelated-user row could never distinguish it).
+    opportunity(foreignNetworkOpportunityId, recent, userId, activeIntentId, foreignNetworkId),
   ]);
   await db.insert(questions).values([
     {
@@ -84,7 +91,7 @@ beforeAll(async () => {
     },
     {
       id: questionIds[2],
-      detection: { mode: 'intent', sourceType: 'intent', sourceId: activeIntentId, timestamp: recent.toISOString() },
+      detection: { mode: 'negotiation', sourceType: 'negotiation', sourceId: recentOpportunityId, timestamp: recent.toISOString() },
       actors: [{ userId, role: 'subject' }],
       payload: { title: 'Answered question', prompt: 'Answered question', options: [], multiSelect: false } as never,
       status: 'answered',
@@ -128,6 +135,11 @@ beforeAll(async () => {
       id: taskIds[3], conversationId, state: 'completed',
       metadata: { type: 'negotiation', opportunityId: unrelatedOpportunityId }, createdAt: recent, updatedAt: recent,
     },
+    // Negotiation on the same-owner foreign-community opportunity.
+    {
+      id: taskIds[4], conversationId, state: 'working',
+      metadata: { type: 'negotiation', opportunityId: foreignNetworkOpportunityId }, createdAt: recent, updatedAt: recent,
+    },
   ]);
 });
 
@@ -135,7 +147,7 @@ afterAll(async () => {
   await db.delete(tasks).where(inArray(tasks.id, taskIds));
   await db.delete(conversations).where(eq(conversations.id, conversationId));
   await db.delete(questions).where(inArray(questions.id, questionIds));
-  await db.delete(opportunities).where(inArray(opportunities.id, [recentOpportunityId, secondRecentOpportunityId, oldOpportunityId, unrelatedOpportunityId]));
+  await db.delete(opportunities).where(inArray(opportunities.id, [recentOpportunityId, secondRecentOpportunityId, oldOpportunityId, unrelatedOpportunityId, foreignNetworkOpportunityId]));
   await db.delete(intents).where(inArray(intents.id, [activeIntentId, secondActiveIntentId, pausedIntentId, archivedIntentId]));
   await db.delete(users).where(inArray(users.id, [userId, otherUserId, unrelatedUserId]));
 });
@@ -147,14 +159,58 @@ describe('ChatDatabaseAdapter.getAgentActivitySummary', () => {
     expect(summary).toEqual({
       sinceHours: 24,
       liveSignalsWatched: 2,
+      opportunitiesSurfaced: 3,
+      opportunitiesBySignal: [
+        { intentId: activeIntentId, title: 'Climate founders', count: 3 },
+      ],
+      pendingQuestionsByMode: { intent: 1 },
+      answeredQuestionsByMode: { negotiation: 1 },
+      negotiationsStarted: 2,
+      negotiationsCompleted: 1,
+    });
+  });
+
+  it('narrows network-bound aggregates to the bound community at the query layer, excluding same-owner foreign rows', async () => {
+    const narrowed = await new ChatDatabaseAdapter().getAgentActivitySummary(userId, {
+      sinceHours: 24,
+      networkId: boundNetworkId,
+    });
+
+    // The same-owner foreignNetworkId opportunity and its negotiation task are
+    // excluded here — proving query-layer network filtering, not merely
+    // unrelated-user filtering. Own-signal and question counts are
+    // meta-network and stay unchanged.
+    expect(narrowed).toEqual({
+      sinceHours: 24,
+      liveSignalsWatched: 2,
       opportunitiesSurfaced: 2,
       opportunitiesBySignal: [
         { intentId: activeIntentId, title: 'Climate founders', count: 2 },
       ],
-      pendingQuestionCount: 1,
-      questionsAnswered: 1,
+      pendingQuestionsByMode: { intent: 1 },
+      answeredQuestionsByMode: { negotiation: 1 },
       negotiationsStarted: 1,
       negotiationsCompleted: 1,
+    });
+  });
+
+  it('includes exactly the same-owner foreign-community rows when narrowed to that community', async () => {
+    const narrowed = await new ChatDatabaseAdapter().getAgentActivitySummary(userId, {
+      sinceHours: 24,
+      networkId: foreignNetworkId,
+    });
+
+    expect(narrowed).toEqual({
+      sinceHours: 24,
+      liveSignalsWatched: 2,
+      opportunitiesSurfaced: 1,
+      opportunitiesBySignal: [
+        { intentId: activeIntentId, title: 'Climate founders', count: 1 },
+      ],
+      pendingQuestionsByMode: { intent: 1 },
+      answeredQuestionsByMode: { negotiation: 1 },
+      negotiationsStarted: 1,
+      negotiationsCompleted: 0,
     });
   });
 });

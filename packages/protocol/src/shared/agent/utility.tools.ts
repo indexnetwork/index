@@ -1,9 +1,18 @@
 import { z } from "zod";
 
 import { requestContext } from "../observability/request-context.js";
+import { ActivitySummaryResponseSchema, McpActivityCallerSchema, activitySummaryNetworkId, projectActivitySummary } from "./activity-projection.js";
+import type { McpActivityCaller } from "./activity-projection.js";
 
 import type { DefineTool, ToolRegistryCompositionDeps } from "./tool.helpers.js";
 import { success, error, normalizeUrl } from "./tool.helpers.js";
+
+/** Owner-trusted surfaces (REST/chat) receive the full owner view. */
+const HUMAN_OWNER_CALLER: McpActivityCaller = {
+  kind: "human",
+  permissions: [],
+  networkScopeId: null,
+};
 
 /** Host capabilities consumed by URL and profile utility tools. */
 type UtilityToolDeps = Pick<ToolRegistryCompositionDeps, "scraper" | "userDb">;
@@ -340,23 +349,43 @@ ${managingContactsWorkflow}### Creating a Community
     },
   });
 
-  const reportAgentActivity = defineTool({
-    name: "report_agent_activity",
+  const readActivitySummary = defineTool({
+    name: "read_activity_summary",
     description:
-      "Reports grounded, aggregate-only activity for the authenticated user's agent over a recent time window. " +
-      "It includes live signal count, opportunities surfaced by the user's own signals, pending/answered question counts, " +
-      "and negotiation totals. It never returns counterpart identities, transcripts, or per-counterparty rows.",
+      "Returns grounded, aggregate-only activity for the authenticated user's agent over a recent time window.\n\n" +
+      "**Response domains (permission-projected for agent callers):**\n" +
+      "- signals (`liveSignalsWatched`, `opportunitiesBySignal` with signal IDs/titles) — requires manage:intents.\n" +
+      "- opportunities (`opportunitiesSurfaced`) — requires manage:opportunities.\n" +
+      "- questions (`pendingQuestionsByDomain`, `answeredQuestionsByDomain`) — meta-network counts grouped by the question's affected domain; " +
+      "each domain's counts require that domain's manage:identity/premises/intents/opportunities/negotiations permission; conversational chat-mode counts are human-owner-only.\n" +
+      "- negotiations (`negotiationsStarted`, `negotiationsCompleted`) — requires manage:negotiations.\n" +
+      "Human owners receive every domain. Agent callers receive only the domains their permissions authorize; " +
+      "a network agent's network-bound aggregates are narrowed to its bound community at the query layer.\n\n" +
+      "**Privacy:** the response never returns counterparty identities, chats, turns, transcripts, per-counterparty rows, " +
+      "or any private content — only aggregate counts and (with manage:intents) the owner's own signal IDs/titles.",
     querySchema: z.object({
       sinceHours: z.number().int().optional().default(24).describe("Look back this many hours; values are clamped to 1-168 (default 24)."),
     }).strict(),
-    handler: async ({ query }) => {
+    handler: async ({ context, query }) => {
       const sinceHours = Math.max(1, Math.min(168, query.sinceHours));
-      const summary = await deps.userDb.getAgentActivitySummary({ sinceHours });
-      return success(summary);
+      // Absent on owner-trusted REST/chat surfaces → full owner view. On MCP the
+      // server binds the typed resolved caller context and the centralized
+      // projection decides every visible domain.
+      const caller = context.mcpCaller
+        ? McpActivityCallerSchema.parse(context.mcpCaller)
+        : HUMAN_OWNER_CALLER;
+      const networkId = activitySummaryNetworkId(caller);
+      const summary = await deps.userDb.getAgentActivitySummary({
+        sinceHours,
+        ...(networkId ? { networkId } : {}),
+      });
+      return success(ActivitySummaryResponseSchema.parse(
+        projectActivitySummary(caller, summary),
+      ));
     },
   });
 
-  return [scrapeUrl, readDocs, reportAgentActivity].filter(
+  return [scrapeUrl, readDocs, readActivitySummary].filter(
     (tool): tool is Exclude<typeof tool, null> => tool !== null,
   );
 }
