@@ -141,16 +141,7 @@ export class FromIntentQueue {
       return;
     }
 
-    const [assignedNetworkIds, ownerMemberships] = await Promise.all([
-      this.database.getNetworkIdsForIntent(intentId),
-      this.database.getAssignmentNetworkMembershipsForUser(userId),
-    ]);
-    const activeOwnerNetworkIds = new Set(ownerMemberships.map((membership) => membership.networkId));
-    const explicitNetworkIds = networkIds == null ? null : new Set(networkIds);
-    const validNetworkIds = [...new Set(assignedNetworkIds)]
-      .filter((networkId) => activeOwnerNetworkIds.has(networkId))
-      .filter((networkId) => explicitNetworkIds == null || explicitNetworkIds.has(networkId))
-      .sort();
+    const validNetworkIds = await this.getValidDiscoveryNetworkIds(intentId, userId, networkIds);
 
     // A trigger intent is authoritative for admission: omitted scope means all
     // of its still-valid assignments, never all owner memberships. Explicit
@@ -160,9 +151,7 @@ export class FromIntentQueue {
       this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
         intentId,
         userId,
-        assignedNetworkCount: assignedNetworkIds.length,
-        activeOwnerMembershipCount: activeOwnerNetworkIds.size,
-        explicitNetworkCount: explicitNetworkIds?.size,
+        requestedNetworkCount: networkIds?.length,
       });
       return;
     }
@@ -205,6 +194,22 @@ export class FromIntentQueue {
       errorLabel: 'from-intent',
       logContext: { intentId, userId },
     });
+
+    // A successful graph is not enough to clear WARMING: assignment and
+    // membership can change while it runs. Re-check the same authoritative
+    // admission predicate immediately before the irreversible success stamp.
+    const stampNetworkIds = await this.getValidDiscoveryNetworkIds(intentId, userId, networkIds);
+    if (stampNetworkIds.length === 0) {
+      const error = new Error('Intent discovery stamp precondition failed: no active assigned networks remain');
+      this.logger.error('Discovery success stamp precondition violated; BullMQ will retry', {
+        event: 'intent_discovery_stamp_precondition_violation',
+        intentId,
+        userId,
+        requestedNetworkCount: networkIds?.length,
+        error,
+      });
+      throw error;
+    }
 
     // Discovery completed without throwing: stamp first-discovery success so
     // the read-side WARMING derivation clears immediately instead of waiting
@@ -265,6 +270,20 @@ export class FromIntentQueue {
         newCandidates: summary?.opportunitiesCreated ?? null,
       });
     }
+  }
+
+  /** Resolve the assignment + current-membership intersection used for both admission and stamping. */
+  private async getValidDiscoveryNetworkIds(intentId: string, userId: string, networkIds?: string[]): Promise<string[]> {
+    const [assignedNetworkIds, ownerMemberships] = await Promise.all([
+      this.database.getNetworkIdsForIntent(intentId),
+      this.database.getAssignmentNetworkMembershipsForUser(userId),
+    ]);
+    const activeOwnerNetworkIds = new Set(ownerMemberships.map((membership) => membership.networkId));
+    const explicitNetworkIds = networkIds == null ? null : new Set(networkIds);
+    return [...new Set(assignedNetworkIds)]
+      .filter((networkId) => activeOwnerNetworkIds.has(networkId))
+      .filter((networkId) => explicitNetworkIds == null || explicitNetworkIds.has(networkId))
+      .sort();
   }
 
   startWorker(): void {

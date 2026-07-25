@@ -261,6 +261,24 @@ describe('FromIntentQueue', () => {
       expect(recoverAfterCompletion).not.toHaveBeenCalled();
     });
 
+    it('discover: does not stamp when assignment disappears after the graph completes', async () => {
+      const markIntentFirstDiscoverySucceeded = mock(async () => {});
+      const getNetworkIdsForIntent = mock()
+        .mockResolvedValueOnce(['idx1'])
+        .mockResolvedValueOnce([]);
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent,
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('stamp precondition failed');
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
+    });
+
     it('pool-answer discovery appends all durable answer context and narrates after mining', async () => {
       const callOrder: string[] = [];
       const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {

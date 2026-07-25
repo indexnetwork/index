@@ -5,7 +5,7 @@ import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/a
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
-import { IntentNetworkMembershipError, intentService } from '../services/intent.service';
+import { IntentAdmissionEnqueueError, IntentNetworkMembershipError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
@@ -114,6 +114,21 @@ export class IntentController {
           detail: err.message,
           networkId: err.networkId,
         }, { status: 403 });
+      }
+      if (err instanceof IntentAdmissionEnqueueError) {
+        logger.error('Intent confirmation indexing admission was not acknowledged', {
+          event: 'intent_admission_enqueue_failed',
+          userId: user.id,
+          proposalId,
+          intentId: err.intentId,
+          error: err.cause,
+        });
+        return Response.json({
+          error: 'Intent was saved but indexing could not be queued',
+          code: err.code,
+          intentId: err.intentId,
+          retryable: true,
+        }, { status: 503 });
       }
       logger.error('Intent confirm failed', { userId: user.id, proposalId, error: err });
       return Response.json({ error: 'Failed to process intent confirmation' }, { status: 500 });

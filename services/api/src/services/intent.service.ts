@@ -20,6 +20,22 @@ export class IntentNetworkMembershipError extends Error {
 }
 
 /**
+ * A confirmation committed its intent row but could not obtain acknowledgement
+ * from the post-transaction indexing admission queue. Callers must retry the
+ * same confirmation; replay re-attempts admission without creating a second
+ * intent row.
+ */
+export class IntentAdmissionEnqueueError extends Error {
+  readonly code = 'intent_admission_enqueue_failed' as const;
+
+  constructor(readonly intentId: string, cause: unknown) {
+    super('Intent confirmation was persisted, but indexing admission could not be queued');
+    this.name = 'IntentAdmissionEnqueueError';
+    this.cause = cause;
+  }
+}
+
+/**
  * IntentService
  *
  * Manages intent processing through the Intent Graph and CRUD operations.
@@ -296,7 +312,25 @@ export class IntentService {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
-    if (existing) return existing;
+    if (existing) {
+      // A previous response can have failed after persistence but before Redis
+      // acknowledged admission. Replay is intentionally the repair mechanism:
+      // it does not create another row, and the queue path is idempotent.
+      try {
+        await this.proposalQueue.addGenerateHydeJob({ intentId: existing.id, userId });
+      } catch (error) {
+        logger.error('Intent admission enqueue failed during confirmation replay', {
+          event: 'intent_admission_enqueue_failed',
+          intentId: existing.id,
+          userId,
+          proposalId,
+          replay: true,
+          error,
+        });
+        throw new IntentAdmissionEnqueueError(existing.id, error);
+      }
+      return existing;
+    }
 
     // Cheap advisory preflight avoids embedding/transaction/queue/event work
     // for clear denials. confirmProposalIntent still re-checks membership under
@@ -333,8 +367,16 @@ export class IntentService {
         userId,
         ...scope,
       });
-    } catch (err) {
-      logger.warn('Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
+    } catch (error) {
+      logger.error('Intent admission enqueue failed after confirmation persistence', {
+        event: 'intent_admission_enqueue_failed',
+        intentId: created.id,
+        userId,
+        proposalId,
+        replay: false,
+        error,
+      });
+      throw new IntentAdmissionEnqueueError(created.id, error);
     }
 
     if (this.questionerEnqueue) {
