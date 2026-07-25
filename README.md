@@ -87,6 +87,68 @@ index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
 ```
 
+### Inspect the Protocol
+
+Intent detail:
+
+```console
+$ index intent show <intent-id>
+
+Signal Details
+────────────────────────────────────────
+Status          ACTIVE
+Summary         Build a secure identity layer for autonomous agents
+Confidence      ########-- 82%
+
+Network Assignments
+* AI Research Collaborations (0.92)
+* Crypto & Identity (0.78)
+* Personal Network (1.00)
+```
+
+Negotiation detail:
+
+```console
+$ index negotiation show <negotiation-id>
+
+Negotiation Details
+────────────────────────────────────────
+Counterparty    Alex Chen
+Outcome         opportunity
+Your Role       helper
+Turns           3
+
+Turn-by-Turn
+Turn 1  Your Agent    propose  Shared intent and complementary expertise.
+Turn 2  Alex's Agent  counter  Reframed this as a peer collaboration.
+Turn 3  Your Agent    accept   Strong alignment on verification mechanisms.
+```
+
+Opportunity detail:
+
+```console
+$ index opportunity show <opportunity-id>
+
+Opportunity
+────────────────────────────────────────
+Status:       pending
+Category:     Research Collaboration
+Confidence:   ########-- 87%
+
+Parties:
+  You         Seeker
+  Alex Chen   Helper
+  David Kim   Peer
+
+Reasoning:
+  Shared interest in decentralized identity protocols,
+  with complementary research and infrastructure expertise.
+
+Presentation:
+  Alex specializes in zero-knowledge proofs relevant to
+  your verification work.
+```
+
 ## Development
 
 ### Prerequisites
