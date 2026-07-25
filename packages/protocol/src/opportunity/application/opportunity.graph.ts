@@ -63,7 +63,7 @@ import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies 
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from '../domain/opportunity.actor.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
-import { buildPrioritizedNegotiationIntents, negotiateExistingOpportunity } from './opportunity.existing-negotiation.js';
+import { buildPrioritizedNegotiationIntents, negotiateExistingOpportunity, negotiationIncludesOtherIntents } from './opportunity.existing-negotiation.js';
 import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater } from './opportunity.persistence-admission.js';
 
 export type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
@@ -2085,6 +2085,7 @@ export class OpportunityGraphFactory {
       try {
         // Use the same discoveryUserId pattern as evaluationNode
         const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
+        const includeOtherIntents = negotiationIncludesOtherIntents();
 
         const sourceAccount = await this.database.getUser(discoveryUserId).catch(() => null);
         const sourceIntentInputs = (state.indexedIntents ?? []).map((intent) => ({
@@ -2106,6 +2107,7 @@ export class OpportunityGraphFactory {
             sourceIntentInputs,
             state.triggerIntentId,
             ownedSourceFallback,
+            includeOtherIntents,
           ),
           profile: {
             name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
@@ -2171,26 +2173,45 @@ export class OpportunityGraphFactory {
             const userId = candidateActor.userId as string;
             const sourceIntentId = resolveOpportunityActorIntent(sourceActor);
             const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
-            const [profile, user, activeIntents, intent] = await Promise.all([
+            const sourceExactActive = sourceIntentId
+              ? sourceIntentInputs.find((sourceIntent) => sourceIntent.id === sourceIntentId)
+              : undefined;
+            const [profile, user, activeIntents, intent, sourceIntent] = await Promise.all([
               this.database.getProfile(userId).catch(() => null),
               this.database.getUser(userId).catch(() => null),
-              this.database.getActiveIntents(userId).catch(() => []),
+              includeOtherIntents
+                ? this.database.getActiveIntents(userId).catch(() => [])
+                : Promise.resolve([] as ActiveIntent[]),
               candidateIntentId
                 ? this.database.getIntent(candidateIntentId).catch(() => null)
+                : null,
+              sourceIntentId && !sourceExactActive
+                ? this.database.getIntent(sourceIntentId).catch(() => null)
                 : null,
             ]);
 
             const ownedFallbackIntent = intent?.userId === userId ? intent : null;
+            const ownedSourceIntent = sourceIntent?.userId === discoveryUserId ? sourceIntent : null;
             const candidateIntents = buildPrioritizedNegotiationIntents(
               activeIntents,
               candidateIntentId,
               ownedFallbackIntent,
+              includeOtherIntents,
             );
 
             return {
               userId,
               ...(sourceIntentId ? { sourceIntentId } : {}),
               ...(candidateIntentId ? { candidateIntentId } : {}),
+              sourceUser: {
+                ...sourceUser,
+                intents: buildPrioritizedNegotiationIntents(
+                  sourceIntentInputs,
+                  sourceIntentId,
+                  ownedSourceIntent,
+                  includeOtherIntents,
+                ),
+              },
               opportunityId: opp.id as string,
               opportunityStatus: opp.status,
               opportunityUpdatedAt: opp.updatedAt,

@@ -4,6 +4,11 @@ import type { QueueOpportunityNotificationFn } from './opportunity.lifecycle.js'
 
 const NEGOTIATION_INTENT_LIMIT = 5;
 
+/** Default-compatible deployment policy for autonomous opportunity negotiation. */
+export function negotiationIncludesOtherIntents(): boolean {
+  return process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS !== 'false';
+}
+
 interface NegotiationIntentSource {
   id?: string | null;
   summary?: string | null;
@@ -34,13 +39,14 @@ export function buildPrioritizedNegotiationIntents(
   activeIntents: readonly NegotiationIntentSource[],
   exactIntentId?: string | null,
   fallbackIntent?: NegotiationIntentSource | null,
+  includeOtherIntents = true,
 ): ExistingOpportunityNegotiationUser['intents'] {
   const exactId = typeof exactIntentId === 'string' && exactIntentId.trim().length > 0 ? exactIntentId : null;
   const exactActive = exactId ? activeIntents.find((intent) => intent.id === exactId) : undefined;
   const ordered = [
     ...(exactActive ? [exactActive] : []),
     ...(!exactActive && fallbackIntent?.id === exactId ? [fallbackIntent] : []),
-    ...activeIntents,
+    ...(includeOtherIntents ? activeIntents : []),
   ];
   const seen = new Set<string>();
   const intents: ExistingOpportunityNegotiationUser['intents'] = [];
@@ -118,13 +124,18 @@ export async function negotiateExistingOpportunity(
 
   const sourceIntentId = resolveOpportunityActorIntent(sourceActor);
   const candidateIntentId = resolveOpportunityActorIntent(candidateActor);
+  const includeOtherIntents = negotiationIncludesOtherIntents();
   const [sourceAccount, sourceProfile, sourceIntents, candidateAccount, candidateProfile, candidateIntents] = await Promise.all([
     database.getUser(sourceActor.userId).catch(() => null),
     database.getProfile(sourceActor.userId).catch(() => null),
-    database.getActiveIntents(sourceActor.userId).catch(() => [] as ActiveIntent[]),
+    includeOtherIntents
+      ? database.getActiveIntents(sourceActor.userId).catch(() => [] as ActiveIntent[])
+      : Promise.resolve([] as ActiveIntent[]),
     database.getUser(candidateActor.userId).catch(() => null),
     database.getProfile(candidateActor.userId).catch(() => null),
-    database.getActiveIntents(candidateActor.userId).catch(() => [] as ActiveIntent[]),
+    includeOtherIntents
+      ? database.getActiveIntents(candidateActor.userId).catch(() => [] as ActiveIntent[])
+      : Promise.resolve([] as ActiveIntent[]),
   ]);
   const [sourceFallbackIntent, candidateFallbackIntent] = await Promise.all([
     sourceIntentId && !sourceIntents.some((intent) => intent.id === sourceIntentId) ? database.getIntent(sourceIntentId).catch(() => null) : null,
@@ -132,7 +143,12 @@ export async function negotiateExistingOpportunity(
   ]);
   const sourceUser = {
     id: sourceActor.userId,
-    intents: buildPrioritizedNegotiationIntents(sourceIntents, sourceIntentId, sourceFallbackIntent?.userId === sourceActor.userId ? sourceFallbackIntent : null),
+    intents: buildPrioritizedNegotiationIntents(
+      sourceIntents,
+      sourceIntentId,
+      sourceFallbackIntent?.userId === sourceActor.userId ? sourceFallbackIntent : null,
+      includeOtherIntents,
+    ),
     profile: {
       name: sourceProfile?.identity?.name ?? sourceAccount?.name,
       bio: sourceProfile?.identity?.bio ?? sourceAccount?.intro ?? undefined,
@@ -151,7 +167,12 @@ export async function negotiateExistingOpportunity(
     networkId: candidateActor.networkId,
     candidateUser: {
       id: candidateActor.userId,
-      intents: buildPrioritizedNegotiationIntents(candidateIntents, candidateIntentId, candidateFallbackIntent?.userId === candidateActor.userId ? candidateFallbackIntent : null),
+      intents: buildPrioritizedNegotiationIntents(
+        candidateIntents,
+        candidateIntentId,
+        candidateFallbackIntent?.userId === candidateActor.userId ? candidateFallbackIntent : null,
+        includeOtherIntents,
+      ),
       profile: {
         name: candidateProfile?.identity?.name ?? candidateAccount?.name,
         bio: candidateProfile?.identity?.bio ?? candidateAccount?.intro ?? undefined,
