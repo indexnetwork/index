@@ -52,7 +52,7 @@ describe("MCP activity-summary permission projection", () => {
       opportunitiesSurfaced: 5,
       opportunitiesBySignal: FULL_SUMMARY.opportunitiesBySignal,
       pendingQuestionsByDomain: { intents: 2, negotiations: 1, chat: 4 },
-      answeredQuestionsByDomain: { identity: 3, opportunities: 5 },
+      answeredQuestionsByDomain: { premises: 3, opportunities: 5 },
       negotiationsStarted: 6,
       negotiationsCompleted: 7,
     });
@@ -76,7 +76,7 @@ describe("MCP activity-summary permission projection", () => {
       opportunitiesSurfaced: 5,
       // intent-mode pending counts stay hidden without manage:intents; chat is human-only.
       pendingQuestionsByDomain: { negotiations: 1 },
-      // enrichment counts stay hidden without manage:identity.
+      // enrichment counts stay hidden without manage:premises.
       answeredQuestionsByDomain: { opportunities: 5 },
       negotiationsStarted: 6,
       negotiationsCompleted: 7,
@@ -104,19 +104,28 @@ describe("MCP activity-summary permission projection", () => {
   });
 
   test("question counts inherit the permission of the affected domain — no any-of all-count", () => {
-    // An identity-only agent sees only identity-affected question counts, never
-    // an undifferentiated total that would include intent/negotiation questions.
+    // A premises-only agent sees only premises-affected question counts
+    // (enrichment), never an undifferentiated total that would include
+    // intent/negotiation questions.
     const caller = McpActivityCallerSchema.parse({
       kind: "agent",
-      permissions: ["manage:identity"],
+      permissions: ["manage:premises"],
       networkScopeId: null,
     });
 
     expect(resolveActivitySummaryDomains(caller)).toEqual(["questions"]);
     expect(projectActivitySummary(caller, FULL_SUMMARY)).toEqual({
       sinceHours: 24,
-      answeredQuestionsByDomain: { identity: 3 },
+      answeredQuestionsByDomain: { premises: 3 },
     });
+
+    // An identity-only agent sees NO enrichment counts (enrichment is premises).
+    const identityOnly = McpActivityCallerSchema.parse({
+      kind: "agent",
+      permissions: ["manage:identity"],
+      networkScopeId: null,
+    });
+    expect("answeredQuestionsByDomain" in projectActivitySummary(identityOnly, FULL_SUMMARY)).toBe(false);
   });
 
   test("chat-mode and unrecognized question modes are human-owner-only", () => {

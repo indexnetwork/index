@@ -88,4 +88,55 @@ describe('opportunity lifecycle policies', () => {
     expect(assessIntroductionApproval(opportunity, INTRODUCER_ID)).toEqual({ kind: 'approve' });
     expect(assessIntroductionApproval(opportunity, OWNER_ID)).toMatchObject({ success: false });
   });
+
+  test('explicit introduction approval cannot be replayed once approved (IND-608)', () => {
+    // Anti-replay: an already-approved introducer re-approving is rejected
+    // before any persistence, so a forged/replayed approval cannot re-trigger
+    // negotiation.
+    const opportunity = buildOpportunity({
+      actors: [
+        { userId: OWNER_ID, role: 'patient', networkId: 'net00000-0000-4000-8000-000000000001' },
+        { userId: INTRODUCER_ID, role: 'introducer', networkId: 'net00000-0000-4000-8000-000000000001', approved: true },
+      ],
+    });
+
+    expect(assessIntroductionApproval(opportunity, INTRODUCER_ID)).toEqual({
+      success: false,
+      error: 'Introduction already approved',
+    });
+  });
+
+  test('explicit approval cannot be forged by a non-introducer actor (IND-608)', () => {
+    // A counterparty/agent actor that is not the assigned introducer cannot
+    // forge the introducer approval, regardless of the gate state.
+    const opportunity = buildOpportunity({
+      actors: [
+        { userId: OWNER_ID, role: 'patient', networkId: 'net00000-0000-4000-8000-000000000001' },
+        { userId: COUNTERPARTY_ID, role: 'agent', networkId: 'net00000-0000-4000-8000-000000000001' },
+        { userId: INTRODUCER_ID, role: 'introducer', networkId: 'net00000-0000-4000-8000-000000000001', approved: false },
+      ],
+    });
+
+    expect(assessIntroductionApproval(opportunity, COUNTERPARTY_ID)).toEqual({
+      success: false,
+      error: 'You are not the introducer for this opportunity',
+    });
+  });
+
+  test('send cannot be replayed on an already-sent opportunity (IND-608)', () => {
+    // Once an opportunity has left latent/draft, re-sending is rejected — a
+    // replayed send cannot re-notify recipients.
+    const opportunity = buildOpportunity({
+      status: 'pending',
+      actors: [
+        { userId: OWNER_ID, role: 'patient', networkId: 'net00000-0000-4000-8000-000000000001' },
+        { userId: COUNTERPARTY_ID, role: 'agent', networkId: 'net00000-0000-4000-8000-000000000001' },
+      ],
+    });
+
+    expect(assessOpportunitySend(opportunity, OWNER_ID)).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/already pending/i),
+    });
+  });
 });
