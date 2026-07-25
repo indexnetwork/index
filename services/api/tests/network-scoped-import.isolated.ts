@@ -119,10 +119,10 @@ describe('CSV import → network-scoped agent end-to-end', () => {
       ));
     expect(perms.length).toBeGreaterThanOrEqual(1);
     expect(perms[0].actions).toEqual(expect.arrayContaining([
-      'manage:profile',
+      'manage:identity',
+      'manage:premises',
       'manage:intents',
       'manage:networks',
-      'manage:contacts',
       'manage:opportunities',
     ]));
 

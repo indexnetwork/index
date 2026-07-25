@@ -573,7 +573,37 @@
       "source": "./shared/schemas/pending-question.schema.js"
     },
     {
+      "name": "McpAuthInputSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpApiKeyMetadataSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpResolvedIdentitySchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
       "name": "McpAuthInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpApiKeyMetadata",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpResolvedIdentity",
       "kind": "type",
       "stability": "stable",
       "source": "./shared/schemas/mcp-auth.schema.js"
@@ -1801,6 +1831,162 @@
       "kind": "type",
       "stability": "stable",
       "source": "./mcp/mcp.server.js"
+    },
+    {
+      "name": "MCP_AGENT_ADMIN_TOOLS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "CANONICAL_MCP_TOOL_ACCESS_RULES",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "MCP_INFORMATIONAL_TOOLS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "MCP_PERMISSION_ACTIONS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityPolicy",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilitySubjectSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPermissionActionSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPolicyAgentSnapshotSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPrincipalProfileSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolPermissionRequirementSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolAccessRuleSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "defineMcpToolAccessRules",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "defineMcpToolPermissionMap",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "resolveMcpCapabilitySubject",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityDecision",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityPolicyOptions",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilitySubject",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPermissionAction",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPolicyAgentSnapshot",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPrincipalProfile",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolPermissionMap",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolPermissionRequirement",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolAccessRule",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolAccessRuleMap",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "ResolveMcpCapabilitySubjectInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
     },
     {
       "name": "UserNegotiationContext",

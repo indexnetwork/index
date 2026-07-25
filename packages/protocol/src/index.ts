@@ -96,7 +96,16 @@ export {
   type QuestionPoolPushRequestReason,
 } from "./shared/schemas/question.schema.js";
 export type { PendingQuestionSummary } from "./shared/schemas/pending-question.schema.js";
-export type { McpAuthInput } from "./shared/schemas/mcp-auth.schema.js";
+export {
+  McpAuthInputSchema,
+  McpApiKeyMetadataSchema,
+  McpResolvedIdentitySchema,
+} from "./shared/schemas/mcp-auth.schema.js";
+export type {
+  McpAuthInput,
+  McpApiKeyMetadata,
+  McpResolvedIdentity,
+} from "./shared/schemas/mcp-auth.schema.js";
 export type { DiscoverySummary, DiscoveryNegotiation, DiscoveryTurn, DiscoveryOutcome, DiscoveryQuestionInput, NegotiationRole } from "./shared/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./shared/schemas/network-assignment.schema.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./shared/assignment/network-assignment.policy.js";
@@ -259,6 +268,36 @@ export { normalizeTelegramHandle } from './shared/utils/telegram-handle.js';
 
 export { createMcpServer, buildMcpOnboardingMessage, ONBOARDING_ALLOWED } from "./mcp/mcp.server.js";
 export type { ScopedDepsFactory } from "./mcp/mcp.server.js";
+export {
+  MCP_AGENT_ADMIN_TOOLS,
+  CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
+  CANONICAL_MCP_TOOL_ACCESS_RULES,
+  MCP_INFORMATIONAL_TOOLS,
+  MCP_PERMISSION_ACTIONS,
+  McpCapabilityPolicy,
+  McpCapabilitySubjectSchema,
+  McpPermissionActionSchema,
+  McpPolicyAgentSnapshotSchema,
+  McpPrincipalProfileSchema,
+  McpToolPermissionRequirementSchema,
+  McpToolAccessRuleSchema,
+  defineMcpToolAccessRules,
+  defineMcpToolPermissionMap,
+  resolveMcpCapabilitySubject,
+} from "./mcp/mcp.authorization-policy.js";
+export type {
+  McpCapabilityDecision,
+  McpCapabilityPolicyOptions,
+  McpCapabilitySubject,
+  McpPermissionAction,
+  McpPolicyAgentSnapshot,
+  McpPrincipalProfile,
+  McpToolPermissionMap,
+  McpToolPermissionRequirement,
+  McpToolAccessRule,
+  McpToolAccessRuleMap,
+  ResolveMcpCapabilitySubjectInput,
+} from "./mcp/mcp.authorization-policy.js";
 
 // ─── States (for advanced graph consumers) ────────────────────────────────────
 // @experimental — internal graph-state shapes; may change in a minor release.

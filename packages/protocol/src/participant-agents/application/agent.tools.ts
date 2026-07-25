@@ -22,10 +22,10 @@ import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 const logger = protocolLogger('ChatTools:Agent');
 
 const AGENT_ACTIONS = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
   'manage:negotiations',
 ] as const;
@@ -260,10 +260,10 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   const grantAgentPermission = defineTool({
     name: 'grant_agent_permission',
     description: 'Grant one or more permissions to an agent for the current user. ' +
-      'Valid actions: manage:profile, manage:intents, manage:networks, manage:contacts, manage:opportunities, manage:negotiations.',
+      'Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
     querySchema: z.object({
       agent_id: z.string().min(1).describe('The agent ID to grant permissions to.'),
-      actions: z.array(z.string()).min(1).describe('Permission actions to grant. Valid values: manage:profile, manage:intents, manage:networks, manage:contacts, manage:opportunities, manage:negotiations.'),
+      actions: z.array(z.string()).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
       scope: z.enum(['global', 'node', 'network']).optional().describe('Optional permission scope.'),
       scope_id: z.string().optional().describe('Scope target ID for node/network scopes.'),
     }),
