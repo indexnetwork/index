@@ -110,3 +110,5 @@ src/adapters/tests/agent-action-proposal.database.adapter.isolated.ts
 src/adapters/tests/conversation.reporter.isolated.ts
 src/controllers/tests/conversation.negotiation-activity.isolated.ts
 src/adapters/tests/archive-legacy-negotiations.isolated.ts
+src/lib/mcp/tests/owner-approval.isolated.ts
+src/controllers/tests/opportunity.owner-approval.isolated.ts

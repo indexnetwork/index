@@ -26,6 +26,7 @@ import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
+import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
@@ -179,6 +180,10 @@ const protocolDeps = {
   agentDispatcher,
   chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
+  // IND-593: authoritative owner-proof verifier/consumer for opportunity state
+  // changes. Shared process-wide with the MCP toolDeps and the REST issuance
+  // route; threaded into chat tools by the protocol chat factory.
+  opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
   discoveryRuns: discoveryRunAdapter,
   discoveryRunQueue,
   enrichmentRuns: enrichmentRunAdapter,
@@ -713,6 +718,7 @@ function createMcpServerInstance(): McpServer {
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
+    opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',
       operation: report.operation,

@@ -569,6 +569,12 @@ export function createMcpServer(
       if (authenticated.identity.agentId) {
         context.agentId = authenticated.identity.agentId;
       }
+      // Trusted provenance seam (IND-593): only the server-resolved session
+      // identity — never a caller-supplied field — marks this context as a
+      // direct authenticated owner session for the owner-approval boundary.
+      if (authenticated.identity.isSessionAuth === true) {
+        context.isSessionAuth = true;
+      }
       if (authenticated.identity.clientSurface) {
         context.clientSurface = authenticated.identity.clientSurface;
       }

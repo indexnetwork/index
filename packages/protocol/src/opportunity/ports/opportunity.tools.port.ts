@@ -7,4 +7,5 @@ export type OpportunityToolDeps = Pick<ToolRegistryCompositionDeps,
   | "questionerEnqueue" | "findPendingQuestions" | "negotiationSummary"
   | "negotiationDatabase" | "deliveryLedger" | "discoveryRuns" | "discoveryRunQueue"
   | "mintConnectLink" | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
+  | "opportunityOwnerApproval"
 > & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "index" | "networkMembership" | "opportunity"> };

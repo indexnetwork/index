@@ -28,7 +28,18 @@ function makeOpportunity(status: string, actorIds = [CALLER_ID, OTHER_ID]): Oppo
 function captureTool(deps: ToolDeps) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string> } | undefined;
   const defineTool = (def: any) => { if (def.name === "update_opportunity") captured = def; return def; };
-  createOpportunityTools(defineTool as any, deps);
+  // IND-593: every context in this spec is a direct authenticated-owner
+  // interaction, which the host traverses through the same owner-approval
+  // boundary via attestation. Inject an attesting authority by default so the
+  // state-machine/actor/scope/uptake behavior under test stays reachable.
+  const withAttestation = {
+    opportunityOwnerApproval: {
+      consumeAgentProof: async () => ({ kind: "denied", reason: "missing" }),
+      attestOwnerInteraction: async () => ({ kind: "admitted" }),
+    },
+    ...deps,
+  } as unknown as ToolDeps;
+  createOpportunityTools(defineTool as any, withAttestation);
   return captured!;
 }
 

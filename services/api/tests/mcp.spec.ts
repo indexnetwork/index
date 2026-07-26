@@ -10,6 +10,9 @@ import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.
 import type { McpAuthResolver } from '../../../packages/protocol/src/shared/interfaces/auth.interface';
 import type { AgentDatabase } from '../../../packages/protocol/src/shared/interfaces/agent.interface';
 import type { ScopedDepsFactory } from '../../../packages/protocol/src/mcp/mcp.server';
+import { createHmac } from 'node:crypto';
+import { createOpportunityOwnerApprovalAuthority } from '../src/lib/mcp/owner-approval';
+import { createMemoryOwnerApprovalStore } from '../src/lib/mcp/owner-approval.store';
 
 function parseToolResult(result: string) {
   return JSON.parse(result) as {
@@ -1676,6 +1679,65 @@ describe('MCP Server Factory', () => {
   // ── IND-593: opportunity-state capability gate (actor/lifecycle/scope + ──────
   // uptake interlock proven in update-opportunity.spec.ts). ───────────────────
 
+  /**
+   * Faithful in-memory contract double for the injected owner-approval
+   * authority (IND-593): challenges are registered on proof-less calls, proofs
+   * are issued only against a pending challenge, and consumption is
+   * atomically single-use. The real HMAC authority is unit-tested in
+   * services/api/src/lib/mcp/tests/owner-approval.isolated.ts.
+   */
+  type OwnerApprovalVerdict =
+    | { kind: 'admitted' }
+    | { kind: 'denied'; reason: string; challenge?: { interactionId: string; expiresAt: string } };
+
+  class FakeOwnerApprovalAuthority {
+    pending = new Map<string, { binding: Record<string, unknown> }>();
+    consumed = new Set<string>();
+    consumeCalls: Array<{ proof: string | undefined; binding: Record<string, unknown> }> = [];
+    attestCalls: Array<Record<string, unknown>> = [];
+    private counter = 0;
+
+    /** Owner-side issuance, valid only against a pending challenge. */
+    issue(interactionId: string): string {
+      if (!this.pending.has(interactionId)) throw new Error(`no pending challenge ${interactionId}`);
+      return `proof:${interactionId}`;
+    }
+
+    async consumeAgentProof(proof: string | undefined, binding: Record<string, unknown>): Promise<OwnerApprovalVerdict> {
+      this.consumeCalls.push({ proof, binding });
+      if (proof === undefined) {
+        const interactionId = `interaction-${++this.counter}`;
+        this.pending.set(interactionId, { binding });
+        return {
+          kind: 'denied',
+          reason: 'missing',
+          challenge: { interactionId, expiresAt: new Date(Date.now() + 600_000).toISOString() },
+        };
+      }
+      if (!proof.startsWith('proof:')) return { kind: 'denied', reason: 'forged' };
+      const interactionId = proof.slice('proof:'.length);
+      if (this.consumed.has(interactionId)) return { kind: 'denied', reason: 'replayed' };
+      const challenge = this.pending.get(interactionId);
+      if (!challenge) return { kind: 'denied', reason: 'forged' };
+      for (const [field, reason] of [
+        ['opportunityId', 'wrong_opportunity'],
+        ['action', 'wrong_action'],
+        ['ownerId', 'wrong_owner'],
+        ['agentId', 'wrong_agent'],
+      ] as const) {
+        if (challenge.binding[field] !== binding[field]) return { kind: 'denied', reason };
+      }
+      this.pending.delete(interactionId);
+      this.consumed.add(interactionId);
+      return { kind: 'admitted' };
+    }
+
+    async attestOwnerInteraction(binding: Record<string, unknown>): Promise<OwnerApprovalVerdict> {
+      this.attestCalls.push(binding);
+      return { kind: 'admitted' };
+    }
+  }
+
   it('denies every update_opportunity transition (send/accept/reject) for an agent without manage:opportunities before DB work', async () => {
     for (const status of ['pending', 'accepted', 'rejected'] as const) {
       const counter = { reads: 0 };
@@ -1694,6 +1756,477 @@ describe('MCP Server Factory', () => {
     }
   });
 
+  it('requires an explicit owner proof for every admitted MCP-agent transition (send/accept/reject) before the mutation graph', async () => {
+    // Production-reachable proof of the IND-593 owner-approval gate over MCP.
+    // An admitted manage:opportunities agent calling with SCHEMA-VALID args and
+    // no owner proof passes the capability gate and the handler seam, but every
+    // send/accept/reject is denied with a stable owner_approval_required
+    // challenge BEFORE the opportunity mutation graph runs.
+    const OPP = '00000000-0000-4000-8000-0000000000ab';
+    const authority = new FakeOwnerApprovalAuthority();
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([{ networkId: NETWORK_1, networkTitle: 'N1', isPersonal: false, permissions: [] }]),
+    } as unknown as ToolDeps['database'];
+    const identity = { userId: 'test-user-id', agentId: 'agent-a', networkScopeId: NETWORK_1 };
+    const agentDatabase = agentDbWith({ agentId: 'agent-a', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] });
+    let graphCalls = 0;
+    const graphs = {
+      ...mockDeps.graphs,
+      opportunity: {
+        invoke: async () => {
+          graphCalls += 1;
+          return { mutationResult: { success: true, opportunityId: OPP, message: 'ok' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+
+    for (const [status, action, current] of [
+      ['pending', 'send', 'draft'],
+      ['accepted', 'accept', 'pending'],
+      ['rejected', 'reject', 'pending'],
+    ] as const) {
+      const scopedSystemDb = {
+        getOpportunity: async () => ({ id: OPP, status: current, actors: [{ userId: 'test-user-id', role: 'party', networkId: NETWORK_1 }] }),
+      } as unknown as ToolDeps['systemDb'];
+      const result = await callTool({
+        identity, agentDatabase, database: memberDb, scopedSystemDb,
+        extraDeps: { graphs, opportunityOwnerApproval: authority as never },
+        toolName: 'update_opportunity',
+        arguments: { opportunityId: OPP, status },
+      });
+      expect(result.code, `${status} passes the capability gate`).not.toBe('MCP_CAPABILITY_DENIED');
+      expect(result.scopedCreateArgs.length, `${status} reaches the handler seam`).toBe(1);
+      const payload = JSON.parse(result.text) as {
+        success: boolean;
+        approval?: { code?: string; reason?: string; action?: string; opportunityId?: string; interactionId?: string; expiresAt?: string };
+      };
+      expect(payload.success).toBe(false);
+      expect(payload.approval?.code).toBe('owner_approval_required');
+      expect(payload.approval?.reason).toBe('missing');
+      expect(payload.approval?.action).toBe(action);
+      expect(payload.approval?.opportunityId).toBe(OPP);
+      // The denial carries the fresh, server-derived interaction challenge the
+      // owner must explicitly approve out of band.
+      expect(payload.approval?.interactionId).toBeTruthy();
+      expect(payload.approval?.expiresAt).toBeTruthy();
+    }
+    expect(graphCalls).toBe(0);
+  });
+
+  it('admits one exact fresh owner proof exactly once; replayed, forged, and wrong-binding proofs fail closed before persistence', async () => {
+    const OPP = '00000000-0000-4000-8000-0000000000ac';
+    const OPP_B = '00000000-0000-4000-8000-0000000000ad';
+    const authority = new FakeOwnerApprovalAuthority();
+    const opportunity = { id: OPP, status: 'pending', actors: [{ userId: 'test-user-id', role: 'party', networkId: NETWORK_1 }] };
+    const scopedSystemDb = { getOpportunity: async () => opportunity } as unknown as ToolDeps['systemDb'];
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([{ networkId: NETWORK_1, networkTitle: 'N1', isPersonal: false, permissions: [] }]),
+    } as unknown as ToolDeps['database'];
+    const identity = { userId: 'test-user-id', agentId: 'agent-a', networkScopeId: NETWORK_1 };
+    const agentDatabase = agentDbWith({ agentId: 'agent-a', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] });
+    let graphCalls = 0;
+    const graphs = {
+      ...mockDeps.graphs,
+      opportunity: {
+        invoke: async () => {
+          graphCalls += 1;
+          return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+    const extraDeps: Partial<ToolDeps> = { graphs, opportunityOwnerApproval: authority as never };
+    const call = (args: Record<string, unknown>) => callTool({
+      identity, agentDatabase, database: memberDb, scopedSystemDb, extraDeps,
+      toolName: 'update_opportunity',
+      arguments: args,
+    });
+
+    // (1) Challenge: the proof-less attempt is denied with a fresh interaction.
+    const unapproved = await call({ opportunityId: OPP, status: 'accepted' });
+    const challengeId = (JSON.parse(unapproved.text) as { approval?: { interactionId?: string } }).approval?.interactionId;
+    expect(challengeId).toBeTruthy();
+    expect(graphCalls).toBe(0);
+
+    // (2) The owner approves that exact interaction; the proof admits exactly once.
+    const proof = authority.issue(challengeId!);
+    const approved = await call({ opportunityId: OPP, status: 'accepted', ownerApprovalProof: proof });
+    expect((JSON.parse(approved.text) as { success: boolean }).success).toBe(true);
+    expect(graphCalls).toBe(1);
+
+    // (3) Replay: the same proof never admits twice.
+    const replayed = await call({ opportunityId: OPP, status: 'accepted', ownerApprovalProof: proof });
+    expect((JSON.parse(replayed.text) as { approval?: { reason?: string } }).approval?.reason).toBe('replayed');
+    expect(graphCalls).toBe(1);
+
+    // (4) A proof bound to another opportunity does not transfer.
+    const other = await call({ opportunityId: OPP_B, status: 'accepted' });
+    const otherProof = authority.issue((JSON.parse(other.text) as { approval?: { interactionId?: string } }).approval!.interactionId!);
+    const wrongBinding = await call({ opportunityId: OPP, status: 'accepted', ownerApprovalProof: otherProof });
+    expect((JSON.parse(wrongBinding.text) as { approval?: { reason?: string } }).approval?.reason).toBe('wrong_opportunity');
+    expect(graphCalls).toBe(1);
+
+    // (5) A forged token is never admitted.
+    const forged = await call({ opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'forged-token' });
+    expect((JSON.parse(forged.text) as { approval?: { reason?: string } }).approval?.reason).toBe('forged');
+    expect(graphCalls).toBe(1);
+  });
+
+  it('exposes ownerApprovalProof as an optional update_opportunity field on tools/list', async () => {
+    const server = createMcpServer(
+      {
+        ...mockDeps,
+        database: resolvedContextDatabase,
+        agentDatabase: agentDbWith({ agentId: 'agent-a', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+      },
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', agentId: 'agent-a' }),
+        resolveUserId: async () => 'test-user-id',
+      } as McpAuthResolver,
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
+      headers: { 'x-api-key': 'agent-key' },
+    });
+    const tool = response.result?.tools?.find((candidate) => candidate.name === 'update_opportunity') as
+      | { inputSchema?: { properties?: Record<string, unknown>; required?: string[] } }
+      | undefined;
+    expect(tool?.inputSchema?.properties?.ownerApprovalProof).toBeTruthy();
+    expect(tool?.inputSchema?.required ?? []).not.toContain('ownerApprovalProof');
+    // tools/list ↔ tools/call parity: the listed schema names exactly the
+    // fields the transport matrix exercises — required opportunityId + status
+    // (covering send/pending, accept/accepted, reject/rejected) plus the
+    // optional single-use owner proof.
+    expect(tool?.inputSchema?.required ?? []).toEqual(expect.arrayContaining(['opportunityId', 'status']));
+    const statusSchema = tool?.inputSchema?.properties?.status as { enum?: string[] } | undefined;
+    expect(statusSchema?.enum).toEqual(expect.arrayContaining(['pending', 'accepted', 'rejected']));
+  });
+
+  it('routes a direct owner session through the same gate via host attestation, never trusting caller proof fields', async () => {
+    const OPP = '00000000-0000-4000-8000-0000000000ae';
+    const authority = new FakeOwnerApprovalAuthority();
+    const scopedSystemDb = {
+      getOpportunity: async () => ({ id: OPP, status: 'pending', actors: [{ userId: 'test-user-id', role: 'party' }] }),
+    } as unknown as ToolDeps['systemDb'];
+    let graphCalls = 0;
+    const graphs = {
+      ...mockDeps.graphs,
+      opportunity: {
+        invoke: async () => {
+          graphCalls += 1;
+          return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+
+    const result = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      scopedSystemDb,
+      extraDeps: { graphs, opportunityOwnerApproval: authority as never },
+      toolName: 'update_opportunity',
+      arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'caller-controlled-junk' },
+    });
+    const payload = JSON.parse(result.text) as { success: boolean };
+    expect(payload.success).toBe(true);
+    expect(graphCalls).toBe(1);
+    // The binding carries only the server-derived principal and trusted
+    // interaction/surface provenance; the caller-controlled proof field never
+    // reaches the agent-proof consumer.
+    expect(authority.attestCalls).toEqual([{
+      opportunityId: OPP,
+      action: 'accept',
+      ownerId: 'test-user-id',
+      provenance: { surface: 'mcp', sessionAuthenticated: true },
+    }]);
+    expect(authority.consumeCalls).toEqual([]);
+  });
+
+  it('admits a genuine session-authenticated owner over MCP through the real host authority, ignoring caller proof fields', async () => {
+    // Production-boundary preservation proof: the direct authenticated owner
+    // traverses the REAL host authority's attestation policy (no fake) —
+    // trusted server-derived mcp/session provenance admits, and the mutation
+    // graph runs exactly once.
+    const OPP = '00000000-0000-4000-8000-0000000000af';
+    const authority = createOpportunityOwnerApprovalAuthority({
+      store: createMemoryOwnerApprovalStore(),
+      secret: 'mcp-spec-owner-approval-secret',
+      ttlMs: 60_000,
+    });
+    const scopedSystemDb = {
+      getOpportunity: async () => ({ id: OPP, status: 'pending', actors: [{ userId: 'test-user-id', role: 'party' }] }),
+    } as unknown as ToolDeps['systemDb'];
+    let graphCalls = 0;
+    const graphs = {
+      ...mockDeps.graphs,
+      opportunity: {
+        invoke: async () => {
+          graphCalls += 1;
+          return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+
+    const result = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      scopedSystemDb,
+      extraDeps: { graphs, opportunityOwnerApproval: authority as never },
+      toolName: 'update_opportunity',
+      arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'caller-controlled-junk' },
+    });
+    const payload = JSON.parse(result.text) as { success: boolean };
+    expect(payload.success).toBe(true);
+    expect(graphCalls).toBe(1);
+  });
+
+  // ── IND-593 Batch C: complete schema-valid MCP tools/call matrix over the ───
+  // REAL host authority (HMAC proofs, injected memory store, controllable
+  // clock — no fake authority, no live Redis, no DB). ──────────────────────
+
+  const OWNER_APPROVAL_TEST_SECRET = 'mcp-spec-owner-approval-secret';
+
+  /** Signs an arbitrary payload with the fixture secret (generic-token cases). */
+  function signOwnerApprovalPayload(payload: Record<string, unknown>): string {
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const sig = createHmac('sha256', OWNER_APPROVAL_TEST_SECRET).update(`oap1.${body}`).digest('base64url');
+    return `oap1.${body}.${sig}`;
+  }
+
+  type OwnerApprovalPayload = {
+    success: boolean;
+    approval?: {
+      code?: string;
+      reason?: string;
+      opportunityId?: string;
+      action?: string;
+      interactionId?: string;
+      expiresAt?: string;
+    };
+  };
+
+  /**
+   * MCP transport fixture around the real owner-approval authority: a
+   * manage:opportunities network agent issuing schema-valid update_opportunity
+   * tools/call requests, with an explicit mutation-graph counter proving
+   * nothing persists before the proof gate admits.
+   */
+  function ownerApprovalTransportFixture(options: { ttlMs?: number } = {}) {
+    const clock = { now: 1_000_000 };
+    const now = () => clock.now;
+    const authority = createOpportunityOwnerApprovalAuthority({
+      store: createMemoryOwnerApprovalStore({ now }),
+      secret: OWNER_APPROVAL_TEST_SECRET,
+      ttlMs: options.ttlMs ?? 600_000,
+      now,
+    });
+    const graph = { calls: 0 };
+    const graphs = {
+      ...mockDeps.graphs,
+      opportunity: {
+        invoke: async () => {
+          graph.calls += 1;
+          return { mutationResult: { success: true, opportunityId: 'any', message: 'ok' } };
+        },
+      },
+    } as unknown as ToolDeps['graphs'];
+    const memberDb = {
+      ...resolvedContextDatabase,
+      getNetworkMemberships: async () => ([{ networkId: NETWORK_1, networkTitle: 'N1', isPersonal: false, permissions: [] }]),
+    } as unknown as ToolDeps['database'];
+    const identity = { userId: 'test-user-id', agentId: 'agent-a', networkScopeId: NETWORK_1 };
+    const agentDatabase = agentDbWith({ agentId: 'agent-a', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] });
+
+    const call = async (
+      opportunity: { id: string; status: string },
+      args: Record<string, unknown>,
+    ) => {
+      const outcome = await callTool({
+        identity,
+        agentDatabase,
+        database: memberDb,
+        scopedSystemDb: {
+          getOpportunity: async () => ({
+            ...opportunity,
+            actors: [{ userId: 'test-user-id', role: 'party', networkId: NETWORK_1 }],
+          }),
+        } as unknown as ToolDeps['systemDb'],
+        extraDeps: { graphs, opportunityOwnerApproval: authority as never },
+        toolName: 'update_opportunity',
+        arguments: args,
+      });
+      // Every matrix case is a schema-valid call by an admitted agent: it must
+      // pass the capability gate and reach the handler seam — the denial under
+      // test happens INSIDE the boundary, before persistence.
+      expect(outcome.code).not.toBe('MCP_CAPABILITY_DENIED');
+      expect(outcome.scopedCreateArgs.length).toBe(1);
+      return { outcome, payload: JSON.parse(outcome.text) as OwnerApprovalPayload };
+    };
+
+    return { clock, authority, graph, call };
+  }
+
+  const OWNER_ACTION_MATRIX = [
+    ['pending', 'send', 'draft'],
+    ['accepted', 'accept', 'pending'],
+    ['rejected', 'reject', 'pending'],
+  ] as const;
+
+  it('admits one exact fresh owner-issued proof exactly once per send/accept/reject tools/call; replays fail closed before persistence', async () => {
+    for (const [status, action, current] of OWNER_ACTION_MATRIX) {
+      const fx = ownerApprovalTransportFixture();
+      const OPP = `00000000-0000-4000-8000-0000000000b${OWNER_ACTION_MATRIX.findIndex(([s]) => s === status)}`;
+      const opportunity = { id: OPP, status: current };
+
+      // (1) Proof-less call: denied with a fresh server-derived challenge.
+      const missing = await fx.call(opportunity, { opportunityId: OPP, status });
+      expect(missing.payload.success).toBe(false);
+      expect(missing.payload.approval?.code).toBe('owner_approval_required');
+      expect(missing.payload.approval?.reason).toBe('missing');
+      expect(missing.payload.approval?.action).toBe(action);
+      expect(missing.payload.approval?.opportunityId).toBe(OPP);
+      expect(missing.payload.approval?.interactionId).toBeTruthy();
+      expect(fx.graph.calls).toBe(0);
+
+      // (2) The owner explicitly approves that exact interaction; the real
+      // HMAC proof admits exactly once and persistence runs exactly once.
+      const issued = await fx.authority.issueProofForInteraction({
+        interactionId: missing.payload.approval!.interactionId!,
+        ownerId: 'test-user-id',
+        expectedOpportunityId: OPP,
+      });
+      expect(issued.kind).toBe('issued');
+      if (issued.kind !== 'issued') continue;
+      const admitted = await fx.call(opportunity, { opportunityId: OPP, status, ownerApprovalProof: issued.proof });
+      expect(admitted.payload.success).toBe(true);
+      expect(fx.graph.calls).toBe(1);
+
+      // (3) Replay of the same proof never admits twice.
+      const replayed = await fx.call(opportunity, { opportunityId: OPP, status, ownerApprovalProof: issued.proof });
+      expect(replayed.payload.success).toBe(false);
+      expect(replayed.payload.approval?.reason).toBe('replayed');
+      expect(fx.graph.calls).toBe(1);
+    }
+  });
+
+  it('denies stale, generic, forged, wrong-owner, wrong-agent, wrong-action, and wrong-opportunity proofs at the transport with zero mutation-graph calls', async () => {
+    const OPP = '00000000-0000-4000-8000-0000000000c0';
+    const OPP_B = '00000000-0000-4000-8000-0000000000c1';
+    const fx = ownerApprovalTransportFixture({ ttlMs: 60_000 });
+    const opportunity = { id: OPP, status: 'pending' };
+    const serverBinding = { opportunityId: OPP, action: 'accept', ownerId: 'test-user-id', agentId: 'agent-a' } as const;
+
+    const expectDenied = async (args: Record<string, unknown>, reason: string) => {
+      const { payload } = await fx.call(opportunity, args);
+      expect(payload.success).toBe(false);
+      expect(payload.approval?.code).toBe('owner_approval_required');
+      expect(payload.approval?.reason).toBe(reason);
+    };
+
+    /** Owner-issues a proof against a challenge minted for `binding`. */
+    const mintProofFor = async (binding: { opportunityId: string; action: string; ownerId: string; agentId: string }) => {
+      const challenge = await fx.authority.consumeAgentProof(undefined, binding as never);
+      if (challenge.kind !== 'denied' || !challenge.challenge) throw new Error('expected challenge');
+      const issued = await fx.authority.issueProofForInteraction({
+        interactionId: challenge.challenge.interactionId,
+        ownerId: binding.ownerId,
+        expectedOpportunityId: binding.opportunityId,
+      });
+      if (issued.kind !== 'issued') throw new Error('expected issuance');
+      return issued.proof;
+    };
+
+    // Stale: the owner approved, but the challenge TTL lapsed before the retry.
+    const staleProof = await mintProofFor(serverBinding);
+    fx.clock.now += 61_000;
+    await expectDenied({ opportunityId: OPP, status: 'accepted', ownerApprovalProof: staleProof }, 'stale');
+
+    // Generic: a well-signed token that lacks the exact binding fields.
+    await expectDenied({
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: signOwnerApprovalPayload({ v: 1, interactionId: 'whatever', exp: fx.clock.now + 60_000 }),
+    }, 'generic');
+
+    // Forged: never issued by the authority at all.
+    await expectDenied({ opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'not-a-real-proof' }, 'forged');
+
+    // Wrong owner: proof minted under another owner principal does not transfer.
+    await expectDenied({
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: await mintProofFor({ ...serverBinding, ownerId: 'other-owner-999' }),
+    }, 'wrong_owner');
+
+    // Wrong agent: proof minted for another registered agent does not transfer.
+    await expectDenied({
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: await mintProofFor({ ...serverBinding, agentId: 'agent-b' }),
+    }, 'wrong_agent');
+
+    // Wrong action/status: a reject approval cannot authorize an accept.
+    await expectDenied({
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: await mintProofFor({ ...serverBinding, action: 'reject' }),
+    }, 'wrong_action');
+
+    // Wrong opportunity: an approval for a sibling opportunity does not transfer.
+    await expectDenied({
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: await mintProofFor({ ...serverBinding, opportunityId: OPP_B }),
+    }, 'wrong_opportunity');
+
+    // No denial in the matrix ever reached the opportunity mutation graph.
+    expect(fx.graph.calls).toBe(0);
+  });
+
+  it('rejects negotiation approvals, uptake acknowledgements, self-acknowledgement, and advisory/challenge values as owner-proof substitutes over MCP', async () => {
+    const OPP = '00000000-0000-4000-8000-0000000000c2';
+    const fx = ownerApprovalTransportFixture();
+    const opportunity = { id: OPP, status: 'pending' };
+
+    // Agent self-acknowledgment of uptake questions is not owner authorization.
+    const selfAck = await fx.call(opportunity, {
+      opportunityId: OPP,
+      status: 'accepted',
+      acknowledgedUptakeQuestionIds: ['uptake-question-1'],
+    });
+    expect(selfAck.payload.success).toBe(false);
+    expect(selfAck.payload.approval?.code).toBe('owner_approval_required');
+    expect(selfAck.payload.approval?.reason).toBe('missing');
+
+    // The server-derived challenge/advisory values themselves are not proofs.
+    const interactionAsProof = await fx.call(opportunity, {
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: selfAck.payload.approval!.interactionId!,
+    });
+    expect(interactionAsProof.payload.approval?.reason).toBe('forged');
+    const expiryAsProof = await fx.call(opportunity, {
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: selfAck.payload.approval!.expiresAt!,
+    });
+    expect(expiryAsProof.payload.approval?.reason).toBe('forged');
+
+    // An A2A negotiation approval artifact is a distinct authorization path
+    // and never substitutes for the owner proof.
+    const negotiationApproval = await fx.call(opportunity, {
+      opportunityId: OPP,
+      status: 'accepted',
+      ownerApprovalProof: 'negotiation-approval:task-1',
+    });
+    expect(negotiationApproval.payload.approval?.reason).toBe('forged');
+
+    expect(fx.graph.calls).toBe(0);
+  });
+
   it('binds acceptance to a fresh, in-interaction owner approval at the transport seam (rejects unapproved/forged/replayed, persists only on exact ack)', async () => {
     // Production-reachable proof of the fresh-approval interlock over MCP. An
     // admitted manage:opportunities agent tries to ACCEPT on the owner's behalf.
@@ -1703,6 +2236,10 @@ describe('MCP Server Factory', () => {
     // unacknowledged, forged, or replayed (wrong-id) acknowledgment yields a
     // structured advisory and NEVER runs the opportunity mutation graph; only
     // the exact acknowledgment persists the owner acceptance.
+    //
+    // The IND-593 owner-proof gate runs before this interlock; an attesting
+    // authority is injected so each call carries a valid owner proof and the
+    // advisory behavior is exercised in isolation.
     const OPP = '00000000-0000-4000-8000-0000000000aa';
     const QUESTION_ID = 'uptake-question-1';
     const opportunity = {
@@ -1736,9 +2273,21 @@ describe('MCP Server Factory', () => {
         },
       },
     } as unknown as ToolDeps['graphs'];
+    const proofAuthority = {
+      consumeAgentProof: async (proof: string | undefined): Promise<OwnerApprovalVerdict> =>
+        proof === 'owner-proof'
+          ? { kind: 'admitted' }
+          : {
+              kind: 'denied',
+              reason: 'missing',
+              challenge: { interactionId: 'interaction-uptake', expiresAt: new Date(Date.now() + 600_000).toISOString() },
+            },
+      attestOwnerInteraction: async (): Promise<OwnerApprovalVerdict> => ({ kind: 'admitted' }),
+    };
     const extraDeps: Partial<ToolDeps> = {
       graphs,
       findPendingQuestions: (async () => [uptakeQuestion]) as unknown as ToolDeps['findPendingQuestions'],
+      opportunityOwnerApproval: proofAuthority as never,
     };
     const memberDb = {
       ...resolvedContextDatabase,
@@ -1756,7 +2305,7 @@ describe('MCP Server Factory', () => {
       const unapproved = await callTool({
         identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
         toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted' },
+        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof' },
       });
       expect(unapproved.code).not.toBe('MCP_CAPABILITY_DENIED');
       const unapprovedPayload = JSON.parse(unapproved.text) as { success: boolean; advisory?: { code?: string; advisoryOnly?: boolean; opportunityId?: string } };
@@ -1770,7 +2319,7 @@ describe('MCP Server Factory', () => {
       const forged = await callTool({
         identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
         toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', acknowledgedUptakeQuestionIds: ['some-other-id'] },
+        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof', acknowledgedUptakeQuestionIds: ['some-other-id'] },
       });
       const forgedPayload = JSON.parse(forged.text) as { success: boolean; advisory?: { code?: string } };
       expect(forgedPayload.success).toBe(false);
@@ -1781,7 +2330,7 @@ describe('MCP Server Factory', () => {
       const approved = await callTool({
         identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
         toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', acknowledgedUptakeQuestionIds: [QUESTION_ID] },
+        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof', acknowledgedUptakeQuestionIds: [QUESTION_ID] },
       });
       const approvedPayload = JSON.parse(approved.text) as { success: boolean; data?: Record<string, unknown> };
       expect(approvedPayload.success).toBe(true);

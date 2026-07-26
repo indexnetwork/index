@@ -17,6 +17,7 @@ import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../../capabil
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';
+import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from './opportunity.owner-approval.js';
 import { selectOpportunityFeed } from './opportunity.feed-selection.js';
 
 export { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
@@ -260,6 +261,31 @@ function uptakeAdvisory(opportunityId: string, questions: PublicUptakeQuestion[]
       opportunityId,
       questions,
       acknowledgedUptakeQuestionIds: questions.map((question) => question.id),
+    },
+  });
+}
+
+/**
+ * IND-593: stable fail-closed denial for the owner-approval boundary. The
+ * `missing` reason carries the fresh, server-derived interaction challenge the
+ * owner must explicitly approve; all other reasons carry no challenge.
+ */
+function ownerApprovalDenial(
+  opportunityId: string,
+  action: OpportunityOwnerAction,
+  verdict: Extract<OpportunityOwnerApprovalVerdict, { kind: 'denied' }>,
+): string {
+  return JSON.stringify({
+    success: false,
+    error: `Owner approval required for this opportunity ${action} (${verdict.reason}).`,
+    approval: {
+      code: "owner_approval_required",
+      reason: verdict.reason,
+      opportunityId,
+      action,
+      ...(verdict.challenge
+        ? { interactionId: verdict.challenge.interactionId, expiresAt: verdict.challenge.expiresAt }
+        : {}),
     },
   });
 }
@@ -1939,6 +1965,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       "**When to use:** After discover_opportunities or list_opportunities returns opportunity cards. " +
       "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool. " +
       "An accepted transition may first return a non-success uptake advisory with preparatory questions. Surface those questions, then retry with all returned question ids in acknowledgedUptakeQuestionIds; acknowledgement confirms presentation, not an answer.\n\n" +
+      "**Owner approval (agents):** Agent-driven send/accept/reject transitions require an explicit owner-issued approval proof. " +
+      "Call without ownerApprovalProof first: the denial returns an approval challenge (interactionId, expiresAt) bound to the exact opportunity, action, owner, and agent. " +
+      "Relay that challenge to the owner for explicit approval, then retry once with the issued ownerApprovalProof. " +
+      "Proofs are single-use and expire; acknowledgedUptakeQuestionIds, negotiation approvals, and advisory values are never substitutes.\n\n" +
       "**Returns:** Confirmation with the new status and notification details (who was notified), or a structured uptake advisory without mutation.",
     querySchema: z.object({
       opportunityId: z
@@ -1949,6 +1979,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         .describe(
           "New status: 'pending' = send the draft to the other party, 'accepted' = accept the connection, " +
           "'rejected' = decline, 'expired' = mark as timed out.",
+        ),
+      ownerApprovalProof: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Opaque owner-issued approval proof for this exact transition (agents only). Obtained after the owner " +
+          "explicitly approves the interaction challenge returned by a proof-less call. The opportunity, action, " +
+          "owner, agent, and interaction binding is always derived server-side; only this token is presented.",
         ),
       acknowledgedUptakeQuestionIds: z
         .array(z.string().min(1))
@@ -1997,6 +2036,44 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         selectedIntentScope: effectiveIntentScope,
       });
       if (admission.kind === 'denied') return error(admission.message);
+
+      // IND-593 owner-approval boundary: every owner-gated transition
+      // (send/accept/reject) requires an explicit owner-issued, fresh,
+      // atomically single-use proof before any graph/state persistence. The
+      // binding is derived ONLY from the resolved context and validated input —
+      // caller-controlled identity or proof-binding fields are never trusted.
+      // Registered agents present the opaque proof token; direct authenticated
+      // owners traverse the same boundary via host attestation. Fail closed
+      // when no authority is wired.
+      const ownerAction = opportunityOwnerActionForStatus(query.status);
+      if (ownerAction) {
+        const authority = deps.opportunityOwnerApproval;
+        if (!authority) {
+          return ownerApprovalDenial(opportunityId, ownerAction, { kind: 'denied', reason: 'missing' });
+        }
+        const verdict = context.agentId
+          ? await authority.consumeAgentProof(query.ownerApprovalProof, {
+              opportunityId,
+              action: ownerAction,
+              ownerId: context.userId,
+              agentId: context.agentId,
+            })
+          : await authority.attestOwnerInteraction({
+              opportunityId,
+              action: ownerAction,
+              ownerId: context.userId,
+              // Trusted, server-derived interaction/surface provenance — built
+              // from the resolved context only. Chat turns carry a chat
+              // session; `isSessionAuth` is bound solely by host composition
+              // from the authenticated request identity. Tool arguments can
+              // never populate any of it.
+              provenance: {
+                surface: context.isMcp ? 'mcp' : context.sessionId ? 'chat' : 'rest',
+                sessionAuthenticated: context.isSessionAuth === true,
+              },
+            });
+        if (verdict.kind === 'denied') return ownerApprovalDenial(opportunityId, ownerAction, verdict);
+      }
 
       // The caller actor's own network is the exact question lookup boundary,
       // even for an otherwise unscoped request. A focused network may only be

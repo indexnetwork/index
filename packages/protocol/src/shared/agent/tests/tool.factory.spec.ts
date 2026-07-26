@@ -336,6 +336,13 @@ const mockScraper = {
 
 /** Stub protocol-level deps for ToolContext (not invoked in most unit tests). */
 const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'> = {
+  // IND-593: chat contexts in this spec are direct authenticated-owner
+  // interactions; the owner-approval authority attests them through the same
+  // boundary (authoritative host derivation, not a bypass).
+  opportunityOwnerApproval: {
+    consumeAgentProof: async () => ({ kind: 'denied' as const, reason: 'missing' as const }),
+    attestOwnerInteraction: async () => ({ kind: 'admitted' as const }),
+  },
   cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
   hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
   integration: { createSession: async () => ({}) as any, executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) },

@@ -14,6 +14,7 @@ import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, Op
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
+import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
@@ -78,6 +79,10 @@ export class ToolService {
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
       stampNewbornOpportunities,
+      // IND-593: direct authenticated-owner tool calls (REST tool controller /
+      // CLI) traverse the owner-approval boundary via host attestation. Own
+      // authority instance over the store shared with the MCP composition.
+      opportunityOwnerApproval: getDirectOpportunityOwnerApprovalAuthority(),
       findPendingQuestions: async (
         userId: string,
         filters?: {
@@ -136,17 +141,32 @@ export class ToolService {
    * @param userId - Authenticated user ID
    * @param toolName - Name of the tool to invoke (e.g. "read_intents")
    * @param query - Tool input object (validated against tool schema)
+   * @param options - Trusted, server-derived request provenance from the
+   *   controller seam. `sessionAuthenticated` must reflect the authenticated
+   *   request's auth kind (AuthGuard session vs API key) — never caller input.
    * @returns Parsed tool result
    * @throws ChatContextAccessError if user/index context is invalid
    * @throws Error if tool not found or validation fails
    */
-  async invokeTool(userId: string, toolName: string, query: Record<string, unknown> = {}): Promise<unknown> {
+  async invokeTool(
+    userId: string,
+    toolName: string,
+    query: Record<string, unknown> = {},
+    options: { sessionAuthenticated?: boolean } = {},
+  ): Promise<unknown> {
     logger.verbose('Invoking tool', { userId, toolName });
 
     const database = chatDatabaseAdapter;
 
     // Resolve user context
     const context = await resolveChatContext({ database, userId });
+    // IND-593 trusted provenance seam: mark this context as a direct
+    // authenticated owner session ONLY from the controller-derived auth kind.
+    // API-key (CLI/agent) callers stay unmarked and cannot attest owner
+    // authority at the opportunity owner-approval boundary.
+    if (options.sessionAuthenticated === true) {
+      context.isSessionAuth = true;
+    }
 
     if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
       return {

@@ -206,6 +206,7 @@ export async function createChatTools(
     agentDispatcher: deps.agentDispatcher,
     stampNewbornOpportunities: deps.stampNewbornOpportunities,
     deliveryLedger: deps.deliveryLedger,
+    ...(deps.opportunityOwnerApproval && { opportunityOwnerApproval: deps.opportunityOwnerApproval }),
     discoveryRuns: deps.discoveryRuns,
     discoveryRunQueue: deps.discoveryRunQueue,
     enrichmentRuns: deps.enrichmentRuns,

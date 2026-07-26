@@ -156,6 +156,18 @@ export { NegotiationGraphFactory, negotiateCandidates } from "./capabilities/neg
 export { OpportunityGraphFactory } from "./capabilities/opportunities.facade.js";
 export { hasUnsupportedOpportunityClaim } from "./capabilities/opportunities.facade.js";
 export type { StampNewbornOpportunitiesFn } from "./capabilities/opportunities.facade.js";
+export { opportunityOwnerActionForStatus } from "./opportunity/application/opportunity.owner-approval.js";
+export type {
+  OpportunityOwnerAction,
+  OpportunityOwnerApprovalAttestation,
+  OpportunityOwnerApprovalAuthority,
+  OpportunityOwnerApprovalBinding,
+  OpportunityOwnerApprovalChallenge,
+  OpportunityOwnerApprovalDenialReason,
+  OpportunityOwnerApprovalVerdict,
+  OpportunityOwnerInteractionProvenance,
+  OpportunityOwnerInteractionSurface,
+} from "./opportunity/application/opportunity.owner-approval.js";
 export { EnrichmentGraphFactory } from "./capabilities/participant-context.facade.js";
 export { PremiseGraphFactory } from "./capabilities/participant-context.facade.js";
 
