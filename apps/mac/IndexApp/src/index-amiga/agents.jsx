@@ -246,10 +246,55 @@ function NegotiatorSelect({ options, value, onChange }) {
 // Screen shell mirrors Networks: same 860 x min(660px) frame, same header band
 // with a title and a right-hand action, so moving between the two shelf
 // destinations doesn't resize or restyle the window.
+// Map one GET /agents entity into the row shape used here. Read-only: agent
+// management writes are session-only and unreachable with an API key.
+function mapLiveAgent(a) {
+  const TINTS = ["#4C6FD4", "#B4553F", "#3E8E7E", "#C64B8C", "#7B5EA7", "#E8A317"];
+  const name = a.name || "agent";
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const seen = a.lastSeenAt ? Date.parse(a.lastSeenAt) : 0;
+  const connected = !!seen && (Date.now() - seen) < 90000;
+  const rel = (iso) => {
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return "unknown";
+    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
+  };
+  return {
+    id: a.id,
+    name,
+    initial: (name[0] || "a").toLowerCase(),
+    tint: TINTS[h % TINTS.length],
+    state: connected ? "connected" : "detected",
+    on: a.status ? a.status === "active" : true,
+    connectedAs: a.description || "personal agent",
+    heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "no heartbeat",
+  };
+}
+
 function Agents({ onClose }) {
   const { AGENTS } = window.INDEX_DATA;
   const [agents, setAgents] = useState(AGENTS);
   const [expanded, setExpanded] = useState(null);
+
+  // Live agents are read-only — fetch and display, but toggles stay local.
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client) return;
+    let cancelled = false;
+    client.agents.list()
+      .then((res) => {
+        if (cancelled) return;
+        const list = window.IndexApp.normalizeList(res, "agents").map(mapLiveAgent);
+        if (list.length) setAgents(list);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [perms, setPerms] = useState(() => ({
     hermes: { updates:true, indexing:true, brief:true },
     claude: { updates:true, indexing:false, brief:false },

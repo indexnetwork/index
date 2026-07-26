@@ -95,7 +95,13 @@ function Login({ onSignIn }) {
   const [email, setEmail] = useState("");
   const ok = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 
-  const go = () => onSignIn && onSignIn(email.trim() || null);
+  // Real auth is a browser handshake (the shell opens /cli-auth and hands back
+  // a key). Both entry points start it; the UI stays exactly the prototype's,
+  // only the button copy flips to "waiting" while the browser round-trip runs.
+  const [waiting, setWaiting] = useState(false);
+  const go = () => {
+    if (onSignIn && onSignIn(email.trim() || null)) setWaiting(true);
+  };
 
   return (
     <div style={{
@@ -157,8 +163,8 @@ function Login({ onSignIn }) {
             </div>
 
             <div style={{ marginTop:12 }}>
-              <SignInButton primary disabled={!ok} onClick={go}>
-                continue →
+              <SignInButton primary disabled={!ok && !waiting} onClick={go}>
+                {waiting ? "waiting for browser…" : "continue →"}
               </SignInButton>
             </div>
 

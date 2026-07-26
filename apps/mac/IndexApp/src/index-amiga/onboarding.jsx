@@ -145,32 +145,264 @@ function followUpFor(intent) {
 
 function Onboarding({ onDone, onBack }) {
   const { ONBOARDING_STEPS } = window.INDEX_DATA;
-  const [stepIdx, setStepIdx] = useState(0);
+  const SHAPE_STEP = ONBOARDING_STEPS[ONBOARDING_STEPS.length - 1];
+  // How many follow-up questions sit between "intent" and "shape" — the live
+  // flow asks the backend for the same number the local script would.
+  const DYN_MAX = Math.max(1, ONBOARDING_STEPS.length - 2);
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+
+  // Completed turns drive the progress bar and the faded history; the current
+  // step is either a local scripted one or a backend-generated question.
+  const [turns, setTurns] = useState([]);
+  const [step, setStep] = useState(() => resolveStep(ONBOARDING_STEPS[0], {}));
+  const [thinking, setThinking] = useState(false);
   const [answers, setAnswers] = useState({});
   const [draft, setDraft] = useState("");
   const [calibrating, setCalibrating] = useState(false);
   const inputRef = useRef(null);
 
-  const step = resolveStep(ONBOARDING_STEPS[stepIdx], answers);
+  const intentIdRef = useRef(null);       // set once the live signal exists
+  const createdRef = useRef(false);
+  const sessionRef = useRef(null);        // chat conversation id
+  const answersRef = useRef({});          // mirror of `answers` for async handlers
+  const flowStartRef = useRef(Date.now());
+  const seenQ = useRef(new Set());
+  const awaitingRef = useRef(false);      // a chat turn owes us the next step
+  const dynAsked = useRef(0);
+  const localIdx = useRef(0);             // pointer into the scripted steps
+  const usedLocalFallback = useRef(false);
+  const cancelledRef = useRef(false);
+  useEffect(() => () => { cancelledRef.current = true; }, []);
+
+  const stepIdx = Math.min(turns.length, ONBOARDING_STEPS.length - 1);
 
   useEffect(() => {
     setDraft("");
     if (inputRef.current) {
       setTimeout(() => inputRef.current && inputRef.current.focus(), 700);
     }
-  }, [stepIdx]);
+  }, [step && step.id, thinking]);
+
+  // Fold the collected steps into one signal description for create_intent.
+  const composeDescription = (a) => {
+    const parts = [];
+    if (a.intent) parts.push(String(a.intent).trim());
+    if (a.edges) parts.push(`a great match: ${String(a.edges).trim()}`);
+    if (a["off-limits"]) parts.push(`off-limits: ${String(a["off-limits"]).trim()}`);
+    return parts.filter(Boolean).join(" · ");
+  };
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- chat-driven clarification (same machinery as the web app) ----------
+  //
+  // The first answer opens a /chat/stream turn. The agent asks clarifying
+  // questions via ask_user_question — each arrives as a `user_question` SSE
+  // event and becomes the next onboarding step; answering it resumes the same
+  // blocked turn. The turn ends in an ```intent_proposal``` block, which we
+  // confirm through POST /intents/confirm.
+
+  // Resolve a user_question event id into the persisted chat question row.
+  const fetchQuestion = async (id) => {
+    for (let i = 0; i < 5 && !cancelledRef.current; i++) {
+      const res = await client.questions.pending(
+        { mode: "chat", conversationId: sessionRef.current },
+      ).catch(() => null);
+      const q = window.IndexApp.normalizeList(res, "questions").find((r) => r && r.id === id);
+      if (q) return q;
+      await sleep(800);
+    }
+    return null;
+  };
+
+  const showQuestion = (q) => {
+    seenQ.current.add(q.id);
+    dynAsked.current += 1;
+    const c = window.IndexApi.mapClarifier(q);
+    awaitingRef.current = false;
+    setThinking(false);
+    setStep({
+      id: `q-${q.id}`,
+      question: q,
+      prompt: c.text || "tell me more?",
+      hint: c.triggersHint || "",
+      placeholder: "type your answer…",
+      examples: c.chips && c.chips.length ? c.chips : undefined,
+    });
+  };
+
+  const toShape = () => {
+    awaitingRef.current = false;
+    setThinking(false);
+    setStep(resolveStep(SHAPE_STEP, answersRef.current));
+  };
+
+  // No dynamic flow available (demo, stream error before anything happened) —
+  // continue with the original scripted follow-ups.
+  const fallbackLocal = () => {
+    if (cancelledRef.current) return;
+    if (dynAsked.current > 0 || createdRef.current) { toShape(); return; }
+    usedLocalFallback.current = true;
+    awaitingRef.current = false;
+    setThinking(false);
+    localIdx.current += 1;
+    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
+    setStep(resolveStep(next, answersRef.current));
+  };
+
+  const confirmProposal = async (p) => {
+    try {
+      const res = await client.intents.confirm({
+        proposalId: p.proposalId,
+        description: p.description,
+      });
+      if (res && res.intentId) intentIdRef.current = res.intentId;
+      createdRef.current = true;
+    } catch (e) { /* finish() falls back to a direct create */ }
+  };
+
+  // The agent may have created the signal directly (no proposal block) —
+  // detect it so the flow still closes out as "created".
+  const newestIntentSinceStart = async () => {
+    const res = await client.intents.list({}).catch(() => null);
+    const rows = window.IndexApp.normalizeList(res, "intents")
+      .filter((r) => r && r.createdAt && Date.parse(r.createdAt) >= flowStartRef.current - 60000)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return rows[0] || null;
+  };
+
+  const handleDone = async (response) => {
+    // Only act when the flow is waiting on this turn — a late `done` (e.g. the
+    // question wait timed out while the user idles) must not clobber the step.
+    if (cancelledRef.current || !awaitingRef.current) return;
+    const proposal = (window.IndexApp.parseIntentProposals(response) || [])[0];
+    if (proposal) { await confirmProposal(proposal); toShape(); return; }
+    const fresh = await newestIntentSinceStart();
+    if (fresh) { intentIdRef.current = fresh.id; createdRef.current = true; toShape(); return; }
+    // The agent answered in prose. A short question becomes the next step;
+    // anything else means the guided beat is over.
+    const text = String(response || "").replace(/```[\s\S]*?```/g, "").trim();
+    if (text && text.length <= 300 && dynAsked.current < DYN_MAX + 1) {
+      dynAsked.current += 1;
+      awaitingRef.current = false;
+      setThinking(false);
+      setStep({
+        id: `chat-${dynAsked.current}`,
+        chatTurn: true,
+        prompt: text,
+        placeholder: "type your answer…",
+      });
+      return;
+    }
+    fallbackLocal();
+  };
+
+  // Open one chat turn and route its events back into the step machine.
+  const startTurn = (message) => {
+    awaitingRef.current = true;
+    setThinking(true);
+    window.IndexApp.streamChat({
+      message,
+      sessionId: sessionRef.current,
+      onSession: (sid) => { sessionRef.current = sid; },
+      onEvent: (ev) => {
+        if (cancelledRef.current || !ev) return;
+        if (ev.type === "user_question" && Array.isArray(ev.questions)) {
+          const next = ev.questions.find((q) => q && q.id && !seenQ.current.has(q.id));
+          if (next) {
+            (async () => {
+              const q = await fetchQuestion(next.id);
+              if (q && !cancelledRef.current) showQuestion(q);
+            })();
+          }
+        } else if (ev.type === "done") {
+          handleDone(ev.response || ev.fullResponse || "");
+        } else if (ev.type === "error") {
+          if (awaitingRef.current) fallbackLocal();
+        }
+      },
+    }).catch(() => { if (awaitingRef.current) fallbackLocal(); });
+  };
 
   const submit = (val) => {
-    const v = (val ?? draft).trim();
+    const raw = val ?? draft;
+    const v = String(raw).trim();
     if (!v && !step.choices) return;
-    const newAns = { ...answers, [step.id]: val ?? draft };
-    setAnswers(newAns);
-    if (stepIdx < ONBOARDING_STEPS.length - 1) {
-      setStepIdx(stepIdx + 1);
-    } else {
-      setCalibrating(true);
-      setTimeout(() => onDone(newAns), 2200);
+    const answerLabel = step.choices
+      ? ((step.choices.find((c) => c.value === raw) || {}).label || String(raw))
+      : v;
+    setTurns((prev) => [...prev, { id: step.id, prompt: step.prompt, answer: answerLabel }]);
+
+    const newAns = { ...answers, [step.id]: raw };
+    // Alias dynamic answers onto the prototype's edges/off-limits slots so the
+    // field preview and the main view header keep reading naturally.
+    if (step.question || step.chatTurn) {
+      if (dynAsked.current === 1) newAns.edges = v;
+      else if (!newAns["off-limits"]) newAns["off-limits"] = v;
     }
+    setAnswers(newAns);
+    answersRef.current = newAns;
+
+    if (step.id === "shape") { finish(newAns); return; }
+
+    // A structured chat question — answering it resumes the blocked turn, and
+    // the same stream carries the next question or the final proposal.
+    if (step.question && client) {
+      const isChip = (step.examples || []).includes(raw);
+      const body = isChip ? { selectedOptions: [raw] } : { selectedOptions: [], freeText: v };
+      awaitingRef.current = true;
+      setThinking(true);
+      client.questions.answer(step.question.id, body)
+        .then((res) => {
+          // Turn already ended (timeout) — carry the answer as a follow-up.
+          if (!res || !res.resumed) startTurn(`Re: "${step.prompt}" — ${v}`);
+        })
+        .catch(() => startTurn(`Re: "${step.prompt}" — ${v}`));
+      return;
+    }
+
+    // A prose question from the agent — the answer is the next chat message.
+    if (step.chatTurn && client) { startTurn(v); return; }
+
+    // The first answer IS the signal — hand it to the agent, which clarifies
+    // and proposes, exactly like the web app's guided intake.
+    if (step.id === "intent" && client) {
+      startTurn(
+        `I'm setting up my first signal. Here's what I'm looking for: ${v}. `
+        + "Ask me clarifying questions if anything important is missing, then create the signal.",
+      );
+      return;
+    }
+
+    // Demo / scripted fallback — the original local flow.
+    localIdx.current += 1;
+    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
+    setStep(resolveStep(next, newAns));
+  };
+
+  const finish = (ans) => {
+    setCalibrating(true);
+    (async () => {
+      let created = createdRef.current;
+      if (client && !created) {
+        // Live but the early create failed (or never ran) — create from the
+        // composed script answers, exactly like the original flow.
+        try {
+          await window.IndexApp.createIntent(composeDescription(ans));
+          created = true;
+        } catch (_e) { /* fall back to demo transition */ }
+      } else if (client && created && intentIdRef.current && usedLocalFallback.current) {
+        // Scripted fallback answers still refine the created signal.
+        window.IndexApp.mcpCall("update_intent", {
+          intentId: intentIdRef.current,
+          description: composeDescription(ans),
+        }).catch(() => {});
+      }
+      // Keep the calibrating beat visible even if the calls are fast.
+      await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
+      onDone(ans, created);
+    })();
   };
 
   if (calibrating) return <Calibrating/>;
@@ -224,10 +456,19 @@ function Onboarding({ onDone, onBack }) {
               display:"flex", flexDirection:"column", gap:20,
               paddingRight:6, paddingBottom:18,
             }}>
-              {ONBOARDING_STEPS.slice(0, stepIdx).map((s) => (
-                <PastTurn key={s.id} step={resolveStep(s, answers)} answer={answers[s.id]}/>
+              {turns.map((t) => (
+                <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer}/>
               ))}
 
+              {thinking ? (
+                <div key="thinking" className="fade-up" style={{ display:"grid", gap:10 }}>
+                  <AgentBubble>
+                    <span style={{ color:"var(--ink-2)" }}>
+                      <StreamText text="reading your signal…" speed={30}/>
+                    </span>
+                  </AgentBubble>
+                </div>
+              ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
                 <AgentBubble><StreamText text={step.prompt} speed={18}/></AgentBubble>
                 {step.hint && (
@@ -273,21 +514,26 @@ function Onboarding({ onDone, onBack }) {
                         />
                         <Btn primary disabled={!draft.trim()} onClick={() => submit()}>send ↵</Btn>
                       </form>
-                      <div style={{
-                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
-                        textTransform:"uppercase", color:"var(--ink-3)",
-                      }}>or pick one</div>
-                      <div style={{
-                        display:"grid", gap:7, maxWidth:560,
-                      }}>
-                        {step.examples?.map(ex => (
-                          <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
-                        ))}
-                      </div>
+                      {step.examples && step.examples.length > 0 && (
+                        <React.Fragment>
+                          <div style={{
+                            fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
+                            textTransform:"uppercase", color:"var(--ink-3)",
+                          }}>or pick one</div>
+                          <div style={{
+                            display:"grid", gap:7, maxWidth:560,
+                          }}>
+                            {step.examples.map(ex => (
+                              <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
+                            ))}
+                          </div>
+                        </React.Fragment>
+                      )}
                     </React.Fragment>
                   )}
                 </div>
               </div>
+              )}
             </div>
           </div>
         </MacWindow>

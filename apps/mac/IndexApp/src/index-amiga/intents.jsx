@@ -196,11 +196,21 @@ function UserMenu({ me, onSelect }) {
 }
 
 function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
+  const env = useIndexEnv();
+  const demo = window.INDEX_DATA;
+  // ME/NETWORKS/AGENTS prefer live data; AGENTS has no live snapshot yet.
+  const ME = env.me || demo.ME;
+  const NETWORKS = env.networks || demo.NETWORKS;
+  const AGENTS = demo.AGENTS;
+  const joinedCount = (NETWORKS || []).filter(n => n.joined !== false).length;
+  const agentCount  = (AGENTS || []).filter(a => a.state === "connected").length;
+
   // A just-onboarded user has no signals yet — the hub opens empty.
-  const { INTENTS, ME, NETWORKS, AGENTS } = window.INDEX_DATA;
-  const SIGNALS = fresh ? [] : INTENTS;
-  const joinedCount = NETWORKS.filter(n => n.joined).length;
-  const agentCount  = AGENTS.filter(a => a.state === "connected").length;
+  const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
+  useEffect(() => {
+    setSignals(fresh ? [] : (env.data.INTENTS || []));
+  }, [env.data, fresh]);
+
   const [hovered, setHovered] = useState(null);
   // Which settings pane the account menu asked for (null = settings closed).
   const [settingsTab, setSettingsTab] = useState(null);
@@ -224,9 +234,10 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Agents onClose={() => setShowAgents(false)}/>;
   }
 
-  const active   = SIGNALS.filter(i => i.status === "active");
-  const idle     = SIGNALS.filter(i => i.status === "idle");
-  const paused   = SIGNALS.filter(i => i.status === "paused");
+  const visible  = signals.filter(i => i.status !== "archived");
+  const active   = visible.filter(i => i.status === "active");
+  const idle     = visible.filter(i => i.status === "idle");
+  const paused   = visible.filter(i => i.status === "paused");
   const ordered  = [...active, ...idle, ...paused];
 
   return (
@@ -240,7 +251,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
         maxWidth:"100%",
         maxHeight: "calc(100vh - 64px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: 0 }}>
+        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: "min(560px, calc(100vh - 64px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",

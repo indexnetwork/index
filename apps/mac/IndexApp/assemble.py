@@ -14,6 +14,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
 OUT = ROOT / "Resources" / "index.html"
+# The standalone, dependency-free API boundary lives next to the app bundles.
+API_DIR = ROOT.parent / "api"
+# Symbols the app bundle consumes off window.IndexApi.
+API_EXPORTS = [
+    "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
+    "mapIndexSnapshot", "mapIntents", "mapIntent",
+    "mapPeopleFromHomeSections", "mapPersonFromHomeCard", "mapPeopleFromOpportunities",
+    "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
+]
 
 # Pinned CDN URLs -> local vendored files (downloaded once into src/vendor/).
 VENDOR = {
@@ -39,6 +48,27 @@ for url, fname in VENDOR.items():
     if not pat.search(html):
         raise SystemExit(f"could not find CDN script tag for {url}")
     html = pat.sub(lambda _m, f=fname: inline_script(SRC / "vendor" / f), html, count=1)
+
+# 1.5) Inline the standalone api/ client + mappers as a plain window.IndexApi IIFE,
+#      injected before the babel scripts so api.jsx can build a client from it.
+def build_index_api() -> str:
+    parts = []
+    for fname in ("client.mjs", "mappers.mjs"):
+        code = (API_DIR / fname).read_text()
+        if "</script" in code:
+            raise SystemExit(f"refusing to inline {fname}: contains </script")
+        # Strip ES module syntax — the IIFE keeps everything in one closure scope.
+        code = re.sub(r'^export\s+', '', code, flags=re.MULTILINE)
+        parts.append(code)
+    assigns = ", ".join(f"{name}: {name}" for name in API_EXPORTS)
+    body = "\n".join(parts) + f"\nwindow.IndexApi = {{ {assigns} }};\n"
+    return f"<script>\n(function(){{\n{body}\n}})();\n</script>"
+
+
+anchor = '<script type="text/babel" src="index-amiga/data.jsx"></script>'
+if anchor not in html:
+    raise SystemExit("could not find the first babel script tag to inject IndexApi before")
+html = html.replace(anchor, build_index_api() + "\n" + anchor, 1)
 
 # 2) Replace each <script type="text/babel" src="index-amiga/NAME.jsx"></script> by inlined JSX.
 def babel_sub(m):

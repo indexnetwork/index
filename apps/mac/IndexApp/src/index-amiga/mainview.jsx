@@ -40,6 +40,29 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const answeredSinceRefill = useRef(0);
   const MAX_OPEN = 4;
 
+  // ---- live backend wiring ------------------------------------------------
+  // When signed in and this signal maps to a real intent, the radar, clarifiers,
+  // agent chat, and H2H threads come from services/api; otherwise the simulation
+  // below runs as the signed-out (browser preview) demo. The polling loop,
+  // handlers, and inbox stream that consume these live below.
+  const intentId = profile.intentId || null;
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed() && intentId);
+  // Memoize the client so the polling/inbox effects don't reset every render
+  // (getClient() returns a fresh object each call). The key is read lazily.
+  const client = useMemo(
+    () => (live && window.IndexApp.getClient ? window.IndexApp.getClient() : null),
+    [live],
+  );
+  // Current user id (for telling "you" from "them" in H2H threads). Mirrored
+  // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
+  const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  // Agent-chat session id per intent, persisted across signal switches.
+  const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
+  const chatSessionRef = useRef(chatSessions[intentId] || null);
+  const seenQuestionIds = useRef(new Set());   // question ids already in the feed
+  const convByPerson = useRef({});             // opportunityId -> conversationId
+  const personByConv = useRef({});             // conversationId -> opportunityId
+
   const flashMode = (m, holdMs = 9000) => {
     setPipelineMode(m);
     if (modeTimerRef.current) clearTimeout(modeTimerRef.current);
@@ -50,7 +73,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   };
   useEffect(() => () => modeTimerRef.current && clearTimeout(modeTimerRef.current), []);
 
-  /* ----- ambient sim: append field events + maybe bump scores ----- */
+  /* ----- ambient sim: append field events + maybe bump scores (demo only) ----- */
   useInterval(() => {
     if (paused) return;
     const ev = FIELD_EVENTS[Math.floor(Math.random() * FIELD_EVENTS.length)];
@@ -67,10 +90,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         return next;
       });
     }
-  }, paused ? null : Math.max(800, 4200 / simRate));
+  }, (paused || live) ? null : Math.max(800, 4200 / simRate));
 
   /* ----- seed feed with the first batch of clarifiers (max 4 open) ----- */
   useEffect(() => {
+    if (live) return;
     if (queuedRef.current) return;
     queuedRef.current = true;
     const timers = [];
@@ -161,7 +185,44 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         id: Math.random().toString(36).slice(2), t: now(),
       }, ...prev].slice(0, 50));
     }
-  }, paused ? null : 14000 / simRate);
+  }, (paused || live) ? null : 14000 / simRate);
+
+  /* ----- live radar + clarifier polling ----- */
+  const injectClarifiers = React.useCallback((questions) => {
+    const fresh = (questions || []).filter((q) => q && q.id && !seenQuestionIds.current.has(q.id));
+    if (fresh.length === 0) return;
+    fresh.forEach((q) => seenQuestionIds.current.add(q.id));
+    const items = window.IndexApi.mapClarifiers(fresh).map((c) => ({
+      kind: "clarifier", id: c.id, clarifierId: c.id,
+      source: c.source, sourceMeta: c.sourceMeta, effect: "neutral",
+      text: c.text, chips: c.chips, triggersHint: c.triggersHint,
+      answered: false, choice: null, t: now(),
+    }));
+    setConversation((prev) => [...prev, ...items]);
+  }, [setConversation]);
+
+  const refreshRadar = React.useCallback(async () => {
+    if (!live || !client) return;
+    const [homeR, qR] = await Promise.all([
+      (intentId ? client.opportunities.homeForIntent(intentId) : client.opportunities.home()).catch(() => null),
+      (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
+    ]);
+    if (homeR) {
+      const sections = window.IndexApp.normalizeList(homeR, "sections");
+      const mapped = window.IndexApi.mapPeopleFromHomeSections(sections).map((p) => ({
+        ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
+      }));
+      setPeople(mapped);
+    }
+    if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
+  }, [live, client, intentId, setPeople, injectClarifiers]);
+
+  useEffect(() => {
+    if (!live) return;
+    refreshRadar();
+    const t = setInterval(refreshRadar, 45000);
+    return () => clearInterval(t);
+  }, [live, refreshRadar]);
 
   const visiblePeople = useMemo(() => people.filter(p => !p.hidden), [people]);
   const filtered = useMemo(() => [...visiblePeople].sort((a, b) => b.score - a.score), [visiblePeople]);
@@ -182,10 +243,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   }, [visiblePeople, negotiatingPeople]);
 
   const answerClarifier = (item, choice) => {
-    const clarifier = { id: item.clarifierId, effect: item.effect };
     setConversation(prev => prev.map(it =>
       it.id === item.id ? { ...it, answered:true, choice } : it
     ));
+    if (live) {
+      if (client && item.clarifierId) {
+        const isChip = Array.isArray(item.chips) && item.chips.includes(choice);
+        const body = isChip ? { selectedOptions: [choice] } : { selectedOptions: [], freeText: choice };
+        client.questions.answer(item.clarifierId, body)
+          .then(() => setTimeout(refreshRadar, 1500))
+          .catch(() => {});
+      }
+      return;
+    }
+    const clarifier = { id: item.clarifierId, effect: item.effect };
     const effectKind = applyClarifierEffect(clarifier, choice, setPeople, setField);
     const finalKind = effectKind || (item.effect && item.effect !== "neutral" ? item.effect : "broad");
     flashMode(finalKind, finalKind === "expanding" ? 8000 : 9000);
@@ -203,6 +274,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation(prev => prev.map(it =>
       it.id === item.id ? { ...it, answered:true, choice:"(dismissed)", dismissed:true } : it
     ));
+    if (live && client && item.clarifierId) {
+      client.questions.dismiss(item.clarifierId).catch(() => {});
+    }
   };
 
   const [draft, setDraft] = useState("");
@@ -214,8 +288,33 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       ...prev,
       { kind:"user", id: Math.random().toString(36).slice(2), text, t: now() },
     ]);
-    // the agent reads what you wrote and reaches back — acknowledging an
-    // instruction, or answering if you asked for something.
+
+    if (live && window.IndexApp) {
+      const agentMsgId = rid();
+      setConversation(prev => [...prev, { kind:"agent", id: agentMsgId, text: "", t: now() }]);
+      const setAgentText = (t) => setConversation(prev =>
+        prev.map(it => it.id === agentMsgId ? { ...it, text: t } : it));
+      let acc = "";
+      window.IndexApp.streamChat({
+        message: text,
+        sessionId: chatSessionRef.current,
+        scopeType: intentId ? "intent" : undefined,
+        scopeId: intentId || undefined,
+        onEvent: (e) => {
+          if (!e || !e.type) return;
+          if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }
+          else if (e.type === "response_reset") { acc = ""; setAgentText(""); }
+          else if (e.type === "done") { setAgentText(e.response || acc); }
+          else if (e.type === "error") { setAgentText(acc || `· ${e.message || "something went wrong"}`); }
+          else if (e.type === "user_question") { fetchChatQuestions(); }
+        },
+      }).then((sid) => {
+        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[intentId] = sid; }
+      }).catch(() => {});
+      return;
+    }
+
+    // demo fallback — the agent reads what you wrote and reaches back.
     const reply = agentReplyTo(text, { profile, negotiatingPeople, people });
     setTimeout(() => {
       setConversation(prev => [
@@ -225,8 +324,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }, 650);
   };
 
+  // On a blocking chat-mode question, pull it and render it inline as a clarifier.
+  const fetchChatQuestions = () => {
+    if (!client || !chatSessionRef.current) return;
+    client.questions.pending({ conversationId: chatSessionRef.current, mode: "chat" })
+      .then((res) => injectClarifiers(window.IndexApp.normalizeList(res, "questions")))
+      .catch(() => {});
+  };
+
   /* ----- chat (3rd window) — opens when you click someone in the pipeline ----- */
   const [chatId, setChatId] = useState(null);
+  const chatIdRef = useRef(null);
+  useEffect(() => { chatIdRef.current = chatId; }, [chatId]);
   const [chats, setChats] = useState({});
   const [chatDraft, setChatDraft] = useState("");
   const [unread, setUnread] = useState({});   // personId -> unread count
@@ -237,11 +346,37 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const retention = RETENTION_OPTIONS[retentionIdx];
   const cycleRetention = () => setRetentionIdx(i => (i + 1) % RETENTION_OPTIONS.length);
 
+  const toChatMsg = (m) => {
+    const parts = Array.isArray(m.parts) ? m.parts : [];
+    const text = parts.map((p) => (p && typeof p === "object" && p.text) ? p.text : "")
+      .filter(Boolean).join("\n");
+    const who = m.senderId && myId && m.senderId === myId ? "you"
+      : m.role === "agent" ? "index" : "them";
+    return { id: m.id || rid(), who, text };
+  };
+
   const openChat = (personId) => {
     setChatId(personId);
     setSummaryId(null);
     setProfileId(null);
     setUnread(prev => (prev[personId] ? { ...prev, [personId]: 0 } : prev));
+
+    if (live && client) {
+      client.opportunities.startChatForIntent(personId, intentId)
+        .then((res) => {
+          const cid = res && res.conversationId;
+          if (!cid) return;
+          convByPerson.current[personId] = cid;
+          personByConv.current[cid] = personId;
+          return client.conversations.messages(cid).then((msgsRes) => {
+            const msgs = window.IndexApp.normalizeList(msgsRes, "messages").map(toChatMsg);
+            setChats(prev => ({ ...prev, [personId]: msgs }));
+          });
+        })
+        .catch(() => {});
+      return;
+    }
+
     setChats(prev => {
       if (prev[personId]) return prev;
       const person = people.find(p => p.id === personId);
@@ -284,6 +419,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const acceptPerson = (personId) => {
     setPeople(prev => prev.map(p =>
       p.id === personId ? { ...p, status: "accepted" } : p));
+    if (live && client) {
+      client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
+        .then(() => setTimeout(refreshRadar, 1500))
+        .catch(() => {});
+    }
   };
   // Pass is the other half of the ready-stage decision — decline the intro
   // instead of accepting it. They drop out of the radar into "passed".
@@ -291,6 +431,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (chatId === personId) closeChats();
     setPeople(prev => prev.map(p =>
       p.id === personId ? { ...p, status: "passed" } : p));
+    if (live && client) {
+      client.opportunities.updateStatusForIntent(personId, "rejected", intentId)
+        .then(() => setTimeout(refreshRadar, 1500))
+        .catch(() => {});
+    }
   };
   const sendChat = () => {
     const text = chatDraft.trim();
@@ -298,6 +443,13 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const id = chatId;
     setChatDraft("");
     setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"you", text }] }));
+
+    if (live && client) {
+      const cid = convByPerson.current[id];
+      if (cid) client.conversations.sendMessage(cid, { parts: [{ text }] }).catch(() => {});
+      return;
+    }
+
     setTimeout(() => {
       setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"them", text: chatReplyFor(text) }] }));
     }, 700);
@@ -313,7 +465,26 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const person = people.find(p => p.id === pid);
     setChats(prev => ({ ...prev, [pid]: [...(prev[pid] || []), { id: rid(), who:"them", text: incomingPing(person) }] }));
     setUnread(prev => ({ ...prev, [pid]: (prev[pid] || 0) + 1 }));
-  }, (paused || Object.keys(chats).length === 0) ? null : 16000 / simRate);
+  }, (paused || live || Object.keys(chats).length === 0) ? null : 16000 / simRate);
+
+  // Live inbox — append counterpart/agent messages to any open H2H thread.
+  useEffect(() => {
+    if (!live || !window.IndexApp) return;
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (!event || event.type !== "message" || !event.message) return;
+      const pid = personByConv.current[event.conversationId];
+      if (!pid) return;
+      const m = toChatMsg(event.message);
+      if (m.who === "you") return; // don't echo our own optimistic sends
+      setChats(prev => {
+        const list = prev[pid] || [];
+        if (list.some((x) => x.id === m.id)) return prev;
+        return { ...prev, [pid]: [...list, m] };
+      });
+      setUnread(prev => (pid === chatIdRef.current ? prev : { ...prev, [pid]: (prev[pid] || 0) + 1 }));
+    });
+    return () => { if (sub && sub.close) sub.close(); };
+  }, [live]);
 
   const chatPerson = chatId ? people.find(p => p.id === chatId) : null;
   const summaryPerson = summaryId ? people.find(p => p.id === summaryId) : null;
@@ -383,7 +554,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             onAnswer={answerClarifier}
             onDismiss={dismissClarifier}
             draft={draft} setDraft={setDraft} sendDraft={sendDraft}
-            negotiatingPeople={negotiatingPeople}
+            negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
             paused={paused}
             onTogglePause={() => setPaused(p => !p)}

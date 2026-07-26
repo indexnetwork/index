@@ -440,6 +440,54 @@ const KEYS = [
   { id:"k2", label:"raycast script",  key:"idx_live_2b77…40dd", used:"6 days ago" },
 ];
 
+function maskKey(key) {
+  if (!key) return "";
+  return key.length > 12 ? `${key.slice(0, 8)}…${key.slice(-4)}` : key;
+}
+
+// Live pane: the mac authenticates with a single CLI API key held in the
+// Keychain. It can't be listed/rotated from here (those routes are
+// session-only), so we surface the injected key masked and offer revoke, which
+// deletes the Keychain credential and signs out via the native bridge.
+function LiveApiKeyPane() {
+  const native = (window.IndexApp && window.IndexApp.native && window.IndexApp.native()) || {};
+  const masked = maskKey(native.apiKey);
+  const revoke = () => { if (window.IndexApp) window.IndexApp.logout(); };
+  return (
+    <div>
+      <p style={{
+        margin:"0 0 14px", maxWidth:520,
+        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
+      }}>
+        this mac is signed in with a single access key stored in your keychain.
+        revoking it signs you out here and stops it working immediately.
+      </p>
+      <div style={{
+        border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
+        padding:"10px 12px",
+        display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+      }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{
+            fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
+          }}>this mac</div>
+          <div style={{
+            marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+          }}>{masked || "no key"}</div>
+        </div>
+        <button
+          onClick={revoke}
+          style={{
+            flex:"0 0 auto",
+            fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 14px",
+            border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
+            boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
+          }}>revoke & sign out</button>
+      </div>
+    </div>
+  );
+}
+
 function ApiKeysPane() {
   return (
     <div>
@@ -495,6 +543,9 @@ function ApiKeysPane() {
 //            settings pane behaves exactly as before.
 function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
   const { ME } = window.INDEX_DATA;
+  const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
+  const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
+  const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
   // What the agent assembled — the baseline "reset" restores to.
   const assembled = useRef({
@@ -528,6 +579,16 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       photo: form.photo,
       notify,
     });
+    if (live && client) {
+      client.auth.updateProfile({
+        name: form.name,
+        intro: form.intro,
+        location: form.location,
+        socials: (form.socials || [])
+          .filter((s) => s && s.handle && s.handle.trim())
+          .map((s) => ({ label: s.id || "link", value: s.handle.trim() })),
+      }).catch(() => {});
+    }
     (onDone || onClose)();
   };
 
@@ -588,7 +649,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           }}>
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle}/>}
-            {tab === "keys"    && <ApiKeysPane/>}
+            {tab === "keys"    && (live ? <LiveApiKeyPane/> : <ApiKeysPane/>)}
           </div>
 
           <div style={{

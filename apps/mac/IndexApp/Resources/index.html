@@ -8,7 +8,7 @@
 <style>
   /* Both faces are bundled, not fetched: assemble.py rewrites these url()s
      into base64 data: URIs, so the app renders identically with the network
-     off — same reason React and Babel are inlined. Editing src/halo-amiga.html
+     off — same reason React and Babel are inlined. Editing src/index-amiga.html
      directly in a browser still works, since the relative paths resolve.
 
      Both are variable fonts carrying 400–700 in a single file, so one @font-face
@@ -33624,6 +33624,527 @@ var e,t,r="function"==typeof Symbol?Symbol:{},a=r.iterator||"@@iterator",n=r.toS
 <body>
 <div id="root"></div>
 
+<script>
+(function(){
+/**
+ * Standalone Index API client for the macOS/iOS prototypes.
+ *
+ * This module is intentionally not imported by IndexApp or IndexApp-iOS yet. It
+ * gives the mac subtree a dedicated place to evolve API consumption without
+ * coupling live transport to the current fake-data prototype screens.
+ */
+
+const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
+
+/**
+ * @typedef {Object} IndexApiClientOptions
+ * @property {string} [apiBaseUrl] Absolute API base URL, including `/api`.
+ * @property {() => (string | Promise<string | null | undefined>)} [getToken]
+ *   Optional bearer-token provider. Native shells can later source this from
+ *   Keychain and inject it into the web layer.
+ * @property {() => (string | Promise<string | null | undefined>)} [getApiKey]
+ *   Optional API-key provider, sent as the `x-api-key` header. Used by the
+ *   native macOS/iOS shells whose credential is a CLI API key, not a session.
+ * @property {typeof fetch} [fetchImpl] Optional fetch implementation for tests.
+ */
+
+/**
+ * @typedef {Object} RequestOptions
+ * @property {string} [method]
+ * @property {unknown} [body]
+ * @property {boolean} [auth]
+ * @property {AbortSignal} [signal]
+ */
+
+/** Error thrown for non-2xx API responses. */
+class IndexApiError extends Error {
+  /**
+   * @param {string} message
+   * @param {number} status
+   * @param {unknown} [response]
+   */
+  constructor(message, status, response) {
+    super(message);
+    this.name = 'IndexApiError';
+    this.status = status;
+    this.response = response;
+  }
+}
+
+/**
+ * Normalize an API base URL so endpoint construction is stable.
+ * @param {string | undefined} value
+ * @returns {string}
+ */
+function normalizeApiBaseUrl(value) {
+  const raw = value || DEFAULT_API_BASE_URL;
+  return raw.replace(/\/+$/, '');
+}
+
+/**
+ * Create a resource-oriented client for services/api.
+ * @param {IndexApiClientOptions} [options]
+ */
+function createIndexApiClient(options = {}) {
+  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('createIndexApiClient requires a fetch implementation');
+  }
+
+  /**
+   * @template T
+   * @param {string} endpoint
+   * @param {RequestOptions} [requestOptions]
+   * @returns {Promise<T>}
+   */
+  async function request(endpoint, requestOptions = {}) {
+    const { method = 'GET', body, auth = true, signal } = requestOptions;
+    const headers = { 'Content-Type': 'application/json' };
+
+    if (auth && options.getApiKey) {
+      const apiKey = await options.getApiKey();
+      if (apiKey) headers['x-api-key'] = apiKey;
+    }
+    if (auth && options.getToken) {
+      const token = await options.getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetchImpl(`${apiBaseUrl}${endpoint}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => '');
+
+    if (!response.ok) {
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : `HTTP ${response.status}: ${response.statusText}`;
+      throw new IndexApiError(message, response.status, payload);
+    }
+
+    return /** @type {T} */ (payload || {});
+  }
+
+  return {
+    request,
+
+    auth: {
+      me: (options = {}) => request('/auth/me', options),
+      updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),
+      revokeCliCredential: (keyId, targetKey, options = {}) => request(
+        '/auth/cli-credential/revoke',
+        { ...options, method: 'POST', body: { keyId, targetKey } },
+      ),
+    },
+
+    networks: {
+      list: (options = {}) => request('/networks', options),
+      overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
+      myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
+      create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      join: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/join`, { ...options, method: 'POST', body: {} }),
+      leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
+    },
+
+    agents: {
+      list: (options = {}) => request('/agents', options),
+    },
+
+    intents: {
+      list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
+      // Turns a chat `intent_proposal` (proposalId + description) into a
+      // persisted intent; resolves { intentId }.
+      confirm: (body, options = {}) => request('/intents/confirm', { ...options, method: 'POST', body }),
+      get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
+      archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
+      updateStatus: (intentId, status, options = {}) => request(
+        `/intents/${encodeURIComponent(intentId)}/status`,
+        { ...options, method: 'PATCH', body: { status } },
+      ),
+    },
+
+    opportunities: {
+      list: (query = {}, options = {}) => request(`/opportunities${toQueryString(query)}`, options),
+      listForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
+      home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
+      homeForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities/home${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
+      chatContext: (peerUserId, options = {}) => request(
+        `/opportunities/chat-context${toQueryString({ peerUserId })}`,
+        options,
+      ),
+      get: (opportunityId, options = {}) => request(`/opportunities/${encodeURIComponent(opportunityId)}`, options),
+      inviteMessage: (opportunityId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/invite-message`,
+        options,
+      ),
+      updateStatus: (opportunityId, status, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/status`,
+        { ...options, method: 'PATCH', body: { status } },
+      ),
+      updateStatusForIntent: (opportunityId, status, intentId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/status`,
+        { ...options, method: 'PATCH', body: { status, scopeType: 'intent', scopeId: intentId } },
+      ),
+      startChat: (opportunityId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
+        { ...options, method: 'POST', body: {} },
+      ),
+      startChatForIntent: (opportunityId, intentId, options = {}) => request(
+        `/opportunities/${encodeURIComponent(opportunityId)}/start-chat`,
+        { ...options, method: 'POST', body: { scopeType: 'intent', scopeId: intentId } },
+      ),
+    },
+
+    questions: {
+      pending: (filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'pending', ...filters })}`,
+        options,
+      ),
+      pendingForIntent: (intentId, filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
+      answer: (questionId, body, options = {}) => request(
+        `/questions/${encodeURIComponent(questionId)}/answer`,
+        { ...options, method: 'POST', body },
+      ),
+      dismiss: (questionId, options = {}) => request(
+        `/questions/${encodeURIComponent(questionId)}/dismiss`,
+        { ...options, method: 'POST', body: {} },
+      ),
+    },
+
+    tools: {
+      invoke: (toolName, query = {}, options = {}) => request(
+        `/tools/${encodeURIComponent(toolName)}`,
+        { ...options, method: 'POST', body: { query } },
+      ),
+    },
+
+    conversations: {
+      list: (options = {}) => request('/conversations', options),
+      negotiations: (options = {}) => request('/conversations/negotiations', options),
+      messages: (conversationId, query = {}, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/messages${toQueryString(query)}`,
+        options,
+      ),
+      sendMessage: (conversationId, body, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/messages`,
+        { ...options, method: 'POST', body },
+      ),
+      getOrCreateDm: (peerUserId, options = {}) => request(
+        '/conversations/dm',
+        { ...options, method: 'POST', body: { peerUserId } },
+      ),
+      updateMetadata: (conversationId, metadata, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}/metadata`,
+        { ...options, method: 'PATCH', body: { metadata } },
+      ),
+      delete: (conversationId, options = {}) => request(
+        `/conversations/${encodeURIComponent(conversationId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+    },
+  };
+}
+
+/**
+ * Convert an object of query params into a stable query string.
+ * @param {Record<string, unknown>} query
+ * @returns {string}
+ */
+function toQueryString(query = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') continue;
+    params.set(key, String(value));
+  }
+  const raw = params.toString();
+  return raw ? `?${raw}` : '';
+}
+
+/**
+ * Pure response mappers for the macOS/iOS prototypes.
+ *
+ * These functions translate services/api response envelopes into the current
+ * `window.INDEX_DATA`-style view models, but this file deliberately has no
+ * dependency on the app bundles and no side effects.
+ */
+
+const DEFAULT_EVENT = {
+  name: 'index',
+  venue: 'the network',
+  neighborhood: 'agents talking to agents',
+  date: 'live · always on',
+  doors: '',
+  attending: 0,
+  arrived: 0,
+};
+
+/**
+ * Build the current prototype's EVENT summary from API data.
+ * @param {Object} input
+ * @param {Array<Object>} [input.networks]
+ * @param {Object} [input.user]
+ */
+function mapEventSummary(input = {}) {
+  const networks = Array.isArray(input.networks) ? input.networks : [];
+  const nonPersonal = networks.filter((network) => network && network.isPersonal !== true);
+  const selected = nonPersonal[0] || networks[0];
+  const memberCount = networks.reduce((sum, network) => {
+    const count = network && network._count && typeof network._count.members === 'number'
+      ? network._count.members
+      : 0;
+    return sum + count;
+  }, 0);
+
+  return {
+    ...DEFAULT_EVENT,
+    name: selected?.title || DEFAULT_EVENT.name,
+    venue: selected?.type === 'event' ? 'event index' : DEFAULT_EVENT.venue,
+    neighborhood: selected?.prompt || DEFAULT_EVENT.neighborhood,
+    doors: networks.length ? `${networks.length} indexes joined` : DEFAULT_EVENT.doors,
+    attending: memberCount,
+  };
+}
+
+/**
+ * Convert API intents to the current mac signal rows.
+ * @param {Array<Object>} intents
+ * @param {Array<Object>} [questions]
+ */
+function mapIntents(intents = [], questions = []) {
+  const questionCounts = countQuestionsBySource(questions);
+  return intents.map((intent) => mapIntent(intent, questionCounts.get(intent.id) || 0));
+}
+
+/**
+ * Convert one API intent to a mac signal row.
+ * @param {Object} intent
+ * @param {number} [questionCount]
+ */
+function mapIntent(intent, questionCount = 0) {
+  const networkTitles = Array.isArray(intent.networks)
+    ? intent.networks.map((network) => network.networkTitle).filter(Boolean)
+    : [];
+
+  const archived = Boolean(intent.archivedAt);
+  const paused = !archived && String(intent.status || '').toUpperCase() === 'PAUSED';
+
+  return {
+    id: intent.id,
+    title: intent.summary || intent.payload || 'untitled signal',
+    edges: networkTitles.join(' · '),
+    offLimits: '',
+    shape: 'warm',
+    status: archived ? 'archived' : paused ? 'paused' : 'active',
+    pipeline: { warm: 0, considering: 0, negotiating: 0 },
+    lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
+    age: intent.createdAt ? `running ${relativeAge(intent.createdAt)}` : '',
+    matches: 0,
+    connected: 0,
+    inConversations: 0,
+    questions: questionCount,
+    inbound: [],
+    source: intent,
+  };
+}
+
+/**
+ * Convert home-view opportunity sections to the current people card shape.
+ * @param {Array<Object>} sections
+ */
+function mapPeopleFromHomeSections(sections = []) {
+  return sections.flatMap((section) => {
+    const items = Array.isArray(section.items) ? section.items : [];
+    return items.map((item) => mapPersonFromHomeCard(item, section));
+  });
+}
+
+/**
+ * Convert a presenter card from GET /opportunities/home into a mac person card.
+ * @param {Object} card
+ * @param {Object} [section]
+ */
+function mapPersonFromHomeCard(card, section = {}) {
+  return {
+    id: card.opportunityId || card.userId,
+    name: card.name || 'unknown',
+    blurb: card.headline || card.mainText || '',
+    location: section.title || '',
+    arrived: 0,
+    distance: card.mutualIntentsLabel || '',
+    mutuals: 0,
+    signals: compact([section.title, card.mutualIntentsLabel]),
+    overlap: compact([card.headline]),
+    score: null,
+    status: mapOpportunityStatusToPrototype(card.status),
+    pitchFromAgent: card.narratorChip?.text || card.mainText || '',
+    introVia: card.narratorChip?.name || card.cta || '',
+    source: card,
+  };
+}
+
+/**
+ * Convert list/detail opportunities to the current people card shape.
+ * @param {Array<Object>} opportunities
+ */
+function mapPeopleFromOpportunities(opportunities = []) {
+  return opportunities.map((opportunity) => ({
+    id: opportunity.id,
+    name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
+    blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
+    location: opportunity.index?.title || '',
+    arrived: 0,
+    distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
+    mutuals: 0,
+    signals: compact([opportunity.category, opportunity.index?.title]),
+    overlap: compact([opportunity.interpretation?.summary]),
+    score: typeof opportunity.confidence === 'number' ? opportunity.confidence : null,
+    status: mapOpportunityStatusToPrototype(opportunity.status),
+    pitchFromAgent: opportunity.interpretation?.reasoning || opportunity.presentation?.callToAction || '',
+    introVia: opportunity.introducedBy?.name || '',
+    hidden: opportunity.status === 'latent',
+    source: opportunity,
+  }));
+}
+
+/**
+ * Convert API pending questions into the current clarifier shape.
+ * @param {Array<Object>} questions
+ */
+function mapClarifiers(questions = []) {
+  return questions.map(mapClarifier);
+}
+
+/**
+ * Convert one API question into a current clarifier shape.
+ * @param {Object} question
+ */
+function mapClarifier(question) {
+  const options = Array.isArray(question.payload?.options) ? question.payload.options : [];
+  return {
+    id: question.id,
+    source: question.detection?.mode || 'agent',
+    effect: 'neutral',
+    sourceMeta: question.detection || {},
+    text: question.payload?.prompt || question.payload?.title || '',
+    chips: options.map((option) => option.label).filter(Boolean),
+    triggersHint: question.payload?.multiSelect ? 'choose all that apply' : '',
+    apiQuestion: question,
+  };
+}
+
+/**
+ * Compose a INDEX_DATA-like snapshot without mutating window.INDEX_DATA.
+ * @param {Object} input
+ * @param {Object} [input.user]
+ * @param {Array<Object>} [input.networks]
+ * @param {Array<Object>} [input.intents]
+ * @param {Array<Object>} [input.questions]
+ * @param {Array<Object>} [input.homeSections]
+ * @param {Array<Object>} [input.opportunities]
+ */
+function mapIndexSnapshot(input = {}) {
+  const questions = Array.isArray(input.questions) ? input.questions : [];
+  const homeSections = Array.isArray(input.homeSections) ? input.homeSections : [];
+  const opportunityRows = Array.isArray(input.opportunities) ? input.opportunities : [];
+  const people = homeSections.length
+    ? mapPeopleFromHomeSections(homeSections)
+    : mapPeopleFromOpportunities(opportunityRows);
+
+  return {
+    EVENT: mapEventSummary({ networks: input.networks, user: input.user }),
+    INTENTS: mapIntents(input.intents || [], questions),
+    PEOPLE: people.filter((person) => !person.hidden),
+    POOL: people.filter((person) => person.hidden),
+    CLARIFIERS: mapClarifiers(questions),
+    FIELD_EVENTS: [],
+    AMBIENT_NOTES: [],
+  };
+}
+
+/**
+ * @param {string | undefined} status
+ */
+function mapOpportunityStatusToPrototype(status) {
+  switch (status) {
+    case 'accepted':
+      return 'accepted';
+    case 'pending':
+    case 'draft':
+      return 'ready';
+    case 'negotiating':
+    case 'stalled':
+      return 'negotiating';
+    case 'rejected':
+      return 'passed';
+    case 'expired':
+      return 'expired';
+    case 'latent':
+    default:
+      return 'considering';
+  }
+}
+
+/**
+ * @param {Array<Object>} questions
+ * @returns {Map<string, number>}
+ */
+function countQuestionsBySource(questions) {
+  const counts = new Map();
+  for (const question of questions) {
+    const sourceId = question?.detection?.sourceId;
+    if (!sourceId) continue;
+    counts.set(sourceId, (counts.get(sourceId) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * @param {Array<unknown>} values
+ * @returns {Array<string>}
+ */
+function compact(values) {
+  return values.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim());
+}
+
+/**
+ * @param {string | Date} isoDate
+ */
+function relativeAge(isoDate) {
+  const time = new Date(isoDate).getTime();
+  if (Number.isNaN(time)) return '';
+  const diffMs = Math.max(0, Date.now() - time);
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks}w ago`;
+}
+
+window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary };
+
+})();
+</script>
 <script type="text/babel">
 // Fake-but-coherent data for the index prototype.
 // Use case: an always-on agent that meets the people you're looking for.
@@ -34236,7 +34757,7 @@ const AGENT_PERMISSIONS = [
     blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
 ];
 
-window.HALO_DATA = { EVENT, ONBOARDING_STEPS, PEOPLE, POOL, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES, INTENTS, ME, INTRO_MAX, NETWORKS, AGENTS, AGENT_PERMISSIONS };
+window.INDEX_DATA = { EVENT, ONBOARDING_STEPS, PEOPLE, POOL, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES, INTENTS, ME, INTRO_MAX, NETWORKS, AGENTS, AGENT_PERMISSIONS };
 
 </script>
 <script type="text/babel">
@@ -34741,6 +35262,322 @@ Object.assign(window, {
 
 </script>
 <script type="text/babel">
+// api.jsx — live backend bridge for the mac app.
+//
+// Defines the single window.IndexApp façade the screens talk to. It builds an
+// IndexApi client from window.INDEX_NATIVE (injected by the Swift shell:
+// { apiBaseUrl, apiKey }), exposes a parallel snapshot load, native
+// login/logout + an auth-changed subscription, fetch-based SSE for chat and the
+// conversation inbox (EventSource can't set the x-api-key header), and a single
+// MCP tools/call for intent creation (which has no plain REST POST).
+//
+// window.IndexApi is the inlined client+mappers bundle (assemble.py);
+// window.INDEX_DATA is the offline demo fallback. window.Api is kept as an alias
+// so either name resolves to the same object.
+
+
+window.IndexApp = (function () {
+  function native() { return window.INDEX_NATIVE || {}; }
+  function apiKey() { return native().apiKey || null; }
+  function isAuthed() { return !!apiKey(); }
+
+  function apiBaseUrl() {
+    const raw = native().apiBaseUrl || "http://localhost:3001/api";
+    return window.IndexApi && window.IndexApi.normalizeApiBaseUrl
+      ? window.IndexApi.normalizeApiBaseUrl(raw)
+      : raw.replace(/\/+$/, "");
+  }
+
+  function getClient() {
+    if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
+    return window.IndexApi.createIndexApiClient({
+      apiBaseUrl: native().apiBaseUrl,
+      // Read the key lazily so a mid-session login/logout is picked up without
+      // rebuilding the client.
+      getApiKey: () => native().apiKey,
+    });
+  }
+
+  // ---- native auth bridge --------------------------------------------------
+
+  function hasBridge() {
+    return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth);
+  }
+  function post(action) {
+    if (!hasBridge()) return false;
+    window.webkit.messageHandlers.indexAuth.postMessage({ action });
+    return true;
+  }
+  function login() { return post("login"); }
+  function logout() { return post("logout"); }
+
+  // Swift calls window.__indexAuthChanged(apiKeyOrNull) after it updates
+  // window.INDEX_NATIVE. Fan that out to any React subscribers.
+  const authSubscribers = new Set();
+  window.__indexAuthChanged = function (key) {
+    authSubscribers.forEach((cb) => { try { cb(key); } catch (e) { /* ignore */ } });
+  };
+  function onAuthChanged(cb) {
+    authSubscribers.add(cb);
+    return () => authSubscribers.delete(cb);
+  }
+
+  // ---- snapshot -----------------------------------------------------------
+
+  // Resolve a promise into a {ok,value} pair so one failing endpoint (e.g. a
+  // brand-new user with no opportunities) never blanks the whole snapshot.
+  function settle(promise) {
+    return promise.then((value) => ({ ok: true, value }), (error) => ({ ok: false, error }));
+  }
+
+  // Accept either a bare array or an envelope { <key>: [...] }.
+  function normalizeList(value, key) {
+    if (Array.isArray(value)) return value;
+    if (value && Array.isArray(value[key])) return value[key];
+    return [];
+  }
+
+  async function loadSnapshot() {
+    const c = getClient();
+    if (!c) return null;
+    const [meR, netR, intentR, questionR, homeR] = await Promise.all([
+      settle(c.auth.me()),
+      settle(c.networks.list()),
+      settle(c.intents.list({})),
+      settle(c.questions.pending()),
+      settle(c.opportunities.home()),
+    ]);
+
+    const user = meR.ok ? (meR.value.user || meR.value) : null;
+    const features = meR.ok ? (meR.value.features || {}) : {};
+    const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
+    const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
+    const questions = questionR.ok ? normalizeList(questionR.value, "questions") : [];
+    const homeSections = homeR.ok ? normalizeList(homeR.value, "sections") : [];
+
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, homeSections });
+    return {
+      snapshot,
+      me: mapMe(user),
+      networks: mapNetworks(networks),
+      features,
+      raw: { user, features, networks, intents, questions, homeSections },
+    };
+  }
+
+  function mapMe(user) {
+    const base = (window.INDEX_DATA && window.INDEX_DATA.ME) || {};
+    if (!user) return base;
+    const socials = Array.isArray(user.socials)
+      ? user.socials.map((s) => ({ id: s.label || s.id || "", prefix: "", handle: s.value || s.handle || "" }))
+      : base.socials;
+    return {
+      ...base,
+      id: user.id || base.id,
+      name: user.name || base.name,
+      handle: user.username ? `@${user.username}` : base.handle,
+      email: user.email || base.email,
+      location: user.location || base.location,
+      intro: user.intro || user.bio || base.intro,
+      socials,
+      source: user,
+    };
+  }
+
+  function mapNetworks(networks) {
+    return networks.map((n) => ({
+      id: n.id,
+      name: n.title || n.name || "untitled",
+      members: (n._count && n._count.members) || n.memberCount || 0,
+      kind: n.type === "event" ? "event" : undefined,
+      role: n.isPersonal ? "personal" : (n.role || "member"),
+      joined: true,
+      isPersonal: n.isPersonal === true,
+      privacy: n.joinPolicy === "anyone" ? "public" : "private",
+      signals: [],
+      source: n,
+    }));
+  }
+
+  // ---- fetch-based SSE ----------------------------------------------------
+
+  // Read an SSE body, invoking onEvent(parsedJson) for every `data:` payload.
+  async function readSSE(response, onEvent) {
+    if (!response.body || !response.body.getReader) return;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE frames are separated by a blank line.
+      let idx;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const data = frame
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .join("");
+        if (!data) continue;
+        try { onEvent(JSON.parse(data)); }
+        catch (e) { /* keepalive / non-JSON frame */ }
+      }
+    }
+  }
+
+  // POST /chat/stream (orchestrator persona for api-key callers). Resolves with
+  // the session id (from the X-Session-Id response header) once the stream ends.
+  // onSession fires as soon as headers arrive, so mid-stream events (e.g.
+  // user_question) can be resolved against the conversation right away.
+  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
+    const headers = { "Content-Type": "application/json" };
+    const key = apiKey();
+    if (key) headers["x-api-key"] = key;
+    const body = { message };
+    if (sessionId) body.sessionId = sessionId;
+    if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
+
+    const response = await fetch(`${apiBaseUrl()}/chat/stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+    const resolvedSession = response.headers.get("X-Session-Id") || sessionId || null;
+    if (resolvedSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try { const j = await response.json(); if (j && j.error) detail = j.error; } catch (e) { /* ignore */ }
+      if (onEvent) onEvent({ type: "error", error: detail });
+      return resolvedSession;
+    }
+    await readSSE(response, (event) => { if (onEvent) onEvent(event); });
+    return resolvedSession;
+  }
+
+  // GET /conversations/stream — live inbox events. Returns an abort handle.
+  function streamInbox(onEvent) {
+    const controller = new AbortController();
+    const headers = {};
+    const key = apiKey();
+    if (key) headers["x-api-key"] = key;
+    fetch(`${apiBaseUrl()}/conversations/stream`, { headers, signal: controller.signal })
+      .then((response) => { if (response.ok) return readSSE(response, onEvent); })
+      .catch((e) => { /* aborted or network drop; caller may retry */ });
+    return { close: () => controller.abort() };
+  }
+
+  // ---- MCP tools/call -----------------------------------------------------
+
+  // Single JSON-RPC tools/call against /mcp (stateless, x-api-key auth). Used
+  // for intent creation, which has no plain REST POST. Handles both a direct
+  // application/json response and an SSE-framed one.
+  async function mcpCall(tool, args) {
+    const base = apiBaseUrl().replace(/\/api$/, "");
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
+    const key = apiKey();
+    if (key) headers["x-api-key"] = key;
+
+    const response = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: Math.random().toString(36).slice(2),
+        method: "tools/call",
+        params: { name: tool, arguments: args || {} },
+      }),
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    let rpc;
+    if (contentType.includes("text/event-stream")) {
+      let last = null;
+      await readSSE(response, (event) => { last = event; });
+      rpc = last;
+    } else {
+      rpc = await response.json().catch(() => null);
+    }
+    if (!rpc) throw new Error(`MCP ${tool} returned no response (HTTP ${response.status})`);
+    if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
+
+    const result = rpc.result || {};
+    if (result.isError) {
+      const text = extractMcpText(result);
+      throw new Error(text || `MCP ${tool} reported an error`);
+    }
+    return parseMcpResult(result);
+  }
+
+  // create_intent has no plain REST POST — go through the MCP tool. autoApprove
+  // persists immediately (there is no proposal-card UI here).
+  function createIntent(description, extra) {
+    return mcpCall("create_intent", { description, autoApprove: true, ...(extra || {}) });
+  }
+
+  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks — the
+  // same format the web app and CLI confirm through POST /intents/confirm.
+  function parseIntentProposals(text) {
+    if (!text) return [];
+    const out = [];
+    const re = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      try {
+        const p = JSON.parse(m[1]);
+        if (p && p.proposalId && p.description) out.push(p);
+      } catch (e) { /* skip malformed block */ }
+    }
+    return out;
+  }
+
+  // MCP tool results carry a content[] array; the structured payload lives in
+  // structuredContent when present, otherwise as JSON text in the first block.
+  function parseMcpResult(result) {
+    if (result.structuredContent) return result.structuredContent;
+    const text = extractMcpText(result);
+    if (!text) return {};
+    try { return JSON.parse(text); } catch (e) { return { text }; }
+  }
+
+  function extractMcpText(result) {
+    const content = Array.isArray(result.content) ? result.content : [];
+    const block = content.find((c) => c && c.type === "text" && typeof c.text === "string");
+    return block ? block.text : "";
+  }
+
+  return {
+    native,
+    apiKey,
+    isAuthed,
+    apiBaseUrl,
+    getClient,
+    // `client` kept as an alias for callers that prefer the shorter name.
+    client: getClient,
+    normalizeList,
+    loadSnapshot,
+    login,
+    logout,
+    onAuthChanged,
+    createIntent,
+    parseIntentProposals,
+    streamChat,
+    streamInbox,
+    mcpCall,
+  };
+})();
+
+// Back-compat alias — some early screens referenced window.Api.
+window.Api = window.IndexApp;
+
+</script>
+<script type="text/babel">
 // Login — the first surface, before the signals hub. An agent acts on your
 // behalf, so signing in is really "give your agent an identity to run under".
 
@@ -34838,7 +35675,13 @@ function Login({ onSignIn }) {
   const [email, setEmail] = useState("");
   const ok = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 
-  const go = () => onSignIn && onSignIn(email.trim() || null);
+  // Real auth is a browser handshake (the shell opens /cli-auth and hands back
+  // a key). Both entry points start it; the UI stays exactly the prototype's,
+  // only the button copy flips to "waiting" while the browser round-trip runs.
+  const [waiting, setWaiting] = useState(false);
+  const go = () => {
+    if (onSignIn && onSignIn(email.trim() || null)) setWaiting(true);
+  };
 
   return (
     <div style={{
@@ -34900,8 +35743,8 @@ function Login({ onSignIn }) {
             </div>
 
             <div style={{ marginTop:12 }}>
-              <SignInButton primary disabled={!ok} onClick={go}>
-                continue →
+              <SignInButton primary disabled={!ok && !waiting} onClick={go}>
+                {waiting ? "waiting for browser…" : "continue →"}
               </SignInButton>
             </div>
 
@@ -35101,7 +35944,7 @@ function PhotoPicker({ me, name, photo, onPick }) {
 }
 
 function ProfilePane({ me, form, set, profileOnly = false }) {
-  const { INTRO_MAX } = window.HALO_DATA;
+  const { INTRO_MAX } = window.INDEX_DATA;
   const over = form.intro.length > INTRO_MAX;
 
   return (
@@ -35379,6 +36222,54 @@ const KEYS = [
   { id:"k2", label:"raycast script",  key:"idx_live_2b77…40dd", used:"6 days ago" },
 ];
 
+function maskKey(key) {
+  if (!key) return "";
+  return key.length > 12 ? `${key.slice(0, 8)}…${key.slice(-4)}` : key;
+}
+
+// Live pane: the mac authenticates with a single CLI API key held in the
+// Keychain. It can't be listed/rotated from here (those routes are
+// session-only), so we surface the injected key masked and offer revoke, which
+// deletes the Keychain credential and signs out via the native bridge.
+function LiveApiKeyPane() {
+  const native = (window.IndexApp && window.IndexApp.native && window.IndexApp.native()) || {};
+  const masked = maskKey(native.apiKey);
+  const revoke = () => { if (window.IndexApp) window.IndexApp.logout(); };
+  return (
+    <div>
+      <p style={{
+        margin:"0 0 14px", maxWidth:520,
+        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
+      }}>
+        this mac is signed in with a single access key stored in your keychain.
+        revoking it signs you out here and stops it working immediately.
+      </p>
+      <div style={{
+        border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
+        padding:"10px 12px",
+        display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+      }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{
+            fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
+          }}>this mac</div>
+          <div style={{
+            marginTop:3, fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+          }}>{masked || "no key"}</div>
+        </div>
+        <button
+          onClick={revoke}
+          style={{
+            flex:"0 0 auto",
+            fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 14px",
+            border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
+            boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
+          }}>revoke & sign out</button>
+      </div>
+    </div>
+  );
+}
+
 function ApiKeysPane() {
   return (
     <div>
@@ -35433,7 +36324,10 @@ function ApiKeysPane() {
 // onDone   — the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
 function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
-  const { ME } = window.HALO_DATA;
+  const { ME } = window.INDEX_DATA;
+  const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
+  const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
+  const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
   // What the agent assembled — the baseline "reset" restores to.
   const assembled = useRef({
@@ -35467,6 +36361,16 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       photo: form.photo,
       notify,
     });
+    if (live && client) {
+      client.auth.updateProfile({
+        name: form.name,
+        intro: form.intro,
+        location: form.location,
+        socials: (form.socials || [])
+          .filter((s) => s && s.handle && s.handle.trim())
+          .map((s) => ({ label: s.id || "link", value: s.handle.trim() })),
+      }).catch(() => {});
+    }
     (onDone || onClose)();
   };
 
@@ -35527,7 +36431,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           }}>
             {tab === "profile" && <ProfilePane me={ME} form={form} set={set} profileOnly={profileOnly}/>}
             {tab === "notify"  && <NotificationsPane notify={notify} toggle={toggle}/>}
-            {tab === "keys"    && <ApiKeysPane/>}
+            {tab === "keys"    && (live ? <LiveApiKeyPane/> : <ApiKeysPane/>)}
           </div>
 
           <div style={{
@@ -35996,7 +36900,7 @@ function Signal({ sig, netName, onRemove }) {
   );
 }
 
-function NetworkDetail({ net, onBack }) {
+function NetworkDetail({ net, onBack, onLeave }) {
   const [signals, setSignals] = useState(net.signals || []);
   // Last removal, kept so it can be put back — removing is reversible by
   // definition here, so the undo is the affordance that says "not deleted".
@@ -36058,12 +36962,14 @@ function NetworkDetail({ net, onBack }) {
 
               {/* leaving is destructive, so it carries the red — but stays outline
                   only, since it isn't the thing you came here to do */}
-              <button style={{
-                flex:"0 0 auto", cursor:"pointer",
-                fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
-                border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
-                boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
-              }}>leave</button>
+              <button
+                onClick={() => onLeave && onLeave(net)}
+                style={{
+                  flex:"0 0 auto", cursor:"pointer",
+                  fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                  border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
+                  boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
+                }}>leave</button>
             </div>
           </div>
 
@@ -36123,7 +37029,11 @@ function NetworkDetail({ net, onBack }) {
 }
 
 function Networks({ onClose }) {
-  const { NETWORKS } = window.HALO_DATA;
+  const { NETWORKS } = window.INDEX_DATA;
+  // Live backend wiring: writes fire against services/api when signed in, but
+  // the UI keeps updating the local mirror exactly as the offline demo does.
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState("mine");
   const [openNet, setOpenNet] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -36149,10 +37059,28 @@ function Networks({ onClose }) {
     setNets([...NETWORKS]);
     setCreating(false);
     setTab("mine");
+    if (client) {
+      client.networks.create({
+        title: name,
+        prompt: desc || undefined,
+        joinPolicy: access === "public" ? "anyone" : "invite_only",
+      }).catch(() => {});
+    }
+  };
+
+  const joinNetwork = (net) => {
+    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: true, role: "member" } : n));
+    if (client) client.networks.join(net.id).catch(() => {});
+  };
+
+  const leaveNetwork = (net) => {
+    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: false, role: undefined } : n));
+    if (client) client.networks.leave(net.id).catch(() => {});
+    setOpenNet(null);
   };
 
   if (openNet) {
-    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)}/>;
+    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)} onLeave={leaveNetwork}/>;
   }
   // Its own window, like the profile screen — not an overlay on this one.
   if (creating) {
@@ -36211,7 +37139,7 @@ function Networks({ onClose }) {
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"6px 12px 14px",
           }}>
-            {shown.map(net => <NetworkRow key={net.id} net={net} onOpen={setOpenNet}/>)}
+            {shown.map(net => <NetworkRow key={net.id} net={net} onOpen={setOpenNet} onJoin={joinNetwork}/>)}
 
             {!shown.length && (
               <p style={{
@@ -36477,10 +37405,55 @@ function NegotiatorSelect({ options, value, onChange }) {
 // Screen shell mirrors Networks: same 860 x min(660px) frame, same header band
 // with a title and a right-hand action, so moving between the two shelf
 // destinations doesn't resize or restyle the window.
+// Map one GET /agents entity into the row shape used here. Read-only: agent
+// management writes are session-only and unreachable with an API key.
+function mapLiveAgent(a) {
+  const TINTS = ["#4C6FD4", "#B4553F", "#3E8E7E", "#C64B8C", "#7B5EA7", "#E8A317"];
+  const name = a.name || "agent";
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const seen = a.lastSeenAt ? Date.parse(a.lastSeenAt) : 0;
+  const connected = !!seen && (Date.now() - seen) < 90000;
+  const rel = (iso) => {
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return "unknown";
+    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
+  };
+  return {
+    id: a.id,
+    name,
+    initial: (name[0] || "a").toLowerCase(),
+    tint: TINTS[h % TINTS.length],
+    state: connected ? "connected" : "detected",
+    on: a.status ? a.status === "active" : true,
+    connectedAs: a.description || "personal agent",
+    heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "no heartbeat",
+  };
+}
+
 function Agents({ onClose }) {
-  const { AGENTS } = window.HALO_DATA;
+  const { AGENTS } = window.INDEX_DATA;
   const [agents, setAgents] = useState(AGENTS);
   const [expanded, setExpanded] = useState(null);
+
+  // Live agents are read-only — fetch and display, but toggles stay local.
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client) return;
+    let cancelled = false;
+    client.agents.list()
+      .then((res) => {
+        if (cancelled) return;
+        const list = window.IndexApp.normalizeList(res, "agents").map(mapLiveAgent);
+        if (list.length) setAgents(list);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [perms, setPerms] = useState(() => ({
     hermes: { updates:true, indexing:true, brief:true },
     claude: { updates:true, indexing:false, brief:false },
@@ -36821,11 +37794,21 @@ function UserMenu({ me, onSelect }) {
 }
 
 function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
+  const env = useIndexEnv();
+  const demo = window.INDEX_DATA;
+  // ME/NETWORKS/AGENTS prefer live data; AGENTS has no live snapshot yet.
+  const ME = env.me || demo.ME;
+  const NETWORKS = env.networks || demo.NETWORKS;
+  const AGENTS = demo.AGENTS;
+  const joinedCount = (NETWORKS || []).filter(n => n.joined !== false).length;
+  const agentCount  = (AGENTS || []).filter(a => a.state === "connected").length;
+
   // A just-onboarded user has no signals yet — the hub opens empty.
-  const { INTENTS, ME, NETWORKS, AGENTS } = window.HALO_DATA;
-  const SIGNALS = fresh ? [] : INTENTS;
-  const joinedCount = NETWORKS.filter(n => n.joined).length;
-  const agentCount  = AGENTS.filter(a => a.state === "connected").length;
+  const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
+  useEffect(() => {
+    setSignals(fresh ? [] : (env.data.INTENTS || []));
+  }, [env.data, fresh]);
+
   const [hovered, setHovered] = useState(null);
   // Which settings pane the account menu asked for (null = settings closed).
   const [settingsTab, setSettingsTab] = useState(null);
@@ -36849,9 +37832,10 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Agents onClose={() => setShowAgents(false)}/>;
   }
 
-  const active   = SIGNALS.filter(i => i.status === "active");
-  const idle     = SIGNALS.filter(i => i.status === "idle");
-  const paused   = SIGNALS.filter(i => i.status === "paused");
+  const visible  = signals.filter(i => i.status !== "archived");
+  const active   = visible.filter(i => i.status === "active");
+  const idle     = visible.filter(i => i.status === "idle");
+  const paused   = visible.filter(i => i.status === "paused");
   const ordered  = [...active, ...idle, ...paused];
 
   return (
@@ -36865,7 +37849,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
         maxWidth:"100%",
         maxHeight: "calc(100vh - 64px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: 0 }}>
+        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: "min(560px, calc(100vh - 64px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",
@@ -37254,33 +38238,265 @@ function followUpFor(intent) {
 }
 
 function Onboarding({ onDone, onBack }) {
-  const { ONBOARDING_STEPS } = window.HALO_DATA;
-  const [stepIdx, setStepIdx] = useState(0);
+  const { ONBOARDING_STEPS } = window.INDEX_DATA;
+  const SHAPE_STEP = ONBOARDING_STEPS[ONBOARDING_STEPS.length - 1];
+  // How many follow-up questions sit between "intent" and "shape" — the live
+  // flow asks the backend for the same number the local script would.
+  const DYN_MAX = Math.max(1, ONBOARDING_STEPS.length - 2);
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+
+  // Completed turns drive the progress bar and the faded history; the current
+  // step is either a local scripted one or a backend-generated question.
+  const [turns, setTurns] = useState([]);
+  const [step, setStep] = useState(() => resolveStep(ONBOARDING_STEPS[0], {}));
+  const [thinking, setThinking] = useState(false);
   const [answers, setAnswers] = useState({});
   const [draft, setDraft] = useState("");
   const [calibrating, setCalibrating] = useState(false);
   const inputRef = useRef(null);
 
-  const step = resolveStep(ONBOARDING_STEPS[stepIdx], answers);
+  const intentIdRef = useRef(null);       // set once the live signal exists
+  const createdRef = useRef(false);
+  const sessionRef = useRef(null);        // chat conversation id
+  const answersRef = useRef({});          // mirror of `answers` for async handlers
+  const flowStartRef = useRef(Date.now());
+  const seenQ = useRef(new Set());
+  const awaitingRef = useRef(false);      // a chat turn owes us the next step
+  const dynAsked = useRef(0);
+  const localIdx = useRef(0);             // pointer into the scripted steps
+  const usedLocalFallback = useRef(false);
+  const cancelledRef = useRef(false);
+  useEffect(() => () => { cancelledRef.current = true; }, []);
+
+  const stepIdx = Math.min(turns.length, ONBOARDING_STEPS.length - 1);
 
   useEffect(() => {
     setDraft("");
     if (inputRef.current) {
       setTimeout(() => inputRef.current && inputRef.current.focus(), 700);
     }
-  }, [stepIdx]);
+  }, [step && step.id, thinking]);
+
+  // Fold the collected steps into one signal description for create_intent.
+  const composeDescription = (a) => {
+    const parts = [];
+    if (a.intent) parts.push(String(a.intent).trim());
+    if (a.edges) parts.push(`a great match: ${String(a.edges).trim()}`);
+    if (a["off-limits"]) parts.push(`off-limits: ${String(a["off-limits"]).trim()}`);
+    return parts.filter(Boolean).join(" · ");
+  };
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- chat-driven clarification (same machinery as the web app) ----------
+  //
+  // The first answer opens a /chat/stream turn. The agent asks clarifying
+  // questions via ask_user_question — each arrives as a `user_question` SSE
+  // event and becomes the next onboarding step; answering it resumes the same
+  // blocked turn. The turn ends in an ```intent_proposal``` block, which we
+  // confirm through POST /intents/confirm.
+
+  // Resolve a user_question event id into the persisted chat question row.
+  const fetchQuestion = async (id) => {
+    for (let i = 0; i < 5 && !cancelledRef.current; i++) {
+      const res = await client.questions.pending(
+        { mode: "chat", conversationId: sessionRef.current },
+      ).catch(() => null);
+      const q = window.IndexApp.normalizeList(res, "questions").find((r) => r && r.id === id);
+      if (q) return q;
+      await sleep(800);
+    }
+    return null;
+  };
+
+  const showQuestion = (q) => {
+    seenQ.current.add(q.id);
+    dynAsked.current += 1;
+    const c = window.IndexApi.mapClarifier(q);
+    awaitingRef.current = false;
+    setThinking(false);
+    setStep({
+      id: `q-${q.id}`,
+      question: q,
+      prompt: c.text || "tell me more?",
+      hint: c.triggersHint || "",
+      placeholder: "type your answer…",
+      examples: c.chips && c.chips.length ? c.chips : undefined,
+    });
+  };
+
+  const toShape = () => {
+    awaitingRef.current = false;
+    setThinking(false);
+    setStep(resolveStep(SHAPE_STEP, answersRef.current));
+  };
+
+  // No dynamic flow available (demo, stream error before anything happened) —
+  // continue with the original scripted follow-ups.
+  const fallbackLocal = () => {
+    if (cancelledRef.current) return;
+    if (dynAsked.current > 0 || createdRef.current) { toShape(); return; }
+    usedLocalFallback.current = true;
+    awaitingRef.current = false;
+    setThinking(false);
+    localIdx.current += 1;
+    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
+    setStep(resolveStep(next, answersRef.current));
+  };
+
+  const confirmProposal = async (p) => {
+    try {
+      const res = await client.intents.confirm({
+        proposalId: p.proposalId,
+        description: p.description,
+      });
+      if (res && res.intentId) intentIdRef.current = res.intentId;
+      createdRef.current = true;
+    } catch (e) { /* finish() falls back to a direct create */ }
+  };
+
+  // The agent may have created the signal directly (no proposal block) —
+  // detect it so the flow still closes out as "created".
+  const newestIntentSinceStart = async () => {
+    const res = await client.intents.list({}).catch(() => null);
+    const rows = window.IndexApp.normalizeList(res, "intents")
+      .filter((r) => r && r.createdAt && Date.parse(r.createdAt) >= flowStartRef.current - 60000)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return rows[0] || null;
+  };
+
+  const handleDone = async (response) => {
+    // Only act when the flow is waiting on this turn — a late `done` (e.g. the
+    // question wait timed out while the user idles) must not clobber the step.
+    if (cancelledRef.current || !awaitingRef.current) return;
+    const proposal = (window.IndexApp.parseIntentProposals(response) || [])[0];
+    if (proposal) { await confirmProposal(proposal); toShape(); return; }
+    const fresh = await newestIntentSinceStart();
+    if (fresh) { intentIdRef.current = fresh.id; createdRef.current = true; toShape(); return; }
+    // The agent answered in prose. A short question becomes the next step;
+    // anything else means the guided beat is over.
+    const text = String(response || "").replace(/```[\s\S]*?```/g, "").trim();
+    if (text && text.length <= 300 && dynAsked.current < DYN_MAX + 1) {
+      dynAsked.current += 1;
+      awaitingRef.current = false;
+      setThinking(false);
+      setStep({
+        id: `chat-${dynAsked.current}`,
+        chatTurn: true,
+        prompt: text,
+        placeholder: "type your answer…",
+      });
+      return;
+    }
+    fallbackLocal();
+  };
+
+  // Open one chat turn and route its events back into the step machine.
+  const startTurn = (message) => {
+    awaitingRef.current = true;
+    setThinking(true);
+    window.IndexApp.streamChat({
+      message,
+      sessionId: sessionRef.current,
+      onSession: (sid) => { sessionRef.current = sid; },
+      onEvent: (ev) => {
+        if (cancelledRef.current || !ev) return;
+        if (ev.type === "user_question" && Array.isArray(ev.questions)) {
+          const next = ev.questions.find((q) => q && q.id && !seenQ.current.has(q.id));
+          if (next) {
+            (async () => {
+              const q = await fetchQuestion(next.id);
+              if (q && !cancelledRef.current) showQuestion(q);
+            })();
+          }
+        } else if (ev.type === "done") {
+          handleDone(ev.response || ev.fullResponse || "");
+        } else if (ev.type === "error") {
+          if (awaitingRef.current) fallbackLocal();
+        }
+      },
+    }).catch(() => { if (awaitingRef.current) fallbackLocal(); });
+  };
 
   const submit = (val) => {
-    const v = (val ?? draft).trim();
+    const raw = val ?? draft;
+    const v = String(raw).trim();
     if (!v && !step.choices) return;
-    const newAns = { ...answers, [step.id]: val ?? draft };
-    setAnswers(newAns);
-    if (stepIdx < ONBOARDING_STEPS.length - 1) {
-      setStepIdx(stepIdx + 1);
-    } else {
-      setCalibrating(true);
-      setTimeout(() => onDone(newAns), 2200);
+    const answerLabel = step.choices
+      ? ((step.choices.find((c) => c.value === raw) || {}).label || String(raw))
+      : v;
+    setTurns((prev) => [...prev, { id: step.id, prompt: step.prompt, answer: answerLabel }]);
+
+    const newAns = { ...answers, [step.id]: raw };
+    // Alias dynamic answers onto the prototype's edges/off-limits slots so the
+    // field preview and the main view header keep reading naturally.
+    if (step.question || step.chatTurn) {
+      if (dynAsked.current === 1) newAns.edges = v;
+      else if (!newAns["off-limits"]) newAns["off-limits"] = v;
     }
+    setAnswers(newAns);
+    answersRef.current = newAns;
+
+    if (step.id === "shape") { finish(newAns); return; }
+
+    // A structured chat question — answering it resumes the blocked turn, and
+    // the same stream carries the next question or the final proposal.
+    if (step.question && client) {
+      const isChip = (step.examples || []).includes(raw);
+      const body = isChip ? { selectedOptions: [raw] } : { selectedOptions: [], freeText: v };
+      awaitingRef.current = true;
+      setThinking(true);
+      client.questions.answer(step.question.id, body)
+        .then((res) => {
+          // Turn already ended (timeout) — carry the answer as a follow-up.
+          if (!res || !res.resumed) startTurn(`Re: "${step.prompt}" — ${v}`);
+        })
+        .catch(() => startTurn(`Re: "${step.prompt}" — ${v}`));
+      return;
+    }
+
+    // A prose question from the agent — the answer is the next chat message.
+    if (step.chatTurn && client) { startTurn(v); return; }
+
+    // The first answer IS the signal — hand it to the agent, which clarifies
+    // and proposes, exactly like the web app's guided intake.
+    if (step.id === "intent" && client) {
+      startTurn(
+        `I'm setting up my first signal. Here's what I'm looking for: ${v}. `
+        + "Ask me clarifying questions if anything important is missing, then create the signal.",
+      );
+      return;
+    }
+
+    // Demo / scripted fallback — the original local flow.
+    localIdx.current += 1;
+    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
+    setStep(resolveStep(next, newAns));
+  };
+
+  const finish = (ans) => {
+    setCalibrating(true);
+    (async () => {
+      let created = createdRef.current;
+      if (client && !created) {
+        // Live but the early create failed (or never ran) — create from the
+        // composed script answers, exactly like the original flow.
+        try {
+          await window.IndexApp.createIntent(composeDescription(ans));
+          created = true;
+        } catch (_e) { /* fall back to demo transition */ }
+      } else if (client && created && intentIdRef.current && usedLocalFallback.current) {
+        // Scripted fallback answers still refine the created signal.
+        window.IndexApp.mcpCall("update_intent", {
+          intentId: intentIdRef.current,
+          description: composeDescription(ans),
+        }).catch(() => {});
+      }
+      // Keep the calibrating beat visible even if the calls are fast.
+      await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
+      onDone(ans, created);
+    })();
   };
 
   if (calibrating) return <Calibrating/>;
@@ -37334,10 +38550,19 @@ function Onboarding({ onDone, onBack }) {
               display:"flex", flexDirection:"column", gap:20,
               paddingRight:6, paddingBottom:18,
             }}>
-              {ONBOARDING_STEPS.slice(0, stepIdx).map((s) => (
-                <PastTurn key={s.id} step={resolveStep(s, answers)} answer={answers[s.id]}/>
+              {turns.map((t) => (
+                <PastTurn key={t.id} step={{ prompt: t.prompt }} answer={t.answer}/>
               ))}
 
+              {thinking ? (
+                <div key="thinking" className="fade-up" style={{ display:"grid", gap:10 }}>
+                  <AgentBubble>
+                    <span style={{ color:"var(--ink-2)" }}>
+                      <StreamText text="reading your signal…" speed={30}/>
+                    </span>
+                  </AgentBubble>
+                </div>
+              ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
                 <AgentBubble><StreamText text={step.prompt} speed={18}/></AgentBubble>
                 {step.hint && (
@@ -37383,21 +38608,26 @@ function Onboarding({ onDone, onBack }) {
                         />
                         <Btn primary disabled={!draft.trim()} onClick={() => submit()}>send ↵</Btn>
                       </form>
-                      <div style={{
-                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
-                        textTransform:"uppercase", color:"var(--ink-3)",
-                      }}>or pick one</div>
-                      <div style={{
-                        display:"grid", gap:7, maxWidth:560,
-                      }}>
-                        {step.examples?.map(ex => (
-                          <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
-                        ))}
-                      </div>
+                      {step.examples && step.examples.length > 0 && (
+                        <React.Fragment>
+                          <div style={{
+                            fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
+                            textTransform:"uppercase", color:"var(--ink-3)",
+                          }}>or pick one</div>
+                          <div style={{
+                            display:"grid", gap:7, maxWidth:560,
+                          }}>
+                            {step.examples.map(ex => (
+                              <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
+                            ))}
+                          </div>
+                        </React.Fragment>
+                      )}
                     </React.Fragment>
                   )}
                 </div>
               </div>
+              )}
             </div>
           </div>
         </MacWindow>
@@ -37686,7 +38916,7 @@ function RetentionNote({ retention, onChange }) {
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
                     onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled }) {
-  const { EVENT, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES } = window.HALO_DATA;
+  const { EVENT, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES } = window.INDEX_DATA;
   const [tab, setTab] = useState("all");
   const [paused, setPaused] = useState(false);
   const [pipelineMode, setPipelineMode] = useState("broad");
@@ -37695,6 +38925,29 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const queuedRef = useRef(false);
   const answeredSinceRefill = useRef(0);
   const MAX_OPEN = 4;
+
+  // ---- live backend wiring ------------------------------------------------
+  // When signed in and this signal maps to a real intent, the radar, clarifiers,
+  // agent chat, and H2H threads come from services/api; otherwise the simulation
+  // below runs as the signed-out (browser preview) demo. The polling loop,
+  // handlers, and inbox stream that consume these live below.
+  const intentId = profile.intentId || null;
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed() && intentId);
+  // Memoize the client so the polling/inbox effects don't reset every render
+  // (getClient() returns a fresh object each call). The key is read lazily.
+  const client = useMemo(
+    () => (live && window.IndexApp.getClient ? window.IndexApp.getClient() : null),
+    [live],
+  );
+  // Current user id (for telling "you" from "them" in H2H threads). Mirrored
+  // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
+  const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  // Agent-chat session id per intent, persisted across signal switches.
+  const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
+  const chatSessionRef = useRef(chatSessions[intentId] || null);
+  const seenQuestionIds = useRef(new Set());   // question ids already in the feed
+  const convByPerson = useRef({});             // opportunityId -> conversationId
+  const personByConv = useRef({});             // conversationId -> opportunityId
 
   const flashMode = (m, holdMs = 9000) => {
     setPipelineMode(m);
@@ -37706,7 +38959,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   };
   useEffect(() => () => modeTimerRef.current && clearTimeout(modeTimerRef.current), []);
 
-  /* ----- ambient sim: append field events + maybe bump scores ----- */
+  /* ----- ambient sim: append field events + maybe bump scores (demo only) ----- */
   useInterval(() => {
     if (paused) return;
     const ev = FIELD_EVENTS[Math.floor(Math.random() * FIELD_EVENTS.length)];
@@ -37723,10 +38976,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         return next;
       });
     }
-  }, paused ? null : Math.max(800, 4200 / simRate));
+  }, (paused || live) ? null : Math.max(800, 4200 / simRate));
 
   /* ----- seed feed with the first batch of clarifiers (max 4 open) ----- */
   useEffect(() => {
+    if (live) return;
     if (queuedRef.current) return;
     queuedRef.current = true;
     const timers = [];
@@ -37817,7 +39071,44 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         id: Math.random().toString(36).slice(2), t: now(),
       }, ...prev].slice(0, 50));
     }
-  }, paused ? null : 14000 / simRate);
+  }, (paused || live) ? null : 14000 / simRate);
+
+  /* ----- live radar + clarifier polling ----- */
+  const injectClarifiers = React.useCallback((questions) => {
+    const fresh = (questions || []).filter((q) => q && q.id && !seenQuestionIds.current.has(q.id));
+    if (fresh.length === 0) return;
+    fresh.forEach((q) => seenQuestionIds.current.add(q.id));
+    const items = window.IndexApi.mapClarifiers(fresh).map((c) => ({
+      kind: "clarifier", id: c.id, clarifierId: c.id,
+      source: c.source, sourceMeta: c.sourceMeta, effect: "neutral",
+      text: c.text, chips: c.chips, triggersHint: c.triggersHint,
+      answered: false, choice: null, t: now(),
+    }));
+    setConversation((prev) => [...prev, ...items]);
+  }, [setConversation]);
+
+  const refreshRadar = React.useCallback(async () => {
+    if (!live || !client) return;
+    const [homeR, qR] = await Promise.all([
+      (intentId ? client.opportunities.homeForIntent(intentId) : client.opportunities.home()).catch(() => null),
+      (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
+    ]);
+    if (homeR) {
+      const sections = window.IndexApp.normalizeList(homeR, "sections");
+      const mapped = window.IndexApi.mapPeopleFromHomeSections(sections).map((p) => ({
+        ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
+      }));
+      setPeople(mapped);
+    }
+    if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
+  }, [live, client, intentId, setPeople, injectClarifiers]);
+
+  useEffect(() => {
+    if (!live) return;
+    refreshRadar();
+    const t = setInterval(refreshRadar, 45000);
+    return () => clearInterval(t);
+  }, [live, refreshRadar]);
 
   const visiblePeople = useMemo(() => people.filter(p => !p.hidden), [people]);
   const filtered = useMemo(() => [...visiblePeople].sort((a, b) => b.score - a.score), [visiblePeople]);
@@ -37838,10 +39129,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   }, [visiblePeople, negotiatingPeople]);
 
   const answerClarifier = (item, choice) => {
-    const clarifier = { id: item.clarifierId, effect: item.effect };
     setConversation(prev => prev.map(it =>
       it.id === item.id ? { ...it, answered:true, choice } : it
     ));
+    if (live) {
+      if (client && item.clarifierId) {
+        const isChip = Array.isArray(item.chips) && item.chips.includes(choice);
+        const body = isChip ? { selectedOptions: [choice] } : { selectedOptions: [], freeText: choice };
+        client.questions.answer(item.clarifierId, body)
+          .then(() => setTimeout(refreshRadar, 1500))
+          .catch(() => {});
+      }
+      return;
+    }
+    const clarifier = { id: item.clarifierId, effect: item.effect };
     const effectKind = applyClarifierEffect(clarifier, choice, setPeople, setField);
     const finalKind = effectKind || (item.effect && item.effect !== "neutral" ? item.effect : "broad");
     flashMode(finalKind, finalKind === "expanding" ? 8000 : 9000);
@@ -37859,6 +39160,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation(prev => prev.map(it =>
       it.id === item.id ? { ...it, answered:true, choice:"(dismissed)", dismissed:true } : it
     ));
+    if (live && client && item.clarifierId) {
+      client.questions.dismiss(item.clarifierId).catch(() => {});
+    }
   };
 
   const [draft, setDraft] = useState("");
@@ -37870,8 +39174,33 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       ...prev,
       { kind:"user", id: Math.random().toString(36).slice(2), text, t: now() },
     ]);
-    // the agent reads what you wrote and reaches back — acknowledging an
-    // instruction, or answering if you asked for something.
+
+    if (live && window.IndexApp) {
+      const agentMsgId = rid();
+      setConversation(prev => [...prev, { kind:"agent", id: agentMsgId, text: "", t: now() }]);
+      const setAgentText = (t) => setConversation(prev =>
+        prev.map(it => it.id === agentMsgId ? { ...it, text: t } : it));
+      let acc = "";
+      window.IndexApp.streamChat({
+        message: text,
+        sessionId: chatSessionRef.current,
+        scopeType: intentId ? "intent" : undefined,
+        scopeId: intentId || undefined,
+        onEvent: (e) => {
+          if (!e || !e.type) return;
+          if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }
+          else if (e.type === "response_reset") { acc = ""; setAgentText(""); }
+          else if (e.type === "done") { setAgentText(e.response || acc); }
+          else if (e.type === "error") { setAgentText(acc || `· ${e.message || "something went wrong"}`); }
+          else if (e.type === "user_question") { fetchChatQuestions(); }
+        },
+      }).then((sid) => {
+        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[intentId] = sid; }
+      }).catch(() => {});
+      return;
+    }
+
+    // demo fallback — the agent reads what you wrote and reaches back.
     const reply = agentReplyTo(text, { profile, negotiatingPeople, people });
     setTimeout(() => {
       setConversation(prev => [
@@ -37881,8 +39210,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }, 650);
   };
 
+  // On a blocking chat-mode question, pull it and render it inline as a clarifier.
+  const fetchChatQuestions = () => {
+    if (!client || !chatSessionRef.current) return;
+    client.questions.pending({ conversationId: chatSessionRef.current, mode: "chat" })
+      .then((res) => injectClarifiers(window.IndexApp.normalizeList(res, "questions")))
+      .catch(() => {});
+  };
+
   /* ----- chat (3rd window) — opens when you click someone in the pipeline ----- */
   const [chatId, setChatId] = useState(null);
+  const chatIdRef = useRef(null);
+  useEffect(() => { chatIdRef.current = chatId; }, [chatId]);
   const [chats, setChats] = useState({});
   const [chatDraft, setChatDraft] = useState("");
   const [unread, setUnread] = useState({});   // personId -> unread count
@@ -37893,11 +39232,37 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const retention = RETENTION_OPTIONS[retentionIdx];
   const cycleRetention = () => setRetentionIdx(i => (i + 1) % RETENTION_OPTIONS.length);
 
+  const toChatMsg = (m) => {
+    const parts = Array.isArray(m.parts) ? m.parts : [];
+    const text = parts.map((p) => (p && typeof p === "object" && p.text) ? p.text : "")
+      .filter(Boolean).join("\n");
+    const who = m.senderId && myId && m.senderId === myId ? "you"
+      : m.role === "agent" ? "index" : "them";
+    return { id: m.id || rid(), who, text };
+  };
+
   const openChat = (personId) => {
     setChatId(personId);
     setSummaryId(null);
     setProfileId(null);
     setUnread(prev => (prev[personId] ? { ...prev, [personId]: 0 } : prev));
+
+    if (live && client) {
+      client.opportunities.startChatForIntent(personId, intentId)
+        .then((res) => {
+          const cid = res && res.conversationId;
+          if (!cid) return;
+          convByPerson.current[personId] = cid;
+          personByConv.current[cid] = personId;
+          return client.conversations.messages(cid).then((msgsRes) => {
+            const msgs = window.IndexApp.normalizeList(msgsRes, "messages").map(toChatMsg);
+            setChats(prev => ({ ...prev, [personId]: msgs }));
+          });
+        })
+        .catch(() => {});
+      return;
+    }
+
     setChats(prev => {
       if (prev[personId]) return prev;
       const person = people.find(p => p.id === personId);
@@ -37940,6 +39305,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const acceptPerson = (personId) => {
     setPeople(prev => prev.map(p =>
       p.id === personId ? { ...p, status: "accepted" } : p));
+    if (live && client) {
+      client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
+        .then(() => setTimeout(refreshRadar, 1500))
+        .catch(() => {});
+    }
   };
   // Pass is the other half of the ready-stage decision — decline the intro
   // instead of accepting it. They drop out of the radar into "passed".
@@ -37947,6 +39317,11 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (chatId === personId) closeChats();
     setPeople(prev => prev.map(p =>
       p.id === personId ? { ...p, status: "passed" } : p));
+    if (live && client) {
+      client.opportunities.updateStatusForIntent(personId, "rejected", intentId)
+        .then(() => setTimeout(refreshRadar, 1500))
+        .catch(() => {});
+    }
   };
   const sendChat = () => {
     const text = chatDraft.trim();
@@ -37954,6 +39329,13 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const id = chatId;
     setChatDraft("");
     setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"you", text }] }));
+
+    if (live && client) {
+      const cid = convByPerson.current[id];
+      if (cid) client.conversations.sendMessage(cid, { parts: [{ text }] }).catch(() => {});
+      return;
+    }
+
     setTimeout(() => {
       setChats(prev => ({ ...prev, [id]: [...(prev[id] || []), { id: rid(), who:"them", text: chatReplyFor(text) }] }));
     }, 700);
@@ -37969,7 +39351,26 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     const person = people.find(p => p.id === pid);
     setChats(prev => ({ ...prev, [pid]: [...(prev[pid] || []), { id: rid(), who:"them", text: incomingPing(person) }] }));
     setUnread(prev => ({ ...prev, [pid]: (prev[pid] || 0) + 1 }));
-  }, (paused || Object.keys(chats).length === 0) ? null : 16000 / simRate);
+  }, (paused || live || Object.keys(chats).length === 0) ? null : 16000 / simRate);
+
+  // Live inbox — append counterpart/agent messages to any open H2H thread.
+  useEffect(() => {
+    if (!live || !window.IndexApp) return;
+    const sub = window.IndexApp.streamInbox((event) => {
+      if (!event || event.type !== "message" || !event.message) return;
+      const pid = personByConv.current[event.conversationId];
+      if (!pid) return;
+      const m = toChatMsg(event.message);
+      if (m.who === "you") return; // don't echo our own optimistic sends
+      setChats(prev => {
+        const list = prev[pid] || [];
+        if (list.some((x) => x.id === m.id)) return prev;
+        return { ...prev, [pid]: [...list, m] };
+      });
+      setUnread(prev => (pid === chatIdRef.current ? prev : { ...prev, [pid]: (prev[pid] || 0) + 1 }));
+    });
+    return () => { if (sub && sub.close) sub.close(); };
+  }, [live]);
 
   const chatPerson = chatId ? people.find(p => p.id === chatId) : null;
   const summaryPerson = summaryId ? people.find(p => p.id === summaryId) : null;
@@ -38039,7 +39440,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             onAnswer={answerClarifier}
             onDismiss={dismissClarifier}
             draft={draft} setDraft={setDraft} sendDraft={sendDraft}
-            negotiatingPeople={negotiatingPeople}
+            negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
             paused={paused}
             onTogglePause={() => setPaused(p => !p)}
@@ -38385,7 +39786,7 @@ function applyGenericEffect(effect, setPeople) {
 
 /* =================== TOP BAR (mac menubar styling) =================== */
 function TopBar({ paused, setPaused, simRate, setSimRate }) {
-  const { EVENT } = window.HALO_DATA;
+  const { EVENT } = window.INDEX_DATA;
   return (
     <div style={{
       display:"grid", gridTemplateColumns:"auto 1fr auto",
@@ -39621,44 +41022,116 @@ window.MainView = MainView;
 
 </script>
 <script type="text/babel">
-// App — orchestrates the Mac System 6 prototype.
-// Current flow: signals hub → onboarding/calibrating for new signals → main.
+// App — orchestrates the Mac System 6 prototype against the live backend.
+// Auth source of truth is the native Keychain credential surfaced as
+// window.INDEX_NATIVE.apiKey (bridged through window.IndexApp). When there is no
+// credential the app shows sign-in; INDEX_DATA is only a signed-out demo
+// fallback for browser preview where the Swift bridge is absent.
 
-// Session. Quitting and reopening shouldn't dump you back at sign-in —
-// only an explicit "sign out" should. The flag is written when the profile
-// review is confirmed (the point where onboarding is actually complete) and
-// cleared from the account menu.
-//
-// localStorage works here because main.swift sets allowFileAccessFromFileURLs
-// on the file:// origin; the guards are for the case where it doesn't, in
-// which case the app simply falls back to always starting at login.
-const SESSION_KEY = "halo.signedIn";
-
-function readSession() {
-  try { return window.localStorage.getItem(SESSION_KEY) === "1"; }
-  catch (e) { return false; }
+// Live data (mapped snapshot + ME/NETWORKS) is threaded through this context so
+// screens can prefer live data and fall back to the demo INDEX_DATA.
+const IndexDataContext = React.createContext(null);
+function useIndexData() {
+  const ctx = React.useContext(IndexDataContext);
+  return (ctx && ctx.data) || window.INDEX_DATA;
+}
+function useIndexEnv() {
+  return React.useContext(IndexDataContext) || {
+    data: window.INDEX_DATA, me: null, networks: null, features: {}, live: false,
+  };
 }
 
-function writeSession(on) {
-  try {
-    if (on) window.localStorage.setItem(SESSION_KEY, "1");
-    else window.localStorage.removeItem(SESSION_KEY);
-  } catch (e) { /* no store — session just won't survive a relaunch */ }
+function nativeAuthed() {
+  return !!(window.IndexApp && window.IndexApp.isAuthed());
 }
 
 function App() {
-  const { PEOPLE, POOL, FIELD_EVENTS, INTENTS } = window.HALO_DATA;
-  const [screen, setScreen] = useState(() => readSession() ? "intents" : "login");
+  const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
   // True until the user creates their first signal — the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
-  const [people, setPeople] = useState(() => [
-    ...PEOPLE.map(p => ({ ...p, hidden: false })),
-    ...POOL.map(p => ({ ...p, hidden: true })),
-  ]);
+  // Live snapshot state; null until loadSnapshot() resolves (or in demo mode).
+  const [snapshot, setSnapshot] = useState(null);
+  const [me, setMe] = useState(null);
+  const [networks, setNetworks] = useState(null);
+  const [features, setFeatures] = useState({});
+  const live = snapshot !== null;
+  const data = snapshot || window.INDEX_DATA;
+  const { PEOPLE, POOL, FIELD_EVENTS, INTENTS } = data;
+  const [people, setPeople] = useState([]);
   const [conversation, setConversation] = useState([]);
   const [field, setField] = useState([]);
   const [simRate, setSimRate] = useState(1);
+  // A fresh sign-in (vs an already-authed relaunch) goes through the original
+  // profile-review gate after the building screen.
+  const freshLoginRef = useRef(false);
+
+  // React to native login/logout coming from the Swift shell.
+  useEffect(() => {
+    if (!window.IndexApp) return;
+    return window.IndexApp.onAuthChanged((key) => {
+      if (key) {
+        setScreen("building");
+      } else {
+        setSnapshot(null); setMe(null); setNetworks(null);
+        setScreen("login");
+      }
+    });
+  }, []);
+
+  // The "building" screen doubles as the boot loader: fetch the live snapshot,
+  // then drop into the signals hub. Falls back to demo data when unauthenticated.
+  useEffect(() => {
+    if (screen !== "building") return;
+    let cancelled = false;
+    (async () => {
+      let loaded = null;
+      if (nativeAuthed() && window.IndexApp) {
+        const [snap] = await Promise.all([
+          window.IndexApp.loadSnapshot().catch(() => null),
+          new Promise((r) => setTimeout(r, 1400)),
+        ]);
+        loaded = snap;
+      }
+      if (cancelled) return;
+      if (loaded) {
+        applyLoaded(loaded);
+        setFreshUser((loaded.snapshot.INTENTS || []).length === 0);
+      }
+      // First run after a sign-in reviews the assembled profile, exactly like
+      // the original flow; an already-signed-in relaunch goes straight in.
+      setScreen(freshLoginRef.current ? "profile" : "intents");
+    })();
+    return () => { cancelled = true; };
+  }, [screen]);
+
+  // Fold a loaded snapshot into React state and mirror ME/NETWORKS/INTENTS onto
+  // window.INDEX_DATA so the side screens (settings/networks) that still read it
+  // directly show live data without prop threading.
+  const applyLoaded = (loaded) => {
+    setSnapshot(loaded.snapshot);
+    setMe(loaded.me);
+    setNetworks(loaded.networks);
+    setFeatures(loaded.features || {});
+    setPeople([
+      ...(loaded.snapshot.PEOPLE || []).map(p => ({ ...p, hidden: false })),
+      ...(loaded.snapshot.POOL || []).map(p => ({ ...p, hidden: true })),
+    ]);
+    Object.assign(window.INDEX_DATA, {
+      ME: loaded.me,
+      NETWORKS: loaded.networks,
+      INTENTS: loaded.snapshot.INTENTS || [],
+    });
+  };
+
+  const signOut = () => {
+    if (window.IndexApp && window.IndexApp.logout()) {
+      // onAuthChanged will reset the UI once Swift confirms.
+      return;
+    }
+    setSnapshot(null); setMe(null); setNetworks(null);
+    setScreen("login");
+  };
 
   // Bridge: MainView publishes its chats (per active signal) up here so the top
   // menubar can show a 2-step menu — signals, and the chats within each — and
@@ -39704,27 +41177,50 @@ function App() {
       setField(seeds);
     }, 400);
   };
+  const profileFromIntent = (intent) => ({
+    intentId: intent.id,
+    intent: intent.title,
+    edges: intent.edges,
+    offLimits: intent.offLimits,
+    shape: intent.shape || "warm",
+  });
   const pickExistingIntent = (intent) => {
-    setProfile({
-      intent: intent.title,
-      edges: intent.edges,
-      offLimits: intent.offLimits,
-      shape: intent.shape || "warm",
-    });
+    setProfile(profileFromIntent(intent));
     setScreen("main");
     seedField();
   };
   const goOnboarding = () => setScreen("onboarding");
-  const finishOnboarding = (answers) => {
+  const finishOnboarding = async (answers, created) => {
+    setConversation([]);
+    setField([]);
+    setFreshUser(false);   // they've created a signal — hub is no longer empty
+
+    // When the intent was created live, reload the snapshot and open the main
+    // view on the freshly created signal (newest by createdAt).
+    if (created && window.IndexApp && window.IndexApp.isAuthed()) {
+      const snap = await window.IndexApp.loadSnapshot().catch(() => null);
+      if (snap) {
+        applyLoaded(snap);
+        const intents = [...(snap.snapshot.INTENTS || [])].sort((a, b) => {
+          const ta = a.source && a.source.createdAt ? Date.parse(a.source.createdAt) : 0;
+          const tb = b.source && b.source.createdAt ? Date.parse(b.source.createdAt) : 0;
+          return tb - ta;
+        });
+        if (intents[0]) {
+          setProfile(profileFromIntent(intents[0]));
+          setScreen("main");
+          seedField();
+          return;
+        }
+      }
+    }
+
     setProfile({
       intent: answers.intent,
       edges: answers.edges,
       offLimits: answers["off-limits"],
       shape: answers.shape || "warm",
     });
-    setConversation([]);
-    setField([]);
-    setFreshUser(false);   // they've created a signal — hub is no longer empty
     setScreen("main");
     seedField();
   };
@@ -39740,36 +41236,43 @@ function App() {
     }
   };
 
+  const startLogin = () => {
+    freshLoginRef.current = true;
+    if (window.IndexApp && window.IndexApp.login()) {
+      // Native bridge present: wait for __indexAuthChanged; Login shows waiting.
+      return true;
+    }
+    // No native bridge (browser preview) — drop into the demo flow.
+    setScreen("building");
+    return false;
+  };
+
   return (
-    <React.Fragment>
+    <IndexDataContext.Provider value={{ data, me, networks, features, live }}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
       }} className="mac-desktop">
-        {screen === "login"       && <Login onSignIn={() => setScreen("building")}/>}
-        {/* Agent assembles the profile, then we show it for review. */}
-        {screen === "building"    && <BuildingProfile onDone={() => setScreen("profile")}/>}
+        {screen === "login"       && <Login onSignIn={startLogin}/>}
+        {/* Boot loader: assembles the live snapshot, then opens the hub. */}
+        {screen === "building"    && <BuildingProfile/>}
         {/* First run: review the profile we assembled, then into the hub.
-            Confirming is the only way past this gate — declining (footer or
-            titlebar gadget) returns to sign-in with nothing written, so the
-            review replays on the next sign-in rather than being silently
-            treated as approved. */}
+            Declining returns to sign-in with nothing written, so the review
+            replays on the next sign-in rather than being silently approved. */}
         {screen === "profile"     && <Settings
                                        initialTab="profile"
                                        profileOnly
-                                       onClose={() => { writeSession(false); setScreen("login"); }}
+                                       onClose={() => { freshLoginRef.current = false; signOut(); }}
                                        onDone={() => {
-                                         // confirming the profile is what completes onboarding,
-                                         // so it's also what starts the remembered session
-                                         writeSession(true);
-                                         setFreshUser(true);
+                                         freshLoginRef.current = false;
+                                         if (!nativeAuthed()) setFreshUser(true);
                                          setScreen("intents");
                                        }}/>}
         {screen === "intents"     && <Intents
                                        fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
                                        onNew={goOnboarding}
-                                       onSignOut={() => { writeSession(false); setScreen("login"); }}/>}
+                                       onSignOut={signOut}/>}
         {screen === "onboarding"  && <Onboarding onDone={finishOnboarding} onBack={() => setScreen("intents")}/>}
         {screen === "main"        && (
           <MainView
@@ -39786,7 +41289,7 @@ function App() {
           />
         )}
       </div>
-    </React.Fragment>
+    </IndexDataContext.Provider>
   );
 }
 

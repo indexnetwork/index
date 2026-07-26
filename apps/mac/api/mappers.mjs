@@ -63,13 +63,16 @@ export function mapIntent(intent, questionCount = 0) {
     ? intent.networks.map((network) => network.networkTitle).filter(Boolean)
     : [];
 
+  const archived = Boolean(intent.archivedAt);
+  const paused = !archived && String(intent.status || '').toUpperCase() === 'PAUSED';
+
   return {
     id: intent.id,
     title: intent.summary || intent.payload || 'untitled signal',
     edges: networkTitles.join(' · '),
     offLimits: '',
     shape: 'warm',
-    status: intent.archivedAt ? 'paused' : 'active',
+    status: archived ? 'archived' : paused ? 'paused' : 'active',
     pipeline: { warm: 0, considering: 0, negotiating: 0 },
     lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
     age: intent.createdAt ? `running ${relativeAge(intent.createdAt)}` : '',

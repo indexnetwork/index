@@ -14,6 +14,9 @@ const DEFAULT_API_BASE_URL = 'http://localhost:3001/api';
  * @property {() => (string | Promise<string | null | undefined>)} [getToken]
  *   Optional bearer-token provider. Native shells can later source this from
  *   Keychain and inject it into the web layer.
+ * @property {() => (string | Promise<string | null | undefined>)} [getApiKey]
+ *   Optional API-key provider, sent as the `x-api-key` header. Used by the
+ *   native macOS/iOS shells whose credential is a CLI API key, not a session.
  * @property {typeof fetch} [fetchImpl] Optional fetch implementation for tests.
  */
 
@@ -71,6 +74,10 @@ export function createIndexApiClient(options = {}) {
     const { method = 'GET', body, auth = true, signal } = requestOptions;
     const headers = { 'Content-Type': 'application/json' };
 
+    if (auth && options.getApiKey) {
+      const apiKey = await options.getApiKey();
+      if (apiKey) headers['x-api-key'] = apiKey;
+    }
     if (auth && options.getToken) {
       const token = await options.getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
@@ -103,18 +110,37 @@ export function createIndexApiClient(options = {}) {
 
     auth: {
       me: (options = {}) => request('/auth/me', options),
+      updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),
+      revokeCliCredential: (keyId, targetKey, options = {}) => request(
+        '/auth/cli-credential/revoke',
+        { ...options, method: 'POST', body: { keyId, targetKey } },
+      ),
     },
 
     networks: {
       list: (options = {}) => request('/networks', options),
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
+      create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      join: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/join`, { ...options, method: 'POST', body: {} }),
+      leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
+    },
+
+    agents: {
+      list: (options = {}) => request('/agents', options),
     },
 
     intents: {
       list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
+      // Turns a chat `intent_proposal` (proposalId + description) into a
+      // persisted intent; resolves { intentId }.
+      confirm: (body, options = {}) => request('/intents/confirm', { ...options, method: 'POST', body }),
       get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
       archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
+      updateStatus: (intentId, status, options = {}) => request(
+        `/intents/${encodeURIComponent(intentId)}/status`,
+        { ...options, method: 'PATCH', body: { status } },
+      ),
     },
 
     opportunities: {
@@ -171,6 +197,13 @@ export function createIndexApiClient(options = {}) {
       dismiss: (questionId, options = {}) => request(
         `/questions/${encodeURIComponent(questionId)}/dismiss`,
         { ...options, method: 'POST', body: {} },
+      ),
+    },
+
+    tools: {
+      invoke: (toolName, query = {}, options = {}) => request(
+        `/tools/${encodeURIComponent(toolName)}`,
+        { ...options, method: 'POST', body: { query } },
       ),
     },
 

@@ -419,7 +419,7 @@ function Signal({ sig, netName, onRemove }) {
   );
 }
 
-function NetworkDetail({ net, onBack }) {
+function NetworkDetail({ net, onBack, onLeave }) {
   const [signals, setSignals] = useState(net.signals || []);
   // Last removal, kept so it can be put back — removing is reversible by
   // definition here, so the undo is the affordance that says "not deleted".
@@ -481,12 +481,14 @@ function NetworkDetail({ net, onBack }) {
 
               {/* leaving is destructive, so it carries the red — but stays outline
                   only, since it isn't the thing you came here to do */}
-              <button style={{
-                flex:"0 0 auto", cursor:"pointer",
-                fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
-                border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
-                boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
-              }}>leave</button>
+              <button
+                onClick={() => onLeave && onLeave(net)}
+                style={{
+                  flex:"0 0 auto", cursor:"pointer",
+                  fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                  border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
+                  boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
+                }}>leave</button>
             </div>
           </div>
 
@@ -547,6 +549,10 @@ function NetworkDetail({ net, onBack }) {
 
 function Networks({ onClose }) {
   const { NETWORKS } = window.INDEX_DATA;
+  // Live backend wiring: writes fire against services/api when signed in, but
+  // the UI keeps updating the local mirror exactly as the offline demo does.
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState("mine");
   const [openNet, setOpenNet] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -572,10 +578,28 @@ function Networks({ onClose }) {
     setNets([...NETWORKS]);
     setCreating(false);
     setTab("mine");
+    if (client) {
+      client.networks.create({
+        title: name,
+        prompt: desc || undefined,
+        joinPolicy: access === "public" ? "anyone" : "invite_only",
+      }).catch(() => {});
+    }
+  };
+
+  const joinNetwork = (net) => {
+    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: true, role: "member" } : n));
+    if (client) client.networks.join(net.id).catch(() => {});
+  };
+
+  const leaveNetwork = (net) => {
+    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: false, role: undefined } : n));
+    if (client) client.networks.leave(net.id).catch(() => {});
+    setOpenNet(null);
   };
 
   if (openNet) {
-    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)}/>;
+    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)} onLeave={leaveNetwork}/>;
   }
   // Its own window, like the profile screen — not an overlay on this one.
   if (creating) {
@@ -634,7 +658,7 @@ function Networks({ onClose }) {
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"6px 12px 14px",
           }}>
-            {shown.map(net => <NetworkRow key={net.id} net={net} onOpen={setOpenNet}/>)}
+            {shown.map(net => <NetworkRow key={net.id} net={net} onOpen={setOpenNet} onJoin={joinNetwork}/>)}
 
             {!shown.length && (
               <p style={{
