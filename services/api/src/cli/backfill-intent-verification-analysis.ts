@@ -169,6 +169,17 @@ type CandidateDbRow = {
   first_discovery_succeeded_at: Date | null; status: string | null;
 };
 
+/**
+ * Minimal runtime surface for the maintenance query path. Exported so the
+ * package-script boundary test can exercise production dependency assembly
+ * with a hermetic SQL recorder rather than a database connection.
+ */
+export type BackfillRuntime = {
+  sql: typeof import('drizzle-orm').sql;
+  db: (Awaited<typeof import('../lib/drizzle/drizzle')>)['default'];
+  getProfileContext: (userId: string) => Promise<unknown | null>;
+};
+
 /** Candidate partitioning is diagnostic; all four partitions are evaluated independently. */
 export function classifyCandidate(candidate: Pick<Candidate, 'proposalConfirmed' | 'sourceType' | 'semanticEntropy' | 'referentialAnchor' | 'intentMode' | 'speechActType' | 'felicityAuthority' | 'felicitySincerity' | 'felicityClarity'>): CandidatePartition {
   const allScoresMissing = candidate.felicityAuthority === null
@@ -306,17 +317,19 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
 export async function createRuntimeDeps(
   options: Pick<BackfillOptions, 'dryRun'>,
   registerCloseDb?: (closeDb: () => Promise<void>) => void,
+  runtimeLoader?: () => Promise<BackfillRuntime>,
 ): Promise<BackfillDeps> {
   // Runtime modules remain lazy: assembling a dry-run command must not validate
   // DATABASE_URL, open a database client, or construct a provider-backed model.
-  let runtime: Promise<{ sql: Awaited<typeof import('drizzle-orm')>['sql']; db: (Awaited<typeof import('../lib/drizzle/drizzle')>)['default']; chat: InstanceType<(Awaited<typeof import('../adapters/chat.database.adapter')>)['ChatDatabaseAdapter']> }> | undefined;
-  const getRuntime = () => runtime ??= Promise.all([
+  let runtime: Promise<BackfillRuntime> | undefined;
+  const getRuntime = () => runtime ??= runtimeLoader?.() ?? Promise.all([
     import('drizzle-orm'),
     import('../lib/drizzle/drizzle'),
     import('../adapters/chat.database.adapter'),
   ]).then(([{ sql }, { default: db, closeDb }, { ChatDatabaseAdapter }]) => {
     registerCloseDb?.(closeDb);
-    return { sql, db, chat: new ChatDatabaseAdapter() };
+    const chat = new ChatDatabaseAdapter();
+    return { sql, db, getProfileContext: (userId: string) => chat.getProfile(userId) };
   });
   let verifier: SemanticVerifier | undefined;
   const getVerifier = () => {
@@ -331,7 +344,7 @@ export async function createRuntimeDeps(
           referential_anchor, intent_mode, speech_act_type, felicity_authority,
           felicity_sincerity, felicity_clarity, summary, is_incognito,
           embedding::text AS embedding, created_at, updated_at, archived_at,
-          last_visited_at, first_discovery_succeeded_at, status
+          last_visited_at, first_discovery_succeeded_at, i.status AS status
         FROM intents i LEFT JOIN intent_proposals p ON p.consumed_intent_id = i.id AND p.status = 'consumed'
         WHERE i.felicity_authority IS NULL AND i.felicity_sincerity IS NULL AND i.felicity_clarity IS NULL
         ORDER BY i.created_at ASC, i.id ASC LIMIT ${limit}`);
@@ -381,8 +394,7 @@ export async function createRuntimeDeps(
       return { completeAnalysis: Number(row?.complete_analysis ?? 0), partialAnalysis: Number(row?.partial_analysis ?? 0) };
     },
     async getProfileContext(userId) {
-      const { chat } = await getRuntime();
-      return chat.getProfile(userId);
+      return (await getRuntime()).getProfileContext(userId);
     },
     verify: (payload, context) => getVerifier().invoke(payload, context),
     async getAttemptStatus(runId, intentId) {
@@ -577,11 +589,11 @@ async function loadTestEntrypointHarness(): Promise<EntrypointOverrides> {
   if (process.env.NODE_ENV !== 'test' || !process.env.IND590_CLI_TEST_HARNESS) return {};
   const harness = await import('./tests/fixtures/backfill-intent-verification-analysis.package-script.harness');
   const harnesses = {
-    emptyDryRun: harness.emptyDryRun,
+    productionAssemblyDryRun: harness.productionAssemblyDryRun,
     candidateDiagnostic: harness.candidateDiagnostic,
   };
   const name = process.env.IND590_CLI_TEST_HARNESS;
-  if (name !== 'emptyDryRun' && name !== 'candidateDiagnostic') {
+  if (name !== 'productionAssemblyDryRun' && name !== 'candidateDiagnostic') {
     throw new Error('invalid IND-590 CLI test harness');
   }
   return { createDeps: harnesses[name] };

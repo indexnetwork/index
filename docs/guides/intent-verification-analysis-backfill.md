@@ -32,10 +32,11 @@ sanitized aggregate report, then exits nonzero and writes its diagnostic to stde
 
 The entrypoint must not construct `SemanticVerifier` in dry-run mode. Model
 construction requires provider configuration even when no verification is due.
-The discarded disposable-proof stdout/stderr cannot establish whether that was the
-observed runtime failure, but a local empty-environment harness deterministically
-reproduces this pre-report failure in the retired eager startup path. The command
-now creates that verifier only for explicit write mode.
+The recovered disposable proof established a pre-report failure, while its raw
+diagnostic was deliberately discarded. A hermetic package-command regression
+identified and guards the candidate-query cause: it qualifies `intents.status` across
+the proposal join with no provider configuration. The command creates the verifier
+only for explicit write mode.
 
 ## Candidate partitions
 

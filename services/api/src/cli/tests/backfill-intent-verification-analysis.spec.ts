@@ -75,7 +75,7 @@ async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/in
   return { stdout, stderr, exitCode };
 }
 
-async function runMaintainedCommand(harness?: 'emptyDryRun' | 'candidateDiagnostic') {
+async function runMaintainedCommand(harness?: 'productionAssemblyDryRun' | 'candidateDiagnostic') {
   const child = Bun.spawn({
     cmd: [
       '/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, 'NODE_ENV=test',
@@ -209,8 +209,8 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(result.stdout).toBe('{"assembled":true}\n');
   });
 
-  it('runs the documented package command with one aggregate-only JSON stdout report and no launcher noise', async () => {
-    const result = await runMaintainedCommand('emptyDryRun');
+  it('runs the documented package command through production runtime assembly with one aggregate-only JSON stdout report', async () => {
+    const result = await runMaintainedCommand('productionAssemblyDryRun');
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
