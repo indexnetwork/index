@@ -927,6 +927,72 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "opportunityOwnerActionForStatus",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "bindOwnerApprovalProvenance",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerAction",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalAttestation",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalAuthority",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalBinding",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalChallenge",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalDenialReason",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalVerdict",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerInteractionProvenance",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerInteractionSurface",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "EnrichmentGraphFactory",
       "kind": "value",
       "stability": "stable",

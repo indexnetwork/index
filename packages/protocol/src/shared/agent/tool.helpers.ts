@@ -106,16 +106,6 @@ export interface ResolvedToolContext {
   sessionId?: string;
   /** True when the request originates from an MCP transport (no interactive UI available). */
   isMcp?: boolean;
-  /**
-   * True only when the host composition bound an authenticated owner SESSION
-   * (OAuth/JWT bearer — never an API key, never a mediated orchestrator) to
-   * this exact request. Server-derived at the host seam (MCP identity
-   * resolution, REST tool controller); caller input can never set it. Feeds
-   * the trusted interaction provenance of the opportunity owner-approval
-   * boundary (IND-593): without it, non-agent tool calls cannot attest owner
-   * authority and fail closed.
-   */
-  isSessionAuth?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
   /**
@@ -297,12 +287,6 @@ interface ToolContextBindings {
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
-  /**
-   * Authoritative owner-approval verifier/consumer for opportunity state
-   * changes (IND-593). Forwarded to the opportunity tools; when absent,
-   * owner-gated transitions fail closed before persistence.
-   */
-  opportunityOwnerApproval?: import('../../opportunity/application/opportunity.owner-approval.js').OpportunityOwnerApprovalAuthority;
   /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
   discoveryRuns?: DiscoveryRunStore;
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
@@ -672,12 +656,6 @@ interface ToolDepsBindings {
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
-  /**
-   * Authoritative owner-approval verifier/consumer for opportunity state
-   * changes (IND-593). When absent, every owner-gated update_opportunity
-   * transition (send/accept/reject) fails closed before persistence.
-   */
-  opportunityOwnerApproval?: import('../../opportunity/application/opportunity.owner-approval.js').OpportunityOwnerApprovalAuthority;
   /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
   discoveryRuns?: DiscoveryRunStore;
   /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */

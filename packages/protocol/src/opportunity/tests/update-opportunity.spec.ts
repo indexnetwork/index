@@ -2,19 +2,24 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
+import { bindOwnerApprovalProvenance } from "../application/opportunity.owner-provenance.js";
 
 const CALLER_ID = "caller-111";
 const OTHER_ID  = "other-222";
 const OPP_ID    = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function makeContext(userId = CALLER_ID): ResolvedToolContext {
-  return {
+  const context = {
     userId,
     user: { id: userId, name: "Test", email: "t@test" } as any,
     userProfile: null,
     userNetworks: [],
     isMcp: true,
   } as unknown as ResolvedToolContext;
+  // This state-machine suite exercises the direct authenticated MCP owner
+  // path; host-bound provenance keeps the lifecycle assertions reachable.
+  bindOwnerApprovalProvenance(context, { surface: "mcp", sessionAuthenticated: true });
+  return context;
 }
 
 function makeOpportunity(status: string, actorIds = [CALLER_ID, OTHER_ID]): Opportunity {

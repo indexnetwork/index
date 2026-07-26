@@ -18,6 +18,7 @@ import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } 
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
 import { admitOpportunityUpdate } from './opportunity.update-admission.js';
 import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from './opportunity.owner-approval.js';
+import { ownerApprovalProvenanceFor } from './opportunity.owner-provenance.js';
 import { selectOpportunityFeed } from './opportunity.feed-selection.js';
 
 export { buildOpportunityPresentation } from "./opportunity.card-presentation.js";
@@ -2051,6 +2052,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         if (!authority) {
           return ownerApprovalDenial(opportunityId, ownerAction, { kind: 'denied', reason: 'missing' });
         }
+        const directProvenance = ownerApprovalProvenanceFor(context);
         const verdict = context.agentId
           ? await authority.consumeAgentProof(query.ownerApprovalProof, {
               opportunityId,
@@ -2058,20 +2060,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
               ownerId: context.userId,
               agentId: context.agentId,
             })
-          : await authority.attestOwnerInteraction({
-              opportunityId,
-              action: ownerAction,
-              ownerId: context.userId,
-              // Trusted, server-derived interaction/surface provenance — built
-              // from the resolved context only. Chat turns carry a chat
-              // session; `isSessionAuth` is bound solely by host composition
-              // from the authenticated request identity. Tool arguments can
-              // never populate any of it.
-              provenance: {
-                surface: context.isMcp ? 'mcp' : context.sessionId ? 'chat' : 'rest',
-                sessionAuthenticated: context.isSessionAuth === true,
-              },
-            });
+          : directProvenance
+            ? await authority.attestOwnerInteraction({
+                opportunityId,
+                action: ownerAction,
+                ownerId: context.userId,
+                provenance: directProvenance,
+              })
+            : { kind: 'denied' as const, reason: 'untrusted_provenance' as const };
         if (verdict.kind === 'denied') return ownerApprovalDenial(opportunityId, ownerAction, verdict);
       }
 

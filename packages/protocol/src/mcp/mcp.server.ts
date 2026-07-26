@@ -19,6 +19,8 @@ import type { Question } from '../shared/schemas/question.schema.js';
 import { QuestionSchema } from '../shared/schemas/question.schema.js';
 import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../runtime/foreground/composition/tool.registry.js';
+import type { ToolRegistryDeps } from '../runtime/foreground/composition/tool.registry.js';
+import { bindOwnerApprovalProvenance } from '../opportunity/application/opportunity.owner-provenance.js';
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -78,7 +80,7 @@ export function clearMcpToolMetadataCacheForTests(): void {
  * Does NOT store tool handlers — those remain request-scoped because they
  * capture per-request userDb/systemDb.
  */
-export function getCachedMcpToolMetadata(deps: ToolDeps): readonly McpToolRegistrationMetadata[] {
+export function getCachedMcpToolMetadata(deps: ToolRegistryDeps): readonly McpToolRegistrationMetadata[] {
   const cacheKey = getMcpToolMetadataCacheKey(deps);
   const cached = mcpToolMetadataCache.get(cacheKey);
   if (cached) return cached;
@@ -474,7 +476,7 @@ export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
 }
 
 export function createMcpServer(
-  deps: ToolDeps,
+  deps: ToolRegistryDeps,
   authResolver: McpAuthResolver,
   scopedDepsFactory: ScopedDepsFactory,
   policyOptions: McpCapabilityPolicyOptions = {},
@@ -570,11 +572,14 @@ export function createMcpServer(
         context.agentId = authenticated.identity.agentId;
       }
       // Trusted provenance seam (IND-593): only the server-resolved session
-      // identity — never a caller-supplied field — marks this context as a
-      // direct authenticated owner session for the owner-approval boundary.
-      if (authenticated.identity.isSessionAuth === true) {
-        context.isSessionAuth = true;
-      }
+      // identity — never a caller-supplied field — marks a direct MCP owner
+      // interaction for the opportunity owner-approval boundary. The
+      // capability-local extension deliberately keeps this field out of the
+      // shared helper's negotiation/question cycle.
+      bindOwnerApprovalProvenance(context, {
+        surface: 'mcp',
+        sessionAuthenticated: authenticated.identity.isSessionAuth === true,
+      });
       if (authenticated.identity.clientSurface) {
         context.clientSurface = authenticated.identity.clientSurface;
       }

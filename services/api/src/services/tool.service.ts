@@ -10,9 +10,9 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
@@ -27,6 +27,10 @@ import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 
 const logger = log.service.from('ToolService');
+
+type ToolServiceDeps = ToolDeps & {
+  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
+};
 
 const questionerAdapter = new QuestionerAdapter(db);
 
@@ -62,7 +66,7 @@ export class ToolService {
     userDb: ToolDeps['userDb'],
     systemDb: ToolDeps['systemDb'],
     graphs: ToolDeps['graphs'],
-  ): ToolDeps {
+  ): ToolServiceDeps {
     return {
       database,
       userDb,
@@ -164,9 +168,10 @@ export class ToolService {
     // authenticated owner session ONLY from the controller-derived auth kind.
     // API-key (CLI/agent) callers stay unmarked and cannot attest owner
     // authority at the opportunity owner-approval boundary.
-    if (options.sessionAuthenticated === true) {
-      context.isSessionAuth = true;
-    }
+    bindOwnerApprovalProvenance(context, {
+      surface: 'rest',
+      sessionAuthenticated: options.sessionAuthenticated === true,
+    });
 
     if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
       return {

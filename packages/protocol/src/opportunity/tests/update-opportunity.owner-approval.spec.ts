@@ -17,6 +17,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { OpportunityOwnerApprovalAuthority, OpportunityOwnerApprovalBinding, OpportunityOwnerApprovalVerdict } from "../opportunity.owner-approval.js";
+import { bindOwnerApprovalProvenance } from "../application/opportunity.owner-provenance.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 
 const CALLER_ID = "caller-111";
@@ -48,33 +49,33 @@ function makeAgentContext(userId = CALLER_ID, agentId = AGENT_ID): ResolvedToolC
 }
 
 function makeOwnerContext(userId = CALLER_ID): ResolvedToolContext {
-  return {
+  const context = {
     userId,
     user: { id: userId, name: "Test", email: "t@test" } as never,
     userProfile: null,
     userNetworks: [],
     isMcp: false,
-    // Set only by host composition from the authenticated request — this is
-    // the genuine direct owner session shape (REST Tool API, session auth).
-    isSessionAuth: true,
   } as unknown as ResolvedToolContext;
+  bindOwnerApprovalProvenance(context, { surface: "rest", sessionAuthenticated: true });
+  return context;
 }
 
 /** Session-authenticated owner connected over MCP directly (no agent). */
 function makeMcpOwnerContext(userId = CALLER_ID): ResolvedToolContext {
-  return {
+  const context = {
     userId,
     user: { id: userId, name: "Test", email: "t@test" } as never,
     userProfile: null,
     userNetworks: [],
     isMcp: true,
-    isSessionAuth: true,
   } as unknown as ResolvedToolContext;
+  bindOwnerApprovalProvenance(context, { surface: "mcp", sessionAuthenticated: true });
+  return context;
 }
 
 /** Chat-orchestrator turn inside the owner's chat session — mediated, not direct. */
 function makeChatContext(userId = CALLER_ID): ResolvedToolContext {
-  return {
+  const context = {
     userId,
     user: { id: userId, name: "Test", email: "t@test" } as never,
     userProfile: null,
@@ -82,16 +83,33 @@ function makeChatContext(userId = CALLER_ID): ResolvedToolContext {
     isMcp: false,
     sessionId: "chat-session-1",
   } as unknown as ResolvedToolContext;
+  bindOwnerApprovalProvenance(context, { surface: "chat", sessionAuthenticated: false });
+  return context;
 }
 
 /** API-key (CLI-style) tool call — authenticated principal, but no owner session. */
 function makeApiKeyContext(userId = CALLER_ID): ResolvedToolContext {
+  const context = {
+    userId,
+    user: { id: userId, name: "Test", email: "t@test" } as never,
+    userProfile: null,
+    userNetworks: [],
+    isMcp: false,
+  } as unknown as ResolvedToolContext;
+  bindOwnerApprovalProvenance(context, { surface: "rest", sessionAuthenticated: false });
+  return context;
+}
+
+/** Caller-shaped fields must not substitute for the host's private provenance tag. */
+function makeForgedOwnerishContext(userId = CALLER_ID): ResolvedToolContext {
   return {
     userId,
     user: { id: userId, name: "Test", email: "t@test" } as never,
     userProfile: null,
     userNetworks: [],
     isMcp: false,
+    isSessionAuth: true,
+    ownerApprovalProvenance: { surface: "rest", sessionAuthenticated: true },
   } as unknown as ResolvedToolContext;
 }
 
@@ -572,6 +590,20 @@ describe("update_opportunity — owner approval gate (IND-593)", () => {
       }]);
       expect(authority.attestCalls).toEqual([]);
     }
+  });
+
+  test("ordinary context fields cannot forge direct-owner provenance", async () => {
+    const authority = new FakeOwnerApprovalAuthority();
+    const { deps, invoke } = makeDeps(authority);
+    const result = JSON.parse(await captureTool(deps).handler({
+      context: makeForgedOwnerishContext(),
+      query: { opportunityId: OPP_ID, status: "accepted" } as never,
+    })) as ToolResult;
+
+    expect(result.success).toBe(false);
+    expect(result.approval?.reason).toBe("untrusted_provenance");
+    expect(authority.attestCalls).toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   test("direct owner interactions fail closed when the host does not attest", async () => {

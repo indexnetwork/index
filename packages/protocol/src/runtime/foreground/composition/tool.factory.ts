@@ -29,6 +29,8 @@ import { createAgentTools } from "../../../capabilities/participant-agents.tools
 import { createNegotiationTools } from "../../../capabilities/negotiation.facade.js";
 import { createPremiseTools } from "../../../premise/premise.tools.js";
 import { createQuestionerTools, createAskUserQuestionTools } from "../../../capabilities/questions.facade.js";
+import type { OpportunityOwnerApprovalDeps } from "../../../opportunity/ports/opportunity.tools.port.js";
+import { bindOwnerApprovalProvenance } from "../../../opportunity/application/opportunity.owner-provenance.js";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "../../../shared/agent/tool.helpers.js";
@@ -49,7 +51,7 @@ const logger = protocolLogger("ChatTools");
  * via the `deps` parameter — the protocol lib never imports concrete adapters.
  */
 export async function createChatTools(
-  deps: ToolContext,
+  deps: ToolContext & OpportunityOwnerApprovalDeps,
   preResolvedContext?: ResolvedToolContext
 ) {
   const { database, embedder, scraper } = deps;
@@ -76,6 +78,14 @@ export async function createChatTools(
     resolvedContext.scopeType = explicitScope.scopeType;
     resolvedContext.scopeId = explicitScope.scopeId;
   }
+
+  // This factory is an orchestrated chat surface, never a direct owner request.
+  // Bind that fact at composition time rather than inferring it from a session
+  // id or a caller-controlled tool argument inside the opportunity handler.
+  bindOwnerApprovalProvenance(resolvedContext, {
+    surface: 'chat',
+    sessionAuthenticated: false,
+  });
 
   const allowedNetworkIds = deriveAllowedNetworkIds({
     memberships: resolvedContext.userNetworks,
@@ -187,7 +197,7 @@ export async function createChatTools(
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;
   const integration = deps.integration;
-  const toolDeps: ToolDeps = {
+  const toolDeps: ToolDeps & OpportunityOwnerApprovalDeps = {
     database,
     userDb,
     systemDb,

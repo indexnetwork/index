@@ -55,7 +55,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -67,6 +67,10 @@ import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-pro
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
+
+type McpToolDeps = ToolDeps & {
+  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPOSITION ROOT (was protocol-init.ts)
@@ -694,7 +698,7 @@ function createMcpServerInstance(): McpServer {
   const userDb = protocolDeps.createUserDatabase(protocolDeps.database, 'system');
   const systemDb = protocolDeps.createSystemDatabase(protocolDeps.database, 'system', []);
 
-  const toolDeps: ToolDeps = {
+  const toolDeps: McpToolDeps = {
     database: protocolDeps.database,
     userDb,
     systemDb,
