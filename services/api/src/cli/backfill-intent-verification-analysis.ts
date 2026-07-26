@@ -140,6 +140,33 @@ export type BackfillReport = {
   unchangedControl: number;
 };
 
+/** Static, content-free failure categories emitted only on stderr. */
+export const CLI_FAILURE_STAGES = [
+  'environment_loading',
+  'entrypoint_setup',
+  'parse_options',
+  'validate_options',
+  'dependency_assembly',
+  'count_partitions',
+  'count_controls',
+  'candidate_listing',
+  'profile_context',
+  'write_operation',
+  'report_serialization',
+  'report_emission',
+] as const;
+export type CliFailureStage = typeof CLI_FAILURE_STAGES[number];
+
+class CliStageError extends Error {
+  constructor(readonly stage: CliFailureStage) {
+    super(stage);
+  }
+}
+
+function failureDiagnostic(stage: CliFailureStage): string {
+  return `backfill-intent-verification-analysis failed stage=${stage}\n`;
+}
+
 function emptyPartitionCounts(): Record<CandidatePartition, number> {
   return {
     proposal_confirm_default_only: 0, proposal_confirm_partial_missing: 0,
@@ -235,13 +262,7 @@ export function estimateVerificationCost(candidates: Candidate[], inputCostPerMi
   };
 }
 
-async function sha256(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-export async function runBackfill(options: BackfillOptions, deps: BackfillDeps): Promise<BackfillReport> {
+function validateBackfillOptions(options: BackfillOptions): void {
   if (!options.dryRun && !options.runId) throw new Error('--write requires a stable --run-id for resumability');
   if (!options.dryRun && process.env.NODE_ENV === 'production' && !options.confirmProduction) {
     throw new Error('production write requires --confirm-production after dry-run review');
@@ -249,6 +270,16 @@ export async function runBackfill(options: BackfillOptions, deps: BackfillDeps):
   if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 250) {
     throw new Error('--limit must be an integer from 1 through 250');
   }
+}
+
+async function sha256(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function runBackfill(options: BackfillOptions, deps: BackfillDeps): Promise<BackfillReport> {
+  validateBackfillOptions(options);
   const [targetCounts, controls, candidates] = await Promise.all([deps.countCandidates(), deps.countControls(), deps.listCandidates(options.limit)]);
   const cost = estimateVerificationCost(candidates, options.inputCostPerMillion, options.outputCostPerMillion);
   const report: BackfillReport = {
@@ -535,15 +566,41 @@ export function serializeBackfillReport(report: BackfillReport): string {
   return serialized;
 }
 
+function stageCall<T>(stage: CliFailureStage, operation: () => Promise<T>): Promise<T> {
+  return operation().catch(() => { throw new CliStageError(stage); });
+}
+
+function stageBackfillDeps(deps: BackfillDeps): BackfillDeps {
+  return {
+    ...deps,
+    countCandidates: () => stageCall('count_partitions', () => deps.countCandidates()),
+    countControls: () => stageCall('count_controls', () => deps.countControls()),
+    listCandidates: (limit) => stageCall('candidate_listing', () => deps.listCandidates(limit)),
+    getProfileContext: (userId) => stageCall('profile_context', () => deps.getProfileContext(userId)),
+    verify: (payload, context) => stageCall('write_operation', () => deps.verify(payload, context)),
+    getAttemptStatus: (runId, intentId) => stageCall('write_operation', () => deps.getAttemptStatus(runId, intentId)),
+    beginRun: (runId, model) => stageCall('write_operation', () => deps.beginRun(runId, model)),
+    recordAttempt: (input) => stageCall('write_operation', () => deps.recordAttempt(input)),
+    applyAnalysis: (candidate, analysis, provenance) => stageCall('write_operation', () => deps.applyAnalysis(candidate, analysis, provenance)),
+    finishRun: (runId, status) => stageCall('write_operation', () => deps.finishRun(runId, status)),
+  };
+}
+
 /**
  * The real command boundary: parses arguments, owns stdout/stderr discipline,
  * and turns any setup/reporting failure into a nonzero exit code. Injectable
  * seams keep its tests credential- and database-free.
  */
 export async function runCli(args: string[], deps: CliEntrypointDeps): Promise<number> {
+  let stage: CliFailureStage = 'parse_options';
   try {
     const options = parseArgs(args);
-    const report = await runBackfill(options, await deps.createDeps(options));
+    stage = 'validate_options';
+    validateBackfillOptions(options);
+    stage = 'dependency_assembly';
+    const backfillDeps = await deps.createDeps(options);
+    const report = await runBackfill(options, stageBackfillDeps(backfillDeps));
+    stage = 'report_serialization';
     const serialized = (deps.serializeReport ?? serializeBackfillReport)(report);
     const parsed: unknown = JSON.parse(serialized);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -551,6 +608,7 @@ export async function runCli(args: string[], deps: CliEntrypointDeps): Promise<n
     }
     assertSanitizedJson(parsed);
     // The only stdout write: one machine-parseable report object plus newline.
+    stage = 'report_emission';
     deps.stdout(`${serialized}\n`);
     if (report.failed > 0) {
       deps.stderr(`backfill-intent-verification-analysis completed with ${report.failed} failed candidate(s)\n`);
@@ -558,9 +616,10 @@ export async function runCli(args: string[], deps: CliEntrypointDeps): Promise<n
     }
     return 0;
   } catch (error) {
-    // Keep diagnostics out of stdout so consumers never need to strip logs.
-    const message = error instanceof Error ? error.message : 'unknown error';
-    deps.stderr(`backfill-intent-verification-analysis failed: ${message}\n`);
+    // Keep diagnostics static and out of stdout: raw errors can include SQL,
+    // URIs, row data, provider details, or user content.
+    const failureStage = error instanceof CliStageError ? error.stage : stage;
+    deps.stderr(failureDiagnostic(failureStage));
     return 1;
   }
 }
@@ -594,18 +653,30 @@ async function loadTestEntrypointHarness(): Promise<EntrypointOverrides> {
   const harness = await import('./tests/fixtures/backfill-intent-verification-analysis.package-script.harness');
   const harnesses = {
     productionAssemblyDryRun: harness.productionAssemblyDryRun,
+    productionPartitionFailure: harness.productionPartitionFailure,
     candidateDiagnostic: harness.candidateDiagnostic,
   };
   const name = process.env.IND590_CLI_TEST_HARNESS;
-  if (name !== 'productionAssemblyDryRun' && name !== 'candidateDiagnostic') {
+  if (name !== 'productionAssemblyDryRun' && name !== 'productionPartitionFailure' && name !== 'candidateDiagnostic') {
     throw new Error('invalid IND-590 CLI test harness');
   }
   return { createDeps: harnesses[name] };
 }
 
+async function runExecutableEntrypoint(): Promise<number> {
+  let stage: CliFailureStage = 'environment_loading';
+  try {
+    // Explicit dotenv loading is not part of a hermetic test process. Bun's
+    // --no-env-file prevents implicit loading, and this preserves that boundary.
+    if (process.env.NODE_ENV !== 'test') loadEntrypointEnvironment();
+    stage = 'entrypoint_setup';
+    return await runEntrypoint(process.argv.slice(2), await loadTestEntrypointHarness());
+  } catch {
+    process.stderr.write(failureDiagnostic(stage));
+    return 1;
+  }
+}
+
 if (isEntrypoint) {
-  // Explicit dotenv loading is not part of a hermetic test process. Bun's
-  // --no-env-file prevents implicit loading, and this preserves that boundary.
-  if (process.env.NODE_ENV !== 'test') loadEntrypointEnvironment();
-  process.exitCode = await runEntrypoint(process.argv.slice(2), await loadTestEntrypointHarness());
+  process.exitCode = await runExecutableEntrypoint();
 }

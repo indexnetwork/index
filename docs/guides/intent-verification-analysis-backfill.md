@@ -25,8 +25,13 @@ A successful invocation writes exactly one compact, machine-parseable JSON objec
 to stdout. The object contains only aggregate evidence: source/partition and
 bounded-candidate counts, control counts, cost estimates, outcome counters, and
 actual `verifierCalls`. A default dry run always reports `verifierCalls: 0`.
-All diagnostics and failures go only to stderr; a setup, serialization, or output
-boundary failure exits nonzero rather than emitting a partial or unsafe report. A
+All diagnostics and failures go only to stderr. A pre-report failure emits only the
+static `failed stage=<category>` code—one of `environment_loading`,
+`entrypoint_setup`, `parse_options`, `validate_options`, `dependency_assembly`,
+`count_partitions`, `count_controls`, `candidate_listing`, `profile_context`,
+`write_operation`, `report_serialization`, or `report_emission`—and exits nonzero
+rather than emitting a partial or unsafe report. It never emits an exception message,
+URI, row, prompt, or provider detail. A
 candidate-level failure is different: the command first emits its complete,
 sanitized aggregate report, then exits nonzero and writes its diagnostic to stderr.
 

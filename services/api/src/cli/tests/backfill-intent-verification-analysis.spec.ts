@@ -75,7 +75,7 @@ async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/in
   return { stdout, stderr, exitCode };
 }
 
-async function runMaintainedCommand(harness?: 'productionAssemblyDryRun' | 'candidateDiagnostic') {
+async function runMaintainedCommand(harness?: 'productionAssemblyDryRun' | 'productionPartitionFailure' | 'candidateDiagnostic') {
   const child = Bun.spawn({
     cmd: [
       '/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, 'NODE_ENV=production',
@@ -241,12 +241,21 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(result.stderr).not.toContain('fixture-intent');
   });
 
+  it('classifies a pre-report partition failure without exposing the underlying error', async () => {
+    const result = await runMaintainedCommand('productionPartitionFailure');
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('backfill-intent-verification-analysis failed stage=count_partitions\n');
+    expect(result.stderr).not.toContain('fixture partition failure');
+  });
+
   it('fails nonzero before a report when the real package command has no database configuration', async () => {
     const result = await runMaintainedCommand();
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('backfill-intent-verification-analysis failed:');
+    expect(result.stderr).toBe('backfill-intent-verification-analysis failed stage=count_partitions\n');
   });
 
   it('keeps a valid sanitized report on stdout when candidate diagnostics make the exit nonzero', async () => {
@@ -278,7 +287,7 @@ describe('intent verification analysis maintenance workflow', () => {
 
     expect(exitCode).toBe(1);
     expect(stdout).toEqual([]);
-    expect(stderr.join('')).toContain('JSON Parse error');
+    expect(stderr.join('')).toBe('backfill-intent-verification-analysis failed stage=report_serialization\n');
   });
 
   it('fails closed when report serialization contains an unsafe field', async () => {
@@ -293,7 +302,7 @@ describe('intent verification analysis maintenance workflow', () => {
 
     expect(exitCode).toBe(1);
     expect(stdout).toEqual([]);
-    expect(stderr.join('')).toContain('report contains forbidden field: id');
+    expect(stderr.join('')).toBe('backfill-intent-verification-analysis failed stage=report_serialization\n');
   });
 
   it('fails closed when a serializer attempts mixed or duplicate stdout reports', async () => {
@@ -308,7 +317,7 @@ describe('intent verification analysis maintenance workflow', () => {
 
     expect(exitCode).toBe(1);
     expect(stdout).toEqual([]);
-    expect(stderr.join('')).toContain('JSON Parse error');
+    expect(stderr.join('')).toBe('backfill-intent-verification-analysis failed stage=report_serialization\n');
   });
 
   it('fails nonzero instead of silently succeeding when no report can be produced', async () => {
@@ -322,6 +331,6 @@ describe('intent verification analysis maintenance workflow', () => {
 
     expect(exitCode).toBe(1);
     expect(stdout).toEqual([]);
-    expect(stderr.join('')).toContain('local fixture setup failed');
+    expect(stderr.join('')).toBe('backfill-intent-verification-analysis failed stage=dependency_assembly\n');
   });
 });
