@@ -12,6 +12,41 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ## [Unreleased]
 
+### Added
+- Require explicit owner authorization for every owner-gated `update_opportunity`
+  transition (send/accept/reject) at a new protocol-owned authoritative boundary
+  (IND-593; 7.6.0). The `OpportunityOwnerApprovalAuthority` port is injected by
+  the host: registered MCP agents must present an owner-issued, fresh, atomically
+  single-use proof bound to the exact opportunity, action, owner principal, acting
+  agent, and server-derived interaction — missing/stale/generic/forged/wrong-binding/
+  replayed proofs fail closed with stable reasons BEFORE the mutation graph runs,
+  and a proof-less agent call returns a fresh interaction challenge. The optional
+  `ownerApprovalProof` field is added to the public `update_opportunity` schema.
+  Non-agent calls traverse the same boundary via host attestation of typed, trusted,
+  server-derived interaction/surface provenance (`OpportunityOwnerInteractionProvenance`):
+  only a genuine direct authenticated owner session (REST or MCP) attests; chat/CLI/
+  H2A/A2A/mediated surfaces and caller-supplied identity, binding, or provenance
+  fields can never mint or attest owner authority (`untrusted_provenance`). A2A
+  negotiation approvals, uptake acknowledgements, agent self-acknowledgement, and
+  server advisory/challenge values are explicitly non-substitutable. System `expired`
+  transitions remain ungated. Behavior tightening on a published MCP tool plus new
+  public port types, hence the minor bump. No data action, migration, or deployment
+  change ships with this entry.
+
+## [7.5.0] — 2026-07-25
+
+### Changed
+- Partition async discovery-run ownership by the exact calling MCP principal, not
+  only by user (IND-592). `get_discovery_run` and `cancel_discovery_run` now
+  reject a run whose recorded principal (session-human vs a specific agent id)
+  differs from the caller's, even within the same user, returning the opaque
+  "Discovery run not found." and never attempting cancellation. `discover_opportunities`
+  MCP coalescing is likewise partitioned by principal, so an agent-initiated
+  request never coalesces onto — and is never handed — the owner's (or another
+  agent's) in-flight run id or its status/results. The store lookup remains
+  user-scoped; this is an additional in-handler/domain narrowing with no host
+  interface change. Behavior tightening on published MCP tools, hence the minor bump.
+
 ## [7.4.0] — 2026-07-25
 
 ### Changed

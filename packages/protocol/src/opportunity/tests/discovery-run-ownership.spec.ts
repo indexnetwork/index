@@ -22,13 +22,13 @@ function parse(raw: string) {
 }
 
 /** Store whose reads are scoped by userId, like the production adapter. */
-function makeOwnedRunStore(ownerUserId: string) {
+function makeOwnedRunStore(ownerUserId: string, ownerAgentId: string | null = null) {
   const getCalls: Array<{ id: string; userId: string }> = [];
   const requestCancelCalls: Array<{ id: string; userId: string }> = [];
   const run = {
     id: 'run-1',
     userId: ownerUserId,
-    agentId: null,
+    agentId: ownerAgentId,
     status: 'queued' as const,
     input: {},
     context: {},
@@ -58,9 +58,10 @@ function makeOwnedRunStore(ownerUserId: string) {
   };
 }
 
-function makeContext(userId: string): ResolvedToolContext {
+function makeContext(userId: string, agentId?: string): ResolvedToolContext {
   return {
     userId,
+    ...(agentId ? { agentId } : {}),
     user: { id: userId, name: 'U', email: 'u@test' } as never,
     userProfile: null,
     userNetworks: [],
@@ -120,6 +121,66 @@ describe('get_discovery_run — ownership scoping (IND-608)', () => {
     // The lookup was still scoped to the caller, never widened to the owner.
     expect(store.getCalls).toEqual([{ id: 'run-1', userId: 'intruder' }]);
   });
+
+  // ── IND-592: exact calling-principal ownership within one user ────────────
+  //
+  // The store lookup is user-scoped, but a single user can drive both a
+  // session-human principal and one or more agent principals over MCP. A run
+  // belongs to exactly one principal; a different principal (even the same
+  // user) must never read its status/results.
+
+  test('an agent principal cannot read the session-human owner\u2019s run', async () => {
+    // Run was created by the session human (agentId null).
+    const store = makeOwnedRunStore('owner', null);
+    const tool = captureTool('get_discovery_run', makeDeps(store));
+
+    const result = parse(await tool.handler({
+      context: makeContext('owner', 'agent-1'),
+      query: { discoveryRunId: 'run-1' },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/discovery run not found/i);
+  });
+
+  test('a different agent under the same user cannot read an agent\u2019s run', async () => {
+    const store = makeOwnedRunStore('owner', 'agent-1');
+    const tool = captureTool('get_discovery_run', makeDeps(store));
+
+    const result = parse(await tool.handler({
+      context: makeContext('owner', 'agent-2'),
+      query: { discoveryRunId: 'run-1' },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/discovery run not found/i);
+  });
+
+  test('the session human cannot read an agent-created run under the same user', async () => {
+    const store = makeOwnedRunStore('owner', 'agent-1');
+    const tool = captureTool('get_discovery_run', makeDeps(store));
+
+    const result = parse(await tool.handler({
+      context: makeContext('owner'),
+      query: { discoveryRunId: 'run-1' },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/discovery run not found/i);
+  });
+
+  test('the owning agent principal sees its own run', async () => {
+    const store = makeOwnedRunStore('owner', 'agent-1');
+    const tool = captureTool('get_discovery_run', makeDeps(store));
+
+    const result = parse(await tool.handler({
+      context: makeContext('owner', 'agent-1'),
+      query: { discoveryRunId: 'run-1' },
+    }));
+
+    expect(result.success).toBe(true);
+    expect(result.data!.discoveryRunId).toBe('run-1');
+  });
 });
 
 describe('cancel_discovery_run — ownership scoping (IND-608)', () => {
@@ -136,6 +197,36 @@ describe('cancel_discovery_run — ownership scoping (IND-608)', () => {
     expect(result.error).toMatch(/discovery run not found/i);
     expect(store.getCalls).toEqual([{ id: 'run-1', userId: 'intruder' }]);
     // Ownership fails closed before any state-changing cancellation call.
+    expect(store.requestCancelCalls).toEqual([]);
+  });
+
+  // IND-592: a different principal under the same user cannot cancel the run,
+  // and cancellation fails closed before any state-changing store call.
+  test('a different agent principal cannot cancel an agent\u2019s run (no cancel attempted)', async () => {
+    const store = makeOwnedRunStore('owner', 'agent-1');
+    const tool = captureTool('cancel_discovery_run', makeDeps(store));
+
+    const result = parse(await tool.handler({
+      context: makeContext('owner', 'agent-2'),
+      query: { discoveryRunId: 'run-1' },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/discovery run not found/i);
+    expect(store.requestCancelCalls).toEqual([]);
+  });
+
+  test('the session human cannot cancel an agent-created run under the same user', async () => {
+    const store = makeOwnedRunStore('owner', 'agent-1');
+    const tool = captureTool('cancel_discovery_run', makeDeps(store));
+
+    const result = parse(await tool.handler({
+      context: makeContext('owner'),
+      query: { discoveryRunId: 'run-1' },
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/discovery run not found/i);
     expect(store.requestCancelCalls).toEqual([]);
   });
 });

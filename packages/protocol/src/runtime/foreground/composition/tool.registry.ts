@@ -15,6 +15,7 @@ import { createNegotiationTools } from '../../../capabilities/negotiation.facade
 import { createChatTools } from '../../../chat/chat.tools.js';
 import { createPremiseTools } from '../../../premise/premise.tools.js';
 import { createQuestionerTools } from '../../../capabilities/questions.facade.js';
+import type { OpportunityOwnerApprovalDeps } from '../../../opportunity/ports/opportunity.tools.port.js';
 import { protocolLogger } from '../../../shared/observability/protocol.logger.js';
 import { requestContext } from '../../../shared/observability/request-context.js';
 
@@ -40,7 +41,10 @@ export interface CreateToolRegistryOptions {
  * @param options - Surface profile selecting the MCP-restricted or full REST set.
  * @returns Map of tool name to raw tool definition.
  */
-export function createToolRegistry(deps: ToolDeps, options: CreateToolRegistryOptions = {}): ToolRegistry {
+/** Complete registry composition with the opportunity-local owner-proof port. */
+export type ToolRegistryDeps = ToolDeps & OpportunityOwnerApprovalDeps;
+
+export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRegistryOptions = {}): ToolRegistry {
   const registry: ToolRegistry = new Map();
   const isMcpSurface = options.surface === 'mcp';
 

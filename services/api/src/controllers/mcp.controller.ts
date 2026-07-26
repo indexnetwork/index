@@ -26,6 +26,7 @@ import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
+import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
@@ -54,7 +55,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -66,6 +67,10 @@ import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-pro
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
+
+type McpToolDeps = ToolDeps & {
+  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPOSITION ROOT (was protocol-init.ts)
@@ -179,6 +184,10 @@ const protocolDeps = {
   agentDispatcher,
   chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
+  // IND-593: authoritative owner-proof verifier/consumer for opportunity state
+  // changes. Shared process-wide with the MCP toolDeps and the REST issuance
+  // route; threaded into chat tools by the protocol chat factory.
+  opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
   discoveryRuns: discoveryRunAdapter,
   discoveryRunQueue,
   enrichmentRuns: enrichmentRunAdapter,
@@ -689,7 +698,7 @@ function createMcpServerInstance(): McpServer {
   const userDb = protocolDeps.createUserDatabase(protocolDeps.database, 'system');
   const systemDb = protocolDeps.createSystemDatabase(protocolDeps.database, 'system', []);
 
-  const toolDeps: ToolDeps = {
+  const toolDeps: McpToolDeps = {
     database: protocolDeps.database,
     userDb,
     systemDb,
@@ -713,6 +722,7 @@ function createMcpServerInstance(): McpServer {
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
+    opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',
       operation: report.operation,

@@ -2,19 +2,24 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
+import { bindOwnerApprovalProvenance } from "../application/opportunity.owner-provenance.js";
 
 const CALLER_ID = "caller-111";
 const OTHER_ID  = "other-222";
 const OPP_ID    = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function makeContext(userId = CALLER_ID): ResolvedToolContext {
-  return {
+  const context = {
     userId,
     user: { id: userId, name: "Test", email: "t@test" } as any,
     userProfile: null,
     userNetworks: [],
     isMcp: true,
   } as unknown as ResolvedToolContext;
+  // This state-machine suite exercises the direct authenticated MCP owner
+  // path; host-bound provenance keeps the lifecycle assertions reachable.
+  bindOwnerApprovalProvenance(context, { surface: "mcp", sessionAuthenticated: true });
+  return context;
 }
 
 function makeOpportunity(status: string, actorIds = [CALLER_ID, OTHER_ID]): Opportunity {
@@ -28,7 +33,18 @@ function makeOpportunity(status: string, actorIds = [CALLER_ID, OTHER_ID]): Oppo
 function captureTool(deps: ToolDeps) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string> } | undefined;
   const defineTool = (def: any) => { if (def.name === "update_opportunity") captured = def; return def; };
-  createOpportunityTools(defineTool as any, deps);
+  // IND-593: every context in this spec is a direct authenticated-owner
+  // interaction, which the host traverses through the same owner-approval
+  // boundary via attestation. Inject an attesting authority by default so the
+  // state-machine/actor/scope/uptake behavior under test stays reachable.
+  const withAttestation = {
+    opportunityOwnerApproval: {
+      consumeAgentProof: async () => ({ kind: "denied", reason: "missing" }),
+      attestOwnerInteraction: async () => ({ kind: "admitted" }),
+    },
+    ...deps,
+  } as unknown as ToolDeps;
+  createOpportunityTools(defineTool as any, withAttestation);
   return captured!;
 }
 
