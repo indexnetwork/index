@@ -10,6 +10,23 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Prove the IND-599 agent-administration split end-to-end at the MCP transport
+  (IND-599; protocol 7.7.0, API 0.63.0). New DB-free `tests/mcp.spec.ts`
+  evidence: registered agents list/call only `read_own_agent` (empty input
+  schema, forged-target argument never queried, own sanitized record only)
+  while every human admin tool is capability-denied before any context-DB read
+  or scoped-deps creation; session humans retain the full owned-agent admin
+  surface but never `read_own_agent`; enrollment-capable keys advertise exactly
+  `['register_agent']` across the whole registry and are denied schema-valid
+  representative tools of every access class (authenticated/permission/
+  informational/delivery_only/human_only) with zero resource work; plain
+  unregistered keys fail closed. Owned-versus-foreign handler matrix proves
+  each target-bearing mutation (`update`/`delete`/`grant`/`revoke`) persists
+  exactly once for an owned target and never for a foreign one (opaque "not
+  found"), `list_agents` queries only the caller's own userId, and transport
+  `config` secrets never leak from any agent projection. No API runtime source
+  change; version moves with the protocol floor (7.7.0).
+
 - Enforce explicit owner-issued approval for agent-driven opportunity `send`/`accept`/
   `reject` transitions and add the session-only issuance route
   `POST /api/opportunities/:id/owner-approvals` (IND-593; protocol 7.6.0, API 0.62.0).

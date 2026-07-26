@@ -418,7 +418,10 @@ describe('MCP Server Factory', () => {
 
     expect(response.error).toBeUndefined();
     expect(names).toContain('create_intent');
-    expect(names).toContain('list_agents');
+    // IND-599: a registered agent's agent-admin surface is read_own_agent only
+    // — never list_agents (human admin view) or any mutation.
+    expect(names).toContain('read_own_agent');
+    expect(names).not.toContain('list_agents');
     expect(names).toContain('read_docs');
     expect(names).not.toContain('update_agent');
     expect(names).not.toContain('discover_opportunities');
@@ -2518,5 +2521,487 @@ describe('MCP Server Factory', () => {
     const respondPayload = JSON.parse(respond.text) as { success: boolean; error?: string };
     expect(respondPayload.success).toBe(false);
     expect(respondPayload.error).toMatch(/negotiation not found/i);
+  });
+
+  // ── IND-599: agent administration authorization policy ────────────────────
+  //
+  // Canonical read_own_agent is available ONLY to a registered active agent and
+  // returns that agent's OWN sanitized record. Its input schema is empty — there
+  // is no target selector, so a caller can never name another agent. Session
+  // humans get list_agents plus owned-only register/update/delete/grant/revoke
+  // and NEVER read_own_agent. Enrollment-capable unregistered keys get
+  // register_agent only. Plain unregistered keys fail closed. Every denial is
+  // enforced at the capability layer (MCP_CAPABILITY_DENIED) BEFORE any context
+  // DB read, scoped-deps creation, or handler work — proven with a read-guarded
+  // context database (guardReads) and a throwing scoped-deps factory
+  // (scopedThrows). All tools/call payloads are SCHEMA-VALID (snake_case
+  // agent_id / scope_id / permission_id, canonical `actions` array) so the SDK
+  // schema passes and the policy layer is the thing under test.
+
+  /** The canonical self-read tool, available only to registered agents. */
+  const AGENT_SELF_TOOL = 'read_own_agent';
+  /** Admin list + mutations reserved for session humans (never for agents). */
+  const HUMAN_ADMIN_TOOLS = ['register_agent', 'list_agents', 'update_agent', 'delete_agent', 'grant_agent_permission', 'revoke_agent_permission'] as const;
+  /** Every agent-admin tool in the matrix (self-read plus human admin surface). */
+  const ALL_AGENT_ADMIN_TOOLS = [AGENT_SELF_TOOL, ...HUMAN_ADMIN_TOOLS] as const;
+  const OWNED_AGENT_ID = 'agent-owned';
+  const FOREIGN_AGENT_ID = 'agent-foreign';
+  /** Private transport connection material that must NEVER appear in any tool output. */
+  const SENSITIVE_TRANSPORT_SECRET = 'sk-transport-super-secret-token-599';
+
+  /** Schema-valid tools/call arguments for every human admin tool. */
+  const HUMAN_ADMIN_CALLS = [
+    { tool: 'register_agent', args: { name: 'New Agent' } },
+    { tool: 'list_agents', args: {} },
+    { tool: 'update_agent', args: { agent_id: OWNED_AGENT_ID, name: 'Renamed' } },
+    { tool: 'delete_agent', args: { agent_id: OWNED_AGENT_ID } },
+    { tool: 'grant_agent_permission', args: { agent_id: OWNED_AGENT_ID, actions: ['manage:intents'], scope: 'global' } },
+    { tool: 'revoke_agent_permission', args: { agent_id: OWNED_AGENT_ID, permission_id: 'permission-1' } },
+  ] as const;
+
+  /** A full agent record owned by the given user. */
+  const agentRecord = (agentId: string, ownerId: string) => ({
+    id: agentId,
+    ownerId,
+    name: ownerId === 'test-user-id' ? 'Owned Agent' : 'Foreign Agent',
+    description: null,
+    type: 'external' as const,
+    status: 'active' as const,
+    metadata: {},
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    // A live transport whose config carries private connection material — the
+    // sanitizer must project the transport (safe shape) with config redacted.
+    transports: [{
+      id: 'transport-1',
+      agentId,
+      channel: 'mcp' as const,
+      config: { endpoint: 'https://agent.example/mcp', authToken: SENSITIVE_TRANSPORT_SECRET },
+      priority: 0,
+      active: true,
+      failureCount: 0,
+    }],
+    permissions: ownerId === 'test-user-id'
+      ? [{
+          id: 'permission-1',
+          agentId,
+          userId: ownerId,
+          scope: 'global' as const,
+          scopeId: null,
+          actions: ['manage:intents'],
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }]
+      : [],
+  });
+
+  /**
+   * Agent registry that resolves the caller's OWN active record and records
+   * exactly which agentId each lookup received, so a read_own_agent call can be
+   * shown to read the caller's own id (context.agentId) and never a forged
+   * target smuggled through the (empty) tool arguments.
+   */
+  const ownedAgentDb = (resolvedIds?: string[]): AgentDatabase => ({
+    ...mockAgentDb,
+    getAgent: async (id: string) => { resolvedIds?.push(id); return agentRecord(id, 'test-user-id'); },
+    getAgentWithRelations: async (id: string) => { resolvedIds?.push(id); return agentRecord(id, 'test-user-id'); },
+  });
+
+  /** Agent registry whose records are owned by another user (foreign). */
+  const foreignAgentDb = (): AgentDatabase => ({
+    ...mockAgentDb,
+    getAgent: async (id: string) => agentRecord(id, 'other-user-id'),
+    getAgentWithRelations: async (id: string) => agentRecord(id, 'other-user-id'),
+  });
+
+  it('registered agent tools/list exposes only read_own_agent — no admin, no domain admin', async () => {
+    const names = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: OWNED_AGENT_ID },
+      agentDatabase: ownedAgentDb(),
+    });
+    // read_own_agent is the ONLY agent-admin tool a registered agent may see.
+    expect(names).toContain(AGENT_SELF_TOOL);
+    for (const tool of HUMAN_ADMIN_TOOLS) {
+      expect(names, `${tool} must be hidden from a registered agent`).not.toContain(tool);
+    }
+  });
+
+  it('read_own_agent input schema is empty — there is no caller-selectable target', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const server = createMcpServer(
+      { ...mockDeps, database: resolvedContextDatabase, agentDatabase: ownedAgentDb() },
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', agentId: OWNED_AGENT_ID }),
+        resolveUserId: async () => 'test-user-id',
+      } as McpAuthResolver,
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({ server, method: 'tools/list', headers: { 'x-api-key': 'agent-key' } });
+    const tool = response.result?.tools?.find((t) => t.name === AGENT_SELF_TOOL) as
+      | { name: string; inputSchema?: { properties?: Record<string, unknown> } }
+      | undefined;
+    expect(tool, 'read_own_agent must be advertised to a registered agent').toBeDefined();
+    // No properties → no agent_id / target field the caller could set.
+    expect(Object.keys(tool?.inputSchema?.properties ?? {})).toEqual([]);
+  });
+
+  it('read_own_agent returns the caller\u2019s own sanitized record, reading only context.agentId', async () => {
+    const resolvedIds: string[] = [];
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: OWNED_AGENT_ID },
+      agentDatabase: ownedAgentDb(resolvedIds),
+      toolName: AGENT_SELF_TOOL,
+      // A forged target in the arguments is stripped by the empty input schema.
+      arguments: { agent_id: FOREIGN_AGENT_ID },
+    });
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const payload = parseToolResult(result.text);
+    expect(payload.success).toBe(true);
+    const agent = payload.data?.agent as { id: string; ownerId: string } | undefined;
+    // The record returned is the CALLER's own agent, never the forged target.
+    expect(agent?.id).toBe(OWNED_AGENT_ID);
+    expect(agent?.id).not.toBe(FOREIGN_AGENT_ID);
+    expect(agent?.ownerId).toBe('test-user-id');
+    // Every registry lookup used context.agentId only — the forged FOREIGN id
+    // was never queried.
+    expect(resolvedIds.length).toBeGreaterThan(0);
+    expect(resolvedIds.every((id) => id === OWNED_AGENT_ID)).toBe(true);
+  });
+
+  it('read_own_agent redacts private transport config while preserving the safe response shape', async () => {
+    const result = await callTool({
+      identity: { userId: 'test-user-id', agentId: OWNED_AGENT_ID },
+      agentDatabase: ownedAgentDb(),
+      toolName: AGENT_SELF_TOOL,
+      arguments: {},
+    });
+    const payload = parseToolResult(result.text);
+    expect(payload.success).toBe(true);
+    const agent = payload.data?.agent as {
+      id: string;
+      transports: Array<{ id: string; channel: string; config: Record<string, unknown>; priority: number; active: boolean; failureCount: number }>;
+      permissions: unknown[];
+    };
+    // Safe response shape preserved: the transport row is still projected with
+    // its channel/priority/health fields, and permissions remain visible.
+    expect(agent.transports).toHaveLength(1);
+    expect(agent.transports[0]).toMatchObject({
+      id: 'transport-1',
+      channel: 'mcp',
+      priority: 0,
+      active: true,
+      failureCount: 0,
+    });
+    expect(agent.permissions).toHaveLength(1);
+    // The private field itself is fully redacted…
+    expect(agent.transports[0]!.config).toEqual({});
+    // …and the sensitive VALUE does not leak anywhere in the raw payload.
+    expect(result.text).not.toContain(SENSITIVE_TRANSPORT_SECRET);
+  });
+
+  it('registered agent is denied every human admin tool with MCP_CAPABILITY_DENIED before context DB', async () => {
+    for (const { tool, args } of HUMAN_ADMIN_CALLS) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', agentId: OWNED_AGENT_ID },
+        agentDatabase: ownedAgentDb(),
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.isError, `${tool} must reach policy`).toBe(true);
+      expect(result.code, `${tool} must be MCP_CAPABILITY_DENIED`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before context DB`).toBe(0);
+    }
+  });
+
+  it('session human tools/list exposes the full human admin surface but never read_own_agent', async () => {
+    const names = await listToolNamesFor({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+    });
+    for (const tool of HUMAN_ADMIN_TOOLS) {
+      expect(names, `${tool} must be visible to a session human`).toContain(tool);
+    }
+    expect(names, 'read_own_agent is agent-only and must be hidden from humans').not.toContain(AGENT_SELF_TOOL);
+  });
+
+  it('session human is admitted to every human admin tool; the handler owns the owned-only check', async () => {
+    // Policy admits all human admin tools; ownership is a handler concern. Proven
+    // by reaching the handler with an owned fixture (no capability denial).
+    for (const { tool, args } of HUMAN_ADMIN_CALLS) {
+      const result = await callTool({
+        identity: { userId: 'test-user-id', isSessionAuth: true },
+        headers: { authorization: 'Bearer session-token' },
+        agentDatabase: ownedAgentDb(),
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.code, `${tool} must not be MCP_CAPABILITY_DENIED`).not.toBe('MCP_CAPABILITY_DENIED');
+    }
+  });
+
+  it('session human read_own_agent is denied at the capability layer before context DB', async () => {
+    const counter = { reads: 0 };
+    const result = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      database: guardReads(counter),
+      scopedThrows: true,
+      toolName: AGENT_SELF_TOOL,
+      arguments: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(result.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(counter.reads, 'read_own_agent denial must precede any context DB read').toBe(0);
+  });
+
+  it('session human mutating a FOREIGN agent is admitted by policy but rejected by the handler (not a policy denial)', async () => {
+    // Owned-vs-foreign is a handler distinction: the policy admits the call, and
+    // the handler returns "Agent not found" for another user's agent.
+    const result = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      agentDatabase: foreignAgentDb(),
+      toolName: 'update_agent',
+      arguments: { agent_id: FOREIGN_AGENT_ID, name: 'Hijacked' },
+    });
+    expect(result.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const payload = parseToolResult(result.text);
+    expect(payload.success).toBe(false);
+    expect(payload.error).toMatch(/not found/i);
+  });
+
+  /** Persistence/mutation call counters for the owned-vs-foreign handler matrix. */
+  type MutationCounts = { updates: number; deletes: number; grants: number; revokes: number };
+  const zeroMutations = (): MutationCounts => ({ updates: 0, deletes: 0, grants: 0, revokes: 0 });
+
+  /**
+   * Agent registry whose records belong to `ownerId` and whose every mutation
+   * method increments a counter — proving foreign targets are rejected BEFORE
+   * persistence while owned targets reach exactly one mutation.
+   */
+  const auditedAgentDb = (
+    ownerId: string,
+    counts: MutationCounts,
+    listRequestedUserIds?: string[],
+  ): AgentDatabase => ({
+    ...mockAgentDb,
+    getAgent: async (id: string) => agentRecord(id, ownerId),
+    getAgentWithRelations: async (id: string) => agentRecord(id, ownerId),
+    listAgentsForUser: async (userId: string) => {
+      listRequestedUserIds?.push(userId);
+      return [agentRecord(OWNED_AGENT_ID, userId)];
+    },
+    updateAgent: async (id: string) => { counts.updates += 1; return agentRecord(id, ownerId); },
+    deleteAgent: async () => { counts.deletes += 1; },
+    grantPermission: async () => {
+      counts.grants += 1;
+      return {
+        id: 'permission-2',
+        agentId: OWNED_AGENT_ID,
+        userId: 'test-user-id',
+        scope: 'global' as const,
+        scopeId: null,
+        actions: ['manage:intents'],
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      };
+    },
+    revokePermission: async () => { counts.revokes += 1; },
+  });
+
+  it('list_agents queries ONLY the caller\u2019s own userId and returns no foreign record (and no transport secrets)', async () => {
+    const requestedUserIds: string[] = [];
+    const counts = zeroMutations();
+    const result = await callTool({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
+      headers: { authorization: 'Bearer session-token' },
+      agentDatabase: auditedAgentDb('test-user-id', counts, requestedUserIds),
+      toolName: 'list_agents',
+      arguments: {},
+    });
+    const payload = parseToolResult(result.text);
+    expect(payload.success).toBe(true);
+    // The registry lookup is keyed strictly by the authenticated caller.
+    expect(requestedUserIds).toEqual(['test-user-id']);
+    const agents = payload.data?.agents as Array<{ id: string; ownerId: string }>;
+    expect(agents.length).toBeGreaterThan(0);
+    expect(agents.every((agent) => agent.ownerId === 'test-user-id')).toBe(true);
+    expect(agents.some((agent) => agent.id === FOREIGN_AGENT_ID)).toBe(false);
+    // The list projection is sanitized too — no transport secret leaks.
+    expect(result.text).not.toContain(SENSITIVE_TRANSPORT_SECRET);
+  });
+
+  it('each target-bearing mutation admits an OWNED target and persists exactly once', async () => {
+    const ownedMutations = [
+      { tool: 'update_agent', args: { agent_id: OWNED_AGENT_ID, name: 'Renamed' }, count: (c: MutationCounts) => c.updates },
+      { tool: 'delete_agent', args: { agent_id: OWNED_AGENT_ID }, count: (c: MutationCounts) => c.deletes },
+      { tool: 'grant_agent_permission', args: { agent_id: OWNED_AGENT_ID, actions: ['manage:intents'], scope: 'global' }, count: (c: MutationCounts) => c.grants },
+      { tool: 'revoke_agent_permission', args: { agent_id: OWNED_AGENT_ID, permission_id: 'permission-1' }, count: (c: MutationCounts) => c.revokes },
+    ] as const;
+
+    for (const { tool, args, count } of ownedMutations) {
+      const counts = zeroMutations();
+      const result = await callTool({
+        identity: { userId: 'test-user-id', isSessionAuth: true },
+        headers: { authorization: 'Bearer session-token' },
+        agentDatabase: auditedAgentDb('test-user-id', counts),
+        toolName: tool,
+        arguments: args,
+      });
+      const payload = parseToolResult(result.text);
+      expect(payload.success, `${tool} must admit the owned target`).toBe(true);
+      expect(count(counts), `${tool} must persist exactly once for the owned target`).toBe(1);
+      const others = counts.updates + counts.deletes + counts.grants + counts.revokes - count(counts);
+      expect(others, `${tool} must not trigger unrelated mutations`).toBe(0);
+    }
+  });
+
+  it('each target-bearing mutation rejects a FOREIGN target with zero persistence', async () => {
+    const foreignMutations = [
+      { tool: 'update_agent', args: { agent_id: FOREIGN_AGENT_ID, name: 'Hijacked' } },
+      { tool: 'delete_agent', args: { agent_id: FOREIGN_AGENT_ID } },
+      { tool: 'grant_agent_permission', args: { agent_id: FOREIGN_AGENT_ID, actions: ['manage:intents'], scope: 'global' } },
+      { tool: 'revoke_agent_permission', args: { agent_id: FOREIGN_AGENT_ID, permission_id: 'permission-1' } },
+    ] as const;
+
+    for (const { tool, args } of foreignMutations) {
+      const counts = zeroMutations();
+      const result = await callTool({
+        identity: { userId: 'test-user-id', isSessionAuth: true },
+        headers: { authorization: 'Bearer session-token' },
+        agentDatabase: auditedAgentDb('other-user-id', counts),
+        toolName: tool,
+        arguments: args,
+      });
+      expect(result.code, `${tool} is admitted by policy (ownership is a handler concern)`).not.toBe('MCP_CAPABILITY_DENIED');
+      const payload = parseToolResult(result.text);
+      expect(payload.success, `${tool} must reject the foreign target`).toBe(false);
+      expect(payload.error, `${tool} must not reveal the foreign record`).toMatch(/not found/i);
+      expect(counts.updates + counts.deletes + counts.grants + counts.revokes, `${tool} must never persist for a foreign target`).toBe(0);
+    }
+  });
+
+  it('enrollment-capable unregistered key sees only register_agent (no read_own_agent, no admin)', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const server = createMcpServer(
+      { ...mockDeps, database: resolvedContextDatabase },
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', enrollmentCapable: true }),
+        resolveUserId: async () => 'test-user-id',
+      } as McpAuthResolver,
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
+      headers: { 'x-api-key': 'enrollment-key' },
+    });
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+    // Whole-registry proof: the enrollment credential is single-purpose. Across
+    // the ENTIRE MCP registry — domain, informational, delivery, and admin —
+    // exactly one tool is advertised.
+    expect(names).toEqual(['register_agent']);
+  });
+
+  it('enrollment-capable key is denied representative domain tools of every access class before any resource', async () => {
+    // Schema-valid calls across authenticated / permission / informational /
+    // delivery_only / human_only access classes: each is denied at the
+    // capability layer with zero context-DB reads and zero scoped-deps
+    // creation — no adapter or resource work is reachable.
+    const enrollmentDomainCalls = [
+      { tool: 'read_intents', args: {} },
+      { tool: 'create_intent', args: { description: 'A specific valid discovery intent' } },
+      { tool: 'read_docs', args: {} },
+      { tool: 'confirm_opportunity_delivery', args: { opportunityId: '00000000-0000-4000-8000-000000000001', trigger: 'ambient' } },
+      // human_only representative registered on this surface (chat-history tools
+      // are chat-session-only and never in this MCP registry).
+      { tool: 'record_onboarding_privacy_consent', args: { publicProfileLookupGranted: true } },
+    ] as const;
+
+    for (const { tool, args } of enrollmentDomainCalls) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', enrollmentCapable: true },
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+        headers: { 'x-api-key': 'enrollment-key' },
+      });
+      expect(result.isError, `${tool} must reach policy`).toBe(true);
+      expect(result.code, `${tool} must be MCP_CAPABILITY_DENIED`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before context DB`).toBe(0);
+      expect(result.scopedCreateArgs, `${tool} must never create scoped deps`).toEqual([]);
+    }
+  });
+
+  it('enrollment-capable key is denied read_own_agent and every non-register admin tool before context DB', async () => {
+    const deniedForEnrollment = [
+      { tool: AGENT_SELF_TOOL, args: {} },
+      { tool: 'list_agents', args: {} },
+      { tool: 'update_agent', args: { agent_id: OWNED_AGENT_ID } },
+      { tool: 'delete_agent', args: { agent_id: OWNED_AGENT_ID } },
+      { tool: 'grant_agent_permission', args: { agent_id: OWNED_AGENT_ID, actions: ['manage:intents'], scope: 'global' } },
+      { tool: 'revoke_agent_permission', args: { agent_id: OWNED_AGENT_ID, permission_id: 'permission-1' } },
+    ] as const;
+
+    for (const { tool, args } of deniedForEnrollment) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id', enrollmentCapable: true },
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+        headers: { 'x-api-key': 'enrollment-key' },
+      });
+      expect(result.isError, `${tool} must reach policy`).toBe(true);
+      expect(result.code, `${tool} must be MCP_CAPABILITY_DENIED`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before context DB`).toBe(0);
+    }
+  });
+
+  it('plain unregistered key fails closed on every agent-admin tool with MCP_CAPABILITY_DENIED before context DB', async () => {
+    const failClosedCalls = [
+      { tool: AGENT_SELF_TOOL, args: {} },
+      ...HUMAN_ADMIN_CALLS,
+    ] as const;
+
+    for (const { tool, args } of failClosedCalls) {
+      const counter = { reads: 0 };
+      const result = await callTool({
+        identity: { userId: 'test-user-id' },
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: tool,
+        arguments: args,
+        headers: { 'x-api-key': 'ordinary-key' },
+      });
+      expect(result.isError, `${tool} must reach policy`).toBe(true);
+      expect(result.code, `${tool} must be MCP_CAPABILITY_DENIED`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${tool} must deny before context DB`).toBe(0);
+    }
+  });
+
+  it('plain unregistered key sees zero agent-admin tools in tools/list', async () => {
+    clearMcpToolMetadataCacheForTests();
+    const server = createMcpServer(
+      { ...mockDeps, database: resolvedContextDatabase },
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id' }),
+        resolveUserId: async () => 'test-user-id',
+      } as McpAuthResolver,
+      mockScopedDepsFactory,
+    );
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
+      headers: { 'x-api-key': 'ordinary-key' },
+    });
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+    for (const tool of ALL_AGENT_ADMIN_TOOLS) {
+      expect(names, `${tool} must be hidden`).not.toContain(tool);
+    }
   });
 });

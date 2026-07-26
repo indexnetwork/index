@@ -227,7 +227,12 @@ On every tool call the server:
 
 1. Extracts the HTTP request from the MCP `ServerContext`.
 2. Calls `authResolver.resolveIdentity(req)` to get `{ userId, agentId }`.
-3. Gates access: MCP callers without a resolved `agentId` are blocked from every tool except `register_agent`, `read_docs`, and `scrape_url` until they register.
+3. Gates access through the canonical capability policy (`mcp/mcp.authorization-policy.ts`), decided per resolved principal BEFORE any context read or scoped-deps creation:
+   - **Enrollment-capable unregistered API keys** may see and call only `register_agent` — single-purpose across the entire registry.
+   - **Plain unregistered API keys** fail closed on every tool.
+   - **Registered active agents** retain their canonical permission- and network-scope-authorized domain tools, `read_docs`, and (for designated delivery agents) `confirm_opportunity_delivery`; within the agent-administration family (`MCP_AGENT_ADMIN_TOOLS`) they may see and call only `read_own_agent`, which returns the caller's own sanitized record and accepts no target.
+   - **Session humans** administer their owned agents (`register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission`) but are never offered the agent-only `read_own_agent`.
+   - Contact/Gmail-import tools, `scrape_url`, and the deprecated `*_user_profile`/`*_profile_run` aliases are not registered on the MCP surface at all (IND-596/597/598).
 4. Builds per-request scoped databases via `scopedDepsFactory` and invokes the tool handler through the shared runtime.
 
 ### Runtime controls
