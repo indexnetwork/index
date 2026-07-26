@@ -586,7 +586,11 @@ export async function runEntrypoint(args: string[], overrides: EntrypointOverrid
  * by the local runtime-assembly fixture.
  */
 async function loadTestEntrypointHarness(): Promise<EntrypointOverrides> {
-  if (process.env.NODE_ENV !== 'test' || !process.env.IND590_CLI_TEST_HARNESS) return {};
+  // The explicit second gate lets the subprocess regression retain the real
+  // production entrypoint environment branch without making this harness
+  // reachable during ordinary production operation.
+  const enabled = process.env.NODE_ENV === 'test' || process.env.IND590_CLI_TEST_MODE === '1';
+  if (!enabled || !process.env.IND590_CLI_TEST_HARNESS) return {};
   const harness = await import('./tests/fixtures/backfill-intent-verification-analysis.package-script.harness');
   const harnesses = {
     productionAssemblyDryRun: harness.productionAssemblyDryRun,
