@@ -176,6 +176,7 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   get_conversation: { access: 'human_only', reach: 'principal' },
 
   // Agent administration.
+  read_own_agent: { access: 'agent_admin', reach: 'principal' },
   register_agent: { access: 'agent_admin', reach: 'principal' },
   list_agents: { access: 'agent_admin', reach: 'principal' },
   update_agent: { access: 'agent_admin', reach: 'principal' },
@@ -231,6 +232,7 @@ export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
 
 /** Agent administration inventory. */
 export const MCP_AGENT_ADMIN_TOOLS: ReadonlySet<string> = new Set([
+  'read_own_agent',
   'register_agent',
   'list_agents',
   'update_agent',
@@ -460,6 +462,7 @@ export const McpCapabilityDecisionReasonSchema = z.enum([
   'unregistered_principal',
   'invalid_agent',
   'agent_admin_denied',
+  'human_read_own_agent_denied',
   'human_only',
   'permission_missing',
   'delivery_required',
@@ -521,6 +524,38 @@ export class McpCapabilityPolicy {
         ? { allowed: true, reason: 'delivery', reach: rule.reach }
         : { allowed: false, reason: 'delivery_required', reach: rule.reach };
     }
+    // Agent administration is split by principal kind and must be decided
+    // BEFORE the generic session-human blanket allow below — otherwise a
+    // session human would be admitted to read_own_agent (an agent-only tool)
+    // by the blanket allow before this rule is ever reached (IND-599).
+    if (rule.access === 'agent_admin') {
+      // read_own_agent is the ONLY agent_admin tool available to a registered
+      // active agent, and it returns that agent's own record (no target). Every
+      // other agent_admin tool is an owner/admin action reserved for humans.
+      if (
+        subject.profile === 'registered_global_agent' ||
+        subject.profile === 'registered_network_agent' ||
+        subject.profile === 'delivery_agent'
+      ) {
+        return toolName === 'read_own_agent'
+          ? { allowed: true, reason: 'agent_self_read', reach: rule.reach }
+          : { allowed: false, reason: 'agent_admin_denied', reach: rule.reach };
+      }
+      // Session/onboarding humans get every agent_admin tool EXCEPT
+      // read_own_agent, which is reserved for agent principals.
+      if (subject.profile === 'session_human' || subject.profile === 'onboarding_human') {
+        return toolName === 'read_own_agent'
+          ? { allowed: false, reason: 'human_read_own_agent_denied', reach: rule.reach }
+          : {
+              allowed: true,
+              reason: subject.profile === 'onboarding_human' ? 'onboarding' : 'session_human',
+              reach: rule.reach,
+            };
+      }
+      // Every other profile (enrollment/unregistered/invalid) is handled above
+      // and never reaches here; fail closed for completeness.
+      return { allowed: false, reason: 'agent_admin_denied', reach: rule.reach };
+    }
     if (subject.profile === 'session_human' || subject.profile === 'onboarding_human') {
       return {
         allowed: true,
@@ -530,11 +565,6 @@ export class McpCapabilityPolicy {
     }
     if (rule.access === 'human_only') {
       return { allowed: false, reason: 'human_only', reach: rule.reach };
-    }
-    if (rule.access === 'agent_admin') {
-      return toolName === 'list_agents'
-        ? { allowed: true, reason: 'agent_self_read', reach: rule.reach }
-        : { allowed: false, reason: 'agent_admin_denied', reach: rule.reach };
     }
     if (rule.access === 'informational') {
       return { allowed: true, reason: 'informational', reach: rule.reach };

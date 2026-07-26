@@ -6,9 +6,11 @@
  *
  * ## Foreground adapters (participant-directed, authenticated)
  *
- * - {@link createAgentTools} — `register_agent`, `list_agents`, `update_agent`,
- *   `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` MCP
- *   tools for the authenticated registration and permission management path.
+ * - {@link createAgentTools} — `read_own_agent`, `register_agent`,
+ *   `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`,
+ *   `revoke_agent_permission` MCP tools for the authenticated registration
+ *   and permission management path (IND-599: `read_own_agent` is the
+ *   agent-principal self-read; the rest are human owner/admin actions).
  *
  * ## Boundary
  *

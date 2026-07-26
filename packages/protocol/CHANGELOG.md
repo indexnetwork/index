@@ -13,6 +13,39 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Added
+- Add the canonical `read_own_agent` MCP tool: a registered active agent's
+  self-read of its OWN sanitized registration record (IND-599; 7.7.0). The input
+  schema is empty — there is no target selector, so a caller can never name
+  another agent — and the handler resolves strictly the authenticated
+  `context.agentId` with an owner match, so a forged target argument is stripped
+  by the schema and never queried. The tool is classified `agent_admin` in the
+  canonical capability matrix and registered in the shared factory (`fast`
+  runtime class).
+
+### Changed
+- Split the `agent_admin` capability family by principal kind (IND-599; 7.7.0).
+  Registered agent principals (global/network/delivery) may now see and call
+  ONLY `read_own_agent` on the admin surface — `list_agents` is no longer
+  visible or callable by an agent (previously it was the sole agent-visible
+  admin tool), and every admin mutation remains denied (`agent_admin_denied`).
+  Session/onboarding humans retain the full owned-agent administration surface
+  (`register_agent`, `list_agents`, `update_agent`, `delete_agent`,
+  `grant_agent_permission`, `revoke_agent_permission`) but are denied the
+  agent-only `read_own_agent` with the new dedicated decision reason
+  `human_read_own_agent_denied`. Enrollment-capable unregistered keys remain
+  single-purpose `register_agent`-only across the entire registry, and plain
+  unregistered keys remain fail-closed. The `agent_admin` decision is made
+  BEFORE the session-human blanket allow, and denials fire before any context
+  DB read or scoped-deps creation. Domain, informational (`read_docs`),
+  permission/network-scope, and delivery capabilities for registered agents are
+  unchanged. Behavior tightening on published MCP tools plus a new public tool
+  name, hence the minor bump.
+- Redact private transport connection material from every agent record
+  projected by the participant-agent tools (IND-599; 7.7.0).
+  `sanitizeAgentForOutput` now empties each transport's `config` (endpoint
+  secrets, auth headers/tokens) while preserving the safe response shape
+  (id/channel/priority/active/failureCount and permissions), covering
+  `read_own_agent`, `register_agent`, `list_agents`, and `update_agent` outputs.
 - Require explicit owner authorization for every owner-gated `update_opportunity`
   transition (send/accept/reject) at a new protocol-owned authoritative boundary
   (IND-593; 7.6.0). The `OpportunityOwnerApprovalAuthority` port is injected by

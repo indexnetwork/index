@@ -64,7 +64,11 @@ function ensureAgentScopedAccess(context: { agentId?: string }, requestedAgentId
 function sanitizeAgentForOutput<T extends { transports?: Array<{ channel: string; config: Record<string, unknown> }> }>(agent: T): T {
   return {
     ...agent,
-    transports: agent.transports,
+    // Transport config carries private connection material (endpoint secrets,
+    // auth headers/tokens). It is never projected to ANY MCP caller — including
+    // the agent reading its own record via read_own_agent (IND-599). Channel,
+    // priority, and health metadata remain visible; config is fully redacted.
+    transports: agent.transports?.map((transport) => ({ ...transport, config: {} })),
   };
 }
 
@@ -148,6 +152,36 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
       } catch (err) {
         logger.error('Failed to register agent', { err });
         return error('Failed to register agent. Please try again.');
+      }
+    },
+  });
+
+  const readOwnAgent = defineTool({
+    name: 'read_own_agent',
+    description:
+      "Read the calling agent's own registration record \u2014 its identity, " +
+      'transports, and granted permissions. Returns only the authenticated ' +
+      'agent\u2019s own record; no other agent can be named or targeted. Use this ' +
+      'when an agent needs to inspect its own configuration.',
+    querySchema: z.object({}),
+    handler: async ({ context }) => {
+      // Defense-in-depth: the capability policy only admits registered active
+      // agent principals here, but never trust the caller — require an agent
+      // context and resolve strictly the caller's OWN record (no target input).
+      if (!context.agentId) {
+        return error('read_own_agent is only available to a registered agent principal.');
+      }
+
+      try {
+        const agent = await agentDb.getAgentWithRelations(context.agentId);
+        if (!agent || agent.ownerId !== context.userId) {
+          return error('Agent not found');
+        }
+
+        return success({ agent: sanitizeAgentForOutput(agent) });
+      } catch (err) {
+        logger.error('Failed to read own agent', { err });
+        return error('Failed to read agent. Please try again.');
       }
     },
   });
@@ -351,6 +385,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   });
 
   return [
+    readOwnAgent,
     registerAgent,
     listAgents,
     updateAgent,

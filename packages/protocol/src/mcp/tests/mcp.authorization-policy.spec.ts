@@ -112,7 +112,10 @@ describe('MCP capability policy principal inventory', () => {
     });
 
     expect(subject.profile).toBe('registered_global_agent');
+    // IND-599: a registered agent is self-read-only on the admin surface — it
+    // sees read_own_agent (its OWN record), never list_agents or any mutation.
     expect(policy.visibleToolNames(subject, [
+      'read_own_agent',
       'register_agent',
       'list_agents',
       'update_agent',
@@ -121,7 +124,7 @@ describe('MCP capability policy principal inventory', () => {
       'revoke_agent_permission',
       'read_intents',
       'create_intent',
-    ])).toEqual(['list_agents', 'read_intents', 'create_intent']);
+    ])).toEqual(['read_own_agent', 'read_intents', 'create_intent']);
   });
 
   test('network agents honor only matching-scope or global permission rows', () => {
@@ -188,13 +191,15 @@ describe('MCP capability policy principal inventory', () => {
     });
 
     expect(subject.profile).toBe('delivery_agent');
+    // IND-599: a delivery agent is still a registered agent principal — its
+    // agent-admin surface is read_own_agent only (not list_agents).
     expect(policy.visibleToolNames(subject, [
-      'list_agents',
+      'read_own_agent',
       'read_docs',
       'confirm_opportunity_delivery',
       'discover_opportunities',
     ])).toEqual([
-      'list_agents',
+      'read_own_agent',
       'read_docs',
       'confirm_opportunity_delivery',
       'discover_opportunities',
@@ -655,6 +660,176 @@ describe('human-only onboarding privacy consent (IND-583)', () => {
         expect(policy.authorize(subject, tool).allowed).toBe(false);
       }
       expect(policy.visibleToolNames(subject, [...CONSENT_TOOLS])).toEqual([]);
+    }
+  });
+});
+
+describe('agent administration policy (IND-599)', () => {
+  test('registered agent sees/calls only read_own_agent (agent_self_read), never list_agents or mutations', () => {
+    // Agents receive read_own_agent (their own record) but not list_agents (admin view)
+    // and cannot mutate any admin settings.
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ agentId: AGENT_ID }),
+      isOnboarding: false,
+      agent: agentSnapshot({
+        permissions: [{
+          agentId: AGENT_ID,
+          userId: USER_ID,
+          scope: 'global',
+          scopeId: null,
+          actions: ['manage:intents'],
+        }],
+      }),
+    });
+
+    expect(subject.profile).toBe('registered_global_agent');
+    // Agent can read its own record with agent_self_read reason.
+    const decision = policy.authorize(subject, 'read_own_agent');
+    expect(decision.allowed).toBe(true);
+    expect(decision.reason).toBe('agent_self_read');
+    // All other agent admin tools denied for agents.
+    expect(policy.visibleToolNames(subject, [
+      'read_own_agent',
+      'register_agent',
+      'list_agents',
+      'update_agent',
+      'delete_agent',
+      'grant_agent_permission',
+      'revoke_agent_permission',
+    ])).toEqual(['read_own_agent']);
+    // Verify each admin tool is explicitly denied for agents.
+    for (const tool of ['register_agent', 'list_agents', 'update_agent', 'delete_agent', 'grant_agent_permission', 'revoke_agent_permission']) {
+      expect(policy.authorize(subject, tool)).toMatchObject({ allowed: false, reason: 'agent_admin_denied' });
+    }
+  });
+
+  test('session human sees all agent admin tools except read_own_agent, which is agent-only', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ isSessionAuth: true }),
+      isOnboarding: false,
+    });
+
+    expect(subject.profile).toBe('session_human');
+    // Session humans receive full agent administration mutations but NOT read_own_agent.
+    const adminTools = [
+      'register_agent',
+      'list_agents',
+      'update_agent',
+      'delete_agent',
+      'grant_agent_permission',
+      'revoke_agent_permission',
+    ];
+    expect(policy.visibleToolNames(subject, ['read_own_agent', ...adminTools])).toEqual(adminTools);
+    // Humans get all admin tools but not read_own_agent.
+    for (const tool of adminTools) {
+      expect(policy.authorize(subject, tool).allowed).toBe(true);
+    }
+    // read_own_agent explicitly denied for humans (agent-only).
+    expect(policy.authorize(subject, 'read_own_agent')).toMatchObject({ allowed: false, reason: 'human_read_own_agent_denied' });
+  });
+
+  test('enrollment-capable key receives only register_agent, denies all admin mutations', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ enrollmentCapable: true }),
+      isOnboarding: false,
+    });
+
+    expect(subject.profile).toBe('enrollment_key');
+    expect(policy.visibleToolNames(subject, [
+      'register_agent',
+      'list_agents',
+      'update_agent',
+      'delete_agent',
+      'grant_agent_permission',
+      'revoke_agent_permission',
+    ])).toEqual(['register_agent']);
+  });
+
+  test('enrollment key is register_agent-only across the ENTIRE canonical matrix — every domain tool is denied', () => {
+    // Whole-registry proof (not just the agent-admin subset): iterate every
+    // classified tool in the canonical production matrix and require that an
+    // enrollment-capable unregistered key sees and may call ONLY register_agent.
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ enrollmentCapable: true }),
+      isOnboarding: false,
+    });
+    expect(subject.profile).toBe('enrollment_key');
+
+    const allToolNames = [...CANONICAL_MCP_TOOL_ACCESS_RULES.keys()];
+    expect(allToolNames.length).toBeGreaterThan(30);
+    expect(policy.visibleToolNames(subject, allToolNames)).toEqual(['register_agent']);
+    for (const toolName of allToolNames) {
+      if (toolName === 'register_agent') {
+        expect(policy.authorize(subject, toolName)).toMatchObject({ allowed: true, reason: 'enrollment' });
+        continue;
+      }
+      expect(policy.authorize(subject, toolName), `${toolName} must be enrollment_required`)
+        .toMatchObject({ allowed: false, reason: 'enrollment_required' });
+    }
+  });
+
+  test('plain unregistered key fails closed across the ENTIRE canonical matrix', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity(),
+      isOnboarding: false,
+    });
+    expect(subject.profile).toBe('unregistered_key');
+
+    const allToolNames = [...CANONICAL_MCP_TOOL_ACCESS_RULES.keys()];
+    expect(policy.visibleToolNames(subject, allToolNames)).toEqual([]);
+    for (const toolName of allToolNames) {
+      expect(policy.authorize(subject, toolName), `${toolName} must be unregistered_principal`)
+        .toMatchObject({ allowed: false, reason: 'unregistered_principal' });
+    }
+  });
+
+  test('plain unregistered key fails closed on all admin tools', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity(),
+      isOnboarding: false,
+    });
+
+    expect(subject.profile).toBe('unregistered_key');
+    expect(policy.visibleToolNames(subject, [
+      'register_agent',
+      'list_agents',
+      'update_agent',
+      'delete_agent',
+      'grant_agent_permission',
+      'revoke_agent_permission',
+    ])).toEqual([]);
+  });
+
+  test('invalid/inactive/mismatched agent denies all admin tools', () => {
+    const baseIdentity = identity({ agentId: AGENT_ID });
+    const subjects = [
+      resolveMcpCapabilitySubject({
+        identity: baseIdentity,
+        isOnboarding: false,
+        agent: null,
+      }),
+      resolveMcpCapabilitySubject({
+        identity: baseIdentity,
+        isOnboarding: false,
+        agent: agentSnapshot({ status: 'inactive' }),
+      }),
+      resolveMcpCapabilitySubject({
+        identity: baseIdentity,
+        isOnboarding: false,
+        agent: agentSnapshot({ ownerId: 'other-user' }),
+      }),
+    ];
+
+    for (const subject of subjects) {
+      expect(subject.profile).toBe('invalid_agent');
+      expect(policy.visibleToolNames(subject, [
+        'register_agent',
+        'list_agents',
+        'update_agent',
+        'delete_agent',
+        'grant_agent_permission',
+        'revoke_agent_permission',
+      ])).toEqual([]);
     }
   });
 });
