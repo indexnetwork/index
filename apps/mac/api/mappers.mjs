@@ -168,7 +168,7 @@ export function mapClarifier(question) {
 }
 
 /**
- * Compose a INDEX_DATA-like snapshot without mutating window.HALO_DATA.
+ * Compose a INDEX_DATA-like snapshot without mutating window.INDEX_DATA.
  * @param {Object} input
  * @param {Object} [input.user]
  * @param {Array<Object>} [input.networks]

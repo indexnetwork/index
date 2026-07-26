@@ -9,7 +9,7 @@
 // localStorage works here because main.swift sets allowFileAccessFromFileURLs
 // on the file:// origin; the guards are for the case where it doesn't, in
 // which case the app simply falls back to always starting at login.
-const SESSION_KEY = "halo.signedIn";
+const SESSION_KEY = "index.signedIn";
 
 function readSession() {
   try { return window.localStorage.getItem(SESSION_KEY) === "1"; }
