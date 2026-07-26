@@ -75,6 +75,26 @@ async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/in
   return { stdout, stderr, exitCode };
 }
 
+async function runMaintainedCommand(harness?: 'emptyDryRun' | 'candidateDiagnostic') {
+  const child = Bun.spawn({
+    cmd: [
+      '/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, 'NODE_ENV=test',
+      ...(harness ? [`IND590_CLI_TEST_HARNESS=${harness}`] : []),
+      process.execPath, '--no-env-file', '--silent', 'run', '--cwd', 'services/api',
+      'maintenance:backfill-intent-verification-analysis', '--', '--limit', '25',
+    ],
+    cwd: path.resolve(import.meta.dir, '../../../../..'),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { stdout, stderr, exitCode };
+}
+
 describe('intent verification analysis maintenance workflow', () => {
   it('partitions proposal-confirm defaults separately from partial and legacy paths', () => {
     expect(classifyCandidate(candidate())).toBe('proposal_confirm_default_only');
@@ -189,6 +209,39 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(result.stdout).toBe('{"assembled":true}\n');
   });
 
+  it('runs the documented package command with one aggregate-only JSON stdout report and no launcher noise', async () => {
+    const result = await runMaintainedCommand('emptyDryRun');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toEndWith('\n');
+    const lines = result.stdout.trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({
+      reportVersion: 1, mode: 'dry-run', candidateCount: 0, verifierCalls: 0,
+      attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0,
+    });
+  });
+
+  it('keeps the package-command report parseable when a candidate diagnostic exits nonzero', async () => {
+    const result = await runMaintainedCommand('candidateDiagnostic');
+
+    expect(result.exitCode).toBe(1);
+    const lines = result.stdout.trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ mode: 'dry-run', failed: 1, verifierCalls: 0 });
+    expect(result.stderr).toContain('completed with 1 failed candidate(s)');
+    expect(result.stderr).not.toContain('fixture-intent');
+  });
+
+  it('fails nonzero before a report when the real package command has no database configuration', async () => {
+    const result = await runMaintainedCommand();
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('backfill-intent-verification-analysis failed:');
+  });
+
   it('keeps a valid sanitized report on stdout when candidate diagnostics make the exit nonzero', async () => {
     const deps = makeDeps({ getProfileContext: mock(async () => { throw new Error('local candidate diagnostic'); }) });
     const stdout: string[] = [];
@@ -234,6 +287,21 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(exitCode).toBe(1);
     expect(stdout).toEqual([]);
     expect(stderr.join('')).toContain('report contains forbidden field: id');
+  });
+
+  it('fails closed when a serializer attempts mixed or duplicate stdout reports', async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exitCode = await runCli([], {
+      createDeps: async () => makeDeps(),
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+      serializeReport: () => '{"reportVersion":1}\n{"reportVersion":1}',
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr.join('')).toContain('JSON Parse error');
   });
 
   it('fails nonzero instead of silently succeeding when no report can be produced', async () => {

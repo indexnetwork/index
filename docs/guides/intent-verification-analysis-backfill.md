@@ -8,7 +8,8 @@ final/raw scores, none of which are semantic verifier inputs or substitutes.
 The default is a side-effect-free, bounded dry run:
 
 ```sh
-bun run maintenance:backfill-intent-verification-analysis --limit 25
+cd services/api
+bun --silent run maintenance:backfill-intent-verification-analysis -- --limit 25
 ```
 
 It reports target counts by root-cause partition, complete- and partial-analysis
@@ -77,7 +78,8 @@ columns.
 Writing is explicit and requires a stable run identifier:
 
 ```sh
-bun run maintenance:backfill-intent-verification-analysis \
+cd services/api
+bun --silent run maintenance:backfill-intent-verification-analysis -- \
   --write --run-id '<reviewed-run-uuid>' --limit 25
 ```
 

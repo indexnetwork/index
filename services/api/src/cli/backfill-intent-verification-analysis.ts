@@ -567,7 +567,29 @@ export async function runEntrypoint(args: string[], overrides: EntrypointOverrid
   }
 }
 
+/**
+ * The package-script subprocess test cannot share an in-memory dependency seam
+ * with its parent. Keep this harness strictly test-only so production assembly
+ * always uses createRuntimeDeps; production assembly itself is covered directly
+ * by the local runtime-assembly fixture.
+ */
+async function loadTestEntrypointHarness(): Promise<EntrypointOverrides> {
+  if (process.env.NODE_ENV !== 'test' || !process.env.IND590_CLI_TEST_HARNESS) return {};
+  const harness = await import('./tests/fixtures/backfill-intent-verification-analysis.package-script.harness');
+  const harnesses = {
+    emptyDryRun: harness.emptyDryRun,
+    candidateDiagnostic: harness.candidateDiagnostic,
+  };
+  const name = process.env.IND590_CLI_TEST_HARNESS;
+  if (name !== 'emptyDryRun' && name !== 'candidateDiagnostic') {
+    throw new Error('invalid IND-590 CLI test harness');
+  }
+  return { createDeps: harnesses[name] };
+}
+
 if (isEntrypoint) {
-  loadEntrypointEnvironment();
-  process.exitCode = await runEntrypoint(process.argv.slice(2));
+  // Explicit dotenv loading is not part of a hermetic test process. Bun's
+  // --no-env-file prevents implicit loading, and this preserves that boundary.
+  if (process.env.NODE_ENV !== 'test') loadEntrypointEnvironment();
+  process.exitCode = await runEntrypoint(process.argv.slice(2), await loadTestEntrypointHarness());
 }
