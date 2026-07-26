@@ -2,10 +2,11 @@
 """Assemble the editable src/ tree into a single self-contained Resources/index.html.
 
 Source of truth is src/halo-amiga.html + src/halo-amiga/*.jsx (editable).
-This inlines the vendored React/ReactDOM/Babel and each JSX module directly,
-so the WebView never has to fetch siblings over file:// (unreliable in WKWebView)
-and the app stays fully offline.
+This inlines the vendored React/ReactDOM/Babel, each JSX module, and the
+webfonts directly, so the WebView never has to fetch siblings over file://
+(unreliable in WKWebView) and the app stays fully offline.
 """
+import base64
 import re
 import sys
 from pathlib import Path
@@ -50,10 +51,40 @@ html = re.sub(
     html,
 )
 
+# 3) Replace each @font-face url("fonts/NAME.woff2") by an inline data: URI.
+#    Fonts must be embedded rather than fetched, or the type silently falls back
+#    to system faces whenever the app runs offline.
+def font_sub(m):
+    rel = m.group(1)
+    path = SRC / rel
+    if not path.is_file():
+        raise SystemExit(f"missing font referenced by CSS: {rel}")
+    data = path.read_bytes()
+    if data[:4] != b"wOF2":
+        raise SystemExit(f"{rel} is not a woff2 file (bad magic: {data[:4]!r})")
+    b64 = base64.b64encode(data).decode("ascii")
+    return f'url("data:font/woff2;base64,{b64}") format("woff2")'
+
+
+html, n_fonts = re.subn(
+    r'url\("(fonts/[^"]+\.woff2)"\)\s*format\("woff2"\)',
+    font_sub,
+    html,
+)
+if not n_fonts:
+    raise SystemExit("no @font-face url() references found — did the CSS change?")
+
 # Sanity: no remaining external src references into our local tree.
 leftover = re.findall(r'src="(halo-amiga/[^"]+)"', html)
 if leftover:
     raise SystemExit(f"unresolved local src refs remain: {leftover}")
+
+# Sanity: nothing may still point at the network or at a sibling file.
+stragglers = re.findall(r'url\("(?!data:)([^"]+)"\)', html) + re.findall(
+    r'https://fonts\.(?:googleapis|gstatic)\.com', html
+)
+if stragglers:
+    raise SystemExit(f"unresolved font refs remain: {stragglers}")
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(html)

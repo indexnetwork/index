@@ -232,7 +232,7 @@ function Onboarding({ onDone, onBack }) {
                 <AgentBubble><StreamText text={step.prompt} speed={18}/></AgentBubble>
                 {step.hint && (
                   <div style={{
-                    fontFamily:"var(--mac-mono)", fontSize:12.5, color:"#555",
+                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
                     marginLeft:36, marginTop:-2, lineHeight:1.4,
                   }}>{step.hint}</div>
                 )}
@@ -246,19 +246,10 @@ function Onboarding({ onDone, onBack }) {
                     </div>
                   ) : (
                     <React.Fragment>
-                      <div style={{
-                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
-                        textTransform:"uppercase", color:"#888",
-                      }}>or pick one</div>
-                      <div style={{
-                        display:"grid", gap:7, maxWidth:560,
-                      }}>
-                        {step.examples?.map(ex => (
-                          <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
-                        ))}
-                      </div>
+                      {/* type your own answer first — the suggestions are the
+                          "or pick one" fallback, so they come after */}
                       <form onSubmit={(e) => { e.preventDefault(); submit(); }}
-                        style={{ display:"flex", gap:12, alignItems:"center", maxWidth:560, marginTop:4 }}>
+                        style={{ display:"flex", gap:12, alignItems:"center", maxWidth:560 }}>
                         <span style={{
                           fontFamily:"var(--mac-mono)",
                           fontSize: 17, color:"#000",
@@ -280,8 +271,19 @@ function Onboarding({ onDone, onBack }) {
                             padding:"7px 0",
                           }}
                         />
-                        <Btn primary onClick={() => submit()}>send ↵</Btn>
+                        <Btn primary disabled={!draft.trim()} onClick={() => submit()}>send ↵</Btn>
                       </form>
+                      <div style={{
+                        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
+                        textTransform:"uppercase", color:"var(--ink-3)",
+                      }}>or pick one</div>
+                      <div style={{
+                        display:"grid", gap:7, maxWidth:560,
+                      }}>
+                        {step.examples?.map(ex => (
+                          <SuggestChip key={ex} onClick={() => submit(ex)}>{ex}</SuggestChip>
+                        ))}
+                      </div>
                     </React.Fragment>
                   )}
                 </div>
@@ -291,7 +293,7 @@ function Onboarding({ onDone, onBack }) {
         </MacWindow>
 
         {/* RIGHT — the field warming */}
-        <MacWindow title="The Field, warming">
+        <MacWindow title="the field, warming">
           <OnboardingFieldPreview answers={answers} stepIdx={stepIdx}/>
         </MacWindow>
       </div>
@@ -325,7 +327,7 @@ function AgentBubble({ children }) {
 function UserBubble({ children }) {
   return (
     <div style={{ display:"flex", gap:12, marginLeft:38 }}>
-      <span style={{ color:"#666", fontFamily:"var(--mac-mono)", fontSize:14 }}>›</span>
+      <span style={{ color:"var(--ink-2)", fontFamily:"var(--mac-mono)", fontSize:14 }}>›</span>
       <div style={{
         fontFamily:"var(--mac-sans)", fontSize:15,
         color:"#000", maxWidth:520, fontStyle:"italic",
@@ -338,7 +340,7 @@ function PastTurn({ step, answer }) {
   return (
     <div style={{ display:"grid", gap:6, opacity:0.55 }}>
       <AgentBubble>
-        <span style={{ fontSize:16, color:"#444" }}>{step.prompt}</span>
+        <span style={{ fontSize:16, color:"var(--ink-2)" }}>{step.prompt}</span>
       </AgentBubble>
       <UserBubble>{step.choices ? step.choices.find(c => c.value === answer)?.label : answer}</UserBubble>
     </div>
@@ -358,15 +360,15 @@ function SuggestChip({ children, onClick }) {
       style={{
         textAlign:"left",
         padding:"9px 14px",
-        fontFamily:"var(--mac-sans)", fontSize:14.5,
+        fontFamily:"var(--mac-sans)", fontSize:14,
         textTransform:"lowercase", letterSpacing:0.2,
         border:"1px solid #000",
         background: down ? "#000" : "#fff",
         color:      down ? "#fff" : "#000",
         borderRadius:0,
         boxShadow: down
-          ? "inset 1px 1px 0 #888, inset -1px -1px 0 #fff"
-          : "inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 #000",
+          ? "inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff"
+          : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
         transform: down ? "translate(1px,1px)" : "none",
         cursor:"pointer",
       }}>{children}</button>
@@ -395,7 +397,7 @@ function ChoiceRow({ c, onClick }) {
         letterSpacing:0.4, textTransform:"lowercase",
         fontWeight:700,
       }}>{c.label}</div>
-      <div style={{ fontFamily:"var(--mac-sans)", fontSize:13.5, opacity:0.78 }}>{c.sub}</div>
+      <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, opacity:0.78 }}>{c.sub}</div>
     </button>
   );
 }
@@ -420,17 +422,15 @@ function OnboardingFieldPreview({ answers, stepIdx }) {
       display:"flex", flexDirection:"column", gap:8,
       overflow:"hidden", flex:1, minHeight:0,
     }}>
-      <RuleLabel>the field, warming</RuleLabel>
-
       {/* legible headline counts, using the shared Stat component */}
       <div style={{ display:"flex", gap:28, margin:"4px 0 10px" }}>
         <Stat value="184" label="indexed"/>
-        <Stat value="62" label="agents online" accent/>
+        <Stat value="62" label="online now" accent/>
       </div>
 
       <div className="mac-scroll" style={{
         flex:1, minHeight:0, overflowY:"auto",
-        fontFamily:"var(--mac-mono)", fontSize:13.5,
+        fontFamily:"var(--mac-mono)", fontSize:13,
         color:"#000", lineHeight:1.7,
         display:"grid", gap:6, alignContent:"start",
       }}>
@@ -447,11 +447,6 @@ function OnboardingFieldPreview({ answers, stepIdx }) {
         ))}
         {stepIdx >= 1 && <FieldGlyph/>}
       </div>
-
-      <div style={{
-        fontFamily:"var(--mac-mono)", fontSize:12, color:"#555",
-        letterSpacing:0.3, paddingTop:6, borderTop:"1px solid #ccc",
-      }}>nothing here leaves your device. promise.</div>
     </div>
   );
 }
@@ -489,7 +484,7 @@ function FieldGlyph() {
 function Calibrating() {
   const lines = [
     "compressing your edges into a signal…",
-    "negotiating handshakes with 62 agents…",
+    "reaching out across the network…",
     "filtering people you'd rather not see…",
     "opening the field.",
   ];
@@ -531,7 +526,7 @@ function Calibrating() {
               animationDelay:`${i * 350}ms`,
               fontFamily:"var(--mac-sans)",
               fontSize: 15,
-              color: i === lines.length - 1 ? "#000" : "#444",
+              color: i === lines.length - 1 ? "#000" : "var(--ink-2)",
               letterSpacing:0.2,
               padding:"4px 0",
               fontWeight: i === lines.length - 1 ? 700 : 400,

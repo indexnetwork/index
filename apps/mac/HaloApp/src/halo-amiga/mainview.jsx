@@ -9,7 +9,7 @@ function RetentionNote({ retention, onChange }) {
   return (
     <div style={{
       display:"flex", alignItems:"center", gap:6, flexWrap:"wrap",
-      fontFamily:"var(--mac-mono)", fontSize:10, color:"#888", letterSpacing:0.2,
+      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.2,
     }}>
       <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
       <span>
@@ -747,7 +747,7 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
       </div>
       <div/>
       <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-        <span style={{ color:"#555" }}>sim</span>
+        <span style={{ color:"var(--ink-2)" }}>sim</span>
         <MacSegmented
           value={simRate}
           onChange={setSimRate}
@@ -780,7 +780,7 @@ function SignalAction({ label, active = false, onClick }) {
         border:"1px solid #000",
         background: on ? "#000" : "#fff",
         color: on ? "#fff" : "#000",
-        boxShadow:"1px 1px 0 #000",
+        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
       }}>{label}</button>
   );
 }
@@ -840,6 +840,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
           to pause or stop the agent working on it */}
       <div style={{
         padding:"12px 18px 12px",
+        minHeight:68, boxSizing:"border-box",
         borderBottom:"1px solid #000",
         background:"#fff",
       }}>
@@ -859,22 +860,22 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
         </div>
         <div style={{
           marginTop:8, display:"flex", alignItems:"center", gap:8,
-          fontFamily:"var(--mac-mono)", fontSize:10.5, letterSpacing:0.3, color:"#666",
+          fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3, color:"var(--ink-2)",
         }}>
           <span style={{
             display:"inline-flex", alignItems:"center", gap:5,
-            color: paused ? "#999" : "#000",
+            color: paused ? "var(--ink-3)" : "#000",
           }}>
             <span style={{
               width:7, height:7, borderRadius:"50%",
-              background: paused ? "#bbb" : "#1FA95B",
+              background: paused ? "var(--ink-4)" : "#1FA95B",
               boxShadow: paused ? "none" : "0 0 0 2px rgba(31,169,91,0.25)",
             }}/>
             {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
           </span>
           {!paused && (pendingCount + negotiatingPeople.length) > 0 && (
             <React.Fragment>
-              <span style={{ color:"#ccc" }}>·</span>
+              <span style={{ color:"var(--ink-4)" }}>·</span>
               <span style={{
                 background:"#000", color:"#fff",
                 padding:"1px 8px",
@@ -932,19 +933,25 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
           border:"1px solid #000",
           background:"#000", color:"#fff",
           borderRadius:9, cursor:"pointer", zIndex:5,
-          boxShadow:"1px 1px 0 #000",
+          boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
         }}>↓ {unread} new</button>
       )}
 
-      {/* input — a bordered composer so it reads as a real message box */}
+      {/* Composer. White-on-white with a hairline rule made this read as more
+          conversation rather than as the place you type, so the band gets the
+          quiet fill and the 2px rule the app uses for major divisions, and the
+          field itself gets the sunken well from the settings inputs. Grey
+          around, white sunken inside — the input is the only editable thing
+          here, so it should be the only thing that looks editable. */}
       <div style={{
-        borderTop:"1px solid #000",
+        borderTop:"2px solid #000",
         padding:"10px 14px",
-        background:"#fff",
+        background:"#F2F0EC",
       }}>
         <div style={{
           display:"flex", gap:10, alignItems:"center",
           border:"1px solid #000", background:"#fff",
+          boxShadow:"inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #FFF",
           padding:"7px 11px",
         }}>
           <span style={{ fontFamily:"var(--mac-mono)", fontSize:13, color:"#000" }}>›</span>
@@ -955,12 +962,12 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
             placeholder="message index — or just let it keep working"
             style={{
               flex:1, background:"transparent", border:"none", outline:"none",
-              color:"#000", fontFamily:"var(--mac-sans)", fontSize:13.5,
+              color:"#000", fontFamily:"var(--mac-sans)", fontSize:13,
               padding:"2px 0",
             }}
           />
           {draft.trim() && (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#555" }}>↵</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>↵</span>
           )}
         </div>
       </div>
@@ -994,15 +1001,15 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
       {/* quiet source line */}
       <div style={{
         display:"flex", alignItems:"center", gap:7, minWidth:0,
-        fontFamily:"var(--mac-mono)", fontSize:10.5, color:"#999", letterSpacing:0.3,
+        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
       }}>
         {icon}
         <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{source}</span>
-        {tag && <span style={{ color:"#bbb", flex:"0 0 auto" }}>· {tag}</span>}
+        {tag && <span style={{ color:"var(--ink-4)", flex:"0 0 auto" }}>· {tag}</span>}
       </div>
       {/* the question — the hero */}
       <div style={{
-        fontFamily:"var(--mac-sans)", fontSize:16.5, fontWeight:500,
+        fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
         lineHeight:1.4, color:"#000", letterSpacing:-0.1,
       }}>{question}</div>
       {/* suggested options as a lettered list, then a write-your-own row that
@@ -1018,7 +1025,7 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
           <span style={{
             flex:"0 0 auto", width:18,
             textAlign:"center",
-            fontFamily:"var(--mac-mono)", fontSize:12, color:"#888",
+            fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-3)",
           }}>✎</span>
           <input
             value={draft} onChange={e => setDraft(e.target.value)}
@@ -1027,11 +1034,11 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
             style={{
               flex:1, background:"transparent", color:"#000",
               border:"none", outline:"none",
-              fontFamily:"var(--mac-sans)", fontSize:13.5, padding:"2px 0",
+              fontFamily:"var(--mac-sans)", fontSize:13, padding:"2px 0",
             }}
           />
           {draft.trim() && (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#555" }}>↵</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>↵</span>
           )}
         </div>
       </div>
@@ -1059,7 +1066,7 @@ function OptionRow({ letter, label, onClick }) {
         border:`1px solid ${hover ? "#fff" : "#000"}`,
         fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
       }}>{letter}</span>
-      <span style={{ fontFamily:"var(--mac-sans)", fontSize:13.5, lineHeight:1.35 }}>{label}</span>
+      <span style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.35 }}>{label}</span>
     </button>
   );
 }
@@ -1114,7 +1121,7 @@ function ClarifierCard({ item, onAnswer, onDismiss }) {
       }}>
         <div style={{
           display:"flex", alignItems:"center", gap:7, minWidth:0,
-          fontFamily:"var(--mac-mono)", fontSize:10.5, color:"#999", letterSpacing:0.3,
+          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
         }}>
           <span style={{ color:"#000", fontWeight: collective ? 700 : 400 }}>{collective ? "⁂" : "›"}</span>
           <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{sourceLabel}</span>
@@ -1125,12 +1132,12 @@ function ClarifierCard({ item, onAnswer, onDismiss }) {
           }}>{item.dismissed ? "dismissed" : "✓ answered"}</span>
         </div>
         <div style={{
-          fontFamily:"var(--mac-sans)", fontSize:14.5, fontWeight:500,
+          fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:500,
           color:"#000", lineHeight:1.4, letterSpacing:-0.1,
         }}>{item.text}</div>
         {!item.dismissed && (
           <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10.5, color:"#999", flex:"0 0 auto" }}>you</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", flex:"0 0 auto" }}>you</span>
             <span style={{
               fontFamily:"var(--mac-sans)", fontSize:13,
               background:"#000", color:"#fff",
@@ -1195,8 +1202,8 @@ function NoteLine({ children }) {
   return (
     <div className="fade-up" style={{
       marginLeft:32,
-      fontFamily:"var(--mac-mono)", fontSize:11.5,
-      color:"#444", lineHeight:1.5,
+      fontFamily:"var(--mac-mono)", fontSize:11,
+      color:"var(--ink-2)", lineHeight:1.5,
       display:"flex", gap:8, alignItems:"baseline",
     }}>
       <span>·</span>
@@ -1277,7 +1284,7 @@ function UserLine({ children }) {
         fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
         padding:"8px 12px",
         border:"1px solid #000",
-        boxShadow:"1px 1px 0 #000",
+        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
         wordBreak:"break-word",
       }}>{children}</div>
     </div>
@@ -1296,15 +1303,18 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
   const peopleForTab = tab === "all" ? people : people.filter(p => bucket(p) === tab);
   return (
     <div style={{ display:"grid", gridTemplateRows:"auto 1fr", flex:1, minHeight:0 }}>
-      <div style={{ padding:"14px 22px", borderBottom:"1px solid #000" }}>
-        <PipelineFunnel
-          stages={funnelStages}
-          mode={pipelineMode}
-          onClickStage={(label) => setTab(label)}
-          activeStage={tab}
-        />
-        <div style={{ marginTop:10 }}>
-          <Ticker items={field.slice(0, 8).length > 0 ? field.slice(0, 8) : [{ text:"warming up…" }]} intervalMs={2600}/>
+      <div style={{
+        padding:"0 22px", minHeight:68, boxSizing:"border-box",
+        display:"flex", alignItems:"center",
+        borderBottom:"1px solid #000",
+      }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <PipelineFunnel
+            stages={funnelStages}
+            mode={pipelineMode}
+            onClickStage={(label) => setTab(label)}
+            activeStage={tab}
+          />
         </div>
       </div>
 
@@ -1319,7 +1329,7 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
         {peopleForTab.length === 0 && (
           <div style={{
             padding:28, textAlign:"center",
-            fontFamily:"var(--mac-mono)", fontSize:12, color:"#555",
+            fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
             border:"1px dashed #000",
           }}>{
             tab === "accepted" ? "no one accepted yet — accept someone from your ready list."
@@ -1403,7 +1413,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
         // filter (not opacity) — the .fade-up animation ends at opacity:1 and would override it
         filter: (isPassed || isExpired) ? "opacity(0.45)" : "none",
-        boxShadow: (cardClickable && hover) ? "2px 2px 0 #000" : "none",
+        boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
         transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
         cursor: cardClickable ? "pointer" : "default",
         transition:"all .12s ease",
@@ -1430,7 +1440,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           <React.Fragment>
             {unreadCount > 0 && (
               <span style={{
-                fontFamily:"var(--mac-mono)", fontSize:9, fontWeight:700,
+                fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
                 background:"#FF8A00", color:"#000", border:"1px solid #000", padding:"0 5px",
               }}>{unreadCount} new</span>
             )}
@@ -1456,18 +1466,18 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         ) : negotiating ? (
           <span style={{
             display:"flex", alignItems:"center", gap:5,
-            fontFamily:"var(--mac-mono)", fontSize:9.5, letterSpacing:1,
-            textTransform:"uppercase", color:"#555",
+            fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
+            textTransform:"uppercase", color:"var(--ink-2)",
           }}>
             <span style={{ width:6, height:6, background:"#FF8A00", border:"1px solid #000", flex:"0 0 auto" }}/>
             negotiating
           </span>
         ) : isExpired ? (
-          <span style={{ fontFamily:"var(--mac-mono)", fontSize:9.5, opacity:0.75 }}>
+          <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, opacity:0.75 }}>
             expired · summary ›
           </span>
         ) : (
-          <span style={{ fontFamily:"var(--mac-mono)", fontSize:9.5, opacity:0.5 }}>
+          <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, opacity:0.5 }}>
             {person.status}
           </span>
         )}
@@ -1564,7 +1574,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
           {conversations.length === 0 ? (
             <div style={{
               padding:24, textAlign:"center",
-              fontFamily:"var(--mac-mono)", fontSize:12, color:"#555",
+              fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
               border:"1px dashed #000",
             }}>no conversations yet — open someone from your radar to start one.</div>
           ) : conversations.map(c => (
@@ -1573,8 +1583,8 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
               gap:12, alignItems:"center", padding:"10px 12px",
               border:"1px solid #000", background:"#fff", cursor:"pointer",
               boxShadow: c.unread > 0
-                ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 #000"
-                : "inset 1px 1px 0 #fff, inset -1px -1px 0 #888, 1px 1px 0 #000",
+                ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 rgba(0,0,0,0.2)"
+                : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
             }}>
               <Avatar name={c.name} size={32}/>
               <div style={{ display:"grid", gap:3, minWidth:0 }}>
@@ -1582,7 +1592,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
                   {c.name}
                 </div>
                 <div style={{
-                  fontFamily:"var(--mac-sans)", fontSize:12, color:"#555",
+                  fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
                   whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
                 }}>
                   {c.lastWho === "you" ? "you: " : ""}{c.last}
@@ -1590,12 +1600,12 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
               </div>
               {c.unread > 0 ? (
                 <span style={{
-                  fontFamily:"var(--mac-mono)", fontSize:9.5, fontWeight:700,
+                  fontFamily:"var(--mac-mono)", fontSize:10, fontWeight:700,
                   background:"#FF8A00", color:"#000", border:"1px solid #000", padding:"0 6px",
                   flex:"0 0 auto",
                 }}>{c.unread}</span>
               ) : (
-                <span style={{ fontFamily:"var(--mac-mono)", fontSize:9.5, color:"#888", flex:"0 0 auto" }}>›</span>
+                <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", flex:"0 0 auto" }}>›</span>
               )}
             </button>
           ))}
@@ -1631,7 +1641,7 @@ function SummarySection({ label, children }) {
         fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1.5,
         textTransform:"uppercase", color:"#000",
       }}>— {label}</div>
-      <div style={{ fontFamily:"var(--mac-sans)", fontSize:13.5, lineHeight:1.5, color:"#000" }}>
+      <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"#000" }}>
         {children}
       </div>
     </div>
@@ -1653,7 +1663,7 @@ function SummaryWindow({ person, onClose }) {
               {person.name}
             </div>
             <div style={{
-              fontFamily:"var(--mac-mono)", fontSize:10, color:"#555",
+              fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
               letterSpacing:1, textTransform:"uppercase",
             }}>expired · {person.location}</div>
           </div>
@@ -1722,7 +1732,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
               {person.name}
             </div>
             <div style={{
-              fontFamily:"var(--mac-mono)", fontSize:10, color:"#555",
+              fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
               letterSpacing:1, textTransform:"uppercase",
             }}>{statusWord(status)}</div>
           </div>
@@ -1751,7 +1761,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
             <SummarySection label="what you share">{person.overlap.join(" · ")}</SummarySection>
           )}
           <SummarySection label="details">
-            <div style={{ display:"grid", gap:4, fontFamily:"var(--mac-mono)", fontSize:11.5, color:"#000" }}>
+            <div style={{ display:"grid", gap:4, fontFamily:"var(--mac-mono)", fontSize:11, color:"#000" }}>
               {person.location && <div>· {person.location}</div>}
               {person.distance && <div>· {person.distance}</div>}
               {typeof person.mutuals === "number" && <div>· {person.mutuals} mutual{person.mutuals === 1 ? "" : "s"}</div>}
@@ -1782,9 +1792,9 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
               onClick={() => onOpenChat && onOpenChat(person.id)}
               style={{ fontFamily:"var(--mac-mono)", fontSize:11, padding:"4px 14px" }}>send message</button>
           ) : isExpired ? (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#888" }}>this signal closed.</span>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>this signal closed.</span>
           ) : (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"#888" }}>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>
               answer their question in your feed to move forward.
             </span>
           )}
@@ -1816,7 +1826,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}
               </div>
-              <div style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"#555" }}>
+              <div style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)" }}>
                 {person.location}
               </div>
             </div>
@@ -1861,7 +1871,7 @@ function ChatBubble({ m }) {
   if (m.who === "index") {
     return (
       <div style={{
-        fontFamily:"var(--mac-mono)", fontSize:10.5, color:"#555",
+        fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
         textAlign:"center", letterSpacing:0.3, lineHeight:1.5, padding:"0 8px",
       }}>{m.text}</div>
     );
@@ -1876,7 +1886,7 @@ function ChatBubble({ m }) {
         color:      you ? "#fff" : "#000",
         padding:"8px 11px",
         fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.4,
-        boxShadow: you ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 #888",
+        boxShadow: you ? "none" : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
       }}>{m.text}</div>
     </div>
   );

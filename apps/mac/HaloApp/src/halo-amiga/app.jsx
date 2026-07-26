@@ -1,9 +1,33 @@
 // App — orchestrates the Mac System 6 prototype.
 // Current flow: signals hub → onboarding/calibrating for new signals → main.
 
+// Session. Quitting and reopening shouldn't dump you back at sign-in —
+// only an explicit "sign out" should. The flag is written when the profile
+// review is confirmed (the point where onboarding is actually complete) and
+// cleared from the account menu.
+//
+// localStorage works here because main.swift sets allowFileAccessFromFileURLs
+// on the file:// origin; the guards are for the case where it doesn't, in
+// which case the app simply falls back to always starting at login.
+const SESSION_KEY = "halo.signedIn";
+
+function readSession() {
+  try { return window.localStorage.getItem(SESSION_KEY) === "1"; }
+  catch (e) { return false; }
+}
+
+function writeSession(on) {
+  try {
+    if (on) window.localStorage.setItem(SESSION_KEY, "1");
+    else window.localStorage.removeItem(SESSION_KEY);
+  } catch (e) { /* no store — session just won't survive a relaunch */ }
+}
+
 function App() {
   const { PEOPLE, POOL, FIELD_EVENTS, INTENTS } = window.HALO_DATA;
-  const [screen, setScreen] = useState("intents");
+  const [screen, setScreen] = useState(() => readSession() ? "intents" : "login");
+  // True until the user creates their first signal — the hub opens empty.
+  const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
   const [people, setPeople] = useState(() => [
     ...PEOPLE.map(p => ({ ...p, hidden: false })),
@@ -77,6 +101,7 @@ function App() {
     });
     setConversation([]);
     setField([]);
+    setFreshUser(false);   // they've created a signal — hub is no longer empty
     setScreen("main");
     seedField();
   };
@@ -98,9 +123,30 @@ function App() {
         position:"fixed", inset:0,
         overflow:"hidden",
       }} className="mac-desktop">
+        {screen === "login"       && <Login onSignIn={() => setScreen("building")}/>}
+        {/* Agent assembles the profile, then we show it for review. */}
+        {screen === "building"    && <BuildingProfile onDone={() => setScreen("profile")}/>}
+        {/* First run: review the profile we assembled, then into the hub.
+            Confirming is the only way past this gate — declining (footer or
+            titlebar gadget) returns to sign-in with nothing written, so the
+            review replays on the next sign-in rather than being silently
+            treated as approved. */}
+        {screen === "profile"     && <Settings
+                                       initialTab="profile"
+                                       profileOnly
+                                       onClose={() => { writeSession(false); setScreen("login"); }}
+                                       onDone={() => {
+                                         // confirming the profile is what completes onboarding,
+                                         // so it's also what starts the remembered session
+                                         writeSession(true);
+                                         setFreshUser(true);
+                                         setScreen("intents");
+                                       }}/>}
         {screen === "intents"     && <Intents
+                                       fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
-                                       onNew={goOnboarding}/>}
+                                       onNew={goOnboarding}
+                                       onSignOut={() => { writeSession(false); setScreen("login"); }}/>}
         {screen === "onboarding"  && <Onboarding onDone={finishOnboarding} onBack={() => setScreen("intents")}/>}
         {screen === "main"        && (
           <MainView

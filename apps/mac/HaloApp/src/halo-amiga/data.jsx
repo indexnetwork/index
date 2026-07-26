@@ -540,4 +540,73 @@ const INTENTS = [
   },
 ];
 
-window.HALO_DATA = { EVENT, ONBOARDING_STEPS, PEOPLE, POOL, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES, INTENTS };
+// You. The signals list is "yours", so the hub needs someone to hang it on.
+const ME = {
+  id: "me",
+  name: "seren sandikci",
+  handle: "@seren",
+  role: "founder",
+  status: "online",
+  // Settings — what the network sees, plus how the agent reaches you.
+  email: "seren@index.network",
+  location: "NYC, United States",
+  intro: "co-founder at Index Network, building a decentralized discovery "
+       + "protocol. industrial design at METU, Brooklyn based. focused on where "
+       + "decentralized tech, information protocols, and innovation meet.",
+  socials: [
+    { id: "x",        prefix: "x.com/",           handle: "serensandikci" },
+    { id: "linkedin", prefix: "linkedin.com/in/", handle: "serensandikci" },
+    { id: "github",   prefix: "github.com/",      handle: "serensandikci" },
+    { id: "telegram", prefix: "t.me/",            handle: "serensandikci" },
+  ],
+  websites: [],
+};
+
+const INTRO_MAX = 500;
+
+// Communities. `joined` splits "my networks" from "discover".
+// Signals you've published into a network. Each is what your agent is carrying
+// on your behalf inside that community.
+const NET_SIGNALS = [
+  { id:"s1", text:"looking for a cool open-source project to contribute to · a great match: they can make warm intros · specifics: technical, can build things", date:"jul 18" },
+  { id:"s2", text:"looking for a cool open-source project to contribute to · a great match: they're deep in the same space as me · specifics: technical, can build things", date:"jul 11" },
+  { id:"s3", text:"looking for a cool open-source project to contribute to · a great match: they're deep in the same space as me · specifics: looking to start in the next month", date:"jul 11" },
+  { id:"s4", text:"have a new business idea, want honest feedback from others · a great match: they can make warm intros · specifics: based in nyc or willing to travel", date:"jul 11" },
+  { id:"s5", text:"have a new business idea, want honest feedback from others", date:"jul 10" },
+  { id:"s6", text:"have a new business idea, want honest feedback from others · a great match: they're deep in the same space as me · specifics: technical, can build things", date:"jul 09" },
+];
+
+const NETWORKS = [
+  { id:"edge",     name:"Edge City",         members:239, kind:"event", privacy:"experiment",
+    role:"member", joined:true, signals:NET_SIGNALS },
+  { id:"early",    name:"Index Early Birds", members:120, role:"member", joined:true,
+    signals:NET_SIGNALS.slice(0, 2) },
+  { id:"builders", name:"NYC Builders",      members:412, joined:false },
+  { id:"design",   name:"Quiet Design Club", members:88,  kind:"event", joined:false },
+  { id:"o1",       name:"O-1 Alumni",        members:57,  joined:false },
+];
+
+// Agent runtimes found on this Mac. "connected" ones are talking to index;
+// "detected" ones are installed but not wired up yet. `negotiator: true` marks
+// the one currently representing you in agent-to-agent negotiations.
+const AGENTS = [
+  { id:"hermes", name:"hermes", initial:"h", tint:"#4C6FD4",
+    state:"connected", on:true,
+    connectedAs:"seren's personal agent", heartbeat:"12s ago" },
+  { id:"claude", name:"claude code", initial:"c", tint:"#B4553F",
+    state:"connected", on:true,
+    connectedAs:"seren's personal agent", heartbeat:"1m ago" },
+];
+
+// Per-agent permissions, shown when a connected runtime is expanded.
+const AGENT_PERMISSIONS = [
+  { id:"updates", title:"connection updates",
+    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
+  { id:"indexing", title:"nightly indexing",
+    blurb:"turns what this agent learned today into signals, overnight. off means "
+        + "discovery only knows what you've told it." },
+  { id:"brief", title:"daily brief",
+    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
+];
+
+window.HALO_DATA = { EVENT, ONBOARDING_STEPS, PEOPLE, POOL, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES, INTENTS, ME, INTRO_MAX, NETWORKS, AGENTS, AGENT_PERMISSIONS };

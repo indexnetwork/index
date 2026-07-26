@@ -26,7 +26,7 @@ function Landing({ onEnter }) {
           }}>
             <div style={{ maxWidth: 380 }}>
               <h1 style={{
-                fontFamily:"var(--amiga-title)", fontWeight:400,
+                fontFamily:"var(--amiga-mono)", fontWeight:500,
                 fontSize:38, lineHeight:1.05, letterSpacing:-0.6,
                 margin:0, color:"#000",
               }}>
@@ -37,7 +37,7 @@ function Landing({ onEnter }) {
                   padding:"0 6px", display:"inline-block",
                   marginRight:8,
                   border:"1px solid #000",
-                  boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 2px 2px 0 #000",
+                  boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 2px 2px 0 rgba(0,0,0,0.22)",
                   fontWeight: 700,
                 }}>already</span>{" "}
                 <span>looking for.</span>
@@ -45,7 +45,7 @@ function Landing({ onEnter }) {
 
               <p style={{
                 marginTop:18, color:"#000",
-                fontSize:13.5, lineHeight:1.55, maxWidth:340,
+                fontSize:13, lineHeight:1.55, maxWidth:340,
                 fontFamily:"var(--mac-sans)",
               }}>
                 tell index what you're after. agents negotiate quietly in
@@ -63,7 +63,7 @@ function Landing({ onEnter }) {
         </MacWindow>
 
         {/* Right window — the network card */}
-        <MacWindow title="The Network" style={{ minHeight: 440 }}>
+        <MacWindow title="index · the network" style={{ minHeight: 440 }}>
           <div style={{ padding:"24px 28px 24px", display:"flex", flexDirection:"column", gap:14 }}>
 
             <div style={{
@@ -71,7 +71,7 @@ function Landing({ onEnter }) {
               padding:"22px 22px 18px",
               background:"#fff",
               position:"relative",
-              boxShadow:"inset 1px 1px 0 #888, inset -1px -1px 0 #fff",
+              boxShadow:"inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff",
             }}>
               <div style={{
                 display:"grid", gridTemplateColumns:"1fr 1fr 1fr",
@@ -123,8 +123,8 @@ function FieldPing() {
       display:"grid", gap:6,
     }}>
       <div style={{
-        color:"#555", letterSpacing:1.4, textTransform:"uppercase",
-        fontSize:9.5, display:"flex", alignItems:"center", gap:6,
+        color:"var(--ink-2)", letterSpacing:1.4, textTransform:"uppercase",
+        fontSize:10, display:"flex", alignItems:"center", gap:6,
       }}>
         <span style={{
           width:6, height:6, borderRadius:"50%", background:A.accent,

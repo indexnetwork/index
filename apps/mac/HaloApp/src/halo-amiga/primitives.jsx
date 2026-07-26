@@ -16,7 +16,7 @@ const A = {
 // 3D bevel — "out" looks raised (gadget), "in" looks sunken (inset frame)
 function bevel(kind = "out") {
   if (kind === "out") {
-    return `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 ${A.fg}`;
+    return `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 rgba(0,0,0,0.2)`;
   }
   return `inset 1px 1px 0 ${A.edge}, inset -1px -1px 0 ${A.paper}`;
 }
@@ -112,7 +112,7 @@ function Avatar({ name, size = 28, ring = false, seed }) {
       border:`1px solid ${A.fg}`,
       boxShadow: ring
         ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}`
-        : `1px 1px 0 ${A.fg}`,
+        : `1px 1px 0 rgba(0,0,0,0.2)`,
       color: A.fg,
       fontFamily:"var(--mac-mono)",
       fontSize: size * 0.38, letterSpacing:0.5,
@@ -178,8 +178,8 @@ function Btn({ children, onClick, primary = false, small = false, style, disable
         boxShadow: active
           ? `inset 1px 1px 0 ${A.edge}, inset -1px -1px 0 ${A.paper}`
           : primary
-            ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}, 1px 1px 0 ${A.fg}`
-            : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 ${A.fg}`,
+            ? `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}, 1px 1px 0 rgba(0,0,0,0.2)`
+            : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 rgba(0,0,0,0.2)`,
         transform: active ? "translate(1px,1px)" : "none",
         fontWeight: primary ? 700 : 500,
         opacity: disabled ? 0.45 : 1,
@@ -211,7 +211,7 @@ function Chip({ children, onClick, active }) {
         borderRadius: 0,
         boxShadow: pressed
           ? `inset 1px 1px 0 ${A.shadow}, inset -1px -1px 0 ${A.highlight}`
-          : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 ${A.fg}`,
+          : `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}, 1px 1px 0 rgba(0,0,0,0.2)`,
         transform: pressed ? "translate(1px,1px)" : "none",
         fontWeight: pressed ? 700 : 400,
         cursor:"pointer",
@@ -308,7 +308,6 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
   return (
     <div style={{
       display:"flex",
-      borderBottom:`1px solid ${A.fg}`,
       fontFamily:"var(--mac-mono)",
     }}>
       {stages.map((s, i) => {
@@ -343,7 +342,7 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
               color: accent ? A.accent : (isActive ? A.paper : A.fg),
             }}>{s.count}</span>
             <span style={{
-              fontSize:9, letterSpacing:1, textTransform:"uppercase",
+              fontSize:10, letterSpacing:1, textTransform:"uppercase",
               opacity: isActive ? 0.85 : 0.6, whiteSpace:"nowrap",
               overflow:"hidden", textOverflow:"ellipsis",
             }}>{s.label}</span>
@@ -376,7 +375,7 @@ function SourceBadge({ source, sourceMeta }) {
         display:"inline-grid", placeItems:"center",
         width:14, height:14,
         background: A.accent, color: A.fg,
-        fontSize:9, fontWeight:700,
+        fontSize:10, fontWeight:700,
         border:`1px solid ${A.fg}`,
         boxShadow: `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`,
       }}>{cfg.glyph}</span>
@@ -416,6 +415,28 @@ function ModeBadge({ mode }) {
   );
 }
 
+/* ---------- edit affordance ---------- */
+// Corner badge for anything you can replace by clicking it: a profile photo, a
+// network tile. Always visible rather than hover-only, since an affordance you
+// can't see until you're already on it isn't doing its job. Hover just flips it
+// to the accent. Sits in the corner rather than scrimming the whole image, so
+// what you're editing stays legible.
+function EditBadge({ hover, size = 16 }) {
+  return (
+    <span aria-hidden="true" style={{
+      position:"absolute", right:-1, bottom:-1,
+      width:size, height:size,
+      border:"1px solid #000",
+      background: hover ? A.accent : "#000",
+      color:      hover ? "#000" : "#fff",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      fontSize: Math.round(size * 0.6), lineHeight:1,
+      transition:"background 120ms ease, color 120ms ease",
+      pointerEvents:"none",
+    }}>✎</span>
+  );
+}
+
 /* ---------- AmigaWindow — title bar with close gadget on left, depth on right ---------- */
 function MacWindow({ title, children, style, bodyStyle, onClose, noShadow }) {
   return (
@@ -426,7 +447,6 @@ function MacWindow({ title, children, style, bodyStyle, onClose, noShadow }) {
       <div className="mac-titlebar">
         <span className="mac-close" onClick={onClose}/>
         <span className="mac-title"><span className="t">{title}</span></span>
-        <span className="mac-zoom"/>
       </div>
       <div style={{
         flex:1, minHeight:0, minWidth:0, display:"flex", flexDirection:"column",
@@ -438,7 +458,10 @@ function MacWindow({ title, children, style, bodyStyle, onClose, noShadow }) {
 }
 
 /* ---------- Workbench segmented control ---------- */
-function MacSegmented({ value, onChange, options }) {
+// size="lg" for full screens (settings, networks); default stays compact for
+// the mainview toolbar, where a taller control would crowd the bar.
+function MacSegmented({ value, onChange, options, size }) {
+  const lg = size === "lg";
   return (
     <div style={{ display:"inline-flex", border:`1px solid ${A.fg}` }}>
       {options.map((opt, i) => {
@@ -447,12 +470,12 @@ function MacSegmented({ value, onChange, options }) {
           <button key={opt.value}
             onClick={() => onChange(opt.value)}
             style={{
-              padding:"3px 12px",
+              padding: lg ? "7px 18px" : "3px 12px",
               background: sel ? A.accent : A.paper,
               color: A.fg,
               border:"none",
               borderLeft: i === 0 ? "none" : `1px solid ${A.fg}`,
-              fontFamily:"var(--mac-mono)", fontSize:11,
+              fontFamily:"var(--mac-mono)", fontSize: lg ? 13.5 : 11,
               textTransform:"lowercase",
               cursor:"pointer",
               boxShadow: sel
@@ -470,6 +493,6 @@ Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl, RuleLabel, Btn, Chip,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
-  MacWindow, MacSegmented,
+  MacWindow, MacSegmented, EditBadge,
   AMIGA_PALETTE: A,
 });

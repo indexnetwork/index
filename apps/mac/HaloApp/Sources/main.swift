@@ -129,6 +129,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         presentError("Failed to load: \(error.localizedDescription)")
     }
 
+    // <input type="file"> does nothing in a WKWebView unless the host puts up
+    // the panel itself — WebKit only asks, it can't present one on macOS.
+    func webView(_ webView: WKWebView,
+                 runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.beginSheetModal(for: window) { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
+    }
+
     // Page reported a press on a draggable region. performDrag needs a live
     // event and is unreliable from an async handler, so run our own drag loop:
     // while the button stays down, follow the cursor and reposition the window.
