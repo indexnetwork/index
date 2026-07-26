@@ -2,7 +2,7 @@
 
 This folder is the standalone API-consumption boundary for the native macOS/iOS prototypes under `apps/mac`.
 
-It is intentionally **not imported** by `HaloApp` or `HaloApp-iOS` yet. The current apps still use their local `window.HALO_DATA` fake data. Keep API transport, response normalization, and prototype-shape mappers here until we are ready to wire the web bundles to real backend data.
+It is intentionally **not imported** by `IndexApp` or `IndexApp-iOS` yet. The current apps still use their local `window.INDEX_DATA` fake data. Keep API transport, response normalization, and prototype-shape mappers here until we are ready to wire the web bundles to real backend data.
 
 ## Intended role
 
@@ -31,6 +31,6 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 
 ## Non-goals for this first step
 
-- No imports from `HaloApp/src/**` or `HaloApp-iOS/src/**`.
+- No imports from `IndexApp/src/**` or `IndexApp-iOS/src/**`.
 - No changes to generated `Resources/index.html` bundles.
 - No Swift bridge or Keychain token implementation yet.

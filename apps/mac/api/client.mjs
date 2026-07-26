@@ -1,7 +1,7 @@
 /**
  * Standalone Index API client for the macOS/iOS prototypes.
  *
- * This module is intentionally not imported by HaloApp or HaloApp-iOS yet. It
+ * This module is intentionally not imported by IndexApp or IndexApp-iOS yet. It
  * gives the mac subtree a dedicated place to evolve API consumption without
  * coupling live transport to the current fake-data prototype screens.
  */

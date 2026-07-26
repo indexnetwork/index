@@ -61,10 +61,10 @@ bun run lint                                # Run ESLint
 ### Mac App
 
 ```bash
-cd apps/mac/HaloApp
+cd apps/mac/IndexApp
 ./build.sh                                  # Assemble HTML and build the macOS WKWebView app
 
-cd ../HaloApp-iOS
+cd ../IndexApp-iOS
 ./build.sh assemble                         # Regenerate mobile Resources/index.html without Xcode
 ./preview/build-preview.sh                  # Build the macOS preview shell for the mobile UI
 ```

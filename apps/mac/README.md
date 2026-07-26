@@ -24,19 +24,19 @@ xcode-select --install
 ## Directory Structure
 
 ```
-HaloApp/                    # macOS app (Swift + WKWebView)
+IndexApp/                    # macOS app (Swift + WKWebView)
 ├── build.sh              # Build script
 ├── Sources/              # Swift source (app delegate, window management)
 ├── Resources/            # Built assets (outputs here)
 ├── src/
-│   ├── halo-amiga.html  # Root HTML template
-│   ├── halo-amiga/      # React components (.jsx files)
+│   ├── index-amiga.html  # Root HTML template
+│   ├── index-amiga/      # React components (.jsx files)
 │   ├── fonts/           # Woff2 font files
 │   └── vendor/          # Vendored React/Babel/ReactDOM
 ├── assemble.py          # Bundles everything into single HTML
 └── Info.plist          # macOS app metadata
 
-HaloApp-iOS/             # iOS app (same architecture)
+IndexApp-iOS/             # iOS app (same architecture)
 api/                     # API client library
 design_bundle/           # Design system reference files
 ```
@@ -45,27 +45,27 @@ design_bundle/           # Design system reference files
 
 ### Standard Build
 
-From the `HaloApp` directory:
+From the `IndexApp` directory:
 
 ```bash
-cd HaloApp
+cd IndexApp
 ./build.sh
 ```
 
 This will:
-1. Assemble `src/halo-amiga.html` and all JSX modules into a single `Resources/index.html`
+1. Assemble `src/index-amiga.html` and all JSX modules into a single `Resources/index.html`
 2. Inline all React/Babel libraries and fonts (fully offline)
 3. Compile Swift to a native binary
-4. Package into `dist/halo.app`
+4. Package into `dist/index.app`
 
-The app will be in `dist/halo.app` — double-click to launch.
+The app will be in `dist/index.app` — double-click to launch.
 
 ### Development: Hot-Reload Mode
 
 For rapid iteration without rebuilding the Swift binary each time:
 
 ```bash
-cd HaloApp
+cd IndexApp
 ./dev.sh
 ```
 
@@ -82,7 +82,7 @@ The app will hot-reload as you edit files — great for UI tweaking.
 
 **"AssertionError: no @font-face url() references found"**
 - The CSS must reference fonts at `fonts/jetbrains-mono-latin-var.woff2` etc.
-- Check `src/halo-amiga.html` for correct paths.
+- Check `src/index-amiga.html` for correct paths.
 
 **Swift compilation fails**
 - Ensure you have Xcode Command Line Tools: `xcode-select --install`
@@ -95,16 +95,16 @@ The app will hot-reload as you edit files — great for UI tweaking.
 
 ### From Build Output
 ```bash
-open dist/halo.app
+open dist/index.app
 ```
 
 ### Or directly from Finder
-Navigate to `HaloApp/dist/halo.app` and double-click.
+Navigate to `IndexApp/dist/index.app` and double-click.
 
 ## Development Workflow
 
-1. **Edit React components** in `HaloApp/src/halo-amiga/` (.jsx files)
-2. **Edit styles** in `HaloApp/src/halo-amiga.html` (the `<style>` block)
+1. **Edit React components** in `IndexApp/src/index-amiga/` (.jsx files)
+2. **Edit styles** in `IndexApp/src/index-amiga.html` (the `<style>` block)
 3. **Run hot-reload** with `./dev.sh`
 4. **See changes** as you save files
 
@@ -114,7 +114,7 @@ For structural changes (new components, imports), the hot-reload will automatica
 
 ### Adding a New React Component
 
-1. Create `HaloApp/src/halo-amiga/mycomponent.jsx`
+1. Create `IndexApp/src/index-amiga/mycomponent.jsx`
 2. Import in your parent component or app.jsx:
    ```jsx
    // Imported automatically by Babel at runtime
@@ -137,7 +137,7 @@ Then re-run the build to inline the new fonts.
 
 ### Customizing the Amiga Theme
 
-Edit the CSS variables in `HaloApp/src/halo-amiga.html`:
+Edit the CSS variables in `IndexApp/src/index-amiga.html`:
 
 ```css
 :root {
@@ -166,4 +166,4 @@ The app runs fully offline with no backend dependency. To test networking:
 
 - See `design_bundle/` for design system and component reference
 - Check `api/` for the API client boundary
-- Refer to `HaloApp/src/halo-amiga/` component files for example patterns
+- Refer to `IndexApp/src/index-amiga/` component files for example patterns

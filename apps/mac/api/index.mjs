@@ -9,7 +9,7 @@ export {
   mapClarifier,
   mapClarifiers,
   mapEventSummary,
-  mapHaloSnapshot,
+  mapIndexSnapshot,
   mapIntent,
   mapIntents,
   mapOpportunityStatusToPrototype,
