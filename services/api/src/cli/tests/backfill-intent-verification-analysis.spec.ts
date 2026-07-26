@@ -218,9 +218,15 @@ describe('intent verification analysis maintenance workflow', () => {
     const lines = result.stdout.trim().split('\n');
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0])).toMatchObject({
-      reportVersion: 1, mode: 'dry-run', candidateCount: 0, verifierCalls: 0,
+      reportVersion: 1, mode: 'dry-run', candidateCount: 1, verifierCalls: 0,
+      targetCounts: { proposal_confirm_default_only: 1 }, controls: { completeAnalysis: 7, partialAnalysis: 2 },
+      candidateCounts: { proposal_confirm_default_only: 1 },
+      validationOutcomes: { proposal_confirm_default_only: { ready_for_verification: 1 } },
+      estimatedVerifierCalls: 1,
       attempted: 0, updated: 0, skipped: 0, failed: 0, unchangedControl: 0,
     });
+    expect(result.stdout).not.toContain('fixture-intent');
+    expect(result.stdout).not.toContain('fixture payload');
   });
 
   it('keeps the package-command report parseable when a candidate diagnostic exits nonzero', async () => {

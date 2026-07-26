@@ -52,10 +52,17 @@ function productionRuntime(): BackfillRuntime {
         if (!statement.includes('i.status AS status')) {
           throw new Error('column reference "status" is ambiguous');
         }
-        return [];
+        return [{
+          id: 'fixture-intent', user_id: 'fixture-owner', payload: 'fixture payload', source_id: 'fixture-proposal',
+          source_type: 'discovery_form', proposal_confirmed: true, semantic_entropy: 1, referential_anchor: null,
+          intent_mode: 'ATTRIBUTIVE', speech_act_type: null, felicity_authority: null, felicity_sincerity: null,
+          felicity_clarity: null, summary: null, is_incognito: false, embedding: null,
+          created_at: new Date(0), updated_at: new Date(0), archived_at: null, last_visited_at: null,
+          first_discovery_succeeded_at: null, status: 'ACTIVE',
+        }];
       }
-      if (statement.includes('GROUP BY 1')) return [];
-      if (statement.includes('complete_analysis')) return [{ complete_analysis: 0, partial_analysis: 0 }];
+      if (statement.includes('GROUP BY 1')) return [{ partition: 'proposal_confirm_default_only', count: 1 }];
+      if (statement.includes('complete_analysis')) return [{ complete_analysis: 7, partial_analysis: 2 }];
       throw new Error('unexpected maintenance query');
     },
     async transaction(): Promise<never> {
@@ -65,14 +72,15 @@ function productionRuntime(): BackfillRuntime {
   return {
     sql,
     db,
-    getProfileContext: async () => { throw new Error('unexpected profile lookup'); },
+    getProfileContext: async (userId) => userId === 'fixture-owner' ? { displayName: 'Fixture profile' } : null,
   };
 }
 
 /**
  * Uses the maintained createRuntimeDeps assembly with a SQL-recording runtime.
- * It proves the package command's actual default query is unambiguous without
- * opening a socket, constructing a provider, or permitting any write path.
+ * It proves the package command's complete default query/profile sequence is
+ * unambiguous without opening a socket, constructing a provider, or permitting
+ * any write path.
  */
 export async function productionAssemblyDryRun(options: { dryRun: boolean }): Promise<BackfillDeps> {
   return createRuntimeDeps(options, undefined, async () => productionRuntime());
