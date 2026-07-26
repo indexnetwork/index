@@ -78,7 +78,8 @@ async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/in
 async function runMaintainedCommand(harness?: 'productionAssemblyDryRun' | 'candidateDiagnostic') {
   const child = Bun.spawn({
     cmd: [
-      '/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, 'NODE_ENV=test',
+      '/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, 'NODE_ENV=production',
+      ...(harness ? ['IND590_CLI_TEST_MODE=1'] : []),
       ...(harness ? [`IND590_CLI_TEST_HARNESS=${harness}`] : []),
       process.execPath, '--no-env-file', '--silent', 'run', '--cwd', 'services/api',
       'maintenance:backfill-intent-verification-analysis', '--', '--limit', '25',
