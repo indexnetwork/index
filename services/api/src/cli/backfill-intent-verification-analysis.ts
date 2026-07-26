@@ -374,7 +374,7 @@ export async function createRuntimeDeps(
         SELECT i.id, i.user_id, i.payload, i.source_id, i.source_type, (p.id IS NOT NULL) AS proposal_confirmed, i.semantic_entropy,
           referential_anchor, intent_mode, speech_act_type, felicity_authority,
           felicity_sincerity, felicity_clarity, summary, is_incognito,
-          embedding::text AS embedding, created_at, updated_at, archived_at,
+          embedding::text AS embedding, i.created_at AS created_at, updated_at, archived_at,
           last_visited_at, first_discovery_succeeded_at, i.status AS status
         FROM intents i LEFT JOIN intent_proposals p ON p.consumed_intent_id = i.id AND p.status = 'consumed'
         WHERE i.felicity_authority IS NULL AND i.felicity_sincerity IS NULL AND i.felicity_clarity IS NULL
@@ -654,10 +654,11 @@ async function loadTestEntrypointHarness(): Promise<EntrypointOverrides> {
   const harnesses = {
     productionAssemblyDryRun: harness.productionAssemblyDryRun,
     productionPartitionFailure: harness.productionPartitionFailure,
+    productionCandidateListingFailure: harness.productionCandidateListingFailure,
     candidateDiagnostic: harness.candidateDiagnostic,
   };
   const name = process.env.IND590_CLI_TEST_HARNESS;
-  if (name !== 'productionAssemblyDryRun' && name !== 'productionPartitionFailure' && name !== 'candidateDiagnostic') {
+  if (name !== 'productionAssemblyDryRun' && name !== 'productionPartitionFailure' && name !== 'productionCandidateListingFailure' && name !== 'candidateDiagnostic') {
     throw new Error('invalid IND-590 CLI test harness');
   }
   return { createDeps: harnesses[name] };

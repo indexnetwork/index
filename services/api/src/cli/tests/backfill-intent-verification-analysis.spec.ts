@@ -75,7 +75,7 @@ async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/in
   return { stdout, stderr, exitCode };
 }
 
-async function runMaintainedCommand(harness?: 'productionAssemblyDryRun' | 'productionPartitionFailure' | 'candidateDiagnostic') {
+async function runMaintainedCommand(harness?: 'productionAssemblyDryRun' | 'productionPartitionFailure' | 'productionCandidateListingFailure' | 'candidateDiagnostic') {
   const child = Bun.spawn({
     cmd: [
       '/usr/bin/env', '-i', `PATH=${process.env.PATH ?? ''}`, 'NODE_ENV=production',
@@ -248,6 +248,15 @@ describe('intent verification analysis maintenance workflow', () => {
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe('backfill-intent-verification-analysis failed stage=count_partitions\n');
     expect(result.stderr).not.toContain('fixture partition failure');
+  });
+
+  it('classifies a pre-report candidate-listing failure without exposing the underlying error', async () => {
+    const result = await runMaintainedCommand('productionCandidateListingFailure');
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('backfill-intent-verification-analysis failed stage=candidate_listing\n');
+    expect(result.stderr).not.toContain('fixture candidate-listing failure');
   });
 
   it('fails nonzero before a report when the real package command has no database configuration', async () => {
