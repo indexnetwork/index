@@ -41,17 +41,18 @@ function noWriteDeps(candidates: Candidate[], failProfile = false): BackfillDeps
   };
 }
 
-function productionRuntime(failPartitions = false): BackfillRuntime {
+function productionRuntime(failure?: 'partitions' | 'candidate_listing'): BackfillRuntime {
   const dialect = new PgDialect();
   const db = {
     async execute(query: SQL) {
       const statement = dialect.sqlToQuery(query).sql;
       if (statement.includes('ORDER BY i.created_at ASC, i.id ASC')) {
-        // Before the fix this select used bare `status`; PostgreSQL rejects it
-        // because both joined tables expose that column.
-        if (!statement.includes('i.status AS status')) {
-          throw new Error('column reference "status" is ambiguous');
+        // The joined tables both expose status and created_at, so PostgreSQL
+        // rejects either unqualified projection before a report is available.
+        if (!statement.includes('i.status AS status') || !statement.includes('i.created_at AS created_at')) {
+          throw new Error('candidate projection is ambiguous');
         }
+        if (failure === 'candidate_listing') throw new Error('fixture candidate-listing failure must not be emitted');
         return [{
           id: 'fixture-intent', user_id: 'fixture-owner', payload: 'fixture payload', source_id: 'fixture-proposal',
           source_type: 'discovery_form', proposal_confirmed: true, semantic_entropy: 1, referential_anchor: null,
@@ -62,7 +63,7 @@ function productionRuntime(failPartitions = false): BackfillRuntime {
         }];
       }
       if (statement.includes('GROUP BY 1')) {
-        if (failPartitions) throw new Error('fixture partition failure must not be emitted');
+        if (failure === 'partitions') throw new Error('fixture partition failure must not be emitted');
         return [{ partition: 'proposal_confirm_default_only', count: 1 }];
       }
       if (statement.includes('complete_analysis')) return [{ complete_analysis: 7, partial_analysis: 2 }];
@@ -91,7 +92,12 @@ export async function productionAssemblyDryRun(options: { dryRun: boolean }): Pr
 
 /** Forces the real partition-count runtime boundary without a database socket. */
 export async function productionPartitionFailure(options: { dryRun: boolean }): Promise<BackfillDeps> {
-  return createRuntimeDeps(options, undefined, async () => productionRuntime(true));
+  return createRuntimeDeps(options, undefined, async () => productionRuntime('partitions'));
+}
+
+/** Forces the real candidate-listing runtime boundary without a database socket. */
+export async function productionCandidateListingFailure(options: { dryRun: boolean }): Promise<BackfillDeps> {
+  return createRuntimeDeps(options, undefined, async () => productionRuntime('candidate_listing'));
 }
 
 /** Emits a valid report but produces the documented candidate-level nonzero exit. */
