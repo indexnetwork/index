@@ -41,7 +41,7 @@ function noWriteDeps(candidates: Candidate[], failProfile = false): BackfillDeps
   };
 }
 
-function productionRuntime(): BackfillRuntime {
+function productionRuntime(failPartitions = false): BackfillRuntime {
   const dialect = new PgDialect();
   const db = {
     async execute(query: SQL) {
@@ -61,7 +61,10 @@ function productionRuntime(): BackfillRuntime {
           first_discovery_succeeded_at: null, status: 'ACTIVE',
         }];
       }
-      if (statement.includes('GROUP BY 1')) return [{ partition: 'proposal_confirm_default_only', count: 1 }];
+      if (statement.includes('GROUP BY 1')) {
+        if (failPartitions) throw new Error('fixture partition failure must not be emitted');
+        return [{ partition: 'proposal_confirm_default_only', count: 1 }];
+      }
       if (statement.includes('complete_analysis')) return [{ complete_analysis: 7, partial_analysis: 2 }];
       throw new Error('unexpected maintenance query');
     },
@@ -84,6 +87,11 @@ function productionRuntime(): BackfillRuntime {
  */
 export async function productionAssemblyDryRun(options: { dryRun: boolean }): Promise<BackfillDeps> {
   return createRuntimeDeps(options, undefined, async () => productionRuntime());
+}
+
+/** Forces the real partition-count runtime boundary without a database socket. */
+export async function productionPartitionFailure(options: { dryRun: boolean }): Promise<BackfillDeps> {
+  return createRuntimeDeps(options, undefined, async () => productionRuntime(true));
 }
 
 /** Emits a valid report but produces the documented candidate-level nonzero exit. */
