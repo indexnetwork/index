@@ -290,8 +290,13 @@ We welcome contributions! Before submitting a Pull Request:
 git clone https://github.com/YOUR_USERNAME/index.git
 cd index
 
-# Create/reuse the worktree and named Herdr agent session (Pi or Codex)
-bun run worktree:session -- feat/your-feature
+# Create and set up a standalone worktree (delegated waves use
+# pi-herdr-orchestrator through the run-agent-orchestration skill instead)
+git fetch origin dev
+git worktree add -b feat/your-feature .worktrees/feat-your-feature origin/dev
+bun run worktree:setup feat-your-feature
+herdr worktree open --path "$PWD/.worktrees/feat-your-feature" \
+  --label feat-your-feature --no-focus --json
 
 # Start dev servers from the worktree
 bun run worktree:dev feat-your-feature

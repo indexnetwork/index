@@ -1,4 +1,4 @@
 interface:
-  display_name: "Run Agent Orchestration"
-  short_description: "Index project workflow: Run Agent Orchestration"
-  default_prompt: "Use $run-agent-orchestration to follow the repository-specific Run Agent Orchestration workflow."
+  display_name: "Direct Agent Orchestration"
+  short_description: "Direct the installed Herdr orchestrator extension"
+  default_prompt: "Use $run-agent-orchestration to apply Index policy through the installed pi-herdr-orchestrator tools without recreating their mechanics."

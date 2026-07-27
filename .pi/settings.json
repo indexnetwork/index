@@ -1,0 +1,5 @@
+{
+  "packages": [
+    "git:github.com/yanekyuk/pi-herdr-orchestrator@v0.1.0"
+  ]
+}
