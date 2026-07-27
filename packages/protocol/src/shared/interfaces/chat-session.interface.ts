@@ -9,6 +9,11 @@
 //     there is nothing to return.
 //   • `limit` / `messageLimit`, when provided, cap the most-recent N rows; when
 //     omitted the adapter applies its own sane default.
+//   • Category contract (IND-600): `listSessions` / `getSession` expose ONLY H2A
+//     conversations (orchestrator-persona sessions with the system agent as a
+//     participant). H2H DMs are never exposed through this port, and A2A
+//     negotiation conversations are reachable only through the negotiation
+//     tools; non-H2A session IDs behave exactly like nonexistent ones.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** One conversation, summarized (no message bodies). */
