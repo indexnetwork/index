@@ -144,8 +144,12 @@ After verification succeeds, the visible agent:
    fetch origin <branch>`; `git status --short --branch`);
 4. opens or updates a PR into `dev` with exact verification results and caveats.
 
-Do not move on from a push using stale remote refs. If the fetch reveals divergence,
-reconcile it deliberately in the worktree before reporting completion.
+Do not move on from a push using stale remote refs. If the fetch reveals divergence
+on the child's **own feature branch**, reconcile that upstream drift deliberately in
+the worktree before reporting completion. That is the only reconciliation a child
+performs: a child never merges a shared branch (`dev`, `main`, an integration
+branch) and never reconciles manifests or `bun.lock` — those belong to the root
+session.
 
 Opening a PR is not merge approval. The coordinator's `finish-pr` workflow owns
 readiness, explicit merge confirmation, deployment verification, issue updates, and
@@ -162,7 +166,8 @@ checks/commit/push result without polling. Do not create a fresh worktree, agent
 prompt per comment.
 
 Parallel work uses separate visible Herdr surfaces (workspaces or wave-root
-tabs) and separate Git worktrees, with one writer per worktree. Merge or reconcile those branches deliberately; never let two
+tabs) and separate Git worktrees, with one writer per worktree. The root/coordinator
+session merges or reconciles those branches deliberately — children never do; never let two
 agents mutate one checkout.
 
 ## 7. Manual compaction checkpoint

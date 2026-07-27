@@ -38,7 +38,7 @@ OpenAI-first; pi's working set is Claude (via API keys); kimi runs the K3 aliase
 | API backend implementation (normal) | `gpt-5.6-terra:high` | `anthropic/claude-sonnet-4-6:high` | `kimi-code/k3` |
 | Web implementation (normal) | `gpt-5.6-terra:high` (`:medium` tightly scoped) | `anthropic/claude-sonnet-4-6:medium–high` | `kimi-code/k3` |
 | Mechanical UI / tests / docs / recon | `gpt-5.6-luna:medium–high` | `anthropic/claude-haiku-4-5:medium` | `kimi-code/kimi-for-coding-highspeed` |
-| Release / review / rebase / integration owner | `gpt-5.6-terra:high` (esc. `gpt-5.6-sol:high`) | `anthropic/claude-opus-4-8:high` | `kimi-code/k3` |
+| Release / review / rebase / integration verification | `gpt-5.6-terra:high` (esc. `gpt-5.6-sol:high`) | `anthropic/claude-opus-4-8:high` | `kimi-code/k3` |
 
 Escalation within a harness: codex Terra → Sol for cross-cutting, concurrency, or
 rebase risk; pi Sonnet → Opus for the same; kimi has no stronger tier — escalate by

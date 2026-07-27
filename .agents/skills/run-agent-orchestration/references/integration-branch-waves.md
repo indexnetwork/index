@@ -9,9 +9,13 @@ recorded in the wave handoff and the checkpoint journal.
 
 ## Contract
 
-- `root` creates the integration branch `feat/<project>` from `origin/dev` and a
-  dedicated **integration-owner child** (see `role-profiles.md`) with its own
-  worktree and visible session that lives for the whole wave.
+- `root` creates the integration branch `feat/<project>` from `origin/dev` and
+  **owns its worktree**: root's coordination worktree IS the integration-branch
+  checkout, created with `git worktree add -b feat/<project> "$ROOT_WT"
+  origin/dev` (see `run-agent-orchestration`'s "Launching the root"). Git allows
+  only one worktree per branch, so **no other worktree ever checks out the
+  integration branch** — children branch their own `feat/…` branches and never
+  check out `feat/<project>` itself.
 - Implementation children branch from the **current verified integration SHA** (the
   integration branch head that `root` last verified), never from stale local refs.
 - Child PRs target the integration branch, not `dev`. They open as **drafts**; `root`
@@ -24,10 +28,11 @@ recorded in the wave handoff and the checkpoint journal.
 The wave handoff may grant **standing authorization for internal merges into the
 integration branch only**. Merges into `dev` or `main` always require fresh explicit
 user confirmation per `finish-pr` — no wave-level pre-authorization ever covers
-them. `root` never merges from the canonical root: it sends the integration-owner
-child one consolidated "authorized internal merge" prompt naming the exact PR, head
-SHA, base, and verified gates; that child verifies its own worktree/branch identity,
-squash-merges, and reconciles its checkout.
+them. `root` executes every internal squash-merge itself from its
+integration-branch worktree — never from the canonical root — after verifying that
+worktree's path, branch, and clean status and after its own local gates pass.
+Children never merge. Root also performs the local reconcile merge of `dev` into
+the integration branch and all conflict resolution.
 
 ## CI does not run on internal PRs
 
@@ -54,8 +59,11 @@ alone.
   never rebase or force-push it (same rule as `dev`/`main` in `finish-pr`).
 - Parallel PRs colliding on `package.json` versions use the base-version floor rule:
   the integration branch's version is the floor; each PR re-applies its own semver
-  bump on top. The integration owner performs deliberate SemVer/lockfile
-  reconciliation — never hand-merged manifests.
+  bump on top. `root` performs the deliberate SemVer/lockfile reconciliation —
+  never hand-merged manifests (resolve `package.json` first, then regenerate
+  `bun.lock` with `bun install`).
+- The never-rebase/never-force-push rule for the shared integration branch now
+  belongs to `root`, which holds the branch's only checkout.
 
 ## Held PRs
 
@@ -68,9 +76,11 @@ abandoned. A Linear comment records the hold and its dependency.
 
 ## Promotion
 
-At wave end, the integration branch goes to `dev` as **one PR** finished with the
-full external `finish-pr` workflow: CI checks, explicit user merge confirmation,
-Railway deployment verification, Linear closure, and cleanup — plus
+At wave end, `root` pushes the integration branch and opens the single promotion
+PR to `dev`, finished with the full external `finish-pr` workflow: CI checks,
+explicit user merge confirmation (root executes the promotion merge only after
+fresh explicit user confirmation), Railway deployment verification, Linear
+closure, and cleanup — plus
 `verify-production-release` when the promotion continues to `main`. See
 `finish-pr`'s internal-mode section and its `references/squash-release-reconciliation.md`
 for squash-history reconciliation.

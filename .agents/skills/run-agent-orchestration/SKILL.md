@@ -30,19 +30,29 @@ child…", "You are the root for wave X"):
   root, and reports results. It never orchestrates worktrees or children directly.
 - **`root` (exactly one)** — a visible Pi, Codex, or Kimi agent in its own
   workspace nested under the user-facing `index` workspace, running in a
-  dedicated detached coordination worktree
-  (`/Users/yanek/Projects/index/.worktrees/<wave>-root`, detached at
-  `origin/dev`). Sole owner for the wave of: worktree creation, child
-  handoffs, PR finishing, GitHub/Linear/Railway coordination, and cleanup. It
-  never edits source in its coordination worktree or the canonical root;
-  implementation always happens in child worktrees. Canonical-root-dependent
-  operations (e.g. post-merge `git pull` of `dev`) run via
-  `git -C /Users/yanek/Projects/index …`.
+  dedicated coordination worktree
+  (`/Users/yanek/Projects/index/.worktrees/<wave>-root` — detached at
+  `origin/dev` in a direct-to-dev wave, or holding the integration branch
+  `feat/<project>` in an integration-branch wave). Sole owner for the wave of:
+  worktree creation, child handoffs, PR finishing, GitHub/Linear/Railway
+  coordination, cleanup, and **all merge execution** — internal squash-merges
+  into the integration branch, the local reconcile merge of `dev` into the
+  integration branch, conflict resolution, and deliberate SemVer/lockfile
+  reconciliation. It never edits *feature* source in its coordination worktree
+  or the canonical root; implementation always happens in child worktrees. In
+  an integration-branch wave its coordination worktree holds `feat/<project>`,
+  and its only writes there are merge commits, conflict resolutions, and
+  deliberate SemVer/manifest/`bun.lock` reconciliation commits.
+  Canonical-root-dependent operations (e.g. post-merge `git pull --ff-only` of
+  `dev`) run via `git -C /Users/yanek/Projects/index …` and stay read-only or
+  fast-forward-only.
 - **`child`** — one writer per Git worktree, running in a named tab of the
   root's workspace (tab label = the dashed worktree folder), each launched on
   any of the three harnesses with a role profile chosen by the paths it will change or the
   release/review task type (see `references/role-profiles.md`) and a model chosen at
-  launch time (see `references/model-routing.md`).
+  launch time (see `references/model-routing.md`). Children never merge and
+  never reconcile manifests — they implement, verify, push their own branch,
+  and open PRs.
 
 All three harnesses are equal at every tier; per-harness launch lines, capabilities,
 and tool mappings live in `references/harness-matrix.md`.
@@ -79,7 +89,11 @@ ROOT=$(git rev-parse --show-toplevel)      # canonical root, on dev
 WAVE=<wave-slug>                           # e.g. mcp-refactoring
 ROOT_WT="$ROOT/.worktrees/${WAVE}-root"
 git fetch origin dev
+# Direct-to-dev wave: detached coordination worktree.
 git worktree add --detach "$ROOT_WT" origin/dev
+# Integration-branch wave: the coordination worktree IS the integration-branch
+# checkout (still a normal linked worktree, so the nesting invariant holds):
+# git worktree add -b feat/<project> "$ROOT_WT" origin/dev
 herdr worktree open --path "$ROOT_WT" --label "${WAVE}-root" --no-focus --json
 ```
 
@@ -107,9 +121,11 @@ renames it (recover with `herdr workspace rename <INDEX_WS_ID> index`). Never
 create wave surfaces with `herdr workspace create --cwd`; it records no
 worktree metadata and produces a permanent top-level orphan.
 
-The root's coordination worktree is detached at `origin/dev` and is never a
-place to edit source; repo-wide `git`/`gh`/Linear/Herdr commands work normally
-from it. The agent name must match Herdr's live-name limit
+The root's coordination worktree — detached at `origin/dev` in a direct-to-dev
+wave, holding `feat/<project>` in an integration-branch wave — is never a place
+to edit feature source; its only writes are the integration-branch merge and
+reconciliation commits described above, and repo-wide `git`/`gh`/Linear/Herdr
+commands work normally from it. The agent name must match Herdr's live-name limit
 `[a-z][a-z0-9_-]{0,31}` (32 chars max) — keep the alias short (e.g.
 `root-orch`); the longer dashed workspace label stays independent. Reuse an
 existing root only when its cwd is this wave's coordination worktree and its
@@ -196,9 +212,9 @@ temporary limitation plainly and never fabricate an answer.
 
 - Role is selected per task by changed paths (`packages/protocol/**`,
   `services/api/**`, `apps/web/**`) or by release/review activity and injected as a handoff
-  checklist — no persistent personas. See `references/role-profiles.md`. An
-  integration-branch wave adds one **integration-owner** child that owns internal
-  merges for the whole wave.
+  checklist — no persistent personas. See `references/role-profiles.md`. Root owns
+  internal merges in an integration-branch wave; a `release-review` child may be
+  added for an advisory verification pass, but it never merges.
 - Model is chosen at child launch time from the role × harness routing table in
   `references/model-routing.md`. On codex, Sol/Terra/Luna are primary and GPT-5.5 is
   never used; on pi, Claude Opus/Sonnet/Haiku are the working set; on kimi, the K3
@@ -212,10 +228,10 @@ temporary limitation plainly and never fabricate an answer.
 - **Direct-to-dev** (default for independent tasks): each child PR targets `dev` and
   is finished with the full `finish-pr` workflow.
 - **Integration branch** (recommended for 3+ dependent sub-issues): child PRs target
-  one `feat/<project>` branch and merge internally via the integration-owner child;
-  CI does not run on internal PRs, so root's local gates replace it; the branch is
-  promoted to `dev` as one PR at wave end. Full contract:
-  `references/integration-branch-waves.md`.
+  one `feat/<project>` branch, and root squash-merges them into it from its own
+  integration-branch worktree; CI does not run on internal PRs, so root's local
+  gates replace it; the branch is promoted to `dev` as one PR at wave end. Full
+  contract: `references/integration-branch-waves.md`.
 
 ## Wave cleanup invariant
 
@@ -229,13 +245,17 @@ After the wave, the root verifies with `herdr tab list` and
 `herdr workspace list` that no finished child tabs or wave workspaces remain —
 but never sweeps unrelated active workspaces, and keeps the root workspace (the
 dedicated execution/coordination plane) until the user explicitly ends the
-wave. When the wave ends, close the root workspace, then remove its detached
+wave. When the wave ends, close the root workspace, then remove its
 coordination worktree, in that order:
 
 ```bash
 herdr workspace close "$ROOT_WS_ID"
 git worktree remove "$ROOT/.worktrees/${WAVE}-root"
 ```
+
+In an integration-branch wave the coordination worktree holds `feat/<project>`,
+so it is removed only after the promotion PR is merged, and the integration
+branch is deleted after that.
 
 **Migration/repair:** a top-level orphan workspace from an older wave whose
 worktree still exists is repaired opportunistically — verify its agent is
