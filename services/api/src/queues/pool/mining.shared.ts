@@ -21,7 +21,7 @@
  * QUESTIONER_ENABLED (via questionerEnqueueIfEnabled). All off = no-op.
  */
 import { POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MIN_POOL_SIZE, PoolDiscriminatorMiner, poolQuestionsMiningMode, poolQuestionsMode, runPoolDiscriminatorShadow, selectQuestionDiscriminators, toQuestionDiscriminator } from '@indexnetwork/protocol';
-import type { PoolCandidate } from '@indexnetwork/protocol';
+import type { DiscriminatorShadowResult, PoolCandidate } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import db from '../../lib/drizzle/drizzle';
@@ -92,6 +92,13 @@ export function maybeMinePoolDiscriminators(trigger: PoolMiningTrigger): void {
  */
 export function isPoolMiningActivated(): boolean {
   return poolQuestionsMiningMode() === 'shadow' || poolQuestionsMode() === 'on';
+}
+
+/** Reject question admission only when durable resolved-axis comparison failed. */
+export function shouldEnqueuePoolQuestionForResolvedHistory(
+  shadow: Pick<DiscriminatorShadowResult, 'priorReferenceComparisonUnavailable'>,
+): boolean {
+  return shadow.priorReferenceComparisonUnavailable !== true;
 }
 
 export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrigger): Promise<void> {
@@ -295,6 +302,16 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
       evidenceRate: round(d.evidenceRate),
     })),
   });
+
+  if (!shouldEnqueuePoolQuestionForResolvedHistory(shadow)) {
+    logger.warn('pool question skipped: resolved-axis comparison unavailable', {
+      source: trigger.source,
+      runId: trigger.runId ?? null,
+      userId,
+      intentId,
+    });
+    return;
+  }
 
   // IND-418: turn the top eligible discriminator into a pool_discovery
   // question. QUESTIONER_ENABLED gates via questionerEnqueueIfEnabled;
