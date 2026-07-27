@@ -12,14 +12,14 @@ import type { EmbeddingGenerator } from "../../src/shared/interfaces/embedder.in
 import { getModelName } from "../../src/shared/agent/model.config.js";
 import { assertLLM } from "../../src/shared/agent/tests/llm-assert.js";
 import { createHydeEvalEmbedder } from "../hyde/hyde.runner.js";
-import { arg, assertEvalWritePlan, attachScoredRunProvenance, baselineUpdateSummaryPath, buildEvalScoringConfigFingerprint, buildExecutionEvidence, buildScorecard, compareAgainstGovernedBaseline, emptyGovernedComparison, fingerprintEvalCorpus, flagValue, formatBaselineUpdateSummary, formatConsole, formatGovernedComparison, governedComparisonExitStatus, governedRegressionCount, has, installEvalProcessCancellation, performGovernedBaselineUpdate, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta, type GovernedComparison } from "../shared/index.js";
+import { arg, assertEvalWritePlan, baselineUpdateSummaryPath, buildEvalScoringConfigFingerprint, buildScorecard, compareAgainstGovernedBaseline, emptyGovernedComparison, fingerprintEvalCorpus, flagValue, formatBaselineUpdateSummary, formatConsole, formatGovernedComparison, governedComparisonExitStatus, governedRegressionCount, has, installEvalProcessCancellation, performGovernedBaselineUpdate, readEvalGitProvenance, runEvalEvidenceFlow, summarizeExecution, writeBaseline, writeRunReport, type EvalEvidencePolicy, type EvalRunMeta, type GovernedComparison } from "../shared/index.js";
 import { CASES, validateCorpus } from "./discovery-retrieval.cases.js";
 import { DEFAULT_RUNS, HARNESS, HARNESS_VERSION, RETRIEVAL_EVAL_ATTEMPT_TIMEOUT_MS } from "./discovery-retrieval.constants.js";
-import { runCase, type EmbedderLike, type HydeLike } from "./discovery-retrieval.runner.js";
+import { buildDiscoveryRetrievalExecutionEvidence, runCase, type EmbedderLike, type HydeLike } from "./discovery-retrieval.runner.js";
 import { writeHtmlReport } from "./discovery-retrieval.reporter.js";
-import { scoreModeRun, type RetrievalJudge } from "./discovery-retrieval.scorer.js";
+import { scoreCase, type RetrievalJudge } from "./discovery-retrieval.scorer.js";
 import { formatCaseList, hasRule, parseTier, selectCases } from "./discovery-retrieval.selection.js";
-import type { CaseResult, DiscoveryRetrievalCase, ModeResult, RetrievalMode, Scorecard } from "./discovery-retrieval.types.js";
+import type { CaseResult, RetrievalMode, Scorecard } from "./discovery-retrieval.types.js";
 
 const DEFAULT_ALPHA = 0.05;
 const BASELINE_PATH = path.resolve(import.meta.dir, "baselines/discovery-retrieval.baseline.json");
@@ -142,39 +142,6 @@ Does this ranking satisfy the required relationship without treating network mem
   };
 }
 
-async function scoreCase(
-  c: DiscoveryRetrievalCase,
-  batches: Awaited<ReturnType<typeof runCase>>["batches"],
-  evaluator: RetrievalJudge,
-): Promise<CaseResult> {
-  const modeResults: ModeResult[] = [];
-  for (const mode of MODES) {
-    const batch = batches[mode];
-    const scoredRuns = await Promise.all(batch.outputs.map((output) => scoreModeRun(c, mode, output.ranking, evaluator)));
-    const withProvenance = attachScoredRunProvenance({ runResults: scoredRuns }, batch.successfulRuns).runResults;
-    const passes = withProvenance.filter((run) => run.passed).length;
-    modeResults.push({
-      mode,
-      runs: withProvenance.length,
-      passes,
-      passRate: withProvenance.length === 0 ? 0 : passes / withProvenance.length,
-      flaky: passes > 0 && passes < withProvenance.length,
-      runResults: withProvenance,
-    });
-  }
-  const runs = modeResults.reduce((total, result) => total + result.runs, 0);
-  const passes = modeResults.reduce((total, result) => total + result.passes, 0);
-  return {
-    caseId: c.id,
-    rule: c.rule,
-    runs,
-    passes,
-    passRate: runs === 0 ? 0 : passes / runs,
-    flaky: passes > 0 && passes < runs,
-    modeResults,
-  };
-}
-
 function leanCase(c: CaseResult): CaseResult {
   return {
     ...c,
@@ -266,9 +233,11 @@ async function main(): Promise<void> {
     cancellation.dispose();
   }
 
-  const execution = buildExecutionEvidence(batches.flatMap((batch) => MODES.map((mode) => batch.batches[mode])), evidencePolicy);
+  // CLI --runs remains per retrieval mode; shared artifacts use aggregate case slots.
+  const scoredRunsPerCase = MODES.length * runs;
+  const execution = buildDiscoveryRetrievalExecutionEvidence(batches, evidencePolicy);
   const executionSummary = summarizeExecution(execution);
-  const scorecard = buildScorecard(results, { model, runs }) as Scorecard;
+  const scorecard = buildScorecard(results, { model, runs: scoredRunsPerCase }) as Scorecard;
   const filters: Record<string, string> = {};
   if (ruleFilter) filters.rule = ruleFilter;
   if (caseFilter) filters.case = caseFilter;
@@ -277,7 +246,7 @@ async function main(): Promise<void> {
     harness: HARNESS,
     harnessVersion: HARNESS_VERSION,
     models: [getModelName("hydeGenerator"), process.env.EMBEDDING_MODEL ?? "openai/text-embedding-3-large"],
-    runs,
+    runs: scoredRunsPerCase,
     selection: { fullCorpus, filters },
     corpusFingerprint: fingerprintEvalCorpus(selected),
     configFingerprint: buildEvalScoringConfigFingerprint({ judge: !noJudge }),

@@ -1,4 +1,8 @@
-import type { DiscoveryRetrievalCase, ModeRunDetail, RankedUser, RetrievalAssertion, RetrievalMode, RunResult } from "./discovery-retrieval.types.js";
+import { attachScoredRunProvenance } from "../shared/index.js";
+import { projectCaseExecutionEvidence, type CaseRunBatches } from "./discovery-retrieval.runner.js";
+import type { CaseResult, DiscoveryRetrievalCase, ModeResult, ModeRunDetail, RankedUser, RetrievalAssertion, RetrievalMode, RunResult } from "./discovery-retrieval.types.js";
+
+const MODES: RetrievalMode[] = ["intent_to_premise", "intent_to_context", "context_to_context"];
 
 /** Grades the semantic relationship represented by a ranked retrieval result. */
 export type RetrievalJudge = (c: DiscoveryRetrievalCase, mode: RetrievalMode, ranking: RankedUser[]) => Promise<boolean>;
@@ -40,4 +44,43 @@ export async function scoreModeRun(
   const detail: ModeRunDetail = { mode, ranking, recallAtK, expectedRanks, excludedInTopK };
 
   return { passed: assertions.every((assertion) => assertion.passed), assertions, detail };
+}
+
+/** Aggregates scored runs across the three retrieval representations for one case. */
+export async function scoreCase(
+  c: DiscoveryRetrievalCase,
+  batches: CaseRunBatches["batches"],
+  evaluator: RetrievalJudge,
+): Promise<CaseResult> {
+  const projectedEvidence = projectCaseExecutionEvidence(c.id, batches);
+  const modeResults: ModeResult[] = [];
+  for (const mode of MODES) {
+    const batch = batches[mode];
+    const scoredRuns = await Promise.all(batch.outputs.map((output) => scoreModeRun(c, mode, output.ranking, evaluator)));
+    const successfulRuns = projectedEvidence[mode].filter((run) => run.outcome === "success");
+    const withProvenance = attachScoredRunProvenance({ runResults: scoredRuns }, successfulRuns).runResults;
+    const passes = withProvenance.filter((run) => run.passed).length;
+    modeResults.push({
+      mode,
+      runs: withProvenance.length,
+      passes,
+      passRate: withProvenance.length === 0 ? 0 : passes / withProvenance.length,
+      flaky: passes > 0 && passes < withProvenance.length,
+      runResults: withProvenance,
+    });
+  }
+  const runs = modeResults.reduce((total, result) => total + result.runs, 0);
+  const passes = modeResults.reduce((total, result) => total + result.passes, 0);
+  return {
+    caseId: c.id,
+    rule: c.rule,
+    runs,
+    passes,
+    passRate: runs === 0 ? 0 : passes / runs,
+    flaky: passes > 0 && passes < runs,
+    scoredRunIds: MODES.flatMap((mode) => projectedEvidence[mode]
+      .filter((run) => run.outcome === "success")
+      .map((run) => run.runId)),
+    modeResults,
+  };
 }

@@ -1,4 +1,4 @@
-import { executeRuns, type EvalEvidencePolicy, type EvalRunBatch } from "../shared/index.js";
+import { executeRuns, type EvalEvidencePolicy, type EvalExecutionEvidence, type EvalRunBatch, type EvalRunEvidence } from "../shared/index.js";
 import { RETRIEVAL_EVAL_ATTEMPT_TIMEOUT_MS, RETRIEVAL_EVAL_MAX_ATTEMPTS, RETRIEVAL_EVAL_RETRY_DELAY_MS } from "./discovery-retrieval.constants.js";
 import type { DiscoveryRetrievalCase, ProfileRepresentation, RankedUser, RetrievalMode } from "./discovery-retrieval.types.js";
 
@@ -50,6 +50,7 @@ export interface RunCaseOptions {
 }
 
 export interface CaseRunBatches {
+  caseId: string;
   batches: Record<RetrievalMode, EvalRunBatch<ModeRunOutput>>;
 }
 
@@ -188,5 +189,57 @@ export async function runCase(
       { ...settings, caseId: `${c.id}/${mode}` },
     );
   }
-  return { batches };
+  return { caseId: c.id, batches };
+}
+
+/**
+ * Reindexes one case's mode-level execution evidence into the shared artifact
+ * contract: one case identity with a contiguous slot range across all modes.
+ */
+export function projectCaseExecutionEvidence(
+  caseId: string,
+  batches: CaseRunBatches["batches"],
+): Record<RetrievalMode, EvalRunEvidence[]> {
+  let runIndex = 0;
+  const projected = {} as Record<RetrievalMode, EvalRunEvidence[]>;
+  for (const mode of MODES) {
+    projected[mode] = batches[mode].runs.map(({ output: _output, attempts, ...run }) => {
+      const projectedRunId = `${encodeURIComponent(caseId)}::run:${runIndex + 1}`;
+      const projectedAttempts = attempts.map((attempt, attemptIndex) => ({
+        ...attempt,
+        runId: projectedRunId,
+        runIndex,
+        attemptId: `${projectedRunId}::attempt:${attemptIndex + 1}`,
+      }));
+      const projectedRun = {
+        ...run,
+        runId: projectedRunId,
+        caseId,
+        runIndex,
+        attempts: projectedAttempts,
+      };
+      runIndex += 1;
+      return projectedRun;
+    });
+  }
+  return projected;
+}
+
+/** Projects all mode batches into the one-case-per-scorecard shared artifact contract. */
+export function buildDiscoveryRetrievalExecutionEvidence(
+  cases: readonly CaseRunBatches[],
+  policy?: EvalEvidencePolicy,
+): EvalExecutionEvidence {
+  const modeBatches = cases.flatMap((entry) => MODES.map((mode) => entry.batches[mode]));
+  const resolvedPolicy = policy ?? modeBatches[0]?.policy ?? "normal";
+  if (modeBatches.some((batch) => batch.policy !== resolvedPolicy)) {
+    throw new Error("Cannot combine discovery retrieval batches with different evidence policies");
+  }
+  return {
+    policy: resolvedPolicy,
+    runs: cases.flatMap((entry) => {
+      const projected = projectCaseExecutionEvidence(entry.caseId, entry.batches);
+      return MODES.flatMap((mode) => projected[mode]);
+    }),
+  };
 }
