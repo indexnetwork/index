@@ -95,6 +95,8 @@ const envSchema = z.object({
   HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
+  DISCOVERY_ALLOWED_TYPES: z.string().optional(),
+  DISCOVERY_PROFILE_SOURCE: z.union([z.literal(''), z.enum(['premise', 'user_context'])]).optional(),
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
   QUESTIONER_UPTAKE_ENABLED: optionalBoolean,
