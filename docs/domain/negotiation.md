@@ -50,7 +50,7 @@ Each negotiation task carries a `protocolVersion` (`v1` | `v2`) in its metadata.
 
 Under **v2 (client-advocate seat rules)** the action vocabulary is scoped by seat, keyed on `metadata.initiatorUserId` (the rigid stamp from discovery time — never turn parity):
 
-- **Initiator seat** (`outreach | counter | question | withdraw`): the side that surfaced the match. It reaches out and may walk away, but it can **never accept** — this is schema-enforced, not prompt-enforced.
+- **Initiator seat** (`outreach | counter | question | withdraw`): the side that surfaced the match. It reaches out and may walk away, but it can **never accept** — this is schema-enforced, not prompt-enforced. Walking away is also the seat's explicit duty after clarification: when information arriving through either clarification channel — the counterparty's answer to a `question`, or the user's own answers / private consultation surfaced between sessions — reveals a reason the match no longer serves its user, the seat is instructed to `withdraw` rather than counter or question again. This is a prompt-level decision rule (the seat rules), not a coercion of model output.
 - **Counterparty seat** (`accept | decline | counter | question`): the receiving side. Acceptance is this seat's decision alone.
 - **Final turn**: initiator `withdraw | counter`; counterparty `accept | decline` (must decide).
 
