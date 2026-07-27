@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { isValidElement, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { visit } from "unist-util-visit";
 import type { Root } from "hast";
 import Nav, { ensureLandingFonts } from "@/app/landing/Nav";
@@ -41,6 +42,51 @@ function unwrapImages() {
       }
     });
   };
+}
+
+function textOf(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (isValidElement(node)) {
+    return textOf((node.props as { children?: ReactNode }).children);
+  }
+  return "";
+}
+
+/** Cells drawn entirely out of block glyphs are text bar charts, not prose. */
+const BAR_CELL = /^[▀-▟\s]+$/;
+
+/** Eighth-block glyphs, in width order — U+2588 is a full cell, U+258F is 1/8. */
+const BAR_UNITS: Record<string, number> = {
+  "█": 1, "▉": 7 / 8, "▊": 6 / 8, "▋": 5 / 8,
+  "▌": 4 / 8, "▍": 3 / 8, "▎": 2 / 8, "▏": 1 / 8,
+};
+
+function barUnits(text: string): number {
+  return [...text].reduce((sum, ch) => sum + (BAR_UNITS[ch] ?? 0), 0);
+}
+
+/**
+ * Block glyphs don't tile into a solid bar at body sizes — the font leaves a
+ * subpixel gap between cells. Draw the bar instead, sized from the same glyph
+ * count the author typed. Decorative: the adjacent column carries the value.
+ */
+function BarCell({ text, style }: { text: string; style?: CSSProperties }) {
+  return (
+    <td className="cell-bar" style={style}>
+      <span
+        className="bar"
+        style={{ "--bar-units": barUnits(text) } as CSSProperties}
+        aria-hidden="true"
+      />
+    </td>
+  );
+}
+
+function cellClass(children: ReactNode): string | undefined {
+  const text = textOf(children).trim();
+  return text && BAR_CELL.test(text) ? "cell-bar" : undefined;
 }
 
 const markdownComponents: Components = {
@@ -90,6 +136,19 @@ const markdownComponents: Components = {
     if (!src || typeof src !== "string") return null;
     const [altText] = (alt || "").split("|").map((s) => s.trim());
     return <img src={src} alt={altText || ""} loading="lazy" />;
+  },
+  table: ({ children }) => (
+    <div className="post-table">
+      <table>{children}</table>
+    </div>
+  ),
+  th: ({ children, style }) => (
+    <th className={cellClass(children)} style={style}>{children}</th>
+  ),
+  td: ({ children, style }) => {
+    const text = textOf(children).trim();
+    if (text && BAR_CELL.test(text)) return <BarCell text={text} style={style} />;
+    return <td style={style}>{children}</td>;
   },
 };
 
@@ -149,6 +208,7 @@ function BlogPostPage() {
             <div className="post-body">
               <ReactMarkdown
                 components={markdownComponents}
+                remarkPlugins={[remarkGfm]}
                 rehypePlugins={[unwrapImages]}
               >
                 {state.post.content || ""}
