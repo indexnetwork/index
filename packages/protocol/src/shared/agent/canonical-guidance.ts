@@ -58,7 +58,7 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 Refer to these for detailed entity facts and lifecycle:
 
 - **identity-context** — Profile structure, context scoping
-- **premises** — Background, stage, constraints  
+- **premises** — Background, stage, constraints
 - **signals** — Intent inference, classification
 - **communities-networks** — Membership, auto-assign
 - **opportunities** — Discovery, roles, reasoning
