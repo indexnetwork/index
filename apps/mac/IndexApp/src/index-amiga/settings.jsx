@@ -132,7 +132,7 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
       <div style={{
         marginTop:22,
-        display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px 18px",
+        display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px",
       }}>
         <TextField
           label="name" required
@@ -183,7 +183,7 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
       <div style={{
         marginTop:12,
-        display:"grid", gridTemplateColumns:"1fr 1fr", gap:"9px 14px",
+        display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"9px 14px",
       }}>
         {form.socials.map((s, i) => (
           <SocialField
@@ -552,6 +552,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       {/* Tabbed settings uses a fixed height so switching panes doesn't jump the

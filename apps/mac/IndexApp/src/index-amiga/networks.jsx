@@ -175,6 +175,7 @@ function CreateNetwork({ onCancel, onCreate }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       {/* same frame as the list and the detail screen, so moving between them
@@ -223,7 +224,7 @@ function CreateNetwork({ onCancel, onCreate }) {
 
             {/* one column at this width, like name/location on the profile —
                 a full-860 name field is far more room than the value needs */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px 18px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px" }}>
               <TextField
                 label="name" required
                 value={name}
@@ -252,7 +253,7 @@ function CreateNetwork({ onCancel, onCreate }) {
             <SectionRule>access</SectionRule>
             <div style={{
               marginTop:12, display:"grid",
-              gridTemplateColumns:"1fr 1fr", gap:"8px 14px",
+              gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"8px 14px",
             }}>
               <ChoiceCard
                 title="public"
@@ -410,6 +411,7 @@ function NetworkDetail({ net, onBack, onLeave }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       <div style={{
@@ -582,6 +584,7 @@ function Networks({ onClose }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       {/* fixed height so switching tabs doesn't resize the frame */}

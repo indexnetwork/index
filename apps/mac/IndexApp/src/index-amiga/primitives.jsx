@@ -498,8 +498,13 @@ function PicturePicker({ size = 46, label = "change picture", onPick, onError, c
 /* ---------- AmigaWindow — title bar with close gadget on left, depth on right ---------- */
 function MacWindow({ title, children, style, bodyStyle, onClose, noShadow }) {
   return (
+    // minWidth:0 + overflow:hidden keep a window inside its own frame. As a
+    // grid item it would otherwise be floored at its content's min-content
+    // width and paint over the window beside it — which is what the radar did
+    // to the profile column once a third window opened.
     <div className="amiga-window" style={{
       display:"flex", flexDirection:"column",
+      minWidth:0, minHeight:0, overflow:"hidden",
       ...style,
     }}>
       <div className="mac-titlebar">

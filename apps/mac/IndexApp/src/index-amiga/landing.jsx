@@ -9,13 +9,14 @@ function Landing({ onEnter }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding: "32px 40px",
       overflow:"auto",
     }}>
       <div style={{
         width: 920, maxWidth:"100%",
         display:"grid", gap:24,
-        gridTemplateColumns:"1fr 1fr",
+        gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)",
       }}>
         {/* Left window — brand */}
         <MacWindow title="index" style={{ minHeight: 440 }}>
@@ -74,7 +75,7 @@ function Landing({ onEnter }) {
               boxShadow:"inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #fff",
             }}>
               <div style={{
-                display:"grid", gridTemplateColumns:"1fr 1fr 1fr",
+                display:"grid", gridTemplateColumns:"repeat(3, minmax(0, 1fr))",
                 gap:14, marginTop:4,
               }}>
                 <Stat value={count.toLocaleString()} label="in network" />

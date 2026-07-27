@@ -4,6 +4,10 @@
 // How long conversations are kept before auto-deleting. Adjustable inline.
 const RETENTION_OPTIONS = ["1 week", "2 weeks", "1 month", "3 months", "never"];
 
+// Width of the window row below which three side-by-side windows stop being
+// readable — the radar steps aside for the third window instead.
+const THREE_COLUMN_MIN = 1020;
+
 // Inline privacy note: chats auto-delete after a window you can change.
 function RetentionNote({ retention, onChange }) {
   return (
@@ -486,10 +490,49 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     return () => { if (sub && sub.close) sub.close(); };
   }, [live]);
 
+  // Pause holds the signal: the agent stops taking on new work, but the
+  // opportunities and questions it already surfaced stay put. On a live signal
+  // that's a real status change, not just a local hold — revert if it doesn't
+  // land so the button never claims something the backend didn't do.
+  const togglePause = () => {
+    const next = !paused;
+    setPaused(next);
+    if (live && client && intentId) {
+      client.intents.updateStatus(intentId, next ? "PAUSED" : "ACTIVE")
+        .catch(() => setPaused(!next));
+    }
+  };
+
+  // Archive retires the signal and drops it off the hub. Only leave the screen
+  // once the backend has taken it — otherwise you'd land back on a hub still
+  // showing the signal you thought you'd just archived.
+  const archiveSignal = () => {
+    if (!(live && client && intentId)) { onBack && onBack(); return Promise.resolve(); }
+    return client.intents.archive(intentId).then(() => { onBack && onBack(); });
+  };
+
+  // Three columns need room. Below that the third window takes the radar's
+  // place rather than all three squeezing to the point where a card's name and
+  // its accept/pass gadgets sit on top of each other; closing it brings the
+  // radar back.
+  const shellRef = useRef(null);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0] && entries[0].contentRect.width;
+      if (w) setNarrow(w < THREE_COLUMN_MIN);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const chatPerson = chatId ? people.find(p => p.id === chatId) : null;
   const summaryPerson = summaryId ? people.find(p => p.id === summaryId) : null;
   const profilePerson = profileId ? people.find(p => p.id === profileId) : null;
   const thirdOpen = !!(chatPerson || summaryPerson || profilePerson);
+  const showRadar = !(thirdOpen && narrow);
   const chatIds = Object.keys(chats);
   const unreadTotal = chatIds.reduce((a, id) => a + (unread[id] || 0), 0);
   const roster = chatIds.map(id => {
@@ -537,13 +580,16 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       // traffic lights; roomier margins all round frame it on the desktop
       padding: "34px 18px 18px", gap: 8,
     }}>
-      <div style={{
+      <div ref={shellRef} style={{
         display:"grid",
         // Opening a chat splits into a third column — the pipeline narrows to
         // make room rather than the chat floating on top.
-        gridTemplateColumns: thirdOpen
-          ? "minmax(360px, 40fr) minmax(300px, 30fr) minmax(320px, 30fr)"
-          : "minmax(440px, 56fr) minmax(340px, 44fr)",
+        // The minimums are 0, not a px floor: a floor larger than the window
+        // makes the tracks overflow the desktop and the last column runs off
+        // the right edge. The windows clip their own content instead.
+        gridTemplateColumns: (thirdOpen && showRadar)
+          ? "minmax(0, 40fr) minmax(0, 30fr) minmax(0, 30fr)"
+          : "minmax(0, 56fr) minmax(0, 44fr)",
         gridTemplateRows: "minmax(0, 1fr)",
         gap: 8, minHeight:0,
       }}>
@@ -557,11 +603,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
             paused={paused}
-            onTogglePause={() => setPaused(p => !p)}
-            onStop={onBack}
+            onTogglePause={togglePause}
+            onArchive={archiveSignal}
           />
         </MacWindow>
 
+        {showRadar && (
         <MacWindow title="index · your radar" onClose={onBack}>
           <MatchFeed
             tab={tab} setTab={setTab}
@@ -580,6 +627,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             chatIds={chatIds}
           />
         </MacWindow>
+        )}
 
         {thirdOpen && (
           chatPerson ? (
@@ -903,7 +951,7 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
   const { EVENT } = window.INDEX_DATA;
   return (
     <div style={{
-      display:"grid", gridTemplateColumns:"auto 1fr auto",
+      display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
       alignItems:"center",
       padding:"0 14px", gap:18,
       border:"1px solid #000", background:"#fff",
@@ -956,8 +1004,29 @@ function SignalAction({ label, active = false, onClick }) {
   );
 }
 
-function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, setDraft, sendDraft, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onStop }) {
+function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, setDraft, sendDraft, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
+  // Archiving takes the signal off the hub and there's no way back to it from
+  // here, so the first click arms the button and the second one commits. It
+  // disarms itself after a few seconds if you meant to click something else.
+  const [armed, setArmed] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const armTimer = useRef(null);
+  useEffect(() => () => armTimer.current && clearTimeout(armTimer.current), []);
+  const clickArchive = () => {
+    if (archiving) return;
+    if (armTimer.current) clearTimeout(armTimer.current);
+    if (!armed) {
+      setArmed(true);
+      armTimer.current = setTimeout(() => setArmed(false), 4000);
+      return;
+    }
+    setArmed(false);
+    setArchiving(true);
+    Promise.resolve(onArchive && onArchive())
+      .catch(() => {})
+      .then(() => setArchiving(false));
+  };
   const [stuck, setStuck] = useState(true);
   const [unread, setUnread] = useState(0);
   const lastLen = useRef(conversation.length);
@@ -1005,7 +1074,10 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr auto",
-      flex:1, minHeight:0, position:"relative",
+      // an explicit minmax(0,1fr) column — the implicit `auto` one is floored
+      // at the widest row's min-content and would push past the window frame
+      gridTemplateColumns:"minmax(0, 1fr)",
+      flex:1, minHeight:0, minWidth:0, position:"relative",
     }}>
       {/* fixed signal header — the signal you're tracking, plus the controls
           to pause or stop the agent working on it */}
@@ -1026,7 +1098,11 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               active={paused}
               onClick={() => onTogglePause && onTogglePause()}
             />
-            <SignalAction label="✕ stop" onClick={() => onStop && onStop()}/>
+            <SignalAction
+              label={archiving ? "archiving…" : armed ? "archive · confirm" : "archive"}
+              active={armed}
+              onClick={clickArchive}
+            />
           </div>
         </div>
         <div style={{
@@ -1473,10 +1549,13 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
   };
   const peopleForTab = tab === "all" ? people : people.filter(p => bucket(p) === tab);
   return (
-    <div style={{ display:"grid", gridTemplateRows:"auto 1fr", flex:1, minHeight:0 }}>
+    <div style={{
+      display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)",
+      flex:1, minHeight:0, minWidth:0,
+    }}>
       <div style={{
         padding:"0 22px", minHeight:68, boxSizing:"border-box",
-        display:"flex", alignItems:"center",
+        display:"flex", alignItems:"center", minWidth:0,
         borderBottom:"1px solid #000",
       }}>
         <div style={{ flex:1, minWidth:0 }}>
@@ -1491,7 +1570,7 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
 
       <div className="mac-scroll" style={{
         overflowY:"auto", padding:"14px 22px 24px",
-        display:"grid", gap:8, alignContent:"start",
+        display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start",
       }}>
         {peopleForTab.map(p => (
           <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile}
@@ -1577,8 +1656,8 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
       className="fade-up"
       style={{
         textAlign:"left",
-        display:"grid", gridTemplateColumns:"auto 1fr auto",
-        gap:14, padding:"14px 14px",
+        display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+        gap:14, padding:"14px 14px", minWidth:0,
         background:"#fff", color:"#000",
         border:"1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
@@ -1593,9 +1672,10 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         <Avatar name={person.name} size={36} ring={accepted}/>
       </span>
       <div style={{ display:"grid", gap:3, minWidth:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", minWidth:0 }}>
           <span onClick={openProfile} title="view profile" style={{
             fontFamily:"var(--mac-sans)", fontSize:15, fontWeight:600, cursor:"pointer",
+            minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
           }}
           onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
           onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}>
@@ -1718,7 +1798,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
   const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
   return (
     <MacWindow title="index · messages" onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         {/* header */}
         <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -1741,7 +1821,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
         </div>
 
         {/* conversation list */}
-        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gap:8, alignContent:"start" }}>
+        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start" }}>
           {conversations.length === 0 ? (
             <div style={{
               padding:24, textAlign:"center",
@@ -1750,7 +1830,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
             }}>no conversations yet — open someone from your radar to start one.</div>
           ) : conversations.map(c => (
             <button key={c.id} onClick={() => onOpen(c.id)} style={{
-              textAlign:"left", display:"grid", gridTemplateColumns:"auto 1fr auto",
+              textAlign:"left", display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
               gap:12, alignItems:"center", padding:"10px 12px",
               border:"1px solid #000", background:"#fff", cursor:"pointer",
               boxShadow: c.unread > 0
@@ -1823,7 +1903,7 @@ function SummarySection({ label, children }) {
 function SummaryWindow({ person, onClose }) {
   return (
     <MacWindow title={`summary · ${person.name}`} onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr", flex:1, minHeight:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         <div style={{
           padding:"12px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
@@ -1841,7 +1921,7 @@ function SummaryWindow({ person, onClose }) {
         </div>
 
         <div className="mac-scroll" style={{
-          overflowY:"auto", padding:"16px", display:"grid", gap:16,
+          overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:16,
           alignContent:"start", background:"#fff",
         }}>
           <SummarySection label="what your agent found">
@@ -1891,7 +1971,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
   const isExpired = status === "expired";
   return (
     <MacWindow title={`profile · ${person.name}`} onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         {/* header */}
         <div style={{
           padding:"14px 16px", borderBottom:"1px solid #000",
@@ -1911,7 +1991,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
 
         {/* body */}
         <div className="mac-scroll" style={{
-          overflowY:"auto", padding:"16px", display:"grid", gap:16,
+          overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:16,
           alignContent:"start", background:"#fff",
         }}>
           <SummarySection label="about">{person.blurb}</SummarySection>
@@ -1985,7 +2065,8 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
         <div style={{
           display:"grid",
           gridTemplateRows: "auto 1fr auto",
-          flex:1, minHeight:0,
+          gridTemplateColumns: "minmax(0, 1fr)",
+          flex:1, minHeight:0, minWidth:0,
         }}>
           {/* header */}
           <div style={{
@@ -2110,7 +2191,7 @@ function BottomBar({ stats }) {
   return (
     <div style={{
       border:"1px solid #000", background:"#fff",
-      display:"grid", gridTemplateColumns:"1fr auto",
+      display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto",
       alignItems:"center",
       padding:"0 14px", gap:14,
       fontFamily:"var(--mac-mono)", fontSize:10,

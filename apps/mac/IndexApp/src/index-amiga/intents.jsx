@@ -217,6 +217,22 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const [showNetworks, setShowNetworks] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
 
+  // Width the shelf's scrollbar takes when it appears, so the pinned
+  // new-signal row below can line up with the rows inside. Measured rather
+  // than hardcoded to 16px — it's zero whenever the list fits.
+  const shelfRef = useRef(null);
+  const [shelfGutter, setShelfGutter] = useState(0);
+  useEffect(() => {
+    const el = shelfRef.current;
+    if (!el) { setShelfGutter(0); return; }
+    const measure = () => setShelfGutter(el.offsetWidth - el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [signals.length, settingsTab, showNetworks, showAgents]);
+
   const onAccountSelect = (id) => {
     if (id === "profile")  setSettingsTab("profile");
     if (id === "settings") setSettingsTab("notify");
@@ -244,18 +260,26 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      // an explicit track: the implicit `auto` one takes the 980px wrapper as
+      // its floor, so `maxWidth:100%` below resolves against 980 rather than
+      // against the room actually available and the window overhangs the desktop
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       <div style={{
         width: 980,
         maxWidth:"100%",
+        minWidth: 0,
         maxHeight: "calc(100vh - 64px)",
       }}>
         <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: "min(560px, calc(100vh - 64px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",
-            gridTemplateColumns:"minmax(260px, 0.85fr) minmax(360px, 1.15fr)",
+            // fluid, not px floors: 260+360+gap+padding is wider than the
+            // window once it's narrow, and the tracks would keep their floor
+            // and push the signal list out through the right-hand frame
+            gridTemplateColumns:"minmax(0, 0.85fr) minmax(0, 1.15fr)",
             gap:24,
             flex:1,
             minHeight:0,
@@ -333,10 +357,11 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                 looking until the right people surface, or you close it.
               </p>
 
-              {/* sized to its content when the list is short (window hugs it),
-                  but flex-shrinks and scrolls once there are too many to fit */}
-              <div className="mac-scroll" style={{
-                flex:"1 1 auto", minHeight:0, overflowY:"auto",
+              {/* sized to its content when the list is short (so the new-signal
+                  row sits right under the last one), shrinking and scrolling
+                  once there are too many to fit */}
+              <div ref={shelfRef} className="mac-scroll" style={{
+                flex:"0 1 auto", minHeight:0, overflowY:"auto",
                 display:"flex", flexDirection:"column", gap:8,
                 paddingRight: 6,
               }}>
@@ -353,8 +378,18 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                     onPick={() => onPickExisting(intent)}
                   />
                 ))}
+              </div>
 
-                {/* New intent — always at the bottom of the list */}
+              {/* Starting a signal is what this screen is for, so it sits
+                  outside the shelf — a long list scrolls behind it rather than
+                  pushing it out of reach. The right padding matches the rows
+                  above, which sit clear of the scrollbar when one is showing. */}
+              <div style={{
+                flex:"0 0 auto", paddingTop:8, paddingRight: 6 + shelfGutter,
+                // flex, so the row stretches the way it did as a child of the
+                // shelf — a bare <button> shrinks to fit its label
+                display:"flex", flexDirection:"column",
+              }}>
                 <NewIntentRow onClick={onNew}/>
               </div>
             </div>
@@ -382,6 +417,11 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         textAlign:"left",
         padding: "0 16px",
         height: 72,
+        // the shelf is a column flex container, so without this the rows
+        // shrink to share whatever height is left instead of the shelf
+        // scrolling — squashing every signal and pushing the question count
+        // out through the row's own border
+        flex: "0 0 auto",
         boxSizing: "border-box",
         border:"1px solid #000",
         background: hovered ? "#FFF6E8" : "#FFFFFF",
@@ -452,6 +492,7 @@ function NewIntentRow({ onClick }) {
       style={{
         textAlign:"left",
         padding:"11px 16px",
+        flex: "0 0 auto",
         border:"2px solid #000",
         background: down ? "#000" : "#FF8A00",
         color: down ? "#FF8A00" : "#000",

@@ -337,6 +337,7 @@ function Agents({ onClose }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       {/* Back to the shared networks/detail frame: the negotiator cards were

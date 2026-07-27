@@ -46,6 +46,7 @@ function BuildingProfile({ onDone }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
     }}>
       <MacWindow title="index · setting up" style={{ width: 420 }}>
         <div style={{ padding:"26px 28px 24px", textAlign:"center" }}>
@@ -107,6 +108,7 @@ function Login({ onSignIn }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
       padding:"32px 40px", overflow:"auto",
     }}>
       <div style={{ width:420, maxWidth:"100%" }}>
