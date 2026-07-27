@@ -41,7 +41,7 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   refusal stands and flows into the existing quiet `screened_out` outcome with
   no message persisted, while a genuinely malformed turn-0 opening (e.g.
   `counter`) is still coerced to the opening action.
-- Attribute `outcome.reasoning` to whoever actually decided (IND-611; 7.11.0):
+- Attribute `outcome.reasoning` to whoever actually decided (IND-611; 7.11.1):
   `screened_out` now has two routes — the screen node, and an opening-turn
   refusal. The finalize node preferred `screenDecision.reasoning` for both,
   which is wrong on the new route when the gate returned `reach_out`: the
