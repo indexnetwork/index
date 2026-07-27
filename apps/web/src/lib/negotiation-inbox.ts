@@ -9,7 +9,9 @@ export type NegotiationInboxStatus =
   | 'accepted'
   | 'started'
   | 'rejected'
-  | 'stalled';
+  | 'stalled'
+  /** IND-610: the owner's own agent declined before any contact. Owner-only. */
+  | 'not_sent';
 
 export interface NegotiationInboxItem {
   conversationId: string;
@@ -135,12 +137,45 @@ export function deriveNegotiationInbox(
 ): NegotiationInboxGroups {
   const ownAgentId = viewerUserId ? `agent:${viewerUserId}` : null;
   const items = negotiations.flatMap<NegotiationInboxItem>((conversation) => {
-    // Zero-turn rows include private screened-out attempts and abandoned task
-    // shells. Keep the same invisibility rule as ChatSidebar's A2A mode.
-    if (!conversation.lastMessage) return [];
-
     const counterpart = conversation.participants.find((participant) => participant.participantId !== ownAgentId);
     if (!counterpart) return [];
+
+    // Zero-turn rows are normally invisible (abandoned task shells), matching
+    // ChatSidebar's A2A rule. The one exception is the viewer's OWN outreach
+    // gate decision: it has no messages by definition, so this filter is what
+    // made the IND-610 gate card reachable only by direct link.
+    //
+    // The owner boundary is NOT re-derived here. `negotiation.screenDecision`
+    // is projected by the API only when `initiatorUserId === viewerUserId`
+    // (services/api/src/adapters/negotiation-lifecycle.projection.ts), so its
+    // mere presence IS the owner proof. A counterparty never receives the
+    // field and therefore never gets this row.
+    if (!conversation.lastMessage) {
+      const gateDecision = conversation.negotiation?.screenDecision;
+      if (!gateDecision) return [];
+
+      const gateTimestamp = new Date(
+        conversation.negotiation?.updatedAt ?? conversation.lastMessageAt ?? conversation.createdAt,
+      ).getTime();
+      const gateSafeTimestamp = Number.isFinite(gateTimestamp) ? gateTimestamp : 0;
+
+      return [{
+        conversationId: conversation.id,
+        counterpart: {
+          id: counterpart.participantId.replace(/^agent:/, ''),
+          name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
+          avatar: counterpart.avatar,
+        },
+        group: 'resolved',
+        status: 'not_sent',
+        signalCount: Math.max(conversation.negotiation?.signalCount ?? 0, conversation.via.length),
+        lastAction: 'Your agent did not reach out',
+        timeAgo: formatTimeAgo(gateSafeTimestamp, now),
+        sortTimestamp: gateSafeTimestamp,
+        turnCount: 0,
+        maxTurns: conversation.negotiation?.maxTurns ?? 6,
+      }];
+    }
 
     const lastTurn = readLastTurn(conversation.lastMessage.parts);
     const classification = classifyConversation(conversation, lastTurn.action, viewerUserId);
