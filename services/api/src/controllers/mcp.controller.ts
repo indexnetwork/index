@@ -55,7 +55,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -689,6 +689,33 @@ const authResolver: McpAuthResolver = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AUTHORIZATION OBSERVABILITY (host boundary)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Records MCP capability denials as structured, secret-free authorization audit
+ * logs. The protocol constructs the event with only safe caller-profile/reason
+ * fields (no token, API key, header, or tool-argument payload), so this seam can
+ * log it verbatim. This is standing authorization observability at info level,
+ * not debug instrumentation, and it never alters the fail-closed decision.
+ */
+const mcpAuthorizationObserver: McpAuthorizationObserver = {
+  onCapabilityDenied(event) {
+    logger.info('MCP capability denied', {
+      phase: event.phase,
+      toolName: event.toolName,
+      profile: event.profile,
+      reason: event.reason,
+      ...(event.reach ? { reach: event.reach } : {}),
+      ...(event.requiredPermissions ? { requiredPermissions: event.requiredPermissions } : {}),
+      userId: event.userId,
+      ...(event.agentId ? { agentId: event.agentId } : {}),
+      networkScopeId: event.networkScopeId,
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PER-REQUEST MCP SERVER CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -764,6 +791,7 @@ function createMcpServerInstance(): McpServer {
     authResolver,
     scopedDepsFactory,
     CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
+    mcpAuthorizationObserver,
   );
 }
 

@@ -13,6 +13,20 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Added
+- Add a host-injected MCP authorization-observability seam (IND-581; 7.8.0):
+  `McpAuthorizationObserver`, the secret-free `McpAuthorizationDenialEvent`, and
+  the central `buildMcpAuthorizationDenialEvent` constructor, plus an optional
+  fifth `authorizationObserver` parameter on `createMcpServer`. Every
+  `tools/call` capability denial (preliminary and resolved stages) emits one
+  structured event carrying ONLY the caller profile, tool name, decision
+  reason/reach, required permissions, and opaque `userId`/`agentId`/
+  `networkScopeId` — never a token, API key, bearer credential, raw header, or
+  tool-argument payload. The seam is fail-closed: an observer that throws is
+  swallowed and never alters the denial. Denials remain freshly resolved per
+  reconnect/session because the static tool-metadata cache holds
+  principal-independent registration data only; the per-principal decision is
+  recomputed on every fresh server resolution.
+
 - Add the canonical `read_own_agent` MCP tool: a registered active agent's
   self-read of its OWN sanitized registration record (IND-599; 7.7.0). The input
   schema is empty — there is no target selector, so a caller can never name
