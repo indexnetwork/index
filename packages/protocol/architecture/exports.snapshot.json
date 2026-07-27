@@ -1971,6 +1971,12 @@
       "source": "./mcp/mcp.authorization-policy.js"
     },
     {
+      "name": "buildMcpAuthorizationDenialEvent",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
       "name": "defineMcpToolAccessRules",
       "kind": "value",
       "stability": "stable",
@@ -2085,7 +2091,25 @@
       "source": "./shared/agent/activity-projection.js"
     },
     {
+      "name": "McpAuthorizationDenialEvent",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpAuthorizationObserver",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
       "name": "McpCapabilityDecision",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityDecisionReason",
       "kind": "type",
       "stability": "stable",
       "source": "./mcp/mcp.authorization-policy.js"

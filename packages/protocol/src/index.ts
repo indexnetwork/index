@@ -293,6 +293,7 @@ export {
   McpPrincipalProfileSchema,
   McpToolPermissionRequirementSchema,
   McpToolAccessRuleSchema,
+  buildMcpAuthorizationDenialEvent,
   defineMcpToolAccessRules,
   defineMcpToolPermissionMap,
   resolveMcpActivityCaller,
@@ -318,7 +319,10 @@ export type {
   ProjectedActivitySummary,
 } from "./shared/agent/activity-projection.js";
 export type {
+  McpAuthorizationDenialEvent,
+  McpAuthorizationObserver,
   McpCapabilityDecision,
+  McpCapabilityDecisionReason,
   McpCapabilityPolicyOptions,
   McpCapabilitySubject,
   McpPermissionAction,

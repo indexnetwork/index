@@ -24,8 +24,8 @@ import { bindOwnerApprovalProvenance } from '../opportunity/application/opportun
 import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '../shared/agent/tool.runtime.js';
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
-import type { McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
-import { McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpActivityCaller, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
+import type { McpAuthorizationObserver, McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
+import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpActivityCaller, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
 
@@ -480,6 +480,7 @@ export function createMcpServer(
   authResolver: McpAuthResolver,
   scopedDepsFactory: ScopedDepsFactory,
   policyOptions: McpCapabilityPolicyOptions = {},
+  authorizationObserver?: McpAuthorizationObserver,
 ): McpServer {
   const server = new McpServer(
     { name: 'index-network', version: '1.0.0' },
@@ -488,6 +489,26 @@ export function createMcpServer(
 
   const toolMetadata = getCachedMcpToolMetadata(deps);
   const capabilityPolicy = new McpCapabilityPolicy(policyOptions);
+
+  // Fail-closed authorization observability: emit a safe, secret-free denial
+  // event at the host boundary. Never let an observer failure change the
+  // decision or surface a credential — the denial stands regardless.
+  const observeDenial = (input: {
+    phase: 'tools/call' | 'tools/list';
+    toolName: string;
+    subject: McpCapabilitySubject;
+    decision: McpCapabilityDecision;
+  }): void => {
+    if (!authorizationObserver) return;
+    try {
+      authorizationObserver.onCapabilityDenied(buildMcpAuthorizationDenialEvent(input));
+    } catch (err) {
+      logger.debug('MCP authorization observer threw — ignoring', {
+        toolName: input.toolName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   type AuthenticatedMcpRequest = {
     identity: McpResolvedIdentity;
@@ -657,12 +678,24 @@ export function createMcpServer(
             toolName,
           );
           if (!preliminaryDecision.allowed) {
+            observeDenial({
+              phase: 'tools/call',
+              toolName,
+              subject: authenticated.preliminarySubject,
+              decision: preliminaryDecision,
+            });
             return capabilityDeniedResult(preliminaryDecision);
           }
 
           const resolved = await getResolvedRequest(httpReq);
           const decision = capabilityPolicy.authorize(resolved.subject, toolName);
           if (!decision.allowed) {
+            observeDenial({
+              phase: 'tools/call',
+              toolName,
+              subject: resolved.subject,
+              decision,
+            });
             return capabilityDeniedResult(decision, resolved.context);
           }
 
