@@ -338,13 +338,13 @@ function Agents({ onClose }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* Back to the shared networks/detail frame: the negotiator cards were
           what overflowed 660px, and the dropdown that replaced them is one row. */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · agents"

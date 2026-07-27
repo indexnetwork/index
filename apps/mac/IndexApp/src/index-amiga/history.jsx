@@ -254,9 +254,9 @@ function NegotiationHistory({ onClose }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
-      <div style={{ width:1000, maxWidth:"100%", height:"calc(100vh - 64px)" }}>
+      <div style={{ width:1000, maxWidth:"100%", height:"calc(100vh - 112px)" }}>
         <MacWindow title="index · negotiation history" onClose={onClose} style={{ height:"100%" }}>
           <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
 

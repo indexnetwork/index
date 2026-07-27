@@ -176,13 +176,13 @@ function CreateNetwork({ onCancel, onCreate }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* same frame as the list and the detail screen, so moving between them
           doesn't resize the window */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · new network"
@@ -412,11 +412,11 @@ function NetworkDetail({ net, onBack, onLeave }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title={`index · ${net.name.toLowerCase()}`}
@@ -585,12 +585,12 @@ function Networks({ onClose }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* fixed height so switching tabs doesn't resize the frame */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · networks"

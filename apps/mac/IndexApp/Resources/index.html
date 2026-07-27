@@ -35760,7 +35760,7 @@ function Login({ onSignIn }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{ width:420, maxWidth:"100%" }}>
         <MacWindow title="index" style={{ minHeight:0 }}>
@@ -36408,15 +36408,15 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* Tabbed settings uses a fixed height so switching panes doesn't jump the
           frame. First-run has no tabs, so it hugs its content and shows the
           whole profile without scrolling (capped to the viewport). */}
       <div style={{
         width:860, maxWidth:"100%",
-        height: profileOnly ? undefined : "min(660px, calc(100vh - 64px))",
-        maxHeight: "calc(100vh - 48px)",
+        height: profileOnly ? undefined : "min(660px, calc(100vh - 112px))",
+        maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
           title={profileOnly ? "index · getting started" : "index · settings"}
@@ -36687,13 +36687,13 @@ function CreateNetwork({ onCancel, onCreate }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* same frame as the list and the detail screen, so moving between them
           doesn't resize the window */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · new network"
@@ -36923,11 +36923,11 @@ function NetworkDetail({ net, onBack, onLeave }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title={`index · ${net.name.toLowerCase()}`}
@@ -37096,12 +37096,12 @@ function Networks({ onClose }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* fixed height so switching tabs doesn't resize the frame */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · networks"
@@ -37498,13 +37498,13 @@ function Agents({ onClose }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* Back to the shared networks/detail frame: the negotiator cards were
           what overflowed 660px, and the dropdown that replaced them is one row. */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 64px))",
+        height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · agents"
@@ -37854,9 +37854,9 @@ function NegotiationHistory({ onClose }) {
     <div style={{
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
-      <div style={{ width:1000, maxWidth:"100%", height:"calc(100vh - 64px)" }}>
+      <div style={{ width:1000, maxWidth:"100%", height:"calc(100vh - 112px)" }}>
         <MacWindow title="index · negotiation history" onClose={onClose} style={{ height:"100%" }}>
           <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
 
@@ -38205,15 +38205,15 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
       // its floor, so `maxWidth:100%` below resolves against 980 rather than
       // against the room actually available and the window overhangs the desktop
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{
         width: 980,
         maxWidth:"100%",
         minWidth: 0,
-        maxHeight: "calc(100vh - 64px)",
+        maxHeight: "calc(100vh - 112px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: "min(560px, calc(100vh - 64px))" }}>
+        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",
@@ -38882,12 +38882,12 @@ function Onboarding({ onDone, onBack }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{
         width: 980, maxWidth:"100%",
         display:"grid", gridTemplateColumns:"minmax(0, 1.4fr) minmax(0, 1fr)", gap:18,
-        height: "min(720px, calc(100vh - 80px))",
+        height: "min(720px, calc(100vh - 128px))",
       }}>
         {/* LEFT — conversation window */}
         <MacWindow title="index · calibrating" onClose={onBack}>
@@ -39833,9 +39833,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       position:"absolute", inset:0,
       display:"grid",
       gridTemplateRows:"1fr",
-      // extra top margin keeps the window chrome clear of the floating
-      // traffic lights; roomier margins all round frame it on the desktop
-      padding: "34px 18px 18px", gap: 8,
+      // deep top and bottom margins frame the windows on the desktop (and keep
+      // the chrome well clear of the floating traffic lights); the sides stay
+      // tight because the three columns want the width
+      padding: "56px 18px 56px", gap: 8,
     }}>
       <div ref={shellRef} style={{
         display:"grid",
@@ -40208,7 +40209,7 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
   const { EVENT } = window.INDEX_DATA;
   return (
     <div style={{
-      display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+      display:"grid", gridTemplateColumns:"auto 1fr auto",
       alignItems:"center",
       padding:"0 14px", gap:18,
       border:"1px solid #000", background:"#fff",
@@ -41055,7 +41056,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
   const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
   return (
     <MacWindow title="index · messages" onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
         {/* header */}
         <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -41078,7 +41079,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
         </div>
 
         {/* conversation list */}
-        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start" }}>
+        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gap:8, alignContent:"start" }}>
           {conversations.length === 0 ? (
             <div style={{
               padding:24, textAlign:"center",
@@ -41087,7 +41088,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
             }}>no conversations yet — open someone from your radar to start one.</div>
           ) : conversations.map(c => (
             <button key={c.id} onClick={() => onOpen(c.id)} style={{
-              textAlign:"left", display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+              textAlign:"left", display:"grid", gridTemplateColumns:"auto 1fr auto",
               gap:12, alignItems:"center", padding:"10px 12px",
               border:"1px solid #000", background:"#fff", cursor:"pointer",
               boxShadow: c.unread > 0
@@ -41448,7 +41449,7 @@ function BottomBar({ stats }) {
   return (
     <div style={{
       border:"1px solid #000", background:"#fff",
-      display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto",
+      display:"grid", gridTemplateColumns:"1fr auto",
       alignItems:"center",
       padding:"0 14px", gap:14,
       fontFamily:"var(--mac-mono)", fontSize:10,

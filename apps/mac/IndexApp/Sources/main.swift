@@ -244,25 +244,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// it's applied — the screens clip below roughly 860x600.
     static let minContentSize = NSSize(width: 900, height: 640)
 
-    /// Size the app wants on first run, picked off what the layout is drawn at.
-    ///
-    /// Width — the mainview is the constraint. Its three columns split 40/30/30
-    /// of the space left after the desktop margins, so 1280 gives the radar and
-    /// the chat/profile column ~368pt each (1200 gave them 344) while still
-    /// leaving the Workbench desktop visible around the 980pt screens.
-    ///
-    /// Height — onboarding is the constraint: it asks for `min(720, 100vh-80)`,
-    /// so 860 is the first size that hands it the full 720 it's drawn at, with
-    /// settings (660) and intents (560) comfortably clear of their own caps.
-    static let idealContentSize = NSSize(width: 1280, height: 860)
+    /// Fallback for the (unexpected) case of launching with no screen attached.
+    static let fallbackContentSize = NSSize(width: 1280, height: 860)
 
-    /// The ideal, shrunk to fit the screen it actually opens on — a 1280x800
-    /// display has no room for the full height — and never below the minimum.
-    static func defaultContentSize(for screen: NSScreen?) -> NSSize {
-        guard let visible = screen?.visibleFrame.size else { return idealContentSize }
-        return NSSize(
-            width:  max(minContentSize.width,  min(idealContentSize.width,  visible.width  - 40)),
-            height: max(minContentSize.height, min(idealContentSize.height, visible.height - 40))
+    /// First-run frame: the whole usable screen — everything the menu bar and
+    /// Dock aren't already using. The layout has plenty to do with the room
+    /// (the mainview's three columns and the radar cards all get wider), and
+    /// this is only the default: the frame autosave takes over the moment the
+    /// window is moved or resized.
+    static func defaultContentFrame(for screen: NSScreen?) -> NSRect {
+        guard let visible = screen?.visibleFrame else {
+            return NSRect(origin: .zero, size: fallbackContentSize)
+        }
+        return NSRect(
+            x: visible.origin.x,
+            y: visible.origin.y,
+            width:  max(minContentSize.width,  visible.width),
+            height: max(minContentSize.height, visible.height)
         )
     }
 
@@ -288,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         config.userContentController.addUserScript(WKUserScript(
             source: Self.nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
-        let contentRect = NSRect(origin: .zero, size: Self.defaultContentSize(for: NSScreen.main))
+        let contentRect = Self.defaultContentFrame(for: NSScreen.main)
         webView = WKWebView(frame: contentRect, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -329,7 +327,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // Match the Amiga Workbench desktop blue so there's no white flash
         // before the React app paints.
         window.backgroundColor = NSColor(srgbRed: 0x00/255.0, green: 0x55/255.0, blue: 0xAA/255.0, alpha: 1.0)
-        window.center()
+        // No center() — the default frame is already the usable screen, and
+        // centering a window that tall would push it up under the menu bar.
+        // Setting the autosave name restores a saved frame over it when there
+        // is one, which is what should happen after the first run.
         window.setFrameAutosaveName("IndexMainWindow")
         window.contentView = webView
         // The web layout has a real floor. Below roughly 860x600 the Workbench
@@ -347,8 +348,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         restored.size.width  = max(restored.size.width,  Self.minContentSize.width)
         restored.size.height = max(restored.size.height, Self.minContentSize.height)
         if restored.size != window.frame.size {
+            // setFrame constrains to the screen, so growing a window that was
+            // saved near an edge doesn't push it off one.
             window.setFrame(restored, display: false)
-            window.center()
         }
         window.makeKeyAndOrderFront(nil)
 

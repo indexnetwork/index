@@ -270,15 +270,15 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
       // its floor, so `maxWidth:100%` below resolves against 980 rather than
       // against the room actually available and the window overhangs the desktop
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{
         width: 980,
         maxWidth:"100%",
         minWidth: 0,
-        maxHeight: "calc(100vh - 64px)",
+        maxHeight: "calc(100vh - 112px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 64px)", minHeight: "min(560px, calc(100vh - 64px))" }}>
+        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",

@@ -553,15 +553,15 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       {/* Tabbed settings uses a fixed height so switching panes doesn't jump the
           frame. First-run has no tabs, so it hugs its content and shows the
           whole profile without scrolling (capped to the viewport). */}
       <div style={{
         width:860, maxWidth:"100%",
-        height: profileOnly ? undefined : "min(660px, calc(100vh - 64px))",
-        maxHeight: "calc(100vh - 48px)",
+        height: profileOnly ? undefined : "min(660px, calc(100vh - 112px))",
+        maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
           title={profileOnly ? "index · getting started" : "index · settings"}

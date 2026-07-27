@@ -412,12 +412,12 @@ function Onboarding({ onDone, onBack }) {
       position:"absolute", inset:0,
       display:"grid", placeItems:"center",
       gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"32px 40px", overflow:"auto",
+      padding:"56px 40px", overflow:"auto",
     }}>
       <div style={{
         width: 980, maxWidth:"100%",
         display:"grid", gridTemplateColumns:"minmax(0, 1.4fr) minmax(0, 1fr)", gap:18,
-        height: "min(720px, calc(100vh - 80px))",
+        height: "min(720px, calc(100vh - 128px))",
       }}>
         {/* LEFT — conversation window */}
         <MacWindow title="index · calibrating" onClose={onBack}>

@@ -47,6 +47,8 @@ docs/superpowers/
 /skills/**/SKILL.md
 packages/protocol/.claude
 packages/protocol/CLAUDE.md
+# built mac app bundle — assemble.py + swiftc output, rebuilt by build.sh
+apps/mac/IndexApp/dist/
 
 # ===================
 # Reports & Eval Outputs

@@ -576,9 +576,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       position:"absolute", inset:0,
       display:"grid",
       gridTemplateRows:"1fr",
-      // extra top margin keeps the window chrome clear of the floating
-      // traffic lights; roomier margins all round frame it on the desktop
-      padding: "34px 18px 18px", gap: 8,
+      // deep top and bottom margins frame the windows on the desktop (and keep
+      // the chrome well clear of the floating traffic lights); the sides stay
+      // tight because the three columns want the width
+      padding: "56px 18px 56px", gap: 8,
     }}>
       <div ref={shellRef} style={{
         display:"grid",
@@ -951,7 +952,7 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
   const { EVENT } = window.INDEX_DATA;
   return (
     <div style={{
-      display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+      display:"grid", gridTemplateColumns:"auto 1fr auto",
       alignItems:"center",
       padding:"0 14px", gap:18,
       border:"1px solid #000", background:"#fff",
@@ -1798,7 +1799,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
   const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
   return (
     <MacWindow title="index · messages" onClose={onClose} style={{ minHeight:0 }}>
-      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
+      <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
         {/* header */}
         <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -1821,7 +1822,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
         </div>
 
         {/* conversation list */}
-        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start" }}>
+        <div className="mac-scroll" style={{ overflowY:"auto", padding:"10px 12px", display:"grid", gap:8, alignContent:"start" }}>
           {conversations.length === 0 ? (
             <div style={{
               padding:24, textAlign:"center",
@@ -1830,7 +1831,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
             }}>no conversations yet — open someone from your radar to start one.</div>
           ) : conversations.map(c => (
             <button key={c.id} onClick={() => onOpen(c.id)} style={{
-              textAlign:"left", display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
+              textAlign:"left", display:"grid", gridTemplateColumns:"auto 1fr auto",
               gap:12, alignItems:"center", padding:"10px 12px",
               border:"1px solid #000", background:"#fff", cursor:"pointer",
               boxShadow: c.unread > 0
@@ -2191,7 +2192,7 @@ function BottomBar({ stats }) {
   return (
     <div style={{
       border:"1px solid #000", background:"#fff",
-      display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto",
+      display:"grid", gridTemplateColumns:"1fr auto",
       alignItems:"center",
       padding:"0 14px", gap:14,
       fontFamily:"var(--mac-mono)", fontSize:10,
