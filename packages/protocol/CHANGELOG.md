@@ -38,21 +38,22 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 
 ### Changed
 - Pin the generic MCP conversation surface to H2A-only in the published
-  contract (IND-600; 7.8.0). The `list_conversations` / `get_conversation`
-  descriptions now state explicitly that they expose ONLY the caller's H2A
-  chats with the Index agent (orchestrator-persona sessions with the system
-  agent as a participant): human-to-human (H2H) DMs are NEVER exposed through
-  these tools — including via schema-valid forged `tools/call` requests — and
-  A2A negotiation conversations are reachable only through the negotiation
-  tools (`list_negotiations` / `get_negotiation` / `respond_to_negotiation`),
-  which retain their `manage:negotiations` permission, exact-participation,
-  and bound-network-scope checks. The public `ChatSessionReader` port contract
-  gains the same category rule: non-H2A session IDs behave exactly like
-  nonexistent ones. Runtime enforcement is unchanged — the `human_only`
-  capability classification still denies every non-session principal before
-  any context DB read, scoped-deps creation, or chat-adapter work — so this is
-  a published contract/description clarification on public tools, hence the
-  minor bump.
+  contract (IND-600; 7.9.0). This is a distinct public-contract release above
+  the integrated 7.8.0 floor (IND-581): the `list_conversations` /
+  `get_conversation` descriptions now state explicitly that they expose ONLY
+  the caller's H2A chats with the Index agent (orchestrator-persona sessions
+  with the system agent as a participant): human-to-human (H2H) DMs are NEVER
+  exposed through these tools — including via schema-valid forged `tools/call`
+  requests — and A2A negotiation conversations are reachable only through the
+  negotiation tools (`list_negotiations` / `get_negotiation` /
+  `respond_to_negotiation`), which retain their `manage:negotiations`
+  permission, exact-participation, and bound-network-scope checks. The public
+  `ChatSessionReader` port contract gains the same category rule: non-H2A
+  session IDs behave exactly like nonexistent ones. Runtime enforcement is
+  unchanged — the `human_only` capability classification still denies every
+  non-session principal before any context DB read, scoped-deps creation, or
+  chat-adapter work — so this is a published contract/description
+  clarification on public tools, hence the minor bump.
 - Split the `agent_admin` capability family by principal kind (IND-599; 7.7.0).
   Registered agent principals (global/network/delivery) may now see and call
   ONLY `read_own_agent` on the admin surface — `list_agents` is no longer
