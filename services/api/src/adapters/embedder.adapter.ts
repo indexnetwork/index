@@ -5,8 +5,6 @@
 
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
-// eslint-disable-next-line no-restricted-imports
-import { discoveryIntentMatchingEnabled, discoveryProfileMatchingEnabled, discoveryProfileSource } from '@indexnetwork/protocol';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
 import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
@@ -31,6 +29,18 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   limit?: number;
   minScore?: number;
+  /**
+   * Discovery corpus gating, composed by the caller (defaults preserve legacy behavior).
+   * Omitted fields default to: intents true, profile true, profileCorpus 'premises'.
+   */
+  corpusGating?: {
+    /** Search the intents corpus. */
+    intents?: boolean;
+    /** Search the active profile corpus. */
+    profile?: boolean;
+    /** Which corpus backs 'profiles' lens hints and profile searches. */
+    profileCorpus?: 'premise' | 'user_context';
+  };
 }
 
 export interface HydeCandidate {
@@ -57,26 +67,31 @@ export type VectorStoreOption<T> = {
   minScore?: number;
 };
 
-/** Which corpora a HyDE lens search should hit, given the discovery env gates. */
-export function planHydeCorpusSearches(le: LensEmbedding): {
+/** Which corpora a HyDE lens search should hit, given caller-composed gating. */
+export function planHydeCorpusSearches(
+  le: LensEmbedding,
+  gating?: HydeSearchOptions['corpusGating'],
+): {
   intents: boolean;
   premises: boolean;
   userContexts: boolean;
   preferred: 'intents' | 'premises' | 'user_contexts';
 } {
-  const intents = discoveryIntentMatchingEnabled();
-  const profileEnabled = discoveryProfileMatchingEnabled();
-  const source = discoveryProfileSource();
+  const intents = gating?.intents ?? true;
+  const profile = gating?.profile ?? true;
+  const profileCorpus = gating?.profileCorpus ?? 'premise';
+  const premises = profile && profileCorpus === 'premise';
+  const userContexts = profile && profileCorpus === 'user_context';
   const preferred =
     le.corpus === 'intents' && intents
       ? 'intents'
-      : source === 'user_context'
+      : userContexts
         ? 'user_contexts'
         : 'premises';
   return {
     intents,
-    premises: profileEnabled && source === 'premise',
-    userContexts: profileEnabled && source === 'user_context',
+    premises,
+    userContexts,
     preferred,
   };
 }
@@ -222,7 +237,7 @@ export class EmbedderAdapter {
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
-      const plan = planHydeCorpusSearches(le);
+      const plan = planHydeCorpusSearches(le, options.corpusGating);
       return [
         plan.intents
           ? this.searchIntentsForHyde(le.embedding, filter, plan.preferred === 'intents' ? limitPerStrategy : halfLimit, minScore, le.lens)

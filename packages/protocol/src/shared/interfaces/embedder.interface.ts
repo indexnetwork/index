@@ -26,6 +26,18 @@ export interface HydeSearchOptions {
   limit?: number;
   /** Minimum cosine similarity for intent searches (default 0.40). */
   minScore?: number;
+  /**
+   * Discovery corpus gating, composed by the caller (defaults preserve legacy behavior).
+   * Omitted fields default to: intents true, profile true, profileCorpus 'premises'.
+   */
+  corpusGating?: {
+    /** Search the intents corpus. */
+    intents?: boolean;
+    /** Search the active profile corpus. */
+    profile?: boolean;
+    /** Which corpus backs 'profiles' lens hints and profile searches. */
+    profileCorpus?: 'premise' | 'user_context';
+  };
 }
 
 /** A single candidate from HyDE search (intent, premise, or user_context), with score and which lens matched. */
