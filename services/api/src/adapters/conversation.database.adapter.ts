@@ -1,3 +1,4 @@
+import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
@@ -71,7 +72,7 @@ function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
     });
 }
 
-function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reason: string | null; turnCount: number | null } | null {
+function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reason: string | null; turnCount: number | null; reasoning: string | null } | null {
   if (!Array.isArray(parts)) return null;
   for (const part of parts) {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
@@ -88,6 +89,10 @@ function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reas
       hasOpportunity,
       reason: typeof data.reason === 'string' ? data.reason : null,
       turnCount: typeof data.turnCount === 'number' && Number.isFinite(data.turnCount) ? data.turnCount : null,
+      // IND-610: owner-only — never projected into the shared `outcome` field.
+      // Only ever reaches a caller through `projectScreenDecision`, which is
+      // itself gated on the viewer being the negotiation's initiator.
+      reasoning: typeof data.reasoning === 'string' ? data.reasoning : null,
     };
   }
   return null;
@@ -109,30 +114,6 @@ function readNegotiationSignalCount(metadata: unknown): number {
     if (typeof intentId === 'string' && intentId) intentIds.add(intentId);
   }
   return intentIds.size;
-}
-
-/**
- * Projects the owner-visible `screenDecision` fields out of `tasks.metadata`.
- * IND-610: named-field projection only — never returns the raw metadata
- * blob, so unrelated/internal keys on the task can never leak through this
- * surface. Callers must independently gate this on `initiatorUserId ===
- * viewerUserId` before invoking it.
- */
-function projectScreenDecision(metadata: Record<string, unknown>): NonNullable<ConversationSummary['negotiation']>['screenDecision'] {
-  const raw = metadata.screenDecision;
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-  const record = raw as Record<string, unknown>;
-  if (record.decision !== 'pass' && record.decision !== 'reach_out') return null;
-  const evidence = typeof record.evidence === 'object' && record.evidence !== null && !Array.isArray(record.evidence)
-    ? record.evidence as Record<string, unknown>
-    : {};
-  return {
-    decision: record.decision,
-    reasoning: typeof record.reasoning === 'string' ? record.reasoning : '',
-    counterpartyPremiseFit: typeof evidence.counterpartyPremiseFit === 'string' ? evidence.counterpartyPremiseFit : '',
-    intentAlignment: typeof evidence.intentAlignment === 'string' ? evidence.intentAlignment : '',
-    screenedAt: typeof record.screenedAt === 'string' ? record.screenedAt : null,
-  };
 }
 
 type PersistedOpportunity = typeof opportunities.$inferSelect;
@@ -683,9 +664,7 @@ export class ConversationDatabaseAdapter {
       // A screened-out outreach gate is private to the client that initiated
       // it. Never project its lifecycle to the counterparty through the shared
       // A2A conversation.
-      const initiatorUserId = typeof metadata.initiatorUserId === 'string'
-        ? metadata.initiatorUserId
-        : metadata.sourceUserId;
+      const initiatorUserId = readInitiatorUserId(metadata);
       if (outcome?.reason === 'screened_out' && initiatorUserId !== viewerUserId) continue;
       negotiationByConv.set(row.conversationId, {
         taskId: row.taskId,
@@ -698,15 +677,13 @@ export class ConversationDatabaseAdapter {
         maxTurns,
         signalCount: readNegotiationSignalCount(metadata),
         outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
-        // IND-610: the owner-facing outreach-gate decision. Independently
-        // re-checked here (not merely inherited from the `screened_out`
-        // continue above) so a future caller of this projection can never
-        // leak the stored reasoning/evidence to a non-initiator by relying
-        // solely on the outer mutual-list skip. Named-field projection only
-        // — the raw `tasks.metadata` blob is never returned.
-        screenDecision: initiatorUserId === viewerUserId
-          ? projectScreenDecision(metadata)
-          : null,
+        // IND-610: the owner-facing outreach-gate decision. The ownership
+        // check lives inside the projection and is re-applied there — it is
+        // not inherited from the `screened_out` skip above, which is a listing
+        // rule for this one query rather than a privacy guarantee any caller
+        // of the projection can rely on. Named-field projection only; the raw
+        // `tasks.metadata` blob is never returned.
+        screenDecision: projectOwnerScreenDecision(metadata, outcome, viewerUserId),
         updatedAt: row.updatedAt,
       });
     }

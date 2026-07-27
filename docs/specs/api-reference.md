@@ -1253,6 +1253,42 @@ List A2A agent-to-agent negotiation conversations for the authenticated user.
 }
 ```
 
+Each conversation may carry a `negotiation` lifecycle object. Its optional
+`screenDecision` field (IND-610) is **owner-only**: it is projected solely when
+the authenticated viewer is the negotiation's initiator, and is `null` for every
+other viewer, so a counterparty never learns that an outreach gate ran or what
+it concluded. The ownership check is applied inside the projection itself
+(`services/api/src/adapters/negotiation-lifecycle.projection.ts`), independently
+of the separate listing rule that hides `screened_out` rows from non-initiators.
+
+Only named fields are projected; the underlying `tasks.metadata` blob is never
+returned.
+
+```json
+{
+  "screenDecision": {
+    "source": "screen",
+    "decision": "pass",
+    "reasoning": "...",
+    "counterpartyPremiseFit": "... | null",
+    "intentAlignment": "... | null",
+    "screenedAt": "2026-07-24T11:00:00.000Z | null"
+  }
+}
+```
+
+`source` records where the decision came from, because two different refusals
+collapse into the same `screened_out` outcome:
+
+- `screen` — the outreach gate declined before any contact
+  (`tasks.metadata.screenDecision`); structured evidence fields are present.
+- `outcome` — the agent refused on its opening turn, so no screen record
+  blocked and only the negotiation-outcome `reasoning` exists; the evidence
+  fields are `null`.
+
+Reasoning is only ever taken from a `screened_out` outcome. Ordinary declines
+and turn-cap stalls do not populate this field.
+
 ### GET /api/conversations/negotiations/activity
 
 Return persisted agent-to-agent negotiation activity for one intent owned by

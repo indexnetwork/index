@@ -11,6 +11,8 @@ import TurnRail from '@/components/negotiations/TurnRail';
 import OutcomeBanner from '@/components/negotiations/OutcomeBanner';
 import OutcomeChip from '@/components/negotiations/OutcomeChip';
 import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotiations/ResolvedBanner';
+import GateDecisionCard from '@/components/negotiations/GateDecisionCard';
+import { resolveGateDecision } from '@/components/negotiations/gate-decision';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
 import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
@@ -142,6 +144,26 @@ export default function NegotiationDetailPage() {
 
   const showOutcomeBanner = !resolvedVariant && effectiveOpportunityStatus === 'pending' && !!opportunityId;
 
+  // IND-610: the owner-only outreach-gate card. A `screened_out` negotiation
+  // with no turns is the one case where the transcript has nothing to show —
+  // it dead-ended at "No messages in this negotiation" — yet a real decision
+  // was made on the viewer's behalf. `screenDecision` is projected by the API
+  // only to the negotiation's initiator, so a non-owner never has one; both
+  // the screen-node pass and an opening-turn refusal arrive here, since they
+  // collapse into the same `screened_out` outcome.
+  //
+  // Not gated on `loading`: the JSX already renders the spinner first, and
+  // keeping this stable across the load avoids flashing the generic rejected
+  // banner for one frame before the card replaces it.
+  const gateDecision = useMemo(
+    () => resolveGateDecision({
+      turnCount: turns.length,
+      outcomeReason,
+      screenDecision: lifecycle?.screenDecision ?? null,
+    }),
+    [turns.length, outcomeReason, lifecycle?.screenDecision],
+  );
+
   // Revival CTA routes through the user's own agent (the negotiator DM), with
   // the questions inbox as fallback when no negotiator session exists yet.
   const handleRevive = useCallback(async () => {
@@ -190,6 +212,11 @@ export default function NegotiationDetailPage() {
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               </div>
+            ) : gateDecision ? (
+              // The gate card replaces both the empty state and the generic
+              // rejected banner below: it says the same thing with the actual
+              // reasoning, and stacking them would double-report one decision.
+              <GateDecisionCard decision={gateDecision} counterpartName={counterpartName} />
             ) : conversationMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 <p className="text-sm">No messages in this negotiation</p>
@@ -312,7 +339,7 @@ export default function NegotiationDetailPage() {
                     onPass={() => void handleOpportunityAction(opportunityId, 'rejected', counterpartUserId, undefined, counterpartName)}
                   />
                 )}
-                {resolvedVariant && (
+                {resolvedVariant && !gateDecision && (
                   <ResolvedBanner
                     variant={resolvedVariant}
                     reason={outcomeReason}

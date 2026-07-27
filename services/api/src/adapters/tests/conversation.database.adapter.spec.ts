@@ -580,6 +580,119 @@ describe('ConversationDatabaseAdapter', () => {
       expect(JSON.stringify(counterpartSummary?.negotiation)).not.toContain('counterpartyPremiseFit');
       expect(JSON.stringify(counterpartSummary?.negotiation)).not.toContain('intentAlignment');
     }, 30000);
+
+    it('gives the owner the screen reasoning on a zero-turn screened_out negotiation, hides the whole negotiation from the counterparty, and creates no messages', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const initiator = `screenedout-initiator-${run}`;
+      const counterpart = `screenedout-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${initiator}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: initiator,
+        candidateUserId: counterpart,
+        initiatorUserId: initiator,
+        screenDecision: {
+          decision: 'pass',
+          reasoning: 'Their focus is fundraising, not the hiring help you asked for.',
+          mode: 'enforce',
+          evidence: {
+            counterpartyPremiseFit: 'Counterpart is raising a seed round.',
+            intentAlignment: 'No overlap with your open engineering role.',
+          },
+          screenedAt: new Date().toISOString(),
+          durationMs: 90,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'completed');
+      await adapter.createArtifact({
+        taskId: task.id,
+        name: 'negotiation-outcome',
+        parts: [{
+          kind: 'data',
+          data: { hasOpportunity: false, reason: 'screened_out', turnCount: 0, reasoning: 'Their focus is fundraising, not the hiring help you asked for.' },
+        }],
+      });
+
+      const ownerSummary = (await adapter.getConversationsForUser(`agent:${initiator}`, initiator, true))
+        .find((c) => c.id === conversation.id);
+      expect(ownerSummary?.negotiation?.outcome).toMatchObject({ hasOpportunity: false, reason: 'screened_out' });
+      expect(ownerSummary?.negotiation?.screenDecision).toMatchObject({
+        source: 'screen',
+        decision: 'pass',
+        reasoning: 'Their focus is fundraising, not the hiring help you asked for.',
+        counterpartyPremiseFit: 'Counterpart is raising a seed round.',
+        intentAlignment: 'No overlap with your open engineering role.',
+      });
+
+      // The counterparty never learns a gate decision was made at all.
+      const counterpartSummary = (await adapter.getConversationsForUser(`agent:${counterpart}`, counterpart, true))
+        .find((c) => c.id === conversation.id);
+      expect(counterpartSummary?.negotiation ?? null).toBeNull();
+      expect(JSON.stringify(counterpartSummary ?? {})).not.toContain('fundraising');
+
+      // HARD CONSTRAINT: surfacing the decline must add zero message rows, or
+      // it would enter the shared thread both sides read back as priorDialogue.
+      const messageRows = await db
+        .select({ id: schema.messages.id })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, conversation.id));
+      expect(messageRows).toHaveLength(0);
+    }, 30000);
+
+    it('falls back to the outcome reasoning when the refusal happened at the opening turn instead of the screen node', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const initiator = `openingwithdraw-initiator-${run}`;
+      const counterpart = `openingwithdraw-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${initiator}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      // No metadata.screenDecision at all — this is the shape a turn-0 withdraw
+      // leaves behind: same `screened_out` outcome, reasoning only on the artifact.
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: initiator,
+        candidateUserId: counterpart,
+        initiatorUserId: initiator,
+      });
+      await adapter.updateTaskState(task.id, 'completed');
+      await adapter.createArtifact({
+        taskId: task.id,
+        name: 'negotiation-outcome',
+        parts: [{
+          kind: 'data',
+          data: { hasOpportunity: false, reason: 'screened_out', turnCount: 0, reasoning: 'Not worth spending your name on this one.' },
+        }],
+      });
+
+      const ownerSummary = (await adapter.getConversationsForUser(`agent:${initiator}`, initiator, true))
+        .find((c) => c.id === conversation.id);
+      expect(ownerSummary?.negotiation?.screenDecision).toMatchObject({
+        source: 'outcome',
+        decision: 'pass',
+        reasoning: 'Not worth spending your name on this one.',
+        counterpartyPremiseFit: null,
+        intentAlignment: null,
+      });
+
+      // The shared `outcome` projection must not carry the reasoning: it is the
+      // owner-only field that does, and only via the initiator-gated branch.
+      expect(Object.keys(ownerSummary?.negotiation?.outcome ?? {})).toEqual(['hasOpportunity', 'reason']);
+
+      const counterpartSummary = (await adapter.getConversationsForUser(`agent:${counterpart}`, counterpart, true))
+        .find((c) => c.id === conversation.id);
+      expect(counterpartSummary?.negotiation ?? null).toBeNull();
+      expect(JSON.stringify(counterpartSummary ?? {})).not.toContain('Not worth spending');
+    }, 30000);
   });
 
   describe('unread tracking', () => {

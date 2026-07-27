@@ -37,16 +37,22 @@ export interface ConversationNegotiationLifecycle {
   outcome: { hasOpportunity: boolean; reason: string | null } | null;
   updatedAt: string;
   /**
-   * IND-610: the owner-facing outreach-gate decision (`tasks.metadata.screenDecision`),
-   * named-field projected. Present only when the viewer is the negotiation's
-   * initiator — never populated for a non-owner viewer, even for `screened_out`
+   * IND-610: the owner-facing outreach-gate decision, named-field projected by
+   * the API. Present only when the viewer is the negotiation's initiator —
+   * never populated for a non-owner viewer, even for `screened_out`
    * negotiations that are otherwise visible in a mutual conversation.
+   *
+   * `source` distinguishes the two refusals that collapse into the same
+   * `screened_out` outcome: `screen` (the outreach gate passed before any
+   * contact, so `evidence.*` is present) and `outcome` (the agent refused on
+   * its opening turn, so only reasoning exists).
    */
   screenDecision?: {
+    source: 'screen' | 'outcome';
     decision: 'reach_out' | 'pass';
     reasoning: string;
-    counterpartyPremiseFit: string;
-    intentAlignment: string;
+    counterpartyPremiseFit: string | null;
+    intentAlignment: string | null;
     screenedAt: string | null;
   } | null;
 }
