@@ -94,6 +94,6 @@ export interface DiscriminatorShadowResult {
   poolSize: number;
   /** Scored discriminators, sorted by VoI descending. */
   discriminators: ScoredDiscriminator[];
-  /** Historical-axis comparison could not be completed due to embedding failure. */
+  /** Historical-axis comparison could not be completed due to invalid embeddings. */
   priorReferenceComparisonUnavailable?: boolean;
 }
