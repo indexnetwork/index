@@ -53,10 +53,10 @@ export interface SubgraphResults {
 
 /**
  * The Chat Graph State using LangGraph Annotations.
- * 
+ *
  * This is a simplified state for the agent loop architecture.
  * The agent handles all routing decisions internally via tool calling.
- * 
+ *
  * Design Principles:
  * - Messages accumulate through the conversation (includes tool calls/results)
  * - Iteration count tracks loop progress for soft/hard limits

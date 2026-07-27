@@ -345,7 +345,7 @@ export default function AgentsPage() {
       cancelled = true;
     };
   }, [agentsService, agents, isAuthenticated, keysVersion]);
-  
+
 
   const personalAgents = useMemo(
     () => agents.filter((agent) => agent.type === 'external'),

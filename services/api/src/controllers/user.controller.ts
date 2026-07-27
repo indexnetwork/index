@@ -14,7 +14,7 @@ import { negotiatorMemoryInspectionService } from '../services/negotiator-memory
 import type { NegotiatorMemory, NegotiatorMemoryKind } from '../schemas/database.schema';
 import { NegotiationInsightsGenerator } from '@indexnetwork/protocol';
 import type { NegotiationDigest } from '@indexnetwork/protocol';
- 
+
 import { log } from '../lib/log';
 
 const logger = log.controller.from('user');

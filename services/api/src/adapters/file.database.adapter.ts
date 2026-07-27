@@ -6,7 +6,7 @@ export class FileDatabaseAdapter {
    */
   async getFilesByIds(userId: string, fileIds: string[]): Promise<FileMetadata[]> {
     if (!fileIds?.length) return [];
-    
+
     return db.select({
       id: files.id,
       name: files.name,
@@ -37,7 +37,7 @@ export class FileDatabaseAdapter {
         )
       )
       .limit(1);
-    
+
     return result[0] || null;
   }
 
@@ -45,11 +45,11 @@ export class FileDatabaseAdapter {
    * List files for a user with pagination
    */
   async listFiles(
-    userId: string, 
+    userId: string,
     options: { skip: number; limit: number }
   ): Promise<FileListResult> {
     const where = and(isNull(files.deletedAt), eq(files.userId, userId));
-    
+
     const [rows, totalResult] = await Promise.all([
       db.select({
         id: files.id,
@@ -66,7 +66,7 @@ export class FileDatabaseAdapter {
         .limit(options.limit),
       db.select({ count: count() }).from(files).where(where),
     ]);
-    
+
     return {
       files: rows,
       total: Number(totalResult[0]?.count ?? 0),
@@ -87,7 +87,7 @@ export class FileDatabaseAdapter {
         createdAt: files.createdAt,
         userId: files.userId,
       });
-    
+
     return inserted;
   }
 

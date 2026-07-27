@@ -179,7 +179,7 @@ describe("guided Signal creation", () => {
 
   test("shows the proposal confirmation card and confirms through the existing endpoint", async () => {
     const view = renderPage();
-    mocks.state.messages = [{ 
+    mocks.state.messages = [{
       content: [
         "Here is the signal.",
         "```intent_proposal",

@@ -72,14 +72,14 @@ function useHermeticRedis(): boolean {
 
 /**
  * QueueFactory
- * 
+ *
  * Central factory for creating standardized BullMQ components (Queues, Workers, Events).
- * 
+ *
  * PURPOSE:
  * - Enforces consistent Redis connection configuration (reusing the same connection settings).
  * - Applies standard default job options (retries, backoff, cleanup).
  * - Centralizes logging for queue initialization.
- * 
+ *
  * STANDARD DEFAULTS:
  * - Retries: 3 attempts with exponential backoff (1s delay).
  * - Cleanup: Removes completed jobs after 24h, failed after 7d.
@@ -88,9 +88,9 @@ function useHermeticRedis(): boolean {
 export class QueueFactory {
   /**
    * Create a new Queue with standard configuration.
-   * 
+   *
    * A "Queue" is the Producer side: used to add jobs.
-   * 
+   *
    * @template T - The type of data payload for jobs in this queue.
    * @param name - Unique name of the queue (namespace).
    * @param options - Queue settings (overrides defaults).
@@ -110,9 +110,9 @@ export class QueueFactory {
 
   /**
    * Create a new Worker for processing jobs.
-   * 
+   *
    * A "Worker" is the Consumer side: defines the process function.
-   * 
+   *
    * @template T - The type of data payload for jobs in this queue.
    * @param name - Must match the Queue name.
    * @param processor - The async function that handles the job.
@@ -149,10 +149,10 @@ export class QueueFactory {
 
   /**
    * Create QueueEvents listener.
-   * 
+   *
    * Used for listening to global queue events (completed, failed, etc.) irrespective of the worker.
    * Useful for websockets or monitoring dashboards.
-   * 
+   *
    * @param name - Must match the Queue name.
    * @returns QueueEvents instance.
    */

@@ -1,8 +1,8 @@
-export function ContentContainer({ 
-  children, 
+export function ContentContainer({
+  children,
   className = "",
-  size = "default" 
-}: { 
+  size = "default"
+}: {
   children: React.ReactNode;
   className?: string;
   size?: "default" | "wide" | "xwide";
