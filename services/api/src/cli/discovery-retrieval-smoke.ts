@@ -7,7 +7,7 @@
  * records in a finally block.
  */
 
-import type { OpportunityGraphDatabase } from '@indexnetwork/protocol';
+import type { Embedder, HydeCandidate, HydeSearchOptions, LensEmbedding, OpportunityGraphDatabase, VectorSearchResult, VectorStoreOption } from '@indexnetwork/protocol';
 
 export function assertSmokeEnvironment(env: NodeJS.ProcessEnv): {
   databaseUrl: URL;
@@ -113,6 +113,39 @@ function unitVector(index: 0 | 1): number[] {
   return vector;
 }
 
+/**
+ * Provider-free Embedder port implementation for the disposable smoke graph.
+ *
+ * The smoke seeds vectors directly and verifies the real database-backed
+ * context-to-context search, so graph-local embedding and HyDE searches must
+ * not introduce provider calls or candidate sources.
+ */
+export class DeterministicSmokeEmbedder implements Embedder {
+  async generate(
+    text: string | string[],
+    _dimensions?: number,
+    _options?: { signal?: AbortSignal },
+  ): Promise<number[] | number[][]> {
+    const vector = unitVector(0);
+    return Array.isArray(text) ? text.map(() => vector) : vector;
+  }
+
+  async search<T>(
+    _queryVector: number[],
+    _collection: string,
+    _options?: VectorStoreOption<T>,
+  ): Promise<VectorSearchResult<T>[]> {
+    return [];
+  }
+
+  async searchWithHydeEmbeddings(
+    _lensEmbeddings: LensEmbedding[],
+    _options: HydeSearchOptions,
+  ): Promise<HydeCandidate[]> {
+    return [];
+  }
+}
+
 /** Pure deterministic seed plan used by the provider-free smoke tests. */
 export function buildSmokeSeedPlan(marker: string) {
   return {
@@ -146,19 +179,16 @@ async function createProductionDeps(): Promise<SmokeDeps> {
     drizzleModule,
     schema,
     adapterModule,
-    embedderModule,
     protocol,
   ] = await Promise.all([
     import('../lib/drizzle/drizzle'),
     import('../schemas/database.schema'),
     import('../adapters/database.adapter'),
-    import('../adapters/embedder.adapter'),
     import('@indexnetwork/protocol'),
   ]);
   const { eq, inArray, sql } = await import('drizzle-orm/sql');
   const db = drizzleModule.default;
   const { ChatDatabaseAdapter } = adapterModule;
-  const { EmbedderAdapter } = embedderModule;
   const { OpportunityGraphFactory } = protocol;
 
   return {
@@ -289,8 +319,9 @@ async function createProductionDeps(): Promise<SmokeDeps> {
         return searchUserContextsBySimilarity(params);
       };
 
-      // The real adapter is used for every graph read/search. HyDE and evaluation
-      // are deterministic seams so this smoke never makes a provider call.
+      // The real adapter is used for every graph read/search, including the
+      // counting context-to-context search. Graph-local embedding, HyDE, and
+      // evaluation are deterministic seams so this smoke never calls providers.
       const deterministicHyde = {
         async invoke() {
           return {
@@ -318,7 +349,7 @@ async function createProductionDeps(): Promise<SmokeDeps> {
       };
       const graph = new OpportunityGraphFactory(
         database as unknown as OpportunityGraphDatabase,
-        new EmbedderAdapter(),
+        new DeterministicSmokeEmbedder(),
         deterministicHyde,
         deterministicEvaluator,
       ).createGraph();

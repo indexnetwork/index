@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { assertSmokeEnvironment, buildSmokeSeedPlan, runSmoke, SMOKE_CLEANUP_ORDER, withDiscoveryProfileSource } from '../discovery-retrieval-smoke';
+import { assertSmokeEnvironment, buildSmokeSeedPlan, DeterministicSmokeEmbedder, runSmoke, SMOKE_CLEANUP_ORDER, withDiscoveryProfileSource } from '../discovery-retrieval-smoke';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
   DISCOVERY_RETRIEVAL_EVAL_CONFIRM: '1',
@@ -37,6 +37,34 @@ describe('assertSmokeEnvironment', () => {
 });
 
 describe('deterministic smoke plans', () => {
+  it('uses a provider-free graph embedder with deterministic 2000-dimensional vectors', async () => {
+    const previousOpenAiKey = process.env.OPENAI_API_KEY;
+    const previousOpenRouterKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+
+    try {
+      const embedder = new DeterministicSmokeEmbedder();
+      const [single, batch, hydeResults, repeatedHydeResults] = await Promise.all([
+        embedder.generate('any source text'),
+        embedder.generate(['first source text', 'second source text']),
+        embedder.searchWithHydeEmbeddings([], { indexScope: ['network'] }),
+        embedder.searchWithHydeEmbeddings([], { indexScope: ['network'] }),
+      ]);
+
+      expect(single).toHaveLength(2000);
+      expect(batch).toEqual([single, single]);
+      expect(hydeResults).toEqual([]);
+      expect(repeatedHydeResults).toEqual(hydeResults);
+      await expect(embedder.search([], 'intents')).resolves.toEqual([]);
+    } finally {
+      if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousOpenAiKey;
+      if (previousOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousOpenRouterKey;
+    }
+  });
+
   it('uses marker-scoped IDs and paired 2000-dimensional source/candidate vectors', () => {
     const plan = buildSmokeSeedPlan('eval-discovery-retrieval-test-marker');
 
