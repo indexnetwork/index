@@ -23,35 +23,35 @@ graph TB
     subgraph Controller Layer
         C[Controller Class]
     end
-    
+
     subgraph Service Layer
         S[Service Classes]
     end
-    
+
     subgraph Adapters
         DA[Database Adapter]
         SA[Scraper Adapter]
         EA[Embedder Adapter]
     end
-    
+
     subgraph Infrastructure
         DB[(Drizzle ORM)]
         API[External APIs]
         EMB[Embedding Service]
     end
-    
+
     subgraph Protocol Layer
         GF[Graph Factory]
         G[LangGraph Graph]
     end
-    
+
     C --> S
     S --> DA
     S --> SA
     S --> EA
     S --> GF
     GF --> G
-    
+
     DA --> DB
     SA --> API
     EA --> EMB
@@ -246,7 +246,7 @@ Decorators are applied bottom-up, so place them in this order:
 ```typescript
 @Controller('/profiles')
 export class EnrichmentController {
-  
+
   @Post('/sync')           // 1. Route definition
   @UseGuards(AuthGuard)    // 2. Guards (applied first at runtime)
   async sync(req: Request, user: AuthenticatedUser) {
@@ -334,7 +334,7 @@ export class EnrichmentGraphFactory {
     private embedder: Embedder,
     private scraper: Scraper
   ) {}
-  
+
   createGraph() {
     // Graph implementation uses only getProfile, saveProfile, getUser
   }
@@ -594,7 +594,7 @@ return (result[0] as unknown as UserIdentity) || null;
 /**
  * Syncs/Generates a profile for the given user.
  * This is the main entry point to trigger the enrichment graph.
- * 
+ *
  * @param req - The HTTP request object
  * @param user - The authenticated user from AuthGuard
  * @returns JSON response with graph execution result

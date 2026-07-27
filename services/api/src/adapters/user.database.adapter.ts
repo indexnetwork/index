@@ -268,7 +268,7 @@ export class UserDatabaseAdapter {
    */
   async getUsersBasicInfo(userIds: string[]): Promise<BasicUserInfo[]> {
     if (userIds.length === 0) return [];
-    
+
     return db.select({
       id: users.id,
       name: users.name,

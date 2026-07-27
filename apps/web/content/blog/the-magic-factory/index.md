@@ -1,8 +1,8 @@
 ---
 
-title: "The Magic Factory" 
-date: "2026-2-10"  
-description: "What it looks like when opportunity becomes programmable. "  
+title: "The Magic Factory"
+date: "2026-2-10"
+description: "What it looks like when opportunity becomes programmable. "
 image: "magic-factory.gif"
 
 ---

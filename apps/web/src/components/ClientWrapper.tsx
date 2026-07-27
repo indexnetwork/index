@@ -28,13 +28,13 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const isAppRoute = useMemo(() => {
     if (!isAuthenticated) return false;
-    return appRoutes.some(route => 
+    return appRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
   }, [pathname, isAuthenticated]);
 
   const isPublicRoute = useMemo(() => {
-    return publicRoutes.some(route => 
+    return publicRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
   }, [pathname]);
@@ -134,7 +134,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                           </header>
                         }
                       >
-                        <Header 
+                        <Header
                           showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
                           forcePublicView={isLandingOrBlog}
                         />

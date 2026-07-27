@@ -6,4 +6,4 @@ export const createSynthesisService = (api: ReturnType<typeof import('../lib/api
   generateVibeCheck: async (request: SynthesisRequest): Promise<SynthesisResponse> => {
     return api.post<SynthesisResponse>('/synthesis/vibecheck', request);
   }
-}); 
+});

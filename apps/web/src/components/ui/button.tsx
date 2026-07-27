@@ -11,7 +11,7 @@ const buttonVariants = cva(
         outline: "border border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black",
         ghost: "hover:bg-transparent text-gray-500 hover:text-gray-900", // className="p-0 cursor-pointer"
         bordered: "text-gray-700 border  border-b-[3px] px-3 py-5",
-      }, 
+      },
       size: {
         default: "h-10 px-4 py-2",
         sm: "h-8 px-3 text-xs",
@@ -45,4 +45,4 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
-export { Button, buttonVariants }; 
+export { Button, buttonVariants };

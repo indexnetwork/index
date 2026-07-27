@@ -113,8 +113,8 @@ export default function IntentList<T extends BaseIntent>({
       {sortedIntents.map((intent) => {
         const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
         const createdAt = new Date(intent.createdAt);
-        const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString('en-US', { 
-          month: 'short', 
+        const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString('en-US', {
+          month: 'short',
           day: 'numeric'
         });
         const isFresh = newIntentIds.has(intent.id);
@@ -123,9 +123,9 @@ export default function IntentList<T extends BaseIntent>({
         // ACTIVE (or the schema default / unset) means the intent is live and
         // being worked in the background.
         const isActive = !intent.status || intent.status.toUpperCase() === 'ACTIVE';
-        
+
         return (
-          <div 
+          <div
             key={intent.id}
             role={onIntentClick ? "button" : undefined}
             tabIndex={onIntentClick ? 0 : undefined}
@@ -139,8 +139,8 @@ export default function IntentList<T extends BaseIntent>({
             className={cn(
               "group relative p-4 rounded-lg border transition-all duration-200",
               onIntentClick && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30",
-              isSelectedSource 
-                ? "border-blue-200 bg-blue-50/50" 
+              isSelectedSource
+                ? "border-blue-200 bg-blue-50/50"
                 : isFresh
                   ? "border-green-200 bg-green-50/50"
                   : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
@@ -156,7 +156,7 @@ export default function IntentList<T extends BaseIntent>({
                     {intent.networks.map((network) => network.title).join(' · ')}
                   </p>
                 )}
-                
+
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-2.5">
                   {/* Date */}
                   {createdLabel && (

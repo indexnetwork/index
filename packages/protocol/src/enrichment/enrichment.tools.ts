@@ -953,7 +953,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
         if (location) inputParts.push(`Location: ${location}`);
         inputParts.push(query.bioOrDescription!.trim());
         const profileInput = inputParts.join('\n');
-        
+
         const _bioProfileGraphStart = Date.now();
         const _bioProfileTraceEmitter = requestContext.getStore()?.traceEmitter;
         _bioProfileTraceEmitter?.({ type: "graph_start", name: "enrichment" });

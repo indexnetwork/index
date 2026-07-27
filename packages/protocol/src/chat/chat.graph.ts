@@ -37,15 +37,15 @@ const RETRY_DELAY_MS = 800;
 
 /**
  * Factory class to build and compile the Chat Graph.
- * 
+ *
  * Architecture: ReAct-Style Agent Loop
- * 
+ *
  * The graph contains a single node that runs an agent loop:
  * 1. Agent receives messages (conversation + tool results)
  * 2. Agent decides: call tools OR respond to user
  * 3. If tools called → execute → add results → loop back
  * 4. If response → exit loop → stream to user
- * 
+ *
  * This replaces the previous 17-node conditional routing architecture
  * with a flexible, LLM-driven approach that can handle multi-step
  * reasoning and self-correction.

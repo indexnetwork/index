@@ -141,7 +141,7 @@ Adds a self-contained static Hermes dashboard tab that works without backend plu
 
 #### 1. packages/hermes-plugin/dashboard/manifest.json
 
-**File**: `packages/hermes-plugin/dashboard/manifest.json`  
+**File**: `packages/hermes-plugin/dashboard/manifest.json`
 **Changes**: NEW — Hermes dashboard plugin manifest for the Index Network tab, referencing only files created in this phase.
 
 ```json
@@ -162,7 +162,7 @@ Adds a self-contained static Hermes dashboard tab that works without backend plu
 
 #### 2. packages/hermes-plugin/dashboard/dist/index.js
 
-**File**: `packages/hermes-plugin/dashboard/dist/index.js`  
+**File**: `packages/hermes-plugin/dashboard/dist/index.js`
 **Changes**: NEW — Hermes Plugin SDK IIFE that renders the static read-only dashboard shell and fallback guidance.
 
 ```javascript
@@ -282,7 +282,7 @@ Adds a self-contained static Hermes dashboard tab that works without backend plu
 
 #### 3. packages/hermes-plugin/dashboard/dist/style.css
 
-**File**: `packages/hermes-plugin/dashboard/dist/style.css`  
+**File**: `packages/hermes-plugin/dashboard/dist/style.css`
 **Changes**: NEW — Theme-aware dashboard styles scoped to Index dashboard classes.
 
 ```css
@@ -429,7 +429,7 @@ Adds optional live read-only backend routes and updates the static tab to consum
 
 #### 1. packages/hermes-plugin/dashboard/plugin_api.py
 
-**File**: `packages/hermes-plugin/dashboard/plugin_api.py`  
+**File**: `packages/hermes-plugin/dashboard/plugin_api.py`
 **Changes**: NEW — FastAPI router with read-only overview endpoints that wrap existing native handlers.
 
 ```python
@@ -697,7 +697,7 @@ def overview() -> dict[str, Any]:
 
 #### 2. packages/hermes-plugin/dashboard/manifest.json
 
-**File**: `packages/hermes-plugin/dashboard/manifest.json`  
+**File**: `packages/hermes-plugin/dashboard/manifest.json`
 **Changes**: MODIFY — Add the optional `api` entry once `plugin_api.py` exists.
 
 ```json
@@ -719,7 +719,7 @@ def overview() -> dict[str, Any]:
 
 #### 3. packages/hermes-plugin/dashboard/dist/index.js
 
-**File**: `packages/hermes-plugin/dashboard/dist/index.js`  
+**File**: `packages/hermes-plugin/dashboard/dist/index.js`
 **Changes**: MODIFY — Add live overview loading with graceful fallback when backend routes are unavailable.
 
 ```javascript
@@ -957,7 +957,7 @@ Updates dashboard and package docs to describe the implemented read-only dashboa
 
 #### 1. packages/hermes-plugin/dashboard/README.md
 
-**File**: `packages/hermes-plugin/dashboard/README.md`  
+**File**: `packages/hermes-plugin/dashboard/README.md`
 **Changes**: MODIFY — Replace placeholder with dashboard structure, route behavior, and scope notes.
 
 ````markdown
@@ -1023,7 +1023,7 @@ Then open `hermes dashboard` and visit the **Index Network** tab. The tab should
 
 #### 2. packages/hermes-plugin/README.md
 
-**File**: `packages/hermes-plugin/README.md`  
+**File**: `packages/hermes-plugin/README.md`
 **Changes**: MODIFY — Update dashboard section and verify instructions for the implemented tab.
 
 ````markdown
@@ -1289,7 +1289,7 @@ Extends existing smoke tests to lock dashboard file, manifest, and API route con
 
 #### 1. packages/hermes-plugin/tests/smoke.py
 
-**File**: `packages/hermes-plugin/tests/smoke.py`  
+**File**: `packages/hermes-plugin/tests/smoke.py`
 **Changes**: MODIFY — Add dashboard file syntax, manifest reference, API router, and UI registration checks.
 
 ```python

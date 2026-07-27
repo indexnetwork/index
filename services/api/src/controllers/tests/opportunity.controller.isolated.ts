@@ -480,7 +480,7 @@ describe("OpportunityController Integration", () => {
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {
       method: "POST",
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         query: "Looking for machine learning engineers with startup experience",
         limit: 5
       }),
@@ -509,7 +509,7 @@ describe("OpportunityController Integration", () => {
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {
       method: "POST",
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         query: "Full-stack developers",
         limit: 2
       }),
@@ -540,7 +540,7 @@ describe("OpportunityController Integration", () => {
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {
       method: "POST",
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         query: "Startup CEO looking for AI products", // Query matching the user's own profile
         limit: 10
       }),
@@ -602,7 +602,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Edge Cases", () =>
 
     const mockRequest = new Request("http://localhost/opportunities/discover", {
       method: "POST",
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         query: "Looking for developers",
         limit: 5
       }),
