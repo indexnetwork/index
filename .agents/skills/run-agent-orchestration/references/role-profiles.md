@@ -72,12 +72,12 @@ is explicitly issued.
 - Cross-package compatibility: protocol/cli version bumps coherent with consumers.
 - GitHub checks green; Railway terminal/deployment verification per `finish-pr` and
   `verify-production-release`.
-- In an integration-branch wave (see `integration-branch-waves.md`), this role may
-  be used for an **advisory** verification pass on a detached checkout at the
-  verified integration SHA: local gates, base-freshness and release-metadata
-  reporting. It never merges, never reconciles manifests, and never makes
-  merge-authorization decisions — root re-runs local gates independently, owns all
-  merge execution, and may never authorize on a child's claim.
+- In an extension-managed request, this role may perform an **advisory**
+  verification pass on the exact child or integration SHA: local gates,
+  base-freshness, and release-metadata reporting. It never merges, reconciles
+  manifests, or makes merge-authorization decisions — the interactive root re-runs
+  local gates independently, owns all merge execution, and never authorizes from a
+  child's claim.
 
 ## Attaching secondary checklists
 

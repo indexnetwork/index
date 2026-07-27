@@ -381,62 +381,44 @@ This shows all BullMQ job queues, their status, and lets you retry failed jobs o
 ### Worktrees and visible Herdr agent sessions
 
 All feature and fix work happens in Git worktrees, keeping the canonical working tree
-on `dev` and read-only for source changes. Worktrees live in `.worktrees/` (gitignored).
-Use a semantic slash branch such as `feat/my-feature`; its only valid folder is the
-dashed form `feat-my-feature`.
+on `dev` and read-only for source changes. Worktrees use semantic slash branches such
+as `feat/my-feature`; the folder is the dashed form `feat-my-feature`.
 
-From the canonical root, inspect existing registrations before creating anything:
+Use the execution path that owns the request:
 
-```bash
-git worktree list --porcelain
-```
+- **Delegated or multi-task request:** load `run-agent-orchestration`. The pinned
+  `pi-herdr-orchestrator` package owns root/child worktree creation, Herdr workspaces
+  and tabs, Pi launches, `/goal`, durable status, child reports, and surface closure.
+  Persistent `main` calls `orchestrator_start`; the interactive root delegates with
+  `orchestrator_delegate`; children finish through `orchestrator_report`. Do not
+  reproduce those mechanics with commands or a second completion protocol.
+- **Standalone request:** inspect `git worktree list --porcelain`, then use the
+  `create-worktree` and `run-worktree-session` skills. Reuse only an exact
+  path/branch match; otherwise create from `origin/dev` and run mandatory setup:
 
-Reuse an existing checkout only when its absolute path and branch match. Otherwise,
-create the semantic branch/worktree, then run the mandatory setup:
+  ```bash
+  git fetch origin dev
+  git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
+  bun run worktree:setup feat-my-feature
+  herdr worktree open \
+    --path "$PWD/.worktrees/feat-my-feature" \
+    --label feat-my-feature \
+    --no-focus \
+    --json
+  ```
 
-```bash
-git fetch origin dev
-git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
-bun run worktree:setup feat-my-feature
-```
+  For an existing unmounted branch, omit `-b`. Record the returned workspace and
+  pane IDs, verify linked-worktree metadata, and launch an agent only when that exact
+  worktree has no writer.
 
-For an existing local branch that is not mounted elsewhere, omit `-b`:
-
-```bash
-git worktree add .worktrees/feat-my-feature feat/my-feature
-bun run worktree:setup feat-my-feature
-```
-
-Setup symlinks root `.env*` files into the worktree and installs workspace
-dependencies. Then open the exact checkout in Herdr without stealing user focus:
-
-```bash
-herdr worktree open \
-  --path "$PWD/.worktrees/feat-my-feature" \
-  --label feat-my-feature \
-  --no-focus \
-  --json
-```
-
-Record `.result.workspace.workspace_id` and `.result.root_pane.pane_id` from the JSON.
-If the returned root pane is an interactive shell with no agent, launch Codex (or Pi)
-in that exact non-focusing pane:
-
-```bash
-herdr pane send-text <returned-pane-id> "codex" # Pi is also supported
-herdr pane send-keys <returned-pane-id> enter
-```
-
-Before mutation, the visible agent verifies `pwd`, `git branch --show-current`, and
-`git status --short --branch`. The canonical/root agent sends one complete fire-and-return handoff that records its exact pane ID. Before a child stops as done, blocked, or failed, it sends that parent one concise `CHILD_RESULT` prompt through `herdr agent prompt`; the parent independently verifies the claim. This single notification replaces no verification and is not a watcher: never poll, wait, or create a background watcher.
-Routine questions are
-answered with the safe/recommended option. Structured prompts are read and answered
-through targeted `herdr pane` text/keys rather than a new agent prompt.
-
-Use one writer per worktree. Parallel work requires separate branches, worktrees,
-Herdr workspaces, and agent sessions. Reuse the same visible session for review and PR-fix
-rounds. The legacy `bun run worktree:session` helper remains only a fallback when Herdr
-is unavailable.
+Before mutation, every visible agent verifies `pwd`, `git branch --show-current`, and
+`git status --short --branch`. Use one writer per worktree. Extension-managed
+children are named tabs inside the root workspace; standalone sessions have their own
+workspace. Reuse the same tracked child/session for fix rounds. Never poll, wait,
+create a watcher, infer success from `idle`/`done`, or treat a child report as proof;
+the root/coordinator independently verifies it. The legacy
+`bun run worktree:session` helper remains only an explicit fallback when Herdr is
+unavailable.
 
 ```bash
 # Start dev servers from the worktree

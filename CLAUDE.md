@@ -487,41 +487,28 @@ read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Br
 use semantic `<type>/<description>` names and the only valid folder is the dashed form
 `<type>-<description>`; never accept a separate folder name.
 
-Before socket orchestration, follow the Herdr setup in
-`docs/guides/getting-started.md`; its server and a supported agent integration (Pi or
-Codex) must be available. From
-the canonical root, create or reuse the exact Git worktree after checking
-`git worktree list --porcelain`, then always run setup:
+Before visible worktree execution, follow the Herdr setup in
+`docs/guides/getting-started.md`; its server and the required agent integration must be
+available. Two paths are deliberately separate:
 
-```bash
-bun run worktree:setup feat-user-authentication
-herdr worktree open \
-  --path "$PWD/.worktrees/feat-user-authentication" \
-  --label feat-user-authentication \
-  --no-focus \
-  --json
-herdr pane send-text <returned-pane-id> "codex" # Pi is also supported
-herdr pane send-keys <returned-pane-id> enter
-```
+- **Orchestrated request:** use the pinned `pi-herdr-orchestrator` package through the
+  `run-agent-orchestration` skill. Persistent `main` calls `orchestrator_start`; the
+  interactive root uses `orchestrator_delegate`, `orchestrator_status`, and
+  `orchestrator_reconcile`; children finish through `orchestrator_report`. The
+  extension alone creates root/child worktrees and Herdr surfaces, launches Pi,
+  starts `/goal`, records durable state, routes reports, and closes tracked surfaces.
+  Do not recreate those mechanisms with Herdr CLI commands, hidden subagents,
+  checkpoint files, or a second completion protocol.
+- **Standalone request:** follow `create-worktree` and `run-worktree-session` to
+  create/reuse one semantic branch, run `bun run worktree:setup <dashed-folder>`, and
+  open the exact linked worktree with `herdr worktree open --no-focus --json`.
 
-Herdr is the default visible execution plane. Record the workspace and pane IDs returned
-by `herdr worktree open`; reuse an existing workspace/agent only when its worktree path,
-branch, and cwd match. The canonical/root agent remains the coordinator and sends one
-complete fire-and-return handoff—never `--wait`, `herdr agent wait`, polling, a hidden
-implementation subagent, background watcher process, or watcher pane. It records its
-exact pane ID in every child handoff. Before a child stops as done, blocked, or failed,
-it must send that parent one concise `CHILD_RESULT` prompt through `herdr agent prompt`.
-A `*-root` whose checkout and agent cwd equal the canonical root registers each exact
-child session/workspace/pane/worktree callback route; direct `index` delegates child
-work through that root. The direct completion prompt is a claim, not proof: the parent
-still verifies the reported work. External nonterminal Railway/CI gates still require
-an event adapter.
-It answers routine
-implementation questions with the safe/recommended option and escalates only genuine
-product/architecture ambiguity, destructive actions, external infrastructure mutation,
-credentials/secrets, or merge approval. A structured question/editor draft must be
-answered through targeted `herdr pane read/send-text/send-keys`, not a new agent prompt.
-Never infer merge approval.
+In both paths, keep one writer per worktree, reuse the same execution plane for review
+and finish-pr fixes, and independently verify every completion claim. Never wait,
+poll, sleep, create watcher processes/panes, infer merge approval, or treat
+`idle`/`done` as success. Escalate only genuine product/architecture ambiguity,
+destructive actions, external infrastructure mutation, credentials/secrets, or merge
+approval.
 
 ### Git remote-state reconciliation
 
@@ -534,9 +521,11 @@ dirty checkout prevents the fast-forward, preserve its work and report the pendi
 reconciliation rather than merging or resetting over it.
 
 Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
-workspaces, and agent sessions, with one writer per worktree. Reuse the same visible session
-for review and finish-pr fix loops. The legacy `bun run worktree:session` helper remains
-a fallback when Herdr is unavailable, not the default workflow.
+execution planes, and agent sessions, with one writer per worktree. The orchestrator
+extension places child tabs inside its root workspace; standalone worktrees use their
+own workspace. Reuse the same visible session for review and finish-pr fix loops. The
+legacy `bun run worktree:session` helper remains a fallback when Herdr is unavailable,
+not the default workflow.
 
 ### Conventional Commits
 
@@ -562,19 +551,29 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
 3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
    - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
-4. Merge into dev: `git checkout dev && git merge <branch-name>`
-5. Push: `git push origin dev`
+4. Finish the PR through `finish-pr`: obtain the workflow's explicit merge
+   authorization, merge server-side with `gh pr merge` from a non-canonical
+   coordinator checkout, and verify the server-side result. Never check out or merge
+   `dev` in a feature worktree, and never mutate source from the canonical root.
+5. If the canonical `dev` checkout is clean, synchronize it only with
+   `git pull --ff-only origin dev`; otherwise preserve its work and report pending
+   reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
-7. Clean up: delete branch and remove worktree
+7. Clean up only after merge and preservation checks. In an extension-managed
+   request, let the extension close tracked Herdr surfaces on root completion, then
+   remove its retained Git worktrees/branches later from another checkout.
 
 ## Superpowers Workflow
 
 ### Implementation in Visible Herdr Worktrees
 
-Execute implementation and fix plans in visible Herdr-managed Pi or Codex sessions for isolated
-Git worktrees. The canonical/root agent coordinates through fire-and-return handoffs and explicit manual ticks while the orchestration bridge is removed, and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
-parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
-checkout. Follow the `create-worktree` and `run-worktree-session` skills.
+Execute implementation and fix plans in visible Herdr-managed sessions for isolated
+Git worktrees. For delegated or multi-task work, direct the installed
+`pi-herdr-orchestrator` extension through `run-agent-orchestration`; the skill supplies
+Index policy but never replaces the extension's root/child lifecycle. For one
+standalone implementation, follow `create-worktree` and `run-worktree-session`.
+Keep `dev` stable, never use hidden implementation subagents, and preserve one writer
+per checkout.
 
 ### Receiving Code Review
 
