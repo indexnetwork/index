@@ -241,7 +241,7 @@ final class LoopbackAuthServer {
         }
 
         if let apiKey = q("api_key"), let keyId = q("key_id"), !apiKey.isEmpty, !keyId.isEmpty {
-            respond(conn, status: "200 OK", title: "index authorized",
+            respond(conn, status: "200 OK", title: "All set.",
                     message: "You can close this window and return to index.")
             finish(.success((apiKey: apiKey, keyId: keyId)))
         } else {

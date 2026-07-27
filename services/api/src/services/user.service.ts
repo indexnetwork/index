@@ -22,10 +22,10 @@ export interface UserServiceDeps {
 
 /**
  * UserService
- * 
+ *
  * Manages basic CRUD operations for User entities.
  * Uses UserDatabaseAdapter for all database operations.
- * 
+ *
  * ROLE:
  * - Data access layer for the `users` table.
  * - Graph resolution: `findWithGraph` joins User + Profile + Settings.
@@ -50,7 +50,7 @@ export class UserService {
 
     /**
      * Resolves a full User Graph.
-     * 
+     *
      * Identity (name/bio/location) is sourced from the `users` row itself; the
      * dropped `user_profiles` table is no longer joined.
      *
