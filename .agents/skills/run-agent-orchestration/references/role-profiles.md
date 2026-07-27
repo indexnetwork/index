@@ -72,25 +72,12 @@ is explicitly issued.
 - Cross-package compatibility: protocol/cli version bumps coherent with consumers.
 - GitHub checks green; Railway terminal/deployment verification per `finish-pr` and
   `verify-production-release`.
-
-## integration-owner
-
-Trigger: an integration-branch wave (see `integration-branch-waves.md`). One
-dedicated child owns the integration branch's merge plane for the whole wave; its
-worktree is the integration-branch checkout and its session lives until promotion.
-Specialization of `release-review`: it does **no source implementation** unless a
-fix handoff is explicitly issued.
-
-- Executes only merges the root has explicitly authorized, after verifying its own
-  worktree path, branch, and clean status — never merges on a child's claim alone.
-- Squash-merges internal PRs in the journaled queue order, then reconciles its own
-  checkout (`git pull --ff-only` semantics; no divergence).
-- Owns deliberate SemVer/manifest/lockfile reconciliation when parallel PRs collide
-  on versions (base-version floor rule); never hand-merges manifests.
-- Keeps the integration branch shared/long-lived: never rebases or force-pushes it
-  once children have branched from it.
-- Prepares the promotion PR to `dev` at wave end and hands it to the full external
-  `finish-pr` workflow.
+- In an integration-branch wave (see `integration-branch-waves.md`), this role may
+  be used for an **advisory** verification pass on a detached checkout at the
+  verified integration SHA: local gates, base-freshness and release-metadata
+  reporting. It never merges, never reconciles manifests, and never makes
+  merge-authorization decisions — root re-runs local gates independently, owns all
+  merge execution, and may never authorize on a child's claim.
 
 ## Attaching secondary checklists
 
