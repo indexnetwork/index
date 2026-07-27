@@ -1096,6 +1096,187 @@ describe('MCP Server Factory', () => {
     expect(humanAllowed.scopedCreateArgs.length).toBe(1);
   });
 
+  it('generic conversation tools: session-human-only tools/list + tools/call parity, zero resource calls on denial, no cross-category leak', async () => {
+    // IND-600: list_conversations / get_conversation expose H2A chat history ONLY
+    // to a genuinely session-authenticated human. Registered agents (including a
+    // manage:negotiations agent), delivery agents, and API-key/non-session
+    // callers are denied at the capability layer BEFORE context DB, scoped DB,
+    // or the chatSession resource runs — and the tools vanish from their
+    // tools/list inventory in parity with tools/call. Every tools/call payload
+    // is SCHEMA-VALID so the policy layer (not input validation) is the thing
+    // under test. Forged H2A/H2H/A2A target session IDs change nothing: the
+    // denial fires before any resource work.
+    const H2A_SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
+    const H2H_SESSION_ID = '00000000-0000-4000-8000-0000000000b2';
+    const A2A_SESSION_ID = '00000000-0000-4000-8000-0000000000c3';
+
+    const resourceCalls = { list: 0, get: 0 };
+    const chatSession = {
+      listSessions: async (_userId: string, _limit?: number) => {
+        resourceCalls.list += 1;
+        return [{
+          sessionId: H2A_SESSION_ID,
+          title: 'H2A orchestrator chat',
+          messageCount: 1,
+          lastMessageAt: new Date('2026-01-02T00:00:00.000Z'),
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }];
+      },
+      getSession: async (_userId: string, sessionId: string, _messageLimit?: number) => {
+        resourceCalls.get += 1;
+        // Mirror the production adapter contract (chat-session.adapter.ts →
+        // listChatSessionSummaries/getChatSessionDetail): ONLY H2A sessions
+        // (orchestrator persona + system-agent participant) resolve; H2H DMs
+        // and A2A negotiation conversations return null at the resource
+        // boundary, so their transcripts can never cross it.
+        if (sessionId !== H2A_SESSION_ID) return null;
+        return {
+          sessionId: H2A_SESSION_ID,
+          title: 'H2A orchestrator chat',
+          messageCount: 1,
+          lastMessageAt: new Date('2026-01-02T00:00:00.000Z'),
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          messages: [{ role: 'user', content: 'h2a-only-transcript-body', createdAt: new Date('2026-01-01T00:00:00.000Z') }],
+        };
+      },
+      getSessionMessages: async () => [],
+    } as unknown as ToolDeps['chatSession'];
+
+    // ── Part 1: every non-session principal is hidden in tools/list and denied
+    // in tools/call before ANY resource work, for both generic tools and for
+    // forged H2A/H2H/A2A targets.
+    const nonSessionPrincipals = [
+      {
+        label: 'registered global agent',
+        identity: { userId: 'test-user-id', agentId: 'agent-cv1' },
+        agentDatabase: agentDbWith({ agentId: 'agent-cv1', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
+      },
+      {
+        label: 'bound network agent holding manage:negotiations',
+        identity: { userId: 'test-user-id', agentId: 'agent-cv2', networkScopeId: NETWORK_1 },
+        agentDatabase: agentDbWith({ agentId: 'agent-cv2', scope: 'network', scopeId: NETWORK_1, actions: ['manage:negotiations'] }),
+      },
+      {
+        label: 'designated delivery agent',
+        identity: { userId: 'test-user-id', agentId: 'agent-cv3', isDeliveryAgent: true },
+        agentDatabase: agentDbWith({ agentId: 'agent-cv3', scope: 'global', scopeId: null, actions: ['manage:opportunities'] }),
+      },
+      {
+        label: 'enrollment-capable API key (no agent, no session)',
+        identity: { userId: 'test-user-id', enrollmentCapable: true },
+        agentDatabase: undefined,
+      },
+      {
+        label: 'plain unregistered API key (no agent, no session)',
+        identity: { userId: 'test-user-id' },
+        agentDatabase: undefined,
+      },
+    ];
+
+    for (const principal of nonSessionPrincipals) {
+      const names = await listToolNamesFor({
+        identity: principal.identity,
+        agentDatabase: principal.agentDatabase,
+        extraDeps: { chatSession },
+      });
+      expect(names, `${principal.label}: list_conversations hidden from tools/list`).not.toContain('list_conversations');
+      expect(names, `${principal.label}: get_conversation hidden from tools/list`).not.toContain('get_conversation');
+
+      const counter = { reads: 0 };
+      const listDenied = await callTool({
+        identity: principal.identity,
+        agentDatabase: principal.agentDatabase,
+        extraDeps: { chatSession },
+        database: guardReads(counter),
+        scopedThrows: true,
+        toolName: 'list_conversations',
+        arguments: {},
+      });
+      expect(listDenied.isError, `${principal.label}: list_conversations denied`).toBe(true);
+      expect(listDenied.code, `${principal.label}: capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(counter.reads, `${principal.label}: no context DB reads`).toBe(0);
+      expect(listDenied.scopedCreateArgs, `${principal.label}: no scoped DB`).toEqual([]);
+
+      // Forged cross-category targets: H2A, H2H, and A2A session IDs are all
+      // equally unreachable — denial fires before the resource, so no target
+      // category can be probed through the generic tool.
+      for (const [category, targetId] of [['H2A', H2A_SESSION_ID], ['H2H', H2H_SESSION_ID], ['A2A', A2A_SESSION_ID]] as const) {
+        const getDenied = await callTool({
+          identity: principal.identity,
+          agentDatabase: principal.agentDatabase,
+          extraDeps: { chatSession },
+          database: guardReads(counter),
+          scopedThrows: true,
+          toolName: 'get_conversation',
+          arguments: { sessionId: targetId },
+        });
+        expect(getDenied.isError, `${principal.label}: get_conversation ${category} target denied`).toBe(true);
+        expect(getDenied.code, `${principal.label}: capability denial for ${category} target`).toBe('MCP_CAPABILITY_DENIED');
+        expect(getDenied.text, `${principal.label}: no transcript leak for ${category} target`).not.toContain('h2a-only-transcript-body');
+      }
+    }
+    expect(resourceCalls.list, 'chatSession.listSessions never ran for a non-session caller').toBe(0);
+    expect(resourceCalls.get, 'chatSession.getSession never ran for a non-session caller').toBe(0);
+
+    // ── Part 2: the session-authenticated human sees both tools and reaches
+    // the resource — which exposes ONLY H2A. H2H/A2A session IDs resolve to
+    // null at the resource boundary and surface as "not found", leaking no
+    // transcript and no existence signal beyond the generic not-found error.
+    const humanHeaders = { authorization: 'Bearer session-token' };
+    const humanIdentity = { userId: 'test-user-id', isSessionAuth: true };
+
+    const humanNames = await listToolNamesFor({
+      identity: humanIdentity,
+      extraDeps: { chatSession },
+      headers: humanHeaders,
+    });
+    expect(humanNames).toContain('list_conversations');
+    expect(humanNames).toContain('get_conversation');
+
+    const humanList = await callTool({
+      identity: humanIdentity,
+      extraDeps: { chatSession },
+      headers: humanHeaders,
+      toolName: 'list_conversations',
+      arguments: { limit: 10 },
+    });
+    expect(humanList.code).not.toBe('MCP_CAPABILITY_DENIED');
+    expect(humanList.scopedCreateArgs.length).toBe(1);
+    const listPayload = JSON.parse(humanList.text) as { success: boolean; data?: { conversations?: Array<{ sessionId: string }> } };
+    expect(listPayload.success).toBe(true);
+    expect(listPayload.data?.conversations?.map((c) => c.sessionId)).toEqual([H2A_SESSION_ID]);
+    expect(resourceCalls.list).toBe(1);
+
+    const humanGet = await callTool({
+      identity: humanIdentity,
+      extraDeps: { chatSession },
+      headers: humanHeaders,
+      toolName: 'get_conversation',
+      arguments: { sessionId: H2A_SESSION_ID },
+    });
+    const getPayload = JSON.parse(humanGet.text) as { success: boolean; data?: { messages?: Array<{ content: string }> } };
+    expect(getPayload.success).toBe(true);
+    expect(getPayload.data?.messages?.[0]?.content).toBe('h2a-only-transcript-body');
+
+    // Cross-category targets: the human's own H2H DM and A2A negotiation
+    // transcripts are NOT reachable through the generic tool — the resource
+    // returns null and the tool answers with the generic not-found error.
+    for (const [category, targetId] of [['H2H', H2H_SESSION_ID], ['A2A', A2A_SESSION_ID]] as const) {
+      const crossGet = await callTool({
+        identity: humanIdentity,
+        extraDeps: { chatSession },
+        headers: humanHeaders,
+        toolName: 'get_conversation',
+        arguments: { sessionId: targetId },
+      });
+      const crossPayload = JSON.parse(crossGet.text) as { success: boolean; error?: string };
+      expect(crossPayload.success, `${category} transcript must not resolve`).toBe(false);
+      expect(crossPayload.error, `${category} target yields the generic not-found`).toMatch(/not found or you are not a participant/i);
+      expect(crossGet.text, `${category} target leaks no H2A transcript`).not.toContain('h2a-only-transcript-body');
+    }
+    expect(resourceCalls.get).toBe(3);
+  });
+
   it('enforces exact question affected-domain inheritance on answer_pending_question at tools/call', async () => {
     // The canonical matrix admits answer_pending_question with a UNION of domain
     // actions, so a global manage:intents agent passes capability policy and
@@ -2521,6 +2702,153 @@ describe('MCP Server Factory', () => {
     const respondPayload = JSON.parse(respond.text) as { success: boolean; error?: string };
     expect(respondPayload.success).toBe(false);
     expect(respondPayload.error).toMatch(/negotiation not found/i);
+  });
+
+  it('A2A transcripts: participant reads via negotiation tools; nonparticipant and cross-network callers are denied without transcript reads', async () => {
+    // IND-600: A2A negotiation chats are reachable ONLY through the negotiation
+    // tools, and even there only under exact participation plus bound-network
+    // scope. The network-scope check fires BEFORE the participant check (and
+    // before any transcript read), so a cross-scope caller cannot probe
+    // existence; a nonparticipant never triggers a message read at all.
+    const TRANSCRIPT_SECRET = 'a2a-transcript-secret-body';
+
+    const makeTask = (overrides: {
+      id?: string;
+      sourceUserId?: string;
+      candidateUserId?: string;
+      networkId?: string;
+    } = {}) => ({
+      id: overrides.id ?? 'task-a2a-1',
+      conversationId: `conv-${overrides.id ?? 'task-a2a-1'}`,
+      state: 'working',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+      metadata: {
+        type: 'negotiation',
+        protocolVersion: 'v1',
+        sourceUserId: overrides.sourceUserId ?? 'test-user-id',
+        candidateUserId: overrides.candidateUserId ?? 'other-user-id',
+        networkId: overrides.networkId ?? NETWORK_1,
+      },
+    });
+
+    const a2aMessages = [
+      {
+        senderId: 'agent:test-user-id',
+        parts: [{ kind: 'data', data: { action: 'propose', message: TRANSCRIPT_SECRET, assessment: { reasoning: 'initial assessment', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } } }],
+        createdAt: new Date('2026-01-01T01:00:00.000Z'),
+      },
+      {
+        senderId: 'agent:other-user-id',
+        parts: [{ kind: 'data', data: { action: 'counter', message: 'counter proposal body', assessment: { reasoning: 'counter reasoning', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } } }],
+        createdAt: new Date('2026-01-01T02:00:00.000Z'),
+      },
+    ];
+
+    /** Functional negotiation DB that counts transcript reads. */
+    const negotiationDbWith = (db: {
+      task: ReturnType<typeof makeTask> | null;
+      tasks?: Array<ReturnType<typeof makeTask>>;
+      messageReads: { count: number };
+    }) => ({
+      getTasksForUser: async () => db.tasks ?? (db.task ? [db.task] : []),
+      getTask: async () => db.task,
+      getIntentIdsForOpportunities: async () => ({}),
+      getOpportunityLifecyclesForNegotiations: async () => ({}),
+      getMessagesForConversation: async () => {
+        db.messageReads.count += 1;
+        return a2aMessages;
+      },
+      getArtifactsForTask: async () => [],
+    } as unknown as ToolDeps['negotiationDatabase']);
+
+    // ── Participant: the owning agent (global manage:negotiations, owner is the
+    // source) reads the full transcript through get_negotiation.
+    const participantReads = { count: 0 };
+    const participant = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-a2a-p' },
+      agentDatabase: agentDbWith({ agentId: 'agent-a2a-p', scope: 'global', scopeId: null, actions: ['manage:negotiations'] }),
+      extraDeps: { negotiationDatabase: negotiationDbWith({ task: makeTask(), messageReads: participantReads }) },
+      toolName: 'get_negotiation',
+      arguments: { negotiationId: 'task-a2a-1' },
+    });
+    const participantPayload = JSON.parse(participant.text) as {
+      success: boolean;
+      data?: { role?: string; conversationType?: string; turns?: Array<{ message?: string | null }> };
+    };
+    expect(participantPayload.success).toBe(true);
+    expect(participantPayload.data?.role).toBe('source');
+    expect(participantPayload.data?.conversationType).toBe('agent_negotiation');
+    expect(participantPayload.data?.turns?.length).toBe(2);
+    expect(participant.text).toContain(TRANSCRIPT_SECRET);
+    expect(participantReads.count).toBe(1);
+
+    // ── Nonparticipant: a manage:negotiations agent whose owner is NEITHER
+    // party is denied by the handler, and no transcript read ever happens.
+    const nonparticipantReads = { count: 0 };
+    const nonparticipant = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-a2a-n' },
+      agentDatabase: agentDbWith({ agentId: 'agent-a2a-n', scope: 'global', scopeId: null, actions: ['manage:negotiations'] }),
+      extraDeps: {
+        negotiationDatabase: negotiationDbWith({
+          task: makeTask({ sourceUserId: 'user-a', candidateUserId: 'user-b' }),
+          messageReads: nonparticipantReads,
+        }),
+      },
+      toolName: 'get_negotiation',
+      arguments: { negotiationId: 'task-a2a-1' },
+    });
+    const nonparticipantPayload = JSON.parse(nonparticipant.text) as { success: boolean; error?: string };
+    expect(nonparticipantPayload.success).toBe(false);
+    expect(nonparticipantPayload.error).toMatch(/not a party to this negotiation/i);
+    expect(nonparticipant.text).not.toContain(TRANSCRIPT_SECRET);
+    expect(nonparticipantReads.count, 'no transcript read for a nonparticipant').toBe(0);
+
+    // ── Cross-network: a NETWORK_1-bound manage:negotiations agent whose owner
+    // IS the source is still scope-denied on a NETWORK_2 negotiation — the
+    // scope check fires before participation and before any transcript read.
+    const crossNetworkReads = { count: 0 };
+    const crossNetwork = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-a2a-x', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-a2a-x', scope: 'network', scopeId: NETWORK_1, actions: ['manage:negotiations'] }),
+      extraDeps: {
+        negotiationDatabase: negotiationDbWith({
+          task: makeTask({ networkId: NETWORK_2 }),
+          messageReads: crossNetworkReads,
+        }),
+      },
+      toolName: 'get_negotiation',
+      arguments: { negotiationId: 'task-a2a-1' },
+    });
+    const crossNetworkPayload = JSON.parse(crossNetwork.text) as { success: boolean; error?: string };
+    expect(crossNetworkPayload.success).toBe(false);
+    expect(crossNetworkPayload.error).toMatch(/bound network scope/i);
+    expect(crossNetwork.text).not.toContain(TRANSCRIPT_SECRET);
+    expect(crossNetworkReads.count, 'no transcript read across network scope').toBe(0);
+
+    // ── List parity: the same bound agent's list_negotiations drops the
+    // NETWORK_2 task even though the DB returned it for the user.
+    const listReads = { count: 0 };
+    const boundList = await callTool({
+      identity: { userId: 'test-user-id', agentId: 'agent-a2a-x', networkScopeId: NETWORK_1 },
+      agentDatabase: agentDbWith({ agentId: 'agent-a2a-x', scope: 'network', scopeId: NETWORK_1, actions: ['manage:negotiations'] }),
+      extraDeps: {
+        negotiationDatabase: negotiationDbWith({
+          task: null,
+          tasks: [makeTask({ id: 'task-net-1', networkId: NETWORK_1 }), makeTask({ id: 'task-net-2', networkId: NETWORK_2 })],
+          messageReads: listReads,
+        }),
+      },
+      toolName: 'list_negotiations',
+      arguments: {},
+    });
+    const boundListPayload = JSON.parse(boundList.text) as {
+      success: boolean;
+      data?: { count?: number; negotiations?: Array<{ id: string }> };
+    };
+    expect(boundListPayload.success).toBe(true);
+    expect(boundListPayload.data?.count).toBe(1);
+    expect(boundListPayload.data?.negotiations?.map((n) => n.id)).toEqual(['task-net-1']);
   });
 
   // ── IND-599: agent administration authorization policy ────────────────────
