@@ -175,18 +175,22 @@ describe("runPoolDiscriminatorShadow", () => {
 
   it("does not signal unavailable history comparison when no history was supplied", async () => {
     const d = minedDiscriminator("resilient fresh", (i) => (i < 3 ? "A" : "B"));
+    let embeddingCalls = 0;
     const result = await runPoolDiscriminatorShadow({
       intentText: "intent",
       candidates,
-      referenceTexts: [],
+      referenceTexts: ["ordinary current reference"],
       miner: { mine: async () => [d] },
       embedder: {
         async generate() {
+          embeddingCalls++;
           throw new Error("embedding provider down");
         },
       },
     });
+    expect(embeddingCalls).toBe(1);
     expect(result.priorReferenceComparisonUnavailable).toBeUndefined();
+    expect(result.discriminators[0].novelty).toBe(1);
     expect(result.discriminators[0].voi).toBeGreaterThan(0);
   });
 
