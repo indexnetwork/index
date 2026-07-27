@@ -7,6 +7,7 @@
  * - NegotiationGraphState and all graph state types (negotiation.state.ts)
  * - Seat-scoped protocol rules and action vocabulary (negotiation.protocol.ts)
  * - Screen-gate pure contracts: mode, decision record, block predicate (negotiation.screen.contracts.ts)
+ * - Negotiator stance contracts + prompt fragments (negotiation.stance.contracts.ts)
  * - Deadlock detection + bargaining prompt section (negotiation.deadlock.ts)
  * - Lifecycle narration mapper (negotiation.lifecycle-narration.ts)
  * - Task conversation-lock predicate (negotiation.task-lock-policy.ts)
@@ -41,6 +42,20 @@ export type {
   ScreenDecision,
   ScreenDecisionRecord,
 } from "./negotiation.screen.contracts.js";
+
+// ── Stance contracts (IND-611) ────────────────────────────────────────────────
+export {
+  NEGOTIATOR_STANCES,
+  DEFAULT_NEGOTIATOR_STANCE,
+  configuredNegotiatorStance,
+  stanceAppliesValueBar,
+  stanceQueryMatchIsNecessaryNotSufficient,
+  stanceResolvesDeadlockByStalemate,
+  stanceJobFraming,
+  stanceActionRules,
+  stanceQuerySatisfiedRule,
+} from "./negotiation.stance.contracts.js";
+export type { NegotiatorStance } from "./negotiation.stance.contracts.js";
 
 // ── Graph state and DTOs ──────────────────────────────────────────────────────
 export {

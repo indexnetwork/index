@@ -37,6 +37,7 @@ const SUITES = [
   "premise",
   "profile",
   "shared",
+  "stance",
   "viewer",
 ] as const;
 

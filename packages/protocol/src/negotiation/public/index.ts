@@ -83,6 +83,20 @@ export type {
   ScreenDecisionRecord,
 } from "../domain/index.js";
 
+// ── Domain: stance contracts (IND-611) ───────────────────────────────────────
+export {
+  NEGOTIATOR_STANCES,
+  DEFAULT_NEGOTIATOR_STANCE,
+  configuredNegotiatorStance,
+  stanceAppliesValueBar,
+  stanceQueryMatchIsNecessaryNotSufficient,
+  stanceResolvesDeadlockByStalemate,
+  stanceJobFraming,
+  stanceActionRules,
+  stanceQuerySatisfiedRule,
+} from "../domain/index.js";
+export type { NegotiatorStance } from "../domain/index.js";
+
 // ── Domain: deadlock ──────────────────────────────────────────────────────────
 export {
   assessDeadlock,

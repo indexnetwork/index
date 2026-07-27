@@ -13,6 +13,34 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Added
+- Configurable negotiator stance `NEGOTIATOR_STANCE` (IND-611; 7.11.0), shipped
+  dark. `advocate` (default) | `evaluator` | `skeptic`, resolved by the new
+  domain contract `configuredNegotiatorStance()`
+  (`negotiation/domain/negotiation.stance.contracts.ts`, mirroring
+  `configuredScreenMode()`); unset or unrecognized falls back to `advocate`.
+  `evaluator` adds an opportunity-cost value bar, asks the agent to assess
+  before advocating, and makes discovery-query satisfaction a precondition for
+  continuing to evaluate rather than a mandate to connect; `skeptic` adds the
+  prior that most candidate matches are not worth making and resolves a
+  detected deadlock as a stalemate instead of by concessions.
+  **Prompt-only** — seat vocabularies (`allowedActionsFor`), turn schemas, and
+  graph routing (including the continuation-screen bypass) are identical under
+  all three stances. **`advocate` renders byte-identical prompts** to 7.10.1,
+  pinned by an external golden fixture in
+  `negotiation/tests/negotiation.stance.spec.ts`. New live eval harness
+  `bun run eval:stance` measures decline rate on low-value versus high-value
+  fixtures per stance.
+
+### Fixed
+- Stop force-rewriting an opening-move refusal (IND-611 prerequisite; 7.11.0):
+  `negotiation.graph.ts` ran the turn-0 opening force *before* the IND-564
+  opening-withdraw guard, so a v2 initiator that judged a match not worth making
+  had its `withdraw` rewritten to `outreach` while its reasoning survived —
+  sending the counterparty an outreach that argued against the match — and made
+  the guard below it dead code on turn 0. The guard now runs first: a turn-0
+  refusal stands and flows into the existing quiet `screened_out` outcome with
+  no message persisted, while a genuinely malformed turn-0 opening (e.g.
+  `counter`) is still coerced to the opening action.
 - Add canonical shared guidance source and unified MCP_INSTRUCTIONS/read_docs
   (IND-602/603; 7.10.0): The single normative `CANONICAL_GUIDANCE_SUMMARY`
   (1,555 chars, under the 4,500-char MCP context budget) covers Index Network

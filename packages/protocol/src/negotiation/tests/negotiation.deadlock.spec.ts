@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD, MIN_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
@@ -192,6 +192,19 @@ function agentInput(extra?: Partial<NegotiationAgentInput>): NegotiationAgentInp
 }
 
 describe("IndexNegotiator — bargaining stance prompt (IND-428)", () => {
+  // IND-611 made the deadlock RESOLUTION stance-dependent: `skeptic` drafts a
+  // stalemate section instead of the bargaining one (see
+  // negotiation.stance.spec.ts). These cases pin the bargaining resolution,
+  // which is what `advocate` (the default) and `evaluator` produce — so the
+  // assumption that was previously implicit is now stated. The assertions
+  // themselves are unchanged.
+  const originalStance = process.env.NEGOTIATOR_STANCE;
+  beforeAll(() => { process.env.NEGOTIATOR_STANCE = "advocate"; });
+  afterAll(() => {
+    if (originalStance === undefined) delete process.env.NEGOTIATOR_STANCE;
+    else process.env.NEGOTIATOR_STANCE = originalStance;
+  });
+
   it("injects the bargaining section when the graph passes the stance", async () => {
     const agent = new CapturingNegotiator(counterOutput);
     await agent.invoke(agentInput({ bargaining: { consecutiveNonConvergent: 4 } }));

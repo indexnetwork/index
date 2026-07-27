@@ -2,3 +2,5 @@
 .env.local
 dist/
 node_modules/
+# IND-611: stance eval run artifacts (the other suites' runs/ dirs are listed in the root .gitignore)
+eval/stance/runs/
