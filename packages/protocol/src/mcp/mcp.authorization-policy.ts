@@ -477,6 +477,76 @@ export type McpCapabilityDecision = {
   requiredPermissions?: McpPermissionAction[];
 };
 
+export type McpCapabilityDecisionReason = z.infer<typeof McpCapabilityDecisionReasonSchema>;
+
+/**
+ * Safe, host-facing description of a single authorization denial. It carries
+ * ONLY the caller profile, the tool, and the policy reason/reach — never a
+ * token, API key, bearer credential, raw header, or tool-argument payload.
+ * `userId`/`agentId`/`networkScopeId` are opaque principal identifiers, not
+ * secrets. Constructed centrally in {@link buildMcpAuthorizationDenialEvent}
+ * so no call site can widen it with sensitive fields.
+ */
+export type McpAuthorizationDenialEvent = {
+  /** Which JSON-RPC boundary produced the denial. */
+  phase: 'tools/call' | 'tools/list';
+  /** The classified tool the caller attempted. */
+  toolName: string;
+  /** The resolved principal profile (never the credential that produced it). */
+  profile: McpPrincipalProfile;
+  /** The policy decision reason. */
+  reason: McpCapabilityDecisionReason;
+  /** Capability reach of the tool rule, when the rule was found. */
+  reach?: 'principal' | 'network';
+  /** The any-of permissions the tool required, when applicable. */
+  requiredPermissions?: McpPermissionAction[];
+  /** Opaque owning-user identifier. */
+  userId: string;
+  /** Opaque agent identifier, present only for agent principals. */
+  agentId?: string;
+  /** Bound network scope for network agents; null otherwise. */
+  networkScopeId: string | null;
+};
+
+/**
+ * Host-injected authorization observability seam. The protocol emits
+ * structured, secret-free denial events at the host boundary; the host decides
+ * how to record them. Implementations MUST NOT throw affect the decision — the
+ * server calls this defensively and ignores observer failures (fail-closed is
+ * preserved regardless).
+ */
+export interface McpAuthorizationObserver {
+  onCapabilityDenied(event: McpAuthorizationDenialEvent): void;
+}
+
+/**
+ * Builds a safe denial event from a resolved subject and a denial decision.
+ * Only whitelisted, non-sensitive fields are copied across; the caller's
+ * granted permissions, credentials, headers, and tool arguments are never
+ * included.
+ */
+export function buildMcpAuthorizationDenialEvent(input: {
+  phase: 'tools/call' | 'tools/list';
+  toolName: string;
+  subject: McpCapabilitySubject;
+  decision: McpCapabilityDecision;
+}): McpAuthorizationDenialEvent {
+  const { phase, toolName, subject, decision } = input;
+  return {
+    phase,
+    toolName,
+    profile: subject.profile,
+    reason: decision.reason,
+    ...(decision.reach ? { reach: decision.reach } : {}),
+    ...(decision.requiredPermissions && decision.requiredPermissions.length > 0
+      ? { requiredPermissions: [...decision.requiredPermissions] }
+      : {}),
+    userId: subject.userId,
+    ...(subject.agentId ? { agentId: subject.agentId } : {}),
+    networkScopeId: subject.networkScopeId,
+  };
+}
+
 export type McpCapabilityPolicyOptions = {
   /** Complete static rule map; defaults to the canonical production matrix. */
   toolRules?: McpToolAccessRuleMap;

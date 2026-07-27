@@ -10,6 +10,22 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Wire the MCP authorization-observability seam at the host boundary (IND-581;
+  protocol 7.8.0, API 0.64.0). The composition root now injects a concrete
+  `McpAuthorizationObserver` into `createMcpServer` that records each capability
+  denial as a structured, secret-free authorization audit log (`info` level, not
+  debug instrumentation) via the `mcp` server logger — caller profile, tool,
+  reason/reach, required permissions, and opaque principal ids only, never
+  credentials or payloads. New DB-free `tests/mcp.permission-refresh.spec.ts`
+  drives the real resolver + module metadata cache to prove: permissions and
+  agent active/inactive state are freshly resolved across reconnects (granted →
+  revoked → deactivated), each transition denies the next schema-valid
+  list/call before any chat-DB read or scoped-deps creation; two principals
+  sharing the module-level metadata cache never leak each other's inventory or
+  capability results; emitted denial telemetry contains only safe
+  caller-profile/reason fields (no token/secret/argument payload); and a
+  throwing observer never changes the fail-closed decision.
+
 - Prove the IND-599 agent-administration split end-to-end at the MCP transport
   (IND-599; protocol 7.7.0, API 0.63.0). New DB-free `tests/mcp.spec.ts`
   evidence: registered agents list/call only `read_own_agent` (empty input
