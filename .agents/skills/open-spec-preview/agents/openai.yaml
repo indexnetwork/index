@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open Spec Preview"
+  short_description: "Render a freshly written spec in a right-hand Herdr pane with glow."
+  default_prompt: "Open the spec I just asked you to write in a preview pane: /skill:open-spec-preview $open-spec-preview"
