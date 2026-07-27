@@ -36,6 +36,19 @@ export interface ConversationNegotiationLifecycle {
   signalCount: number;
   outcome: { hasOpportunity: boolean; reason: string | null } | null;
   updatedAt: string;
+  /**
+   * IND-610: the owner-facing outreach-gate decision (`tasks.metadata.screenDecision`),
+   * named-field projected. Present only when the viewer is the negotiation's
+   * initiator — never populated for a non-owner viewer, even for `screened_out`
+   * negotiations that are otherwise visible in a mutual conversation.
+   */
+  screenDecision?: {
+    decision: 'reach_out' | 'pass';
+    reasoning: string;
+    counterpartyPremiseFit: string;
+    intentAlignment: string;
+    screenedAt: string | null;
+  } | null;
 }
 
 export interface ConversationSummary {

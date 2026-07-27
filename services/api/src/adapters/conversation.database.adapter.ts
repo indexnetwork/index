@@ -111,6 +111,30 @@ function readNegotiationSignalCount(metadata: unknown): number {
   return intentIds.size;
 }
 
+/**
+ * Projects the owner-visible `screenDecision` fields out of `tasks.metadata`.
+ * IND-610: named-field projection only — never returns the raw metadata
+ * blob, so unrelated/internal keys on the task can never leak through this
+ * surface. Callers must independently gate this on `initiatorUserId ===
+ * viewerUserId` before invoking it.
+ */
+function projectScreenDecision(metadata: Record<string, unknown>): NonNullable<ConversationSummary['negotiation']>['screenDecision'] {
+  const raw = metadata.screenDecision;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  if (record.decision !== 'pass' && record.decision !== 'reach_out') return null;
+  const evidence = typeof record.evidence === 'object' && record.evidence !== null && !Array.isArray(record.evidence)
+    ? record.evidence as Record<string, unknown>
+    : {};
+  return {
+    decision: record.decision,
+    reasoning: typeof record.reasoning === 'string' ? record.reasoning : '',
+    counterpartyPremiseFit: typeof evidence.counterpartyPremiseFit === 'string' ? evidence.counterpartyPremiseFit : '',
+    intentAlignment: typeof evidence.intentAlignment === 'string' ? evidence.intentAlignment : '',
+    screenedAt: typeof record.screenedAt === 'string' ? record.screenedAt : null,
+  };
+}
+
 type PersistedOpportunity = typeof opportunities.$inferSelect;
 type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
@@ -674,6 +698,15 @@ export class ConversationDatabaseAdapter {
         maxTurns,
         signalCount: readNegotiationSignalCount(metadata),
         outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
+        // IND-610: the owner-facing outreach-gate decision. Independently
+        // re-checked here (not merely inherited from the `screened_out`
+        // continue above) so a future caller of this projection can never
+        // leak the stored reasoning/evidence to a non-initiator by relying
+        // solely on the outer mutual-list skip. Named-field projection only
+        // — the raw `tasks.metadata` blob is never returned.
+        screenDecision: initiatorUserId === viewerUserId
+          ? projectScreenDecision(metadata)
+          : null,
         updatedAt: row.updatedAt,
       });
     }

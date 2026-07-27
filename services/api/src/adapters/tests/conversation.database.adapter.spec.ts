@@ -518,6 +518,70 @@ describe('ConversationDatabaseAdapter', () => {
     }, 30000);
   });
 
+  describe('getConversationsForUser — screenDecision privacy (IND-610)', () => {
+    it('projects named screenDecision fields to the initiator only, never to the non-owner counterparty, even for a mutually-visible negotiation', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const initiator = `screendecision-initiator-${run}`;
+      const counterpart = `screendecision-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${initiator}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      // An ordinary (non screened_out) negotiation that stays mutually visible
+      // to both sides — the outer screened_out skip does NOT apply here, so
+      // the screenDecision projection is the only thing standing between the
+      // counterparty and the initiator's private outreach-gate reasoning.
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: initiator,
+        candidateUserId: counterpart,
+        initiatorUserId: initiator,
+        screenDecision: {
+          decision: 'reach_out',
+          reasoning: 'Strong overlap on ML tooling need.',
+          mode: 'enforce',
+          evidence: {
+            counterpartyPremiseFit: 'Counterpart actively seeks ML engineering help.',
+            intentAlignment: 'Both intents describe the same collaboration shape.',
+          },
+          screenedAt: new Date().toISOString(),
+          durationMs: 120,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'completed');
+      await adapter.createArtifact({
+        taskId: task.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: true, turnCount: 1 } }],
+      });
+
+      // Owner (initiator) view: named fields are present verbatim.
+      const ownerSummary = (await adapter.getConversationsForUser(`agent:${initiator}`, initiator, true))
+        .find((c) => c.id === conversation.id);
+      expect(ownerSummary?.negotiation?.screenDecision).toMatchObject({
+        decision: 'reach_out',
+        reasoning: 'Strong overlap on ML tooling need.',
+        counterpartyPremiseFit: 'Counterpart actively seeks ML engineering help.',
+        intentAlignment: 'Both intents describe the same collaboration shape.',
+      });
+
+      // Counterparty (non-owner) direct fetch: the negotiation itself remains
+      // visible (this is not a screened_out row), but no screenDecision field
+      // — named or raw — is present at all.
+      const counterpartSummary = (await adapter.getConversationsForUser(`agent:${counterpart}`, counterpart, true))
+        .find((c) => c.id === conversation.id);
+      expect(counterpartSummary?.negotiation).toBeTruthy();
+      expect(counterpartSummary?.negotiation?.screenDecision).toBeFalsy();
+      // Defense in depth: the raw metadata blob must never surface either.
+      expect(JSON.stringify(counterpartSummary?.negotiation)).not.toContain('reasoning');
+      expect(JSON.stringify(counterpartSummary?.negotiation)).not.toContain('counterpartyPremiseFit');
+      expect(JSON.stringify(counterpartSummary?.negotiation)).not.toContain('intentAlignment');
+    }, 30000);
+  });
+
   describe('unread tracking', () => {
     it('counts only counterpart messages and clears only the viewer cursor', async () => {
       const viewerId = `unread-viewer-${Date.now()}`;

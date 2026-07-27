@@ -647,6 +647,19 @@ export interface NegotiationLifecycleSummary {
   signalCount: number;
   outcome: { hasOpportunity: boolean; reason: string | null } | null;
   updatedAt: Date;
+  /**
+   * IND-610: the owner-facing outreach-gate decision, named-field projected
+   * from `tasks.metadata.screenDecision`. Populated only when the caller has
+   * independently verified the viewer is the negotiation's initiator — never
+   * the raw metadata blob.
+   */
+  screenDecision?: {
+    decision: 'reach_out' | 'pass';
+    reasoning: string;
+    counterpartyPremiseFit: string;
+    intentAlignment: string;
+    screenedAt: string | null;
+  } | null;
 }
 
 /** Summary returned by getConversationsForUser. */
