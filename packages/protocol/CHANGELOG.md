@@ -25,10 +25,13 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   opportunities, negotiations, workflows) are published via read_docs on both
   MCP and REST/chat surfaces. MCP surface read_docs serves canonical guidance
   only; REST/chat retains legacy supplemental topics for backwards compatibility.
-  New exports: `CANONICAL_GUIDANCE_SUMMARY`, `CANONICAL_GUIDANCE_TOPICS`
-  (const array), `CANONICAL_GUIDANCE_TOPICS_CONTENT` (record). MCP_INSTRUCTIONS
-  now delegates entity/lifecycle details to read_docs, dropping verbose inline
-  model. No data, migration, capability, or permission changes.
+  New internal shared constants (packages/protocol/src/shared/agent/canonical-guidance.ts):
+  `CANONICAL_GUIDANCE_SUMMARY`, `CANONICAL_GUIDANCE_TOPICS` (const array),
+  `CANONICAL_GUIDANCE_TOPICS_CONTENT` (record). Not public root protocol exports.
+  MCP_INSTRUCTIONS now delegates entity/lifecycle details to read_docs, dropping
+  verbose inline model. Published MCP guidance/read_docs contract now includes
+  canonical seven-topic structure and H2A/A2A/owner-approval semantics. No data,
+  migration, capability, permission, or runtime behavior changes.
 
 - Add a host-injected MCP authorization-observability seam (IND-581; 7.8.0):
   `McpAuthorizationObserver`, the secret-free `McpAuthorizationDenialEvent`, and
