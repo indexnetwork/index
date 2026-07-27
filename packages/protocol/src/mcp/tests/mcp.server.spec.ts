@@ -11,6 +11,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
 import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface, getMcpToolMetadataCacheKey } from "../mcp.server.js";
+import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS } from "../../shared/agent/canonical-guidance.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
 
@@ -39,9 +40,9 @@ describe("MCP_INSTRUCTIONS", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).toContain("tool's description");
   });
 
-  test("describes the entity model", () => {
-    for (const term of ["Profile", "Intent", "Opportunity"]) {
-      expect(MCP_INSTRUCTIONS).toContain(term);
+  test("describes the canonical entity model", () => {
+    for (const term of ["identity", "context", "premise", "signal", "community", "network", "opportunity", "negotiation"]) {
+      expect(MCP_INSTRUCTIONS.toLowerCase()).toContain(term);
     }
   });
 
@@ -55,16 +56,39 @@ describe("MCP_INSTRUCTIONS", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).toContain("community");
   });
 
-  test("separates agent completion, owner acceptance, and H2H evidence", () => {
-    expect(MCP_INSTRUCTIONS).toContain("means only that agents concluded");
-    expect(MCP_INSTRUCTIONS).toContain("may leave a `pending` match awaiting owner review");
-    expect(MCP_INSTRUCTIONS).toContain("Agent acceptance is not \"connected\"");
-    expect(MCP_INSTRUCTIONS).toContain("Status alone never proves an H2H thread");
+  test("guides H2A and A2A collaboration but never exposes H2H", () => {
+    expect(MCP_INSTRUCTIONS).toContain("H2A");
+    expect(MCP_INSTRUCTIONS).toContain("A2A");
+    expect(MCP_INSTRUCTIONS).not.toContain("H2H");
+  });
+
+  test("distinguishes owner approval from A2A negotiation acceptance", () => {
+    expect(MCP_INSTRUCTIONS).toContain("owner approval");
+    expect(MCP_INSTRUCTIONS).toContain("is not owner approval");
+  });
+
+  test("never mentions retired contact/Gmail/scrape/profile/ghost-user guidance", () => {
+    const lower = MCP_INSTRUCTIONS.toLowerCase();
+    for (const fragment of ["ghost user", "gmail", "scrape", "import_contacts", "read_user_profiles"]) {
+      expect(lower).not.toContain(fragment);
+    }
   });
 
   test("does not carry Claude Code sub-skill dispatch idioms", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).not.toContain("sub-skill");
     expect(MCP_INSTRUCTIONS).not.toContain("index-network:");
+  });
+});
+
+describe("MCP_INSTRUCTIONS canonical source (IND-602/603)", () => {
+  test("is built from the shared canonical guidance summary", () => {
+    expect(MCP_INSTRUCTIONS).toContain(CANONICAL_GUIDANCE_SUMMARY);
+  });
+
+  test("summary lists every canonical read_docs topic", () => {
+    for (const topic of CANONICAL_GUIDANCE_TOPICS) {
+      expect(MCP_INSTRUCTIONS).toContain(topic);
+    }
   });
 });
 

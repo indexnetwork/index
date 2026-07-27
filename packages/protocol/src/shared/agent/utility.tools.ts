@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requestContext } from "../observability/request-context.js";
 import { ActivitySummaryResponseSchema, McpActivityCallerSchema, activitySummaryNetworkId, projectActivitySummary } from "./activity-projection.js";
 import type { McpActivityCaller } from "./activity-projection.js";
+import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS, CANONICAL_GUIDANCE_TOPICS_CONTENT } from "./canonical-guidance.js";
 
 import type { DefineTool, ToolRegistryCompositionDeps } from "./tool.helpers.js";
 import { success, error, normalizeUrl } from "./tool.helpers.js";
@@ -87,35 +88,43 @@ export function createUtilityTools(
     description:
       "Returns comprehensive documentation about the Index Network protocol — entity model, workflows, tool usage guidance, and domain concepts. " +
       "This is the primary way for an external agent to bootstrap understanding of the system.\n\n" +
-      "**When to use:** Call this FIRST when starting a new session. MCP agents MUST call read_docs(topic='mcp_agent_guide') at the start of every conversation to learn proper output formatting and workflow rules.\n" +
-      "Also call when you need to understand:\n" +
-      "- What entities exist and how they relate (intents, indexes, opportunities, profiles, contacts)\n" +
-      "- The discovery workflow (how intents become opportunities)\n" +
-      "- Which tools to call in what order for common tasks\n" +
-      "- Authentication and API patterns\n\n" +
-      "**Returns:** Markdown documentation. Pass `topic` to get a specific section, or omit for the full reference.\n\n" +
-      "**Available topics:** 'entities', 'intents', 'opportunities', 'indexes', 'profiles', 'contacts', 'discovery', 'workflows', 'authentication', 'mcp_agent_guide'",
+      "**When to use:** Call this FIRST when starting a new session.\n" +
+      "Also call when you need to understand identity, context, premises, signals, communities, networks, opportunities, or negotiations.\n\n" +
+      "**Returns:** Markdown documentation. Pass `topic` to get a specific section, or omit for the summary.\n\n" +
+      `**Available canonical topics:** ${CANONICAL_GUIDANCE_TOPICS.join(", ")}`,
     querySchema: z.object({
-      topic: z.string().optional().describe("Narrow to a specific topic: 'entities', 'intents', 'opportunities', 'indexes', 'profiles', 'contacts', 'discovery', 'workflows', or 'authentication'. Omit to get the full documentation."),
+      topic: z.string().optional().describe(`Narrow to a canonical topic: ${CANONICAL_GUIDANCE_TOPICS.join(", ")}. Omit to get the summary.`),
     }),
     handler: async ({ context: _context, query }) => {
       const topic = query.topic?.trim().toLowerCase();
 
+      // Canonical guidance is the MCP read_docs foundation. When on MCP surface,
+      // legacy supplemental topics (entities, intents, opportunities, etc.) are
+      // omitted to avoid repeating the canonical source (IND-602/603).
+      // REST/chat surfaces retain full topic coverage for backwards compatibility.
+      if (isMcpSurface) {
+        // MCP surface: use canonical guidance only.
+        if (!topic) {
+          // Return summary of canonical guidance
+          return success({ content: CANONICAL_GUIDANCE_SUMMARY });
+        }
+        // Try to match canonical topic
+        const normalizedTopic = topic.replace(/_/g, "-").toLowerCase();
+        for (const canonicalTopic of CANONICAL_GUIDANCE_TOPICS) {
+          if (canonicalTopic === normalizedTopic || normalizedTopic.includes(canonicalTopic.split("-")[0])) {
+            return success({ topic: canonicalTopic, content: CANONICAL_GUIDANCE_TOPICS_CONTENT[canonicalTopic] });
+          }
+        }
+        // Unknown topic on MCP surface
+        return success({
+          content: `Unknown canonical topic "${topic}". Available topics: ${CANONICAL_GUIDANCE_TOPICS.join(", ")}. Request summary for full canonical guidance.`,
+        });
+      }
+
+      // REST/chat surfaces: provide full legacy documentation alongside canonical.
       // Contact management tools are not exposed on the MCP surface (IND-596), so
-      // MCP guidance is composed WITHOUT the contact workflows while retaining the
-      // conceptual personal-network / ghost-user model. REST/chat compose the full
-      // contact guidance. This is structural composition, not post-hoc stripping.
-      const contactsSection = isMcpSurface
-        ? `## Contact Management
-
-Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
-
-- **Ghost users**: When a contact email doesn't match an existing account, a ghost user is created. Ghost users are enriched with public profile data and participate in opportunity matching — they can be discovered even before joining the platform.
-- **Personal network scope**: Pass the personal network networkId to discover_opportunities to scope discovery to just the user's contacts.
-- **Contact data**: Each contact has userId, name, email, avatar, and isGhost flag.
-
-_Managing contacts (adding, importing, listing, and removing) is not available through MCP. Contacts are managed via the Index web app and REST APIs._`
-        : `## Contact Management
+      // full guidance includes contact workflows. This is for REST/chat only.
+      const contactsSection = `## Contact Management
 
 Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
 
@@ -131,9 +140,7 @@ Contacts are people in a user's personal network, stored as members of their per
 4. add_contact(email) → add individual contact
 5. remove_contact(contactUserId) → remove from network`;
 
-      const managingContactsWorkflow = isMcpSurface
-        ? ""
-        : `### Managing Contacts
+      const managingContactsWorkflow = `### Managing Contacts
 1. import_gmail_contacts() or import_contacts([...]) → add contacts
 2. list_contacts() → view network
 3. discover_opportunities(networkId=personalIndexId) → find matches among contacts
@@ -141,6 +148,7 @@ Contacts are people in a user's personal network, stored as members of their per
 `;
 
       const sections: Record<string, string> = {
+        // Legacy topics (REST/chat only)
         entities: `## Entity Model & Relationships
 
 - **Users**: People on the platform. Authenticated via API key (X-API-Key header) for MCP/external agents, or session-based (Better Auth) for the web app.
@@ -308,43 +316,26 @@ ${managingContactsWorkflow}### Creating a Community
 - Use pagination (limit/page) for large result sets
 - Call read_docs once at the start to understand the domain`,
 
-        mcp_agent_guide: `## MCP Agent Integration Guide
-
-**IMPORTANT: Read this section if you are an AI agent accessing Index Network via MCP tools.**
-
-### Output Formatting
-- Tool results often contain structured JSON data (proposals, opportunities, cards). **Do NOT dump raw JSON to the user.** Parse the JSON and present information in natural language with clear formatting.
-- Some tool results contain interactive card markup (code blocks with \`intent_proposal\`, \`opportunity_card\` language tags). These are designed for the Index Network web UI. **As an MCP agent, ignore card markup.** Instead, extract the meaningful data from the JSON and present it conversationally.
-- When presenting opportunities or intents, use bullet points or short paragraphs — not raw JSON objects.
-
-### Intent Creation Workflow
-- **Always pass \`autoApprove: true\` when calling \`create_intent\`.** This persists intents directly without returning proposal cards that require manual UI approval.
-- The tool will return a list of created intents with their descriptions and confidence scores. Present these in natural language.
-- Do not tell the user to "click on cards" or "approve above" — there is no UI. Intents are created immediately with autoApprove.
-- After creating intents, proactively suggest or run discovery to find matches.
-
-### Discovery Workflow
-- After creating intents, proactively suggest running discovery: \`discover_opportunities(searchQuery=...)\`
-- Present discovered opportunities in natural language with the counterpart's name, match reasoning, and suggested next steps.
-- Do not reference "cards", "panels", or any web UI elements.
-
-### General MCP Agent Rules
-- You are operating via API tools, not a web interface. Never reference clicking, scrolling, cards, panels, or any visual UI elements.
-- Be proactive: if a logical next step exists (e.g., running discovery after creating intents), suggest or execute it.
-- Use \`list_opportunities\` to check existing matches, \`list_negotiations\` for ongoing negotiations.
-- Use \`read_networks\` to understand which communities the user belongs to before scoping operations.
-- When errors occur, provide clear technical context rather than vague "backend issue" messages.`,
+        // Canonical topics (on REST/chat for completeness)
+        "identity-context": CANONICAL_GUIDANCE_TOPICS_CONTENT["identity-context"],
+        premises: CANONICAL_GUIDANCE_TOPICS_CONTENT.premises,
+        signals: CANONICAL_GUIDANCE_TOPICS_CONTENT.signals,
+        "communities-networks": CANONICAL_GUIDANCE_TOPICS_CONTENT["communities-networks"],
+        negotiations: CANONICAL_GUIDANCE_TOPICS_CONTENT.negotiations,
       };
 
       if (topic) {
-        const matched = Object.entries(sections).find(([key]) => key.includes(topic) || topic.includes(key));
+        const normalizedTopic = topic.replace(/_/g, "-").toLowerCase();
+        const matched = Object.entries(sections).find(
+          ([key]) => key === normalizedTopic || key.includes(normalizedTopic) || normalizedTopic.includes(key)
+        );
         if (matched) {
           return success({ topic: matched[0], content: matched[1] });
         }
-        // If topic not found, return all
       }
 
-      const fullDoc = Object.values(sections).join("\n\n");
+      // Return full documentation (summary + all topics)
+      const fullDoc = [CANONICAL_GUIDANCE_SUMMARY, ...Object.values(sections)].join("\n\n");
       return success({ content: fullDoc });
     },
   });
