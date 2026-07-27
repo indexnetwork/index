@@ -19,6 +19,8 @@
  * - **Fail-open**: any detection error means "no deadlock" — advisory
  *   infrastructure never blocks a negotiation.
  */
+import { stanceResolvesDeadlockByStalemate, type NegotiatorStance } from "./negotiation.stance.contracts.js";
+
 export type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
@@ -133,20 +135,47 @@ const BARGAINING_ASK_USER_ESCALATION = `
 - If a concession would require {userName}'s own input or permission (budget, availability, private details), escalate with "ask_user" instead of guessing.`;
 
 /**
- * Renders the bargaining-stance prompt section. Returns the empty string when
+ * Skeptic-stance deadlock resolution (IND-611). Under `NEGOTIATOR_STANCE=skeptic`
+ * a stalemate resolves as a stalemate rather than by bargaining: the designed
+ * outcome of persistent disagreement stops being "a smaller match" and becomes
+ * "possibly no match". Same trigger, same threshold, same actions — only the
+ * drafting stance differs. `advocate`/`evaluator` keep the bargaining section
+ * byte-identical.
+ */
+const STALEMATE_SHIFT_SECTION = `
+
+DEADLOCK — THE MERITS ARE EXHAUSTED. The last {consecutive} turns were counters/questions without convergence: the merits have been argued and restating them will not move the other side. For this turn, change stance:
+- Do NOT re-argue fit or repeat points already made.
+- Do NOT buy agreement with a concession or a reduced scope. A shrunken version of a match that could not be agreed on its merits is usually worth less of {userName}'s attention than the full one was, not more.
+- Name the ONE specific thing that would genuinely change your assessment. If it has not appeared after this many turns, it is unlikely to.
+- Absent that, conclude decisively with a terminal action from your allowed set. An unresolved disagreement is an acceptable outcome; a match made to end the disagreement is not.
+This shift changes your stance only — your available actions are unchanged.`;
+
+/**
+ * Renders the deadlock-stance prompt section. Returns the empty string when
  * the shift is not active, so the rendered system prompt is byte-identical to
  * the legacy build on every non-shifted turn (mirrors
  * `renderNegotiatorMemorySection`). The `ask_user` escalation line renders
  * only when the caller already legally holds the action (`canAskUser`) — the
  * shift never invents a locution.
+ *
+ * IND-611: `stance` selects which resolution the shift drafts toward —
+ * bargaining (`advocate`/`evaluator`, the default and today's behavior) or
+ * stalemate (`skeptic`). Omitted → bargaining, byte-identical to before.
  */
 export function renderBargainingShiftSection(input: {
   active: boolean;
   userName: string;
   canAskUser: boolean;
   consecutiveNonConvergent: number;
+  stance?: NegotiatorStance;
 }): string {
   if (!input.active) return "";
+  if (input.stance && stanceResolvesDeadlockByStalemate(input.stance)) {
+    return STALEMATE_SHIFT_SECTION
+      .replace("{consecutive}", String(input.consecutiveNonConvergent))
+      .replace(/{userName}/g, input.userName);
+  }
   return BARGAINING_SHIFT_SECTION
     .replace("{consecutive}", String(input.consecutiveNonConvergent))
     .replace("{askUserEscalation}", input.canAskUser ? BARGAINING_ASK_USER_ESCALATION : "")

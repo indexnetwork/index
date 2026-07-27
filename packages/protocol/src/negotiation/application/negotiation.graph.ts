@@ -694,23 +694,19 @@ export class NegotiationGraphFactory {
 
         traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
 
-        // First turn must open the negotiation (unless continuing a prior
-        // conversation): v1 → "propose"; v2 initiator → "outreach". A v2 turn-0
-        // speaker holding the counterparty seat (tie-break inheritance) is left
-        // unforced — it is responding, not opening.
-        if (state.turnCount === 0 && !state.isContinuation) {
-          const openingAction = version === 'v2' ? 'outreach' : 'propose';
-          if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction) {
-            turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
-            turn.action = openingAction;
-          }
-        }
-
-        // IND-564: block a `withdraw` that comes before the initiator has opened
-        // (no in-task `outreach`) — this would retract a message never made and
-        // drop a spurious message into the shared thread. Exact ask_user resumes
-        // are exempt: the successor is the SAME logical negotiation resumed after
-        // the client answered, so post-consultation withdraw is legitimate.
+        // IND-564 / IND-611: the opening-withdraw guard runs BEFORE the turn-0
+        // opening force below. Order matters and used to be inverted: the force
+        // rewrote a turn-0 `withdraw` into `outreach` first, which (a) made this
+        // guard dead code for a v2 initiator on turn 0 and (b) sent an outreach
+        // whose surviving `reasoning` argued against the match to the
+        // counterparty. An honest turn-0 refusal is now allowed to stand and
+        // flows into the existing quiet `screened_out` path — no message is
+        // persisted, so the original guard's intent (never retract a message
+        // that was never made) is preserved rather than weakened.
+        //
+        // Exact ask_user resumes are exempt: the successor is the SAME logical
+        // negotiation resumed after the client answered, so post-consultation
+        // withdraw is legitimate.
         if (turn.action === 'withdraw' && !state.outreachOpened && !state.continuationExecution) {
           turnLog.info('negotiation_opening_withdraw_screened_out', {
             taskId: state.taskId,
@@ -721,6 +717,22 @@ export class NegotiationGraphFactory {
           });
           traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "screened_out: opening withdraw" });
           return { lastTurn: turn, firstTurnScreenedOut: true };
+        }
+
+        // First turn must open the negotiation (unless continuing a prior
+        // conversation): v1 → "propose"; v2 initiator → "outreach". A v2 turn-0
+        // speaker holding the counterparty seat (tie-break inheritance) is left
+        // unforced — it is responding, not opening.
+        //
+        // A legitimate turn-0 refusal never reaches here: the opening-withdraw
+        // guard above already returned. What remains are genuinely malformed
+        // openings (a turn-0 `counter`/`question`), which are still coerced.
+        if (state.turnCount === 0 && !state.isContinuation) {
+          const openingAction = version === 'v2' ? 'outreach' : 'propose';
+          if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction) {
+            turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
+            turn.action = openingAction;
+          }
         }
 
         // IND-508 deterministic admission is evaluated only after the opening

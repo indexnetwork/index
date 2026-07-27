@@ -115,6 +115,7 @@ const envSchema = z.object({
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
+  NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
   NEGOTIATION_CONSULTATION_POLICY_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,
