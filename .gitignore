@@ -60,6 +60,7 @@ packages/protocol/eval/premise/runs/
 packages/protocol/eval/profile/runs/
 packages/protocol/eval/opportunity/runs/
 packages/protocol/eval/canary/runs/
+packages/protocol/eval/discovery-retrieval/runs/
 
 # superpowers brainstorm mockups
 .superpowers/
