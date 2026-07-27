@@ -7,6 +7,7 @@ import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.g
 import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
 import { mintConnectLink, type ConnectLinkKind } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
@@ -349,6 +350,81 @@ export class OpportunityController {
     }
 
     return Response.json(result);
+  }
+
+  /**
+   * POST /opportunities/:id/owner-approvals — issue a single-use owner-approval
+   * proof for a pending MCP-agent interaction challenge (IND-593).
+   *
+   * The agent relays the `interactionId` challenge from its
+   * `owner_approval_required` denial; the authenticated owner session explicitly
+   * approves that exact interaction here. The proof binding (opportunity,
+   * action, owner, agent, interaction) comes entirely from the server-side
+   * challenge store — caller-supplied binding fields are never accepted.
+   * Session-auth only: an API-key/agent caller must never self-issue owner
+   * authorization.
+   */
+  @Post('/:id/owner-approvals')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async issueOwnerApproval(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    if (!isSessionAuthenticated(req)) {
+      return Response.json({ error: 'Owner approval requires an authenticated owner session' }, { status: 403 });
+    }
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    let body: unknown;
+    try {
+      const rawBody = await req.text();
+      body = rawBody.trim() ? JSON.parse(rawBody) : {};
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    const interactionId = typeof body.interactionId === 'string' ? body.interactionId.trim() : '';
+    if (!interactionId) {
+      return Response.json({ error: 'interactionId is required' }, { status: 400 });
+    }
+
+    const issuance = await getOpportunityOwnerApprovalAuthority().issueProofForInteraction({
+      interactionId,
+      ownerId: user.id,
+      // Server-resolved route opportunity — the authority answers a mismatch
+      // opaquely BEFORE the one-shot issuance flag, so a wrong-route request
+      // can never mint a proof nor burn the challenge's single issuance.
+      expectedOpportunityId: resolved.id,
+    });
+    if (issuance.kind === 'denied') {
+      if (issuance.reason === 'wrong_owner') {
+        return Response.json({ error: 'Only the challenge owner may approve this interaction' }, { status: 403 });
+      }
+      if (issuance.reason === 'stale') {
+        return Response.json({ error: 'Approval interaction has expired — ask the agent to retry' }, { status: 410 });
+      }
+      if (issuance.reason === 'already_issued') {
+        return Response.json({ error: 'Approval proof was already issued for this interaction' }, { status: 409 });
+      }
+      if (issuance.reason === 'unavailable') {
+        return Response.json({ error: 'Approval service is temporarily unavailable' }, { status: 503 });
+      }
+      return Response.json({ error: 'Unknown approval interaction' }, { status: 404 });
+    }
+    return Response.json({
+      proof: issuance.proof,
+      expiresAt: issuance.expiresAt,
+      approval: {
+        interactionId,
+        opportunityId: issuance.binding.opportunityId,
+        action: issuance.binding.action,
+        agentId: issuance.binding.agentId,
+      },
+    });
   }
 
   /**

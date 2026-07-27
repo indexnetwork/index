@@ -98,15 +98,22 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `opportunity/opportunity.tools.ts` | `discover_opportunities`, `get_discovery_run`, `cancel_discovery_run`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
-| `contact/contact.tools.ts` | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
-| `integration/integration.tools.ts` | `import_gmail_contacts` |
-| `agent/agent.tools.ts` | `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
+| `contact/contact.tools.ts`³ | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
+| `integration/integration.tools.ts`³ | `import_gmail_contacts` |
+| `agent/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `negotiation/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
 | `questioner/questioner.tools.ts` | `read_pending_questions` |
-| `shared/agent/utility.tools.ts` | `scrape_url`, `read_docs` |
+| `shared/agent/utility.tools.ts` | `scrape_url`³, `read_docs` |
 
 ¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
 ² Negotiation tools are only registered when an `agentDispatcher` is provided.
+³ Chat/REST-only: the contact and Gmail-import tools and `scrape_url` are omitted
+  from the MCP registry entirely (IND-596/597), as are the deprecated
+  `*_user_profile`/`*_profile_run` aliases (IND-598) — none of these are MCP
+  tools. On the MCP surface, agent administration follows the IND-599 split:
+  registered agents get `read_own_agent` only; session humans get the owned
+  admin tools but never `read_own_agent`; enrollment-capable keys are
+  `register_agent`-only; unregistered keys fail closed.
 
 ## Core Concepts
 

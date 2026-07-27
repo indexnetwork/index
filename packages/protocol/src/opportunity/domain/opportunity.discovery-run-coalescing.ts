@@ -1,6 +1,14 @@
 type DiscoveryRunScope = {
   scopeType?: string;
   scopeId?: string;
+  /**
+   * The calling principal. `null`/absent is the session-human (or personal
+   * API-key) principal; a non-empty value is the exact agent id. Coalescing is
+   * partitioned by this so one principal can never be attached to, or handed,
+   * another principal's in-flight run — even when the normalized request and
+   * scope are otherwise identical (IND-592).
+   */
+  agentId?: string | null;
 };
 
 type DiscoveryCoalescingRequest = {
@@ -62,6 +70,9 @@ function discoveryRunSignature(
     scope: {
       scopeType: id(scope.scopeType),
       scopeId: id(scope.scopeId),
+      // Principal partition: agent-initiated runs never coalesce with the
+      // owner's (or another agent's) runs.
+      agentId: id(scope.agentId ?? undefined),
     },
   });
 }

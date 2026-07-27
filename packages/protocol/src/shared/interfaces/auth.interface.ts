@@ -1,4 +1,4 @@
-import type { McpAuthInput } from '../schemas/mcp-auth.schema.js';
+import type { McpAuthInput, McpResolvedIdentity } from '../schemas/mcp-auth.schema.js';
 
 /**
  * Resolves the authenticated MCP identity from an auth input DTO.
@@ -30,13 +30,7 @@ export interface McpAuthResolver {
    *
    * @throws Error if authentication fails (no token, invalid token, etc.)
    */
-  resolveIdentity(input: McpAuthInput): Promise<{
-    userId: string;
-    agentId?: string;
-    isSessionAuth?: boolean;
-    networkScopeId?: string | null;
-    clientSurface?: 'telegram' | 'web';
-  }>;
+  resolveIdentity(input: McpAuthInput): Promise<McpResolvedIdentity>;
 
   /**
    * Deprecated HTTP Request bridge retained for compatibility with older

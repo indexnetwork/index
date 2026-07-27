@@ -142,17 +142,16 @@ IF specific ("contribute to an open-source LLM project in Python"):
 
 Specificity test: Does it contain a concrete domain, action, or scope? "Find a job" = vague. "Senior UX role at a climate tech startup in Berlin" = specific.
 
-## Pattern 3: URL in message → scrape before intent
+## Pattern 3: URL in message → intent
 
 When the user pastes a URL alongside an intent request:
 
 ```
-1. scrape_url(url, objective="Extract key details for an intent")
-2. Synthesize a conceptual description from scraped content
-3. create_intent(description=synthesized_summary)
+1. Synthesize a conceptual description from the URL and the context the user provided
+2. create_intent(description=synthesized_summary)
 ```
 
-Exception: for profile creation, pass URLs directly to `create_user_context` — it handles scraping internally.
+Exception: for profile creation, pass URLs directly to `create_user_context` — it enriches from social links internally.
 
 ## Pattern 4: Update or delete an intent
 
@@ -189,13 +188,7 @@ When the user asks "who should I introduce to @Person" or "find connections for 
 
 Do NOT use Pattern 5 here. Do NOT ask for a second person. Do NOT suggest creating a signal — the search reflects the other person's needs, not the user's.
 
-## Pattern 6: Contacts
-
-- **Import many**: `import_contacts(contacts=[{name, email}, ...])` — for CSV or bulk input; use `import_gmail_contacts` for Gmail
-- **Add one**: `add_contact(email=..., name=...)` — creates or links the person, then adds them as a contact
-- **Remove one**: first `list_contacts` or `search_contacts(query=name)` to find the userId, then `remove_contact(contactUserId=...)`
-
-## Pattern 7: Community / index management
+## Pattern 6: Community / index management
 
 ```
 # Explore a community

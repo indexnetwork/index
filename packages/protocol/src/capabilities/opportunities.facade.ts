@@ -79,6 +79,21 @@ export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWith
 // ── Persistence ───────────────────────────────────────────────────────────────
 export { persistOpportunities } from "../opportunity/application/opportunity.persist.js";
 
+// ── Owner-approval boundary (IND-593) ─────────────────────────────────
+export { opportunityOwnerActionForStatus } from "../opportunity/application/opportunity.owner-approval.js";
+export { bindOwnerApprovalProvenance } from "../opportunity/application/opportunity.owner-provenance.js";
+export type {
+  OpportunityOwnerAction,
+  OpportunityOwnerApprovalAttestation,
+  OpportunityOwnerApprovalAuthority,
+  OpportunityOwnerApprovalBinding,
+  OpportunityOwnerApprovalChallenge,
+  OpportunityOwnerApprovalDenialReason,
+  OpportunityOwnerApprovalVerdict,
+  OpportunityOwnerInteractionProvenance,
+  OpportunityOwnerInteractionSurface,
+} from "../opportunity/application/opportunity.owner-approval.js";
+
 // ── Presentation utilities ────────────────────────────────────────────────────
 export { presentOpportunity, stripUuids, truncateAtBoundary } from "../opportunity/domain/opportunity.presentation.js";
 export type { UserInfo } from "../opportunity/domain/opportunity.presentation.js";

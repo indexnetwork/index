@@ -27,10 +27,10 @@ const SYSTEM_AGENT_IDS = {
 type TabValue = "overview" | "api-keys" | "permissions";
 
 const PERMISSION_LABELS: Record<string, string> = {
-  "manage:profile": "Profile",
+  "manage:identity": "Identity",
+  "manage:premises": "Premises",
   "manage:intents": "Signals",
   "manage:networks": "Networks",
-  "manage:contacts": "Contacts",
   "manage:opportunities": "Opportunities",
   "manage:negotiations": "Negotiations",
 };

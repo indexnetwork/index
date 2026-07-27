@@ -22,13 +22,20 @@ import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 const logger = protocolLogger('ChatTools:Agent');
 
 const AGENT_ACTIONS = [
-  'manage:profile',
+  'manage:identity',
+  'manage:premises',
   'manage:intents',
   'manage:networks',
-  'manage:contacts',
   'manage:opportunities',
   'manage:negotiations',
 ] as const;
+
+/**
+ * Canonical permission-action enum for the public tool INPUT schemas. Retired
+ * `manage:profile` / `manage:contacts` strings are rejected at the schema seam
+ * (defense-in-depth: the handler still re-validates via {@link isValidAction}).
+ */
+const AgentPermissionActionSchema = z.enum(AGENT_ACTIONS);
 
 function invalidActionMessage(action: string) {
   return `Invalid action: ${action}. Valid actions: ${AGENT_ACTIONS.join(', ')}`;
@@ -57,7 +64,11 @@ function ensureAgentScopedAccess(context: { agentId?: string }, requestedAgentId
 function sanitizeAgentForOutput<T extends { transports?: Array<{ channel: string; config: Record<string, unknown> }> }>(agent: T): T {
   return {
     ...agent,
-    transports: agent.transports,
+    // Transport config carries private connection material (endpoint secrets,
+    // auth headers/tokens). It is never projected to ANY MCP caller — including
+    // the agent reading its own record via read_own_agent (IND-599). Channel,
+    // priority, and health metadata remain visible; config is fully redacted.
+    transports: agent.transports?.map((transport) => ({ ...transport, config: {} })),
   };
 }
 
@@ -84,7 +95,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
     querySchema: z.object({
       name: z.string().min(1).describe('Display name for the agent.'),
       description: z.string().optional().describe('What the agent does.'),
-      permissions: z.array(z.string()).optional().describe('Optional initial permission actions to grant.'),
+      permissions: z.array(AgentPermissionActionSchema).optional().describe('Optional initial permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
     }),
     handler: async ({ context, query }) => {
       if (context.agentId) {
@@ -141,6 +152,36 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
       } catch (err) {
         logger.error('Failed to register agent', { err });
         return error('Failed to register agent. Please try again.');
+      }
+    },
+  });
+
+  const readOwnAgent = defineTool({
+    name: 'read_own_agent',
+    description:
+      "Read the calling agent's own registration record \u2014 its identity, " +
+      'transports, and granted permissions. Returns only the authenticated ' +
+      'agent\u2019s own record; no other agent can be named or targeted. Use this ' +
+      'when an agent needs to inspect its own configuration.',
+    querySchema: z.object({}),
+    handler: async ({ context }) => {
+      // Defense-in-depth: the capability policy only admits registered active
+      // agent principals here, but never trust the caller — require an agent
+      // context and resolve strictly the caller's OWN record (no target input).
+      if (!context.agentId) {
+        return error('read_own_agent is only available to a registered agent principal.');
+      }
+
+      try {
+        const agent = await agentDb.getAgentWithRelations(context.agentId);
+        if (!agent || agent.ownerId !== context.userId) {
+          return error('Agent not found');
+        }
+
+        return success({ agent: sanitizeAgentForOutput(agent) });
+      } catch (err) {
+        logger.error('Failed to read own agent', { err });
+        return error('Failed to read agent. Please try again.');
       }
     },
   });
@@ -260,10 +301,10 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   const grantAgentPermission = defineTool({
     name: 'grant_agent_permission',
     description: 'Grant one or more permissions to an agent for the current user. ' +
-      'Valid actions: manage:profile, manage:intents, manage:networks, manage:contacts, manage:opportunities, manage:negotiations.',
+      'Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
     querySchema: z.object({
       agent_id: z.string().min(1).describe('The agent ID to grant permissions to.'),
-      actions: z.array(z.string()).min(1).describe('Permission actions to grant. Valid values: manage:profile, manage:intents, manage:networks, manage:contacts, manage:opportunities, manage:negotiations.'),
+      actions: z.array(AgentPermissionActionSchema).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
       scope: z.enum(['global', 'node', 'network']).optional().describe('Optional permission scope.'),
       scope_id: z.string().optional().describe('Scope target ID for node/network scopes.'),
     }),
@@ -344,6 +385,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   });
 
   return [
+    readOwnAgent,
     registerAgent,
     listAgents,
     updateAgent,

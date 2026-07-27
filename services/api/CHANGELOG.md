@@ -10,12 +10,66 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Added
+- Wire the MCP authorization-observability seam at the host boundary (IND-581;
+  protocol 7.8.0, API 0.64.0). The composition root now injects a concrete
+  `McpAuthorizationObserver` into `createMcpServer` that records each capability
+  denial as a structured, secret-free authorization audit log (`info` level, not
+  debug instrumentation) via the `mcp` server logger — caller profile, tool,
+  reason/reach, required permissions, and opaque principal ids only, never
+  credentials or payloads. New DB-free `tests/mcp.permission-refresh.spec.ts`
+  drives the real resolver + module metadata cache to prove: permissions and
+  agent active/inactive state are freshly resolved across reconnects (granted →
+  revoked → deactivated), each transition denies the next schema-valid
+  list/call before any chat-DB read or scoped-deps creation; two principals
+  sharing the module-level metadata cache never leak each other's inventory or
+  capability results; emitted denial telemetry contains only safe
+  caller-profile/reason fields (no token/secret/argument payload); and a
+  throwing observer never changes the fail-closed decision.
+
+- Prove the IND-599 agent-administration split end-to-end at the MCP transport
+  (IND-599; protocol 7.7.0, API 0.63.0). New DB-free `tests/mcp.spec.ts`
+  evidence: registered agents list/call only `read_own_agent` (empty input
+  schema, forged-target argument never queried, own sanitized record only)
+  while every human admin tool is capability-denied before any context-DB read
+  or scoped-deps creation; session humans retain the full owned-agent admin
+  surface but never `read_own_agent`; enrollment-capable keys advertise exactly
+  `['register_agent']` across the whole registry and are denied schema-valid
+  representative tools of every access class (authenticated/permission/
+  informational/delivery_only/human_only) with zero resource work; plain
+  unregistered keys fail closed. Owned-versus-foreign handler matrix proves
+  each target-bearing mutation (`update`/`delete`/`grant`/`revoke`) persists
+  exactly once for an owned target and never for a foreign one (opaque "not
+  found"), `list_agents` queries only the caller's own userId, and transport
+  `config` secrets never leak from any agent projection. No API runtime source
+  change; version moves with the protocol floor (7.7.0).
+
+- Enforce explicit owner-issued approval for agent-driven opportunity `send`/`accept`/
+  `reject` transitions and add the session-only issuance route
+  `POST /api/opportunities/:id/owner-approvals` (IND-593; protocol 7.6.0, API 0.62.0).
+  The host implements the protocol owner-approval port with HMAC-signed, atomically
+  single-use proofs whose challenge state lives in a shared injected async store:
+  Redis-backed via atomic Lua scripts in production with opaque hashed keys and
+  TTL/retention cleanup, fail-closed (`unavailable`, HTTP 503) when Redis is
+  unconfigured/unreachable or the signing secret is missing — there is deliberately
+  no process-local fallback, preserving the cross-replica single-use guarantee
+  (the in-memory adapter is an injected test double only). Issuance is one-shot
+  per challenge (409 on repeat), owner-session-only (API-key/agent callers 403),
+  bound entirely server-side (caller body binding/provenance fields are ignored),
+  and answers unknown, consumed, or route-mismatched interactions opaquely (404,
+  no existence oracle) without minting a proof or consuming the one-shot issuance;
+  expired challenges return 410. Direct authenticated owner sessions (REST tool
+  API and MCP session auth) traverse the same boundary via trusted server-derived
+  provenance attestation; chat/CLI/mediated callers fail closed. Optional
+  `OPPORTUNITY_OWNER_APPROVAL_SECRET` rotates the proof secret (falls back to
+  `BETTER_AUTH_SECRET`). No DB schema, migration, backfill, data action, or
+  deployment configuration change ships with this entry.
+- Rename the aggregate agent-activity tool to the canonical `read_activity_summary` on every surface and retire `report_agent_activity` with no alias (IND-605; protocol 7.2.0). MCP authorization admits any activity-domain permission and the typed resolved caller context drives one centralized per-domain projection; signal IDs/titles require `manage:intents`; question counts are meta-network yet inherit the permission of each question's affected domain (`getAgentActivitySummary` now groups pending/answered counts by question mode; conversational and unrecognized modes are human-owner-only); and an optional `networkId` narrows a network agent's opportunity/negotiation aggregates to its bound community inside the adapter queries. Counterparty identities, chats, turns, and transcripts are never returned. The Hermes plugin forwards the new tool as `index_read_activity_summary` (plugin 0.12.0).
 - Add post-discovery no-opportunity recovery refinement for exact recipient-owned active intents (IND-506). Both authoritative completion paths enqueue a privacy-minimal job on the existing Questioner worker; a focused service suppresses recovery when canonical exact-trigger actionability exists, reduces safely validated rejected negotiations to a bounded aggregate count, validates every user-visible generated string, and persists at most one ordinary intent question per material fingerprint behind a shared recovery/opportunity-create/opportunity-reactivation advisory lock plus migration `0105`'s all-status expression unique index. Exact-trigger reactivation also serializes with task creation on the negotiation-attempt lock, re-reads the opportunity row, and applies the canonical fresh-task predicate immediately before mutation. Answer and material-edit paths use one deadlock-safe lock order, stale recovery answers are rejected again by owner, lifecycle, and fingerprint at the final locked intent write, REST strips every recovery internal, and pool questions retain independent budget/novelty behavior.
 - Add exact negotiation-question admission/read/settlement routing (IND-507): API/DB validation proves the authenticated recipient's exact owned ACTIVE fingerprint-equal signal, assignment, live non-personal membership, opportunity actor binding, network, and purpose-compatible task state. Generation/answer/dismiss/timeout share an advisory → complete stable cohort → provenance lock order. A deterministic settlement outbox in exact task metadata plus exact-task run-existing jobs recovers enqueue failure, worker crash, zero generated/persisted rows, and timeout redelivery without latest-task lookup or duplicate continuation. Scoped/unscoped reads and counts reject stale/legacy/unsafe pending rows; exact answered history survives its own continuation transition. MCP/chat/direct answering now reaches the canonical validated boundary with principal/scope clamps. Migration `0106_add_negotiation_question_provenance_index` is the all-status negotiation idempotency constraint after IND-506's recovery migration.
 - Add the flag-gated persisted `onboarding` chat persona boundary for `POST /chat/onboarding/stream` (IND-450): incomplete session-authenticated users are authoritatively routed to the restricted factory, follow-ups inherit stored persona, spoof/mismatch/unknown/completed access fails closed, and flag-off preserves legacy orchestrator behavior. Profile approval now stamps a durable phase marker without dropping privacy JSON, and `complete_onboarding({ intentId })` validates that the exact active owned first signal was created no earlier than a valid profile-confirmation timestamp before recording completion.
 - Add canonical owner-and-conversation-scoped `GET /api/agent/actions/proposals/:proposalId` hydration for reporter action cards; confirmation uses the same scope, a five-minute execution lease reclaims interrupted attempts, per-action runtime failures are consumed as safe results, and display responses exclude snapshots while including consumed results (IND-493).
 - Add dark-gated `POST /api/agent/actions/confirm` owner confirmation for reporter cleanup-action proposals (IND-490 PR1). Proposals are persisted with owner/snapshot state, confirmations are session-only, sequential, replay-safe, and use existing premise/intent lifecycle paths; `WEB_AGENT_ACTIONS_ENABLED` remains off everywhere.
-- Add the dark-gated `reporter` persona and owner-scoped `getAgentActivitySummary` adapter read for the PR1 Agent reporting surface (IND-476). The new `report_agent_activity` tool exposes only reproducible counts, never counterparty identity or transcripts; `WEB_AGENT_SURFACE_ENABLED` is registered and surfaced as `features.agentSurface` without changing Railway configuration.
+- Add the dark-gated `reporter` persona and owner-scoped `getAgentActivitySummary` adapter read for the PR1 Agent reporting surface (IND-476). The new `read_activity_summary` tool exposes only reproducible counts, never counterparty identity or transcripts; `WEB_AGENT_SURFACE_ENABLED` is registered and surfaced as `features.agentSurface` without changing Railway configuration.
 - Add per-viewer conversation read cursors, server-side unread counts, and `POST /conversations/:id/read` (IND-475; migration `0098`).
 - Record viewer-safe match provenance on start-chat DMs and expose intent-scoped `via` summaries for chat signal provenance (IND-475).
 - Expose a read-side `warming` state for fresh owned intents until a succeeded discovery run is recorded (IND-473). The state uses the 24-hour creation window and discovery-run JSON intent linkage without schema or pipeline changes.

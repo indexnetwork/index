@@ -29,7 +29,7 @@ describe('session-only.guard', () => {
     });
     await agentDatabaseAdapter.grantPermission({
       agentId: agent.id, userId, scope: 'global',
-      actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
+      actions: ['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities'],
     });
     validKey = (await agentTokenAdapter.create(userId, { name: 'session-only', agentId: agent.id })).key;
   });

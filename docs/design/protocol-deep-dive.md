@@ -628,7 +628,7 @@ Every registered tool goes through the same lifecycle on every call:
 1. Extract the HTTP request from `ServerContext.http.req`.
 2. Resolve `{ userId, agentId }` via the auth resolver.
 3. Build the `ResolvedToolContext`, set `isMcp = true` and attach `agentId`.
-4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`, `scrape_url`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first.
+4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first. (`scrape_url`, contact/Gmail tools, and the deprecated profile/profile-run aliases are omitted from the MCP surface entirely; they remain on the direct HTTP Tool API and chat.)
 5. Build per-request scoped databases via `scopedDepsFactory` and rebuild the tool registry with them.
 6. Validate arguments against the tool's original Zod schema.
 7. Invoke the raw tool handler through `ToolInvocationRuntime`, which attaches a shared `AbortSignal`, wall-clock deadline, trace/progress bridge, and output-size cap.

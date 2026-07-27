@@ -29,7 +29,7 @@ export const REPORTER_TOOL_NAMES = [
   "read_network_memberships",
   "read_pending_questions",
   "list_opportunities",
-  "report_agent_activity",
+  "read_activity_summary",
 ] as const;
 
 const REPORTER_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(REPORTER_TOOL_NAMES);
