@@ -89,7 +89,7 @@ describePaid("EnrichmentController Integration", () => {
     await controller.sync(mockRequest, mockUser);
 
     // Second run should be much faster as it skips generation (if logic holds)
-    // Though without detailed logs inspection, we mainly verify it doesn't crash 
+    // Though without detailed logs inspection, we mainly verify it doesn't crash
     // and profile still exists.
 
     const profile = await profileAdapter.getProfileRow(testUserId);

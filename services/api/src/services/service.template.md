@@ -72,7 +72,7 @@ Services sit between controllers and infrastructure, with adapters providing pro
 
 1. **Database Adapters** (for data access) - **REQUIRED for all services**
    - `FileDatabaseAdapter` - File operations
-   - `UserDatabaseAdapter` - User operations  
+   - `UserDatabaseAdapter` - User operations
    - `ChatDatabaseAdapter` - Chat session operations
    - Located in `src/adapters/{domain}.adapter.ts`
 
@@ -140,10 +140,10 @@ const logger = log.service.from("MyService");
 
 /**
  * [ServiceName]
- * 
+ *
  * [Brief description of what this service does]
  * Uses MyDatabaseAdapter for all database operations.
- * 
+ *
  * RESPONSIBILITIES:
  * - [Responsibility 1]
  * - [Responsibility 2]
@@ -153,13 +153,13 @@ export class MyService {
 
   /**
    * [Method Description]
-   * 
+   *
    * @param id - [Param description]
    * @returns [Return description]
    */
   async getById(id: string) {
     logger.info('Getting item', { id });
-    
+
     // Use adapter method - NO direct database access
     return this.db.getById(id);
   }
@@ -277,7 +277,7 @@ export class EnrichmentService {
 ### 4. Code Style
 - **JSDoc**: Every public method must have a JSDoc comment explaining "Why" and "What".
 - **Types**: Use inferred types from Drizzle where possible (\`typeof myTable.$inferSelect\`), or explicit interfaces if passing complex DTOs.
-- **Return Values**: 
+- **Return Values**:
   - For "Get" methods: return \`null\` if not found (don't throw).
   - For "Action" methods: throw detailed errors if the action fails (to catch in the controller/worker).
 
@@ -300,7 +300,7 @@ export class EnrichmentService {
 - **Usage**:
   \`\`\`typescript
   import { myQueue } from '../queues/my.queue';
-  
+
   // Inside service method
   await myQueue.add('job_name', { userId: '123' }, { priority: 1 });
   \`\`\`

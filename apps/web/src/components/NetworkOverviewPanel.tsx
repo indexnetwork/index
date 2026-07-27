@@ -43,7 +43,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       onLeaveRequestHandled?.();
     }
   }, [onLeaveRequest, onLeaveRequestHandled]);
-  
+
   const [intents, setIntents] = useState<{
     id: string;
     payload: string;

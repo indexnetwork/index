@@ -36,7 +36,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const addNotification = useCallback((notification: Omit<Notification, 'id'>) => {
     const id = Math.random().toString(36).substring(2, 11);
     const newNotification = { ...notification, id };
-    
+
     setNotifications(prev => {
       // Limit to maximum 3 notifications
       const updatedNotifications = [...prev, newNotification];
@@ -84,9 +84,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       info
     }}>
       {children}
-      <NotificationToasts 
-        notifications={notifications} 
-        onRemove={removeNotification} 
+      <NotificationToasts
+        notifications={notifications}
+        onRemove={removeNotification}
       />
     </NotificationContext.Provider>
   );
@@ -101,11 +101,11 @@ export function useNotifications() {
 }
 
 // Toast component that renders all notifications
-function NotificationToasts({ 
-  notifications, 
-  onRemove 
-}: { 
-  notifications: Notification[]; 
+function NotificationToasts({
+  notifications,
+  onRemove
+}: {
+  notifications: Notification[];
   onRemove: (id: string) => void;
 }) {
   const getIcon = (type: NotificationType) => {

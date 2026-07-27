@@ -63,13 +63,13 @@ import { log } from '../../lib/log';
  */
 async function processMyJob(job: Job<MyJobPayload>) {
   const { userId, action } = job.data;
-  
+
   log.info('Processing job', { jobId: job.id, userId });
 
   try {
     // Perform task logic here
     await performAction(userId, action);
-    
+
     log.info('Job completed', { jobId: job.id });
     return { success: true };
   } catch (error) {
@@ -81,9 +81,9 @@ async function processMyJob(job: Job<MyJobPayload>) {
 // Create and export the worker instance
 // Note: Workers are usually initialized in the main server entry point
 export const myWorker = QueueFactory.createWorker<MyJobPayload>(
-  MY_QUEUE_NAME, 
-  processMyJob, 
-  { 
+  MY_QUEUE_NAME,
+  processMyJob,
+  {
     concurrency: 5 // Optional: Override default concurrency (1)
   }
 );
