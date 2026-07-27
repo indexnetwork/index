@@ -2158,8 +2158,7 @@ export class QuestionerAdapter {
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
         sql`${questions.detection}->>'voidedReason' IS NULL`,
       ))
-      .orderBy(desc(questions.createdAt))
-      .limit(24);
+      .orderBy(desc(questions.createdAt));
     return rows.flatMap((row) => row.discriminator ? [row.discriminator] : []);
   }
 
