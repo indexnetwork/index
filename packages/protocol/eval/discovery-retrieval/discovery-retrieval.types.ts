@@ -64,9 +64,20 @@ export interface RunResult extends ScoredRunProvenance {
   detail: ModeRunDetail;
 }
 
+/** Aggregated evidence for one retrieval representation/mode. */
+export interface ModeResult {
+  mode: RetrievalMode;
+  runs: number;
+  passes: number;
+  passRate: number;
+  flaky: boolean;
+  runResults: RunResult[];
+}
+
 export interface CaseResult extends CaseResultLike {
   rule: Rule;
-  runResults: RunResult[];
+  /** Per-mode results remain separate; aggregate case fields cover all modes. */
+  modeResults: ModeResult[];
 }
 
 export type RuleResult = SharedRuleResult;
