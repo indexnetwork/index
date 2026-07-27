@@ -1,6 +1,6 @@
 {
-  "id": "b676e17b-0bc7-49f4-b6ec-ee3afef316a2",
-  "prevId": "c0ed7b58-e5cf-4fd4-9290-ea98aa6c7ebd",
+  "id": "68612388-443a-41d6-9c8c-ff28519b1d82",
+  "prevId": "b676e17b-0bc7-49f4-b6ec-ee3afef316a2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2579,7 +2579,16 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "intent_verification_backfill_attempts_partition_check": {
+          "name": "intent_verification_backfill_attempts_partition_check",
+          "value": "\"intent_verification_backfill_attempts\".\"partition\" IN ('proposal_confirm_default_only', 'proposal_confirm_partial_missing', 'legacy_discovery_missing_analysis', 'other_missing_analysis')"
+        },
+        "intent_verification_backfill_attempts_status_check": {
+          "name": "intent_verification_backfill_attempts_status_check",
+          "value": "\"intent_verification_backfill_attempts\".\"status\" IN ('updated', 'skipped', 'failed', 'unchanged_control')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.intent_verification_backfill_runs": {
@@ -2651,7 +2660,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "intent_verification_backfill_runs_status_check": {
+          "name": "intent_verification_backfill_runs_status_check",
+          "value": "\"intent_verification_backfill_runs\".\"status\" IN ('running', 'completed', 'failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.intents": {

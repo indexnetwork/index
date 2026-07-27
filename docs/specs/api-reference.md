@@ -2872,6 +2872,47 @@ When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped 
 
 ---
 
+### POST /api/opportunities/:id/owner-approvals
+
+Issue a single-use owner-approval proof for a pending MCP-agent interaction challenge (IND-593). Agents calling `update_opportunity` (send/accept/reject) over MCP without a proof receive an `owner_approval_required` denial carrying a fresh `interactionId` challenge; the owner explicitly approves that exact interaction here, and the returned proof is relayed to the agent for one retry.
+
+The proof binding (opportunity, action, owner principal, acting agent, interaction) comes entirely from the server-side challenge store — the request only names the challenge; caller-supplied binding fields are never accepted. Proofs are HMAC-signed, expire with the challenge (10 minutes), are minted at most once per challenge (atomic one-shot issuance), and are atomically single-use on consumption. Challenge state lives in a shared store (Redis-backed in production) keyed by opaque hashes; store or configuration failures fail closed.
+
+**Auth**: AuthGuard + authenticated owner session (session auth only — API-key/agent callers cannot self-issue owner authorization)
+
+**Path params**:
+- `id` — Opportunity ID (full UUID or short prefix; resolved server-side). Must equal the challenge's opportunity.
+
+**Request body**:
+```json
+{
+  "interactionId": "interaction challenge UUID from the agent's owner_approval_required denial"
+}
+```
+
+**Response**:
+```json
+{
+  "proof": "opaque single-use approval token",
+  "expiresAt": "ISO timestamp",
+  "approval": {
+    "interactionId": "string",
+    "opportunityId": "string",
+    "action": "send | accept | reject",
+    "agentId": "string"
+  }
+}
+```
+
+**Error responses**:
+- `403` — Not an authenticated owner session, or the session principal is not the challenge's owner
+- `404` — Unknown approval interaction, or the challenge belongs to a different opportunity (opaque — no existence oracle; a mismatched route never mints a proof and never consumes the challenge's one-shot issuance)
+- `409` — An approval proof was already issued for this interaction (issuance is one-shot)
+- `410` — Approval interaction has expired (the agent must retry to obtain a fresh challenge)
+- `503` — Approval service unavailable (store/configuration failure — fails closed)
+
+---
+
 ## Network Opportunity
 
 **Controller prefix**: `/networks` (separate controller registered alongside NetworkController)

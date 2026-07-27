@@ -573,7 +573,37 @@
       "source": "./shared/schemas/pending-question.schema.js"
     },
     {
+      "name": "McpAuthInputSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpApiKeyMetadataSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpResolvedIdentitySchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
       "name": "McpAuthInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpApiKeyMetadata",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/schemas/mcp-auth.schema.js"
+    },
+    {
+      "name": "McpResolvedIdentity",
       "kind": "type",
       "stability": "stable",
       "source": "./shared/schemas/mcp-auth.schema.js"
@@ -892,6 +922,72 @@
     },
     {
       "name": "StampNewbornOpportunitiesFn",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "opportunityOwnerActionForStatus",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "bindOwnerApprovalProvenance",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerAction",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalAttestation",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalAuthority",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalBinding",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalChallenge",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalDenialReason",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerApprovalVerdict",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerInteractionProvenance",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "OpportunityOwnerInteractionSurface",
       "kind": "type",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1801,6 +1897,282 @@
       "kind": "type",
       "stability": "stable",
       "source": "./mcp/mcp.server.js"
+    },
+    {
+      "name": "MCP_AGENT_ADMIN_TOOLS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "CANONICAL_MCP_TOOL_ACCESS_RULES",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "MCP_INFORMATIONAL_TOOLS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "MCP_PERMISSION_ACTIONS",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityPolicy",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilitySubjectSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPermissionActionSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPolicyAgentSnapshotSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPrincipalProfileSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolPermissionRequirementSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolAccessRuleSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "buildMcpAuthorizationDenialEvent",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "defineMcpToolAccessRules",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "defineMcpToolPermissionMap",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "resolveMcpActivityCaller",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "resolveMcpCapabilitySubject",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "ActivityQuestionCountsSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ActivityQuestionDomainSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ActivitySummaryDomainSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ActivitySummaryResponseSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "McpActivityCallerSchema",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "QUESTION_MODE_TO_DOMAIN",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "READ_ACTIVITY_SUMMARY_TOOL_NAME",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "activitySummaryNetworkId",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "projectActivitySummary",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "resolveActivitySummaryDomains",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ActivityQuestionCounts",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ActivityQuestionDomain",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ActivitySummaryDomain",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "McpActivityCaller",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "ProjectedActivitySummary",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./shared/agent/activity-projection.js"
+    },
+    {
+      "name": "McpAuthorizationDenialEvent",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpAuthorizationObserver",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityDecision",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityDecisionReason",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilityPolicyOptions",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpCapabilitySubject",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPermissionAction",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPolicyAgentSnapshot",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpPrincipalProfile",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolPermissionMap",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolPermissionRequirement",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolAccessRule",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "McpToolAccessRuleMap",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
+    },
+    {
+      "name": "ResolveMcpCapabilitySubjectInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./mcp/mcp.authorization-policy.js"
     },
     {
       "name": "UserNegotiationContext",

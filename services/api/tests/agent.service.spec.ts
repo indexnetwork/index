@@ -195,10 +195,10 @@ describe('AgentService', () => {
     expect(grantedActions).not.toContain('manage:negotiations');
     expect(grantedActions).toEqual(
       expect.arrayContaining([
-        'manage:profile',
+        'manage:identity',
+        'manage:premises',
         'manage:intents',
         'manage:networks',
-        'manage:contacts',
         'manage:opportunities',
       ]),
     );
@@ -435,7 +435,7 @@ describe('AgentService', () => {
     expect(calls.hasPermission).toContainEqual({
       agentId: SYSTEM_AGENT_IDS.chatOrchestrator,
       userId: OWNER_ID,
-      action: 'manage:profile',
+      action: 'manage:identity',
       scope: { type: 'global' },
     });
     expect(calls.hasPermission).toContainEqual({
@@ -449,10 +449,10 @@ describe('AgentService', () => {
     );
     expect(orchestratorGrant).toBeDefined();
     expect(orchestratorGrant!.actions).toEqual([
-      'manage:profile',
+      'manage:identity',
+      'manage:premises',
       'manage:intents',
       'manage:networks',
-      'manage:contacts',
       'manage:opportunities',
     ]);
   });
@@ -463,7 +463,7 @@ describe('AgentService', () => {
         getAgent: async (agentId) => createAgentRow({ id: agentId, type: 'system' }),
         hasPermission: async (agentId, _userId, action) => {
           if (agentId === SYSTEM_AGENT_IDS.chatOrchestrator) {
-            return action === 'manage:profile';
+            return action === 'manage:identity';
           }
 
           return agentId === SYSTEM_AGENT_IDS.negotiator && action === 'manage:negotiations';
@@ -486,9 +486,9 @@ describe('AgentService', () => {
     );
     expect(orchestratorGrant).toBeDefined();
     expect(orchestratorGrant!.actions).toEqual([
+      'manage:premises',
       'manage:intents',
       'manage:networks',
-      'manage:contacts',
       'manage:opportunities',
     ]);
   });

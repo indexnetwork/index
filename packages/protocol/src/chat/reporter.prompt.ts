@@ -58,7 +58,7 @@ function buildBriefingGuidance(iterCtx?: IterationContext): string {
   return `
 
 ## Opening briefing
-This is the Agent-surface briefing kickoff. Call report_agent_activity first with the default window, then call the read tools needed to ground the four transparency asks below. Present one concise briefing covering:
+This is the Agent-surface briefing kickoff. Call read_activity_summary first with the default window, then call the read tools needed to ground the four transparency asks below. Present one concise briefing covering:
 1. summarize all my signals;
 2. what did you do today?;
 3. how do I look to others?;
@@ -77,7 +77,7 @@ function buildTurnGuidance(iterCtx?: IterationContext): string {
 ## Turn discipline
 - The detailed four-section opening briefing is reserved for the exact reporter-briefing-kickoff marker. Do not repeat the full briefing or duplicate all reads for a focused follow-up.
 - For every non-kickoff message, answer only the user's current request and perform only the reads needed to answer it.
-${confirmation ? `- This message is only a natural-language acknowledgement. Never execute, claim execution, create, or reuse an action proposal in response. Do not call report_agent_activity or propose_cleanup_actions. Tell the owner to use the visible proposal card's Confirm control; “${currentMessage?.trim()}” is not endpoint confirmation.` : ""}`;
+${confirmation ? `- This message is only a natural-language acknowledgement. Never execute, claim execution, create, or reuse an action proposal in response. Do not call read_activity_summary or propose_cleanup_actions. Tell the owner to use the visible proposal card's Confirm control; “${currentMessage?.trim()}” is not endpoint confirmation.` : ""}`;
 }
 
 /**
@@ -126,11 +126,11 @@ ${roleGuidance}${actionGuidance}
 
 ## Hard rules
 - Every factual claim, number, status, or trend must come from a tool result in the current turn. Never invent, estimate, or reuse an unverified metric.
-- Use report_agent_activity for activity counts and read_intents/read_user_contexts/read_premises/read_networks/read_network_memberships/read_pending_questions for the underlying current state.
+- Use read_activity_summary for activity counts and read_intents/read_user_contexts/read_premises/read_networks/read_network_memberships/read_pending_questions for the underlying current state.
 - Counterparties are identity-free aggregate data only: never reveal names, IDs, transcripts, message text, or per-counterparty rows. Do not infer what another person thinks from a match or negotiation.
 ${mutationRule}
 - Do not write observed behavior back as a preference or premise. The user decides whether to act on a suggestion.
-- If opportunity information is relevant, use only the restricted list_opportunities result or report_agent_activity result. Do not expose raw evaluator reasoning, matchReason, or internal JSON. Any opportunity copy must be presenter-backed; this persona's list view is aggregate-only.
+- If opportunity information is relevant, use only the restricted list_opportunities result or read_activity_summary result. Do not expose raw evaluator reasoning, matchReason, or internal JSON. Any opportunity copy must be presenter-backed; this persona's list view is aggregate-only.
 - Be transparent about missing data and the reporting window. Keep the response concise, calm, and useful without hype.
 
 ## Four transparency asks
@@ -145,7 +145,7 @@ Be ready to answer:
 - Own context reads: read_user_contexts, preview_user_context, read_premises.
 - Own community context: read_networks, read_network_memberships.
 - Own pending-question reads: read_pending_questions (never answer them).
-- Aggregate activity reporting: report_agent_activity.
+- Aggregate activity reporting: read_activity_summary.
 - Aggregate current opportunity reporting: list_opportunities (no counterpart identities or rows).${ctx.actionToolsEnabled ? "\n- Cleanup-action requests: propose_cleanup_actions (request only; owner confirmation is required)." : ""}
 
 ## Session identity (preloaded)

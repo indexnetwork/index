@@ -13,9 +13,275 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Added
+- Add canonical shared guidance source and unified MCP_INSTRUCTIONS/read_docs
+  (IND-602/603; 7.10.0): The single normative `CANONICAL_GUIDANCE_SUMMARY`
+  (1,555 chars, under the 4,500-char MCP context budget) covers Index Network
+  entity model (identity/context, premises, signals, communities/networks,
+  opportunities), negotiation semantics with the critical distinction
+  **"A2A acceptance is not owner approval"** (separate gates), H2A/A2A
+  workflows, and the boundary **"H2H (human-to-human) never exposed; escalation
+  to native surfaces (web, Telegram) is outside MCP scope."** Seven detailed
+  canonical topics (identity-context, premises, signals, communities-networks,
+  opportunities, negotiations, workflows) are published via read_docs on both
+  MCP and REST/chat surfaces. MCP surface read_docs serves canonical guidance
+  only; REST/chat retains legacy supplemental topics for backwards compatibility.
+  New internal shared constants (packages/protocol/src/shared/agent/canonical-guidance.ts):
+  `CANONICAL_GUIDANCE_SUMMARY`, `CANONICAL_GUIDANCE_TOPICS` (const array),
+  `CANONICAL_GUIDANCE_TOPICS_CONTENT` (record). Not public root protocol exports.
+  MCP_INSTRUCTIONS now delegates entity/lifecycle details to read_docs, dropping
+  verbose inline model. Published MCP guidance/read_docs contract now includes
+  canonical seven-topic structure and H2A/A2A/owner-approval semantics. No data,
+  migration, capability, permission, or runtime behavior changes.
+
+- Add a host-injected MCP authorization-observability seam (IND-581; 7.8.0):
+  `McpAuthorizationObserver`, the secret-free `McpAuthorizationDenialEvent`, and
+  the central `buildMcpAuthorizationDenialEvent` constructor, plus an optional
+  fifth `authorizationObserver` parameter on `createMcpServer`. Every
+  `tools/call` capability denial (preliminary and resolved stages) emits one
+  structured event carrying ONLY the caller profile, tool name, decision
+  reason/reach, required permissions, and opaque `userId`/`agentId`/
+  `networkScopeId` — never a token, API key, bearer credential, raw header, or
+  tool-argument payload. The seam is fail-closed: an observer that throws is
+  swallowed and never alters the denial. Denials remain freshly resolved per
+  reconnect/session because the static tool-metadata cache holds
+  principal-independent registration data only; the per-principal decision is
+  recomputed on every fresh server resolution.
+
+- Add the canonical `read_own_agent` MCP tool: a registered active agent's
+  self-read of its OWN sanitized registration record (IND-599; 7.7.0). The input
+  schema is empty — there is no target selector, so a caller can never name
+  another agent — and the handler resolves strictly the authenticated
+  `context.agentId` with an owner match, so a forged target argument is stripped
+  by the schema and never queried. The tool is classified `agent_admin` in the
+  canonical capability matrix and registered in the shared factory (`fast`
+  runtime class).
+
+### Changed
+- Pin the generic MCP conversation surface to H2A-only in the published
+  contract (IND-600; 7.9.0). This is a distinct public-contract release above
+  the integrated 7.8.0 floor (IND-581): the `list_conversations` /
+  `get_conversation` descriptions now state explicitly that they expose ONLY
+  the caller's H2A chats with the Index agent (orchestrator-persona sessions
+  with the system agent as a participant): human-to-human (H2H) DMs are NEVER
+  exposed through these tools — including via schema-valid forged `tools/call`
+  requests — and A2A negotiation conversations are reachable only through the
+  negotiation tools (`list_negotiations` / `get_negotiation` /
+  `respond_to_negotiation`), which retain their `manage:negotiations`
+  permission, exact-participation, and bound-network-scope checks. The public
+  `ChatSessionReader` port contract gains the same category rule: non-H2A
+  session IDs behave exactly like nonexistent ones. Runtime enforcement is
+  unchanged — the `human_only` capability classification still denies every
+  non-session principal before any context DB read, scoped-deps creation, or
+  chat-adapter work — so this is a published contract/description
+  clarification on public tools, hence the minor bump.
+- Split the `agent_admin` capability family by principal kind (IND-599; 7.7.0).
+  Registered agent principals (global/network/delivery) may now see and call
+  ONLY `read_own_agent` on the admin surface — `list_agents` is no longer
+  visible or callable by an agent (previously it was the sole agent-visible
+  admin tool), and every admin mutation remains denied (`agent_admin_denied`).
+  Session/onboarding humans retain the full owned-agent administration surface
+  (`register_agent`, `list_agents`, `update_agent`, `delete_agent`,
+  `grant_agent_permission`, `revoke_agent_permission`) but are denied the
+  agent-only `read_own_agent` with the new dedicated decision reason
+  `human_read_own_agent_denied`. Enrollment-capable unregistered keys remain
+  single-purpose `register_agent`-only across the entire registry, and plain
+  unregistered keys remain fail-closed. The `agent_admin` decision is made
+  BEFORE the session-human blanket allow, and denials fire before any context
+  DB read or scoped-deps creation. Domain, informational (`read_docs`),
+  permission/network-scope, and delivery capabilities for registered agents are
+  unchanged. Behavior tightening on published MCP tools plus a new public tool
+  name, hence the minor bump.
+- Redact private transport connection material from every agent record
+  projected by the participant-agent tools (IND-599; 7.7.0).
+  `sanitizeAgentForOutput` now empties each transport's `config` (endpoint
+  secrets, auth headers/tokens) while preserving the safe response shape
+  (id/channel/priority/active/failureCount and permissions), covering
+  `read_own_agent`, `register_agent`, `list_agents`, and `update_agent` outputs.
+- Require explicit owner authorization for every owner-gated `update_opportunity`
+  transition (send/accept/reject) at a new protocol-owned authoritative boundary
+  (IND-593; 7.6.0). The `OpportunityOwnerApprovalAuthority` port is injected by
+  the host: registered MCP agents must present an owner-issued, fresh, atomically
+  single-use proof bound to the exact opportunity, action, owner principal, acting
+  agent, and server-derived interaction — missing/stale/generic/forged/wrong-binding/
+  replayed proofs fail closed with stable reasons BEFORE the mutation graph runs,
+  and a proof-less agent call returns a fresh interaction challenge. The optional
+  `ownerApprovalProof` field is added to the public `update_opportunity` schema.
+  Non-agent calls traverse the same boundary via host attestation of typed, trusted,
+  server-derived interaction/surface provenance (`OpportunityOwnerInteractionProvenance`):
+  only a genuine direct authenticated owner session (REST or MCP) attests; chat/CLI/
+  H2A/A2A/mediated surfaces and caller-supplied identity, binding, or provenance
+  fields can never mint or attest owner authority (`untrusted_provenance`). A2A
+  negotiation approvals, uptake acknowledgements, agent self-acknowledgement, and
+  server advisory/challenge values are explicitly non-substitutable. System `expired`
+  transitions remain ungated. Behavior tightening on a published MCP tool plus new
+  public port types, hence the minor bump. No data action, migration, or deployment
+  change ships with this entry.
+
+## [7.5.0] — 2026-07-25
+
+### Changed
+- Partition async discovery-run ownership by the exact calling MCP principal, not
+  only by user (IND-592). `get_discovery_run` and `cancel_discovery_run` now
+  reject a run whose recorded principal (session-human vs a specific agent id)
+  differs from the caller's, even within the same user, returning the opaque
+  "Discovery run not found." and never attempting cancellation. `discover_opportunities`
+  MCP coalescing is likewise partitioned by principal, so an agent-initiated
+  request never coalesces onto — and is never handed — the owner's (or another
+  agent's) in-flight run id or its status/results. The store lookup remains
+  user-scoped; this is an additional in-handler/domain narrowing with no host
+  interface change. Behavior tightening on published MCP tools, hence the minor bump.
+
+## [7.4.0] — 2026-07-25
+
+### Changed
+- Make the public participant-agent permission INPUT schemas canonical-only:
+  `register_agent.permissions` and `grant_agent_permission.actions` are now a
+  `z.enum` of the six canonical `manage:*` actions instead of `z.array(z.string())`.
+  Retired `manage:profile` / `manage:contacts` strings are rejected at the schema
+  seam (the handler's `isValidAction` check is retained as defense in depth). This
+  narrows the published tool input schemas exposed via `tools/list`, hence the
+  minor bump. No change to the temporary stored-row compatibility projection,
+  which still interprets residual legacy STORED rows.
+
+## [7.3.0] — 2026-07-25
+
+### Added
 - Add the injected `IntentProposalStore` host boundary so web proposal cards are
   emitted only after the normalized description, optional network scope, and
   complete verifier output have been durably bound to their owner.
+- Add `projectStoredPermissionActions` at the MCP capability-loading boundary:
+  temporary rolling-data compatibility that interprets residual **stored** legacy
+  grant rows during a mixed-version deploy (`manage:profile` →
+  `manage:identity` + `manage:premises`; `manage:contacts` → no capability;
+  owner/scope preserved; unknown actions fail closed). Not a public alias — legacy
+  names remain rejected as input and absent from `tools/list`/docs. Removed only
+  after the post-drain final sweep and compatibility gate (see the IND-609
+  rollout doc).
+
+### Changed
+- **MCP permission migration (IND-606/607).** Retire issuance of the legacy
+  `manage:profile` and `manage:contacts` grant actions in favor of
+  `manage:identity` and `manage:premises`. Issuers, defaults, validation, and the
+  capability policy emit/accept only the canonical action set; the durable data
+  migration (`services/api/drizzle/0109_migrate_agent_permission_actions.sql`)
+  converges existing grants (`manage:profile` → `manage:identity` + `manage:premises`;
+  `manage:contacts` removed). No public protocol type changes.
+- **Exact question affected-domain inheritance (IND-608).** `read_pending_questions`
+  and `answer_pending_question` now enforce each question's exact affected-domain
+  permission at the handler, not merely the union that admits the tool. A global
+  `manage:intents` agent can no longer read or answer negotiation/enrichment/
+  discovery questions it does not manage; the owning human is unaffected.
+- **Corrected `QUESTION_MODE_TO_DOMAIN` mapping.** `enrichment` now maps to the
+  `premises` domain (`manage:premises`), matching the enrichment answer pipeline
+  that runs the PremiseGraph lifecycle. Previously mapped to `identity`. This
+  changes the exported constant's `enrichment` value and the
+  `read_activity_summary` projection of enrichment question counts from the
+  identity domain to the premises domain — the deliberate public-constant change
+  motivating this minor bump from the 7.2.0 floor.
+
+## [7.2.0] — 2026-07-25
+
+### Added
+- Add `read_activity_summary` as the single public name for grounded,
+  aggregate-only agent activity reporting (IND-605). The MCP capability matrix
+  admits any caller holding at least one activity-domain permission
+  (`manage:identity`/`manage:premises`/`manage:intents`/`manage:opportunities`/
+  `manage:negotiations`); the handler then passes the typed resolved MCP caller
+  context into one centralized permission projection, so global agents receive
+  only the domains their permissions authorize while session humans receive the
+  full owner view. Signal IDs/titles (`opportunitiesBySignal`) are exposed only
+  with `manage:intents`, and question counts are meta-network — never network
+  filtered — while each count inherits the permission of the domain the
+  question affects: the adapter groups pending/answered counts by question
+  mode and the projection releases only the affected-domain counts
+  (identity/premises/intents/opportunities/negotiations) the caller is
+  authorized for, with conversational `chat`-mode and unrecognized modes
+  human-owner-only. There is deliberately no any-of all-question count
+  shortcut. A network agent's network-bound aggregates (opportunity and
+  negotiation counts) are narrowed to its bound community inside the
+  query/adapter layer via the new optional `getAgentActivitySummary`
+  `networkId` input — never by transport-local JSON filtering. The response
+  never contains counterparty identities, chats, turns, transcripts, or
+  private content, and validates against the new strict
+  `ActivitySummaryResponseSchema`.
+- Export the centralized activity-projection contract
+  (`READ_ACTIVITY_SUMMARY_TOOL_NAME`, `McpActivityCallerSchema`,
+  `ActivitySummaryDomainSchema`, `ActivitySummaryResponseSchema`,
+  `ActivityQuestionDomainSchema`, `ActivityQuestionCountsSchema`,
+  `QUESTION_MODE_TO_DOMAIN`, `resolveMcpActivityCaller`,
+  `resolveActivitySummaryDomains`, `activitySummaryNetworkId`,
+  `projectActivitySummary`, and their types) for host and capability
+  composition.
+
+### Changed
+- The internal reporter persona now consumes the canonical
+  `read_activity_summary` as the same tool (no persona-specific fork);
+  unrelated REST/chat behavior is unchanged.
+- SemVer rationale: on MCP this release is purely additive —
+  `report_agent_activity` was already denied as `removed` since 7.0.0, so no
+  working MCP integration can break. The REST/chat tool rename retires a
+  same-cycle (7.0.0-era) surface with no alias by deliberate product decision,
+  so a minor bump records the change without a major. Recorded here for
+  integration-owner reconciliation.
+
+### Removed
+- `report_agent_activity` is retired on every surface with no hidden legacy
+  alias. It is no longer registered in either tool-registry profile and
+  carries no canonical access rule, so a forged MCP `tools/call` under the old
+  name is rejected as an unknown tool before any authorization, database, or
+  graph work. The `'removed'` access classification remains available in the
+  extension contract but no canonical tool uses it.
+
+## [7.1.0] — 2026-07-25
+
+### Changed
+- Complete the MCP legacy-surface removal declared in 7.0.0 (IND-596/597/598).
+  `createToolRegistry` is now surface-aware: the default `'rest'` profile (direct
+  HTTP Tool API + chat) retains contact/Gmail-import tools, `scrape_url`, and the
+  deprecated `*_user_profile` / `*_profile_run` compatibility aliases, while the
+  restricted `'mcp'` profile omits all of them. The MCP server builds both its
+  `tools/list` metadata and its `tools/call` lookup from the `'mcp'` profile, so
+  the removed names are no longer registered on the MCP surface — a direct
+  `tools/call` for any of them now fails as an unknown tool before any work.
+- MCP `read_docs` guidance is sanitized by the MCP surface profile (never by
+  `CONTACTS_ENABLED`) so it no longer advertises the removed contact/Gmail
+  workflows; REST/chat `read_docs` retains the full guidance.
+- `CONTACTS_ENABLED` no longer shapes the MCP registry or its metadata cache key.
+
+### Removed
+- The `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`,
+  `remove_contact`, `search_contacts`, `scrape_url`, `read_user_profiles`,
+  `create_user_profile`, `update_user_profile`, `confirm_user_profile`,
+  `preview_user_profile`, `get_profile_run`, and `cancel_profile_run` entries are
+  removed from the canonical MCP capability matrix; the tools are omitted from the
+  MCP registry rather than classified. Their non-MCP implementations (REST Tool
+  API, dedicated contact REST endpoints, chat agent, shared runtime
+  classifications) are unchanged.
+
+## [7.0.0] — 2026-07-25
+
+### Breaking
+- MCP capability discovery is now principal-aware. `tools/list` advertises only
+  the tools available to the resolved human, onboarding, enrollment-key,
+  registered-agent, network-agent, or delivery-agent profile; `tools/call`
+  repeats the same authorization before scoped database and handler work.
+- Replace the agent permission actions `manage:profile` and `manage:contacts`
+  with the canonical `manage:identity` and `manage:premises` actions. The full
+  MCP permission vocabulary is now `manage:identity`, `manage:premises`,
+  `manage:intents`, `manage:networks`, `manage:opportunities`, and
+  `manage:negotiations`.
+- Contact tools, Gmail contact import, `scrape_url`, `report_agent_activity`,
+  and deprecated profile/profile-run aliases are explicitly unavailable
+  through MCP. Their non-MCP implementations remain intact.
+- Agent-administration mutations are session-human-only. Enrollment keys may
+  call `register_agent` only when explicitly enrollment-capable; registered
+  agents may list only their own sanitized registration. Opportunity delivery
+  confirmation is exposed only to designated delivery agents.
+
+### Added
+- Export a runtime-validated canonical MCP tool access matrix, permission/reach
+  extension contracts, principal schemas, and reusable capability-policy
+  implementation for host and capability composition.
 
 ## [6.14.0] — 2026-07-25
 

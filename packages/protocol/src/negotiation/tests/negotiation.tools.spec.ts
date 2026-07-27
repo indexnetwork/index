@@ -1069,6 +1069,58 @@ describe("get_negotiation — network scope", () => {
   });
 });
 
+describe("get_negotiation — participant-only A2A visibility (IND-608)", () => {
+  test("denies a third party who is neither source nor candidate, without reading the transcript", async () => {
+    let messageReads = 0;
+    let artifactReads = 0;
+    const task = makeTask("working", "user-src", "user-cand");
+    const deps = {
+      negotiationDatabase: {
+        getTask: async () => task,
+        getMessagesForConversation: async () => { messageReads += 1; return []; },
+        getArtifactsForTask: async () => { artifactReads += 1; return []; },
+      },
+    };
+
+    const tool = captureTool("get_negotiation", deps);
+    const result = JSON.parse(
+      await tool.handler({
+        // A logged-in user who is not a party to this A2A negotiation.
+        context: makeContext("user-outsider"),
+        query: { negotiationId: "task-1" },
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not a party to this negotiation/i);
+    // The A2A transcript and artifacts are never read for a non-participant.
+    expect(messageReads).toBe(0);
+    expect(artifactReads).toBe(0);
+  });
+
+  test("admits a participating party (candidate) and projects the counterparty seat", async () => {
+    const task = makeTask("working", "user-src", "user-cand");
+    const deps = {
+      negotiationDatabase: {
+        getTask: async () => task,
+        getMessagesForConversation: async () => [],
+        getArtifactsForTask: async () => [],
+      },
+    };
+
+    const tool = captureTool("get_negotiation", deps);
+    const result = JSON.parse(
+      await tool.handler({
+        context: makeContext("user-cand"),
+        query: { negotiationId: "task-1" },
+      })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.id).toBe("task-1");
+  });
+});
+
 describe("respond_to_negotiation — network scope", () => {
   test("refuses to respond on a task from a different network", async () => {
     const outOfScope = {

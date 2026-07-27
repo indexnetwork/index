@@ -30,11 +30,6 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "revoke_agent_permission",
         "list_conversations",
         "get_conversation",
-        "import_contacts",
-        "list_contacts",
-        "add_contact",
-        "remove_contact",
-        "search_contacts",
         "read_user_contexts",
         "record_onboarding_privacy_consent",
         "preview_user_context",
@@ -44,7 +39,6 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "get_enrichment_run",
         "cancel_enrichment_run",
         "complete_onboarding",
-        "import_gmail_contacts",
         "create_intent",
         "update_intent",
         "delete_intent",
@@ -73,7 +67,7 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "update_premise",
         "retract_premise",
         "read_pending_questions",
-        "scrape_url",
+        "read_activity_summary",
         "read_docs",
     }
 )

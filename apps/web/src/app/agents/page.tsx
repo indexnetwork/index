@@ -28,14 +28,14 @@ function maskKey(start: string): string {
 
 function permissionLabel(action: string): string {
   switch (action) {
-    case 'manage:profile':
-      return 'Profile';
+    case 'manage:identity':
+      return 'Identity';
+    case 'manage:premises':
+      return 'Premises';
     case 'manage:intents':
       return 'Signals';
     case 'manage:networks':
       return 'Networks';
-    case 'manage:contacts':
-      return 'Contacts';
     case 'manage:opportunities':
       return 'Opportunities';
     case 'manage:negotiations':

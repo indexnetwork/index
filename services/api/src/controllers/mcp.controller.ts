@@ -26,6 +26,7 @@ import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
 import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
+import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
 import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
@@ -53,8 +54,8 @@ import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, ChatQuestionsHost, PersistableQuestion, PersistedQuestion } from '@indexnetwork/protocol';
+import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -66,6 +67,10 @@ import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-pro
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
+
+type McpToolDeps = ToolDeps & {
+  opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPOSITION ROOT (was protocol-init.ts)
@@ -179,6 +184,10 @@ const protocolDeps = {
   agentDispatcher,
   chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
+  // IND-593: authoritative owner-proof verifier/consumer for opportunity state
+  // changes. Shared process-wide with the MCP toolDeps and the REST issuance
+  // route; threaded into chat tools by the protocol chat factory.
+  opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
   discoveryRuns: discoveryRunAdapter,
   discoveryRunQueue,
   enrichmentRuns: enrichmentRunAdapter,
@@ -291,14 +300,23 @@ const JWKS = createRemoteJWKSet(
   new URL('/api/auth/jwks', API_URL),
 );
 
-function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
+function parseApiKeyMetadata(raw: string | null | undefined): {
+  agentId?: string;
+  enrollmentCapable?: boolean;
+  isDeliveryAgent?: boolean;
+} {
   if (!raw) {
     return {};
   }
 
   try {
-    const parsed = JSON.parse(raw) as { agentId?: unknown };
-    return typeof parsed.agentId === 'string' ? { agentId: parsed.agentId } : {};
+    const parsed = McpApiKeyMetadataSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return {};
+    return {
+      ...(parsed.data.agentId ? { agentId: parsed.data.agentId } : {}),
+      ...(parsed.data.enrollmentCapable === true ? { enrollmentCapable: true } : {}),
+      ...(parsed.data.isDeliveryAgent === true ? { isDeliveryAgent: true } : {}),
+    };
   } catch {
     return {};
   }
@@ -321,13 +339,7 @@ type TelegramHandleMismatch = {
   ownerUserId?: string;
 };
 
-type ResolvedMcpIdentity = {
-  userId: string;
-  agentId?: string;
-  isSessionAuth?: boolean;
-  networkScopeId?: string | null;
-  clientSurface?: 'telegram' | 'web';
-};
+type ResolvedMcpIdentity = McpResolvedIdentity;
 
 function normalizeTelegramHeader(raw: string | null | undefined): string | null {
   const trimmed = raw
@@ -398,7 +410,12 @@ export function findTelegramHandleMismatch(params: {
 export function resolveMcpApiKeyPrincipal(
   row: ApiKeyPrincipalRow,
   sessionUserId?: string,
-): { userId: string; agentId?: string } | null {
+): {
+  userId: string;
+  agentId?: string;
+  enrollmentCapable?: boolean;
+  isDeliveryAgent?: boolean;
+} | null {
   const metadata = parseApiKeyMetadata(row.metadata);
 
   // Agent keys must additionally carry BOTH principal columns (the adapter
@@ -408,6 +425,9 @@ export function resolveMcpApiKeyPrincipal(
   if (metadata.agentId && (!row.userId || !row.referenceId)) {
     throw new Error('Agent API key principal mismatch');
   }
+  if (metadata.isDeliveryAgent && !metadata.agentId) {
+    throw new Error('Delivery API key principal mismatch');
+  }
 
   const userId = resolveApiKeyUserId(row, sessionUserId);
   if (!userId) return null;
@@ -415,6 +435,8 @@ export function resolveMcpApiKeyPrincipal(
   return {
     userId,
     ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
+    ...(!metadata.agentId && metadata.enrollmentCapable ? { enrollmentCapable: true } : {}),
+    ...(metadata.agentId && metadata.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
   };
 }
 
@@ -600,7 +622,7 @@ const authResolver: McpAuthResolver = {
             throw new Error('Invalid API key');
           }
 
-          let principal: { userId: string; agentId?: string } | null;
+          let principal: ReturnType<typeof resolveMcpApiKeyPrincipal>;
           try {
             principal = resolveMcpApiKeyPrincipal(row, sessionUserId);
           } catch (err) {
@@ -620,6 +642,8 @@ const authResolver: McpAuthResolver = {
             return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
+              ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
+              ...(principal.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
               networkScopeId,
               clientSurface,
             });
@@ -665,6 +689,33 @@ const authResolver: McpAuthResolver = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AUTHORIZATION OBSERVABILITY (host boundary)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Records MCP capability denials as structured, secret-free authorization audit
+ * logs. The protocol constructs the event with only safe caller-profile/reason
+ * fields (no token, API key, header, or tool-argument payload), so this seam can
+ * log it verbatim. This is standing authorization observability at info level,
+ * not debug instrumentation, and it never alters the fail-closed decision.
+ */
+const mcpAuthorizationObserver: McpAuthorizationObserver = {
+  onCapabilityDenied(event) {
+    logger.info('MCP capability denied', {
+      phase: event.phase,
+      toolName: event.toolName,
+      profile: event.profile,
+      reason: event.reason,
+      ...(event.reach ? { reach: event.reach } : {}),
+      ...(event.requiredPermissions ? { requiredPermissions: event.requiredPermissions } : {}),
+      userId: event.userId,
+      ...(event.agentId ? { agentId: event.agentId } : {}),
+      networkScopeId: event.networkScopeId,
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PER-REQUEST MCP SERVER CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -674,7 +725,7 @@ function createMcpServerInstance(): McpServer {
   const userDb = protocolDeps.createUserDatabase(protocolDeps.database, 'system');
   const systemDb = protocolDeps.createSystemDatabase(protocolDeps.database, 'system', []);
 
-  const toolDeps: ToolDeps = {
+  const toolDeps: McpToolDeps = {
     database: protocolDeps.database,
     userDb,
     systemDb,
@@ -698,6 +749,7 @@ function createMcpServerInstance(): McpServer {
     questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
+    opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',
       operation: report.operation,
@@ -734,7 +786,13 @@ function createMcpServerInstance(): McpServer {
     },
   };
 
-  return createMcpServer(toolDeps, authResolver, scopedDepsFactory);
+  return createMcpServer(
+    toolDeps,
+    authResolver,
+    scopedDepsFactory,
+    CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
+    mcpAuthorizationObserver,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
