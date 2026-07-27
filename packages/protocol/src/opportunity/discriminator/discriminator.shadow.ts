@@ -73,12 +73,13 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
     .filter((embedding) => embedding.length > 0)
     .slice(0, MAX_REFERENCE_EMBEDDINGS);
 
+  const hasPriorReferenceHistory = priorReferenceTexts.length > 0 || priorReferenceEmbeddings.length > 0;
   let novelties: number[] = mined.map(() => 1);
   let discriminatorEmbeddings: number[][] | null = null;
+  let priorReferenceComparisonUnavailable = false;
   const shouldEmbed = input.retainEmbeddings
     || references.length > 0
-    || priorReferenceTexts.length > 0
-    || priorReferenceEmbeddings.length > 0;
+    || hasPriorReferenceHistory;
   if (shouldEmbed) {
     try {
       const texts = [
@@ -100,6 +101,7 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
       logger.warn("Novelty embedding failed; defaulting novelty to 1", {
         error: err instanceof Error ? err.message : String(err),
       });
+      priorReferenceComparisonUnavailable = hasPriorReferenceHistory;
     }
   }
 
@@ -117,5 +119,9 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
     })
     .sort((a, b) => b.voi - a.voi);
 
-  return { poolSize: candidates.length, discriminators };
+  return {
+    poolSize: candidates.length,
+    discriminators,
+    ...(priorReferenceComparisonUnavailable ? { priorReferenceComparisonUnavailable: true } : {}),
+  };
 }

@@ -156,6 +156,40 @@ describe("runPoolDiscriminatorShadow", () => {
     expect(result.discriminators[0].embeddingModel).toBeUndefined();
   });
 
+  it("signals when historical discriminator comparison is unavailable", async () => {
+    const d = minedDiscriminator("resilient history", (i) => (i < 3 ? "A" : "B"));
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: [],
+      priorReferenceEmbeddings: [[0.4, 0.6, 0.2]],
+      miner: { mine: async () => [d] },
+      embedder: {
+        async generate() {
+          throw new Error("embedding provider down");
+        },
+      },
+    });
+    expect(result.priorReferenceComparisonUnavailable).toBe(true);
+  });
+
+  it("does not signal unavailable history comparison when no history was supplied", async () => {
+    const d = minedDiscriminator("resilient fresh", (i) => (i < 3 ? "A" : "B"));
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: [],
+      miner: { mine: async () => [d] },
+      embedder: {
+        async generate() {
+          throw new Error("embedding provider down");
+        },
+      },
+    });
+    expect(result.priorReferenceComparisonUnavailable).toBeUndefined();
+    expect(result.discriminators[0].voi).toBeGreaterThan(0);
+  });
+
   it("returns an empty result when the miner yields no axes", async () => {
     const result = await runPoolDiscriminatorShadow({
       intentText: "intent",
