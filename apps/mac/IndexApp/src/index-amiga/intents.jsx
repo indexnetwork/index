@@ -132,6 +132,7 @@ function UserMenu({ me, onSelect }) {
   const ITEMS = [
     { id: "profile",  label: "your profile" },
     { id: "settings", label: "preferences" },
+    { id: "history",  label: "negotiation history" },
     { id: "signout",  label: "sign out", danger: true },
   ];
 
@@ -216,6 +217,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const [settingsTab, setSettingsTab] = useState(null);
   const [showNetworks, setShowNetworks] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
   // new-signal row below can line up with the rows inside. Measured rather
@@ -235,6 +237,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
 
   const onAccountSelect = (id) => {
     if (id === "profile")  setSettingsTab("profile");
+    if (id === "history")  setShowHistory(true);
     if (id === "settings") setSettingsTab("notify");
     if (id === "signout")  onSignOut && onSignOut();
   };
@@ -248,6 +251,9 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   }
   if (showAgents) {
     return <Agents onClose={() => setShowAgents(false)}/>;
+  }
+  if (showHistory) {
+    return <NegotiationHistory onClose={() => setShowHistory(false)}/>;
   }
 
   const visible  = signals.filter(i => i.status !== "archived");

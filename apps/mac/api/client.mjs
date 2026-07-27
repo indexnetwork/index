@@ -130,6 +130,14 @@ export function createIndexApiClient(options = {}) {
       list: (options = {}) => request('/agents', options),
     },
 
+    users: {
+      // Full negotiation threads (counterparty, outcome, agent-to-agent turns).
+      negotiations: (userId, query = {}, options = {}) => request(
+        `/users/${encodeURIComponent(userId)}/negotiations${toQueryString(query)}`,
+        options,
+      ),
+    },
+
     intents: {
       list: (body = {}, options = {}) => request('/intents/list', { ...options, method: 'POST', body }),
       // Turns a chat `intent_proposal` (proposalId + description) into a
