@@ -75,7 +75,7 @@ describe("search_intents", () => {
       query: { query: "React", limit: 5 },
     });
     const parsed = JSON.parse(result);
-    expect(captured).toEqual({ query: "React", limit: 5 });
+    expect(captured!).toEqual({ query: "React", limit: 5 });
     expect(parsed.success).toBe(true);
     expect(parsed.data.intents[0].payload).toContain("React");
   });
@@ -95,6 +95,6 @@ describe("search_intents", () => {
     } as unknown as ToolDeps);
     const tool = tools.find((t) => t.name === "search_intents")!;
     await tool.handler({ context: makeContext(), query: { query: "anything" } });
-    expect(capturedLimit).toBe(25);
+    expect(capturedLimit!).toBe(25);
   });
 });

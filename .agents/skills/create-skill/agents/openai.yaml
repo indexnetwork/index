@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Skill"
+  short_description: "Index project workflow: Create Skill"
+  default_prompt: "Use $create-skill to follow the repository-specific Create Skill workflow."

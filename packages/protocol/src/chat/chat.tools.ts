@@ -12,9 +12,11 @@ export function createChatTools(defineTool: DefineTool, deps: ToolDeps) {
   const listConversations = defineTool({
     name: "list_conversations",
     description:
-      "Lists the authenticated user's past chat conversations, most-recently-active first. Use when the user " +
-      "asks about their prior chats, wants to resume a conversation, or is orienting themselves in their own " +
-      "history. Only returns sessions the caller participates in.\n\n" +
+      "Lists the authenticated user's past H2A chat conversations (direct chats with the Index agent), " +
+      "most-recently-active first. Use when the user asks about their prior chats, wants to resume a " +
+      "conversation, or is orienting themselves in their own history. Only returns H2A sessions the caller " +
+      "participates in. Human-to-human (H2H) DMs are NEVER exposed through this tool, and A2A negotiation " +
+      "chats are only available via `list_negotiations` / `get_negotiation`.\n\n" +
       "**Returns:** `conversations: [{ sessionId, title, messageCount, lastMessageAt, createdAt }]`. Use " +
       "`sessionId` with `get_conversation` to read the full thread.",
     querySchema: z.object({
@@ -35,10 +37,12 @@ export function createChatTools(defineTool: DefineTool, deps: ToolDeps) {
   const getConversation = defineTool({
     name: "get_conversation",
     description:
-      "Fetches a single chat conversation belonging to the authenticated user, including its messages. " +
-      "Use after `list_conversations` has yielded a specific `sessionId` — for example when the user asks " +
-      "you to pick up a prior thread by topic or title. Returns an error if the session does not exist or " +
-      "the caller is not a participant.\n\n" +
+      "Fetches a single H2A chat conversation (a direct chat with the Index agent) belonging to the " +
+      "authenticated user, including its messages. Use after `list_conversations` has yielded a specific " +
+      "`sessionId` — for example when the user asks you to pick up a prior thread by topic or title. Returns " +
+      "an error if the session does not exist, the caller is not a participant, or the session is not an H2A " +
+      "chat: human-to-human (H2H) DMs are NEVER exposed through this tool, and A2A negotiation transcripts " +
+      "are only available via `get_negotiation`.\n\n" +
       "**Returns:** `{ sessionId, title, messageCount, lastMessageAt, createdAt, messages: [{ role, content, createdAt }] }`.",
     querySchema: z.object({
       sessionId: z.string().describe("Session UUID from list_conversations."),

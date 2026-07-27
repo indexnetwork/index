@@ -3,6 +3,8 @@ import type { AskUserExpiryPayload, NegotiationGraphDatabase } from '@indexnetwo
 
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
+import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
+import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 
 import { runTimeoutFallback, type NegotiationTaskMeta, type TimeoutNegotiatorInvoke } from './timeout.shared';
 
@@ -29,12 +31,24 @@ export interface NegotiationTimeoutQueueDeps {
   queue?: Queue<NegotiationTimeoutQueueJobData>;
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   parkWindowMs?: number;
-  /** Append a synthetic conservative answer to opportunity metadata (ask_user expiry). */
-  storeExpiryAnswer?: (opportunityId: string, disclosureSubject: string) => Promise<void>;
-  /** Dismiss pending negotiation_inflight question rows for an opportunity. */
-  dismissInflightQuestions?: (opportunityId: string) => Promise<void>;
-  /** Enqueue the resume continuation after an expiry. */
-  enqueueResume?: (opportunityId: string, userId: string) => Promise<void>;
+  /** Authoritatively settle the exact stamped question/task cohort. */
+  settleInflightExpiry?: (input: AskUserExpiryPayload & { taskId: string }) => Promise<{
+    taskId: string;
+    settlementId: string;
+    opportunityId: string;
+    userId: string;
+    recipientIntentId: string;
+    networkId: string;
+  } | null>;
+  /** Enqueue the exact durable resume continuation after an expiry. */
+  enqueueResume?: (input: {
+    taskId: string;
+    settlementId: string;
+    opportunityId: string;
+    userId: string;
+    recipientIntentId: string;
+    networkId: string;
+  }) => Promise<void>;
 }
 
 /**
@@ -225,9 +239,10 @@ export class NegotiationTimeoutQueue {
    */
   private async handleTimeout(data: NegotiationTimeoutJobData): Promise<void> {
     const { negotiationId, turnNumber } = data;
-    const database =
+    const database = (
       this.deps?.database
-      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
+      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter
+    ) as NegotiationGraphDatabase & Pick<ConversationDatabaseAdapter, 'transitionClaimedTaskToWorking'>;
 
     // Load the negotiation task
     const task = await database.getTask(negotiationId);
@@ -245,26 +260,41 @@ export class NegotiationTimeoutQueue {
       return;
     }
 
-    const messages = await database.getMessagesForConversation(task.conversationId);
-    const currentTurnCount = messages.length;
-
-    // Check if turnNumber still matches (response may have come in between)
-    if (currentTurnCount !== turnNumber) {
-      this.logger.info('Turn count mismatch, skipping (stale job)', {
-        negotiationId,
-        expectedTurn: turnNumber,
-        actualTurn: currentTurnCount,
-      });
-      return;
-    }
-
-    const meta = task.metadata as NegotiationTaskMeta | null;
+    const meta = task.metadata as NegotiationTaskMeta & { continuationExecution?: { status?: unknown } } | null;
     if (meta?.type !== 'negotiation') {
       this.logger.warn('Task is not a negotiation, skipping', { negotiationId });
       return;
     }
 
-    await runTimeoutFallback({
+    // A parked exact continuation must acquire a fresh token/fence before the
+    // timeout path can transition or write anything.
+    const parked = meta.continuationExecution?.status === 'parked';
+    // Keep provider-free queue tests free of Drizzle initialization. Production
+    // only loads the database singleton after durable metadata proves this is a
+    // fenced parked continuation.
+    const continuationDb = parked
+      ? (await import('../../lib/drizzle/drizzle')).default
+      : null;
+    const claimedContinuation = parked && continuationDb
+      ? await claimParkedContinuationExecution(continuationDb, task.id, 'system:negotiation-timeout')
+      : null;
+    if (parked && !claimedContinuation) return;
+    const effectiveTask = claimedContinuation
+      ? await database.transitionClaimedTaskToWorking(task.id, claimedContinuation.execution)
+      : task;
+    if (!effectiveTask) return;
+    const execution = claimedContinuation?.execution;
+    const messages = await database.getMessagesForConversation(effectiveTask.conversationId);
+    const currentTurnCount = messages.length;
+
+    if (currentTurnCount !== turnNumber) {
+      this.logger.info('Turn count mismatch, skipping (stale job)', {
+        negotiationId, expectedTurn: turnNumber, actualTurn: currentTurnCount,
+      });
+      return;
+    }
+
+    const result = await runTimeoutFallback({
       database,
       logger: this.logger,
       labels: {
@@ -273,8 +303,8 @@ export class NegotiationTimeoutQueue {
         statusUpdateFailed: 'Failed to update opportunity status on timeout finalization',
       },
       negotiationId,
-      taskId: task.id,
-      conversationId: task.conversationId,
+      taskId: effectiveTask.id,
+      conversationId: effectiveTask.conversationId,
       meta,
       messages,
       currentTurnCount,
@@ -287,7 +317,17 @@ export class NegotiationTimeoutQueue {
         await this.enqueueTimeout(negotiationId, newTurnCount, parkWindowMs);
       },
       invokeNegotiator: this.deps?.invokeNegotiator,
+      ...(execution ? { continuationExecution: execution } : {}),
     });
+    if (execution && result.continuationOutcome) {
+      if (!continuationDb) throw new Error('Continuation database unavailable after fenced timeout claim');
+      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(continuationDb, execution);
+      else await completeContinuationExecution(continuationDb, execution, {
+        priorTaskId: execution.taskId, settlementId: execution.settlementId,
+        successorTaskId: execution.successorTaskId, fence: execution.fence,
+        outcome: result.continuationOutcome,
+      });
+    }
   }
 
   /**
@@ -299,103 +339,31 @@ export class NegotiationTimeoutQueue {
    * the negotiation terminated another way).
    */
   private async handleAskUserExpiry(data: AskUserExpiryJobData): Promise<void> {
-    const { negotiationId, opportunityId, userId, disclosureSubject } = data;
-    const database =
-      this.deps?.database
-      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
-
-    const task = await database.getTask(negotiationId);
-    if (!task) {
-      this.logger.warn('Task not found, skipping ask-user expiry', { negotiationId });
-      return;
-    }
-    if (task.state !== 'input_required') {
-      this.logger.info('Task no longer input_required, skipping ask-user expiry (stale job)', {
+    const { negotiationId, ...coordinates } = data;
+    const { opportunityId } = coordinates;
+    const settle = this.deps?.settleInflightExpiry
+      ?? (async (input: AskUserExpiryPayload & { taskId: string }) =>
+        (await import('../../adapters/questioner.adapter.instance')).questionerAdapter.expireInflightQuestion(input));
+    const claim = await settle({ taskId: negotiationId, ...coordinates });
+    if (!claim) {
+      this.logger.info('Ask-user expiry lost or stale; no continuation enqueued', {
         negotiationId,
-        currentState: task.state,
+        opportunityId,
       });
       return;
     }
-
-    // 1. Record the conservative default as a synthetic answer on the
-    //    opportunity so the resuming session's userAnswers context carries it.
-    const storeExpiryAnswer = this.deps?.storeExpiryAnswer ?? defaultStoreExpiryAnswer;
-    await storeExpiryAnswer(opportunityId, disclosureSubject).catch((err) => {
-      this.logger.error('Failed to store conservative expiry answer', { negotiationId, opportunityId, error: err });
-    });
-
-    // 2. Dismiss the now-moot pending question row(s) so the inbox stops asking.
-    const dismissInflight = this.deps?.dismissInflightQuestions ?? defaultDismissInflightQuestions;
-    await dismissInflight(opportunityId).catch((err) => {
-      this.logger.warn('Failed to dismiss expired inflight questions', { opportunityId, error: err });
-    });
-
-    // 3. Terminally close the paused task — the resume session creates a fresh
-    //    task that inherits seat + protocol version from this one's metadata.
-    await database.updateTaskState(negotiationId, 'canceled', { reason: 'ask_user_window_expired' });
-
-    // 4. Resume via the existing continuation path. Lazy import: keeps this
-    //    module free of a static run-existing dependency (circular-import and
-    //    barrel-mock hazard — run-existing pulls OpportunityGraphFactory from
-    //    the protocol barrel at module scope).
+    // Content-free funnel telemetry: a winner is the sole exact task that
+    // timed out, so duplicate/stale deliveries never inflate this stage.
+    this.logger.info('negotiation_consultation_policy', { stage: 'timed_out' });
     const enqueueResume = this.deps?.enqueueResume
-      ?? (async (oid: string, uid: string) => {
+      ?? (async (input: NonNullable<typeof claim>) => {
         const { negotiationRunExistingQueue } = await import('./run-existing.queue');
-        await negotiationRunExistingQueue.addJob({ opportunityId: oid, userId: uid });
+        await negotiationRunExistingQueue.addJob(input);
       });
-    await enqueueResume(opportunityId, userId);
-
-    this.logger.info('Ask-user window expired; negotiation resumed with conservative default', {
-      negotiationId,
-      opportunityId,
-      userId,
-    });
+    await enqueueResume(claim);
+    this.logger.info('negotiation_consultation_policy', { stage: 'resumed' });
+    this.logger.info('Ask-user window expired; exact task resumed with conservative default', claim);
   }
-}
-
-/**
- * Default expiry-answer store: appends a synthetic `userAnswers` entry to the
- * opportunity metadata. The resuming IndexNegotiator renders it under
- * "additional context (provided between sessions)".
- */
-async function defaultStoreExpiryAnswer(opportunityId: string, disclosureSubject: string): Promise<void> {
-  const { ChatDatabaseAdapter } = await import('../../adapters/database.adapter');
-  const chatDb = new ChatDatabaseAdapter();
-  const opportunity = await chatDb.getOpportunity(opportunityId);
-  if (!opportunity) return;
-  const metadata = (opportunity.metadata ?? {}) as Record<string, unknown>;
-  const existing = Array.isArray(metadata.userAnswers) ? metadata.userAnswers : [];
-  await chatDb.updateOpportunityMetadata(opportunityId, {
-    ...metadata,
-    userAnswers: [
-      ...existing,
-      {
-        questionId: `ask-user-expired-${opportunityId}`,
-        selectedOptions: [],
-        freeText: `(no response) The client did not answer the negotiator's question about "${disclosureSubject}" within the allowed window. Conservative default applies: do NOT disclose or commit on this subject; proceed without it.`,
-        answeredAt: new Date().toISOString(),
-      },
-    ],
-  });
-}
-
-/** Default dismissal: pending negotiation_inflight rows for the opportunity. */
-async function defaultDismissInflightQuestions(opportunityId: string): Promise<void> {
-  const [{ default: db }, { questions }, { and, eq, sql }] = await Promise.all([
-    import('../../lib/drizzle/drizzle'),
-    import('../../schemas/database.schema'),
-    import('drizzle-orm/sql'),
-  ]);
-  await db
-    .update(questions)
-    .set({ status: 'dismissed' })
-    .where(
-      and(
-        eq(questions.status, 'pending'),
-        sql`${questions.detection}->>'mode' = 'negotiation_inflight'`,
-        sql`${questions.detection}->>'sourceId' = ${opportunityId}`,
-      ),
-    );
 }
 
 /** Singleton negotiation timeout queue instance. */

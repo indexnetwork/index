@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
 import { createIntegrationTools } from "../integration.tools.js";
-import type { ResolvedToolContext } from "../tool.helpers.js";
+import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 // ─── Context stub ─────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ const context: ResolvedToolContext = {
   user: { id: userId, name: 'Test User', email: 'test@example.com' } as never,
   userProfile: null,
   userNetworks: [],
+  indexScope: [],
   isOnboarding: false,
   hasName: true,
 };
@@ -118,7 +119,8 @@ describe('createIntegrationTools - import_gmail_contacts', () => {
     const result = await call('import_gmail_contacts') as { success: boolean; error: string };
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Quota exceeded');
+    expect(result.error).toBe('Failed to import Gmail contacts. Please try again.');
+    expect(result.error).not.toContain('Quota exceeded');
   });
 
   it('returns appropriate message when no new contacts imported', async () => {

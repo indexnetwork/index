@@ -5,15 +5,20 @@
  * item when the Personal Agent inbox has open questions, caps at 99+, and
  * disappears at zero.
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import TopBar from '@/components/TopBar';
+import type { ConversationSummary } from '@/services/conversation';
+import type { PendingQuestion } from '@/services/questions';
 
 const mocks = vi.hoisted(() => ({
-  questionsState: { personalAgentPending: 0 },
-  conversations: [] as Array<Record<string, unknown>>,
+  questionsState: { personalAgentPending: 0, questions: [] as PendingQuestion[] },
+  features: { negotiatorChat: true } as { negotiatorChat?: boolean },
+  apiGet: vi.fn(),
+  conversations: [] as Array<ConversationSummary & { persona: string }>,
+  negotiations: [] as Array<ConversationSummary & { persona: string }>,
   navigate: vi.fn(),
 }));
 
@@ -29,7 +34,13 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuthContext: () => ({
     user: { id: 'user-1', name: 'Alice Smith', avatar: null },
     signOut: vi.fn(),
+    features: mocks.features,
   }),
+}));
+
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  apiClient: { get: mocks.apiGet, post: vi.fn() },
 }));
 
 vi.mock('@/contexts/APIContext', () => ({
@@ -45,11 +56,14 @@ vi.mock('@/contexts/IndexFilterContext', () => ({
 }));
 
 vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ personalAgentPending: mocks.questionsState.personalAgentPending }),
+  useQuestions: () => ({
+    personalAgentPending: mocks.questionsState.personalAgentPending,
+    questions: mocks.questionsState.questions,
+  }),
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => ({ conversations: mocks.conversations }),
+  useConversation: () => ({ conversations: mocks.conversations, negotiations: mocks.negotiations }),
 }));
 
 vi.mock('@/components/UserAvatar', () => ({
@@ -61,7 +75,7 @@ function conversationSummary(
   unreadCount: number,
   participantTypes: Array<'user' | 'agent'> = ['user', 'user'],
   persona = 'orchestrator',
-) {
+): ConversationSummary & { persona: string } {
   return {
     id,
     persona,
@@ -80,6 +94,25 @@ function conversationSummary(
   };
 }
 
+function consultationQuestion(id = 'q-consultation'): PendingQuestion {
+  return {
+    id,
+    detection: {
+      mode: 'negotiation_inflight',
+      sourceType: 'opportunity',
+      sourceId: 'opportunity-1',
+      timestamp: new Date().toISOString(),
+    },
+    actors: [{ userId: 'user-1', role: 'subject' }],
+    payload: { title: 'Consultation', prompt: 'What should I say?', options: [], multiSelect: false },
+    status: 'pending',
+    answer: null,
+    expiresAt: null,
+    createdAt: new Date().toISOString(),
+    conversationId: null,
+  };
+}
+
 function renderTopBar(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
@@ -92,7 +125,11 @@ describe('TopBar Personal Agent badge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.questionsState.personalAgentPending = 0;
+    mocks.questionsState.questions = [];
+    mocks.features = { negotiatorChat: true };
+    mocks.apiGet.mockResolvedValue({ sessions: [{ id: 'negotiator-session' }] });
     mocks.conversations = [];
+    mocks.negotiations = [];
   });
 
   test('renders primary nav including Signals and Agent', () => {
@@ -135,6 +172,33 @@ describe('TopBar Personal Agent badge', () => {
     expect(screen.queryByTestId('chat-unread-badge')).toBeNull();
   });
 
+  test('Negotiations badge counts rows that require the user to act', () => {
+    const question = conversationSummary('negotiation-question', 0, ['agent', 'agent']);
+    question.lastMessage = {
+      parts: [{ kind: 'data', data: { action: 'ask_user' } }],
+      senderId: 'agent:user-1',
+      createdAt: new Date().toISOString(),
+    };
+    question.negotiation = {
+      taskId: 'task-1',
+      state: 'input_required',
+      statusTimestamp: new Date().toISOString(),
+      opportunityId: 'opportunity-1',
+      opportunityStatus: 'negotiating',
+      acceptedByViewer: false,
+      turnCount: 2,
+      maxTurns: 6,
+      signalCount: 2,
+      outcome: null,
+      updatedAt: new Date().toISOString(),
+    };
+    mocks.negotiations = [question];
+
+    renderTopBar();
+
+    expect(screen.getByTestId('negotiations-your-move-badge')).toHaveTextContent('1');
+  });
+
   test('pending-question badge renders on the Agent entry when the inbox has open questions', () => {
     mocks.questionsState.personalAgentPending = 3;
     renderTopBar();
@@ -156,5 +220,32 @@ describe('TopBar Personal Agent badge', () => {
     renderTopBar();
     screen.getByRole('button', { name: /^Agent$/ }).click();
     expect(mocks.navigate).toHaveBeenCalledWith('/agent');
+  });
+
+  test('Agent click deep-links to the negotiator DM when a consultation is pending', async () => {
+    mocks.questionsState.personalAgentPending = 1;
+    mocks.questionsState.questions = [consultationQuestion()];
+    renderTopBar();
+    screen.getByRole('button', { name: /Agent/ }).click();
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/d/negotiator-session'));
+    expect(mocks.apiGet).toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
+  });
+
+  test('Agent click falls back to /questions when no negotiator session exists', async () => {
+    mocks.questionsState.personalAgentPending = 1;
+    mocks.questionsState.questions = [consultationQuestion()];
+    mocks.apiGet.mockResolvedValue({ sessions: [] });
+    renderTopBar();
+    screen.getByRole('button', { name: /Agent/ }).click();
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/questions'));
+  });
+
+  test('Agent click falls back to /questions when the negotiator chat flag is off', () => {
+    mocks.questionsState.personalAgentPending = 1;
+    mocks.questionsState.questions = [consultationQuestion()];
+    mocks.features = { negotiatorChat: false };
+    renderTopBar();
+    screen.getByRole('button', { name: /Agent/ }).click();
+    expect(mocks.navigate).toHaveBeenCalledWith('/questions');
   });
 });

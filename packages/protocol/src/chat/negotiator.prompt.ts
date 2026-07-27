@@ -1,6 +1,6 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
 import { focusedIntentId } from "../shared/agent/tool.scope.js";
-import { renderNegotiatorChatMemorySection, type NegotiatorMemoryEntry } from "../negotiation/negotiation.memory.js";
+import { renderNegotiatorChatMemorySection, type NegotiatorMemoryEntry } from "../capabilities/negotiation.memory.facade.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════

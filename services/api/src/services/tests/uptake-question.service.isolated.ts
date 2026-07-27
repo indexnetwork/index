@@ -8,6 +8,7 @@ const COUNTERPARTY = 'counterparty';
 const INTRODUCER = 'introducer';
 const NETWORK = 'network';
 const INTENT = 'intent';
+const RECIPIENT_INTENT = 'recipient-intent';
 const OPPORTUNITY = 'opportunity';
 
 function opportunity(overrides?: Partial<OpportunityRow>): OpportunityRow {
@@ -15,7 +16,7 @@ function opportunity(overrides?: Partial<OpportunityRow>): OpportunityRow {
     id: OPPORTUNITY,
     detection: { source: 'manual', timestamp: new Date().toISOString() },
     actors: [
-      { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+      { userId: RECIPIENT, networkId: NETWORK, role: 'patient', intent: RECIPIENT_INTENT },
       { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent: INTENT },
       { userId: INTRODUCER, networkId: NETWORK, role: 'introducer' },
     ],
@@ -35,16 +36,25 @@ function makeDeps(overrides?: Partial<UptakeQuestionServiceDeps>) {
   const enqueue = mock(async () => {});
   const deps: UptakeQuestionServiceDeps = {
     getOpportunity: async () => opportunity(),
-    getIntent: async () => ({
-      id: INTENT,
-      userId: COUNTERPARTY,
-      payload: 'Host a hands-on TypeScript workshop',
-      summary: 'Host a TypeScript workshop',
-      status: 'ACTIVE',
-      archivedAt: null,
-      felicityAuthority: 45,
-    }),
-    getPublicUserHint: async () => ({ bio: 'Open-source maintainer', location: 'Berlin' }),
+    getIntent: async (id) => id === RECIPIENT_INTENT
+      ? {
+          id,
+          userId: RECIPIENT,
+          payload: 'Find practical collaborators',
+          summary: 'Find collaborators',
+          status: 'ACTIVE',
+          archivedAt: null,
+          felicityAuthority: 100,
+        }
+      : {
+          id: INTENT,
+          userId: COUNTERPARTY,
+          payload: 'Host a hands-on TypeScript workshop',
+          summary: 'Host a TypeScript workshop',
+          status: 'ACTIVE',
+          archivedAt: null,
+          felicityAuthority: 45,
+        },
     resolveSafeCommonNetwork: async () => ({ id: NETWORK, title: 'Builders Community' }),
     hasQuestionForRecipientSourcePurpose: async () => false,
     enqueue,
@@ -67,17 +77,19 @@ afterEach(() => {
 
 describe('UptakeQuestionService', () => {
   it('is disabled by default and only enqueues a network-scoped low-authority counterparty intent', async () => {
-    const getIntent = mock(async () => ({
-      id: INTENT,
-      userId: COUNTERPARTY,
-      payload: 'Host a hands-on TypeScript workshop',
-      summary: 'Host a TypeScript workshop',
-      status: 'ACTIVE',
-      archivedAt: null,
-      felicityAuthority: 45,
-    }));
+    const getIntent = mock(async (id: string) => id === RECIPIENT_INTENT
+      ? {
+          id, userId: RECIPIENT, payload: 'Find collaborators', summary: null,
+          status: 'ACTIVE', archivedAt: null, felicityAuthority: 100,
+        }
+      : {
+          id, userId: COUNTERPARTY, payload: 'Host a hands-on TypeScript workshop',
+          summary: 'Host a TypeScript workshop', status: 'ACTIVE', archivedAt: null,
+          felicityAuthority: 45,
+        });
     const { service, enqueue } = makeDeps({ getIntent });
     await service.handlePending(OPPORTUNITY);
+    expect(getIntent).toHaveBeenCalledWith(RECIPIENT_INTENT, NETWORK);
     expect(getIntent).toHaveBeenCalledWith(INTENT, NETWORK);
     expect(enqueue).toHaveBeenCalledTimes(1);
     const [input, jobId] = enqueue.mock.calls[0];
@@ -89,16 +101,32 @@ describe('UptakeQuestionService', () => {
       sourceId: OPPORTUNITY,
       scopeType: 'network',
       scopeId: NETWORK,
+      negotiation: {
+        purpose: 'uptake',
+        recipientUserId: RECIPIENT,
+        recipientIntentId: RECIPIENT_INTENT,
+        opportunityId: OPPORTUNITY,
+        networkId: NETWORK,
+        counterpartyUserId: COUNTERPARTY,
+        counterpartyIntentId: INTENT,
+        counterpartyFelicityAuthority: 45,
+      },
       context: {
         purpose: 'uptake',
         negotiationId: OPPORTUNITY,
-        counterpartyHint: 'Open-source maintainer. Location: Berlin',
-        indexContext: 'Builders Community',
-        proposedActivity: 'Host a TypeScript workshop',
+        counterpartyHint: 'the other participant',
+        indexContext: 'the selected network',
+        proposedActivity: 'a potential collaboration that may require clarification before you decide',
       },
     });
-    expect(JSON.stringify(input)).not.toContain('45');
+    // The authority score is sealed routing provenance, never generator context.
+    expect(input.negotiation.counterpartyFelicityAuthority).toBe(45);
+    expect(JSON.stringify(input.context)).not.toContain('45');
     expect(JSON.stringify(input)).not.toContain('private reasoning');
+    expect(JSON.stringify(input)).not.toContain('Open-source maintainer');
+    expect(JSON.stringify(input)).not.toContain('Berlin');
+    expect(JSON.stringify(input)).not.toContain('TypeScript workshop');
+    expect(JSON.stringify(input)).not.toContain('Builders Community');
     expect(jobId).toBe(`uptake-${RECIPIENT}-${OPPORTUNITY}`);
   });
 
@@ -110,7 +138,7 @@ describe('UptakeQuestionService', () => {
       const { service, enqueue } = makeDeps({
         getOpportunity: async () => opportunity({
           actors: [
-            { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+            { userId: RECIPIENT, networkId: NETWORK, role: 'patient', intent: RECIPIENT_INTENT },
             { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent } as never,
           ],
         }),
@@ -127,17 +155,17 @@ describe('UptakeQuestionService', () => {
   it('trims a valid non-UUID actor intent before the exact lookup', async () => {
     const getIntent = mock(async (intentId: string) => ({
       id: intentId,
-      userId: COUNTERPARTY,
-      payload: 'Host a hands-on TypeScript workshop',
-      summary: 'Host a TypeScript workshop',
+      userId: intentId === RECIPIENT_INTENT ? RECIPIENT : COUNTERPARTY,
+      payload: intentId === RECIPIENT_INTENT ? 'Find collaborators' : 'Host a hands-on TypeScript workshop',
+      summary: intentId === RECIPIENT_INTENT ? null : 'Host a TypeScript workshop',
       status: 'ACTIVE' as const,
       archivedAt: null,
-      felicityAuthority: 45,
+      felicityAuthority: intentId === RECIPIENT_INTENT ? 100 : 45,
     }));
     const { service, enqueue } = makeDeps({
       getOpportunity: async () => opportunity({
         actors: [
-          { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+          { userId: RECIPIENT, networkId: NETWORK, role: 'patient', intent: RECIPIENT_INTENT },
           { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent: `  ${INTENT}  ` },
         ],
       }),
@@ -153,10 +181,9 @@ describe('UptakeQuestionService', () => {
   it('skips high or unknown authority', async () => {
     for (const felicityAuthority of [70, null]) {
       const { service, enqueue } = makeDeps({
-        getIntent: async () => ({
-          id: INTENT, userId: COUNTERPARTY, payload: 'Activity', summary: null,
-          status: 'ACTIVE', archivedAt: null, felicityAuthority,
-        }),
+        getIntent: async (id) => id === RECIPIENT_INTENT
+          ? { id, userId: RECIPIENT, payload: 'Find collaborators', summary: null, status: 'ACTIVE', archivedAt: null, felicityAuthority: 100 }
+          : { id, userId: COUNTERPARTY, payload: 'Activity', summary: null, status: 'ACTIVE', archivedAt: null, felicityAuthority },
       });
       await service.handlePending(OPPORTUNITY);
       expect(enqueue).not.toHaveBeenCalled();
@@ -171,21 +198,39 @@ describe('UptakeQuestionService', () => {
     ];
     for (const variant of variants) {
       const { service, enqueue } = makeDeps({
-        getIntent: async () => ({
-          id: INTENT, payload: 'Activity', summary: null, felicityAuthority: 20, ...variant,
-        }),
+        getIntent: async (id) => id === RECIPIENT_INTENT
+          ? { id, userId: RECIPIENT, payload: 'Find collaborators', summary: null, status: 'ACTIVE', archivedAt: null, felicityAuthority: 100 }
+          : { id, payload: 'Activity', summary: null, felicityAuthority: 20, ...variant },
       });
       await service.handlePending(OPPORTUNITY);
       expect(enqueue).not.toHaveBeenCalled();
     }
   });
 
-  it('handles duplicate actor rows for the same two participants', async () => {
+  it('skips foreign, paused, archived, or unassigned recipient intents', async () => {
+    const variants = [
+      { userId: 'wrong-owner', status: 'ACTIVE', archivedAt: null },
+      { userId: RECIPIENT, status: 'PAUSED', archivedAt: null },
+      { userId: RECIPIENT, status: 'ACTIVE', archivedAt: new Date() },
+      null,
+    ];
+    for (const variant of variants) {
+      const { service, enqueue } = makeDeps({
+        getIntent: async (id) => id === RECIPIENT_INTENT
+          ? (variant && { id, payload: 'Find collaborators', summary: null, felicityAuthority: 100, ...variant })
+          : { id, userId: COUNTERPARTY, payload: 'Activity', summary: null, status: 'ACTIVE', archivedAt: null, felicityAuthority: 20 },
+      });
+      await service.handlePending(OPPORTUNITY);
+      expect(enqueue).not.toHaveBeenCalled();
+    }
+  });
+
+  it('fails closed on ambiguous duplicate actor bindings', async () => {
     const { service, enqueue } = makeDeps({
       getOpportunity: async () => opportunity({
         actors: [
-          { userId: RECIPIENT, networkId: 'other-network', role: 'patient' },
-          { userId: RECIPIENT, networkId: NETWORK, role: 'patient' },
+          { userId: RECIPIENT, networkId: 'other-network', role: 'patient', intent: RECIPIENT_INTENT },
+          { userId: RECIPIENT, networkId: NETWORK, role: 'patient', intent: RECIPIENT_INTENT },
           { userId: COUNTERPARTY, networkId: 'other-network', role: 'peer' },
           { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent: INTENT },
         ],
@@ -193,8 +238,7 @@ describe('UptakeQuestionService', () => {
     });
 
     await service.handlePending(OPPORTUNITY);
-    expect(enqueue).toHaveBeenCalledTimes(1);
-    expect(enqueue.mock.calls[0]?.[0]).toMatchObject({ userId: RECIPIENT, scopeId: NETWORK });
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it('skips unsafe network anchors, introducers, acted recipients, and duplicates', async () => {
@@ -209,7 +253,7 @@ describe('UptakeQuestionService', () => {
     const acted = makeDeps({
       getOpportunity: async () => opportunity({
         actors: [
-          { userId: RECIPIENT, networkId: NETWORK, role: 'patient', actedAt: new Date().toISOString() },
+          { userId: RECIPIENT, networkId: NETWORK, role: 'patient', intent: RECIPIENT_INTENT, actedAt: new Date().toISOString() },
           { userId: COUNTERPARTY, networkId: NETWORK, role: 'peer', intent: INTENT },
         ],
       }),

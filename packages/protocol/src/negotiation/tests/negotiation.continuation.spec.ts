@@ -342,7 +342,7 @@ describe("Negotiation continuation telemetry", () => {
     expect(result.isContinuation).toBe(true);
     expect(result.userAnswers).toHaveLength(2);
     expect(capturedInput).not.toBeNull();
-    expect((capturedInput as Record<string, unknown>).userAnswers).toHaveLength(2);
+    expect((capturedInput as unknown as Record<string, unknown>).userAnswers).toHaveLength(2);
 
     IndexNegotiator.prototype.invoke = origInvoke;
   }, 30_000);

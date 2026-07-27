@@ -4,6 +4,7 @@ import type { NegotiationGraphDatabase } from '@indexnetwork/protocol';
 import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
+import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
 
 import type { NegotiationTaskMeta, TimeoutNegotiatorInvoke } from './timeout.shared';
 
@@ -19,6 +20,30 @@ export interface NegotiationClaimTimeoutJobData {
 
 export type NegotiationClaimTimeoutDatabase = NegotiationGraphDatabase &
   Pick<ConversationDatabaseAdapter, 'transitionClaimedTaskToWorking'>;
+
+/** A durable successor marker is continuation identity even if its fence JSON is missing or malformed. */
+function hasContinuationIdentity(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const record = metadata as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, 'continuationExecution')
+    || record.isContinuation === true
+    || (typeof record.resumeFromTaskId === 'string' && record.resumeFromTaskId.length > 0)
+    || (typeof record.continuationSettlementId === 'string' && record.continuationSettlementId.length > 0);
+}
+
+/** Cheap pre-import shape gate; the atomic reader performs authoritative DB validation. */
+function isClaimedExecutionShape(value: unknown): value is { status: 'claimed' } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.status === 'claimed'
+    && record.version === 1
+    && typeof record.priorTaskId === 'string'
+    && typeof record.settlementId === 'string'
+    && typeof record.successorTaskId === 'string'
+    && typeof record.token === 'string'
+    && typeof record.fence === 'number'
+    && typeof record.leaseExpiresAt === 'string';
+}
 
 /** Optional deps for testing. */
 export interface NegotiationClaimTimeoutQueueDeps {
@@ -193,7 +218,33 @@ export class NegotiationClaimTimeoutQueue {
     // work. If another path (agent respond) is racing this worker, only one
     // side will flip the state — the other no-ops. This prevents both paths
     // from appending a turn for the same claimed state.
-    const task = await database.transitionClaimedTaskToWorking(negotiationId);
+    const preflight = await database.getTask(negotiationId);
+    const continuationMetadata = preflight?.metadata;
+    const continuationRecord = (continuationMetadata as { continuationExecution?: { status?: unknown } } | null)
+      ?.continuationExecution;
+    const hasContinuation = hasContinuationIdentity(continuationMetadata);
+    // A continuation is never allowed to downgrade into the generic timeout
+    // path: malformed, parked, expired, or stale ownership must perform zero
+    // task/message/artifact/opportunity writes.
+    if (hasContinuation && !isClaimedExecutionShape(continuationRecord)) {
+      this.logger.info('Continuation claim timeout lost its fence, skipping', { negotiationId });
+      return;
+    }
+    // Provider-free unit tests never load Drizzle: this is reached only for a
+    // real task carrying a claimed continuation fence.
+    const continuationDb = hasContinuation
+      ? (await import('../../lib/drizzle/drizzle')).default
+      : null;
+    const continuationExecution = continuationDb
+      ? await readClaimedContinuationExecution(continuationDb, negotiationId)
+      : null;
+    if (hasContinuation && !continuationExecution) {
+      this.logger.info('Continuation claim timeout failed fence validation, skipping', { negotiationId });
+      return;
+    }
+    const task = continuationExecution
+      ? await database.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
+      : await database.transitionClaimedTaskToWorking(negotiationId);
 
     if (!task) {
       this.logger.info('Task no longer claimed, skipping (stale job)', {
@@ -222,7 +273,7 @@ export class NegotiationClaimTimeoutQueue {
     }
 
     const { runTimeoutFallback } = await import('./timeout.shared');
-    await runTimeoutFallback({
+    const result = await runTimeoutFallback({
       database,
       logger: this.logger,
       labels: {
@@ -253,7 +304,17 @@ export class NegotiationClaimTimeoutQueue {
         ]);
         await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
       },
+      ...(continuationExecution ? { continuationExecution } : {}),
     });
+    if (continuationExecution && result.continuationOutcome) {
+      if (!continuationDb) throw new Error('Continuation database unavailable after fenced claim timeout');
+      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(continuationDb, continuationExecution);
+      else await completeContinuationExecution(continuationDb, continuationExecution, {
+        priorTaskId: continuationExecution.taskId, settlementId: continuationExecution.settlementId,
+        successorTaskId: continuationExecution.successorTaskId, fence: continuationExecution.fence,
+        outcome: result.continuationOutcome,
+      });
+    }
   }
 }
 

@@ -6,7 +6,7 @@ import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
 import { IntentEvents } from '../events/intent.event';
-import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -62,29 +62,47 @@ export class ChatDatabaseAdapter {
 
   /**
    * Returns aggregate activity counts for one user's own signals, questions,
-   * opportunities, and opportunity negotiations. Counterparty data is never
+   * opportunities, and opportunity negotiations. Question counts are grouped
+   * by affected mode so the caller's projection can release each count only
+   * with the affected domain's permission. Counterparty data is never
    * selected by these queries.
    *
    * @param userId - Authenticated owner whose records are summarized.
-   * @param input - Requested reporting window, clamped to 1-168 hours.
+   * @param input - Requested reporting window, clamped to 1-168 hours, plus an
+   *   optional bound community. When `networkId` is present, network-bound
+   *   aggregates (opportunities surfaced, per-signal opportunity counts, and
+   *   negotiation totals) are narrowed to opportunities where the owner's
+   *   actor belongs to that community; own-signal and question aggregates are
+   *   meta-network and stay global.
    * @returns Reproducible owner-scoped activity totals.
    */
   async getAgentActivitySummary(
     userId: string,
-    input: { sinceHours: number },
+    input: { sinceHours: number; networkId?: string },
   ): Promise<{
     sinceHours: number;
     liveSignalsWatched: number;
     opportunitiesSurfaced: number;
     opportunitiesBySignal: Array<{ intentId: string; title: string; count: number }>;
-    pendingQuestionCount: number;
-    questionsAnswered: number;
+    pendingQuestionsByMode: Record<string, number>;
+    answeredQuestionsByMode: Record<string, number>;
     negotiationsStarted: number;
     negotiationsCompleted: number;
   }> {
     const sinceHours = Math.max(1, Math.min(168, Math.trunc(input.sinceHours)));
     const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
     const ownActor = sql`${schema.opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`;
+    // Network-agent narrowing: the owner's own actor must belong to the bound
+    // community. Applied inside each network-bound query — never as post-hoc
+    // JSON filtering. Own-signal and question aggregates are unaffected.
+    const inBoundNetwork = input.networkId
+      ? sql`EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(${schema.opportunities.actors}) AS bound_actor
+          WHERE bound_actor->>'userId' = ${userId}
+            AND bound_actor->>'networkId' = ${input.networkId}
+        )`
+      : sql`TRUE`;
     const ownIntentOpportunity = sql`EXISTS (
       SELECT 1
       FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
@@ -101,7 +119,7 @@ export class ChatDatabaseAdapter {
         .where(activeOwnIntentsWhere(userId)),
       db.select({ count: count() })
         .from(schema.opportunities)
-        .where(and(gte(schema.opportunities.createdAt, since), ownIntentOpportunity)),
+        .where(and(gte(schema.opportunities.createdAt, since), ownIntentOpportunity, inBoundNetwork)),
       db.select({
         intentId: schema.intents.id,
         title: sql<string>`coalesce(nullif(btrim(${schema.intents.summary}), ''), ${schema.intents.payload})`,
@@ -110,6 +128,7 @@ export class ChatDatabaseAdapter {
         .from(schema.intents)
         .innerJoin(schema.opportunities, and(
           gte(schema.opportunities.createdAt, since),
+          inBoundNetwork,
           sql`EXISTS (
             SELECT 1
             FROM jsonb_array_elements(${schema.opportunities.actors}) AS actor
@@ -120,20 +139,28 @@ export class ChatDatabaseAdapter {
         .where(eq(schema.intents.userId, userId))
         .groupBy(schema.intents.id, schema.intents.summary, schema.intents.payload)
         .orderBy(desc(count(schema.opportunities.id))),
-      db.select({ count: count() })
+      db.select({
+        mode: sql<string>`${schema.questions.detection}->>'mode'`,
+        count: count(),
+      })
         .from(schema.questions)
         .where(and(
           eq(schema.questions.status, 'pending'),
           ownQuestion,
           or(isNull(schema.questions.expiresAt), gt(schema.questions.expiresAt, new Date())),
-        )),
-      db.select({ count: count() })
+        ))
+        .groupBy(sql`${schema.questions.detection}->>'mode'`),
+      db.select({
+        mode: sql<string>`${schema.questions.detection}->>'mode'`,
+        count: count(),
+      })
         .from(schema.questions)
         .where(and(
           eq(schema.questions.status, 'answered'),
           ownQuestion,
           sql`${schema.questions.answer}->>'answeredAt' >= ${since.toISOString()}`,
-        )),
+        ))
+        .groupBy(sql`${schema.questions.detection}->>'mode'`),
       db.select({
         started: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.createdAt} >= ${since.toISOString()})`,
         completed: sql<number>`count(distinct ${tasks.metadata}->>'opportunityId') filter (where ${tasks.state} = 'completed' and ${tasks.updatedAt} >= ${since.toISOString()})`,
@@ -143,6 +170,7 @@ export class ChatDatabaseAdapter {
         .where(and(
           sql`${tasks.metadata}->>'type' = 'negotiation'`,
           ownActor,
+          inBoundNetwork,
           or(
             gte(tasks.createdAt, since),
             and(eq(tasks.state, 'completed'), gte(tasks.updatedAt, since)),
@@ -150,6 +178,9 @@ export class ChatDatabaseAdapter {
         )),
 
     ]);
+
+    const toModeCounts = (rows: Array<{ mode: string; count: number }>): Record<string, number> =>
+      Object.fromEntries(rows.map((row) => [row.mode, Number(row.count)]));
 
     return {
       sinceHours,
@@ -160,8 +191,8 @@ export class ChatDatabaseAdapter {
         title: row.title,
         count: Number(row.count),
       })),
-      pendingQuestionCount: Number(pendingRows[0]?.count ?? 0),
-      questionsAnswered: Number(answeredRows[0]?.count ?? 0),
+      pendingQuestionsByMode: toModeCounts(pendingRows),
+      answeredQuestionsByMode: toModeCounts(answeredRows),
       negotiationsStarted: Number(negotiationRows[0]?.started ?? 0),
       negotiationsCompleted: Number(negotiationRows[0]?.completed ?? 0),
     };
@@ -387,8 +418,16 @@ export class ChatDatabaseAdapter {
           payload: schema.intents.payload,
           summary: schema.intents.summary,
           userId: schema.intents.userId,
+          status: schema.intents.status,
+          archivedAt: schema.intents.archivedAt,
         }).from(schema.intents).where(eq(schema.intents.id, intentId)).limit(1).for('update');
         if (!before) return null;
+        const oldFingerprint = computeIntentFingerprint(before.payload, before.summary);
+        if (!canApplyExpectedIntentUpdate(
+          before,
+          data.expectedIntentFingerprint,
+          data.expectedIntentUserId,
+        )) return null;
         const [updated] = await tx.update(schema.intents)
           .set(updateData)
           .where(eq(schema.intents.id, intentId))
@@ -404,7 +443,7 @@ export class ChatDatabaseAdapter {
         if (!updated) return null;
         return {
           updated,
-          oldFingerprint: computeIntentFingerprint(before.payload, before.summary),
+          oldFingerprint,
           newFingerprint: computeIntentFingerprint(updated.payload, updated.summary),
         };
       });
@@ -2738,6 +2777,13 @@ export class ChatDatabaseAdapter {
     options?: Parameters<OpportunityDatabaseAdapter['findOpportunitiesByActors']>[1]
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.findOpportunitiesByActors(actorIds, options);
+  }
+  async getRecentlyRejectedOpportunityCounterparties(
+    discovererId: string,
+    candidateUserIds: string[],
+    windowMs: number,
+  ): Promise<string[]> {
+    return this.opportunityAdapter.getRecentlyRejectedOpportunityCounterparties(discovererId, candidateUserIds, windowMs);
   }
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
     return this.opportunityAdapter.expireOpportunitiesByIntent(intentId);

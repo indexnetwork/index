@@ -10,7 +10,7 @@ updated: 2026-07-18
 
 The bilateral negotiation protocol (`packages/protocol/src/negotiation/`) is a de-facto **formal dialogue game** in the sense of McBurney & Parsons (2001): a rule-governed interaction where autonomous agents exchange a fixed vocabulary of locutions under legality constraints, accumulate public commitments, and terminate under explicit rules. It was built as engineering, not as an implementation of the literature — this document supplies the missing formal framing so the correspondence is explicit and checkable against code.
 
-This is backlog item 6 of the [Academic Grounding Enhancement Backlog](../../packages/protocol/src/docs/Academic%20Grounding%20Enhancement%20Backlog.md), grounded in Chapter 8 of [Theoretical Foundations of the Index Network Protocol](../../packages/protocol/src/docs/Theoretical%20Foundations%20of%20the%20Index%20Network%20Protocol.md). Reader-facing protocol behavior is documented in [docs/domain/negotiation.md](../domain/negotiation.md); this doc maps that behavior onto the game formalism.
+This is backlog item 6 of the [Academic Grounding Enhancement Backlog](academic-grounding-enhancement-backlog.md), grounded in Chapter 8 of [Theoretical Foundations of the Index Network Protocol](../research/theoretical-foundations-index-network-protocol.md). Reader-facing protocol behavior is documented in [docs/domain/negotiation.md](../domain/negotiation.md); this doc maps that behavior onto the game formalism.
 
 ## The game tuple
 

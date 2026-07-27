@@ -1,0 +1,24 @@
+/**
+ * participant-agents/ports — AgentToolDeps tool host port.
+ *
+ * Narrow port type consumed by createAgentTools. The host provides an
+ * optional AgentDatabase so agent registration tools are compiled only
+ * when the database adapter is wired at the composition root.
+ *
+ * NOTE: This type is intentionally defined inline (not derived via Pick from
+ * ToolRegistryCompositionDeps in shared/agent/tool.helpers.ts) to avoid a
+ * module cycle. ToolRegistryCompositionDeps imports AgentDatabase from
+ * shared/interfaces/agent.interface.ts, which after IND-548 forwards to
+ * participant-agents/ports — creating a cycle back here.
+ *
+ * Structural equivalence with ToolRegistryCompositionDeps.agentDatabase is
+ * preserved: both have type `AgentDatabase | undefined`.
+ *
+ * IND-548: extracted from capabilities/participant-agents.tools.port.ts
+ * into the participant-agents capability's dedicated ports layer.
+ */
+
+import type { AgentDatabase } from './agent.repository.port.js';
+
+/** Host capabilities consumed by participant-agent registry tools. */
+export type AgentToolDeps = { agentDatabase?: AgentDatabase };

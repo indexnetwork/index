@@ -567,7 +567,7 @@ export class OpportunityService {
       return null;
     }
 
-    // Check if viewer is an actor and allowed to see per role-based visibility (Latent Opportunity Lifecycle)
+    // Check actor visibility; the code-traceable rules live in docs/design/opportunity-status-lifecycle.md (§3.E).
     const visibilityError = this.assertOpportunityVisible(opp, viewerId);
     if (visibilityError) {
       return visibilityError;

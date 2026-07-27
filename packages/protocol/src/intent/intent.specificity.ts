@@ -1,2 +1,2 @@
-/** Default user-facing warning for broad attributive intent proposals. */
-export const DEFAULT_SPECIFICITY_WARNING = "This signal is broad and may produce many weak matches. Add a more concrete role, outcome, location, timeframe, domain, or specific need to get better recommendations.";
+/** @deprecated Canonical location: signals/domain/signal.specificity — retained for backward compatibility (IND-544). */
+export { DEFAULT_SPECIFICITY_WARNING } from "../signals/domain/signal.specificity.js";

@@ -65,7 +65,7 @@ See IND-270 for the full inventory. High-level groups:
 - **Frontend**: `apps/web/src/components/chat/ToolCallsDisplay.tsx`
 - **Plugins**: `packages/claude-plugin/skills/index-orchestrator/SKILL.md`
 - **Skill templates** (sources of truth for SKILL.md generation): `packages/protocol/skills/claude-plugin/index-orchestrator.template.md`
-- **Docs**: `docs/specs/api-reference.md`, `docs/specs/cli-reference.md`, `docs/design/protocol-deep-dive.md`, `docs/specs/2026-05-06-welcome-message-design.md`, `packages/protocol/src/README.md`, `packages/protocol/src/docs/Latent Opportunity Lifecycle.md`
+- **Docs**: `docs/specs/api-reference.md`, `docs/specs/cli-reference.md`, `docs/design/protocol-deep-dive.md`, `docs/specs/2026-05-06-welcome-message-design.md`, `packages/protocol/src/README.md`, `docs/design/opportunity-status-lifecycle.md`
 
 ## Out of scope
 

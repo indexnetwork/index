@@ -4,6 +4,7 @@ import { runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
 import type { NegotiationEvidenceMiner, RawEvidenceSegment } from '@indexnetwork/protocol';
 
 import { computeIntentFingerprint } from '../../../lib/intent/intent.fingerprint';
+import { hasValidatedRejectedNoOpportunityEvidence } from '../../../lib/questioner/recovery-evidence';
 import { canonicalizeNegotiationSender, collectNegotiationEvidenceSegments, deriveTaskNetworkBinding, getValidatedCounterpartyUserId, maybeRunNegotiationEvidenceShadow, toBoundedErrorTelemetry } from '../negotiation-evidence.shadow';
 import type { NegotiationEvidenceShadowDeps } from '../negotiation-evidence.shadow';
 import type { PoolMiningTrigger } from '../mining.shared';
@@ -138,6 +139,51 @@ describe('maybeRunNegotiationEvidenceShadow — gating', () => {
     await maybeRunNegotiationEvidenceShadow({ ...TRIGGER, isIntroducerFlow: true }, deps);
     await maybeRunNegotiationEvidenceShadow({ ...TRIGGER, intentId: undefined }, deps);
     expect(deps.database.getIntent).not.toHaveBeenCalled();
+  });
+});
+
+describe('aggregate-only rejected recovery evidence', () => {
+  const rejected = {
+    ...OPPORTUNITY,
+    status: 'rejected',
+    actors: OPPORTUNITY.actors.map((actor) => ({ ...actor, networkId: 'net-1' })),
+  };
+  const outcome = [{
+    name: 'negotiation-outcome',
+    parts: [{ kind: 'data', data: { hasOpportunity: false, reasoning: 'private' } }],
+  }];
+
+  it('accepts exactly one completed, capture-current, bilateral no-opportunity outcome', () => {
+    expect(hasValidatedRejectedNoOpportunityEvidence({
+      opportunity: rejected,
+      tasks: [task('task-1')],
+      artifactsByTaskId: new Map([['task-1', outcome]]),
+      recipientUserId: 'owner-1', intentId: 'intent-1', currentIntentFingerprint: FINGERPRINT,
+    })).toBe(true);
+  });
+
+  it('fails closed on status, participant/network, task, fingerprint, artifact, and ambiguity drift', () => {
+    const base = {
+      opportunity: rejected,
+      tasks: [task('task-1')],
+      artifactsByTaskId: new Map([['task-1', outcome]]),
+      recipientUserId: 'owner-1', intentId: 'intent-1', currentIntentFingerprint: FINGERPRINT,
+    };
+    expect(hasValidatedRejectedNoOpportunityEvidence({ ...base, opportunity: { ...rejected, status: 'accepted' } })).toBe(false);
+    expect(hasValidatedRejectedNoOpportunityEvidence({
+      ...base,
+      opportunity: { ...rejected, actors: rejected.actors.map((actor) => ({ ...actor, networkId: 'other' })) },
+    })).toBe(false);
+    expect(hasValidatedRejectedNoOpportunityEvidence({ ...base, tasks: [{ ...task('task-1'), state: 'running' }] })).toBe(false);
+    expect(hasValidatedRejectedNoOpportunityEvidence({ ...base, currentIntentFingerprint: 'drifted' })).toBe(false);
+    expect(hasValidatedRejectedNoOpportunityEvidence({
+      ...base,
+      artifactsByTaskId: new Map([['task-1', [{ name: 'negotiation-outcome', parts: [{ kind: 'data', data: { hasOpportunity: true } }] }]]]),
+    })).toBe(false);
+    expect(hasValidatedRejectedNoOpportunityEvidence({
+      ...base,
+      artifactsByTaskId: new Map([['task-1', [...outcome, ...outcome]]]),
+    })).toBe(false);
   });
 });
 

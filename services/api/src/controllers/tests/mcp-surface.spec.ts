@@ -190,4 +190,36 @@ describe('resolveMcpApiKeyPrincipal', () => {
       metadata: JSON.stringify({ agentId: 'agent-1' }),
     })).toEqual({ userId: 'seren-user', agentId: 'agent-1' });
   });
+
+  test('marks only explicit unregistered keys as enrollment-capable', () => {
+    expect(resolveMcpApiKeyPrincipal({
+      userId: 'seren-user',
+      referenceId: null,
+      metadata: JSON.stringify({ enrollmentCapable: true }),
+    })).toEqual({ userId: 'seren-user', enrollmentCapable: true });
+
+    expect(resolveMcpApiKeyPrincipal({
+      userId: 'seren-user',
+      referenceId: null,
+      metadata: JSON.stringify({ enrollmentCapable: false }),
+    })).toEqual({ userId: 'seren-user' });
+  });
+
+  test('accepts delivery designation only on a valid agent principal', () => {
+    expect(resolveMcpApiKeyPrincipal({
+      userId: 'seren-user',
+      referenceId: 'seren-user',
+      metadata: JSON.stringify({ agentId: 'agent-1', isDeliveryAgent: true }),
+    })).toEqual({
+      userId: 'seren-user',
+      agentId: 'agent-1',
+      isDeliveryAgent: true,
+    });
+
+    expect(() => resolveMcpApiKeyPrincipal({
+      userId: 'seren-user',
+      referenceId: null,
+      metadata: JSON.stringify({ isDeliveryAgent: true }),
+    })).toThrow(/Delivery API key principal mismatch/);
+  });
 });

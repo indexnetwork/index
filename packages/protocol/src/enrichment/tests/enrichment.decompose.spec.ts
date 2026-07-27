@@ -72,18 +72,14 @@ import type { EnrichmentGraphDatabase, PremiseRecord } from '../../shared/interf
 import type { Scraper } from '../../shared/interfaces/scraper.interface.js';
 import type { CompiledPremiseGraph } from '../enrichment.graph.js';
 
-interface GeneratedProfile {
+interface StoredProfile {
   userId: string;
   identity: {
     name: string;
     bio: string;
     location: string;
   };
-  narrative: { context: string };
-  attributes: {
-    interests: string[];
-    skills: string[];
-  };
+  context: string;
 }
 
 describe('ProfileGraph - Premise Decomposition', () => {
@@ -91,18 +87,14 @@ describe('ProfileGraph - Premise Decomposition', () => {
   let mockScraper: Scraper;
   let mockPremiseGraph: CompiledPremiseGraph;
 
-  const mockProfile: GeneratedProfile = {
+  const mockProfile: StoredProfile = {
     userId: 'test-user-id',
     identity: {
       name: 'Test User',
       bio: 'A test user bio',
       location: 'Test City',
     },
-    narrative: { context: 'Test user context' },
-    attributes: {
-      interests: ['testing'],
-      skills: ['TypeScript'],
-    },
+    context: 'Test user context',
   };
 
   const mockActivePremises: PremiseRecord[] = [
@@ -113,6 +105,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
       provenance: { source: 'explicit', confidence: 1.0, timestamp: new Date().toISOString() },
       analysis: null,
       validity: { volatile: false },
+      embedding: null,
       status: 'ACTIVE',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -125,6 +118,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
       provenance: { source: 'explicit', confidence: 1.0, timestamp: new Date().toISOString() },
       analysis: null,
       validity: { volatile: false },
+      embedding: null,
       status: 'ACTIVE',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -354,6 +348,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
         reasoning: 'Input disavows the Berlin premise',
         premises: [{ text: 'I am based in Istanbul', tier: 'assertive' as const }],
         retractedPremiseIds: ['premise-2'],
+        revisedBio: null,
       };
 
       const graph = buildGraph();
@@ -382,6 +377,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
         reasoning: 'Pure removal instruction — nothing new to add',
         premises: [],
         retractedPremiseIds: ['premise-1', 'premise-2'],
+        revisedBio: null,
       };
 
       const graph = buildGraph();
@@ -454,6 +450,7 @@ describe('ProfileGraph - Premise Decomposition', () => {
         reasoning: 'Disavowal with no retraction support',
         premises: [],
         retractedPremiseIds: ['premise-1'],
+        revisedBio: null,
       };
       delete (mockDatabase as { updatePremise?: unknown }).updatePremise;
 

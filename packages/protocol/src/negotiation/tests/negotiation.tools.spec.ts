@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { createNegotiationTools } from "../negotiation.tools.js";
+import { buildLifecycleNarration, createNegotiationTools } from "../negotiation.tools.js";
+import { readAuthorizedNegotiationDetail } from '../negotiation.detail-reader.js';
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
+
+type Fixture<T> = T extends (...args: any[]) => unknown
+  ? (...args: any[]) => any
+  : T extends object
+    ? { [K in keyof T]?: Fixture<T[K]> }
+    : T;
+type ToolDepsFixture = Fixture<ToolDeps>;
 
 function makeContext(userId = "user-src", networkId?: string, intentId?: string): ResolvedToolContext {
   return {
@@ -18,7 +26,7 @@ function makeContext(userId = "user-src", networkId?: string, intentId?: string)
   } as unknown as ResolvedToolContext;
 }
 
-function captureTool(name: string, deps: Partial<ToolDeps>) {
+function captureTool(name: string, deps: ToolDepsFixture) {
   let captured: { handler: (i: { context: ResolvedToolContext; query: unknown }) => Promise<string>; querySchema?: z.ZodType } | undefined;
   const defineTool = (def: { name: string; handler: (...args: unknown[]) => unknown; querySchema?: z.ZodType }) => {
     if (def.name === name) captured = def as typeof captured;
@@ -335,6 +343,47 @@ describe("get_negotiation — isUsersTurn", () => {
   });
 });
 
+describe('readAuthorizedNegotiationDetail', () => {
+  test('projects sender-derived turns and authoritative lifecycle without H2H evidence', async () => {
+    const detail = await readAuthorizedNegotiationDetail({
+      task: {
+        id: 'task-1',
+        conversationId: 'conv-1',
+        state: 'completed',
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-02'),
+      },
+      metadata: {
+        sourceUserId: 'user-src',
+        candidateUserId: 'user-cand',
+        opportunityId: 'opp-1',
+        protocolVersion: 'v2',
+        initiatorUserId: 'user-src',
+      },
+      callerUserId: 'user-cand',
+      callerRole: 'candidate',
+      readMessages: async () => [{
+        senderId: 'agent:user-src',
+        parts: [{ kind: 'data', data: { action: 'outreach', assessment: { reasoning: 'Agent assessment', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } }, message: 'Hello' } }],
+        createdAt: new Date('2026-01-01'),
+      }],
+      readArtifacts: async () => [{ name: 'negotiation-outcome', parts: [{ kind: 'data', data: { hasOpportunity: true } }] }],
+      readLifecycleEvidence: async () => ({ 'opp-1': { status: 'accepted', acceptedByOwner: false } }),
+    });
+
+    expect(detail.role).toBe('candidate');
+    expect(detail.turns[0].speaker).toBe('source');
+    expect(detail.isUsersTurn).toBe(false);
+    expect(detail.seat).toBe('counterparty');
+    expect(detail.lifecycle).toMatchObject({
+      opportunityStatus: 'accepted',
+      ownerAction: 'not_recorded',
+      directConversationEvidence: 'not_provided',
+    });
+    expect(detail.lifecycle.lifecycleLabel).not.toMatch(/owner explicitly accepted|completed connection|H2H/i);
+  });
+});
+
 // ── respond_to_negotiation — schema validation ───────────────────────────────
 
 describe("respond_to_negotiation — schema validation", () => {
@@ -414,7 +463,7 @@ describe("respond_to_negotiation — handler", () => {
         },
         negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
         agentDispatcher: { dispatch: async () => opts?.dispatchResult ?? { handled: false, reason: "waiting" } },
-      } as Partial<ToolDeps>,
+      } as ToolDepsFixture,
       createdMessages,
     };
   }
@@ -942,6 +991,32 @@ describe('list_negotiations — detail:"narrative"', () => {
     expect(byId['task-owner'].lifecycle.directConversationEvidence).toBe('not_provided');
     expect(byId['task-other'].lifecycle.directConversationEvidence).toBe('not_provided');
   });
+
+  test('lifecycle narration preserves active, waiting, lifecycle, and unavailable branch labels', () => {
+    expect(buildLifecycleNarration('active', { status: 'pending', acceptedByOwner: false })).toMatchObject({
+      agentNegotiation: 'in_progress',
+      connectionState: 'potential_match_awaiting_owner_review',
+      lifecycleLabel: "A potential match is awaiting the owner's review.",
+    });
+    expect(buildLifecycleNarration('waiting_for_agent', { status: 'negotiating', acceptedByOwner: false })).toMatchObject({
+      agentNegotiation: 'awaiting_agent',
+      connectionState: 'agents_negotiating',
+      lifecycleLabel: 'The agents are still negotiating; no owner decision is recorded.',
+    });
+    expect(buildLifecycleNarration('paused', { status: 'latent', acceptedByOwner: false })).toMatchObject({
+      agentNegotiation: 'unknown',
+      connectionState: 'latent',
+      lifecycleLabel: 'The potential match is latent; no owner decision is recorded.',
+    });
+    expect(buildLifecycleNarration('completed')).toEqual({
+      agentNegotiation: 'concluded',
+      opportunityStatus: null,
+      connectionState: 'unknown',
+      ownerAction: 'not_recorded',
+      directConversationEvidence: 'not_provided',
+      lifecycleLabel: 'The agent negotiation concluded; the current opportunity lifecycle is unavailable.',
+    });
+  });
 });
 
 describe("get_negotiation — network scope", () => {
@@ -991,6 +1066,58 @@ describe("get_negotiation — network scope", () => {
     expect(result.data.id).toBe("task-1");
     expect(result.data.conversationType).toBe("agent_negotiation");
     expect(result.data.lifecycle.directConversationEvidence).toBe("not_provided");
+  });
+});
+
+describe("get_negotiation — participant-only A2A visibility (IND-608)", () => {
+  test("denies a third party who is neither source nor candidate, without reading the transcript", async () => {
+    let messageReads = 0;
+    let artifactReads = 0;
+    const task = makeTask("working", "user-src", "user-cand");
+    const deps = {
+      negotiationDatabase: {
+        getTask: async () => task,
+        getMessagesForConversation: async () => { messageReads += 1; return []; },
+        getArtifactsForTask: async () => { artifactReads += 1; return []; },
+      },
+    };
+
+    const tool = captureTool("get_negotiation", deps);
+    const result = JSON.parse(
+      await tool.handler({
+        // A logged-in user who is not a party to this A2A negotiation.
+        context: makeContext("user-outsider"),
+        query: { negotiationId: "task-1" },
+      })
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not a party to this negotiation/i);
+    // The A2A transcript and artifacts are never read for a non-participant.
+    expect(messageReads).toBe(0);
+    expect(artifactReads).toBe(0);
+  });
+
+  test("admits a participating party (candidate) and projects the counterparty seat", async () => {
+    const task = makeTask("working", "user-src", "user-cand");
+    const deps = {
+      negotiationDatabase: {
+        getTask: async () => task,
+        getMessagesForConversation: async () => [],
+        getArtifactsForTask: async () => [],
+      },
+    };
+
+    const tool = captureTool("get_negotiation", deps);
+    const result = JSON.parse(
+      await tool.handler({
+        context: makeContext("user-cand"),
+        query: { negotiationId: "task-1" },
+      })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.id).toBe("task-1");
   });
 });
 

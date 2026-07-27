@@ -1,0 +1,36 @@
+/**
+ * questions/ports/question.generator.port — inline question generator port.
+ *
+ * @deprecated Inline question generation is superseded by the async
+ * QuestionerQueue path (`questionerEnqueue`). Will be removed once the inline
+ * fallback in `opportunity.discover.ts` is retired.
+ *
+ * Protocol-level read contract for decision-question generation. Implementations
+ * live in the backend (see `QuestionGeneratorService`, which delegates to the
+ * QuestionerAgent's `discovery` mode) and are injected into the protocol via
+ * `ProtocolDeps`/`ToolContext`. The protocol module never constructs its own
+ * LLM-bound generator — callers inject one (or `undefined` to opt out).
+ *
+ * IND-547: canonical home — previously shared/interfaces/question-generator.interface.ts.
+ * Legacy path is a thin compatibility shim pointing here.
+ */
+import type { DiscoveryQuestionInput } from "../../shared/schemas/discovery-question.schema.js";
+import type { QuestionGenerationResult } from "../domain/question.schema.js";
+
+export interface QuestionGeneratorReader {
+  /**
+   * Run the question generator over a single discovery turn.
+   *
+   * @param input  Discovery turn payload (query + negotiation digests + chat context).
+   * @param options.signal  Optional AbortSignal. When aborted (deadline reached or
+   *   upstream cancel) the in-flight LLM call is cancelled and `null` is returned —
+   *   discovery still emits its response, just without questions.
+   * @returns The structured result, or `null` when generation failed,
+   *   guardrails dropped all candidates, the underlying LLM threw, or
+   *   the call was aborted.
+   */
+  generate(
+    input: DiscoveryQuestionInput,
+    options?: { signal?: AbortSignal },
+  ): Promise<QuestionGenerationResult | null>;
+}

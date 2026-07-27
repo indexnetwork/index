@@ -1,9 +1,55 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, expect, it } from "bun:test";
-import { IntentReconciler } from "../intent.reconciler.js";
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      const prompt = String(messages.at(-1)?.content ?? "");
+      if (prompt.includes('"Finish React Course"')) {
+        return { actions: [{ type: "expire", id: "123", reason: "The course is complete." }] };
+      }
+      if (prompt.includes('"Build a Todo App in React with Redux"')) {
+        return {
+          actions: [{
+            type: "update",
+            id: "456",
+            payload: "Build a Todo App in React with Redux",
+            score: 90,
+            reasoning: "The new goal refines the existing React application.",
+            intentMode: "ATTRIBUTIVE",
+          }],
+        };
+      }
+      if (prompt.includes('"Collaborate on art direction')) {
+        return {
+          actions: [{
+            type: "create",
+            payload: "Collaborate on art direction for a text-first CRPG",
+            score: 85,
+            reasoning: "This is a distinct collaboration goal, not a compound update.",
+            intentMode: "ATTRIBUTIVE",
+            referentialAnchor: null,
+            semanticEntropy: 0.2,
+          }],
+        };
+      }
+      return {
+        actions: [{
+          type: "create",
+          payload: "Learn Rust",
+          score: 85,
+          reasoning: "No active intent matches the new learning goal.",
+          intentMode: "ATTRIBUTIVE",
+          referentialAnchor: null,
+          semanticEntropy: 0.2,
+        }],
+      };
+    },
+  }),
+}));
+
+const { IntentReconciler } = await import("../intent.reconciler.js");
+
+afterAll(() => mock.restore());
 
 describe('IntentReconciler', () => {
   const reconciler = new IntentReconciler();

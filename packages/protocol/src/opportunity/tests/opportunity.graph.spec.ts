@@ -7,26 +7,36 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { afterAll, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
-import type { Id } from '../../types/common.types.js';
+import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { SourceProfileData } from '../opportunity.state.js';
 import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
-import type { GeneratedProfile } from '../../enrichment/enrichment.generator.js';
+import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { computeHydeSourceTextHash } from '../../shared/hyde/hyde.documents.js';
-import { requestContext } from '../../shared/observability/request-context.js';
+import { requestContext, type TraceEmitter } from '../../shared/observability/request-context.js';
+import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
+const originalNegotiationIncludeOtherIntents = process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS;
+
+afterEach(() => {
+  if (originalNegotiationIncludeOtherIntents === undefined) {
+    delete process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS;
+  } else {
+    process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = originalNegotiationIncludeOtherIntents;
+  }
+});
 
 describe('buildPrioritizedNegotiationIntents', () => {
-  test('prioritizes an exact fallback intent, removes duplicates, and keeps the five-intent cap', () => {
+  test('defaults to exact-first bounded fallback behavior', () => {
     const intents = buildPrioritizedNegotiationIntents(
       [
         { id: 'other-1', summary: 'Other 1', payload: 'one' },
@@ -47,6 +57,34 @@ describe('buildPrioritizedNegotiationIntents', () => {
       'other-3',
       'other-4',
     ]);
+  });
+
+  test('restricts context to the exact active or owned fallback intent', () => {
+    expect(buildPrioritizedNegotiationIntents(
+      [
+        { id: 'other-1', summary: 'Other 1', payload: 'one' },
+        { id: 'exact-intent', summary: 'Exact active', payload: 'exact active payload' },
+      ],
+      'exact-intent',
+      null,
+      false,
+    ).map((intent) => intent.id)).toEqual(['exact-intent']);
+
+    expect(buildPrioritizedNegotiationIntents(
+      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
+      'exact-intent',
+      { id: 'exact-intent', summary: 'Exact fallback', payload: 'exact fallback payload' },
+      false,
+    ).map((intent) => intent.id)).toEqual(['exact-intent']);
+  });
+
+  test('provides no unrelated fallback when a restrictive context has no exact binding', () => {
+    expect(buildPrioritizedNegotiationIntents(
+      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
+      undefined,
+      null,
+      false,
+    )).toEqual([]);
   });
 });
 
@@ -96,6 +134,7 @@ function createMockGraph(deps?: {
   evaluatorResult?: EvaluatedOpportunityWithActors[];
 }) {
   const mockDb: OpportunityGraphDatabase = {
+    ...createOpportunityGraphDatabaseFixture(),
     getProfile: () => Promise.resolve(deps?.getProfile ?? null),
     createOpportunity: async (data) => createdOpportunity(data),
     async createOpportunityIfNetworkEligible(data) {
@@ -123,7 +162,7 @@ function createMockGraph(deps?: {
     getNetwork: deps?.getNetwork ?? (() => Promise.resolve({ id: 'idx-1', title: 'Test Index' })),
     getNetworkMemberCount: deps?.getNetworkMemberCount ?? (() => Promise.resolve(2)),
     getNetworkIdsForIntent: deps?.getNetworkIdsForIntent ?? (() => Promise.resolve(['idx-1'])),
-    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
     isNetworkMember: () => Promise.resolve(true),
     isIndexOwner: () => Promise.resolve(false),
     getOpportunity: () => Promise.resolve(null),
@@ -185,6 +224,7 @@ function createMockGraphWithFnOverrides(deps?: {
   getActiveNetworkMembershipPairsFn?: OpportunityGraphDatabase['getActiveNetworkMembershipPairs'];
 }) {
   const mockDb: OpportunityGraphDatabase = {
+    ...createOpportunityGraphDatabaseFixture(),
     getProfile: (userId: string) =>
       deps?.getProfileFn
         ? deps.getProfileFn(userId)
@@ -215,7 +255,7 @@ function createMockGraphWithFnOverrides(deps?: {
     getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
     getNetworkMemberCount: () => Promise.resolve(2),
     getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
     isNetworkMember: () => Promise.resolve(true),
     isIndexOwner: () => Promise.resolve(false),
     getOpportunity: () => Promise.resolve(null),
@@ -523,7 +563,7 @@ describe('Opportunity Graph', () => {
       const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
-          type: 'profile' as const,
+          type: 'premise' as const,
           id: 'b0000000-0000-4000-8000-000000000002',
           userId: 'b0000000-0000-4000-8000-000000000002',
           score: 0.9,
@@ -880,7 +920,7 @@ describe('Opportunity Graph', () => {
       ]) as typeof mockDb.getUserContexts;
       mockDb.getHydeDocumentsForSource = mock(async () => []) as typeof mockDb.getHydeDocumentsForSource;
       mockDb.searchIntentsByContextEmbedding = mock(async () => [
-        { intentId: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', networkId: 'net-1', similarity: 0.86, payload: 'Looking for protocol collaborators' },
+        { intentId: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', networkId: 'net-1', similarity: 0.86, payload: 'Looking for protocol collaborators', summary: null },
       ]) as typeof mockDb.searchIntentsByContextEmbedding;
 
       await compiledGraph.invoke({
@@ -1026,18 +1066,16 @@ describe('Opportunity Graph', () => {
 
     test('when splitting multi-actor result, reasoning mentioning only one candidate does not leak to the other (IND-127)', async () => {
       // Simulate: evaluator bundles Alice and Bob into one opportunity with Alice's reasoning
-      const profilesByUserId: Record<string, GeneratedProfile> = {
+      const profilesByUserId: Record<string, UserIdentity> = {
         'c0000000-0000-4000-8000-000000000003': {
           userId: 'c0000000-0000-4000-8000-000000000003',
-          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
-          attributes: { interests: ['crypto', 'DeFi'], skills: ['blockchain'] },
-          narrative: {},
+          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs', location: '' },
+          context: 'Blockchain and DeFi founder.',
         },
         'f0000000-0000-4000-8000-000000000006': {
           userId: 'f0000000-0000-4000-8000-000000000006',
-          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups' },
-          attributes: { interests: ['AI', 'machine learning'], skills: ['investing'] },
-          narrative: {},
+          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups', location: '' },
+          context: 'AI and machine-learning investor.',
         },
       };
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
@@ -1089,18 +1127,16 @@ describe('Opportunity Graph', () => {
     });
 
     test('when bundled reasoning mentions both candidates, neither split reuses the shared text', async () => {
-      const profilesByUserId: Record<string, GeneratedProfile> = {
+      const profilesByUserId: Record<string, UserIdentity> = {
         'c0000000-0000-4000-8000-000000000003': {
           userId: 'c0000000-0000-4000-8000-000000000003',
-          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
-          attributes: { interests: ['crypto'], skills: ['blockchain'] },
-          narrative: {},
+          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs', location: '' },
+          context: 'Blockchain founder.',
         },
         'f0000000-0000-4000-8000-000000000006': {
           userId: 'f0000000-0000-4000-8000-000000000006',
-          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups' },
-          attributes: { interests: ['AI'], skills: ['investing'] },
-          narrative: {},
+          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups', location: '' },
+          context: 'AI investor.',
         },
       };
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
@@ -1933,11 +1969,9 @@ describe('Opportunity Graph', () => {
           getProfileCalls.push(userId);
           if (userId === onBehalfUserId) {
             return {
-              embedding: dummyEmbedding,
-              identity: { name: 'Target User', bio: 'Target bio' },
-              narrative: { context: 'Target context' },
-              attributes: { skills: ['skill-a'], interests: ['interest-a'] },
-            } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+              identity: { name: 'Target User', bio: 'Target bio', location: '' },
+              context: 'Target context',
+            };
           }
           return null;
         },
@@ -1976,14 +2010,15 @@ describe('Opportunity Graph', () => {
       };
 
       const mockDb: OpportunityGraphDatabase = {
+        ...createOpportunityGraphDatabaseFixture(),
         getProfile: async (userId: string) => {
           if (userId === onBehalfUserId) {
             return {
-              embedding: dummyEmbedding,
-              identity: { name: 'Target User', bio: 'Target bio' },
-            } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+              identity: { name: 'Target User', bio: 'Target bio', location: '' },
+              context: 'Target context',
+            };
           }
-          return { embedding: dummyEmbedding, identity: { name: 'Source User' } } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+          return { identity: { name: 'Source User', bio: '', location: '' }, context: '' };
         },
         createOpportunity: (data) =>
           Promise.resolve({
@@ -2017,7 +2052,7 @@ describe('Opportunity Graph', () => {
         getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
         getNetworkMemberCount: () => Promise.resolve(2),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
         isNetworkMember: () => Promise.resolve(true),
         isIndexOwner: () => Promise.resolve(false),
         getOpportunity: () => Promise.resolve(null),
@@ -2079,9 +2114,9 @@ describe('Opportunity Graph', () => {
     test('persist node assigns userId as introducer actor when onBehalfOfUserId is set', async () => {
       const { compiledGraph } = createMockGraphWithFnOverrides({
         getProfileFn: async (userId: string) => ({
-          embedding: dummyEmbedding,
-          identity: { name: userId === onBehalfUserId ? 'Target User' : 'Bob' },
-        } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>),
+          identity: { name: userId === onBehalfUserId ? 'Target User' : 'Bob', bio: '', location: '' },
+          context: '',
+        }),
         evaluatorResult: [{
           reasoning: 'Great match for target user.',
           score: 85,
@@ -2256,9 +2291,8 @@ describe('Opportunity Graph', () => {
         getProfile: {
           userId: 'user-alice' as Id<'users'>,
           identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools', location: 'Remote' },
-          narrative: { context: 'Alice is a software engineer' },
-          attributes: { interests: ['machine learning', 'startups'], skills: ['TypeScript', 'Python'] },
-        } satisfies GeneratedProfile,
+          context: 'Alice is a software engineer',
+        } satisfies UserIdentity,
         getActiveIntents: () =>
           Promise.resolve([
             {
@@ -2405,6 +2439,7 @@ describe('Opportunity Graph', () => {
 
     test('no shared networks returns empty candidates with per-userId memberships', async () => {
       const mockDb: OpportunityGraphDatabase = {
+        ...createOpportunityGraphDatabaseFixture(),
         getProfile: () => Promise.resolve(null),
         createOpportunity: (data) => Promise.resolve({
           id: 'opp-1', detection: data.detection, actors: data.actors,
@@ -2428,7 +2463,7 @@ describe('Opportunity Graph', () => {
         getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
         getNetworkMemberCount: () => Promise.resolve(5),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
         isNetworkMember: () => Promise.resolve(true),
         isIndexOwner: () => Promise.resolve(false),
         getOpportunity: () => Promise.resolve(null),
@@ -2499,6 +2534,7 @@ describe('Opportunity Graph', () => {
       // Build a full mockDb that mirrors createMockGraph but with a custom
       // createOpportunity that appends an unapproved introducer actor.
       const mockDb: OpportunityGraphDatabase = {
+        ...createOpportunityGraphDatabaseFixture(),
         getProfile: () => Promise.resolve(null),
         getActiveNetworkMembershipPairs: async (pairs) => pairs,
         createOpportunity: (data) =>
@@ -2551,7 +2587,7 @@ describe('Opportunity Graph', () => {
         getNetworkMemberCount: () => Promise.resolve(2),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
         getUser: (userId: string) =>
-          Promise.resolve({ id: userId, name: 'Test User', email: 'test@example.com' }),
+          Promise.resolve({ id: userId, name: 'Test User', email: 'test@example.com', socials: [] }),
         isNetworkMember: () => Promise.resolve(true),
         isIndexOwner: () => Promise.resolve(false),
         getOpportunity: () => Promise.resolve(null),
@@ -2613,7 +2649,8 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations).toHaveLength(0);
     });
 
-    test('invokes negotiation and ignores a null-like exact actor intent from persisted data', async () => {
+    test('fresh negotiation preserves exact-first fallback when true and isolates both sides when false', async () => {
+      process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = 'false';
       const negotiationInvocations: unknown[] = [];
       const exactIntentLookups: string[] = [];
 
@@ -2625,6 +2662,7 @@ describe('Opportunity Graph', () => {
       };
 
       const mockDb: OpportunityGraphDatabase = {
+        ...createOpportunityGraphDatabaseFixture(),
         getProfile: () => Promise.resolve(null),
         getActiveNetworkMembershipPairs: async (pairs) => pairs,
         createOpportunity: (data) =>
@@ -2682,7 +2720,7 @@ describe('Opportunity Graph', () => {
         getNetworkMemberCount: () => Promise.resolve(2),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
         getUser: (userId: string) =>
-          Promise.resolve({ id: userId, name: 'Test User', email: 'test@example.com' }),
+          Promise.resolve({ id: userId, name: 'Test User', email: 'test@example.com', socials: [] }),
         isNetworkMember: () => Promise.resolve(true),
         isIndexOwner: () => Promise.resolve(false),
         getOpportunity: () => Promise.resolve(null),
@@ -2743,7 +2781,7 @@ describe('Opportunity Graph', () => {
           {
             userId: 'a0000000-0000-4000-8000-000000000001',
             role: 'patient',
-            intentId: null,
+            intentId: 'intent-1',
           },
           {
             userId: 'b0000000-0000-4000-8000-000000000002',
@@ -2772,6 +2810,32 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations.length).toBeGreaterThan(0);
       expect(exactIntentLookups.length).toBeGreaterThan(0);
       expect(new Set(exactIntentLookups)).toEqual(new Set(['intent-bob']));
+      const invocation = negotiationInvocations[0] as {
+        sourceUser: { intents: Array<{ id: string }> };
+        candidateUser: { intents: Array<{ id: string }> };
+      };
+      expect(invocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
+      expect(invocation.candidateUser.intents.map((intent) => intent.id)).toEqual(['intent-bob']);
+
+      process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = 'true';
+      negotiationInvocations.length = 0;
+      exactIntentLookups.length = 0;
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        operationMode: 'create' as const,
+        options: { initialStatus: 'latent' as const },
+      });
+
+      const compatibleInvocation = negotiationInvocations[0] as {
+        sourceUser: { intents: Array<{ id: string }> };
+        candidateUser: { intents: Array<{ id: string }> };
+      };
+      expect(compatibleInvocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
+      expect(compatibleInvocation.candidateUser.intents.map((intent) => intent.id)).toEqual([
+        'intent-bob',
+        'intent-1',
+      ]);
     });
   });
 
@@ -2836,6 +2900,7 @@ describe('Opportunity Graph', () => {
       };
 
       const mockDb: OpportunityGraphDatabase = {
+        ...createOpportunityGraphDatabaseFixture(),
         getProfile: () => Promise.resolve(null),
         createOpportunity: (data) =>
           Promise.resolve({
@@ -2874,7 +2939,7 @@ describe('Opportunity Graph', () => {
         getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
         getNetworkMemberCount: () => Promise.resolve(2),
         getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (userId: string) => Promise.resolve({ id: userId, name: `User ${userId}`, email: `${userId}@example.com` }),
+        getUser: (userId: string) => Promise.resolve({ id: userId, name: `User ${userId}`, email: `${userId}@example.com`, socials: [] }),
         isNetworkMember: () => Promise.resolve(true),
         isIndexOwner: () => Promise.resolve(false),
         getOpportunity: (id: string) => id === 'opp-existing'
@@ -2987,6 +3052,7 @@ describe('Opportunity Graph', () => {
 
       // Build the mock db directly (same pattern as negotiate_existing tests)
       const mockDb: OpportunityGraphDatabase = {
+        ...createOpportunityGraphDatabaseFixture(),
         getProfile: () => Promise.resolve(null),
         createOpportunity: (data) => Promise.resolve({ id: 'opp-new', ...data, status: data.status ?? 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null }),
         opportunityExistsBetweenActors: () => Promise.resolve(false),
@@ -3000,7 +3066,7 @@ describe('Opportunity Graph', () => {
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
         getNegotiationTaskForOpportunity: async () => null,
-        getUser: (_id: string) => Promise.resolve({ id: _id, name: 'Test', email: 'test@test.com' }),
+        getUser: (_id: string) => Promise.resolve({ id: _id, name: 'Test', email: 'test@test.com', socials: [] }),
         isNetworkMember: () => Promise.resolve(false),
         isIndexOwner: () => Promise.resolve(false),
         getOpportunity: () => Promise.resolve(existingOpp as any),
@@ -3052,7 +3118,6 @@ describe('buildDiscovererContext', () => {
   it('includes location when present in profile identity', () => {
     const profile: SourceProfileData = {
       identity: { name: 'Alice', bio: 'AI startup founder', location: 'San Francisco' },
-      attributes: { skills: ['TypeScript'], interests: ['AI'] },
     };
     const result = buildDiscovererContext(profile, []);
     expect(result).toContain('Location: San Francisco');
@@ -3061,7 +3126,6 @@ describe('buildDiscovererContext', () => {
   it('omits location line when location is undefined', () => {
     const profile: SourceProfileData = {
       identity: { name: 'Alice', bio: 'AI startup founder' },
-      attributes: { skills: ['TypeScript'], interests: ['AI'] },
     };
     const result = buildDiscovererContext(profile, []);
     expect(result).not.toContain('Location:');
@@ -3070,7 +3134,6 @@ describe('buildDiscovererContext', () => {
   it('omits location line when location is empty string', () => {
     const profile: SourceProfileData = {
       identity: { name: 'Alice', bio: 'AI startup founder', location: '' },
-      attributes: { skills: ['TypeScript'], interests: ['AI'] },
     };
     const result = buildDiscovererContext(profile, []);
     expect(result).not.toContain('Location:');
@@ -3194,6 +3257,7 @@ function createTraceMockEvaluatorFn(
 
 function createTraceMockGraph() {
   const mockDb: OpportunityGraphDatabase = {
+    ...createOpportunityGraphDatabaseFixture(),
     getProfile: () => Promise.resolve(null),
     createOpportunity: (data) =>
       Promise.resolve({
@@ -3227,7 +3291,7 @@ function createTraceMockGraph() {
     getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
     getNetworkMemberCount: () => Promise.resolve(2),
     getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
     isNetworkMember: () => Promise.resolve(true),
     isIndexOwner: () => Promise.resolve(false),
     getOpportunity: () => Promise.resolve(null),
@@ -3291,8 +3355,8 @@ describe('Opportunity Graph — Trace Events', () => {
   test('emits agent_start/agent_end trace events for each significant node', async () => {
     const { compiledGraph } = createTraceMockGraph();
     const traceEvents: Array<{ type: string; name: string; durationMs?: number; summary?: string }> = [];
-    const traceEmitter = (event: { type: string; name: string; durationMs?: number; summary?: string }) => {
-      traceEvents.push(event);
+    const traceEmitter: TraceEmitter = (event) => {
+      if ('name' in event) traceEvents.push(event);
     };
 
     // Run the graph inside a requestContext with our traceEmitter
@@ -3329,8 +3393,8 @@ describe('Opportunity Graph — Trace Events', () => {
   test('trace events are in correct chronological order (start before end)', async () => {
     const { compiledGraph } = createTraceMockGraph();
     const traceEvents: Array<{ type: string; name: string; ts: number }> = [];
-    const traceEmitter = (event: { type: string; name: string }) => {
-      traceEvents.push({ ...event, ts: Date.now() });
+    const traceEmitter: TraceEmitter = (event) => {
+      if ('name' in event) traceEvents.push({ ...event, ts: Date.now() });
     };
 
     await requestContext.run({ traceEmitter }, async () => {

@@ -11,6 +11,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
 import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface, getMcpToolMetadataCacheKey } from "../mcp.server.js";
+import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS } from "../../shared/agent/canonical-guidance.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
 
@@ -39,9 +40,9 @@ describe("MCP_INSTRUCTIONS", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).toContain("tool's description");
   });
 
-  test("describes the entity model", () => {
-    for (const term of ["Profile", "Intent", "Opportunity"]) {
-      expect(MCP_INSTRUCTIONS).toContain(term);
+  test("describes the canonical entity model", () => {
+    for (const term of ["identity", "context", "premise", "signal", "community", "network", "opportunity", "negotiation"]) {
+      expect(MCP_INSTRUCTIONS.toLowerCase()).toContain(term);
     }
   });
 
@@ -55,16 +56,39 @@ describe("MCP_INSTRUCTIONS", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).toContain("community");
   });
 
-  test("separates agent completion, owner acceptance, and H2H evidence", () => {
-    expect(MCP_INSTRUCTIONS).toContain("means only that agents concluded");
-    expect(MCP_INSTRUCTIONS).toContain("may leave a `pending` match awaiting owner review");
-    expect(MCP_INSTRUCTIONS).toContain("Agent acceptance is not \"connected\"");
-    expect(MCP_INSTRUCTIONS).toContain("Status alone never proves an H2H thread");
+  test("guides H2A and A2A collaboration but never exposes H2H", () => {
+    expect(MCP_INSTRUCTIONS).toContain("H2A");
+    expect(MCP_INSTRUCTIONS).toContain("A2A");
+    expect(MCP_INSTRUCTIONS).not.toContain("H2H");
+  });
+
+  test("distinguishes owner approval from A2A negotiation acceptance", () => {
+    expect(MCP_INSTRUCTIONS).toContain("owner approval");
+    expect(MCP_INSTRUCTIONS).toContain("is not owner approval");
+  });
+
+  test("never mentions retired contact/Gmail/scrape/profile/ghost-user guidance", () => {
+    const lower = MCP_INSTRUCTIONS.toLowerCase();
+    for (const fragment of ["ghost user", "gmail", "scrape", "import_contacts", "read_user_profiles"]) {
+      expect(lower).not.toContain(fragment);
+    }
   });
 
   test("does not carry Claude Code sub-skill dispatch idioms", () => {
     expect(MCP_INSTRUCTIONS.toLowerCase()).not.toContain("sub-skill");
     expect(MCP_INSTRUCTIONS).not.toContain("index-network:");
+  });
+});
+
+describe("MCP_INSTRUCTIONS canonical source (IND-602/603)", () => {
+  test("is built from the shared canonical guidance summary", () => {
+    expect(MCP_INSTRUCTIONS).toContain(CANONICAL_GUIDANCE_SUMMARY);
+  });
+
+  test("summary lists every canonical read_docs topic", () => {
+    for (const topic of CANONICAL_GUIDANCE_TOPICS) {
+      expect(MCP_INSTRUCTIONS).toContain(topic);
+    }
   });
 });
 
@@ -248,7 +272,6 @@ describe("extractBearerToken", () => {
 
 describe('getMcpToolMetadataCacheKey', () => {
   const baseDeps = {
-    contactsEnabled: false,
     chatSession: undefined,
     agentDatabase: undefined,
     agentDispatcher: undefined,
@@ -258,11 +281,18 @@ describe('getMcpToolMetadataCacheKey', () => {
   test('changes when registry-shaping dependencies change', () => {
     const base = getMcpToolMetadataCacheKey(baseDeps);
 
-    expect(getMcpToolMetadataCacheKey({ ...baseDeps, contactsEnabled: true })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, chatSession: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDatabase: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDispatcher: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, questionerEnqueue: (async () => undefined) as never })).not.toBe(base);
+  });
+
+  test('CONTACTS_ENABLED never shapes the MCP registry cache key', () => {
+    // Contact/Gmail tools are omitted from the MCP surface entirely, so the flag
+    // can never change the MCP tool set or its metadata cache key (IND-596).
+    const base = getMcpToolMetadataCacheKey(baseDeps);
+    const withContacts = { ...baseDeps, contactsEnabled: true } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
+    expect(getMcpToolMetadataCacheKey(withContacts)).toBe(base);
   });
 });
 
@@ -288,26 +318,41 @@ describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
       "record_onboarding_privacy_consent",
-      "preview_user_profile",
-      "get_profile_run",
-      "cancel_profile_run",
-      "confirm_user_profile",
-      "create_user_profile",
+      "preview_user_context",
+      "get_enrichment_run",
+      "cancel_enrichment_run",
+      "confirm_user_context",
+      "create_user_context",
       "complete_onboarding",
-      "import_gmail_contacts",
       "read_networks",
       "create_network_membership",
       "create_intent",
-      "read_user_profiles",
+      "read_user_contexts",
     ];
     for (const tool of expected) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
     }
   });
 
-  test("contains agent-gate exempt tools", () => {
-    for (const tool of ["register_agent", "read_docs", "scrape_url"]) {
+  test("contains enrollment and protocol guidance tools", () => {
+    for (const tool of ["register_agent", "read_docs"]) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
+    }
+  });
+
+  test("does not re-advertise removed MCP surfaces during onboarding", () => {
+    for (const tool of [
+      "scrape_url",
+      "import_gmail_contacts",
+      "read_user_profiles",
+      "create_user_profile",
+      "update_user_profile",
+      "confirm_user_profile",
+      "preview_user_profile",
+      "get_profile_run",
+      "cancel_profile_run",
+    ]) {
+      expect(ONBOARDING_ALLOWED.has(tool)).toBe(false);
     }
   });
 
@@ -329,15 +374,15 @@ describe("buildMcpOnboardingMessage", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
     expect(msg).toContain("You're Alice, right?");
     expect(msg).toContain("record_onboarding_privacy_consent");
-    expect(msg).toContain("preview_user_profile");
-    expect(msg).toContain("get_profile_run");
+    expect(msg).toContain("preview_user_context");
+    expect(msg).toContain("get_enrichment_run");
   });
 
   test("uses name-ask step when user has no name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false, userName: "Unknown" }));
     expect(msg).toContain("Ask the user for their name");
     expect(msg).toContain("short self-description");
-    expect(msg).toContain("confirm_user_profile");
+    expect(msg).toContain("confirm_user_context");
   });
 
   test("skips community step for network-scoped contexts", () => {

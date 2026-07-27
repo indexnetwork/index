@@ -1,12 +1,19 @@
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { publishConversationMessageEvent } from '../lib/conversation-events';
+import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { log } from '../lib/log';
+import { projectNegotiationActivity } from '../lib/negotiation-activity';
+import { assertContinuationExecutionEffect } from './negotiation-continuation.atomic';
+import type { ContinuationExecutionFence } from './negotiation-continuation.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
 const ORCHESTRATOR_PERSONA = 'orchestrator';
 const SIGNAL_PERSONA = 'signal';
 const NEGOTIATOR_PERSONA = 'negotiator';
 const REPORTER_PERSONA = 'reporter';
+const logger = log.lib.from('conversation-database');
 
 /** Persona-specific registry key for Signal Agent's canonical intent scope. */
 const SIGNAL_INTENT_SCOPE_TYPE = 'signal-intent';
@@ -62,6 +69,46 @@ function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
       const record = intent as Record<string, unknown>;
       return typeof record.userId === 'string' && typeof record.intentId === 'string';
     });
+}
+
+function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reason: string | null; turnCount: number | null } | null {
+  if (!Array.isArray(parts)) return null;
+  for (const part of parts) {
+    if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
+    const partRecord = part as Record<string, unknown>;
+    if (partRecord.kind !== 'data' || typeof partRecord.data !== 'object' || partRecord.data === null || Array.isArray(partRecord.data)) continue;
+    const data = partRecord.data as Record<string, unknown>;
+    const hasOpportunity = typeof data.hasOpportunity === 'boolean'
+      ? data.hasOpportunity
+      : typeof data.consensus === 'boolean'
+        ? data.consensus
+        : null;
+    if (hasOpportunity === null) continue;
+    return {
+      hasOpportunity,
+      reason: typeof data.reason === 'string' ? data.reason : null,
+      turnCount: typeof data.turnCount === 'number' && Number.isFinite(data.turnCount) ? data.turnCount : null,
+    };
+  }
+  return null;
+}
+
+function readNegotiationSignalCount(metadata: unknown): number {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return 0;
+  const record = metadata as Record<string, unknown>;
+  const intentIds = new Set<string>();
+  if (Array.isArray(record.participantBindings)) {
+    for (const binding of record.participantBindings) {
+      if (typeof binding !== 'object' || binding === null || Array.isArray(binding)) continue;
+      const intentId = (binding as Record<string, unknown>).intentId;
+      if (typeof intentId === 'string' && intentId) intentIds.add(intentId);
+    }
+  }
+  for (const key of ['sourceIntentId', 'candidateIntentId']) {
+    const intentId = record[key];
+    if (typeof intentId === 'string' && intentId) intentIds.add(intentId);
+  }
+  return intentIds.size;
 }
 
 type PersistedOpportunity = typeof opportunities.$inferSelect;
@@ -297,10 +344,19 @@ export class ConversationDatabaseAdapter {
 
   /**
    * Lists conversations for a user, ordered by most recent message.
-   * @param userId - The user whose conversations to list
+   * @param participantId - The participant whose conversations to list. This
+   * can be an `agent:<userId>` identity for A2A negotiations.
+   * @param viewerUserId - The human owner whose intent provenance may be
+   * projected into the summary. Defaults to `participantId` for ordinary DMs.
+   * @param includeNegotiationLifecycle - Whether to project the latest task and
+   * related opportunity lifecycle for the negotiations inbox.
    * @returns Summaries with participant lists
    */
-  async getConversationsForUser(userId: string): Promise<ConversationSummary[]> {
+  async getConversationsForUser(
+    participantId: string,
+    viewerUserId = participantId,
+    includeNegotiationLifecycle = false,
+  ): Promise<ConversationSummary[]> {
     // Include conversations that are not hidden OR have new messages since hiding
     const rows = await db
       .select({
@@ -314,7 +370,7 @@ export class ConversationDatabaseAdapter {
       )
       .where(
         and(
-          eq(schema.conversationParticipants.participantId, userId),
+          eq(schema.conversationParticipants.participantId, participantId),
           or(
             isNull(schema.conversationParticipants.hiddenAt),
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
@@ -333,7 +389,16 @@ export class ConversationDatabaseAdapter {
     // Everything below only needs `ids` — run the lookups in one parallel
     // wave instead of sequential round trips; this method is on the chat
     // sidebar's critical path (GET /conversations and /conversations/negotiations).
-    const [convs, allParticipants, negotiatorRow, claimRows, lastMessages, allMeta, unreadRows] = await Promise.all([
+    const [
+      convs,
+      allParticipants,
+      negotiatorRow,
+      claimRows,
+      lastMessages,
+      allMeta,
+      unreadRows,
+      latestNegotiationTasks,
+    ] = await Promise.all([
       db
         .select()
         .from(schema.conversations)
@@ -400,18 +465,52 @@ export class ConversationDatabaseAdapter {
           schema.conversationParticipants,
           and(
             eq(schema.conversationParticipants.conversationId, schema.messages.conversationId),
-            eq(schema.conversationParticipants.participantId, userId),
+            eq(schema.conversationParticipants.participantId, participantId),
           ),
         )
         .where(and(
           inArray(schema.messages.conversationId, ids),
-          ne(schema.messages.senderId, userId),
+          ne(schema.messages.senderId, participantId),
           or(
             isNull(schema.conversationParticipants.lastReadAt),
             gt(schema.messages.createdAt, schema.conversationParticipants.lastReadAt),
           ),
         ))
         .groupBy(schema.messages.conversationId),
+      includeNegotiationLifecycle
+        ? db
+          .selectDistinctOn([schema.tasks.conversationId], {
+            conversationId: schema.tasks.conversationId,
+            taskId: schema.tasks.id,
+            state: schema.tasks.state,
+            statusTimestamp: schema.tasks.statusTimestamp,
+            metadata: schema.tasks.metadata,
+            updatedAt: schema.tasks.updatedAt,
+            artifactParts: schema.artifacts.parts,
+            opportunityStatus: opportunities.status,
+            opportunityAcceptedBy: opportunities.acceptedBy,
+            currentTurnCount: sql<number>`(
+              SELECT count(*)::int
+              FROM ${schema.messages}
+              WHERE ${schema.messages.taskId} = ${schema.tasks.id}
+            )`,
+          })
+          .from(schema.tasks)
+          .leftJoin(
+            schema.artifacts,
+            and(
+              eq(schema.artifacts.taskId, schema.tasks.id),
+              eq(schema.artifacts.name, 'negotiation-outcome'),
+            ),
+          )
+          .leftJoin(opportunities, sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunities.id}`)
+          .where(and(
+            inArray(schema.tasks.conversationId, ids),
+            sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+            notArchivedNegotiationTaskWhere(),
+          ))
+          .orderBy(schema.tasks.conversationId, desc(schema.tasks.createdAt), desc(schema.tasks.id))
+        : Promise.resolve([]),
     ]);
 
     const unreadCountByConv = new Map(
@@ -500,7 +599,7 @@ export class ConversationDatabaseAdapter {
         for (const rawEntry of metadata.matchProvenance) {
           if (!isMatchProvenanceEntry(rawEntry)) continue;
           for (const intent of rawEntry.intents) {
-            if (intent.userId === userId) provenanceIntentIds.add(intent.intentId);
+            if (intent.userId === viewerUserId) provenanceIntentIds.add(intent.intentId);
           }
         }
       }
@@ -515,7 +614,7 @@ export class ConversationDatabaseAdapter {
         .from(schema.intents)
         .where(and(
           inArray(schema.intents.id, [...provenanceIntentIds]),
-          eq(schema.intents.userId, userId),
+          eq(schema.intents.userId, viewerUserId),
         ))
       : [];
     const viewerIntentTitles = new Map(
@@ -538,11 +637,45 @@ export class ConversationDatabaseAdapter {
       const via: Array<{ intentId: string; opportunityId: string; title: string }> = [];
       for (const { entry } of entries) {
         for (const intent of entry.intents) {
-          const title = intent.userId === userId ? viewerIntentTitles.get(intent.intentId) : undefined;
+          const title = intent.userId === viewerUserId ? viewerIntentTitles.get(intent.intentId) : undefined;
           if (title) via.push({ intentId: intent.intentId, opportunityId: entry.opportunityId, title });
         }
       }
       viaByConv.set(metadataRow.conversationId, via);
+    }
+
+    const negotiationByConv = new Map<string, NonNullable<ConversationSummary['negotiation']>>();
+    for (const row of latestNegotiationTasks) {
+      const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      const outcome = readNegotiationOutcome(row.artifactParts);
+      const priorTurnCount = typeof metadata.priorTurnCount === 'number' && Number.isFinite(metadata.priorTurnCount)
+        ? metadata.priorTurnCount
+        : 0;
+      const maxTurns = typeof metadata.maxTurns === 'number' && Number.isFinite(metadata.maxTurns)
+        ? metadata.maxTurns
+        : null;
+      // A screened-out outreach gate is private to the client that initiated
+      // it. Never project its lifecycle to the counterparty through the shared
+      // A2A conversation.
+      const initiatorUserId = typeof metadata.initiatorUserId === 'string'
+        ? metadata.initiatorUserId
+        : metadata.sourceUserId;
+      if (outcome?.reason === 'screened_out' && initiatorUserId !== viewerUserId) continue;
+      negotiationByConv.set(row.conversationId, {
+        taskId: row.taskId,
+        state: row.state,
+        statusTimestamp: row.statusTimestamp,
+        opportunityId: typeof metadata.opportunityId === 'string' ? metadata.opportunityId : null,
+        opportunityStatus: row.opportunityStatus,
+        acceptedByViewer: row.opportunityAcceptedBy === viewerUserId,
+        turnCount: priorTurnCount + (outcome?.turnCount ?? Number(row.currentTurnCount)),
+        maxTurns,
+        signalCount: readNegotiationSignalCount(metadata),
+        outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
+        updatedAt: row.updatedAt,
+      });
     }
 
     return convs.map((c) => ({
@@ -552,6 +685,7 @@ export class ConversationDatabaseAdapter {
       metadata: metaByConv.get(c.id) ?? null,
       via: viaByConv.get(c.id) ?? [],
       unreadCount: unreadCountByConv.get(c.id) ?? 0,
+      ...(includeNegotiationLifecycle ? { negotiation: negotiationByConv.get(c.id) ?? null } : {}),
     }));
   }
 
@@ -661,8 +795,9 @@ export class ConversationDatabaseAdapter {
     metadata?: Record<string, unknown> | null;
     extensions?: string[];
     referenceTaskIds?: string[];
+    continuationExecution?: ContinuationExecutionFence;
   }): Promise<Message> {
-    const msg = await this.insertMessageWithConversationSession({
+    const message = await this.insertMessageWithConversationSession({
       id: crypto.randomUUID(),
       conversationId: data.conversationId,
       senderId: data.senderId,
@@ -672,18 +807,21 @@ export class ConversationDatabaseAdapter {
       metadata: data.metadata ?? null,
       extensions: data.extensions ?? null,
       referenceTaskIds: data.referenceTaskIds ?? null,
-    });
+    }, data.continuationExecution);
 
-    // Clear hiddenAt for the sender so conversation reappears in their list.
-    await db
-      .update(schema.conversationParticipants)
-      .set({ hiddenAt: null })
-      .where(and(
-        eq(schema.conversationParticipants.conversationId, data.conversationId),
-        eq(schema.conversationParticipants.participantId, data.senderId),
-      ));
+    // All message writers (including the protocol negotiation graph) converge
+    // here. Publish only after persistence, and only to authenticated owners
+    // represented by the stored participant rows.
+    try {
+      await publishConversationMessageEvent(message, await this.getParticipants(data.conversationId));
+    } catch (error) {
+      logger.error('Failed to publish conversation SSE event', {
+        conversationId: data.conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
-    return msg;
+    return message;
   }
 
   /**
@@ -703,8 +841,11 @@ export class ConversationDatabaseAdapter {
     metadata: Record<string, unknown> | null;
     extensions: string[] | null;
     referenceTaskIds: string[] | null;
-  }): Promise<Message> {
+  }, continuationExecution?: ContinuationExecutionFence): Promise<Message> {
     return db.transaction(async (tx) => {
+      if (continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      }
       await tx.execute(sql`
         SELECT pg_advisory_xact_lock(
           hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
@@ -780,6 +921,13 @@ export class ConversationDatabaseAdapter {
         .update(schema.conversations)
         .set({ lastMessageAt: now, updatedAt: now })
         .where(eq(schema.conversations.id, data.conversationId));
+      await tx
+        .update(schema.conversationParticipants)
+        .set({ hiddenAt: null })
+        .where(and(
+          eq(schema.conversationParticipants.conversationId, data.conversationId),
+          eq(schema.conversationParticipants.participantId, data.senderId),
+        ));
 
       return message;
     });
@@ -1084,6 +1232,10 @@ export class ConversationDatabaseAdapter {
     session: ConversationSession | null;
     messages: Message[];
     hasPreviousSession: boolean;
+    /** opportunityId from the session's negotiation task, if any. */
+    sessionOpportunityId: string | null;
+    /** Current status of the session's opportunity, if any. */
+    sessionOpportunityStatus: string | null;
   }> {
     const conditions = [eq(schema.conversationSessions.conversationId, conversationId)];
     if (opts?.taskId) {
@@ -1101,7 +1253,7 @@ export class ConversationDatabaseAdapter {
         ))
         .limit(1);
       if (!cursor) {
-        return { session: null, messages: [], hasPreviousSession: false };
+        return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
       }
       const beforeSessionCondition = or(
         lt(schema.conversationSessions.startedAt, cursor.startedAt),
@@ -1122,7 +1274,7 @@ export class ConversationDatabaseAdapter {
         desc(schema.conversationSessions.id),
       )
       .limit(1);
-    if (!session) return { session: null, messages: [], hasPreviousSession: false };
+    if (!session) return { session: null, messages: [], hasPreviousSession: false, sessionOpportunityId: null, sessionOpportunityStatus: null };
 
     const messageConditions = [eq(schema.messages.sessionId, session.id)];
     if (opts?.userId) {
@@ -1164,7 +1316,27 @@ export class ConversationDatabaseAdapter {
       .where(and(...previousConditions))
       .limit(1);
 
-    return { session, messages, hasPreviousSession: Boolean(previous) };
+    // IND-570: resolve opportunity attribution for this session so the web
+    // client can label older sections with the opportunity title + outcome chip.
+    let sessionOpportunityId: string | null = null;
+    let sessionOpportunityStatus: string | null = null;
+    if (session.taskId) {
+      const [taskOpp] = await db
+        .select({
+          opportunityId: sql<string | null>`(${schema.tasks.metadata}->>'opportunityId')`,
+          opportunityStatus: opportunities.status,
+        })
+        .from(schema.tasks)
+        .leftJoin(opportunities, sql`(${schema.tasks.metadata}->>'opportunityId') = ${opportunities.id}`)
+        .where(eq(schema.tasks.id, session.taskId))
+        .limit(1);
+      if (taskOpp?.opportunityId) {
+        sessionOpportunityId = taskOpp.opportunityId;
+        sessionOpportunityStatus = taskOpp.opportunityStatus ?? null;
+      }
+    }
+
+    return { session, messages, hasPreviousSession: Boolean(previous), sessionOpportunityId, sessionOpportunityStatus };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1408,6 +1580,60 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Idempotently create or recover the exact successor for one durable
+   * ask_user settlement. The advisory lock and exact prior-task validation
+   * prevent concurrent Bull deliveries from minting sibling continuations.
+   */
+  async getOrCreateNegotiationContinuationTask(input: {
+    priorTaskId: string;
+    settlementId: string;
+    conversationId: string;
+    opportunityId: string;
+    metadata: Record<string, unknown>;
+  }): Promise<(Task & { created: boolean }) | null> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`negotiation-continuation:${input.settlementId}`}, 0))`);
+      const [prior] = await tx.select({ id: schema.tasks.id })
+        .from(schema.tasks)
+        .where(and(
+          eq(schema.tasks.id, input.priorTaskId),
+          eq(schema.tasks.conversationId, input.conversationId),
+          eq(schema.tasks.state, 'canceled'),
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${input.opportunityId}`,
+          sql`${schema.tasks.metadata}->'questionSettlement'->>'settlementId' = ${input.settlementId}`,
+        ))
+        .limit(1)
+        .for('update');
+      if (!prior) return null;
+
+      const existing = await tx.select()
+        .from(schema.tasks)
+        .where(and(
+          eq(schema.tasks.conversationId, input.conversationId),
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${input.opportunityId}`,
+          sql`${schema.tasks.metadata}->>'continuationSettlementId' = ${input.settlementId}`,
+          sql`${schema.tasks.metadata}->>'resumeFromTaskId' = ${input.priorTaskId}`,
+        ))
+        .orderBy(schema.tasks.createdAt, schema.tasks.id)
+        .limit(2)
+        .for('update');
+      if (existing.length > 1) throw new Error('Duplicate negotiation continuation tasks');
+      if (existing[0]) return { ...existing[0], created: false };
+
+      const [created] = await tx.insert(schema.tasks).values({
+        conversationId: input.conversationId,
+        metadata: {
+          ...input.metadata,
+          continuationSettlementId: input.settlementId,
+          resumeFromTaskId: input.priorTaskId,
+        },
+      }).returning();
+      return { ...created, created: true };
+    });
+  }
+
+  /**
    * Lists old negotiation tasks that may have lost their kickoff or worker job.
    * The state-specific age thresholds deliberately use createdAt for submitted
    * tasks and updatedAt for working tasks.
@@ -1431,6 +1657,7 @@ export class ConversationDatabaseAdapter {
       .from(schema.tasks)
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        notArchivedNegotiationTaskWhere(),
         or(
           and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
           and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
@@ -1486,20 +1713,25 @@ export class ConversationDatabaseAdapter {
    * @returns The updated task
    * @throws If the task is not found
    */
-  async updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<Task> {
-    const [task] = await db
-      .update(schema.tasks)
-      .set({
+  async updateTaskState(
+    taskId: string,
+    state: string,
+    statusMessage?: unknown,
+    continuationExecution?: ContinuationExecutionFence,
+  ): Promise<Task> {
+    return db.transaction(async (tx) => {
+      if (continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      }
+      const [task] = await tx.update(schema.tasks).set({
         state: state as typeof schema.taskStateEnum.enumValues[number],
         statusMessage: statusMessage ?? null,
         statusTimestamp: new Date(),
         updatedAt: new Date(),
-      })
-      .where(eq(schema.tasks.id, taskId))
-      .returning();
-
-    if (!task) throw new Error(`Task ${taskId} not found`);
-    return task;
+      }).where(eq(schema.tasks.id, taskId)).returning();
+      if (!task) throw new Error(`Task ${taskId} not found`);
+      return task;
+    });
   }
 
   /**
@@ -1508,14 +1740,133 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Claimed task to transition.
    * @returns The transitioned task, or null when another path already moved it.
    */
-  async transitionClaimedTaskToWorking(taskId: string): Promise<Task | null> {
-    const [task] = await db
-      .update(schema.tasks)
-      .set({ state: 'working', updatedAt: new Date() })
-      .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
-      .returning();
+  async transitionClaimedTaskToWorking(
+    taskId: string,
+    continuationExecution?: ContinuationExecutionFence,
+  ): Promise<Task | null> {
+    return db.transaction(async (tx) => {
+      if (continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      }
+      const [task] = await tx
+        .update(schema.tasks)
+        .set({ state: 'working', updatedAt: new Date() })
+        .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
+        .returning();
+      return task ?? null;
+    });
+  }
 
-    return task ?? null;
+  /**
+   * Capture the exact ask-user material binding and persist it with the turn
+   * context before the timeout is armed. The returned marker is the only
+   * settlement coordinate accepted by timeout/answer continuation paths.
+   */
+  async captureNegotiationAskUserBinding(input: {
+    taskId: string;
+    turnContext: Record<string, unknown>;
+    settlementId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    continuationExecution?: ContinuationExecutionFence;
+  }): Promise<{
+    version: 2;
+    settlementId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    intentFingerprint: string;
+    opportunityStatus: string;
+    opportunityUpdatedAt: string;
+    counterpartyUserId: string;
+    counterpartyIntentId: string;
+  }> {
+    return db.transaction(async (tx) => {
+      if (input.continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, input.continuationExecution);
+      }
+      const [task] = await tx.select({ metadata: schema.tasks.metadata }).from(schema.tasks)
+        .where(and(eq(schema.tasks.id, input.taskId), eq(schema.tasks.state, 'working')))
+        .limit(1).for('update');
+      const [intent] = await tx.select({
+        userId: schema.intents.userId,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        status: schema.intents.status,
+        archivedAt: schema.intents.archivedAt,
+      }).from(schema.intents)
+        .innerJoin(schema.intentNetworks, and(
+          eq(schema.intentNetworks.intentId, schema.intents.id),
+          eq(schema.intentNetworks.networkId, input.networkId),
+        ))
+        .where(eq(schema.intents.id, input.recipientIntentId))
+        .limit(1).for('update');
+      const [opportunity] = await tx.select({
+        status: opportunities.status,
+        updatedAt: opportunities.updatedAt,
+        actors: opportunities.actors,
+      }).from(opportunities).where(eq(opportunities.id, input.opportunityId)).limit(1).for('update');
+      if (
+        !task
+        || !intent
+        || intent.userId !== input.recipientUserId
+        || intent.archivedAt !== null
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+        || !opportunity
+      ) throw new Error('Ask-user material binding is no longer valid');
+
+      const actors = opportunity.actors as Array<{ userId?: string; intent?: string; networkId?: string; role?: string }>;
+      const recipient = actors.filter((actor) => actor.role !== 'introducer'
+        && actor.userId === input.recipientUserId
+        && actor.intent === input.recipientIntentId
+        && actor.networkId === input.networkId);
+      const counterparties = actors.filter((actor) => actor.role !== 'introducer'
+        && actor.userId !== input.recipientUserId
+        && actor.networkId === input.networkId
+        && typeof actor.userId === 'string'
+        && typeof actor.intent === 'string');
+      if (recipient.length !== 1 || counterparties.length !== 1) {
+        throw new Error('Ask-user opportunity actor binding is ambiguous');
+      }
+      const counterpartyUserId = counterparties[0].userId!;
+      const counterpartyIntentId = counterparties[0].intent!;
+      const members = await tx.select({ userId: schema.networkMembers.userId }).from(schema.networkMembers)
+        .innerJoin(schema.networks, and(
+          eq(schema.networks.id, schema.networkMembers.networkId),
+          eq(schema.networks.isPersonal, false),
+          isNull(schema.networks.deletedAt),
+        ))
+        .where(and(
+          eq(schema.networkMembers.networkId, input.networkId),
+          inArray(schema.networkMembers.userId, [input.recipientUserId, counterpartyUserId]),
+          isNull(schema.networkMembers.deletedAt),
+        ));
+      if (new Set(members.map((member) => member.userId)).size !== 2) {
+        throw new Error('Ask-user network membership binding is stale');
+      }
+
+      const binding = {
+        version: 2 as const,
+        settlementId: input.settlementId,
+        recipientUserId: input.recipientUserId,
+        recipientIntentId: input.recipientIntentId,
+        opportunityId: input.opportunityId,
+        networkId: input.networkId,
+        intentFingerprint: computeIntentFingerprint(intent.payload, intent.summary),
+        opportunityStatus: opportunity.status,
+        opportunityUpdatedAt: opportunity.updatedAt.toISOString(),
+        counterpartyUserId,
+        counterpartyIntentId,
+      };
+      await tx.update(schema.tasks).set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('turnContext', ${JSON.stringify({ ...input.turnContext, askUserBinding: binding })}::jsonb)`,
+        updatedAt: new Date(),
+      }).where(eq(schema.tasks.id, input.taskId));
+      return binding;
+    });
   }
 
   /**
@@ -1527,14 +1878,20 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Task to update
    * @param turnContext - Absolute source/candidate view of negotiation context
    */
-  async setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void> {
-    await db
-      .update(schema.tasks)
-      .set({
+  async setTaskTurnContext(
+    taskId: string,
+    turnContext: Record<string, unknown>,
+    continuationExecution?: ContinuationExecutionFence,
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      if (continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      }
+      await tx.update(schema.tasks).set({
         metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('turnContext', ${JSON.stringify(turnContext)}::jsonb)`,
         updatedAt: new Date(),
-      })
-      .where(eq(schema.tasks.id, taskId));
+      }).where(eq(schema.tasks.id, taskId));
+    });
   }
 
   /**
@@ -1545,14 +1902,14 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Task to update
    * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
    */
-  async setTaskScreenDecision(taskId: string, screenDecision: Record<string, unknown>): Promise<void> {
-    await db
-      .update(schema.tasks)
-      .set({
+  async setTaskScreenDecision(taskId: string, screenDecision: Record<string, unknown>, continuationExecution?: ContinuationExecutionFence): Promise<void> {
+    await db.transaction(async (tx) => {
+      if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      await tx.update(schema.tasks).set({
         metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('screenDecision', ${JSON.stringify(screenDecision)}::jsonb)`,
         updatedAt: new Date(),
-      })
-      .where(eq(schema.tasks.id, taskId));
+      }).where(eq(schema.tasks.id, taskId));
+    });
   }
 
   /**
@@ -1564,14 +1921,14 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Task to update
    * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
    */
-  async setTaskDeadlockShift(taskId: string, deadlockShift: Record<string, unknown>): Promise<void> {
-    await db
-      .update(schema.tasks)
-      .set({
+  async setTaskDeadlockShift(taskId: string, deadlockShift: Record<string, unknown>, continuationExecution?: ContinuationExecutionFence): Promise<void> {
+    await db.transaction(async (tx) => {
+      if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      await tx.update(schema.tasks).set({
         metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('deadlockShift', ${JSON.stringify(deadlockShift)}::jsonb)`,
         updatedAt: new Date(),
-      })
-      .where(eq(schema.tasks.id, taskId));
+      }).where(eq(schema.tasks.id, taskId));
+    });
   }
 
   /**
@@ -1618,19 +1975,21 @@ export class ConversationDatabaseAdapter {
     description?: string;
     parts: unknown[];
     metadata?: Record<string, unknown> | null;
+    continuationExecution?: ContinuationExecutionFence;
   }): Promise<Artifact> {
-    const [artifact] = await db
-      .insert(schema.artifacts)
-      .values({
+    return db.transaction(async (tx) => {
+      if (data.continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, data.continuationExecution);
+      }
+      const [artifact] = await tx.insert(schema.artifacts).values({
         taskId: data.taskId,
         name: data.name ?? null,
         description: data.description ?? null,
         parts: data.parts,
         metadata: data.metadata ?? null,
-      })
-      .returning();
-
-    return artifact;
+      }).returning();
+      return artifact;
+    });
   }
 
   /**
@@ -1667,6 +2026,7 @@ export class ConversationDatabaseAdapter {
   }>> {
     const conditions = [
       sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+      notArchivedNegotiationTaskWhere(),
       or(
         sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
         sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
@@ -1691,6 +2051,89 @@ export class ConversationDatabaseAdapter {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
+  }
+
+  /**
+   * Builds the private Radar transcript projection for one owned intent.
+   * Messages are joined through the exact opportunity negotiation task so
+   * shared agent-pair conversations cannot leak turns across intents.
+   */
+  async getNegotiationActivityForIntent(userId: string, intentId: string): Promise<Array<{
+    correspondentUserId: string;
+    correspondentLabel: string;
+    correspondentAvatar: string | null;
+    messages: Array<{
+      id: string;
+      opportunityId: string;
+      sender: 'yours' | 'theirs';
+      parts: unknown[];
+      createdAt: Date;
+    }>;
+  }> | null> {
+    const [ownedIntent] = await db
+      .select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+    if (!ownedIntent) return null;
+
+    const opportunityRows = await db
+      .select({
+        id: schema.opportunities.id,
+        status: schema.opportunities.status,
+        actors: schema.opportunities.actors,
+      })
+      .from(schema.opportunities)
+      .where(and(
+        eq(schema.opportunities.status, 'negotiating'),
+        sql`${schema.opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`,
+      ));
+    if (opportunityRows.length === 0) return [];
+
+    const opportunityIds = opportunityRows.map((row) => row.id);
+    const taskRows = await db
+      .select({
+        id: schema.tasks.id,
+        opportunityId: sql<string>`${schema.tasks.metadata}->>'opportunityId'`,
+      })
+      .from(schema.tasks)
+      .where(and(
+        sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        notArchivedNegotiationTaskWhere(),
+        inArray(sql`${schema.tasks.metadata}->>'opportunityId'`, opportunityIds),
+      ));
+    if (taskRows.length === 0) return [];
+
+    const opportunityByTask = new Map(taskRows.map((task) => [task.id, task.opportunityId]));
+    const messageRows = await db
+      .select({
+        id: schema.messages.id,
+        taskId: schema.messages.taskId,
+        senderId: schema.messages.senderId,
+        parts: schema.messages.parts,
+        createdAt: schema.messages.createdAt,
+      })
+      .from(schema.messages)
+      .where(inArray(schema.messages.taskId, taskRows.map((task) => task.id)))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+
+    const counterpartIds = [...new Set(opportunityRows.flatMap((row) =>
+      row.actors.filter((actor) => actor.userId !== userId).map((actor) => actor.userId),
+    ))];
+    const counterpartRows = counterpartIds.length > 0
+      ? await db
+        .select({ id: schema.users.id, name: schema.users.name, avatar: schema.users.avatar })
+        .from(schema.users)
+        .where(inArray(schema.users.id, counterpartIds))
+      : [];
+    const counterpartById = new Map(counterpartRows.map((row) => [row.id, row]));
+    return projectNegotiationActivity(
+      userId,
+      opportunityRows,
+      opportunityByTask,
+      messageRows.map((message) => ({ ...message, parts: (message.parts as unknown[]) ?? [] })),
+      counterpartById,
+    );
   }
 
   /**
@@ -1919,6 +2362,7 @@ export class ConversationDatabaseAdapter {
     role: 'user' | 'agent';
     parts: unknown[];
     createdAt: Date;
+    taskId?: string | null;
   }>> {
     const rows = await db
       .select({
@@ -1927,6 +2371,9 @@ export class ConversationDatabaseAdapter {
         role: schema.messages.role,
         parts: schema.messages.parts,
         createdAt: schema.messages.createdAt,
+        // IND-569: task attribution so the negotiation graph can label prior
+        // dialogue per opportunity in continuation prompts.
+        taskId: schema.messages.taskId,
       })
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
@@ -2016,6 +2463,7 @@ export class ConversationDatabaseAdapter {
     const userFilter = opts?.mutualWithUserId
       ? and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             and(
               sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
@@ -2029,6 +2477,7 @@ export class ConversationDatabaseAdapter {
         )
       : and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
             sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
@@ -3146,23 +3595,22 @@ export class ConversationDatabaseAdapter {
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
+    continuationExecution?: ContinuationExecutionFence,
   ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
-    if (status === 'accepted' && !acceptedBy) {
-      throw new Error('acceptedBy is required when status is accepted');
-    }
-    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (status === 'accepted') {
-      updates.acceptedBy = acceptedBy;
-    } else {
-      updates.acceptedBy = null;
-    }
-    const [row] = await db
-      .update(opportunities)
-      .set(updates)
-      .where(eq(opportunities.id, id))
-      .returning({ id: opportunities.id, status: opportunities.status });
+    if (status === 'accepted' && !acceptedBy) throw new Error('acceptedBy is required when status is accepted');
+    const row = await db.transaction(async (tx) => {
+      if (continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
+      }
+      const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+      updates.acceptedBy = status === 'accepted' ? acceptedBy : null;
+      const [updated] = await tx.update(opportunities).set(updates)
+        .where(eq(opportunities.id, id))
+        .returning({ id: opportunities.id, status: opportunities.status });
+      return updated ?? null;
+    });
     if (row) emitOpportunityPendingBestEffort(row);
-    return row ?? null;
+    return row;
   }
 
 }

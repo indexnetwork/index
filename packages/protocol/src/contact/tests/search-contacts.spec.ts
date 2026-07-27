@@ -68,7 +68,7 @@ describe("search_contacts", () => {
       query: { query: "jane", limit: 10 },
     });
     const parsed = JSON.parse(result);
-    expect(captured).toEqual({ ownerId: "alice", query: "jane", limit: 10 });
+    expect(captured!).toEqual({ ownerId: "alice", query: "jane", limit: 10 });
     expect(parsed.success).toBe(true);
     expect(parsed.data.count).toBe(1);
     expect(parsed.data.contacts[0].email).toBe("jane@example.com");
@@ -85,7 +85,7 @@ describe("search_contacts", () => {
     const tools = captureTools({ contactService } as unknown as ToolDeps);
     const tool = tools.find((t) => t.name === "search_contacts")!;
     await tool.handler({ context: makeContext(), query: { query: "anything" } });
-    expect(capturedLimit).toBe(25);
+    expect(capturedLimit!).toBe(25);
   });
 
   test("response uses userId not contactId", async () => {

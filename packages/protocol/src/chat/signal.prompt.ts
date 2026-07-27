@@ -3,6 +3,12 @@ import type { IterationContext } from "./chat.prompt.modules.js";
 
 /** Stable user-message marker for opening the guided New Signal intake. */
 export const SIGNAL_NEW_SIGNAL_KICKOFF = "new-signal-kickoff";
+const SIGNAL_NEW_SIGNAL_FEEDBACK_PREFIX = "new-signal-preview-feedback:";
+
+/** Returns whether a message is feedback on the unpersisted guided-signal draft. */
+export function isSignalNewSignalFeedback(message?: string): boolean {
+  return message?.trim().toLocaleLowerCase().startsWith(SIGNAL_NEW_SIGNAL_FEEDBACK_PREFIX) ?? false;
+}
 
 /**
  * Recognizes the one-shot kickoff sent by a New Signal surface. The aliases are
@@ -40,6 +46,10 @@ export type SignalIntakeStage = "who" | "contribution" | "where" | "proposal" | 
  * @returns The next intake stage, or null for ordinary Signal chats
  */
 export function getSignalIntakeStage(iterCtx?: IterationContext): SignalIntakeStage | null {
+  // Feedback arrives as a fresh chat turn, so its prior tool calls are not in
+  // recentTools. Preserve the complete stage explicitly to make it produce a
+  // replacement proposal rather than restarting the guided interview.
+  if (isSignalNewSignalFeedback(iterCtx?.currentMessage)) return "complete";
   if (!isSignalNewSignalKickoff(iterCtx?.currentMessage)) return null;
 
   if (iterCtx?.recentTools.some((toolCall) => toolCall.name === "create_intent")) {
@@ -91,7 +101,7 @@ The guided intake has completed its blocking question rounds. Do not ask another
 
   return `
 ## NEW SIGNAL INTAKE (COMPLETE)
-The proposal tool has already been called. Do not call it again or create a second signal. Pass the tool-produced \`\`\`intent_proposal\`\`\` block through verbatim, then briefly confirm that the user can approve or skip it.`;
+The browser is showing the proposed signal before it is saved. If the user gives feedback on that draft, use it to revise the signal and call \`create_intent\` again with the revised description. This produces a replacement proposal only; never persist or auto-approve either draft. Pass the newest tool-produced \`\`\`intent_proposal\`\`\` block through verbatim and tell the user to review it. If the user has no feedback, briefly confirm that they can approve, edit, or skip the visible draft.`;
 }
 
 /**

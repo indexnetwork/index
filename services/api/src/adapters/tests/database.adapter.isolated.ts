@@ -10,6 +10,7 @@ import { conversations, tasks, users, userSocials, networks, networkMembers, int
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
 import { IntentEvents } from '../../events/intent.event';
+import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
@@ -177,6 +178,45 @@ describe('ChatDatabaseAdapter', () => {
     await adapter.updateIntent(fixture.intent1Id, { payload: `${TEST_PREFIX}Chat materially updated payload` });
     expect(handler).toHaveBeenCalledTimes(1);
     IntentEvents.onMaterialUpdated = async () => {};
+  });
+
+  it('rejects a stale recovery answer at the final locked intent write', async () => {
+    const created = await adapter.createIntent({
+      userId: fixture.userAId,
+      payload: `${TEST_PREFIX}Recovery answer original payload`,
+      summary: 'Original summary',
+      confidence: 1,
+      inferenceType: 'explicit',
+      sourceType: 'discovery_form',
+    });
+    fixture.extraIntentIds.push(created.id);
+    const admittedFingerprint = computeIntentFingerprint(created.payload, created.summary);
+
+    const concurrentPayload = `${TEST_PREFIX}Concurrent material edit`;
+    expect(await adapter.updateIntent(created.id, { payload: concurrentPayload })).not.toBeNull();
+
+    const staleRecoveryWrite = await adapter.updateIntent(created.id, {
+      payload: `${TEST_PREFIX}Stale recovery answer mutation`,
+      expectedIntentFingerprint: admittedFingerprint,
+      expectedIntentUserId: fixture.userAId,
+    });
+    expect(staleRecoveryWrite).toBeNull();
+    expect((await adapter.getIntent(created.id))?.payload).toBe(concurrentPayload);
+  });
+
+  it('keeps ordinary intent updates unchanged without a fingerprint expectation', async () => {
+    const created = await adapter.createIntent({
+      userId: fixture.userAId,
+      payload: `${TEST_PREFIX}Ordinary update original payload`,
+      confidence: 1,
+      inferenceType: 'explicit',
+      sourceType: 'discovery_form',
+    });
+    fixture.extraIntentIds.push(created.id);
+
+    const ordinaryPayload = `${TEST_PREFIX}Ordinary update applied`;
+    const updated = await adapter.updateIntent(created.id, { payload: ordinaryPayload });
+    expect(updated?.payload).toBe(ordinaryPayload);
   });
 
   it('should get profile sourced from the users table', async () => {
@@ -1238,6 +1278,37 @@ describe('OpportunityDatabaseAdapter', () => {
         .select({ id: opportunities.id })
         .from(opportunities)
         .where(sql`${opportunities.detection}->>'triggeredBy' = ${writeTriggerIntentId}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
+    it('fails closed when the owner actor is not bound to the eligibility trigger', async () => {
+      const marker = `${TEST_PREFIX}stale-owner-intent-${uuidv4()}`;
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: marker,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: uuidv4() },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Stale owner intent must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      }, 30 * 24 * 60 * 60 * 1000);
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' = ${marker}`);
 
       expect(result).toBeNull();
       expect(inserted).toEqual([]);

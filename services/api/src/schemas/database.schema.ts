@@ -19,6 +19,7 @@ export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED'
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
 export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
+export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
 export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
 
@@ -511,6 +512,8 @@ export interface QuestionDetection {
   mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
+  /** Exact negotiation recipient/intent/task routing provenance. Internal only. */
+  negotiation?: import('@indexnetwork/protocol').NegotiationQuestionProvenance;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;
@@ -528,6 +531,8 @@ export interface QuestionDetection {
    * INTERNAL — stripped from every client-facing read (web + MCP).
    */
   pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
+  /** Post-discovery intent recovery snapshot. Never exposed publicly. */
+  recovery?: import('@indexnetwork/protocol').QuestionRecoverySnapshot;
   /** Durable proactive-delivery request marker. Never exposed publicly. */
   pushRequestedAt?: string;
   /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
@@ -572,17 +577,28 @@ export const questions = pgTable('questions', {
 }, (table) => ({
   statusIdx: index('questions_status_idx').on(table.status),
   conversationIdx: index('questions_conversation_id_idx').on(table.conversationId),
-  // One uptake question per recipient and opportunity across every status.
-  // actors is a single subject for generated questions; the expression keeps
-  // dedup race-free without adding public columns for internal metadata.
-  uptakeRecipientSourceUnique: uniqueIndex('questions_uptake_recipient_source_uniq')
+  // Durable negotiation-family idempotency across every lifecycle status.
+  // Ordinal preserves the existing up-to-two-card generator cardinality.
+  negotiationProvenanceUnique: uniqueIndex('questions_negotiation_provenance_uniq')
+    .on(
+      sql`(${table.detection}->'negotiation'->>'recipientUserId')`,
+      sql`(${table.detection}->'negotiation'->>'recipientIntentId')`,
+      sql`(${table.detection}->'negotiation'->>'opportunityId')`,
+      sql`COALESCE(${table.detection}->'negotiation'->>'taskId', '')`,
+      sql`(${table.detection}->'negotiation'->>'purpose')`,
+      sql`(${table.detection}->'negotiation'->>'questionOrdinal')`,
+    )
+    .where(sql`${table.detection}->'negotiation'->>'version' = '1'`),
+  // One recovery refinement per recipient + intent + material fingerprint
+  // across every status and expiry state. Advisory locking is the application
+  // gate; this expression index is the final cross-worker race guard.
+  recoveryRecipientIntentFingerprintUnique: uniqueIndex('questions_recovery_recipient_intent_fingerprint_uniq')
     .on(
       sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->>'sourceType')`,
       sql`(${table.detection}->>'sourceId')`,
-      sql`(${table.detection}->>'purpose')`,
+      sql`(${table.detection}->'recovery'->>'intentFingerprint')`,
     )
-    .where(sql`${table.detection}->>'purpose' = 'uptake'`),
+    .where(sql`${table.detection}->>'purpose' = 'recovery' AND ${table.detection}->>'mode' = 'intent' AND ${table.detection}->>'sourceType' = 'intent'`),
   // One claim per recipient + intent + pool refresh cycle. The advisory lock
   // enforces budgets; this expression index is the final cross-worker guard.
   poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')
@@ -658,6 +674,27 @@ export const agentActionProposals = pgTable('agent_action_proposals', {
 export type AgentActionProposalRow = typeof agentActionProposals.$inferSelect;
 export type NewAgentActionProposalRow = typeof agentActionProposals.$inferInsert;
 
+export interface IntentProposalVerifierOutputRecord {
+  reasoning: string;
+  classification: 'COMMISSIVE' | 'DIRECTIVE' | 'ASSERTIVE' | 'EXPRESSIVE' | 'DECLARATION' | 'UNKNOWN';
+  felicity_scores: {
+    clarity: number;
+    authority: number;
+    sincerity: number;
+  };
+  semantic_entropy: number;
+  referential_anchor: string | null;
+  referential_breadth: 'narrow' | 'moderate' | 'broad';
+  missing_selectional_constraints: Array<'role' | 'outcome' | 'location' | 'timeframe' | 'domain' | 'concrete_need'>;
+  specificity_warning: string | null;
+  flags: string[];
+}
+
+export interface IntentProposalAnalysisRecord {
+  verifierOutput: IntentProposalVerifierOutputRecord;
+  combinedScore: number | null;
+}
+
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),
@@ -711,6 +748,68 @@ export const networks = pgTable('networks', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
+}));
+
+export const intentProposals = pgTable('intent_proposals', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  description: text('description').notNull(),
+  networkId: text('network_id'),
+  analysis: jsonb('analysis').$type<IntentProposalAnalysisRecord>().notNull(),
+  status: intentProposalStatusEnum('status').notNull().default('pending'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  consumedIntentId: text('consumed_intent_id').references(() => intents.id, { onDelete: 'set null' }),
+}, (table) => ({
+  userIdIdx: index('intent_proposals_user_id_idx').on(table.userId),
+  expiresAtIdx: index('intent_proposals_expires_at_idx').on(table.expiresAt),
+}));
+
+export type IntentProposalRow = typeof intentProposals.$inferSelect;
+export type NewIntentProposalRow = typeof intentProposals.$inferInsert;
+
+/**
+ * Immutable header for a bounded verification-analysis repair run.  Keeping
+ * this separate from `intents` is deliberate: a backfill must not repurpose
+ * product timestamps or add opaque metadata to the canonical intent record.
+ */
+export const intentVerificationBackfillRuns = pgTable('intent_verification_backfill_runs', {
+  id: text('id').primaryKey(),
+  predicateVersion: text('predicate_version').notNull(),
+  verifierName: text('verifier_name').notNull(),
+  verifierModel: text('verifier_model').notNull(),
+  status: text('status').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (table) => ({
+  statusIdx: index('intent_verification_backfill_runs_status_idx').on(table.status),
+  statusCheck: check('intent_verification_backfill_runs_status_check', sql`${table.status} IN ('running', 'completed', 'failed')`),
+}));
+
+/**
+ * One durable outcome per run/intent.  A successful row is the resume marker;
+ * invalid and failed outcomes are preserved for review rather than fabricated
+ * into an intent analysis.
+ */
+export const intentVerificationBackfillAttempts = pgTable('intent_verification_backfill_attempts', {
+  runId: text('run_id').notNull().references(() => intentVerificationBackfillRuns.id, { onDelete: 'cascade' }),
+  intentId: text('intent_id').notNull().references(() => intents.id),
+  partition: text('partition').notNull(),
+  status: text('status').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  contextHash: text('context_hash').notNull(),
+  verifierOutput: jsonb('verifier_output'),
+  errorCode: text('error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+}, (table) => ({
+  runIntentPk: primaryKey({ columns: [table.runId, table.intentId] }),
+  statusIdx: index('intent_verification_backfill_attempts_status_idx').on(table.runId, table.status),
+  intentIdx: index('intent_verification_backfill_attempts_intent_idx').on(table.intentId),
+  partitionCheck: check('intent_verification_backfill_attempts_partition_check', sql`${table.partition} IN ('proposal_confirm_default_only', 'proposal_confirm_partial_missing', 'legacy_discovery_missing_analysis', 'other_missing_analysis')`),
+  statusCheck: check('intent_verification_backfill_attempts_status_check', sql`${table.status} IN ('updated', 'skipped', 'failed', 'unchanged_control')`),
 }));
 
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';

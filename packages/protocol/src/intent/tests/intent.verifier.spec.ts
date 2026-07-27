@@ -1,9 +1,53 @@
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test', override: true });
+import { afterAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, expect, it } from "bun:test";
-import { SemanticVerifier } from "../intent.verifier.js";
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      const prompt = String(messages.at(-1)?.content ?? "");
+      if (prompt.includes("rewrite the Linux kernel")) {
+        return {
+          reasoning: "This is a future commitment beyond the stated junior developer context.",
+          classification: "COMMISSIVE",
+          felicity_scores: { clarity: 85, authority: 20, sincerity: 75 },
+          semantic_entropy: 0.3,
+          referential_anchor: null,
+          referential_breadth: "moderate",
+          missing_selectional_constraints: [],
+          specificity_warning: null,
+          flags: ["SKILL_MISMATCH"],
+        };
+      }
+      if (prompt.includes("should probably code something")) {
+        return {
+          reasoning: "The hedge and absent outcome leave the commitment underspecified.",
+          classification: "COMMISSIVE",
+          felicity_scores: { clarity: 25, authority: 80, sincerity: 30 },
+          semantic_entropy: 0.9,
+          referential_anchor: null,
+          referential_breadth: "broad",
+          missing_selectional_constraints: ["outcome", "domain", "concrete_need"],
+          specificity_warning: "Name a concrete outcome and domain.",
+          flags: ["WEAK_COMMITMENT", "VAGUE_INTENT", "BROAD_ATTRIBUTIVE_REFERENCE"],
+        };
+      }
+      return {
+        reasoning: "A bounded HTML task is a clear future commitment within the stated skills.",
+        classification: "COMMISSIVE",
+        felicity_scores: { clarity: 85, authority: 85, sincerity: 90 },
+        semantic_entropy: 0.2,
+        referential_anchor: null,
+        referential_breadth: "narrow",
+        missing_selectional_constraints: [],
+        specificity_warning: null,
+        flags: [],
+      };
+    },
+  }),
+}));
+
+const { SemanticVerifier } = await import("../intent.verifier.js");
+
+afterAll(() => mock.restore());
 
 describe('SemanticVerifier', () => {
   const verifier = new SemanticVerifier();

@@ -354,6 +354,9 @@ export default function IntentNegotiatorChat({
               );
             })}
 
+            {questionTimeline.trailingAnswered.length > 0 &&
+              renderAnswered(questionTimeline.trailingAnswered, "trailing-answered")}
+
             {(questionTimeline.trailingPending.length > 0 || questionChainPending) &&
               renderPending(
                 questionTimeline.trailingPending,

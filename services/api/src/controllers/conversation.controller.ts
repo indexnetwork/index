@@ -57,6 +57,22 @@ export class ConversationController {
   }
 
   /**
+   * GET /conversations/negotiations/activity?intentId=... — latest three
+   * persisted turns per correspondent for an owned intent.
+   */
+  @Get('/negotiations/activity')
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async getNegotiationActivity(req: Request, user: AuthenticatedUser) {
+    const intentId = new URL(req.url).searchParams.get('intentId');
+    if (!intentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
+      return Response.json({ error: 'A valid intentId is required' }, { status: 400 });
+    }
+    const groups = await this.conversationService.getNegotiationActivityForIntent(user.id, intentId);
+    if (groups === null) return Response.json({ error: 'Intent not found' }, { status: 404 });
+    return Response.json({ groups });
+  }
+
+  /**
    * POST /conversations — create a new conversation with participants.
    *
    * @param req - Must include `participants` array in JSON body
@@ -139,6 +155,9 @@ export class ConversationController {
           sessionId: history.session?.id ?? null,
           hasPreviousSession: history.hasPreviousSession,
           previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
+          // IND-570: per-session opportunity attribution for section labelling.
+          sessionOpportunityId: history.sessionOpportunityId ?? null,
+          sessionOpportunityStatus: history.sessionOpportunityStatus ?? null,
         });
       }
       const messages = await this.conversationService.getMessages(conversationId, { limit, before, taskId, userId: user.id });

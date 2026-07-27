@@ -1253,6 +1253,36 @@ List A2A agent-to-agent negotiation conversations for the authenticated user.
 }
 ```
 
+### GET /api/conversations/negotiations/activity
+
+Return persisted agent-to-agent negotiation activity for one intent owned by
+the authenticated user.
+
+**Auth**: AuthGuard
+
+**Query**: `intentId` (required UUID)
+
+The response groups activity by stable correspondent identity. Each group
+contains exactly the latest three messages in chronological order, with
+`sender: "yours" | "theirs"`, `parts`, `createdAt`, and `opportunityId`.
+Reads are scoped through the authenticated user, exact intent actor,
+opportunity, and negotiation task, so turns cannot bleed across intents or
+shared correspondent conversations. Invalid IDs return `400`; unknown or
+non-owned intents return `404`.
+
+```json
+{
+  "groups": [
+    {
+      "correspondentUserId": "uuid",
+      "correspondentLabel": "Ada's agent",
+      "correspondentAvatar": null,
+      "messages": []
+    }
+  ]
+}
+```
+
 ### POST /api/conversations
 
 Create a new conversation with participants.
@@ -1468,8 +1498,13 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "text": "...",
     "summary": "...",
     "status": "active | archived",
-    "confidence": 0.85,
-    "inferenceType": "...",
+    "semanticEntropy": 0.15,
+    "referentialAnchor": "...",
+    "intentMode": "...",
+    "speechActType": "...",
+    "felicityAuthority": 8,
+    "felicitySincerity": 9,
+    "felicityClarity": 7,
     "sourceType": "...",
     "hasEmbedding": true,
     "createdAt": "...",
@@ -1481,7 +1516,16 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "newestGeneratedAt": "..."
   },
   "indexAssignments": [
-    { "indexId": "...", "indexTitle": "...", "indexPrompt": "..." }
+    {
+      "networkId": "...",
+      "networkTitle": "...",
+      "indexPrompt": "...",
+      "relevancyScore": 0.84,
+      "finalScore": 0.84,
+      "promptPresence": "both",
+      "rawScores": { "indexScore": 0.9, "memberScore": 0.75 },
+      "isDeterministicNoPromptAssignment": false
+    }
   ],
   "opportunities": {
     "total": 5,
@@ -1501,12 +1545,27 @@ Returns a full diagnostic snapshot for a single intent, including the intent rec
     "hasEmbedding": true,
     "hasHydeDocuments": true,
     "isInAtLeastOneIndex": true,
+    "verificationAnalysis": { "status": "complete", "missingFields": [] },
+    "missingVerificationAnalysis": false,
+    "missingAssignment": false,
+    "missingHyde": false,
     "hasOpportunities": true,
     "allOpportunitiesFilteredFromHome": false,
     "filterReasons": []
   }
 }
 ```
+
+`semanticEntropy` is the stored entropy value, not a confidence score; no
+combined verifier score is exposed. `verificationAnalysis.status` is
+`complete`, `default_only`, `partial`, or `missing`, so default schema values
+cannot be mistaken for completed verification. Assignment `finalScore` and
+`promptPresence` are null for legacy rows without persisted assignment metadata;
+`rawScores` is omitted when the assignment policy did not call a model. A
+promptless automatic assignment therefore reports `promptPresence: "none"`,
+`finalScore: 1`, and `isDeterministicNoPromptAssignment: true` without raw scores.
+The three `missing*` diagnosis fields independently identify absent verification,
+assignment, and HyDE artifacts.
 
 ### GET /api/debug/home
 
@@ -2476,14 +2535,32 @@ listed signal.
 
 ### POST /api/intents/confirm
 
-Confirm a proposed intent from chat. Persists the pre-verified intent directly. When `networkId` is supplied, the authenticated owner must be a current member: membership is preflighted before embedding and locked/rechecked in the same transaction that inserts the intent and assignment. Missing or soft-deleted membership returns typed HTTP 403 `network_membership_required` with no intent persisted.
+Confirm a proposed intent from chat. The proposal ID resolves a durable, owner-scoped
+record created by the verifier tool. That record binds the exact normalized
+description, optional network, complete verifier output, and a 24-hour expiry.
+Caller fields are matching assertions only; verifier analysis is never accepted from
+the client.
+
+The server locks and rechecks the proposal plus any required current membership in the
+same transaction that inserts the intent, writes the exact entropy/anchor/mode/speech
+act/felicity columns, creates the optional network assignment, and consumes the
+proposal. Concurrent/retried confirmation replays the winning intent without duplicate
+question or event side effects. The transaction winner obtains indexing-queue
+acknowledgement before those effects; if admission fails after commit, the API returns
+retryable `503 intent_admission_enqueue_failed`, and an exact consumed-proposal retry
+re-attempts the idempotent scoped admission without creating another intent.
+Missing/foreign proposals return `404
+proposal_not_found`, expired proposals return `410 proposal_expired`, and
+consumed/rejected, mismatched, or invalid-analysis proposals return a typed `409`.
+Missing or soft-deleted membership returns HTTP 403
+`network_membership_required` with no intent persisted.
 
 **Auth**: AuthGuard
 
 **Request body** (Zod-validated):
 ```json
 {
-  "proposalId": "string (required)",
+  "proposalId": "UUID (required)",
   "description": "string (required)",
   "networkId": "UUID (optional)"
 }
@@ -2500,7 +2577,8 @@ Confirm a proposed intent from chat. Persists the pre-verified intent directly. 
 
 ### POST /api/intents/reject
 
-Reject a proposed intent from chat. Logs the rejection for analytics.
+Reject a pending, unexpired proposal owned by the authenticated user. Rejection
+durably consumes the approval opportunity so it cannot later be confirmed.
 
 **Auth**: AuthGuard
 
@@ -2791,6 +2869,47 @@ When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped 
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
 - `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. The authenticated `/c/:code` continuation flow preserves this advisory; legacy token links render a review page with an explicit continue-anyway link.
 - `500` — Status update or DM resolution failed
+
+---
+
+### POST /api/opportunities/:id/owner-approvals
+
+Issue a single-use owner-approval proof for a pending MCP-agent interaction challenge (IND-593). Agents calling `update_opportunity` (send/accept/reject) over MCP without a proof receive an `owner_approval_required` denial carrying a fresh `interactionId` challenge; the owner explicitly approves that exact interaction here, and the returned proof is relayed to the agent for one retry.
+
+The proof binding (opportunity, action, owner principal, acting agent, interaction) comes entirely from the server-side challenge store — the request only names the challenge; caller-supplied binding fields are never accepted. Proofs are HMAC-signed, expire with the challenge (10 minutes), are minted at most once per challenge (atomic one-shot issuance), and are atomically single-use on consumption. Challenge state lives in a shared store (Redis-backed in production) keyed by opaque hashes; store or configuration failures fail closed.
+
+**Auth**: AuthGuard + authenticated owner session (session auth only — API-key/agent callers cannot self-issue owner authorization)
+
+**Path params**:
+- `id` — Opportunity ID (full UUID or short prefix; resolved server-side). Must equal the challenge's opportunity.
+
+**Request body**:
+```json
+{
+  "interactionId": "interaction challenge UUID from the agent's owner_approval_required denial"
+}
+```
+
+**Response**:
+```json
+{
+  "proof": "opaque single-use approval token",
+  "expiresAt": "ISO timestamp",
+  "approval": {
+    "interactionId": "string",
+    "opportunityId": "string",
+    "action": "send | accept | reject",
+    "agentId": "string"
+  }
+}
+```
+
+**Error responses**:
+- `403` — Not an authenticated owner session, or the session principal is not the challenge's owner
+- `404` — Unknown approval interaction, or the challenge belongs to a different opportunity (opaque — no existence oracle; a mismatched route never mints a proof and never consumes the challenge's one-shot issuance)
+- `409` — An approval proof was already issued for this interaction (issuance is one-shot)
+- `410` — Approval interaction has expired (the agent must retry to obtain a fresh challenge)
+- `503` — Approval service unavailable (store/configuration failure — fails closed)
 
 ---
 
@@ -3362,17 +3481,18 @@ List pending questions for the authenticated user.
 **Query params:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `status` | `pending` \| `answered` \| `dismissed` | `pending` | Only `pending` is currently supported |
+| `status` | `pending` \| `answered` \| `dismissed` | `pending` | `pending` and `answered` are supported; `dismissed` is rejected. |
 | `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
-| `scopeId` | UUID | — | Required when `scopeType=intent`; returns direct intent questions plus negotiation questions whose source opportunity matches the selected-intent predicate. |
+| `scopeId` | UUID | — | Required when `scopeType=intent`. Non-negotiation modes retain their established scope rules. Negotiation-family rows require valid versioned exact-recipient provenance whose stamped intent equals this ID and whose current intent/network/opportunity/task state still validates; legacy or drifted rows fail closed. |
 | `intentId` | UUID | — | Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`. |
 | `conversationId` | string | — | Filter to questions linked to a specific chat session |
 | `noConversation` | `true` | — | Exclude questions that have a `conversationId` (sidebar badge use) |
+| `passive` | `true` | — | Exact-intent refetch only. Requires `scopeType=intent`; suppresses visit-time pool-mining enqueue. Used by mounted-workspace invalidation, not initial active visitation. |
 
-Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, and the authoritative `pushedAt` ledger.
+Unscoped/global reads always exclude `pool_discovery`; those rows are available only with an explicit intent scope. Negotiation-family pending rows are freshness-validated even without an explicit intent scope by using their stamped recipient intent; missing-provenance, crossed mode/purpose, drifted, or unsafe legacy rows fail closed. Answered inflight history retains the exact exchange after its own continuation changes task/opportunity state, but still requires current recipient ownership/fingerprint/network/opportunity actor binding plus the exact terminal settlement. Public rows strip internal pool snapshots, assignments, embeddings, push claims/status, cycle keys, the authoritative `pushedAt` ledger, negotiation provenance/purpose/task/network/fingerprint/lifecycle metadata, server session bindings, and actor network IDs. A `messageId` anchor survives an intent-scoped read only when its exact assistant message/session/conversation belongs to the authenticated user's exact `negotiator-intent` scope.
 
 **Response:** `{ questions: PersistedQuestion[] }`
 
@@ -3390,13 +3510,13 @@ Returns the canonical count split used by the two allowed surfaces. Counts requi
 }
 ```
 
-`globalPending` excludes every `pool_discovery` row and remains the Questions-page count. `pushedPoolPending` includes only `pool_discovery` rows with a successful internal `pushedAt` stamp. `personalAgentPending` is their sum and drives the Personal Agent badge.
+`globalPending` excludes every `pool_discovery` row and remains the Questions-page count. `pushedPoolPending` includes only `pool_discovery` rows with a successful internal `pushedAt` stamp. `personalAgentPending` is their sum and drives the Personal Agent badge. All three values are derived from the same freshness-validated rows as the global inbox, so stale negotiation provenance cannot remain in a badge after disappearing from a scoped read.
 
 ### POST /api/questions/:id/answer
 
 **Auth**: Required (session or API key)
 
-Submit an answer for a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+Submit an answer for a pending question. For non-negotiation modes, existing actor/pending semantics apply. Negotiation-family answers additionally take the exact cohort lock, revalidate actor/provenance, owned ACTIVE fingerprint-equal intent, assignment/membership, opportunity actor visibility/state, and exact task state before any effect. When an inflight consultation was authorized by the default-off `NEGOTIATION_CONSULTATION_POLICY_MODE`, it has the identical private exact-seat/task contract; policy category is server-only telemetry and is never returned by this API. Stale rows fail closed/system-void without shared mutation or user-answer events. Uptake remains private; ordinary follow-up uses established shared metadata; inflight atomically closes only its stamped `input_required` task and writes a deterministic durable continuation request. If post-commit Redis delivery fails, the endpoint may fail after recording the answer; retrying the same answer is idempotent and reconciles the same settlement, while the armed expiry job is the process-boundary fallback.
 
 **Body:**
 ```json
@@ -3414,7 +3534,7 @@ Submit an answer for a pending question. Only succeeds if the user is an actor o
 
 **Auth**: Required (session or API key)
 
-Dismiss a pending question. Only succeeds if the user is an actor on the question and the question is still pending.
+Dismiss a pending question. Negotiation-family rows use the same exact cohort-first locked revalidation and durable exact-task continuation protocol as answers. Inflight dismissal applies the conservative no-disclosure default and dismisses only the exact stamped task cohort. Timeout uses that protocol even when no question row exists. All delivery/recovery attempts carry the deterministic settlement ID and never select a newer/latest opportunity task.
 
 **Response:** `{ success: true }` (200) or `{ error: "Question not found" }` (404)
 

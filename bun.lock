@@ -19,7 +19,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.28.6",
+      "version": "0.32.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -88,23 +88,23 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "6.7.1",
+      "version": "6.11.5",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
         "@langchain/openai": "^1.2.3",
         "@modelcontextprotocol/server": "^2.0.0-alpha.2",
-        "dotenv": "^16.3.1",
         "zod": "^3.22.4",
       },
       "devDependencies": {
         "@types/node": "^25.5.2",
+        "dotenv": "^16.3.1",
         "typescript": "^5.0.0",
       },
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.53.3",
+      "version": "0.58.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

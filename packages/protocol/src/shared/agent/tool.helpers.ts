@@ -3,11 +3,9 @@ import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../schemas/identity.schema.js";
-import type { ChatGraphCompositeDatabase, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
+import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../interfaces/database.interface.js";
 import type { Scraper } from "../interfaces/scraper.interface.js";
 import type { Cache, HydeCache } from "../interfaces/cache.interface.js";
-import type { CompiledOpportunityGraph } from "../../opportunity/opportunity.discover.js";
-import type { StampNewbornOpportunitiesFn } from "../../opportunity/opportunity.graph.js";
 import type { IntegrationAdapter } from "../interfaces/integration.interface.js";
 import type { ContactServiceAdapter } from "../interfaces/contact.interface.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
@@ -30,6 +28,7 @@ import type { PendingQuestionSummary } from "../schemas/pending-question.schema.
 import type { QuestionMode, QuestionPurpose } from "../schemas/question.schema.js";
 import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
+import type { McpActivityCaller } from "./activity-projection.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -49,6 +48,13 @@ export interface ToolErrorReport {
 /** Minimal interface for an invokable compiled LangGraph. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type CompiledGraph = { invoke: (input: any) => Promise<any> };
+
+/** Composition-only hook kept structural so shared contracts do not own opportunity runtime. */
+export type StampNewbornOpportunitiesFn = (input: {
+  ownerUserId: string;
+  intentId: string;
+  items: CreateOpportunityData[];
+}) => Promise<CreateOpportunityData[]>;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL CONTEXT TYPES
@@ -103,6 +109,14 @@ export interface ResolvedToolContext {
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
   /**
+   * Typed resolved MCP caller context, set only by the MCP server after the
+   * capability subject is resolved. Tools with permission-projected output
+   * (currently `read_activity_summary`) pass it into the centralized
+   * projection in `activity-projection.ts`. Absent on REST/chat surfaces,
+   * which are owner-trusted and receive the full owner view.
+   */
+  mcpCaller?: McpActivityCaller;
+  /**
    * Receiver's rendering surface declared by the MCP client via the
    * `x-index-surface` request header. `'telegram'` means the MCP response is
    * being rendered inside a Telegram chat; anything
@@ -129,7 +143,8 @@ export interface ResolvedToolContext {
  * Note: userDb and systemDb are optional inputs - if not provided, createChatTools
  * will create them internally from the chatDatabaseAdapter singleton.
  */
-export interface ToolContext {
+/** Complete host binding set used only to derive request and composition ports. */
+interface ToolContextBindings {
   userId: string;
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
   database: ChatGraphCompositeDatabase;
@@ -222,7 +237,9 @@ export interface ToolContext {
    */
   chatQuestions?: ChatQuestionsHost;
   /** Optional durable persistence for reporter cleanup-action proposals. */
-  actionProposalStore?: import('../../chat/reporter.action.tools.js').AgentActionProposalStore;
+  actionProposalStore?: import('../../chat/reporter.action.contracts.js').AgentActionProposalStore;
+  /** Durable host persistence for verified intent proposals shown in chat. */
+  intentProposalStore?: import('../../signals/domain/intent.proposal.js').IntentProposalStore;
   /**
    * Host bridge for the negotiator persona's `remember`/`forget` memory
    * tools (P5.4). Injected by the composition root only when negotiator
@@ -307,12 +324,30 @@ export interface ToolContext {
   }>;
 }
 
+/** Per-request chat identity, scope, and adapter inputs. */
+export type ChatToolRequest = Pick<ToolContextBindings,
+  'userId' | 'userDb' | 'systemDb' | 'networkId' | 'scopeType' | 'scopeId'
+  | 'indexScope' | 'sessionId'
+>;
+
+/** Host-owned bindings injected into a chat request at the composition boundary. */
+export type ChatToolHostDeps = Omit<ToolContextBindings, keyof ChatToolRequest>;
+
 /**
- * All external dependencies needed to initialize the protocol tool engine.
- * The host application (composition root) must provide concrete implementations.
- * This is the subset of ToolContext that is NOT per-request (no userId, indexId, sessionId).
+ * Compatibility context for the chat factory.
+ *
+ * New tool factories receive capability-specific `*ToolDeps` ports, while
+ * this request-plus-host intersection keeps existing chat/persona consumers
+ * structurally compatible during incremental migration.
  */
-export type ProtocolDeps = Omit<ToolContext, 'userId' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'>;
+export type ToolContext = ChatToolRequest & ChatToolHostDeps;
+
+/**
+ * All host dependencies needed to initialize the protocol chat engine.
+ * User and system database views are created per request unless supplied by a
+ * compatibility caller.
+ */
+export type ProtocolDeps = ChatToolHostDeps;
 
 /**
  * Thrown when a requested chat scope is invalid for the authenticated user.
@@ -496,13 +531,22 @@ export type ToolRegistry = Map<string, RawToolDefinition>;
  * Shared dependencies available to all tool domain factories.
  * Passed by `createChatTools` after compiling all subgraphs.
  */
-export interface ToolDeps {
+/**
+ * Host bindings available while composing the protocol tool registry.
+ *
+ * This is deliberately not exported as a consumer contract. Individual tool
+ * factories receive the use-case ports below; `ToolDeps` remains the complete
+ * compatibility shape only for registry/composition callers during migration.
+ */
+interface ToolDepsBindings {
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
   database: ChatGraphCompositeDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
   userDb: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
+  /** Durable host persistence for verified intent proposals shown in chat. */
+  intentProposalStore?: import('../../signals/domain/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface.js').Embedder;
   cache: Cache;
@@ -651,7 +695,7 @@ export interface ToolDeps {
     index: CompiledGraph;
     networkMembership: CompiledGraph;
     intentIndex: CompiledGraph;
-    opportunity: CompiledOpportunityGraph;
+    opportunity: CompiledGraph;
     premise: CompiledGraph;
   };
   /**
@@ -669,6 +713,30 @@ export interface ToolDeps {
    */
   getUserContextText?: (userId: string) => Promise<string>;
 }
+
+/**
+ * Shared backing shape for the registry composition boundary. Capability-local
+ * ports may Pick from this type, but it is intentionally not a root export.
+ */
+export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
+  'embedder' | 'chatMessageWriter' | 'mintConnectToken' | 'apiBaseUrl' | 'mcpRateLimiter'
+>;
+
+/** Runtime-only hooks retained for MCP and existing host composition. */
+type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
+  'embedder' | 'chatMessageWriter' | 'mintConnectToken' | 'apiBaseUrl' | 'mcpRateLimiter'
+>;
+
+/**
+ * Legacy complete tool composition contract.
+ *
+ * New capability factories must accept their named `*ToolDeps` port above,
+ * rather than this aggregate. Keeping the intersection preserves structural
+ * compatibility for the registry and host composition while consumers migrate.
+ */
+export type ToolDeps =
+  & ToolRegistryCompositionDeps
+  & ToolRuntimeCompatibilityDeps;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL RESULT HELPERS

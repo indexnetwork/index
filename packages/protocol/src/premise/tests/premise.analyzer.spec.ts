@@ -1,9 +1,54 @@
-// Env must be set before any imports that transitively call createModel
-import { config } from "dotenv";
-config({ path: ".env.test", override: true });
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 
-import { describe, it, expect, beforeAll } from "bun:test";
-import { PremiseAnalyzer } from "../premise.analyzer.js";
+mock.module("../../shared/agent/model.config", () => ({
+  createStructuredModel: () => ({
+    invoke: async (messages: Array<{ content?: unknown }>) => {
+      const prompt = String(messages.at(-1)?.content ?? "");
+      if (prompt.includes("10 years of experience")) {
+        return {
+          reasoning: "Specific experience is an assertive capability claim.",
+          speechActType: "ASSERTIVE",
+          felicityAuthority: 85,
+          felicitySincerity: 90,
+          felicityClarity: 85,
+          semanticEntropy: 0.15,
+        };
+      }
+      if (prompt.includes("I work in tech")) {
+        return {
+          reasoning: "The self-description is broad and underspecified.",
+          speechActType: "DECLARATIVE",
+          felicityAuthority: 60,
+          felicitySincerity: 80,
+          felicityClarity: 40,
+          semanticEntropy: 0.9,
+        };
+      }
+      if (prompt.includes("senior ML engineer")) {
+        return {
+          reasoning: "The role, organisation, location, and specialty are specific.",
+          speechActType: "DECLARATIVE",
+          felicityAuthority: 90,
+          felicitySincerity: 90,
+          felicityClarity: 90,
+          semanticEntropy: 0.05,
+        };
+      }
+      return {
+        reasoning: "The role and location identify the speaker's current status.",
+        speechActType: "DECLARATIVE",
+        felicityAuthority: 80,
+        felicitySincerity: 90,
+        felicityClarity: 80,
+        semanticEntropy: 0.15,
+      };
+    },
+  }),
+}));
+
+const { PremiseAnalyzer } = await import("../premise.analyzer.js");
+
+afterAll(() => mock.restore());
 
 describe("PremiseAnalyzer", () => {
   let analyzer: PremiseAnalyzer;

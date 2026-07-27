@@ -9,6 +9,8 @@ import type { NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
+import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
+import type { RecoveryQuestionerJobData } from '../questioner.queue';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
 
@@ -51,6 +53,8 @@ export interface FromIntentDeps {
   getPoolAnswerContext?: (userId: string, intentId: string) => Promise<string>;
   /** Beat-2 narration for pool-answer re-runs (IND-419); injectable for tests. */
   narratePoolRerun?: (input: { userId: string; intentId: string; newCandidates: number | null }) => Promise<void>;
+  /** Post-success no-opportunity recovery hook; failure-isolated by this queue. */
+  recoverAfterCompletion?: (input: RecoveryQuestionerJobData) => Promise<unknown>;
 }
 
 export class FromIntentQueue {
@@ -137,16 +141,7 @@ export class FromIntentQueue {
       return;
     }
 
-    const [assignedNetworkIds, ownerMemberships] = await Promise.all([
-      this.database.getNetworkIdsForIntent(intentId),
-      this.database.getAssignmentNetworkMembershipsForUser(userId),
-    ]);
-    const activeOwnerNetworkIds = new Set(ownerMemberships.map((membership) => membership.networkId));
-    const explicitNetworkIds = networkIds == null ? null : new Set(networkIds);
-    const validNetworkIds = [...new Set(assignedNetworkIds)]
-      .filter((networkId) => activeOwnerNetworkIds.has(networkId))
-      .filter((networkId) => explicitNetworkIds == null || explicitNetworkIds.has(networkId))
-      .sort();
+    const validNetworkIds = await this.getValidDiscoveryNetworkIds(intentId, userId, networkIds);
 
     // A trigger intent is authoritative for admission: omitted scope means all
     // of its still-valid assignments, never all owner memberships. Explicit
@@ -156,9 +151,7 @@ export class FromIntentQueue {
       this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
         intentId,
         userId,
-        assignedNetworkCount: assignedNetworkIds.length,
-        activeOwnerMembershipCount: activeOwnerNetworkIds.size,
-        explicitNetworkCount: explicitNetworkIds?.size,
+        requestedNetworkCount: networkIds?.length,
       });
       return;
     }
@@ -202,6 +195,22 @@ export class FromIntentQueue {
       logContext: { intentId, userId },
     });
 
+    // A successful graph is not enough to clear WARMING: assignment and
+    // membership can change while it runs. Re-check the same authoritative
+    // admission predicate immediately before the irreversible success stamp.
+    const stampNetworkIds = await this.getValidDiscoveryNetworkIds(intentId, userId, networkIds);
+    if (stampNetworkIds.length === 0) {
+      const error = new Error('Intent discovery stamp precondition failed: no active assigned networks remain');
+      this.logger.error('Discovery success stamp precondition violated; BullMQ will retry', {
+        event: 'intent_discovery_stamp_precondition_violation',
+        intentId,
+        userId,
+        requestedNetworkCount: networkIds?.length,
+        error,
+      });
+      throw error;
+    }
+
     // Discovery completed without throwing: stamp first-discovery success so
     // the read-side WARMING derivation clears immediately instead of waiting
     // out the 24-hour freshness window (IND-482). Failed runs throw above and
@@ -214,6 +223,27 @@ export class FromIntentQueue {
         intentId,
         userId,
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Intent refinement is an independent, failure-isolated post-success
+    // effect. It shares a material-fingerprint cadence with the creation-time
+    // intent Questioner, so this completion retry cannot duplicate a question.
+    // Run it before pool mining/narration so every intent-page question family
+    // gets the same completion opportunity.
+    try {
+      await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
+        source: 'from_intent',
+        recipientUserId: userId,
+        intentId,
+      });
+    } catch (error) {
+      // Discovery has already completed authoritatively. Recovery is bounded,
+      // asynchronous follow-up and must never turn success into a retry.
+      this.logger.warn('Recovery completion hook failed after successful discovery', {
+        intentId,
+        userId,
+        errorClass: error instanceof Error ? error.name : 'UnknownError',
       });
     }
 
@@ -240,6 +270,20 @@ export class FromIntentQueue {
         newCandidates: summary?.opportunitiesCreated ?? null,
       });
     }
+  }
+
+  /** Resolve the assignment + current-membership intersection used for both admission and stamping. */
+  private async getValidDiscoveryNetworkIds(intentId: string, userId: string, networkIds?: string[]): Promise<string[]> {
+    const [assignedNetworkIds, ownerMemberships] = await Promise.all([
+      this.database.getNetworkIdsForIntent(intentId),
+      this.database.getAssignmentNetworkMembershipsForUser(userId),
+    ]);
+    const activeOwnerNetworkIds = new Set(ownerMemberships.map((membership) => membership.networkId));
+    const explicitNetworkIds = networkIds == null ? null : new Set(networkIds);
+    return [...new Set(assignedNetworkIds)]
+      .filter((networkId) => activeOwnerNetworkIds.has(networkId))
+      .filter((networkId) => explicitNetworkIds == null || explicitNetworkIds.has(networkId))
+      .sort();
   }
 
   startWorker(): void {

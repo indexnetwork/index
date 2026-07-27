@@ -180,12 +180,13 @@ export function GuidedQuestion({
   );
 }
 
-function ProposalCard({
+export function ProposalCard({
   proposal,
   networkTitle,
   lookingFor,
   youBring,
   onConfirm,
+  onFeedback,
   onSkip,
   busy,
   error,
@@ -194,29 +195,83 @@ function ProposalCard({
   networkTitle: string;
   lookingFor?: string;
   youBring?: string;
-  onConfirm: () => Promise<void>;
+  onConfirm: (description: string) => Promise<void>;
+  onFeedback: (feedback: string) => Promise<void>;
   onSkip: () => Promise<void>;
   busy: boolean;
   error: string | null;
 }) {
+  const [description, setDescription] = useState(proposal.description);
+  const [feedback, setFeedback] = useState("");
+  const [sendingFeedback, setSendingFeedback] = useState(false);
   const [skipping, setSkipping] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const resolvedLookingFor = lookingFor ?? proposal.lookingFor ?? proposal.description;
   const resolvedYouBring = youBring ?? proposal.youBring ?? proposal.offering;
+
+  const submitFeedback = async () => {
+    const trimmedFeedback = feedback.trim();
+    if (!trimmedFeedback || busy || sendingFeedback || skipping) return;
+    setSendingFeedback(true);
+    setFeedbackError(null);
+    try {
+      await onFeedback(trimmedFeedback);
+    } catch {
+      setFeedbackError("Couldn't send your feedback. Please try again.");
+    } finally {
+      setSendingFeedback(false);
+    }
+  };
+
   return (
     <section aria-label="Confirm signal" className="mt-10 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">One last look</p>
       <h1 className="mt-3 text-2xl font-semibold text-[#041729]">Does this feel right?</h1>
       <div className="mt-7 space-y-5">
+        <div>
+          <label htmlFor="signal-description" className="text-[10px] font-semibold tracking-[0.18em] text-gray-400">YOUR SIGNAL</label>
+          <textarea
+            id="signal-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            disabled={busy || sendingFeedback || skipping}
+            rows={4}
+            className="mt-2 w-full resize-y rounded-2xl border border-gray-200 bg-white px-4 py-3 text-base leading-relaxed text-gray-800 outline-none transition focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10 disabled:opacity-60"
+          />
+          <p className="mt-2 text-xs text-gray-500">This is exactly what will be shared after you confirm. Edit it directly, or ask your agent to revise it.</p>
+        </div>
         <Summary label="LOOKING FOR" value={resolvedLookingFor} />
         <Summary label="YOU BRING" value={resolvedYouBring ?? "Not specified"} />
         <Summary label="NETWORKS" value={networkTitle} />
       </div>
       {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {feedbackError && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{feedbackError}</p>}
+      <div className="mt-6">
+        <label htmlFor="signal-feedback" className="text-sm font-medium text-[#041729]">Want your agent to revise it?</label>
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+          <input
+            id="signal-feedback"
+            value={feedback}
+            onChange={(event) => setFeedback(event.target.value)}
+            disabled={busy || sendingFeedback || skipping}
+            placeholder="Tell it what to change"
+            className="min-w-0 flex-1 rounded-full border border-gray-200 px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#041729] focus:ring-2 focus:ring-[#041729]/10 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            disabled={!feedback.trim() || busy || sendingFeedback || skipping}
+            onClick={() => void submitFeedback()}
+            className="rounded-full border border-[#041729] px-4 py-2.5 text-sm font-medium text-[#041729] hover:bg-[#041729] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {sendingFeedback ? "Sending…" : "Revise with agent"}
+          </button>
+        </div>
+      </div>
       <div className="mt-7 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={busy || skipping}
-          onClick={() => void onConfirm()}
+          disabled={!description.trim() || busy || sendingFeedback || skipping}
+          onClick={() => void onConfirm(description.trim())}
           className="inline-flex items-center gap-2 rounded-full bg-[#041729] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0a2d4a] disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -357,7 +412,7 @@ export function GuidedSignalIntake({
     }
   }, [currentQuestion, isLoading, questionsService, sendFollowup]);
 
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = useCallback(async (description: string) => {
     if ((!proposal && !confirmedIntentId) || confirming) return;
     setConfirming(true);
     setProposalError(null);
@@ -367,7 +422,7 @@ export function GuidedSignalIntake({
         if (!proposal) return;
         const response = await apiClient.post<{ intentId: string }>("/intents/confirm", {
           proposalId: proposal.proposalId,
-          description: proposal.description,
+          description,
           ...(selectedNetwork?.id ? { networkId: selectedNetwork.id } : {}),
         });
         persistedIntentId = response.intentId;
@@ -383,6 +438,13 @@ export function GuidedSignalIntake({
       setConfirming(false);
     }
   }, [confirmedIntentId, confirming, finishConfirmation, proposal, selectedNetwork, showError]);
+
+  const handleFeedback = useCallback(async (feedback: string) => {
+    // This marker keeps a fresh chat turn in the completed guided-signal
+    // stage, where the Signal Agent must call create_intent for a replacement
+    // proposal. The feedback itself is never persisted.
+    await sendFollowup(`new-signal-preview-feedback: ${feedback}`);
+  }, [sendFollowup]);
 
   const handleSkip = useCallback(async () => {
     if (!proposal) return;
@@ -456,11 +518,13 @@ export function GuidedSignalIntake({
         </section>
       ) : proposal ? (
         <ProposalCard
+          key={proposal.proposalId}
           proposal={proposal}
           networkTitle={networkTitle}
           lookingFor={lookingFor}
           youBring={answeredContribution}
           onConfirm={handleConfirm}
+          onFeedback={handleFeedback}
           onSkip={handleSkip}
           busy={confirming}
           error={proposalError}

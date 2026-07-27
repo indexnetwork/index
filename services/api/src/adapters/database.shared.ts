@@ -136,6 +136,10 @@ export interface UpdateIntentInput {
   felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /** Final row-lock compare-and-set guard for recovery-answer updates only. */
+  expectedIntentFingerprint?: string;
+  /** Expected owner paired with the recovery-answer fingerprint guard. */
+  expectedIntentUserId?: string;
 }
 export interface CreatedIntentRow {
   id: string;
@@ -630,6 +634,21 @@ export interface ResolvedParticipant {
   ownerName?: string | null;
 }
 
+export interface NegotiationLifecycleSummary {
+  taskId: string;
+  state: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed';
+  statusTimestamp: Date | null;
+  opportunityId: string | null;
+  opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
+  /** Whether the authenticated owner, rather than their counterpart, started the chat. */
+  acceptedByViewer: boolean;
+  turnCount: number;
+  maxTurns: number | null;
+  signalCount: number;
+  outcome: { hasOpportunity: boolean; reason: string | null } | null;
+  updatedAt: Date;
+}
+
 /** Summary returned by getConversationsForUser. */
 export interface ConversationSummary {
   id: string;
@@ -641,6 +660,8 @@ export interface ConversationSummary {
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   unreadCount: number;
+  /** Present only when negotiation lifecycle projection was requested. */
+  negotiation?: NegotiationLifecycleSummary | null;
 }
 
 /**

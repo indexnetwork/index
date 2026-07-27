@@ -50,6 +50,30 @@ function askUserLockWindowMs(): number {
     + ASK_USER_LOCK_SLACK_MS;
 }
 
+function qualifyingFreshNegotiationTaskStateWhere() {
+  return sql`
+    (
+      (
+        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
+        AND ${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')
+      )
+      OR (
+        ${schema.tasks.state} = 'input_required'
+        AND ${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')
+      )
+    )
+  `;
+}
+
+/** Fresh active task for one opportunity, used by final reactivation checks. */
+export function qualifyingActiveNegotiationTaskWhere(opportunityId: string) {
+  return sql`
+    ${schema.tasks.metadata}->>'type' = 'negotiation'
+    AND ${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}
+    AND ${qualifyingFreshNegotiationTaskStateWhere()}
+  `;
+}
+
 /** Pair-global tasks fresh enough to block a concurrent cross-trigger attempt. */
 export function qualifyingPairNegotiationTaskWhere(
   actorUserIds: string[],
@@ -68,22 +92,25 @@ export function qualifyingPairNegotiationTaskWhere(
       : sql``}
     AND ${schema.opportunities.status} = 'negotiating'
     AND ${sql.join(actorContainment, sql` AND `)}
-    AND (
-      (
-        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
-        AND ${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')
-      )
-      OR (
-        ${schema.tasks.state} = 'input_required'
-        AND ${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')
-      )
-    )
+    AND ${qualifyingFreshNegotiationTaskStateWhere()}
   `;
+}
+
+/**
+ * Reusable SQL predicate that excludes archived legacy pre-v2 negotiations.
+ * Archived tasks carry `metadata->>'archivedAt'` stamped by the backfill.
+ * Apply this to every user-visible SET-reader query; leave single-by-id
+ * readers, debug tools, and continuation-chain recovery alone.
+ */
+export function notArchivedNegotiationTaskWhere() {
+  return sql`${schema.tasks.metadata}->>'archivedAt' IS NULL`;
 }
 
 /**
  * Qualifying tasks that prove an attempt is already owned or still active.
  * Historical stale non-input-required tasks deliberately do not qualify.
+ * Archived tasks (metadata->>'archivedAt' IS NOT NULL) are excluded so a
+ * legacy input_required task cannot block a new attempt for its opportunity.
  */
 export function qualifyingNegotiationAttemptTaskWhere(
   opportunityId: string,
@@ -92,6 +119,7 @@ export function qualifyingNegotiationAttemptTaskWhere(
   return sql`
     ${schema.tasks.metadata}->>'type' = 'negotiation'
     AND ${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}
+    AND ${notArchivedNegotiationTaskWhere()}
     AND (
       ${schema.tasks.createdAt} >= ${expectedUpdatedAt.toISOString()}::timestamptz
       OR ${schema.tasks.state} = 'input_required'

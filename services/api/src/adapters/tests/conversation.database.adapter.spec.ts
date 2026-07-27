@@ -343,6 +343,77 @@ describe('ConversationDatabaseAdapter', () => {
     }, 10000);
   });
 
+  describe('negotiation conversation summaries', () => {
+    it('projects the latest task, opportunity, turn, and signal lifecycle', async () => {
+      const suffix = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `inbox-owner-${suffix}`;
+      const counterpartId = `inbox-counterpart-${suffix}`;
+      const opportunityId = `inbox-opportunity-${suffix}`;
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${ownerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+
+      await db.insert(schema.opportunities).values({
+        id: opportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'inbox-network', userId: ownerId, role: 'peer' },
+          { networkId: 'inbox-network', userId: counterpartId, role: 'peer' },
+        ],
+        interpretation: { category: 'test', reasoning: 'Inbox lifecycle test.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'pending',
+      });
+      createdOpportunityIds.push(opportunityId);
+
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        sourceIntentId: 'source-intent',
+        candidateIntentId: 'candidate-intent',
+        participantBindings: [
+          { userId: ownerId, intentId: 'source-intent' },
+          { userId: counterpartId, intentId: 'candidate-intent' },
+        ],
+        opportunityId,
+        maxTurns: 6,
+        priorTurnCount: 1,
+      });
+      await adapter.createMessage({
+        conversationId: conversation.id,
+        senderId: `agent:${ownerId}`,
+        role: 'agent',
+        taskId: task.id,
+        parts: [{ kind: 'data', data: { action: 'accept' } }],
+      });
+      await adapter.updateTaskState(task.id, 'completed');
+      await adapter.createArtifact({
+        taskId: task.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: true, turnCount: 2 } }],
+      });
+
+      const summary = (await adapter.getConversationsForUser(`agent:${ownerId}`, ownerId, true))
+        .find((candidate) => candidate.id === conversation.id);
+
+      expect(summary?.negotiation).toMatchObject({
+        taskId: task.id,
+        state: 'completed',
+        opportunityId,
+        opportunityStatus: 'pending',
+        acceptedByViewer: false,
+        turnCount: 2,
+        maxTurns: 6,
+        signalCount: 2,
+        outcome: { hasOpportunity: true, reason: null },
+      });
+    }, 20000);
+  });
+
   describe('getLatestNegotiationTaskForConversation', () => {
     it('returns the negotiation task, ignoring non-negotiation tasks, and null for fresh conversations', async () => {
       const conv = await adapter.createConversation([
@@ -547,6 +618,46 @@ describe('ConversationDatabaseAdapter', () => {
 
       const summary = (await adapter.getConversationsForUser(viewerId)).find((conversation) => conversation.id === dm.id);
       expect(summary?.via).toEqual([{ intentId: viewerIntentId, opportunityId: 'opp-private-signal', title: 'Viewer signal' }]);
+      expect(summary?.metadata).not.toHaveProperty('matchProvenance');
+    }, 20000);
+
+    it('projects owner intent provenance when listing an agent negotiation', async () => {
+      const run = crypto.randomUUID();
+      const viewerId = `agent-provenance-viewer-${run}`;
+      const counterpartId = `agent-provenance-counterpart-${run}`;
+      const viewerIntentId = `agent-provenance-viewer-intent-${run}`;
+      const counterpartIntentId = `agent-provenance-counterpart-intent-${run}`;
+      createdUserIds.push(viewerId, counterpartId);
+      createdIntentIds.push(viewerIntentId, counterpartIntentId);
+
+      await db.insert(schema.users).values([
+        { id: viewerId, email: `${viewerId}@test.com`, name: 'Agent Provenance Viewer' },
+        { id: counterpartId, email: `${counterpartId}@test.com`, name: 'Agent Provenance Counterpart' },
+      ]);
+      await db.insert(schema.intents).values([
+        { id: viewerIntentId, userId: viewerId, payload: 'Viewer private framing', summary: 'Viewer signal' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart private framing', summary: 'Counterpart signal' },
+      ]);
+      const negotiation = await adapter.createConversation([
+        { participantId: `agent:${viewerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(negotiation.id);
+      await adapter.appendMatchProvenance(negotiation.id, {
+        opportunityId: 'opp-agent-private-signal',
+        intents: [
+          { userId: viewerId, intentId: viewerIntentId },
+          { userId: counterpartId, intentId: counterpartIntentId },
+        ],
+        recordedAt: new Date().toISOString(),
+      });
+
+      const summary = (await adapter.getConversationsForUser(`agent:${viewerId}`, viewerId))
+        .find((conversation) => conversation.id === negotiation.id);
+
+      expect(summary?.via).toEqual([
+        { intentId: viewerIntentId, opportunityId: 'opp-agent-private-signal', title: 'Viewer signal' },
+      ]);
       expect(summary?.metadata).not.toHaveProperty('matchProvenance');
     }, 20000);
   });

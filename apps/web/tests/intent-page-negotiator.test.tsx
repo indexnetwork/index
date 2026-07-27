@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
     getHomeView: vi.fn(),
   },
   chatStubBehavior: { failBootstrap: false },
+  questionRevision: 'revision-1',
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -120,7 +121,10 @@ vi.mock('@/contexts/APIContext', () => ({
 
 
 vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
+  useQuestions: () => ({
+    refresh: vi.fn(async () => {}),
+    pendingRevision: mocks.questionRevision,
+  }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
@@ -156,6 +160,7 @@ describe('Intent page — negotiator chat gating', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.features = null;
+    mocks.questionRevision = 'revision-1';
     mocks.intentsService.getIntent.mockResolvedValue({
       id: 'intent-1',
       payload: 'Looking for a technical co-founder',
@@ -247,7 +252,7 @@ describe('Intent page — negotiator chat gating', () => {
 
   test('answering a pending question keeps prior entries and appends the new answer', async () => {
     mocks.authState.features = { negotiatorChat: true };
-    mocks.questionsService.getAnswered.mockResolvedValue([{
+    const prior = {
       id: 'answered-1',
       payload: {
         title: 'What kind of collaborator?',
@@ -261,16 +266,78 @@ describe('Intent page — negotiator chat gating', () => {
         answeredAt: new Date().toISOString(),
       },
       status: 'answered',
-    }]);
-    renderIntentPage();
+    };
+    let answeredRows: Array<Record<string, unknown>> = [prior];
+    mocks.questionsService.getAnswered.mockImplementation(async () => answeredRows);
+    mocks.questionsService.answer.mockImplementation(async () => {
+      answeredRows = [prior, {
+        id: 'q-1',
+        payload: { title: 'Which city?', prompt: 'Which city?', options: [], multiSelect: false },
+        answer: { selectedOptions: ['Berlin'], answeredBy: 'user-1', answeredAt: new Date().toISOString() },
+        status: 'answered',
+      }];
+      return { success: true };
+    });
+    const view = renderIntentPage();
 
     expect(await screen.findByText('Technical founder')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'answer-q-1' }));
 
     await waitFor(() => expect(screen.getByText('Berlin')).toBeInTheDocument());
     expect(screen.getByText('Technical founder')).toBeInTheDocument();
-    expect(screen.getByTestId('answered-entry-q-1')).toHaveAttribute('data-answered-at', '');
+    expect(screen.getByTestId('answered-entry-q-1').getAttribute('data-answered-at')).not.toBe('');
     expect(mocks.questionsService.answer).toHaveBeenCalledWith('q-1', { selectedOptions: ['Berlin'] });
+
+    mocks.questionsService.getPending.mockClear();
+    mocks.questionsService.getAnswered.mockClear();
+    mocks.questionRevision = 'revision-after-continuation';
+    view.rerender(
+      <MemoryRouter initialEntries={['/i/intent-1']}>
+        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(mocks.questionsService.getAnswered).toHaveBeenCalledWith({
+      scopeType: 'intent', scopeId: 'intent-1', passive: true,
+    }));
+    expect(screen.getAllByTestId('answered-entry-q-1')).toHaveLength(1);
+  });
+
+  test('pending-set invalidation performs one passive exact-intent pending+answered refetch', async () => {
+    const view = renderIntentPage();
+    await waitFor(() => expect(mocks.questionsService.getPending).toHaveBeenCalledWith({
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+    }));
+    mocks.questionsService.getPending.mockClear();
+    mocks.questionsService.getAnswered.mockClear();
+
+    mocks.questionRevision = 'revision-2';
+    view.rerender(
+      <MemoryRouter initialEntries={['/i/intent-1']}>
+        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(mocks.questionsService.getPending).toHaveBeenCalledTimes(1));
+    expect(mocks.questionsService.getPending).toHaveBeenCalledWith({
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      passive: true,
+    });
+    expect(mocks.questionsService.getAnswered).toHaveBeenCalledWith({
+      scopeType: 'intent',
+      scopeId: 'intent-1',
+      passive: true,
+    });
+
+    view.rerender(
+      <MemoryRouter initialEntries={['/i/intent-1']}>
+        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await Promise.resolve();
+    expect(mocks.questionsService.getPending).toHaveBeenCalledTimes(1);
+    expect(mocks.questionsService.getAnswered).toHaveBeenCalledTimes(1);
   });
 
   test('runtime bootstrap failure → falls back to the questions block', async () => {

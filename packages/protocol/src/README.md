@@ -10,6 +10,7 @@ packages/protocol/src/
   chat/             Chat graph, agent, prompt modules, streaming, suggestions, title, summarizer, interrupt classifier
   contact/          Contact invites and contact tools
   context/          User Context generator (premise → network-scoped context paragraphs)
+  enrichment/       Enrichment graph, identity generation, and enrichment tools
   integration/      Integration sync tools
   intent/           Intent graph, inferrer, verifier, reconciler, clarifier, specificity, indexer
   maintenance/      Maintenance graph (feed health, opportunity expiration)
@@ -19,19 +20,17 @@ packages/protocol/src/
   opportunity/      Opportunity graph, evaluator, presenter, enricher, discover, evidence, introducer, delivery card, utils
     feed/           Home feed graph, feed categorizer, feed health
   premise/          Premise graph, decomposer, analyzer, indexer, tools
-  profile/          Profile graph, generator, enricher, tools
   questioner/       Questioner agent (mode-driven decision-question generation), presets, tools
   shared/
     agent/          Model config/signal, response streamer, tool factory/helpers/registry/runtime
     assignment/     Network-assignment policy (threshold scoring, scope resolution)
-    hyde/           HyDE graph, generator, strategies, lens inferrer
+    hyde/           HyDE graph, generator, lens inferrer, and validation
     interfaces/     Adapter contracts (database, embedder, cache, queue, scraper, agent, runs, etc.)
     network/        Network metadata renderer
     observability/  Logger, request context, performance, trace, debug-meta sanitizer
-    schemas/        Shared Zod schemas (question, profile, negotiation, network-assignment, etc.)
+    schemas/        Shared Zod schemas (question, identity, negotiation, network-assignment, etc.)
     ui/             Lucide icon catalog
     utils/          Telegram-handle and social-label helpers
-  docs/             Design papers (linguistic and semantic governance theory)
 ```
 
 ## Graphs
@@ -73,11 +72,11 @@ packages/protocol/src/
 | Premise Analyzer | `premise/premise.analyzer.ts` | Premise graph — classifies the premise speech act (declarative/assertive) and scores felicity |
 | Premise Indexer | `premise/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
 | User Context Generator | `context/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
-| Questioner Agent | `questioner/questioner.agent.ts` | Questioner queue — mode-driven structured decision-question generation (profile/intent/negotiation/discovery) |
+| Questioner Agent | `questioner/questioner.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
 | Network Recommender | `network/network.recommender.ts` | Network flows — recommends networks for a user/intent |
 | HyDE Generator | `shared/hyde/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `shared/hyde/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
-| Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses, each tagged with a target corpus (profiles / intents / premises) |
+| Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
 | Opportunity Evaluator | `opportunity/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `opportunity/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Feed Categorizer | `opportunity/feed/feed.categorizer.ts` | Feed graph — classifies and curates feed items |
@@ -99,15 +98,22 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `opportunity/opportunity.tools.ts` | `discover_opportunities`, `get_discovery_run`, `cancel_discovery_run`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
-| `contact/contact.tools.ts` | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
-| `integration/integration.tools.ts` | `import_gmail_contacts` |
-| `agent/agent.tools.ts` | `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
+| `contact/contact.tools.ts`³ | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
+| `integration/integration.tools.ts`³ | `import_gmail_contacts` |
+| `agent/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `negotiation/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
 | `questioner/questioner.tools.ts` | `read_pending_questions` |
-| `shared/agent/utility.tools.ts` | `scrape_url`, `read_docs` |
+| `shared/agent/utility.tools.ts` | `scrape_url`³, `read_docs` |
 
 ¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
 ² Negotiation tools are only registered when an `agentDispatcher` is provided.
+³ Chat/REST-only: the contact and Gmail-import tools and `scrape_url` are omitted
+  from the MCP registry entirely (IND-596/597), as are the deprecated
+  `*_user_profile`/`*_profile_run` aliases (IND-598) — none of these are MCP
+  tools. On the MCP surface, agent administration follows the IND-599 split:
+  registered agents get `read_own_agent` only; session humans get the owned
+  admin tools but never `read_own_agent`; enrollment-capable keys are
+  `register_agent`-only; unregistered keys fail closed.
 
 ## Core Concepts
 
@@ -115,47 +121,21 @@ The system models human collaboration through a linguistic and information-theor
 
 | Concept | Description |
 |---------|-------------|
-| **User** | Identity (session auth). Has one profile and many intents. Member of indexes. |
-| **Profile** | User's identity, narrative, skills, interests. Provides the **constitutive context** — what the user *is* and therefore has the *authority* to do. Has vector embedding and HyDE embeddings for semantic matching. Decomposed into premises during enrichment. |
-| **Premise** | A **declarative or assertive speech act** about the self — an atomic, first-person proposition a user asserts about who they are ("I am a climate-tech founder", "I hold a PhD in computational biology"). Premises are *conditions of possibility*: facts that ground discovery, as opposed to intents, which are desires/requests. They are decomposed from profile/free-text input, classified and felicity-scored by the Premise Analyzer, embedded, and assigned to networks. The premise graph (`premise/premise.graph.ts`) owns their create/update/query lifecycle, and premise changes cascade into profile and user-context regeneration. |
+| **User** | Session-authenticated identity with many intents and network memberships. Presentation identity lives on `users`; semantic discovery uses premises and user contexts. |
+| **Premise** | A **declarative or assertive speech act** about the self — an atomic, first-person proposition a user asserts about who they are ("I am a climate-tech founder", "I hold a PhD in computational biology"). Premises are *conditions of possibility*: facts that ground discovery, as opposed to intents, which are desires/requests. They are decomposed from enrichment input or free text, classified and felicity-scored by the Premise Analyzer, embedded, and assigned to networks. The premise graph (`premise/premise.graph.ts`) owns their create/update/query lifecycle, and premise changes regenerate user contexts. |
 | **User Context** | A network-scoped synthetic paragraph synthesized from a user's premises by the `UserContextGenerator`, stored with its embedding. The opportunity graph uses contexts for **context-to-intent discovery** — it loads a user's contexts and searches for matching intents, running alongside premise-to-premise discovery as a complementary strategy. Regenerated whenever the user's premises change. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share an index. |
-| **Opportunity** | A **semantic intersection**: the point where a candidate's constitutive facts (profile/intent) satisfy the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
-| **HyDE** | Hypothetical Document Embeddings. Lens-based: the `LensInferrer` derives 1–N free-text **lenses** (search perspectives, e.g. "SF-based early-stage investor"), each tagged with a target corpus. Per-corpus generation preserves the original strategy semantics: **profiles** hallucinates the ideal candidate's biography (direct satisfaction of the intent's conditions — the former *Mirror* strategy), **intents** hallucinates a complementary goal via meaning postulates ("if A wants to buy, infer B wants to sell" — the former *Reciprocal* strategy), and **premises** hallucinates an identity/values self-description. (The former *Neighborhood* discourse-frame strategy was retired with the move to lenses.) The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
+| **Opportunity** | A **semantic intersection**: the point where a candidate's premises, user context, or intent satisfy the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
+| **HyDE** | Hypothetical Document Embeddings. Lens-based: the `LensInferrer` derives 1–N free-text **lenses** (search perspectives, e.g. "SF-based early-stage investor"). The live search corpora are intents and premises; a `profiles` lens remains a compatibility preference that resolves to premise retrieval because profile-vector discovery is retired. The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
-| **Semantic Governance** | The full pipeline that ensures only felicitous, low-entropy, referentially anchored intents enter the graph. Implemented by the Intent Verifier and Intent Clarifier agents. |
+| **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata for user-confirmed proposal approvals and explicit updates rather than acting as a universal write prohibition. Web proposal cards are emitted only after the host's injected `IntentProposalStore` durably binds their normalized text, optional network, and complete verifier output to the owner. Implemented by the Intent Verifier and Intent Clarifier agents. |
 | **Valency Roles** | Derived from the argument structure of the source intent's goal verb (Hanks). The Opportunity Evaluator assigns: **Agent** (the one who can offer/do), **Patient** (the one who needs/seeks), or **Peer** (symmetric collaboration). These roles govern opportunity visibility and the notification cascade. |
 
 ## Opportunity Lifecycle and Role-Based Visibility
 
-Opportunities flow through a tiered reveal cascade determined by actor role, not by who triggered discovery.
-
-### Status Tiers
-
-- **Tier 0** (`latent`): Draft — first tier can send
-- **Tier 1** (`pending`): Sent — next tier is notified and can act
-- **Tier 2** (`accepted` / `rejected` / `expired`): Terminal — all actors can see
-
-### Role–Visibility Matrix
-
-| Role | No introducer | With introducer |
-|------|--------------|-----------------|
-| `introducer` | n/a | Tier 0 (always) |
-| `patient` | Tier 0 (always) | Tier 1 (pending+) |
-| `agent` | Tier 1 (pending+) | Tier 2 (accepted+) |
-| `peer` | Tier 0 (always) | Tier 0 (always) |
-| `party` | same as patient | same as patient |
-
-### Status Transitions
-
-| Transition | Who triggers |
-|-----------|-------------|
-| `latent → pending` | Introducer, patient (no introducer), peer, party (no introducer) |
-| `pending → accepted` | Recipient accepts |
-| `pending → rejected` | Recipient declines |
-| `latent/pending → expired` | TTL or user dismisses |
+The authoritative lifecycle, actor-state rules, and code citations live in [`docs/design/opportunity-status-lifecycle.md`](../../../docs/design/opportunity-status-lifecycle.md). The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `opportunity/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
 
 ## How a User Message Flows Through the System
 
@@ -209,7 +189,7 @@ flowchart TD
     Loop --> |Iteration 12| ForceExit([Force exit])
 ```
 
-### Example: "Create a profile for me"
+### Example: "Set up my context"
 
 ```mermaid
 sequenceDiagram
@@ -218,7 +198,7 @@ sequenceDiagram
     participant PT as create_user_context
     participant PG as Enrichment Graph
 
-    User->>Agent: "Create a profile for me"
+    User->>Agent: "Set up my context"
     Agent->>PT: create_user_context({})
     PT->>PT: Check user fields (name, email, URLs)
     alt Missing name/email
@@ -230,12 +210,12 @@ sequenceDiagram
     PT->>PG: invoke(userId, mode: write, forceUpdate: true)
     Note over PG: scrape web for identity (constitutive context)
     Note over PG: EnrichmentGenerator builds structured identity
-    Note over PG: embed profile (pgvector)
+    Note over PG: create premises and regenerate user context
     Note over PG: LensInferrer infers search lenses; HyDE Generator creates per-lens docs
     Note over PG: embed HyDE docs
-    PG-->>PT: profile created
-    PT-->>Agent: "Profile created successfully"
-    Agent-->>User: "Your profile has been created with..."
+    PG-->>PT: context created
+    PT-->>Agent: "Your context is ready"
+    Agent-->>User: "Your context is ready..."
 ```
 
 ### Example: "I'm looking for a React co-founder"
@@ -269,7 +249,7 @@ sequenceDiagram
     CO->>OG: invoke(userId, sourceText, indexId)
 
     OG->>HG: Generate HyDE docs
-    Note over HG: Lens "early-stage React co-founder" → profiles: hypothetical bio
+    Note over HG: Profile-preference lens resolves to premise retrieval
     Note over HG: Lens → intents: complementary goal ("join as co-founder on React project")
     HG-->>OG: HyDE embeddings (dense bottleneck applied)
 
@@ -289,7 +269,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph tools [Chat Tools]
-        PT[profile.tools]
+        PT[enrichment.tools]
         IT[intent.tools]
         IdxT[network.tools]
         OT[opportunity.tools]
@@ -326,13 +306,13 @@ Handled by the **Intent Graph**:
 1. **Clarification** (pre-graph): `IntentClarifier` checks semantic entropy — if the utterance is underspecified (high entropy, trivially satisfiable), it returns an elaboration request rather than persisting.
 2. **Inference**: `IntentInferrer` extracts structured intents (propositional content) from free text. Can produce multiple intents from a single input.
 3. **Semantic Verification**: `IntentVerifier` classifies the speech act type (commissive, directive, assertive) and scores felicity conditions — preparatory (authority) and sincerity. Assigns `felicitous`, `misfired`, or `void` status.
-4. **Reconciliation**: `IntentReconciler` applies Donnellan's distinction — referential intents (user has a specific target in mind) update an existing record; attributive intents (any member of a class) create a new one if sufficiently different.
+4. **Reconciliation**: For creation, `IntentReconciler` applies Donnellan's distinction — referential intents (user has a specific target in mind) update an existing record; attributive intents (any member of a class) create a new one if sufficiently different. Explicit updates bypass that create-versus-update choice and bind the single verified candidate to the supplied active owned intent ID.
 5. **Persistence**: Executor writes the intent with `semanticEntropy`, `referentialAnchor`, `speechActType`, and `felicityScores` fields.
 
 ### Premise & Context Lifecycle
 
 Handled by the **Premise Graph**, **Enrichment Graph**, and **User Context Generator**:
-1. **Decomposition**: `PremiseDecomposer` splits profile data or free text into atomic, first-person, non-redundant premises.
+1. **Decomposition**: `PremiseDecomposer` splits enrichment input or free text into atomic, first-person, non-redundant premises.
 2. **Analysis**: `PremiseAnalyzer` classifies each premise's speech act (declarative vs. assertive) and scores its felicity conditions — premises are the *constitutive* facts that establish what a user has the authority to do.
 3. **Indexing & assignment**: `PremiseIndexer` embeds each premise and scores network fit; the shared network-assignment policy (`shared/assignment/network-assignment.policy.ts`) decides which networks the premise is assigned to.
 4. **Context synthesis**: premise changes cascade into the `UserContextGenerator`, which regenerates the user's network-scoped context paragraph (plus embedding and HyDE docs). Cold-start mode synthesizes from all premises; incremental mode applies a single add/update/retract/expire to the existing context.
@@ -340,8 +320,8 @@ Handled by the **Premise Graph**, **Enrichment Graph**, and **User Context Gener
 
 ### HyDE Pipeline
 
-Handled by the **HyDE Graph** and **Enrichment Graph**. The pipeline is **lens-based**: instead of hardcoded strategy names, the `LensInferrer` derives 1–N free-text lenses from the source text (and optional profile context), each tagged with a target corpus that selects the generation template:
-- **profiles corpus**: Generates a hypothetical biography of the ideal candidate whose constitutive facts satisfy the intent's conditions of satisfaction (direct valency slot fill — the former *Mirror* strategy).
+Handled by the **HyDE Graph** and **Enrichment Graph**. The pipeline is **lens-based**: instead of hardcoded strategy names, the `LensInferrer` derives 1–N free-text lenses from the source text (and optional user context), each tagged with a target corpus that selects the generation template:
+- **`profiles` preference**: A compatibility hint that resolves to premise retrieval; profile-vector discovery is retired.
 - **intents corpus**: Generates a complementary goal statement via meaning postulates — "If user A wants to invest, infer B wants funding" (the former *Reciprocal* strategy).
 - **premises corpus**: Generates an identity/values self-description for someone whose worldview aligns with the source text.
 - The former *Neighborhood* (discourse-frame) strategy was retired with the move to lenses; lens labels carry the contextual specificity instead (including location awareness).
@@ -384,7 +364,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `chat/chat.utils.ts` | Token counting and context window management |
 | `opportunity/opportunity.discover.ts` | Ad-hoc discovery from chat queries |
 | `opportunity/opportunity.presentation.ts` | Pure card text generation for opportunity display |
-| `opportunity/opportunity.enricher.ts` | Enrich opportunity records with profile data |
+| `opportunity/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
 | `opportunity/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, feed composition helpers |
 | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | `opportunity/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
@@ -400,7 +380,7 @@ interfaces in `shared/interfaces/`. The canonical Drizzle schema lives in the ba
 
 Core tables the protocol interfaces read/write:
 
-- **Identity & profile**: `users` (name/bio/location), `user_socials`, `premises`, `premise_networks`, `user_contexts`
+- **Identity, premises, and context**: `users` (name/bio/location), `user_socials`, `premises`, `premise_networks`, `user_contexts`
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`, `personal_networks`
 - **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `enrichment_tool_runs`, `questions`
 - **Agents**: `agents`, `agent_transports`, `agent_permissions`, `apikey`

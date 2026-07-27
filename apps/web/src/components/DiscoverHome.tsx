@@ -1,13 +1,16 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { Link, useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 
 import { apiClient } from "@/lib/api";
+import { useAuthContext } from "@/contexts/AuthContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import IntentList from "@/components/IntentList";
 import { ContentContainer } from "@/components/layout";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
 import { log } from "@/lib/logger";
+import { deriveNegotiationInbox } from "@/lib/negotiation-inbox";
 
 const logger = log.ui.from("DiscoverHome");
 
@@ -32,10 +35,19 @@ interface HomeIntent {
 export default function DiscoverHome() {
   const navigate = useNavigate();
   const { error: showError } = useNotifications();
+  const { user } = useAuthContext();
+  const { negotiations } = useConversation();
   const [intents, setIntents] = useState<HomeIntent[]>([]);
   const [totalWaitingOpportunities, setTotalWaitingOpportunities] = useState(0);
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
+
+  // Ambient negotiation presence (Option C): live + your-move counts from the
+  // shared inbox derivation; both link to the /negotiations inbox.
+  const negotiationCounts = useMemo(() => {
+    const groups = deriveNegotiationInbox(negotiations, user?.id);
+    return { live: groups.inProgress.length, yourMove: groups.yourMove.length };
+  }, [negotiations, user?.id]);
 
   const fetchIntents = useCallback(async () => {
     try {
@@ -96,6 +108,22 @@ export default function DiscoverHome() {
         </div>
         <p className="mb-6 text-center text-xs text-gray-400 font-ibm-plex-mono">
           {intents.length} signals · {totalWaitingOpportunities} opportunities
+          {negotiationCounts.live > 0 && (
+            <>
+              {" · "}
+              <Link to="/negotiations" className="font-semibold text-amber-600 hover:underline">
+                {negotiationCounts.live} live {negotiationCounts.live === 1 ? "negotiation" : "negotiations"}
+              </Link>
+            </>
+          )}
+          {negotiationCounts.yourMove > 0 && (
+            <>
+              {" · "}
+              <Link to="/negotiations" className="font-semibold text-[#041729] hover:underline">
+                {negotiationCounts.yourMove} your move
+              </Link>
+            </>
+          )}
         </p>
 
         {/* New signal entry — styled to match IntentList rows */}

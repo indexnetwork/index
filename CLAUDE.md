@@ -61,10 +61,10 @@ bun run lint                                # Run ESLint
 ### Mac App
 
 ```bash
-cd apps/mac/HaloApp
+cd apps/mac/IndexApp
 ./build.sh                                  # Assemble HTML and build the macOS WKWebView app
 
-cd ../HaloApp-iOS
+cd ../IndexApp-iOS
 ./build.sh assemble                         # Regenerate mobile Resources/index.html without Xcode
 ./preview/build-preview.sh                  # Build the macOS preview shell for the mobile UI
 ```
@@ -190,10 +190,10 @@ bun install                                # Install dependencies for all worksp
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
-herdr worktree open --path <path> --label <name> --focus --json # Open/focus the visible worktree workspace
+herdr worktree open --path <path> --label <name> --no-focus --json # Open a non-focusing visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
-bun run skills:validate                      # Validate every project-local Pi skill
+bun run skills:validate                      # Validate every project-local Pi and Codex skill
 bun run test:scripts                         # Run focused deterministic script tests
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
@@ -233,6 +233,7 @@ index/
 - `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, identity and context, contacts are and how they relate. Update when domain model changes.
 - `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
 - `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes.
+- `docs/research/` — Research reports and historical analysis that inform design but are not normative runtime documentation. Link to current design/spec docs when applying their conclusions.
 
 ### Protocol Key Directories
 
@@ -316,6 +317,10 @@ IND-430 adds disabled-by-default, measurement-only daily monitoring through `Fra
 
 Discovery completion in both the MCP `DiscoveryRunQueue` and web `FromIntentQueue` runs the shared pool-discriminator mining hook. With `POOL_QUESTIONS_MODE=on`, the top evidence-verified axis becomes an intent-scoped `pool_discovery` question (at most one pending per intent; “Both matter” is always available). The queued/chained final gate re-reads the exact recipient+intent pool and normalized payload+summary fingerprint: it accepts only unchanged fingerprints with pool Jaccard ≥`0.7`; otherwise no row, push, or dismissal is created. Completion system-voids pending drifted rows with `detection.voidedReason='pool_drift'`; voided rows never render, push, count, affect dismissal decay, or suppress novelty. Repeated MODE-on mining skips when the latest durable non-voided snapshot has the same fingerprint and Jaccard ≥`0.7`; independently gated shadow-only mining has no durable cadence anchor. Answer handling is deterministic: the same shared `0.7` threshold governs P3 retained-assignment admission, then chosen/other/live-unassigned candidates receive `1.0`/`0.6`/`0.9` metadata adjustments and matching `pool_discriminator` signals through row-locked adapter writes. Substantive answers also refine the canonical owned intent and fresh resolved axes are suppressed by a full normalized payload+summary fingerprint. No premise is created. With both `POOL_QUESTIONS_MODE=on` and default-off `POOL_QUESTIONS_STAMP_NEWBORN=on`, an evidence-verified fixed-axis classifier stamps the same factors and `questionId` provenance onto genuinely new intent-triggered opportunities immediately before insertion; lifecycle/fingerprint drift, unsafe callback output, and classifier failure fail open to the original insert. `POOL_QUESTIONS_RANKING=on` makes an intent-scoped HomeGraph order by confidence × cumulative adjustment (floor `0.3`) and stamps a template-only deprioritization reason onto cards; off preserves the prior order. Every new adjustment carries `recipientUserId + intentId` provenance, legacy unscoped entries are ignored, and ranking/reasons apply only when both the viewer and selected intent match. Tier-0 reads and row-locked writes require the opportunity's exact `detection.triggeredBy` intent (the broader actor-intent Radar fallback is never used), while canonical refinement deliberately remains keyed only by `questions.detection.sourceId`; newborn stamping uses the same scoped provenance. A preference answer also uses one BullMQ deduplication key per intent (`pool-rerun-<intentId>`) with a sliding 60-second replace/extend window and `keepLastIfActive`, so bursts coalesce while an answer received during an active run is retained as one trailing run; the worker reads the latest durable answers into its search query, re-runs from-intent discovery, awaits failure-isolated mining, and appends count-only Beat 2 narration to the stable intent negotiator session. The intent page uses bounded refresh checkpoints rather than permanent polling. With default-off `POOL_QUESTIONS_PUSH=on` (plus pool-question mode and negotiator availability), both initial and chained producers enqueue the dedicated `PoolQuestionPushQueue` after the shared persist choke point. A per-recipient advisory transaction lock enforces strict dismissal-decayed VoI, pool ≥8, active/owned lifecycle, explicit `intents.lastVisitedAt`, one claim per run/mined cycle, and two claims per UTC day. Delivery inserts/verifies the question ID as one deterministic message in the stable unscoped Personal Agent DM and stamps `detection.pushedAt` atomically; resolved-before-delivery rows are suppressed. Only successfully delivered pending pool rows join the Personal Agent badge. The global Questions page, unscoped injected questions, REST/MCP payloads, and intent-pinned sessions remain pool-push-free. Material payload/summary intent edits void pending stale questions, let an answered axis be asked once under the new fingerprint, and mark exact recipient+intent `poolAdjustments` as `stale:true`; stale adjustments remain for audit but do not rank or demote, while legacy unscoped/malformed entries are preserved. `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_STAMP_NEWBORN`, and `POOL_QUESTIONS_RANKING` remain independent gates. The seven-day TTL is unchanged.
 
+### Intent-Page Refinement Questions
+
+Creation-time intent questions and the completion hooks in `FromIntentQueue` and exact-intent `DiscoveryRunQueue` all converge on `IntentRecoveryRefinementService`. This gives ordinary Questioner-generated intent refinements the same dependable intent-page surfacing opportunity as pool questions without requiring discovery to produce no actionable opportunity. The first producer for a material intent version may insert; later creation/completion retries hit the same recipient+intent+normalized payload+summary fingerprint cadence anchor across every status and expiry state. Generation receives payload/summary, stored global owner context, and at most a bounded aggregate count of rejected negotiations that pass bilateral participant, capture-time fingerprint, completed-task, task/actor network, and single no-opportunity-artifact validation; no IDs, identities, profiles, networks, turns/transcripts, reasons, presenter/evaluator text, or event context crosses the generation/persistence boundary. Rows remain public `mode='intent'` questions while private `purpose='recovery'` metadata is REST-stripped. Persistence, owned exact-trigger opportunity creation, and exact-trigger reactivation share the same recipient+intent advisory lock; reactivation also serializes with negotiation task creation on the opportunity's attempt lock, row-locks and re-reads the opportunity, and applies the canonical fresh/active task predicate immediately before mutation. Row locks and migration `0105` enforce one recipient+intent+material-fingerprint row and recheck lifecycle/fingerprint immediately before insert. Every generated visible field is screened for process/evidence narration after Unicode quote normalization. Material edits and stale answers system-void stale rows without reaction; answer admission uses advisory→intent-row→question-row ordering and carries the expected fingerprint plus owner through the answer-only graph to a final locked write that also rechecks active/non-archived lifecycle before canonical refinement/HyDE/rediscovery. Ordinary intent and pool questions have independent cadence/budgets and may coexist.
+
 ### Intent Pause/Resume
 
 `PATCH /api/intents/:id/status` accepts only `ACTIVE` or `PAUSED`, is owner- and network-scope-guarded, and returns `409` for archived or terminal intents. Null legacy status is treated as `ACTIVE`. Pause preserves existing opportunities/Radar cards, pending questions, conversations, intent-network assignments, and HyDE while blocking admission of not-yet-started intent-driven discovery, candidate matching against the intent, new pool mining/questions, and answer-triggered Tier-1 reruns; already-admitted work may finish. Existing questions remain answerable and Tier-0 re-ranking can still apply. Resume sets `ACTIVE` and immediately enqueues a lifecycle-version-deduplicated from-intent discovery run; the HTTP response awaits enqueue acknowledgement. If a changed resume cannot enqueue, an owner/scope/version compare-and-set compensates it back to `PAUSED` without overwriting concurrent changes and the endpoint returns retryable `enqueue_failed` instead of success. The intent page keeps the existing workspace visible, toggles live/Pause to paused/Resume with mutation loading and error feedback, and after successful Resume uses bounded refresh checkpoints through 180 seconds for Radar, pending questions, and the negotiator rather than permanent polling.
@@ -328,7 +333,7 @@ Each user has network-scoped **user contexts** (`user_contexts` table) — synth
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onPaused/onResumed/onArchived`; pause/resume handlers receive `intentId`, `userId`, and `lifecycleVersionMs`, and `onResumed` is async so callers can await enqueue acknowledgement. Network membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `EnrichmentQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered/onDismissed` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): enrichment→premise creation, intent→description refinement + HyDE regen, negotiation→opportunity metadata enrichment (read back during continuation via `NegotiationQueries.getOpportunityUserAnswers`), discovery→no-op, chat→resolves the in-memory wait bus (`lib/chat-question.events.ts`) so a chat turn blocked on the orchestrator's `ask_user_question` tool resumes with the answer; `onDismissed` resolves the same bus for chat-mode dismissals. The `ask_user_question` tool (chat-only, AskUserQuestion-style human-in-the-loop) generates questions synchronously via the QuestionerAgent's `chat` preset (hybrid: orchestrator-authored purpose/drafts + conversation excerpt + global user context), persists them with mode `chat` and `conversationId`, streams a `user_question` SSE event, and blocks the turn until answer/dismiss/timeout (`QUESTIONER_CHAT_WAIT_TIMEOUT_MS`, default 4 min; runtime `interactive` timeout class default 5 min); `POST /questions/:id/answer` returns `resumed` so the frontend knows whether to feed a late answer back as a new turn. Questions have an optional `conversationId` column linking them to the chat session that triggered them, and `detection.messageId` for anchoring to a specific assistant message. `tool.factory.ts` wraps `questionerEnqueue` in `sessionAwareEnqueue` to default `conversationId` from the active session context. The frontend renders conversation-linked questions inline via `InjectedQuestions`; sidebar badge uses `noConversation=true` to exclude them. The uptake guard (IND-424) reuses `mode='negotiation'` with internal `detection.purpose='uptake'`: committed `pending` opportunity writes emit `OpportunityEvents.onPending`, low-authority counterparty intents enqueue one network-scoped preparatory question, and accept paths return a non-mutating advisory until the current questions are resolved or explicitly acknowledged. Uptake answers remain private on the question row rather than entering shared `opportunities.metadata.userAnswers`; `QUESTIONER_UPTAKE_ENABLED` defaults off beneath the master Questioner flag. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onPaused/onResumed/onArchived`; pause/resume handlers receive `intentId`, `userId`, and `lifecycleVersionMs`, and `onResumed` is async so callers can await enqueue acknowledgement. Network membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `EnrichmentQueue`. Question lifecycle events in `question.event.ts`: `QuestionEvents.onCreated/onAnswered/onDismissed` — `onAnswered` dispatches to mode-specific handlers (`question.answer.handler.ts`): enrichment→premise creation, intent→description refinement + HyDE regen, negotiation-family→locked exact-provenance settlement (uptake stays private, ordinary uses established opportunity metadata, inflight claims only its stamped task before continuation), discovery→no-op, chat→resolves the in-memory wait bus (`lib/chat-question.events.ts`) so a chat turn blocked on the orchestrator's `ask_user_question` tool resumes with the answer; `onDismissed` resolves the same bus for chat-mode dismissals. The `ask_user_question` tool (chat-only, AskUserQuestion-style human-in-the-loop) generates questions synchronously via the QuestionerAgent's `chat` preset (hybrid: orchestrator-authored purpose/drafts + conversation excerpt + global user context), persists them with mode `chat` and `conversationId`, streams a `user_question` SSE event, and blocks the turn until answer/dismiss/timeout (`QUESTIONER_CHAT_WAIT_TIMEOUT_MS`, default 4 min; runtime `interactive` timeout class default 5 min); `POST /questions/:id/answer` returns `resumed` so the frontend knows whether to feed a late answer back as a new turn. Questions have an optional `conversationId` column linking them to the chat session that triggered them, and `detection.messageId` for anchoring to a specific assistant message. `tool.factory.ts` wraps `questionerEnqueue` in `sessionAwareEnqueue` to default `conversationId` from the active session context. The frontend renders conversation-linked questions inline via `InjectedQuestions`; sidebar badge uses `noConversation=true` to exclude them. The uptake guard (IND-424) reuses `mode='negotiation'` with internal `detection.purpose='uptake'`: committed `pending` opportunity writes emit `OpportunityEvents.onPending`, low-authority counterparty intents enqueue one network-scoped preparatory question, and accept paths return a non-mutating advisory until the current questions are resolved or explicitly acknowledged. Uptake answers remain private on the question row rather than entering shared `opportunities.metadata.userAnswers`; `QUESTIONER_UPTAKE_ENABLED` defaults off beneath the master Questioner flag. IND-507 gives ordinary, inflight, and uptake rows a server-only versioned `detection.negotiation` envelope with exact recipient+owned intent+opportunity+network, task (when applicable), canonical intent fingerprint, and lifecycle markers. Mode/purpose is runtime-discriminated; inflight uses only safety-validated structured `askUser` fields, uptake uses neutral fixed context, and visible output is rejected on private/internal/unsupported claims. API admission validates before generation and under advisory→full-cohort→provenance locks before insertion/settlement. Pending negotiation reads/counts validate provenance even unscoped, while exact answered history tolerates only its own settlement transition. Inflight settlement writes a deterministic `requested|completed` task-metadata outbox; answer/dismiss/timeout enqueue one exact-task run-existing job, and the still-armed timeout recovers zero rows, enqueue failure, and Bull/process redelivery without latest-task lookup. MCP/chat/direct answering reaches the same authoritative adapter with authenticated principal and network-scope clamps. Public projections strip the envelope and server-only metadata. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Agent Registry
 
@@ -350,7 +355,7 @@ IND-426 adds a default-off frame-v1 path behind `HYDE_FRAME_CONSTRAINTS_ENABLED=
 
 ### OpenRouter Configuration
 
-Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental), `NEGOTIATION_MAX_TURNS_CHAT` (default 4, chat-path negotiations), `NEGOTIATION_MAX_TURNS_AMBIENT` (default 6, ambient/background negotiations). Use `ToolContext.modelConfig` to inject config per-request via `ChatAgent.create`; only `ChatAgent` reads `ModelConfig` from `ToolContext` — most other protocol agents rely on `OPENROUTER_API_KEY` in the environment (some accept an explicit `ModelConfig` as a direct parameter to `createModel()`).
+Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental), `NEGOTIATION_MAX_TURNS_CHAT` (default 4, chat-path negotiations), `NEGOTIATION_MAX_TURNS_AMBIENT` (default 6, ambient/background negotiations), and strict `NEGOTIATION_INCLUDE_OTHER_INTENTS` (default `true`; `false` restricts autonomous opportunity negotiations to each participant's exact opportunity-bound intent before screen/prompt/dispatch/persistence). Use `ToolContext.modelConfig` to inject config per-request via `ChatAgent.create`; only `ChatAgent` reads `ModelConfig` from `ToolContext` — most other protocol agents rely on `OPENROUTER_API_KEY` in the environment (some accept an explicit `ModelConfig` as a direct parameter to `createModel()`).
 
 ### Rate Limiting
 
@@ -482,36 +487,45 @@ read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Br
 use semantic `<type>/<description>` names and the only valid folder is the dashed form
 `<type>-<description>`; never accept a separate folder name.
 
-Before socket orchestration, follow the Herdr setup in
-`docs/guides/getting-started.md`; its server and Pi integration must be available. From
-the canonical root, create or reuse the exact Git worktree after checking
-`git worktree list --porcelain`, then always run setup:
+Before visible worktree execution, follow the Herdr setup in
+`docs/guides/getting-started.md`; its server and the required agent integration must be
+available. Two paths are deliberately separate:
 
-```bash
-bun run worktree:setup feat-user-authentication
-herdr worktree open \
-  --path "$PWD/.worktrees/feat-user-authentication" \
-  --label feat-user-authentication \
-  --focus \
-  --json
-herdr agent start feat-user-authentication --kind pi --pane <returned-pane-id>
-```
+- **Orchestrated request:** use the pinned `pi-herdr-orchestrator` package through the
+  `run-agent-orchestration` skill. Persistent `main` calls `orchestrator_start`; the
+  interactive root uses `orchestrator_delegate`, `orchestrator_status`, and
+  `orchestrator_reconcile`; children finish through `orchestrator_report`. The
+  extension alone creates root/child worktrees and Herdr surfaces, launches Pi,
+  starts `/goal`, records durable state, routes reports, and closes tracked surfaces.
+  Do not recreate those mechanisms with Herdr CLI commands, hidden subagents,
+  checkpoint files, or a second completion protocol.
+- **Standalone request:** follow `create-worktree` and `run-worktree-session` to
+  create/reuse one semantic branch, run `bun run worktree:setup <dashed-folder>`, and
+  open the exact linked worktree with `herdr worktree open --no-focus --json`.
 
-Herdr is the default visible execution plane. Record the workspace and pane IDs returned
-by `herdr worktree open`; reuse an existing workspace/Pi only when its worktree path,
-branch, and cwd match. The canonical/root Pi remains the coordinator, sends one complete
-handoff, and polls with `herdr agent get/read/wait` directly—never through a hidden
-implementation subagent, background watcher process, or watcher pane. It answers routine
-implementation questions with the safe/recommended option and escalates only genuine
-product/architecture ambiguity, destructive actions, external infrastructure mutation,
-credentials/secrets, or merge approval. A structured question/editor draft must be
-answered through targeted `herdr pane read/send-text/send-keys`, not a new agent prompt.
-Never infer merge approval.
+In both paths, keep one writer per worktree, reuse the same execution plane for review
+and finish-pr fixes, and independently verify every completion claim. Never wait,
+poll, sleep, create watcher processes/panes, infer merge approval, or treat
+`idle`/`done` as success. Escalate only genuine product/architecture ambiguity,
+destructive actions, external infrastructure mutation, credentials/secrets, or merge
+approval.
+
+### Git remote-state reconciliation
+
+After every `git push`, fetch the pushed branch and verify the local branch has no
+ahead/behind drift from its upstream (`git fetch origin <branch>` followed by
+`git status --short --branch`). After `gh pr merge`, first verify the server-side
+merge, then fetch the base branch; if its canonical checkout is clean, fast-forward it
+with `git pull --ff-only origin <base>`. Do not continue from stale remote refs. If a
+dirty checkout prevents the fast-forward, preserve its work and report the pending
+reconciliation rather than merging or resetting over it.
 
 Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
-workspaces, and Pi sessions, with one writer per worktree. Reuse the same visible session
-for review and finish-pr fix loops. The legacy `bun run worktree:session` helper remains
-a fallback when Herdr is unavailable, not the default workflow.
+execution planes, and agent sessions, with one writer per worktree. The orchestrator
+extension places child tabs inside its root workspace; standalone worktrees use their
+own workspace. Reuse the same visible session for review and finish-pr fix loops. The
+legacy `bun run worktree:session` helper remains a fallback when Herdr is unavailable,
+not the default workflow.
 
 ### Conventional Commits
 
@@ -537,22 +551,31 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
 3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
    - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
-4. Merge into dev: `git checkout dev && git merge <branch-name>`
-5. Push: `git push origin dev`
+4. Finish the PR through `finish-pr`: obtain the workflow's explicit merge
+   authorization, merge server-side with `gh pr merge` from a non-canonical
+   coordinator checkout, and verify the server-side result. Never check out or merge
+   `dev` in a feature worktree, and never mutate source from the canonical root.
+5. If the canonical `dev` checkout is clean, synchronize it only with
+   `git pull --ff-only origin dev`; otherwise preserve its work and report pending
+   reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
-7. Clean up: delete branch and remove worktree
+7. Clean up only after merge and preservation checks. In an extension-managed
+   request, let the extension close tracked Herdr surfaces on root completion, then
+   remove its retained Git worktrees/branches later from another checkout.
 
 ## Superpowers Workflow
 
 ### Implementation in Visible Herdr Worktrees
 
-Execute implementation and fix plans in visible Herdr-managed Pi sessions for isolated
-Git worktrees. The canonical/root Pi coordinates, remains active, polls Herdr directly,
-and keeps `dev` stable; it does not delegate implementation to hidden subagents. When
-parallel work is genuinely useful, use separate worktrees/workspaces with one writer per
-checkout. Follow the `create-worktree` and `run-worktree-session` skills.
+Execute implementation and fix plans in visible Herdr-managed sessions for isolated
+Git worktrees. For delegated or multi-task work, direct the installed
+`pi-herdr-orchestrator` extension through `run-agent-orchestration`; the skill supplies
+Index policy but never replaces the extension's root/child lifecycle. For one
+standalone implementation, follow `create-worktree` and `run-worktree-session`.
+Keep `dev` stable, never use hidden implementation subagents, and preserve one writer
+per checkout.
 
-### Receiving Code Review (`/address-code-review`)
+### Receiving Code Review
 
 Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
 
@@ -584,11 +607,11 @@ When wrapping up a session that uncovered something **reusable and non-obvious**
 workflow, a fix for a recurring failure, an exact command sequence, an environment
 gotcha, or a convention — run the `learn-skill` skill to persist it before ending.
 
-- `learn-skill` writes to the project-local `.pi/skills/` and **never edits
+- `learn-skill` writes to the project-local `.agents/skills/` and **never edits
   protected/home skills in place** (it migrates them local first, then updates the copy).
-- It is configurable via `.pi/skills/learn-skill/config.json` (target, protected
+- It is configurable via `.agents/skills/learn-skill/config.json` (target, protected
   locations, dedup/cross-link features, and rpiv integrations: todo,
   ask-user-question, args, advisor).
-- Use `.pi/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
+- Use `.agents/skills/create-skill` for the mechanics of writing a correct `SKILL.md`.
 - Skip silently when nothing meets the "reusable and non-obvious" bar — never capture
   one-off facts.

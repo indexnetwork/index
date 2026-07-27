@@ -8,22 +8,30 @@ import { FocusScope } from "@radix-ui/react-focus-scope";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
+import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
 import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
-import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
+import type { AnsweredThreadEntry, IntentRefinementOutcome } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
+import NegotiationActivity from "@/components/NegotiationActivity";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { useConversations, useIntents, useOpportunities, useQuestionsService } from "@/contexts/APIContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useQuestions } from "@/contexts/QuestionsContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
+import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
+import type { NegotiationActivityGroup } from "@/services/conversation";
 import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
+import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
+import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
+import { deriveLiveNegotiations, formatLatestMove, liveNegotiationsByOpportunity } from "@/lib/negotiation-presence";
+import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
 const STATUS_BUCKET: Record<string, string> = {
@@ -58,6 +66,31 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
+}
+
+/** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
+const INTENT_POLL_INTERVAL_MS = 4_000;
+const INTENT_POLL_MAX_MS = 90_000;
+
+/**
+ * Derive a short snippet from the updated intent description that is absent in
+ * the pre-answer snapshot.  Returns `undefined` when no clean diff is found.
+ */
+function deriveSnippet(before: string, after: string): string | undefined {
+  if (!after || after === before) return undefined;
+  // Split into phrases on sentence boundaries and commas.
+  const sentencePat = /[.!?]+\s+|,\s+/;
+  const beforePhrases = new Set(
+    before.split(sentencePat).map((s) => s.trim().toLowerCase()).filter(Boolean)
+  );
+  const afterPhrases = after
+    .split(sentencePat)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 8);
+  const novel = afterPhrases.find(
+    (p) => !beforePhrases.has(p.toLowerCase())
+  );
+  return novel;
 }
 
 function formatAnswer(selectedOptions: string[], freeText?: string): string {
@@ -130,11 +163,13 @@ function ActionChip({
 
 /** Selectable radar status filter tab: a label with a subtle count badge. */
 function StatPill({
+  bucketKey,
   value,
   label,
   active,
   onSelect,
 }: {
+  bucketKey: string;
   value: number;
   label: string;
   active: boolean;
@@ -156,7 +191,7 @@ function StatPill({
       <span
         className={cn(
           "min-w-[18px] rounded-full px-1 py-px text-center text-[10px] font-semibold tabular-nums",
-          active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500",
+          radarBucketBadgeTone(bucketKey, value, active),
         )}
       >
         {value}
@@ -298,11 +333,13 @@ export default function IntentDetailPage() {
   const { intentId } = useParams<{ intentId: string }>();
   const intentsService = useIntents();
   const opportunitiesService = useOpportunities();
+  const conversationsService = useConversations();
   const questionsService = useQuestionsService();
   useIntentVisitPing(intentId);
-  const { refresh: refreshQuestionCounts } = useQuestions();
+  const { refresh: refreshQuestionCounts, pendingRevision } = useQuestions();
   const { error: showError } = useNotifications();
   const { user, features } = useAuthContext();
+  const { negotiations } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -320,6 +357,9 @@ export default function IntentDetailPage() {
   const activeIntentIdRef = useRef(intentId);
   const [opportunities, setOpportunities] = useState<HomeViewCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
+  const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
+  const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
+  const [negotiationActivityError, setNegotiationActivityError] = useState(false);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   // Interview-mode chaining (IND-418): after a pool_discovery answer, the
   // backend may synchronously persist a follow-up — show a typing indicator,
@@ -331,6 +371,15 @@ export default function IntentDetailPage() {
   const seenQuestionIdsRef = useRef<Set<string>>(new Set());
   const chainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  /**
+   * Per-question intent-refinement poll state.  Keyed by questionId.
+   * Stored in a ref (not state) so poll callbacks can read the latest
+   * intentId without stale-closure issues; the poll writes outcome via
+   * setAnswered which re-renders without needing another ref tick.
+   */
+  const intentPollsRef = useRef<
+    Map<string, { timerId: ReturnType<typeof setInterval>; deadline: number }>
+  >(new Map());
   const clearReactionTimers = useCallback(() => {
     for (const timer of reactionTimersRef.current) clearTimeout(timer);
     reactionTimersRef.current = [];
@@ -339,19 +388,25 @@ export default function IntentDetailPage() {
     () => () => {
       if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
       clearReactionTimers();
+      for (const { timerId } of intentPollsRef.current.values()) clearInterval(timerId);
+      intentPollsRef.current.clear();
     },
     [clearReactionTimers],
   );
   // Conversation thread: answered questions retain server anchors/timestamps so
   // the Personal Agent can place them within chat history after reloads.
   const [answered, setAnswered] = useState<AnsweredThreadEntry[]>([]);
+  const pendingInvalidationRef = useRef<{ intentId?: string; revision: string }>({
+    intentId,
+    revision: pendingRevision,
+  });
   // Chat-style conversation column: scrolls internally, pinned to the bottom so
   // the newest question is always in view above the composer.
   const conversationRef = useRef<HTMLDivElement>(null);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
-  const [selectedBucket, setSelectedBucket] = useState("pending");
+  const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
   // Backend-surfaced flag (features on /auth/me): when on, the static
   // questions block becomes the negotiator chat window (P4.2/IND-403).
   // `chatUnavailable` is the runtime fallback if the bootstrap fails.
@@ -411,26 +466,50 @@ export default function IntentDetailPage() {
     inviteModalElement,
   } = useOpportunityActions({ scope });
 
-  /** Monotonic load id — guards against out-of-order responses when a reload
-   * (e.g. after refine) starts while a previous two-phase load is in flight. */
+  /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
+  const questionLoadSeqRef = useRef(0);
+  const answeredLoadSeqRef = useRef(0);
+  const activityLoadSeqRef = useRef(0);
 
-  const loadQuestions = useCallback(async (appendOnly = false) => {
+  const loadNegotiationActivity = useCallback(async (showLoading = false) => {
     if (!intentId) return;
+    const seq = ++activityLoadSeqRef.current;
+    if (showLoading) setNegotiationActivityLoading(true);
+    try {
+      const groups = await conversationsService.getNegotiationActivity(intentId);
+      if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
+      setNegotiationActivity(normalizeNegotiationActivity(groups));
+      setNegotiationActivityError(false);
+    } catch {
+      if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
+      setNegotiationActivityError(true);
+    } finally {
+      if (activeIntentIdRef.current === intentId && activityLoadSeqRef.current === seq) {
+        setNegotiationActivityLoading(false);
+      }
+    }
+  }, [conversationsService, intentId]);
+
+  const loadQuestions = useCallback(async (appendOnly = false, passive = false) => {
+    if (!intentId) return;
+    const seq = ++questionLoadSeqRef.current;
     try {
       const res = await questionsService.getPending({
         scopeType: "intent",
         scopeId: intentId,
+        ...(passive ? { passive: true } : {}),
       });
-      if (activeIntentIdRef.current !== intentId) return;
-      for (const question of res) seenQuestionIdsRef.current.add(question.id);
+      if (activeIntentIdRef.current !== intentId || questionLoadSeqRef.current !== seq) return;
+      const canonical = [...new Map(res.map((question) => [question.id, question])).values()];
+      for (const question of canonical) seenQuestionIdsRef.current.add(question.id);
       if (!appendOnly) {
-        setQuestions(res);
+        setQuestions(canonical);
         return;
       }
       setQuestions((current) => {
         const currentIds = new Set(current.map((question) => question.id));
-        const fresh = res.filter((question) => !currentIds.has(question.id));
+        const fresh = canonical.filter((question) => !currentIds.has(question.id));
         return fresh.length > 0 ? [...current, ...fresh] : current;
       });
     } catch {
@@ -438,23 +517,45 @@ export default function IntentDetailPage() {
     }
   }, [intentId, questionsService]);
 
-  const loadAnswered = useCallback(async () => {
+  const loadAnswered = useCallback(async (passive = false) => {
     if (!intentId) return;
+    const seq = ++answeredLoadSeqRef.current;
     try {
       const res = await questionsService.getAnswered({
         scopeType: "intent",
         scopeId: intentId,
+        ...(passive ? { passive: true } : {}),
       });
-      if (activeIntentIdRef.current !== intentId) return;
+      if (activeIntentIdRef.current !== intentId || answeredLoadSeqRef.current !== seq) return;
       const serverEntries = res
         .map(toAnsweredThreadEntry)
         .filter((entry): entry is AnsweredThreadEntry => entry !== null);
-      const serverIds = new Set(serverEntries.map((entry) => entry.id));
+      const canonical = [...new Map(serverEntries.map((entry) => [entry.id, entry])).values()]
+        .sort((left, right) => {
+          const leftTime = Date.parse(left.answeredAt ?? left.detectedAt ?? left.createdAt ?? '') || 0;
+          const rightTime = Date.parse(right.answeredAt ?? right.detectedAt ?? right.createdAt ?? '') || 0;
+          return leftTime - rightTime || left.id.localeCompare(right.id);
+        });
       setAnswered((current) => {
+        // Entries with an active intentRefinement are optimistic live-status
+        // entries for intent-mode answers still being polled.  Preserve them
+        // if the server hasn't returned them yet (they may not be committed);
+        // and carry their refinement state forward when they do appear.
+        const pendingRefinement = current.filter(
+          (e) => e.intentRefinement && !canonical.some((c) => c.id === e.id)
+        );
+        const mergedCanonical = canonical.map((entry) => {
+          const opt = current.find((e) => e.id === entry.id && e.intentRefinement);
+          return opt ? { ...entry, mode: opt.mode, intentRefinement: opt.intentRefinement } : entry;
+        });
         const merged = [
-          ...serverEntries,
-          ...current.filter((entry) => !serverIds.has(entry.id)),
-        ];
+          ...pendingRefinement,
+          ...mergedCanonical,
+        ].sort((a, b) => {
+          const at = Date.parse(a.answeredAt ?? a.detectedAt ?? a.createdAt ?? '') || 0;
+          const bt = Date.parse(b.answeredAt ?? b.detectedAt ?? b.createdAt ?? '') || 0;
+          return at - bt || a.id.localeCompare(b.id);
+        });
         const unchanged =
           merged.length === current.length &&
           merged.every((entry, index) => {
@@ -466,7 +567,8 @@ export default function IntentDetailPage() {
               previous.messageId === entry.messageId &&
               previous.createdAt === entry.createdAt &&
               previous.detectedAt === entry.detectedAt &&
-              previous.answeredAt === entry.answeredAt
+              previous.answeredAt === entry.answeredAt &&
+              previous.intentRefinement === entry.intentRefinement
             );
           });
         return unchanged ? current : merged;
@@ -481,15 +583,10 @@ export default function IntentDetailPage() {
     const seq = ++loadSeqRef.current;
     if (!preserveExisting) setOpportunitiesLoading(true);
     const applyItems = (items: HomeViewCardItem[]) => {
-      if (!preserveExisting) {
-        setOpportunities(items);
-        return;
-      }
-      setOpportunities((current) => {
-        const merged = new Map(current.map((item) => [item.opportunityId, item]));
-        for (const item of items) merged.set(item.opportunityId, item);
-        return [...merged.values()];
-      });
+      // Every response is an authoritative snapshot for this exact intent.
+      // Passive refreshes avoid loading flicker, but must still remove rows
+      // that changed lifecycle or disappeared from the server response.
+      setOpportunities(items);
     };
     const baseOptions = {
       scopeType: "intent" as const,
@@ -526,6 +623,44 @@ export default function IntentDetailPage() {
     }
   }, [intentId, opportunitiesService]);
 
+  const negotiationActivityRevision = useMemo(
+    () => intentNegotiationActivityRevision(negotiations, intentId),
+    [intentId, negotiations],
+  );
+
+  // Ambient negotiation presence (Option C): in-flight negotiations, indexed
+  // by opportunity for card chips and filtered to this signal for the Radar panel.
+  const liveNegotiations = useMemo(
+    () => deriveLiveNegotiations(negotiations, user?.id),
+    [negotiations, user?.id],
+  );
+  const presenceByOpportunity = useMemo(() => {
+    const map = new Map<string, NegotiationPresence>();
+    for (const [opportunityId, item] of liveNegotiationsByOpportunity(liveNegotiations)) {
+      map.set(opportunityId, {
+        conversationId: item.conversationId,
+        latestMove: formatLatestMove(item.lastAction, item.timeAgo),
+        turnCount: item.turnCount,
+        maxTurns: item.maxTurns,
+      });
+    }
+    return map;
+  }, [liveNegotiations]);
+  const intentLiveNegotiations = useMemo(
+    () => liveNegotiations.filter((item) => intentId !== undefined && item.intentIds.includes(intentId)),
+    [liveNegotiations, intentId],
+  );
+  const refreshLiveRadar = useCallback(() => {
+    void loadOpportunities(true);
+    void loadNegotiationActivity();
+  }, [loadNegotiationActivity, loadOpportunities]);
+
+  useRadarLiveRefresh({
+    intentId,
+    activityRevision: negotiationActivityRevision,
+    onRefresh: refreshLiveRadar,
+  });
+
   useEffect(() => {
     if (!intentId) return;
     let active = true;
@@ -544,10 +679,26 @@ export default function IntentDetailPage() {
     void loadQuestions();
     void loadAnswered();
     void loadOpportunities();
+    void loadNegotiationActivity(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities]);
+  }, [intentId, intentsService, loadQuestions, loadAnswered, loadOpportunities, loadNegotiationActivity]);
+
+  // Reuse the application-wide 30s poll only as an invalidation signal. A
+  // changed authoritative pending set causes one passive exact-intent pending
+  // + answered refetch; passive requests cannot enqueue visit-time pool mining.
+  useEffect(() => {
+    const previous = pendingInvalidationRef.current;
+    if (previous.intentId !== intentId) {
+      pendingInvalidationRef.current = { intentId, revision: pendingRevision };
+      return;
+    }
+    if (!intentId || previous.revision === pendingRevision) return;
+    pendingInvalidationRef.current = { intentId, revision: pendingRevision };
+    void loadQuestions(false, true);
+    void loadAnswered(true);
+  }, [intentId, pendingRevision, loadAnswered, loadQuestions]);
 
   const refreshWorkspaceAfterReaction = useCallback((includeQuestions: boolean) => {
     setNegotiatorRefreshVersion((version) => version + 1);
@@ -667,6 +818,7 @@ export default function IntentDetailPage() {
       await questionsService.answer(questionId, body);
       // Keep the answered exchange visible in the conversation thread.
       if (answered) {
+        const isIntentMode = answered.detection?.mode === "intent";
         setAnswered((prev) => [
           ...prev.filter((entry) => entry.id !== questionId),
           {
@@ -676,8 +828,57 @@ export default function IntentDetailPage() {
             messageId: answered.detection?.messageId,
             createdAt: answered.createdAt,
             detectedAt: answered.detection?.timestamp,
+            mode: answered.detection?.mode,
+            // Intent-mode answers start in 'pending' so the live outcome
+            // line shows the ⟳ spinner until the poll settles.
+            intentRefinement: isIntentMode
+              ? { status: "pending" }
+              : undefined,
           },
         ]);
+
+        // Start bounded intent-description poll for intent-mode answers.
+        if (isIntentMode && intentId) {
+          // Cancel any previous poll for this question.
+          const existing = intentPollsRef.current.get(questionId);
+          if (existing) clearInterval(existing.timerId);
+
+          const snapshot = intent
+            ? (intent.summary?.trim() || intent.payload || "")
+            : "";
+          const deadline = Date.now() + INTENT_POLL_MAX_MS;
+
+          const resolve = (outcome: IntentRefinementOutcome) => {
+            clearInterval(intentPollsRef.current.get(questionId)?.timerId);
+            intentPollsRef.current.delete(questionId);
+            setAnswered((prev) =>
+              prev.map((e) =>
+                e.id === questionId ? { ...e, intentRefinement: outcome } : e
+              )
+            );
+          };
+
+          const timerId = setInterval(async () => {
+            if (Date.now() >= deadline) {
+              resolve({ status: "fallback" });
+              return;
+            }
+            try {
+              const fresh = await intentsService.getIntent(intentId);
+              const freshDesc = (fresh.summary?.trim() || fresh.payload || "").trim();
+              if (freshDesc && freshDesc !== snapshot) {
+                // Intent updated — refresh the page header and resolve.
+                setIntent(fresh);
+                const snippet = deriveSnippet(snapshot, freshDesc);
+                resolve({ status: "applied", snippet });
+              }
+            } catch {
+              // Transient error — keep polling until the deadline.
+            }
+          }, INTENT_POLL_INTERVAL_MS);
+
+          intentPollsRef.current.set(questionId, { timerId, deadline });
+        }
       }
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
       void loadAnswered();
@@ -717,7 +918,7 @@ export default function IntentDetailPage() {
         }, 1200);
       }
     },
-    [questions, questionsService, intentId, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
+    [questions, questionsService, intentId, intent, intentsService, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
   );
 
   const handleDismiss = useCallback(
@@ -1142,10 +1343,34 @@ export default function IntentDetailPage() {
                     />
                   }
                 >
+                  {intentLiveNegotiations.length > 0 && (
+                    <div className="mb-3 shrink-0 space-y-2" data-testid="radar-live-negotiations">
+                      {intentLiveNegotiations.map((item) => (
+                        <button
+                          key={item.conversationId}
+                          type="button"
+                          onClick={() => navigate(`/chat/${item.conversationId}`)}
+                          aria-label={`Watch the negotiation with ${item.counterpart.name}`}
+                          className="w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="truncate text-xs font-semibold text-gray-900">
+                              {item.counterpart.name}
+                            </span>
+                            <NegotiationPresenceChip turnCount={item.turnCount} maxTurns={item.maxTurns} />
+                          </div>
+                          <p className="mt-1 text-[11px] text-[#3D3D3D]">
+                            {formatLatestMove(item.lastAction, item.timeAgo)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
                         key={bucket.key}
+                        bucketKey={bucket.key}
                         value={bucketCounts[bucket.key] ?? 0}
                         label={bucket.label}
                         active={selectedBucket === bucket.key}
@@ -1154,6 +1379,15 @@ export default function IntentDetailPage() {
                     ))}
                   </div>
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
+                  {selectedBucket === "negotiating" && (
+                    <div className="mb-3">
+                      <NegotiationActivity
+                        groups={negotiationActivity}
+                        loading={negotiationActivityLoading}
+                        error={negotiationActivityError}
+                      />
+                    </div>
+                  )}
                   {opportunitiesLoading ? (
                     <div className="space-y-3" data-testid="radar-skeleton">
                       <OpportunitySkeleton />
@@ -1172,6 +1406,7 @@ export default function IntentDetailPage() {
                           currentStatus={
                             opportunityStatusMap[item.opportunityId]
                           }
+                          negotiationPresence={presenceByOpportunity.get(item.opportunityId)}
                           onPrimaryAction={(
                             oppId,
                             userId,

@@ -736,6 +736,55 @@
       "when": 1784711827927,
       "tag": "0104_update_message_cursor_index",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1784791677727,
+      "tag": "0105_add_recovery_question_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1784807704500,
+      "tag": "0106_add_negotiation_question_provenance_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1784817284724,
+      "tag": "0107_add_negotiation_continuation_successor_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1784975313173,
+      "tag": "0108_add_intent_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1784975500000,
+      "tag": "0109_migrate_agent_permission_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1784990334675,
+      "tag": "0110_add_intent_verification_backfill_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1784990503360,
+      "tag": "0111_add_intent_verification_backfill_checks",
+      "breakpoints": true
     }
   ]
 }

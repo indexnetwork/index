@@ -1,6 +1,7 @@
 import type { NegotiationGraphDatabase, NegotiationOutcome, NegotiationProtocolVersion, NegotiationTurn, SeedAssessment, UserNegotiationContext } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
+import type { ContinuationExecutionFence } from '../../adapters/negotiation-continuation.atomic';
 
 type TimeoutLogger = ReturnType<typeof log.job.from>;
 
@@ -50,6 +51,8 @@ export interface NegotiationTaskMeta {
   type?: string;
   maxTurns?: number;
   opportunityId?: string;
+  /** ISO timestamp set by the archive backfill on pre-v2 legacy negotiations. */
+  archivedAt?: string;
 }
 
 /** Per-worker log strings — the only textual difference between the two timeout workers. */
@@ -131,11 +134,14 @@ export async function runTimeoutFallback(params: {
   rearm: (newTurnCount: number) => Promise<void>;
   /** Injectable negotiator invocation for hermetic queue tests. */
   invokeNegotiator?: TimeoutNegotiatorInvoke;
-}): Promise<void> {
+  /** Present only after a parked/claimed exact continuation was atomically fenced. */
+  continuationExecution?: ContinuationExecutionFence;
+}): Promise<{ continuationOutcome?: 'accepted' | 'rejected' | 'stalled' | 'waiting_for_agent' }> {
   const {
     database, logger, labels, negotiationId, taskId, conversationId,
     meta, messages, currentTurnCount, seedReasoning, maxTurns, fallbackLogExtra, rearm,
     invokeNegotiator = defaultInvokeNegotiator,
+    continuationExecution,
   } = params;
 
   // Determine whose turn it is from the last message's sender — not parity,
@@ -194,6 +200,7 @@ export async function runTimeoutFallback(params: {
     role: 'agent',
     parts: [{ kind: 'data' as const, data: aiTurn }],
     taskId,
+    ...(continuationExecution ? { continuationExecution } : {}),
   });
 
   const newTurnCount = currentTurnCount + 1;
@@ -204,12 +211,19 @@ export async function runTimeoutFallback(params: {
     const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
     const outcome = buildNegotiationOutcome(fullHistory, newTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, nextSpeaker);
 
-    await database.updateTaskState(taskId, 'completed');
+    if (continuationExecution) await database.updateTaskState(taskId, 'completed', undefined, continuationExecution);
+    else await database.updateTaskState(taskId, 'completed');
+    const continuationOutcome = aiTurn.action === 'accept' ? 'accepted'
+      : isRejectLikeAction(aiTurn.action) ? 'rejected' : 'stalled';
     await database.createArtifact({
       taskId,
       name: 'negotiation-outcome',
       parts: [{ kind: 'data', data: outcome }],
-      metadata: { hasOpportunity: outcome.hasOpportunity, turnCount: newTurnCount },
+      metadata: {
+        hasOpportunity: outcome.hasOpportunity, turnCount: newTurnCount,
+        ...(continuationExecution ? { continuationOutcome } : {}),
+      },
+      ...(continuationExecution ? { continuationExecution } : {}),
     });
 
     const outcomeStr = aiTurn.action === 'accept' ? 'accepted'
@@ -221,7 +235,10 @@ export async function runTimeoutFallback(params: {
       const nextStatus = aiTurn.action === 'accept' ? 'pending'
         : isRejectLikeAction(aiTurn.action) ? 'rejected'
         : 'stalled';
-      await database.updateOpportunityStatus(opportunityId, nextStatus).catch((err: unknown) => {
+      const updateStatus = continuationExecution
+        ? database.updateOpportunityStatus(opportunityId, nextStatus, undefined, continuationExecution)
+        : database.updateOpportunityStatus(opportunityId, nextStatus);
+      await updateStatus.catch((err: unknown) => {
         logger.error(labels.statusUpdateFailed, {
           opportunityId,
           nextStatus,
@@ -235,11 +252,12 @@ export async function runTimeoutFallback(params: {
       outcome: outcomeStr,
       turnCount: newTurnCount,
     });
-    return;
+    return continuationExecution ? { continuationOutcome } : {};
   }
 
   // AI countered and under max turns — the other party now needs to respond.
-  await database.updateTaskState(taskId, 'waiting_for_agent');
+  if (continuationExecution) await database.updateTaskState(taskId, 'waiting_for_agent', undefined, continuationExecution);
+  else await database.updateTaskState(taskId, 'waiting_for_agent');
   await rearm(newTurnCount);
 
   logger.info('AI agent countered, armed timeout for next speaker', {
@@ -247,4 +265,5 @@ export async function runTimeoutFallback(params: {
     action: aiTurn.action,
     turnCount: newTurnCount,
   });
+  return continuationExecution ? { continuationOutcome: 'waiting_for_agent' } : {};
 }

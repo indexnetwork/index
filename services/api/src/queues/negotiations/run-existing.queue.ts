@@ -4,15 +4,21 @@ import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { Id } from '../../types/common.types';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
+import type { QuestionerAdapter } from '../../adapters/questioner.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { OpportunityGraphFactory } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, NegotiationGraphLike, AgentDispatcher, NegotiationContinuationExecution, NegotiationContinuationReceipt } from '@indexnetwork/protocol';
 
 export const QUEUE_NAME = 'negotiation-run-existing';
 
 export interface RunExistingJobData {
   opportunityId: string;
   userId: string;
+  /** Exact durable consultation settlement; all four fields are all-or-none. */
+  taskId?: string;
+  settlementId?: string;
+  recipientIntentId?: string;
+  networkId?: string;
 }
 
 export interface RunExistingGraphInvokeOptions {
@@ -22,10 +28,22 @@ export interface RunExistingGraphInvokeOptions {
   options: Record<string, unknown>;
 }
 
+type ContinuationAdapter = Pick<
+  QuestionerAdapter,
+  | 'claimNegotiationContinuationExecution'
+  | 'heartbeatNegotiationContinuationExecution'
+  | 'releaseNegotiationContinuationExecution'
+  | 'parkNegotiationContinuationExecution'
+  | 'completeNegotiationContinuationExecution'
+>;
+
 export interface RunExistingDeps {
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  invokeOpportunityGraph?: (opts: RunExistingGraphInvokeOptions) => Promise<void>;
+  invokeOpportunityGraph?: (opts: RunExistingGraphInvokeOptions) => Promise<{
+    negotiationContinuationReceipt?: NegotiationContinuationReceipt;
+  } | void>;
+  continuationAdapter?: ContinuationAdapter;
 }
 
 export class NegotiationRunExistingQueue {
@@ -50,7 +68,28 @@ export class NegotiationRunExistingQueue {
   }
 
   async addJob(data: RunExistingJobData): Promise<Job<RunExistingJobData>> {
+    const exactFields = [data.taskId, data.settlementId, data.recipientIntentId, data.networkId];
+    const exactCount = exactFields.filter((value) => typeof value === 'string' && value.length > 0).length;
+    if (exactCount !== 0 && exactCount !== exactFields.length) {
+      throw new Error('Exact negotiation continuation fields must be all-or-none');
+    }
+    const deterministicJobId = data.settlementId
+      ? `negotiation-resume-${data.settlementId}`
+      : undefined;
+    if (deterministicJobId) {
+      const existing = await this.queue.getJob(deterministicJobId);
+      if (existing) {
+        const state = await existing.getState();
+        if (state === 'failed') {
+          await existing.retry();
+          return existing;
+        }
+        if (state === 'completed') await existing.remove();
+        else return existing;
+      }
+    }
     return this.queue.add('negotiate_existing', data, {
+      ...(deterministicJobId ? { jobId: deterministicJobId } : {}),
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: { age: 24 * 60 * 60 },
@@ -76,16 +115,50 @@ export class NegotiationRunExistingQueue {
       return;
     }
 
-    this.logger.info('Starting negotiation', { opportunityId, userId });
+    const exact = data.taskId && data.settlementId && data.recipientIntentId && data.networkId
+      ? {
+          taskId: data.taskId,
+          settlementId: data.settlementId,
+          recipientIntentId: data.recipientIntentId,
+          networkId: data.networkId,
+        }
+      : null;
+    const continuationAdapter = exact ? await this.getContinuationAdapter() : null;
+    const claim = exact && continuationAdapter
+      ? await continuationAdapter.claimNegotiationContinuationExecution({
+          ...exact,
+          opportunityId,
+          userId,
+        })
+      : null;
+    if (claim && claim.status !== 'claimed') {
+      this.logger.info('Exact negotiation continuation skipped', {
+        taskId: exact?.taskId,
+        settlementId: exact?.settlementId,
+        admission: claim.status,
+      });
+      return;
+    }
+    const execution = claim?.status === 'claimed' ? claim.execution : undefined;
+    if (execution && claim?.existingReceipt && continuationAdapter) {
+      await continuationAdapter.completeNegotiationContinuationExecution(execution, claim.existingReceipt);
+      return;
+    }
+
+    this.logger.info('Starting negotiation', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
+    const options = execution ? { negotiationContinuation: execution } : {};
 
     if (this.deps?.invokeOpportunityGraph) {
-      await this.deps.invokeOpportunityGraph({
-        userId,
-        operationMode: 'negotiate_existing',
-        opportunityId,
-        options: {},
+      await this.runClaimedContinuation(execution, continuationAdapter, async () => {
+        const result = await this.deps!.invokeOpportunityGraph!({
+          userId,
+          operationMode: 'negotiate_existing',
+          opportunityId,
+          options,
+        });
+        return result?.negotiationContinuationReceipt;
       });
-      this.logger.info('Negotiation complete', { opportunityId, userId });
+      this.logger.info('Negotiation complete', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
       return;
     }
 
@@ -106,17 +179,69 @@ export class NegotiationRunExistingQueue {
     ).createGraph();
 
     try {
-      await opportunityGraph.invoke({
-        userId: userId as Id<'users'>,
-        operationMode: 'negotiate_existing',
-        opportunityId,
-        options: {},
+      await this.runClaimedContinuation(execution, continuationAdapter, async () => {
+        const result = await opportunityGraph.invoke({
+          userId: userId as Id<'users'>,
+          operationMode: 'negotiate_existing',
+          opportunityId,
+          options,
+        });
+        return result.negotiationContinuationReceipt;
       });
-      this.logger.info('Negotiation complete', { opportunityId, userId });
+      this.logger.info('Negotiation complete', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
     } catch (err) {
-      this.logger.error('Graph failed', { opportunityId, userId, error: err });
+      this.logger.error('Graph failed', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence, error: err });
       throw err;
     }
+  }
+
+  private async runClaimedContinuation(
+    execution: NegotiationContinuationExecution | undefined,
+    continuationAdapter: ContinuationAdapter | null,
+    invoke: () => Promise<NegotiationContinuationReceipt | undefined>,
+  ): Promise<void> {
+    if (!execution || !continuationAdapter) {
+      await invoke();
+      return;
+    }
+    let currentExecution = execution;
+    let heartbeatFailure: unknown;
+    let heartbeatInFlight: Promise<void> = Promise.resolve();
+    const timer = setInterval(() => {
+      heartbeatInFlight = heartbeatInFlight.then(async () => {
+        if (heartbeatFailure) return;
+        try {
+          currentExecution = await continuationAdapter.heartbeatNegotiationContinuationExecution(currentExecution);
+        } catch (err) {
+          heartbeatFailure = err;
+        }
+      });
+    }, 15_000);
+    timer.unref?.();
+    try {
+      const receipt = await invoke();
+      clearInterval(timer);
+      await heartbeatInFlight;
+      if (heartbeatFailure) throw heartbeatFailure;
+      if (!receipt) throw new Error('Exact negotiation continuation produced no positive successor receipt');
+      // A pause retains the fence for the eventual polling/timeout path; it
+      // is deliberately not a terminal receipt for the parent settlement.
+      if (receipt.outcome === 'waiting_for_agent' || receipt.outcome === 'input_required') {
+        await continuationAdapter.parkNegotiationContinuationExecution(currentExecution);
+        return;
+      }
+      await continuationAdapter.completeNegotiationContinuationExecution(currentExecution, receipt);
+    } catch (err) {
+      clearInterval(timer);
+      await heartbeatInFlight.catch(() => undefined);
+      await continuationAdapter.releaseNegotiationContinuationExecution(currentExecution).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  private async getContinuationAdapter(): Promise<ContinuationAdapter> {
+    if (this.deps?.continuationAdapter) return this.deps.continuationAdapter;
+    return (await import('../../adapters/questioner.adapter.instance')).questionerAdapter;
   }
 
   startWorker(): void {

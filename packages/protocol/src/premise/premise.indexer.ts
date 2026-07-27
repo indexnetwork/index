@@ -5,7 +5,6 @@ import { Timed } from "../shared/observability/performance.js";
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 
-const logger = protocolLogger("PremiseIndexer");
 const invokeLog = protocolLogger("PremiseIndexer:invoke");
 
 const systemPrompt = `

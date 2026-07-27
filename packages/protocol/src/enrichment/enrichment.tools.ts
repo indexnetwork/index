@@ -2,7 +2,8 @@ import { z } from "zod";
 
 import { requestContext } from "../shared/observability/request-context.js";
 
-import type { DefineTool, ResolvedToolContext, ToolDeps } from "../shared/agent/tool.helpers.js";
+import type { DefineTool, ResolvedToolContext } from "../shared/agent/tool.helpers.js";
+import type { EnrichmentToolDeps } from "../capabilities/participant-context.tools.port.js";
 import { success, error, needsClarification, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { EnrichmentResult } from "../shared/interfaces/enrichment.interface.js";
@@ -35,7 +36,7 @@ const approvedProfileDraftSchema = z.object({
 
 type ApprovedProfileDraft = z.infer<typeof approvedProfileDraftSchema>;
 
-export function createEnrichmentTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentToolDeps) {
   const { userDb, systemDb, graphs, enricher, grantDefaultSystemPermissions, reportToolError, getUserContextText } = deps;
 
   function trimToUndefined(value: string | null | undefined): string | undefined {

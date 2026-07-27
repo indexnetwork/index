@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backfill Production Data"
+  short_description: "Index project workflow: Backfill Production Data"
+  default_prompt: "Use $backfill-production-data to follow the repository-specific Backfill Production Data workflow."

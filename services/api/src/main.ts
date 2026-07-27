@@ -85,7 +85,6 @@ import { computeIntentFingerprint } from './lib/intent/intent.fingerprint';
 import { emitChatQuestionResolution } from './lib/chat-question.events';
 import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
 import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
-import { storeNegotiationContextFactory } from './events/handlers/question.answer.negotiation';
 import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
 import { QuestionerAdapter } from './adapters/questioner.adapter';
 import db from './lib/drizzle/drizzle';
@@ -300,24 +299,6 @@ fromIntentQueue.setRuntimeDeps({
 // re-embedding, persistence, and HyDE regeneration.
 const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
 
-// Shared by the `negotiation` (post-stall) and `negotiation_inflight`
-// (ask_user pause) answer reactions — both store the answer on the
-// opportunity's metadata.userAnswers channel.
-const storeNegotiationContext = storeNegotiationContextFactory({
-  getOpportunity: async (opportunityId) => {
-    const opp = await chatDatabaseAdapter.getOpportunity(opportunityId);
-    if (!opp) return null;
-    return {
-      id: opp.id,
-      status: opp.status,
-      metadata: (opp.metadata ?? {}) as Record<string, unknown>,
-    };
-  },
-  updateOpportunityMetadata: async (opportunityId, metadata) => {
-    await chatDatabaseAdapter.updateOpportunityMetadata(opportunityId, metadata);
-  },
-});
-
 const enqueueIntentRefinement = enqueueIntentRefinementFactory({
   getQuestionPrompt: async (questionId) => {
     const question = await answerQuestionerAdapter.getById(questionId);
@@ -327,9 +308,22 @@ const enqueueIntentRefinement = enqueueIntentRefinementFactory({
     const profile = await chatDatabaseAdapter.getProfile(userId);
     return profile ? JSON.stringify(profile) : '';
   },
-  runIntentUpdate: async ({ userId, userProfile, inputContent, targetIntentIds }) => {
+  runIntentUpdate: async ({
+    userId,
+    userProfile,
+    inputContent,
+    targetIntentIds,
+    expectedIntentFingerprint,
+  }) => {
     const result = await answerIntentGraph.invoke(
-      { userId, userProfile, operationMode: 'update' as const, inputContent, targetIntentIds },
+      {
+        userId,
+        userProfile,
+        operationMode: 'update' as const,
+        inputContent,
+        targetIntentIds,
+        expectedIntentFingerprint,
+      },
       { recursionLimit: 100 },
     );
     const executionResults = (result as {
@@ -368,17 +362,9 @@ const questionAnswerDeps = {
     emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
   }),
   enqueueIntentRefinement,
-  storeNegotiationContext,
   resumeInflightNegotiation: resumeInflightNegotiationFactory({
-    storeNegotiationContext,
-    getNegotiationTaskForOpportunity: (opportunityId) =>
-      conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId),
-    cancelAskUserExpiry: (negotiationId) => negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId),
-    closeTask: async (taskId, reason) => {
-      await conversationDatabaseAdapter.updateTaskState(taskId, 'canceled', { reason });
-    },
-    enqueueResume: async (opportunityId, userId) => {
-      await negotiationRunExistingQueue.addJob({ opportunityId, userId });
+    enqueueResume: async (input) => {
+      await negotiationRunExistingQueue.addJob(input);
     },
     // P5.2: the answer is already a distilled disclosure policy — record it
     // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
@@ -415,19 +401,37 @@ const questionAnswerDeps = {
   }),
 };
 
-QuestionEvents.onAnswered = (payload) => {
-  handleQuestionAnswered(payload, questionAnswerDeps)
-    .catch(err => log.job.from('QuestionEvents').error('Answer handler failed', {
-      questionId: payload.questionId,
-      error: err instanceof Error ? err.message : String(err),
-    }));
+QuestionEvents.onAnswered = async (payload) => {
+  await handleQuestionAnswered(payload, questionAnswerDeps);
 };
 
-// Dismissals unblock chat turns waiting on ask_user_question. Other modes
-// have no dismissal reaction.
-QuestionEvents.onDismissed = (payload) => {
-  if (payload.mode !== 'chat') return;
-  emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
+// Chat dismissals unblock the waiting turn. An authoritative inflight
+// dismissal has already conservatively closed exactly its stamped task at the
+// adapter boundary; post-commit work enqueues the deterministic continuation
+// while the original timer remains the durable recovery sweep.
+QuestionEvents.onDismissed = async (payload) => {
+  if (payload.mode === 'chat') {
+    emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
+    return;
+  }
+  if (
+    payload.mode === 'negotiation_inflight'
+    && payload.settlement?.authoritative
+    && payload.settlement.resumeClaimed
+    && payload.settlement.taskId
+    && payload.settlement.settlementId
+  ) {
+    await questionAnswerDeps.resumeInflightNegotiation({
+      userId: payload.userId,
+      opportunityId: payload.settlement.opportunityId,
+      questionId: payload.questionId,
+      selectedOptions: [],
+      taskId: payload.settlement.taskId,
+      settlementId: payload.settlement.settlementId,
+      recipientIntentId: payload.settlement.recipientIntentId,
+      networkId: payload.settlement.networkId,
+    });
+  }
 };
 
 intentQueue.startWorker();

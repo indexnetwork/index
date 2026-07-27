@@ -52,6 +52,7 @@ const FAST_TOOLS = new Set([
   "get_profile_run",
   "cancel_profile_run",
   "remove_contact",
+  "read_own_agent",
   "register_agent",
   "list_agents",
   "update_agent",

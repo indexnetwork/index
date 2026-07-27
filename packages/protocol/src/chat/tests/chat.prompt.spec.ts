@@ -12,7 +12,7 @@
 import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
-import { describe, test, expect } from "bun:test";
+import { beforeAll, describe, test, expect } from "bun:test";
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 
@@ -411,9 +411,6 @@ describe("Multi-step: disambiguation edge cases", () => {
 // ─── Dynamic modules tests (LLM-driven behavioral tests) ────────────────────
 
 
-import { describe, test, expect, beforeAll } from "bun:test";
-import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
-
 import { assertLLM } from "../../shared/agent/tests/llm-assert.js";
 import { ChatGraphFactory } from "../chat.graph.js";
 import type { Embedder } from "../../shared/interfaces/embedder.interface.js";
@@ -476,6 +473,7 @@ function completedUser(userId: string, nameOverride?: string) {
     id: userId,
     name: nameOverride ?? "Test User",
     email: `${userId}@example.com`,
+    socials: [],
     onboarding: { completedAt: new Date().toISOString() },
   };
 }
@@ -499,7 +497,11 @@ function sharedMembership(extra?: Partial<NetworkMembership>): NetworkMembership
   };
 }
 
-const mockChatSession: ChatSessionReader = { getSessionMessages: async () => [] };
+const mockChatSession: ChatSessionReader = {
+  getSessionMessages: async () => [],
+  listSessions: async () => [],
+  getSession: async () => null,
+};
 const mockProtocolDeps = createMockProtocolDeps();
 
 describe("Chat Prompt Dynamic Modules", () => {
@@ -562,7 +564,13 @@ describe("Chat Prompt Dynamic Modules", () => {
       const mockDatabase = createChatGraphMockDb({
         getUser: (userId: string) => {
           if (userId === "user-123") {
-            return { id: "user-123", name: "Alice Smith", email: "alice@example.com", onboarding: { completedAt: new Date().toISOString() } };
+            return {
+              id: "user-123",
+              name: "Alice Smith",
+              email: "alice@example.com",
+              socials: [],
+              onboarding: { completedAt: new Date().toISOString() },
+            };
           }
           return completedUser(userId);
         },

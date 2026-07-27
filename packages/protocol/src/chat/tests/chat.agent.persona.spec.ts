@@ -8,12 +8,6 @@
  * prompt builder / toolset are actually used.
  */
 
-// Env must be set before any imports that transitively call createModel
-import { config } from "dotenv";
-config({ path: ".env.test", override: true });
-process.env.OPENROUTER_API_KEY = "test-key-for-unit-tests";
-process.env.NODE_ENV = "test";
-
 import { mock, describe, expect, it, afterAll } from "bun:test";
 
 // ─── Mock model.config globally (same pattern as chat.agent.spec.ts) ────────
@@ -196,7 +190,7 @@ describe("ChatAgent persona injection", () => {
   }, 15000);
 
   it("bypasses the model and tools for contextual reporter confirmations only", async () => {
-    const tools: MockTool[] = ["report_agent_activity", "propose_cleanup_actions"].map((name) => ({
+    const tools: MockTool[] = ["read_activity_summary", "propose_cleanup_actions"].map((name) => ({
       name,
       description: name,
       schema: {},

@@ -2,7 +2,7 @@
  * Pure response mappers for the macOS/iOS prototypes.
  *
  * These functions translate services/api response envelopes into the current
- * `window.HALO_DATA`-style view models, but this file deliberately has no
+ * `window.INDEX_DATA`-style view models, but this file deliberately has no
  * dependency on the app bundles and no side effects.
  */
 
@@ -63,13 +63,16 @@ export function mapIntent(intent, questionCount = 0) {
     ? intent.networks.map((network) => network.networkTitle).filter(Boolean)
     : [];
 
+  const archived = Boolean(intent.archivedAt);
+  const paused = !archived && String(intent.status || '').toUpperCase() === 'PAUSED';
+
   return {
     id: intent.id,
     title: intent.summary || intent.payload || 'untitled signal',
     edges: networkTitles.join(' · '),
     offLimits: '',
     shape: 'warm',
-    status: intent.archivedAt ? 'paused' : 'active',
+    status: archived ? 'archived' : paused ? 'paused' : 'active',
     pipeline: { warm: 0, considering: 0, negotiating: 0 },
     lastSignal: intent.updatedAt ? `updated ${relativeAge(intent.updatedAt)}` : '',
     age: intent.createdAt ? `running ${relativeAge(intent.createdAt)}` : '',
@@ -168,7 +171,7 @@ export function mapClarifier(question) {
 }
 
 /**
- * Compose a HALO_DATA-like snapshot without mutating window.HALO_DATA.
+ * Compose a INDEX_DATA-like snapshot without mutating window.INDEX_DATA.
  * @param {Object} input
  * @param {Object} [input.user]
  * @param {Array<Object>} [input.networks]
@@ -177,7 +180,7 @@ export function mapClarifier(question) {
  * @param {Array<Object>} [input.homeSections]
  * @param {Array<Object>} [input.opportunities]
  */
-export function mapHaloSnapshot(input = {}) {
+export function mapIndexSnapshot(input = {}) {
   const questions = Array.isArray(input.questions) ? input.questions : [];
   const homeSections = Array.isArray(input.homeSections) ? input.homeSections : [];
   const opportunityRows = Array.isArray(input.opportunities) ? input.opportunities : [];

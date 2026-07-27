@@ -157,7 +157,7 @@ describe('HyDE frame-v1 graph validation', () => {
       sourceTextHash: computeHydeSourceTextHash('climate founder seeking funding'),
       generatedAt: expect.any(String),
     });
-    expect(result.hydeDocuments['climate investor']?.generatedAt).toBe(harness.saved[0]?.context?.generatedAt);
+    expect(result.hydeDocuments['climate investor']?.generatedAt).toBe(harness.saved[0]?.context?.generatedAt as string | undefined);
     expect(events.find((event) => event.type === 'agent_end' && event.name === 'hyde-validator')?.summary)
       .toBe('1 valid, 1 rejected, 0 failed open');
   });

@@ -50,7 +50,7 @@ function deriveIntentDiscoveryNetworkIds(memberships: AssignmentNetworkMembershi
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetworkIfMember' | 'deleteHydeDocumentsForSource' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetworkIfMember' | 'deleteHydeDocumentsForSource' | 'getHydeDocumentsForSource' | 'getNetworkIdsForIntent' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -150,7 +150,7 @@ export class IntentQueue implements IntentGraphQueue {
    * @returns The BullMQ job
    */
   async addJob(
-    name: 'generate_hyde' | 'delete_hyde' | 'reconcile_intent_networks',
+    name: 'generate_hyde' | 'delete_hyde' | 'reconcile_intent_networks' | 'reconcile_orphaned_intent',
     data: IntentJobData | IntentDeleteData,
     options?: { jobId?: string; priority?: number }
   ): Promise<Job<IntentJobPayload>> {
@@ -177,6 +177,9 @@ export class IntentQueue implements IntentGraphQueue {
       case 'reconcile_intent_networks':
         await this.handleReconcileNetworks(data as IntentJobData);
         break;
+      case 'reconcile_orphaned_intent':
+        await this.handleReconcileOrphanedIntent(data as IntentJobData);
+        break;
       case 'delete_hyde':
         await this.handleDeleteHyde(data as IntentDeleteData);
         break;
@@ -198,6 +201,18 @@ export class IntentQueue implements IntentGraphQueue {
   addReconcileJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
     return this.addJob('reconcile_intent_networks', data, {
       jobId: `reconcile-${data.intentId}-${data.scopeId ?? data.networkScopeId ?? 'global'}`,
+    });
+  }
+
+  /**
+   * Re-admit an active intent only when an indexing prerequisite is absent.
+   * The worker rechecks lifecycle, ownership, membership, scope, assignments,
+   * and HyDE state at execution time, making retries safe after pauses,
+   * archives, unassignments, or scoped-agent changes.
+   */
+  addOrphanReconciliationJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
+    return this.addJob('reconcile_orphaned_intent', data, {
+      jobId: `reconcile-orphaned-${data.intentId}-${data.scopeId ?? data.networkScopeId ?? 'global'}`,
     });
   }
 
@@ -326,27 +341,37 @@ export class IntentQueue implements IntentGraphQueue {
       this.hydeLogger.warn('Failed to fetch discoverer context for HyDE, proceeding without', { intentId, userId, error: ctxErr });
     }
 
-    if (this.deps?.invokeHyde) {
-      await this.deps.invokeHyde({
-        sourceText: intent.payload,
-        sourceType: 'intent',
-        sourceId: intentId,
-        forceRegenerate: true,
-        profileContext,
+    try {
+      if (this.deps?.invokeHyde) {
+        await this.deps.invokeHyde({
+          sourceText: intent.payload,
+          sourceType: 'intent',
+          sourceId: intentId,
+          forceRegenerate: true,
+          profileContext,
+        });
+      } else {
+        const embedder = new EmbedderAdapter();
+        const cache = new RedisCacheAdapter();
+        const inferrer = new LensInferrer();
+        const generator = new HydeGenerator();
+        const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
+        await hydeGraph.invoke({
+          sourceText: intent.payload,
+          sourceType: 'intent',
+          sourceId: intentId,
+          forceRegenerate: true,
+          profileContext,
+        });
+      }
+    } catch (error) {
+      this.hydeLogger.error('HyDE generation failed; BullMQ will retry admission', {
+        event: 'intent_hyde_generation_failed',
+        intentId,
+        userId,
+        error,
       });
-    } else {
-      const embedder = new EmbedderAdapter();
-      const cache = new RedisCacheAdapter();
-      const inferrer = new LensInferrer();
-      const generator = new HydeGenerator();
-      const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
-      await hydeGraph.invoke({
-        sourceText: intent.payload,
-        sourceType: 'intent',
-        sourceId: intentId,
-        forceRegenerate: true,
-        profileContext,
-      });
+      throw error;
     }
     this.hydeLogger.info('HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });
     const addJob =
@@ -364,13 +389,21 @@ export class IntentQueue implements IntentGraphQueue {
         return scope.scopeType && scope.scopeId ? { networkIds: [scope.scopeId] } : {};
       }
     })();
-    await addJob({
-      intentId,
-      userId,
-      ...discoveryScope,
-    }).catch((err: unknown) =>
-      this.hydeLogger.error('Failed to enqueue opportunity discovery', { intentId, error: err })
-    );
+    try {
+      await addJob({
+        intentId,
+        userId,
+        ...discoveryScope,
+      });
+    } catch (error) {
+      this.hydeLogger.error('Discovery enqueue failed; BullMQ will retry admission', {
+        event: 'intent_discovery_enqueue_failed',
+        intentId,
+        userId,
+        error,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -519,7 +552,15 @@ export class IntentQueue implements IntentGraphQueue {
       // Explicit orphan signal: an intent registered to no network is invisible
       // in every network UI. Surface it so it can be alerted on or swept rather
       // than silently lost.
-      this.assignLogger.warn('Intent assigned to NO networks', { intentId, userId, scopeType: scope.scopeType, scopeId: scope.scopeId, evaluatedCount });
+      this.assignLogger.warn('Intent assigned to no networks', {
+        event: 'intent_network_assignment_zero',
+        intentId,
+        userId,
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId,
+        evaluatedCount,
+        reason: evaluatedCount === 0 ? 'no_eligible_memberships' : 'below_threshold_or_assignment_failure',
+      });
     }
     return { assignedNetworkIds, evaluatedCount };
   }
@@ -533,6 +574,59 @@ export class IntentQueue implements IntentGraphQueue {
   private async handleReconcileNetworks(data: IntentJobData): Promise<void> {
     const { intentId, userId } = data;
     await this.assignIntentToNetworks(intentId, userId, { ...resolveIntentJobScope(data), source: 'intent-reconcile-queue' });
+  }
+
+  /**
+   * Re-run the normal admission sequence for an active intent whose assignment
+   * or intent HyDE artifact is missing. This deliberately does not treat a
+   * prompted below-threshold result as an error: the normal assignment policy
+   * remains authoritative, including deterministic 1.0 promptless assignment.
+   */
+  private async handleReconcileOrphanedIntent(data: IntentJobData): Promise<void> {
+    const { intentId, userId } = data;
+    const db = this.deps?.database ?? this.database;
+    const scope = resolveIntentJobScope(data);
+    const intent = await db.getIntentForIndexing(intentId);
+    if (!intent || intent.userId !== userId || intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) {
+      this.reconcileLogger.info('Orphan reconciliation skipped by lifecycle admission', {
+        event: 'intent_orphan_reconciliation_skipped',
+        intentId,
+        userId,
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId,
+        reason: !intent ? 'missing' : intent.userId !== userId ? 'owner_mismatch' : intent.archivedAt ? 'archived' : 'not_active',
+      });
+      return;
+    }
+
+    const [assignedNetworkIds, hydeDocuments, memberships] = await Promise.all([
+      db.getNetworkIdsForIntent(intentId),
+      db.getHydeDocumentsForSource('intent', intentId),
+      this.getAssignmentMemberships(userId),
+    ]);
+    const eligibleNetworkIds = new Set(resolveAssignmentNetworkScope({ memberships, ...scope }));
+    const validAssignedNetworkIds = assignedNetworkIds.filter((networkId) => eligibleNetworkIds.has(networkId));
+    if (validAssignedNetworkIds.length > 0 && hydeDocuments.length > 0) {
+      this.reconcileLogger.info('Orphan reconciliation already satisfied', {
+        event: 'intent_orphan_reconciliation_noop',
+        intentId,
+        userId,
+        assignedNetworkCount: validAssignedNetworkIds.length,
+        hydeDocumentCount: hydeDocuments.length,
+      });
+      return;
+    }
+
+    this.reconcileLogger.warn('Orphan reconciliation re-admitting intent', {
+      event: 'intent_orphan_reconciliation_started',
+      intentId,
+      userId,
+      scopeType: scope.scopeType,
+      scopeId: scope.scopeId,
+      assignedNetworkCount: validAssignedNetworkIds.length,
+      hydeDocumentCount: hydeDocuments.length,
+    });
+    await this.handleGenerateHyde({ intentId, userId, ...scope });
   }
 
   private async handleDeleteHyde(data: IntentDeleteData): Promise<void> {

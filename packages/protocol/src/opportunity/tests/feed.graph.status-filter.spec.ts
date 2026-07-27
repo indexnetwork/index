@@ -57,7 +57,10 @@ function createMockDb(
     getProfile: () => Promise.resolve(null),
     getActiveIntents: () => Promise.resolve([]),
     getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-    getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null }),
+    getUser: (id: string) => Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null, socials: [] }),
+    getNegotiationTaskForOpportunity: () => Promise.resolve(null),
+    getMessagesForConversation: () => Promise.resolve([]),
+    getArtifactsForTask: () => Promise.resolve([]),
   };
 }
 

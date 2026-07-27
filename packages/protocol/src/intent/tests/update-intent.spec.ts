@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { z } from "zod";
 
 import { createIntentTools, setIntentClarifierForTesting } from "../intent.tools.js";
@@ -33,7 +33,10 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
     toolDefs.push({ name: def.name, querySchema: def.querySchema, handler: def.handler });
     return def;
   };
-  createIntentTools(defineTool as any, deps);
+  createIntentTools(defineTool as any, {
+    intentProposalStore: { createProposals: async () => {} },
+    ...deps,
+  });
   return toolDefs;
 }
 
@@ -285,9 +288,11 @@ describe("create_intent", () => {
   });
 
   test("normalizes null-like specificity warnings in web proposal cards", async () => {
+    const createProposals = mock(async () => {});
     const tools = captureTools({
       userDb: {},
       systemDb: {},
+      intentProposalStore: { createProposals },
       graphs: {
         profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
         intent: {
@@ -296,11 +301,15 @@ describe("create_intent", () => {
               description: "Find agent builders for TypeScript protocol tooling",
               score: 77,
               verification: {
+                reasoning: "A clear directive in the user's authority.",
                 classification: "DIRECTIVE",
+                felicity_scores: { authority: 77, sincerity: 88, clarity: 91 },
                 semantic_entropy: 0.33,
+                referential_anchor: null,
                 referential_breadth: "moderate",
                 missing_selectional_constraints: [],
                 specificity_warning: " undefined ",
+                flags: [],
               },
             }],
             agentTimings: [],
@@ -325,6 +334,19 @@ describe("create_intent", () => {
     expect(proposal.referentialBreadth).toBe("moderate");
     expect(proposal.specificityWarning).toBeNull();
     expect(proposal.semanticEntropy).toBe(0.33);
+    expect(createProposals).toHaveBeenCalledTimes(1);
+    expect(createProposals.mock.calls[0]?.[0]).toEqual([expect.objectContaining({
+      userId: "alice",
+      description: "Find agent builders for TypeScript protocol tooling",
+      analysis: {
+        combinedScore: 77,
+        verifierOutput: expect.objectContaining({
+          classification: "DIRECTIVE",
+          semantic_entropy: 0.33,
+          felicity_scores: { authority: 77, sincerity: 88, clarity: 91 },
+        }),
+      },
+    })]);
   });
 
   test("surfaces referential-breadth warnings in web proposal cards", async () => {
@@ -436,7 +458,7 @@ describe("update_intent", () => {
     expect(parsed.data.message).toBe("Intent updated.");
   });
 
-  test("returns an error when verification filters the update into a no-op", async () => {
+  test("returns truthful structured speech-act failure through the tool handler", async () => {
     const tools = captureTools({
       userDb: {},
       systemDb: {
@@ -444,7 +466,20 @@ describe("update_intent", () => {
       },
       graphs: {
         profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
-        intent: { invoke: async () => ({ verifiedIntents: [], actions: [], executionResults: [], agentTimings: [] }) },
+        intent: {
+          invoke: async () => ({
+            verifiedIntents: [],
+            actions: [],
+            executionResults: [],
+            validationFailures: [{
+              category: "non_actionable",
+              classification: "ASSERTIVE",
+              referentialBreadth: "broad",
+              message: "Description was classified as ASSERTIVE, not an actionable goal.",
+            }],
+            agentTimings: [],
+          }),
+        },
       },
     } as unknown as ToolDeps);
     const tool = tools.find((t) => t.name === "update_intent")!;
@@ -458,8 +493,11 @@ describe("update_intent", () => {
     }));
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("not applied");
-    expect(result.error).toContain("too broad");
+    expect(result.failureCategory).toBe("non_actionable");
+    expect(result.error).toContain("ASSERTIVE");
+    expect(result.error).toContain("not the blocking reason");
+    expect(result.error).not.toContain("too broad");
+    expect(result.details).toBe("Speech act: ASSERTIVE.");
   });
 });
 

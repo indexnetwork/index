@@ -14,6 +14,9 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
 - The contract is exactly the set of symbols re-exported from `src/index.ts`.
   Exports are listed explicitly (no `export *` wildcards), so the surface is
   reviewable and additions are always intentional.
+- Root exports are assembled through named capability facades. Those facades are
+  implementation seams, not package subpath entry points: consumers must still
+  import only from `@indexnetwork/protocol`.
 
 ## Stability tiers
 
@@ -31,6 +34,7 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
 | **Agents** | Structured LLM agents (`UserContextGenerator`, `IndexNegotiator`, `OpportunityEvaluator`, …). |
 | **MCP** | `createMcpServer` and its supporting types. |
+| **Capability tools** | Named tool-factory entry points for Signals, Participant context, Communities, Opportunities, Negotiation, Questions, Participant agents, Contacts, and Integrations. |
 
 ### Experimental
 

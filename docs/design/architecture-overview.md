@@ -10,7 +10,7 @@ updated: 2026-04-11
 
 This document provides a comprehensive overview of the Index Network architecture for new contributors, stakeholders, and anyone seeking to understand how the system is structured. It covers the monorepo layout, protocol layering, agent system, data flow, and supporting infrastructure.
 
-For domain-specific deep dives, see the design papers in `packages/protocol/src/docs/` and the protocol README at `packages/protocol/src/README.md`.
+For domain-specific deep dives, see `docs/design/protocol-deep-dive.md`, the protocol README at `packages/protocol/src/README.md`, and the current lifecycle reference at `docs/design/opportunity-status-lifecycle.md`. Research and historical analysis live under `docs/research/`.
 
 ---
 
@@ -89,7 +89,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 ```
 
-The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/interfaces/`. The **composition root** (`src/controllers/mcp.controller.ts`) assembles `ProtocolDeps` inline and injects `ChatGraphFactory` into `ChatSessionService` at startup.
+The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero API/web/concrete-adapter imports. All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/shared/interfaces/`. The API composition root (`services/api/src/controllers/mcp.controller.ts`) assembles `ProtocolDeps` inline and injects `ChatGraphFactory` into `ChatSessionService` at startup.
 
 ### Layer Responsibilities
 
@@ -185,13 +185,13 @@ The agent system is built on LangGraph (from the LangChain ecosystem) and follow
 
 ```
 packages/protocol/src/
-  graphs/           LangGraph state machines (*.graph.ts)
-  states/           Graph state definitions (*.state.ts)
-  agents/           AI agents with Zod-validated I/O
-  tools/            Chat tool definitions by domain
-  streamers/        SSE streaming for chat responses
-  support/          Infrastructure utilities
-  interfaces/       Adapter contracts
+  chat/, intent/, enrichment/, premise/, opportunity/, negotiation/
+                    Feature-owned graphs, agents, state, and tools
+  network/          Network graph, with indexer/ and membership/ subgraphs
+  agent/, contact/, context/, integration/, maintenance/, mcp/, questioner/
+                    Supporting protocol capabilities
+  shared/           Cross-cutting agent runtime, adapter interfaces, schemas,
+                    HyDE, assignment, observability, UI, and utilities
 ```
 
 ### Graphs
@@ -216,7 +216,7 @@ Graphs are LangGraph state machines. Each graph is created by a factory class th
 
 ### Agents
 
-Agents are pure LLM reasoning units. They accept structured input (Zod schemas), call the LLM via `createModel()` from `model.config.ts`, and return structured output. Agents have no direct database access and no side effects. Services handle persistence after agent execution.
+Agents are pure LLM reasoning units. They accept structured input (Zod schemas), call the LLM via `createModel()` from `shared/agent/model.config.ts`, and return structured output. Agents have no direct database access and no side effects. Services handle persistence after agent execution.
 
 | Agent | Purpose |
 |-------|---------|
@@ -260,7 +260,7 @@ System agents are seeded with fixed UUIDs and granted their default permissions 
 
 #### MCP auth resolver
 
-MCP requests authenticate via an `x-api-key` header. The resolver reads the Better Auth `metadata.agentId` stored on the token and hands back `{ userId, agentId }` to the MCP server factory. Tool handlers receive both on the `ResolvedToolContext`, so every tool call is attributable to a concrete agent identity — not just a user. MCP callers without a resolved `agentId` are blocked from all tools except `register_agent`, `read_docs`, and `scrape_url` by the agent-registration gate inside `createMcpServer`.
+MCP requests authenticate via an `x-api-key` header. The resolver reads the Better Auth `metadata.agentId` stored on the token and hands back `{ userId, agentId }` to the MCP server factory. Tool handlers receive both on the `ResolvedToolContext`, so every tool call is attributable to a concrete agent identity — not just a user. MCP callers without a resolved `agentId` are blocked from all tools except `register_agent` and `read_docs` by the principal-aware capability policy inside `createMcpServer`. (Contact/Gmail tools, `scrape_url`, and the deprecated profile/profile-run aliases are not exposed on the MCP surface at all — they remain available via the direct HTTP Tool API and chat.)
 
 #### Permission-gated tool access
 
@@ -664,5 +664,6 @@ New opportunities (status: latent)
 ## Further Reading
 
 - **Protocol package README**: `packages/protocol/src/README.md` — graph, agent, and tool documentation
-- **Design papers**: `packages/protocol/src/docs/` — deep dives on HyDE strategies, opportunity lifecycle, semantic governance, and more
-- **Template files**: `protocol/src/controllers/controller.template.md`, `protocol/src/services/service.template.md`, `protocol/src/queues/queue.template.md`, `packages/protocol/src/agents/agent.template.md`
+- **Protocol design references**: `docs/design/protocol-deep-dive.md` and `docs/design/opportunity-status-lifecycle.md`
+- **Research and historical analysis**: `docs/research/`
+- **Template files**: `services/api/src/controllers/controller.template.md`, `services/api/src/services/service.template.md`, `services/api/src/queues/queue.template.md`

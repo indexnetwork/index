@@ -11,15 +11,15 @@
 // Fallback for environments where the env var is already set (e.g., CI with .env.test)
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
-process.env.OPENROUTER_API_KEY ??= 'test';
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../opportunity.graph.js';
-import type { Id } from '../../types/common.types.js';
+import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { NegotiationGraphLike } from '../../negotiation/negotiation.state.js';
+import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 
 // ---------------------------------------------------------------------------
 // Shared constants
@@ -46,8 +46,8 @@ const mockEvaluator: OpportunityEvaluatorLike = {
       reasoning: 'Good match',
       score: 80,
       actors: [
-        { userId: USER_A, role: 'patient' as const, intentId: null },
-        { userId: USER_B, role: 'agent' as const, intentId: null },
+        { userId: USER_A, role: 'patient' as const },
+        { userId: USER_B, role: 'agent' as const },
       ],
     },
   ],
@@ -102,6 +102,7 @@ function makeOpportunity(
 
 function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraphDatabase {
   const base: OpportunityGraphDatabase = {
+    ...createOpportunityGraphDatabaseFixture(),
     // Return a profile so discovery can run.
     getProfile: async () => mockProfile as unknown as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>,
     createOpportunity: async (data) => ({
@@ -156,7 +157,7 @@ function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraph
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => true,
     isIndexOwner: async () => false,
-    getUser: async (id) => ({ id, name: 'Test User', email: 'test@example.com' }),
+    getUser: async (id) => ({ id, name: 'Test User', email: 'test@example.com', socials: [] }),
     getOrCreateDM: async () => ({ id: 'conv-1' }),
     getIntent: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
@@ -211,7 +212,7 @@ function resolvedNegotiationGraph(
 
 const discoveryInput = {
   userId: USER_A,
-  operationMode: 'discover' as const,
+  operationMode: 'create' as const,
   searchQuery: 'co-founder',
   options: { initialStatus: 'latent' as const },
 };
@@ -313,11 +314,11 @@ describe('opportunity graph — newborn stamping seam', () => {
       invokeEntityBundle: async () => [
         {
           reasoning: 'Bob match', score: 90,
-          actors: [{ userId: USER_A, role: 'patient', intentId: null }, { userId: USER_B, role: 'agent', intentId: null }],
+          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_B, role: 'agent' }],
         },
         {
           reasoning: 'Carol match', score: 80,
-          actors: [{ userId: USER_A, role: 'patient', intentId: null }, { userId: USER_C, role: 'agent', intentId: null }],
+          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_C, role: 'agent' }],
         },
       ],
     };
@@ -654,7 +655,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     });
 
     expect(createCalled).toBe(false);
-    expect(updateCalledWith).toEqual([OPP_ID, 'negotiating']);
+    expect(updateCalledWith!).toEqual([OPP_ID, 'negotiating']);
     expect(negotiationInputs).toHaveLength(1);
     expect(negotiationInputs[0].opportunityId).toBe(OPP_ID);
     expect(result.opportunities?.length).toBeGreaterThanOrEqual(1);
@@ -832,7 +833,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
         return { ...data, id: 'opp-new', status: 'latent' as const, createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
       },
       // Return USER_A's user record when the graph looks up the introducer.
-      getUser: async (id) => ({ id, name: 'Alice', email: 'alice@example.com' }),
+      getUser: async (id) => ({ id, name: 'Alice', email: 'alice@example.com', socials: [] }),
     });
 
     const graph = buildGraph(db);
@@ -841,7 +842,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
       userId: USER_B,
       onBehalfOfUserId: USER_A,
       networkId: NET_ID,
-      operationMode: 'discover' as const,
+      operationMode: 'create' as const,
       searchQuery: 'co-founder',
       options: { initialStatus: 'latent' as const },
     });

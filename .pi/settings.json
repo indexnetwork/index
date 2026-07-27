@@ -1,10 +1,5 @@
 {
   "packages": [
-    "npm:context-mode",
-    "npm:@tintinweb/pi-subagents",
-    "npm:@juicesharp/rpiv-advisor",
-    "npm:@juicesharp/rpiv-ask-user-question",
-    "npm:@juicesharp/rpiv-btw",
-    "npm:@juicesharp/rpiv-todo"
+    "git:github.com/yanekyuk/pi-herdr-orchestrator@v0.1.0"
   ]
 }

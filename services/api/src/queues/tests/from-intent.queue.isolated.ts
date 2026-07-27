@@ -16,18 +16,35 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class ChatDatabaseAdapter {},
+  chatDatabaseAdapter: {},
+}));
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class EmbedderAdapter {},
+  embedderAdapter: {},
+}));
 
 // Stub the run-existing queue that from-intent imports
 mock.module('../negotiations/run-existing.queue', () => ({
   negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
+}));
+mock.module('../pool/mining.shared', () => ({
+  maybeMinePoolDiscriminators: async () => {},
+  minePoolDiscriminatorsOnCompletion: async () => {},
+}));
+mock.module('../questioner/recovery.shared', () => ({
+  maybeEnqueueIntentRecovery: async () => {},
 }));
 
 afterAll(() => {
   mock.restore();
 });
 
-import { FromIntentQueue, QUEUE_NAME, type FromIntentJobData, type FromIntentDatabase, type FromIntentDeps, type FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
-import { summarizeOpportunityDiscoveryResult } from '../opportunity/discovery.shared';
+import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+
+const { FromIntentQueue, QUEUE_NAME } = await import('../opportunity/from-intent.queue');
+const { summarizeOpportunityDiscoveryResult } = await import('../opportunity/discovery.shared');
 
 type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
 
@@ -181,14 +198,37 @@ describe('FromIntentQueue', () => {
       });
     });
 
+    it('discover: invokes recovery only after successful exact-intent completion', async () => {
+      const order: string[] = [];
+      const recoverAfterCompletion = mock(async () => { order.push('recover'); });
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({
+            id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
+            status: 'ACTIVE' as const, archivedAt: null,
+          }),
+        }),
+        invokeOpportunityGraph: async () => { order.push('discover'); },
+        minePoolDiscriminators: () => { order.push('pool'); },
+        recoverAfterCompletion,
+      });
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      expect(recoverAfterCompletion).toHaveBeenCalledWith({
+        source: 'from_intent', recipientUserId: 'u1', intentId: 'i1',
+      });
+      expect(order).toEqual(['discover', 'recover', 'pool']);
+    });
+
     it('discover: does NOT fire the pool-mining hook when the intent is missing', async () => {
       const minePoolDiscriminators = mock((_trigger: unknown) => {});
+      const recoverAfterCompletion = mock(async () => {});
       const db = {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
       };
-      const queue = new FromIntentQueue({ database: asDb(db), minePoolDiscriminators });
+      const queue = new FromIntentQueue({ database: asDb(db), minePoolDiscriminators, recoverAfterCompletion });
       await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
       expect(minePoolDiscriminators).not.toHaveBeenCalled();
+      expect(recoverAfterCompletion).not.toHaveBeenCalled();
     });
 
     it('discover: stamps first-discovery success after the graph completes', async () => {
@@ -222,16 +262,37 @@ describe('FromIntentQueue', () => {
         throw new Error('graph failed');
       });
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const recoverAfterCompletion = mock(async () => {});
       const queue = new FromIntentQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
           markIntentFirstDiscoverySucceeded,
         }),
         invokeOpportunityGraph,
+        recoverAfterCompletion,
       });
 
       await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
         .rejects.toThrow('graph failed');
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
+      expect(recoverAfterCompletion).not.toHaveBeenCalled();
+    });
+
+    it('discover: does not stamp when assignment disappears after the graph completes', async () => {
+      const markIntentFirstDiscoverySucceeded = mock(async () => {});
+      const getNetworkIdsForIntent = mock()
+        .mockResolvedValueOnce(['idx1'])
+        .mockResolvedValueOnce([]);
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent,
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('stamp precondition failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
 
@@ -276,6 +337,33 @@ describe('FromIntentQueue', () => {
         newCandidates: null,
       });
       expect(callOrder).toEqual(['discover', 'mine-start', 'mine-end', 'narrate']);
+    });
+
+    it('runs recovery exactly once before a pool-answer narration failure propagates', async () => {
+      const callOrder: string[] = [];
+      const recoverAfterCompletion = mock(async () => { callOrder.push('recover'); });
+      const minePoolDiscriminators = mock(async () => { callOrder.push('mine'); });
+      const narratePoolRerun = mock(async () => {
+        callOrder.push('narrate');
+        throw new Error('narration failed');
+      });
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({
+            id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
+          }),
+        }),
+        invokeOpportunityGraph: async () => { callOrder.push('discover'); },
+        recoverAfterCompletion,
+        minePoolDiscriminators,
+        narratePoolRerun,
+      });
+
+      await expect(queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', trigger: 'pool_answer',
+      })).rejects.toThrow('narration failed');
+      expect(recoverAfterCompletion).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(['discover', 'recover', 'mine', 'narrate']);
     });
 
     it('forwards every assigned active network through deterministic indexScope', async () => {

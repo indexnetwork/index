@@ -338,6 +338,74 @@ describe('persistOpportunities', () => {
       .toBe('Intent-scoped dedup trigger must match network eligibility');
   });
 
+  it('replaces evaluator and enriched stale owner intents with the authorized trigger', async () => {
+    const triggerIntentId = 'af813171-6ca6-4ca3-8a2e-b8b48471acd2';
+    const staleIntentId = 'af813171-6ca6-4ca3-8a2e-b8b48441acd2';
+    const counterpartIntentId = 'counterpart-intent';
+    const existing = makeOpportunity({
+      id: 'opp-existing-stale-intent',
+      detection: {
+        source: 'opportunity_graph',
+        timestamp: new Date().toISOString(),
+        triggeredBy: triggerIntentId,
+      },
+      actors: [
+        { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: staleIntentId },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent', intent: counterpartIntentId },
+      ] as never,
+      interpretation: {
+        category: 'collaboration', reasoning: 'Existing match reasoning', confidence: 0.8, signals: [],
+      },
+    });
+    let persisted: CreateOpportunityData | undefined;
+    let receivedExpireIds: string[] | undefined;
+    const database: PersistOpportunityDatabase = {
+      findOpportunitiesByActors: async () => [existing],
+      createOpportunity: async () => makeOpportunity(),
+      updateOpportunityStatus: async () => {},
+      persistIntentScopedOpportunityIfNetworkEligible: async (data, expireIds) => {
+        persisted = data;
+        receivedExpireIds = expireIds;
+        return { created: makeOpportunity({ id: 'opp-rebound', actors: data.actors }), expired: [existing] };
+      },
+    };
+    const item = makeCreateData({
+      detection: {
+        source: 'opportunity_graph',
+        timestamp: new Date().toISOString(),
+        triggeredBy: triggerIntentId as never,
+      },
+      actors: [
+        { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: staleIntentId },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent', intent: counterpartIntentId },
+      ] as never,
+    });
+
+    const result = await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [item],
+      networkEligibility: {
+        ownerUserId: 'user-1',
+        allowedNetworkIds: ['net-1'],
+        triggerIntentId,
+      },
+      intentDedupScope: { triggerIntentId, dedupWindowMs: 30 * 24 * 60 * 60 * 1000 },
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.created.map((opportunity) => opportunity.id)).toEqual(['opp-rebound']);
+    expect(receivedExpireIds).toEqual(['opp-existing-stale-intent']);
+    expect(persisted?.actors.filter((actor) => actor.userId === 'user-1')).toEqual([{
+      networkId: 'net-1',
+      userId: 'user-1',
+      role: 'patient',
+      intent: triggerIntentId,
+    }]);
+    expect(persisted?.actors.some((actor) => actor.intent === staleIntentId)).toBe(false);
+    expect(item.actors[0]?.intent).toBe(staleIntentId);
+  });
+
   it('uses the owned-intent atomic boundary and returns typed final conflicts', async () => {
     const existingCreatedAt = new Date(Date.now() - 60_000);
     let atomicCalls = 0;

@@ -8,6 +8,7 @@ import { artifacts, tasks } from '../../schemas/database.schema';
 
 import { ConversationService } from '../conversation.service';
 import { TaskService } from '../task.service';
+import type { ConversationDatabaseAdapter } from '../../adapters/database.adapter';
 
 const conversationService = new ConversationService();
 const taskService = new TaskService();
@@ -25,6 +26,24 @@ afterAll(async () => {
 }, 30000);
 
 describe('ConversationService', () => {
+  it('uses the agent participant and negotiation projection for negotiations', async () => {
+    let received: [string, string | undefined, boolean | undefined] | undefined;
+    const service = new ConversationService({
+      getConversationsForUser: async (
+        participantId: string,
+        viewerUserId?: string,
+        includeNegotiationLifecycle?: boolean,
+      ) => {
+        received = [participantId, viewerUserId, includeNegotiationLifecycle];
+        return [];
+      },
+    } as unknown as ConversationDatabaseAdapter);
+
+    await service.getAgentConversations('owner-1');
+
+    expect(received).toEqual(['agent:owner-1', 'owner-1', true]);
+  });
+
   it('creates conversation and sends message', async () => {
     const conv = await conversationService.createConversation([
       { participantId: 'svc-user-1', participantType: 'user' as const },

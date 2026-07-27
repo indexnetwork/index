@@ -18,7 +18,7 @@ const EXPECTED_TOOLS = [
   "read_network_memberships",
   "read_pending_questions",
   "list_opportunities",
-  "report_agent_activity",
+  "read_activity_summary",
 ] as const;
 
 const FORBIDDEN_FAMILY_TOOLS = [
@@ -103,7 +103,7 @@ describe("REPORTER_PERSONA", () => {
   it("keeps exactly allowlisted tools from a shared registry", () => {
     const registry = [...EXPECTED_TOOLS, ...FORBIDDEN_FAMILY_TOOLS, "read_docs"]
       .map((name) => ({ name }));
-    expect(filterReporterTools(registry).map((candidate) => candidate.name)).toEqual(EXPECTED_TOOLS);
+    expect(filterReporterTools(registry).map((candidate) => candidate.name)).toEqual([...EXPECTED_TOOLS]);
   });
 
   it("admits none of the forbidden negotiation, mutation, discovery, or memory families", () => {
@@ -124,7 +124,7 @@ describe("REPORTER_PERSONA", () => {
       iteration: 1,
       currentMessage: REPORTER_BRIEFING_KICKOFF,
     } as never);
-    expect(briefing).toContain("Call report_agent_activity first");
+    expect(briefing).toContain("Call read_activity_summary first");
     expect(briefing).toContain("what did you do today?");
   });
 
@@ -155,7 +155,7 @@ describe("REPORTER_PERSONA", () => {
     }
     expect(isReporterActionConfirmation("yes, what happened today?", true)).toBe(false);
     expect(followUp).toContain("answer only the user's current request");
-    expect(followUp).toContain("Do not call report_agent_activity or propose_cleanup_actions");
+    expect(followUp).toContain("Do not call read_activity_summary or propose_cleanup_actions");
     expect(buildReporterSystemContent(context(), { iteration: 1, currentMessage: "yes" } as never))
       .not.toContain("visible proposal card's Confirm control");
     expect(followUp).toContain("visible proposal card's Confirm control");

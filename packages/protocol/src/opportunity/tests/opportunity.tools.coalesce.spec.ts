@@ -222,4 +222,60 @@ describe('discover_opportunities — MCP run coalescing', () => {
     expect(runStore.createCalls).toBe(2);
     expect(queue.enqueueCalls).toBe(2);
   });
+
+  // ── IND-592: coalescing is partitioned by the calling principal ────────────
+  //
+  // A single user can drive both a session-human principal (no agentId) and one
+  // or more agent principals over MCP. An identical normalized request + scope
+  // must NOT coalesce across principals, or one principal would be handed
+  // another principal's in-flight run id (and, via get_discovery_run, its
+  // status/results).
+
+  test('the same request from an agent does NOT coalesce onto the human owner\u2019s run', async () => {
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    // Human owner (no agentId) starts a run.
+    const human = parseToolResult(
+      await tool.handler({ context: makeContext({}), query: { searchQuery: 'AI engineers' } }),
+    );
+    // An agent under the SAME user fires the identical request.
+    const agent = parseToolResult(
+      await tool.handler({
+        context: makeContext({ agentId: 'agent-1' }),
+        query: { searchQuery: 'AI engineers' },
+      }),
+    );
+
+    expect(agent.data!.coalesced).toBeUndefined();
+    expect(agent.data!.discoveryRunId).not.toBe(human.data!.discoveryRunId);
+    expect(runStore.createCalls).toBe(2);
+    expect(queue.enqueueCalls).toBe(2);
+  });
+
+  test('two distinct agents under one user do NOT coalesce onto each other\u2019s run', async () => {
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    const a1 = parseToolResult(
+      await tool.handler({ context: makeContext({ agentId: 'agent-1' }), query: { searchQuery: 'AI engineers' } }),
+    );
+    const a2 = parseToolResult(
+      await tool.handler({ context: makeContext({ agentId: 'agent-2' }), query: { searchQuery: 'AI engineers' } }),
+    );
+
+    expect(a2.data!.coalesced).toBeUndefined();
+    expect(a2.data!.discoveryRunId).not.toBe(a1.data!.discoveryRunId);
+    expect(runStore.createCalls).toBe(2);
+
+    // The SAME agent repeating its request still coalesces onto its own run.
+    const a1Again = parseToolResult(
+      await tool.handler({ context: makeContext({ agentId: 'agent-1' }), query: { searchQuery: 'AI engineers' } }),
+    );
+    expect(a1Again.data!.coalesced).toBe(true);
+    expect(a1Again.data!.discoveryRunId).toBe(a1.data!.discoveryRunId);
+    expect(runStore.createCalls).toBe(2);
+  });
 });

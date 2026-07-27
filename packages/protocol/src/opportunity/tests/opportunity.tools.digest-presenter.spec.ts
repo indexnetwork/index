@@ -9,7 +9,17 @@ import type { PresenterDatabase } from '../opportunity.presenter.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 
-let presentHomeCardMock = mock(async () => ({
+type PresentedHomeCard = {
+  headline: string;
+  personalizedSummary: string;
+  digestSummary: string;
+  suggestedAction: string;
+  narratorRemark: string;
+  mutualIntentsLabel: string | undefined;
+  greeting: string;
+};
+
+let presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => ({
   headline: 'Test Headline',
   personalizedSummary: 'Test personalized summary.',
   digestSummary: 'You might like meeting Alice because she matches your current interests.',
@@ -144,7 +154,8 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
     } as unknown as ToolDeps["graphs"],
     opportunityPresentation: {
       createPresenter: () => ({ presentHomeCard: (input: unknown) => presentHomeCardMock(input) }),
-      gatherPresenterContext: (...args: unknown[]) => gatherPresenterContextMock(...args),
+      gatherPresenterContext: (database: PresenterDatabase, opportunity: Opportunity, viewerId: string) =>
+        gatherPresenterContextMock(database, opportunity, viewerId),
     },
     ...overrides,
   } as ToolDeps;
@@ -187,7 +198,7 @@ describe('list_opportunities digest presenter path', () => {
     candidateOpps = [makeOpp('opp-chat', 'c-chat')];
     getUser = mock(async (userId?: string) => ({ id: userId ?? testUserId, name: userId === 'c-chat' ? 'Chris' : 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Chris', bio: '', location: '' }, userId: 'c-chat' }) as unknown as UserIdentity | null);
-    presentHomeCardMock = mock(async () => ({
+    presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => ({
       headline: 'Meet Chris',
       personalizedSummary: 'Chris is a strong fit for your current search.',
       digestSummary: 'Digest text should not be used for regular chat.',
@@ -235,7 +246,7 @@ describe('list_opportunities digest presenter path', () => {
       updatedAt: new Date(),
     };
     // Capture the presenter input so we can assert negotiationContext threading.
-    presentHomeCardMock = mock(async () => ({
+    presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => ({
       headline: 'Test Headline',
       personalizedSummary: 'Agents agreed you both want to ship privacy tooling.',
       digestSummary: 'You might like meeting Carol because your agents agreed on shared privacy-tooling goals.',
@@ -278,7 +289,7 @@ describe('list_opportunities digest presenter path', () => {
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as unknown as UserIdentity | null);
 
-    presentHomeCardMock = mock(async () => {
+    presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => {
       throw new Error('Presenter failed');
     });
 

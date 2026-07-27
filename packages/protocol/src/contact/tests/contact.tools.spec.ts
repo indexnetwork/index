@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
 import { createContactTools } from "../contact.tools.js";
-import type { ResolvedToolContext } from "../tool.helpers.js";
+import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 // ─── Minimal context stub ─────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ const context: ResolvedToolContext = {
   user: { id: userId, name: 'Test User', email: 'test@example.com' } as never,
   userProfile: null,
   userNetworks: [],
+  indexScope: [],
   isOnboarding: false,
   hasName: true,
 };
@@ -96,7 +97,8 @@ describe('createContactTools - import_contacts', () => {
     const result = await call('import_contacts', { contacts: [] }) as { success: boolean; error: string };
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('DB failure');
+    expect(result.error).toBe('Failed to import contacts. Please try again.');
+    expect(result.error).not.toContain('DB failure');
   });
 });
 
@@ -184,7 +186,8 @@ describe('createContactTools - add_contact', () => {
     const result = await call('add_contact', { email: 'x@x.com' }) as { success: boolean; error: string };
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Already exists');
+    expect(result.error).toBe('Failed to add contact. Please try again.');
+    expect(result.error).not.toContain('Already exists');
   });
 });
 
@@ -212,6 +215,7 @@ describe('createContactTools - remove_contact', () => {
     const result = await call('remove_contact', { contactUserId: 'ghost' }) as { success: boolean; error: string };
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Not found');
+    expect(result.error).toBe('Failed to remove contact. Please try again.');
+    expect(result.error).not.toContain('Not found');
   });
 });

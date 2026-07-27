@@ -37,6 +37,8 @@ packages/protocol/src/
   agent/            Agent registry tools
   chat/             Chat graph, state, tools, streamers
   contact/          Contact tools
+  context/          User-context generation
+  enrichment/       Enrichment graph, identity generation, tools
   integration/      Integration tools
   intent/           Intent graph, state, inferrer, reconciler, verifier, tools
   maintenance/      Maintenance graph and helpers
@@ -47,12 +49,14 @@ packages/protocol/src/
     membership/       Network membership graph
   opportunity/      Opportunity graph, evaluator, introducer, presenter
     feed/             Home feed graph and health scoring
-  enrichment/       Enrichment graph, generator, tools
+  premise/          Premise graph, analysis, indexing, tools
+  questioner/       Mode-driven decision-question generation
   shared/
-    agent/            model.config.ts, utility tools
-    hyde/             HyDE graph, generator, strategies
+    agent/            model config, tool runtime, response streaming
+    hyde/             HyDE graph, generator, lens inference, validation
     interfaces/       Adapter contracts (Database, Embedder, Cache, Queue, Scraper, Storage)
-  docs/             Design papers
+    schemas/          Shared Zod contracts
+    observability/    Logging, timing, tracing, debug-meta sanitization
 ```
 
 ## 2. LangGraph Fundamentals
@@ -110,7 +114,7 @@ The chat graph is architecturally simple: a single node that delegates all compl
 
 The graph supports streaming via `config.writer()` so text tokens and tool-activity events are pushed to the client in real-time rather than batched at the end. Error handling includes one retry for retriable errors (5xx, connection resets).
 
-The runtime is persona-neutral: `ChatGraphFactory.withPersona()` reuses the same graph and injected dependencies while selecting a persona-owned prompt, toolset, and loop behaviors. Persisted `conversations.persona` is authoritative for follow-up turns. The main-web Signal Agent persona (`signal`) uses a positive allowlist limited to intent/signal management, intent-to-existing-community assignment, profile context and premise knowledge, read-only network/membership context, pasted-URL scraping, and chat clarification. Its wrappers live-recheck membership, clamp intent/network-focused reads to owned active intents and current memberships, prohibit other-user membership enumeration, and keep creation proposal-only; confirmed network assignment rechecks and locks membership in the same transaction as intent/assignment insertion. It has no opportunity/discovery-run, negotiation, contact/import, agent-administration, network-administration, or membership-mutation tools. Its discovery-coupled create-intent callback is disabled while proposal hallucination recovery remains enabled. Session-authenticated compatibility chat routes are classified as web from authenticated provenance, while API-key and other non-web consumers retain the default `orchestrator` runtime.
+The runtime is persona-neutral: `ChatGraphFactory.withPersona()` reuses the same graph and injected dependencies while selecting a persona-owned prompt, toolset, and loop behaviors. Persisted `conversations.persona` is authoritative for follow-up turns. The main-web Signal Agent persona (`signal`) uses a positive allowlist limited to intent/signal management, intent-to-existing-community assignment, profile context and premise knowledge, read-only network/membership context, pasted-URL scraping, and chat clarification. Its wrappers live-recheck membership, clamp intent/network-focused reads to owned active intents and current memberships, prohibit other-user membership enumeration, and keep creation proposal-only. Before a proposal card is emitted, the protocol persists an owner-scoped 24-hour record through the injected `IntentProposalStore`; it binds the normalized description, optional network, and complete verifier output. Confirmation treats card fields only as exact-match assertions, locks that record and current membership, maps the verifier output directly to the intent analysis columns, and atomically inserts the intent/assignment plus consumes the proposal. The transaction winner obtains observable indexing-queue admission before question/event effects; a later exact consumed-proposal retry can repair failed admission idempotently, while concurrent losers never duplicate those downstream effects. It has no opportunity/discovery-run, negotiation, contact/import, agent-administration, network-administration, or membership-mutation tools. Its discovery-coupled create-intent callback is disabled while proposal hallucination recovery remains enabled. Session-authenticated compatibility chat routes are classified as web from authenticated provenance, while API-key and other non-web consumers retain the default `orchestrator` runtime.
 
 Under the same `WEB_SIGNAL_AGENT_ENABLED` cutover, the session-only incomplete-user route persists a separate `onboarding` persona. Its exact allowlist is consent recording, self context read/preview/confirmation, blocking guided questions, proposal-only intent creation with Signal's live-membership narrowing, and validated onboarding completion. It cannot import Gmail/contacts, discover or mutate opportunities, negotiate, select or join communities, mutate memberships, administer agents/networks, scrape arbitrary URLs, or receive newly registered shared tools automatically. `confirm_user_context` writes the durable `profileConfirmedAt`/`currentStep='first_signal'` marker while preserving privacy JSON. `complete_onboarding({ intentId })` requires a valid marker plus an exact active owned first signal created at or after profile confirmation, then durably records `firstSignalIntentId`, `currentStep='complete'`, and `completedAt`. Flag-off onboarding continues to use the legacy orchestrator prompt/tool flow; API-key and other non-web consumers are unchanged. Compatibility histories remain orchestrator-only, and the session-only web history returns readable legacy orchestrator plus Signal sessions.
 
@@ -136,7 +140,7 @@ Under the same `WEB_SIGNAL_AGENT_ENABLED` cutover, the session-only incomplete-u
 | DELETE | prep -> reconciler -> executor -> END |
 | PROPOSE | prep -> inference -> verification -> END |
 
-The propose mode is a dry-run that extracts and verifies intents without persisting, used when the chat agent wants to preview what intents would be created.
+The propose mode is a dry-run that extracts and verifies intents without persisting, used when the chat agent wants to preview what intents would be created. Broad actionable candidates retain specificity-warning metadata and may be approved by the user. Explicit update mode uses the same breadth validity semantics, then deterministically binds its single verified candidate to the single supplied active owned intent ID; it does not delegate create-versus-update selection to the general reconciler. Non-actionable or vague candidates, ambiguous inference, and target/ownership boundary failures remain fail-closed and are returned as distinct failure categories.
 
 **Dependencies:** `IntentGraphDatabase`, `EmbeddingGenerator`, `IntentGraphQueue`
 
@@ -309,6 +313,16 @@ The health scorer considers connection count, connector flow count, expired coun
 
 The graph creates an A2A conversation, alternates between proposer and responder agents, and records each turn as a message with structured data parts. The finalize node determines whether an opportunity was produced, computes agreed roles and average fit score, then persists the outcome as an artifact.
 
+Autonomous opportunity negotiation builds each participant context from the
+opportunity's exact actor-intent binding. `NEGOTIATION_INCLUDE_OTHER_INTENTS`
+defaults to `true`, preserving the exact-first bounded fallback of up to five
+active intents per participant. With the strict value `false`, only an owned
+exact bound intent is admitted; an actor without an exact binding receives no
+unrelated fallback. This pruning happens before the outreach screen,
+negotiator, dispatcher/polling context, persisted `turnContext`, and intent
+snapshot derivation. Personal negotiator chat keeps its explicit authenticated
+`read_intents` capability unchanged.
+
 **Dependencies:** `NegotiationGraphDatabase`, proposer agent, responder agent
 
 ### 3.12 Premise Graph
@@ -327,7 +341,7 @@ The analyze node classifies the premise using speech act theory and scores felic
 
 ## 4. Agent Catalog
 
-All agents live in `packages/protocol/src/agents/`. They are pure (no direct DB access) and use `createModel()` from `model.config.ts` for LLM configuration.
+Agents live alongside their feature graphs (for example `chat/`, `intent/`, `opportunity/`, and `negotiation/`) or in `shared/`. They are pure (no direct DB access) and use `createModel()` from `shared/agent/model.config.ts` for LLM configuration.
 
 ### 4.1 ChatAgent
 
@@ -501,15 +515,23 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **File:** `questioner/questioner.agent.ts`
 **Role:** Generates structured questions to elicit missing information from users. Uses mode-specific presets (system prompt + builder) to produce up to 3 questions per invocation.
 **Model:** `google/gemini-2.5-flash`
-**Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `enrichment` | `negotiation` | `chat`), userId, sourceType/sourceId, and mode-specific context
+**Input:** `QuestionerInput` envelope with mode (`discovery` | `intent` | `enrichment` | `negotiation` | `negotiation_inflight` | `chat` | `pool_discovery`), userId, sourceType/sourceId, optional private purpose (`uptake` | `recovery` | `stalled_followup` | `inflight_consultation`), and mode-specific context
 **Output:** Array of `QuestionWithStrategy` (title, prompt, options, multiSelect, strategy)
 **Used by:** QuestionerQueue worker (async, behind `QUESTIONER_ENABLED` flag) and the `ask_user_question` chat tool (synchronous, inline)
-**Presets:** `discovery`, `intent`, `enrichment`, `negotiation`, `chat` — each provides a mode-specific system prompt and context builder. The `chat` preset refines orchestrator-authored draft questions (hybrid authoring) grounded in a recent conversation excerpt and the user's global context.
-**Attachment points:** Intent graph (after creation), enrichment graph (when gaps detected), negotiation graph (after stall/turn-cap). All fire-and-forget via `questionerEnqueue` callback injection. The enrichment attachment point fetches active premises via `getPremisesForUser` and passes their texts as `existingPremises` in the `ProfileContext`, so the LLM skips domains already covered by a premise.
+**Presets:** `discovery`, creation-time `intent`, recovery-purpose `intent`, `enrichment`, `negotiation`, `negotiation_inflight`, `chat`, and deterministic `pool_discovery`. The `chat` preset refines orchestrator-authored drafts grounded in the user's own context. Negotiation queue inputs are runtime-discriminated by mode+purpose. Inflight accepts only deterministically validated structured `askUser` fields (never turn/reasoning fallbacks), uptake uses a neutral fixed activity prompt, and every visible generated field passes a final fail-closed safety gate before persistence. Raw counterparty profile/identity/intent, private transcript, evaluator reasoning, match reason, event/community inference, evidence, and internal IDs never enter negotiation Questioner context or public copy.
+**Attachment points:** Intent graph (after creation), enrichment graph (when gaps detected), negotiation graph (after stall/turn-cap or mid-turn `ask_user`), the pending-opportunity uptake guard, and the post-discovery no-opportunity recovery hook. IND-508's centralized `NEGOTIATION_CONSULTATION_POLICY_MODE` is default-off; `shadow` evaluates a pure action/role/history eligibility policy and emits only stable category telemetry, while `on` also requires `NEGOTIATION_ASK_USER_ENABLED` and replaces an eligible draft with a fixed source-safe `ask_user` input before the ordinary question safety/binding/timer/persistence path. The policy cannot read free-form private material and a consultation remains exactly recipient-seat/task scoped. All queued producers use `questionerEnqueue`; trigger frequency is unchanged and purpose-specific cardinality remains ≤2 ordinary/inflight, ≤1 uptake, and ≤1 recovery per fingerprint. OpportunityGraph threads explicit source/candidate opportunity actor intent IDs into NegotiationGraph and task metadata instead of relying on intent-array ordering. The enrichment attachment point fetches active premises via `getPremisesForUser` and passes their texts as `existingPremises` in the `ProfileContext`, so the LLM skips domains already covered by a premise. The direct REST `OpportunityService` graph intentionally remains without a negotiation graph, exactly as on the IND-507 base; widening that pre-existing route is out of scope.
 
 **Blocking chat questions (`ask_user_question`).** The chat orchestrator carries a chat-only `ask_user_question` tool (`questioner/questioner.ask.tool.ts`, registered by `createChatTools` only when the host injects a `ChatQuestionsHost` bridge — never in the MCP registry). Mirroring the AskUserQuestion human-in-the-loop pattern: the model states a `purpose` plus optional draft questions; the QuestionerAgent's `chat` preset polishes them synchronously; the tool persists them (mode `chat`, `conversationId = sessionId`), streams a `user_question` SSE event carrying the persisted ids, and then **blocks the turn** on the host's `awaitAnswers` (in-memory per-question wait bus, `services/api/src/lib/chat-question.events.ts` — same single-instance semantics as the steer/queue interrupt emitter). Answers submitted through `POST /api/questions/:id/answer` resolve the bus via `QuestionEvents.onAnswered` (mode `chat` handler); dismissals resolve via the new `QuestionEvents.onDismissed`. The answer endpoint reports `resumed: true` when a waiter consumed the answer. On timeout (`QUESTIONER_CHAT_WAIT_TIMEOUT_MS`, default 4 min — kept under the tool runtime's `interactive` class timeout `MCP_TOOL_TIMEOUT_INTERACTIVE_MS`, default 5 min) the questions stay `pending`, render via the conversation-linked inline fetch, and a later answer re-enters the chat as a new user turn (frontend behavior, gated on `resumed === false`). While blocked, the tool emits `status` heartbeats every 15 s so SSE transports (Bun `idleTimeout: 60`) do not idle out.
 
-**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Pending questions are injected into `discover_opportunities` tool results via `mergePendingQuestions` (max 3 per source, deduplicated per session via a local Set in the ChatAgent). The frontend polls `GET /api/questions?status=pending` every 30s and displays a sidebar badge + dropdown. When a user answers, `QuestionEvents.onAnswered` dispatches to mode-specific handlers: enrichment answers create premises (tier=contextual, confidence=0.9), intent answers re-run the intent graph in `update` mode (same path as the chat `update_intent` tool) so the reconciler merges the answer into the description naturally — the graph handles verification, sanitization, re-embedding, and HyDE regeneration; a vague answer that fails verification leaves the intent untouched, negotiation answers enrich `opportunities.metadata.userAnswers`, and discovery answers are no-ops. Empty answers (no selected options and no free text) are guarded against at the handler level. When a negotiation continuation resumes, the init node reads `userAnswers` back from the opportunity via `NegotiationQueries.getOpportunityUserAnswers` and injects them into the agent prompt so the negotiator sees between-session context.
+**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Negotiation-family rows additionally carry internal `detection.negotiation` provenance (version, purpose, exact recipient+intent+opportunity+network, exact task when applicable, canonical intent fingerprint, and capture-time opportunity/task markers). `QuestionerAdapter` admits the candidate before generation and revalidates under one canonical lock order: exact-task advisory lock → complete question cohort ordered by ID → intent/assignment/membership/network/opportunity/task. `questions_negotiation_provenance_uniq` makes retries idempotent across statuses without reducing cardinality. Public REST/MCP serialization strips the envelope, purpose, server session binding, lifecycle markers, fingerprints, and actor network IDs.
+
+Pending negotiation rows are freshness-validated on scoped and unscoped reads and counts; legacy/stale/unsafe rows fail closed, so the global pending-ID revision changes on lifecycle drift. Answered inflight history uses a separate validator: current exact recipient ownership/fingerprint/network/opportunity actor binding remains mandatory, while the exact canceled task and its own answer/dismiss settlement may tolerate the expected continuation-driven opportunity transition.
+
+Answer, dismiss, and timeout use the same exact-task settlement protocol. The task metadata is the durable outbox (`questionSettlement`): it records a deterministic settlement ID and `requested|completed` continuation status in the settlement transaction. The original timeout remains armed as recovery even if no question row was generated/persisted or the first Redis enqueue fails. `negotiation-run-existing` uses a deterministic job ID, validates the exact settled task, passes the task+settlement correlation through OpportunityGraph/NegotiationGraph, and idempotently creates or reuses only that settlement's successor under an advisory lock—never a latest task. Bull/process retries resume a submitted/working successor and terminal successors make redelivery a no-op. Uptake answers remain private; ordinary follow-up retains the established shared metadata channel.
+
+MCP/chat/direct `answer_pending_question` composition now injects the same canonical validated answer boundary as REST. The authenticated principal is server-derived; intent visibility is clamped and network-scoped keys are rejected before the host bridge. Internal provenance is never projected.
+
+The application-wide 30-second no-conversation/non-pool poll remains the only permanent poller. Its stable pending-ID revision is an invalidation signal; a mounted intent workspace performs one passive exact-intent pending+answered refetch when it changes. `passive=true` cannot trigger visit-time pool mining. Exact server-proven Personal Agent message/session scope is required for an anchor; otherwise pending and answered cards use deterministic trailing placement. The single mounted `IntentNegotiatorChat` and responsive drawer/region behavior are unchanged.
 
 **Proactive pool-question delivery (IND-421).** Both initial and answer-chained `pool_discovery` producers pass through `persistPoolQuestion` and its injected post-persist enqueue. `PoolQuestionPushQueue` is a dedicated retryable BullMQ worker with settled-job removal and a colon-free deterministic job ID. With `POOL_QUESTIONS_PUSH=on`, pool-question mode on, negotiator chat enabled, and a personal negotiator available, `QuestionerAdapter.claimPoolQuestionPush` takes a per-recipient advisory transaction lock plus question/intent row locks, then enforces lifecycle, strict VoI decay, pool ≥8, explicit `intents.lastVisitedAt`, cycle uniqueness, and the two-claims-per-UTC-day cap. Claim metadata is internal; only successful delivery stamps `detection.pushedAt`.
 
@@ -518,6 +540,10 @@ Delivery resolves `ChatSessionService.resolveNegotiatorSession(userId, 'Personal
 **Pool drift lifecycle (IND-422).** The queued/chained final persist gate re-reads the exact recipient+intent pool and normalized payload+summary fingerprint. Persistence proceeds only when the fingerprint is unchanged and pool Jaccard is at least the shared inclusive `0.7` threshold; otherwise no question row, push enqueue, or dismissal is produced. Discovery completion uses the same comparison to system-void pending drifted rows with `detection.voidedReason='pool_drift'`. Voided rows are excluded from rendering, push admission, counts, dismissal decay, and novelty suppression. MODE-on mining also skips when the latest durable non-voided snapshot has the same fingerprint and sufficient pool overlap; independently gated shadow-only mining has no durable cadence anchor. The same `0.7` threshold governs P3 retained-assignment admission.
 
 Material normalized payload/summary edits void stale pending questions, allow a previously answered axis once under the new fingerprint, and mark exact recipient+intent `poolAdjustments` as `stale: true`. Stale adjustments remain for audit but are excluded from ranking and demotion; legacy unscoped or malformed entries are preserved. `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_STAMP_NEWBORN`, and `POOL_QUESTIONS_RANKING` remain independent gates, and the seven-day question TTL is unchanged.
+
+**Post-discovery intent recovery (IND-506).** Successful authoritative from-intent discovery and succeeded exact-intent asynchronous runs call one failure-isolated completion hook, which enqueues a privacy-minimal job on the existing Questioner worker under the existing master gate. `IntentRecoveryRefinementService` requires an exact active owned intent, rejects any canonical recipient-visible actionable exact-trigger opportunity, and invokes the recovery-purpose intent preset with only payload/summary, stored global owner context, and an optional bounded aggregate rejected-negotiation count. The aggregate is admitted only after bilateral participants, capture-time intent fingerprint, completed task, task/actor network provenance, and one `hasOpportunity=false` outcome artifact validate; raw opportunity/task/artifact text and IDs never reach generation or persistence.
+
+Recovery rows remain ordinary `mode='intent'` questions. `detection.purpose='recovery'` and the versioned fingerprint/completion snapshot are private and stripped from REST. Final recovery persistence, owned exact-trigger opportunity creation, and exact-trigger reactivation take the same recipient+intent advisory lock. Reactivation additionally takes the negotiation-attempt lock, row-locks and re-reads the opportunity, and applies the same canonical fresh/active task predicate used by negotiation claims immediately before mutation, so either a committed task suppresses reactivation or the later old-version claim fails. Recovery then rechecks lifecycle/fingerprint/exact-trigger actionability and relies on migration `0105`'s recipient+intent+fingerprint expression unique index across all statuses and expiry states. Every generated visible string (title, prompt, option labels, and descriptions) is rejected on process/evidence narration after Unicode quote normalization. Material edits void stale pending rows. Recovery answers use advisory→intent-row→question-row ordering, atomically recheck owner/lifecycle/fingerprint before pending→answered, emit no reaction when voided, and carry the expected fingerprint plus owner through the answer-only graph to a final locked intent update that also requires active/non-archived lifecycle; valid answers use the unchanged intent-update/HyDE/rediscovery path. Recovery rows are excluded from pool pending budgets, so pool questions retain independent cadence and novelty.
 
 ## 5. Chat Tool System
 
@@ -602,7 +628,7 @@ Every registered tool goes through the same lifecycle on every call:
 1. Extract the HTTP request from `ServerContext.http.req`.
 2. Resolve `{ userId, agentId }` via the auth resolver.
 3. Build the `ResolvedToolContext`, set `isMcp = true` and attach `agentId`.
-4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`, `scrape_url`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first.
+4. Run the agent-registration gate: unless the tool is on the exempt list (`register_agent`, `read_docs`), a missing `agentId` produces an `Agent not registered` error that tells the caller to register first. (`scrape_url`, contact/Gmail tools, and the deprecated profile/profile-run aliases are omitted from the MCP surface entirely; they remain on the direct HTTP Tool API and chat.)
 5. Build per-request scoped databases via `scopedDepsFactory` and rebuild the tool registry with them.
 6. Validate arguments against the tool's original Zod schema.
 7. Invoke the raw tool handler through `ToolInvocationRuntime`, which attaches a shared `AbortSignal`, wall-clock deadline, trace/progress bridge, and output-size cap.
@@ -897,7 +923,7 @@ Consumers: the live TRACE panel uses these to render per-candidate negotiation n
 
 ## 11. Model Configuration
 
-All LLM model settings are centralized in `packages/protocol/src/agents/model.config.ts`.
+All LLM model settings are centralized in `packages/protocol/src/shared/agent/model.config.ts`.
 
 ### MODEL_CONFIG registry
 

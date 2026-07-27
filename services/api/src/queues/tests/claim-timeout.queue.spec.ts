@@ -21,6 +21,7 @@ const rearm = mock(async () => undefined);
 
 function makeDb(messages: unknown[]) {
   return {
+    getTask: mock(async () => claimedTaskResult),
     transitionClaimedTaskToWorking: mock(async () => claimedTaskResult),
     getMessagesForConversation: mock(async () => messages),
     createMessage: mock(async () => ({ id: 'm-new' })),
@@ -77,6 +78,23 @@ describe('NegotiationClaimTimeoutQueue.handleClaimTimeout', () => {
 
     expect(database.transitionClaimedTaskToWorking).toHaveBeenCalledWith('task-1');
     expect(database.createMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing execution', { isContinuation: true, resumeFromTaskId: 'prior-1', continuationSettlementId: 'settlement-1' }],
+    ['malformed execution', { resumeFromTaskId: 'prior-1', continuationExecution: { status: 'claimed' } }],
+    ['wrong execution state', { continuationSettlementId: 'settlement-1', continuationExecution: { status: 'parked' } }],
+  ])('fails closed for %s continuation provenance without a current fence', async (_label, continuationMetadata) => {
+    claimedTaskResult = claimedTask({ metadata: { type: 'negotiation', sourceUserId: 'src', candidateUserId: 'cand', ...continuationMetadata } });
+    const database = makeDb([msg(), msg()]);
+
+    await makeQueue(database).processJob('negotiation_claim_timeout', data(2));
+
+    expect(database.transitionClaimedTaskToWorking).not.toHaveBeenCalled();
+    expect(database.createMessage).not.toHaveBeenCalled();
+    expect(database.updateTaskState).not.toHaveBeenCalled();
+    expect(database.createArtifact).not.toHaveBeenCalled();
+    expect(database.updateOpportunityStatus).not.toHaveBeenCalled();
   });
 
   it('skips on turn-count mismatch (stale job)', async () => {

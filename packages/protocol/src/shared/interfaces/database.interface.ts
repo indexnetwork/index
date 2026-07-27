@@ -231,6 +231,14 @@ export interface UpdateIntentData {
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
+  /**
+   * Optional compare-and-set guard for recovery-answer writes. Implementations
+   * must compare this value with the material payload+summary fingerprint while
+   * holding the final intent row lock. Omitted for ordinary intent updates.
+   */
+  expectedIntentFingerprint?: string;
+  /** Expected owner paired with the recovery-answer fingerprint guard. */
+  expectedIntentUserId?: string;
 }
 
 /**
@@ -1546,6 +1554,28 @@ export interface Database {
   ): Promise<Opportunity[]>;
 
   /**
+   * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that
+   * have at least one non-draft opportunity with `discovererId` whose `updatedAt`
+   * falls within the last `windowMs` milliseconds AND whose status is `rejected`
+   * or `stalled`. Used by the evaluation node to apply a score penalty before
+   * sending candidates to the LLM, suppressing cross-query re-surfacing of
+   * recently-rejected pairs.
+   *
+   * Optional — adapters that do not implement it return `undefined`; the graph
+   * degrades gracefully (no penalty applied, dedup persist-node guard still fires).
+   *
+   * @param discovererId - User running discovery
+   * @param candidateUserIds - Candidate user IDs to check (may be empty — return [])
+   * @param windowMs - Look-back window in milliseconds
+   * @returns Candidate user IDs (subset of input) with a recent rejected/stalled opp
+   */
+  getRecentlyRejectedOpportunityCounterparties?(
+    discovererId: string,
+    candidateUserIds: string[],
+    windowMs: number,
+  ): Promise<string[]>;
+
+  /**
    * Expire opportunities referencing an intent (e.g. when intent is archived).
    *
    * @param intentId - Intent ID to match in opportunity actors
@@ -1820,10 +1850,10 @@ export interface AgentActivitySummary {
     title: string;
     count: number;
   }>;
-  /** Current, non-expired questions waiting for the user. */
-  pendingQuestionCount: number;
-  /** Questions answered by the user during the window. */
-  questionsAnswered: number;
+  /** Current, non-expired questions waiting for the user, grouped by affected mode (QuestionMode values). Meta-network. */
+  pendingQuestionsByMode: Record<string, number>;
+  /** Questions answered by the user during the window, grouped by affected mode (QuestionMode values). Meta-network. */
+  answeredQuestionsByMode: Record<string, number>;
   /** Distinct opportunity negotiations started during the window. */
   negotiationsStarted: number;
   /** Distinct opportunity negotiations completed during the window. */
@@ -1987,8 +2017,14 @@ export interface UserDatabase {
   // Agent reporting (own activity only)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Summarize the authenticated user's own agent activity without counterparty rows. */
-  getAgentActivitySummary(input: { sinceHours: number }): Promise<AgentActivitySummary>;
+  /**
+   * Summarize the authenticated user's own agent activity without counterparty rows.
+   * When `networkId` is present (a network agent's bound community), the
+   * network-bound aggregates (opportunity and negotiation counts) are narrowed
+   * to that community inside the query; own-signal and question aggregates are
+   * meta-network and stay global.
+   */
+  getAgentActivitySummary(input: { sinceHours: number; networkId?: string }): Promise<AgentActivitySummary>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Opportunity Operations (where user is actor)
@@ -2392,6 +2428,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
+  // IND-567 Fix A: fetch candidate premise text for evaluator (prevents empty-text query_premise false-positives)
+  | 'getPremise'
   // Premise-to-premise discovery (path D)
   | 'getPremisesForUser'
   | 'getPremisesForUserInNetworks'
@@ -2403,6 +2441,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'searchIntentsByContextEmbedding'
   // HyDE documents for context-to-intent HyDE search
   | 'getHydeDocumentsForSource'
+  // IND-567: Rejection cool-down (optional — adapters may omit)
+  | 'getRecentlyRejectedOpportunityCounterparties'
 > & Pick<
   NegotiationQueries,
   // Orphan heal: check if a prior negotiating opportunity has a stale task
@@ -2413,7 +2453,7 @@ export type OpportunityGraphDatabase = Pick<
  * Negotiation-specific query operations not covered by generic
  * conversation/task primitives.
  */
-/** A user's answer to a questioner-generated question, stored on opportunity metadata. */
+/** A user's ordinary follow-up answer stored on established shared opportunity metadata. */
 export interface NegotiationUserAnswer {
   questionId: string;
   selectedOptions: string[];
@@ -2421,7 +2461,67 @@ export interface NegotiationUserAnswer {
   answeredAt: string;
 }
 
+export interface NegotiationPrivateConsultation {
+  recipientUserId: string;
+  recipientIntentId: string;
+  kind: 'answer' | 'dismiss' | 'timeout';
+  selectedOptions: string[];
+  freeText?: string;
+}
+
+export interface NegotiationContinuationExecution {
+  taskId: string;
+  settlementId: string;
+  opportunityId: string;
+  userId: string;
+  recipientIntentId: string;
+  networkId: string;
+  intentFingerprint: string;
+  opportunityStatus: string;
+  opportunityUpdatedAt: string;
+  counterpartyUserId: string;
+  counterpartyIntentId: string;
+  successorTaskId: string;
+  conversationId: string;
+  token: string;
+  fence: number;
+  leaseExpiresAt: string;
+  consultation: NegotiationPrivateConsultation;
+}
+
+export interface NegotiationContinuationReceipt {
+  priorTaskId: string;
+  settlementId: string;
+  successorTaskId: string;
+  fence: number;
+  outcome: 'accepted' | 'rejected' | 'stalled' | 'waiting_for_agent' | 'input_required';
+}
+
 export interface NegotiationQueries {
+  /** Capture canonical material binding before arming an ask-user timeout. */
+  captureNegotiationAskUserBinding(input: {
+    taskId: string;
+    turnContext: Record<string, unknown>;
+    settlementId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    continuationExecution?: NegotiationContinuationExecution;
+  }): Promise<{
+    version: 2;
+    settlementId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    intentFingerprint: string;
+    opportunityStatus: string;
+    opportunityUpdatedAt: string;
+    counterpartyUserId: string;
+    counterpartyIntentId: string;
+  }>;
+
   /**
    * Persists the full negotiation turn context (source/candidate user contexts,
    * seed assessment, index context, discovery query) onto the task metadata so
@@ -2430,7 +2530,7 @@ export interface NegotiationQueries {
    * @param taskId - Task whose metadata to enrich
    * @param turnContext - Absolute (source/candidate) view of the negotiation context
    */
-  setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void>;
+  setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
    * Merges a screen-gate decision (P2.1 shadow mode) into
@@ -2440,7 +2540,7 @@ export interface NegotiationQueries {
    * @param taskId - Task whose metadata to enrich
    * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
    */
-  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>): Promise<void>;
+  setTaskScreenDecision?(taskId: string, screenDecision: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
    * Merges an applied deadlock→bargaining shift record (IND-428) into
@@ -2451,7 +2551,7 @@ export interface NegotiationQueries {
    * @param taskId - Task whose metadata to enrich
    * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
    */
-  setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>): Promise<void>;
+  setTaskDeadlockShift?(taskId: string, deadlockShift: Record<string, unknown>, continuationExecution?: NegotiationContinuationExecution): Promise<void>;
 
   /**
    * Returns the most-recently-created task whose metadata carries
@@ -2514,6 +2614,8 @@ export type NegotiationGraphDatabase = Pick<
   updateOpportunityStatus(
     id: string,
     status: OpportunityStatus,
+    acceptedBy?: string,
+    continuationExecution?: NegotiationContinuationExecution,
   ): Promise<{ id: string; status: OpportunityStatus } | null>;
   /** Persists a negotiation turn message within a conversation. */
   createMessage(data: {
@@ -2523,6 +2625,7 @@ export type NegotiationGraphDatabase = Pick<
     parts: unknown[];
     taskId?: string;
     metadata?: Record<string, unknown> | null;
+    continuationExecution?: NegotiationContinuationExecution;
   }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
 
   /**
@@ -2541,11 +2644,24 @@ export type NegotiationGraphDatabase = Pick<
   /** Creates a generic task to track a non-attempt-bound lifecycle. */
   createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
 
+  /**
+   * Under a deterministic settlement lock, validate the exact canceled ask_user
+   * task and return its existing successor or create one. Never consults a
+   * latest-task lookup.
+   */
+  getOrCreateNegotiationContinuationTask(input: {
+    priorTaskId: string;
+    settlementId: string;
+    conversationId: string;
+    opportunityId: string;
+    metadata: Record<string, unknown>;
+  }): Promise<{ id: string; conversationId: string; state: string; created: boolean } | null>;
+
   /** Transitions a task to a new state (e.g. working, completed, failed). */
-  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<{ id: string; conversationId: string; state: string }>;
+  updateTaskState(taskId: string, state: string, statusMessage?: unknown, continuationExecution?: NegotiationContinuationExecution): Promise<{ id: string; conversationId: string; state: string }>;
 
   /** Persists a negotiation outcome artifact attached to a task. */
-  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null }): Promise<{ id: string }>;
+  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null; continuationExecution?: NegotiationContinuationExecution }): Promise<{ id: string }>;
 
   /** Lists negotiation tasks where the given user is source or candidate. */
   getTasksForUser(userId: string, options?: { state?: string }): Promise<Array<{
@@ -2585,13 +2701,21 @@ export type NegotiationGraphDatabase = Pick<
     updatedAt: Date;
   } | null>;
 
-  /** Gets all messages for a conversation, ordered by creation time. */
+  /**
+   * Gets all messages for a conversation, ordered by creation time.
+   *
+   * `taskId` is the originating negotiation task (IND-569). Optional so legacy
+   * hosts remain valid; when omitted, prior negotiation turns cannot be
+   * attributed to their opportunity and degrade to the unattributed
+   * prior-dialogue block rather than being mixed into the current opportunity.
+   */
   getMessagesForConversation(conversationId: string): Promise<Array<{
     id: string;
     senderId: string;
     role: 'user' | 'agent';
     parts: unknown[];
     createdAt: Date;
+    taskId?: string | null;
   }>>;
 
   /** Gets artifacts for a task (e.g. negotiation outcome). */

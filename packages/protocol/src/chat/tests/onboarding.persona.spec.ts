@@ -89,7 +89,7 @@ describe("ONBOARDING_PERSONA", () => {
     expect(ONBOARDING_TOOL_NAMES).toEqual(EXPECTED_TOOLS);
     const registry = [...EXPECTED_TOOLS, ...FORBIDDEN_TOOLS, "future_shared_tool"]
       .map((name) => ({ name }));
-    expect(filterOnboardingTools(registry).map((tool) => tool.name)).toEqual(EXPECTED_TOOLS);
+    expect(filterOnboardingTools(registry).map((tool) => tool.name)).toEqual([...EXPECTED_TOOLS]);
 
     const allowed = new Set<string>(ONBOARDING_TOOL_NAMES);
     for (const forbidden of FORBIDDEN_TOOLS) expect(allowed.has(forbidden)).toBe(false);

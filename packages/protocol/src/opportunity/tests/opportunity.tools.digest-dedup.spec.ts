@@ -5,12 +5,13 @@ import { mock, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createOpportunityTools } from '../opportunity.tools.js';
+import { selectOpportunityFeed } from '../opportunity.feed-selection.js';
 import { selectDigestCandidates, DIGEST_REDELIVERY_COOLDOWN_DAYS } from '../opportunity.utils.js';
 import type { PresenterDatabase } from '../opportunity.presenter.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 
-const presentHomeCardMock = mock(async () => ({
+const presentHomeCardMock = mock(async (_input: unknown) => ({
   headline: 'Test Headline',
   personalizedSummary: 'Test personalized summary.',
   digestSummary: 'A relevant person for your current signals.',
@@ -150,7 +151,8 @@ function makeDeps(opts: {
     deliveryLedger: deliveryLedger as unknown as ToolDeps['deliveryLedger'],
     opportunityPresentation: {
       createPresenter: () => ({ presentHomeCard: (input: unknown) => presentHomeCardMock(input) }),
-      gatherPresenterContext: (...args: unknown[]) => gatherPresenterContextMock(...args),
+      gatherPresenterContext: (database: PresenterDatabase, opportunity: Opportunity, viewerId: string) =>
+        gatherPresenterContextMock(database, opportunity, viewerId),
     },
     graphs: {
       profile: noopGraph,
@@ -184,6 +186,45 @@ async function runListTool(deps: ToolDeps, query: Record<string, unknown> = { in
     }),
   );
 }
+
+describe('selectOpportunityFeed', () => {
+  it('filters non-actors and non-introducer latent rows before digest downstream reads', async () => {
+    const nonActor = makeOpp('opp-non-actor', 'u-other');
+    nonActor.actors = [{ userId: 'u-other', role: 'party' }];
+    const latentParty = makeOpp('opp-latent-party', 'u-party', 'latent');
+    const latentIntroducer = makeOpp('opp-latent-introducer', 'u-party', 'latent');
+    latentIntroducer.actors = [
+      { userId: testUserId, role: 'introducer' },
+      { userId: 'u-party', role: 'party' },
+    ];
+    const ledgerReads: string[][] = [];
+
+    const selection = await selectOpportunityFeed({
+      reader: {
+        getOpportunitiesForUser: async (_userId, options) =>
+          options?.statuses?.[0] === 'accepted'
+            ? []
+            : [nonActor, latentParty, latentIntroducer],
+      } as never,
+      deliveryLedger: {
+        getDeliveredOpportunities: async ({ opportunityIds }) => {
+          ledgerReads.push(opportunityIds);
+          return [];
+        },
+      },
+      viewerId: testUserId,
+      intentScope: {},
+      isMcp: true,
+      includeDigestMarkers: true,
+      displayLimit: 6,
+      warn: () => undefined,
+    });
+
+    expect(selection.skippedIds).toEqual(['opp-non-actor']);
+    expect(selection.opportunities.map((opportunity) => opportunity.id)).toEqual(['opp-latent-introducer']);
+    expect(ledgerReads).toEqual([['opp-latent-introducer']]);
+  });
+});
 
 // ─── Pure helper: selectDigestCandidates ─────────────────────────────────────
 

@@ -349,7 +349,7 @@ describe("onboarding privacy profile tools", () => {
     });
 
     const result = parseToolResult(await requestContext.run(
-      { traceEmitter: (event) => events.push({ type: event.type, name: event.name }) },
+      { traceEmitter: (event) => events.push({ type: event.type, name: "name" in event ? event.name : "" }) },
       () => tool.handler({ context: context(), query: { bioOrDescription: "I build agent tools." } }),
     ));
     await new Promise((resolve) => setTimeout(resolve, 0));

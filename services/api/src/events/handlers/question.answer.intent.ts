@@ -14,6 +14,7 @@
  * remains stored on the question row.
  */
 
+import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 import { log } from '../../lib/log';
 
 const logger = log.service.from('QuestionAnswerIntent');
@@ -44,6 +45,7 @@ export interface IntentRefinementDeps {
     userProfile: string;
     inputContent: string;
     targetIntentIds: string[];
+    expectedIntentFingerprint?: string;
   }) => Promise<{ applied: false } | { applied: true; payload: string }>;
 }
 
@@ -76,6 +78,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
     questionId: string;
     selectedOptions: string[];
     freeText?: string;
+    expectedIntentFingerprint?: string;
   }): Promise<IntentRefinementResult> => {
     const intent = await deps.getIntent(input.intentId);
 
@@ -100,6 +103,17 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       logger.verbose('Intent is not active — skipping refinement', {
         intentId: input.intentId,
         status: intent.status,
+      });
+      return { applied: false };
+    }
+
+    if (
+      input.expectedIntentFingerprint
+      && computeIntentFingerprint(intent.description, intent.summary) !== input.expectedIntentFingerprint
+    ) {
+      logger.verbose('Recovery answer fingerprint drifted — skipping refinement', {
+        intentId: input.intentId,
+        questionId: input.questionId,
       });
       return { applied: false };
     }
@@ -130,6 +144,7 @@ export function enqueueIntentRefinementFactory(deps: IntentRefinementDeps) {
       userProfile,
       inputContent,
       targetIntentIds: [input.intentId],
+      expectedIntentFingerprint: input.expectedIntentFingerprint,
     });
 
     if (!update.applied) {

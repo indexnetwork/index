@@ -6,11 +6,9 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { mock, afterAll } from "bun:test";
-mock.module("../../../../../../services/api/src/queues/notification.queue", () => ({
-  queueOpportunityNotification: async () =>
-    ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../../../services/api/src/queues/notification.queue").queueOpportunityNotification>>),
-}));
-mock.module("../../../intent/intent.graph.js", () => ({
+// Route to canonical application path so the mock intercepts the import used
+// by tool.factory.ts after the IND-544 signals domain-first migration.
+mock.module("../../../signals/application/intent.graph.js", () => ({
   IntentGraphFactory: class {
     private database: ChatGraphCompositeDatabase;
     constructor(database: ChatGraphCompositeDatabase) {
@@ -153,7 +151,18 @@ mock.module("../../../intent/intent.graph.js", () => ({
             };
           }
 
-          // For non-read operations without network scope, return default empty results
+          // For write operations (create/update/delete), return a deterministic
+          // success result so provider-free tests pass without LLM credentials.
+          if (input.operationMode === 'update' || input.operationMode === 'create') {
+            const targetId = Array.isArray(input.targetIntentIds) && input.targetIntentIds.length > 0
+              ? input.targetIntentIds[0] : 'stub-intent-id';
+            return {
+              executionResults: [{ success: true, intentId: targetId, description: 'stub' }],
+              actions: [],
+              inferredIntents: [],
+            };
+          }
+          // For other non-read operations without network scope, return default empty results
           return {
             executionResults: [],
             actions: [],
@@ -191,13 +200,30 @@ let mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-mock.module("../../../opportunity/opportunity.discover.js", () => ({
+// Route to canonical application path so the mock intercepts the import used
+// by opportunity.tools.ts after the IND-551 domain-first migration.
+mock.module("../../../opportunity/application/opportunity.discover.js", () => ({
   runDiscoverFromQuery: async () => mockDiscoveryResult,
   continueDiscovery: async () => mockDiscoveryResult,
 }));
+mock.module("../../../opportunity/opportunity.presenter.js", () => ({
+  OpportunityPresenter: class {
+    async presentHomeCard() {
+      return {
+        personalizedSummary: "A relevant connection is ready to review.",
+        digestSummary: "A relevant connection is ready to review.",
+        suggestedAction: "Review this connection.",
+        headline: "A relevant connection",
+        mutualIntentsLabel: "Suggested connection",
+        narratorRemark: "Worth reviewing.",
+      };
+    }
+  },
+  gatherPresenterContext: async () => ({}),
+}));
 
 import { describe, test, expect, beforeAll } from "bun:test";
-import { createChatTools, type ToolContext } from "../tool.factory";
+import { createChatTools, type ToolContext } from "../tool.factory.js";
 import type { ChatGraphCompositeDatabase, Opportunity, SystemDatabase } from "../../interfaces/database.interface.js";
 import type { ActiveIntent, IndexMemberDetails, IndexedIntentDetails } from "../../interfaces/database.interface.js";
 import type { Embedder } from "../../interfaces/embedder.interface.js";
@@ -226,11 +252,15 @@ function createMockDatabase(
   const noopArray = async () => [];
   const noopBool = async () => false;
   const base = {
-    getProfile: noopNull,
+    // Non-null profile is required by IntentGraph write-mode gate
+    // (gate: state.operationMode !== 'read' → checks getProfile).
+    getProfile: async () => ({ id: "profile-stub", identity: { name: "Test User", bio: "Test bio" } } as any),
     getProfileByUserId: noopNull,
     getActiveIntents: noopArray,
     getIntentsInIndexForMember: getIntentsInIndexForMemberImpl,
     getUser: async (uid: string) => ({ id: uid, name: "Test User", email: "test@example.com" }),
+    // Required by EnrichmentGraph hasBeenEnriched check (post-IND-551 merge).
+    getPremisesForUser: noopArray,
     getNetwork: async (networkId: string) => ({ id: networkId, title: "Test Index" }),
     saveProfile: noop,
     createIntent: async () => ({ id: "", payload: "", summary: null, isIncognito: false, createdAt: new Date(), updatedAt: new Date(), userId: "" }),
@@ -238,7 +268,8 @@ function createMockDatabase(
     updateUser: noopNull,
     archiveIntent: async () => ({ success: true }),
     getUserIndexIds: noopArray,
-    getNetworkMemberships: noopArray,
+    getNetworkMemberships: async () => [{ networkId: "idx-1" }],
+    getActiveNetworkMembershipPairs: async (pairs: Array<{ userId: string; networkId: string }>) => pairs,
     getPublicIndexesNotJoined: async () => ({ networks: [] }),
     getNetworkMembership: noopNull,
     getNetworkWithPermissions: async () => null,
@@ -275,6 +306,11 @@ function createMockDatabase(
     getMembersFromUserIndexes: async () => [],
     getOpportunity: noopNull,
     getOpportunitiesForUser: noopArray,
+    createOpportunityIfNetworkEligible: async (data: unknown) =>
+      overrides?.createOpportunity
+        ? overrides.createOpportunity(data as Parameters<typeof overrides.createOpportunity>[0])
+        : null,
+    getNegotiationTaskForOpportunity: noopNull,
     updateOpportunityStatus: noopNull,
     stampOpportunityActorAction: noopNull,
     getActiveIntentsAcrossIndexes: noopArray,
@@ -288,6 +324,8 @@ const mockEmbedder = {
   generateForDocuments: async () => [],
   addVectors: async () => [],
   similaritySearch: async () => [],
+  // Required by OpportunityGraph discovery node (post-IND-551 merge widened contract).
+  searchWithHydeEmbeddings: async () => [],
 } as unknown as Embedder;
 
 /** Stub scraper for tool creation (not invoked by read_intents). */
@@ -298,14 +336,23 @@ const mockScraper = {
 
 /** Stub protocol-level deps for ToolContext (not invoked in most unit tests). */
 const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'> = {
+  // IND-593: chat contexts in this spec are direct authenticated-owner
+  // interactions; the owner-approval authority attests them through the same
+  // boundary (authoritative host derivation, not a bypass).
+  opportunityOwnerApproval: {
+    consumeAgentProof: async () => ({ kind: 'denied' as const, reason: 'missing' as const }),
+    attestOwnerInteraction: async () => ({ kind: 'admitted' as const }),
+  },
   cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
   hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
   integration: { createSession: async () => ({}) as any, executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) },
   intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) },
-  contactService: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), listContacts: async () => [], addContact: async () => ({ userId: "", isNew: false, isGhost: false }), removeContact: async () => {} },
-  chatSession: { getSessionMessages: async () => [] },
+  contactService: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), listContacts: async () => [], searchContacts: async () => [], addContact: async () => ({ userId: "", isNew: false, isGhost: false }), removeContact: async () => {} },
+  chatSession: { getSessionMessages: async () => [], listSessions: async () => [], getSession: async () => null },
   enricher: { enrichUserProfile: async () => null },
-  negotiationDatabase: {} as unknown as import("../../interfaces/database.interface").NegotiationGraphDatabase,
+  negotiationDatabase: {
+    getNegotiationTaskForOpportunity: async () => null,
+  } as unknown as import("../../interfaces/database.interface.js").NegotiationGraphDatabase,
   integrationImporter: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0 }) },
   createUserDatabase: (db: any, _userId: string) => ({
     getActiveIntents: db.getActiveIntents ?? (async () => []),
@@ -344,7 +391,7 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
     getHydeDocumentsForSource: db.getHydeDocumentsForSource ?? (async () => []),
     saveHydeDocument: db.saveHydeDocument ?? (async () => {}),
     deleteHydeDocumentsForSource: db.deleteHydeDocumentsForSource ?? (async () => {}),
-  }) as unknown as import("../../interfaces/database.interface").UserDatabase,
+  }) as unknown as import("../../interfaces/database.interface.js").UserDatabase,
   createSystemDatabase: (db: any, _userId: string, _scope: string[]) => ({
     isNetworkMember: db.isNetworkMember ?? (async () => false),
     isIndexOwner: db.isIndexOwner ?? (async () => false),
@@ -377,7 +424,7 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
     saveHydeDocument: db.saveHydeDocument ?? (async () => {}),
     deleteExpiredHydeDocuments: async () => {},
     getStaleHydeDocuments: async () => [],
-  }) as unknown as import("../../interfaces/database.interface").SystemDatabase,
+  }) as unknown as import("../../interfaces/database.interface.js").SystemDatabase,
 };
 
 describe("createChatTools", () => {
@@ -615,7 +662,9 @@ describe("read_intents tool (network-scoped: owner vs member)", () => {
     }, {
       isNetworkMember: async () => true,
       getUser: async (uid: string) =>
-        uid === otherUserId ? { id: uid, name: "Bob", email: "bob@example.com" } : { id: testUserId, name: "Test User", email: "test@example.com" },
+        uid === otherUserId
+          ? { id: uid, name: "Bob", email: "bob@example.com", socials: [] }
+          : { id: testUserId, name: "Test User", email: "test@example.com", socials: [] },
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
@@ -993,8 +1042,9 @@ describe("scrape_url tool", () => {
     await tool.invoke({ url: "https://github.com/org/repo", objective });
     expect(capturedUrl as unknown as string).toBe("https://github.com/org/repo");
     expect((capturedOptions as { objective?: string } | undefined)?.objective).toBe(objective);
-    expect(capturedOptions?.signal).toBeInstanceOf(AbortSignal);
-    expect(capturedOptions?.signal?.aborted).toBe(false);
+    const observedOptions = capturedOptions as { objective?: string; signal?: AbortSignal } | undefined;
+    expect(observedOptions?.signal).toBeInstanceOf(AbortSignal);
+    expect(observedOptions?.signal?.aborted).toBe(false);
   });
 
   test("invoke returns success with content when scraper returns content", async () => {
@@ -2037,6 +2087,21 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     const noopGraph = { invoke: async () => ({}) };
     const deps = {
       database: mockDb,
+      negotiationDatabase: { getNegotiationTaskForOpportunity: async () => null },
+      opportunityPresentation: {
+        createPresenter: () => ({
+          presentHomeCard: async () => ({
+            headline: "A relevant connection",
+            personalizedSummary: "Their current goals may be relevant to yours.",
+            digestSummary: "This connection may be relevant to your current goals.",
+            suggestedAction: "Review this connection.",
+            narratorRemark: "Worth a look.",
+            mutualIntentsLabel: "Shared interests",
+            greeting: "",
+          }),
+        }),
+        gatherPresenterContext: async () => ({}),
+      },
       userDb: { getUser: async () => ({ id: testUserId, name: "Test User" }) },
       systemDb: {},
       scraper: mockScraper,
@@ -2122,7 +2187,7 @@ describe("discover_opportunities async MCP runs", () => {
       userId: testUserId,
       userName: "Test User",
       userEmail: "test@example.com",
-      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers.js").ResolvedToolContext["user"],
       userProfile: null,
       userNetworks: [],
       indexScope: ["idx-1"],
@@ -2130,7 +2195,7 @@ describe("discover_opportunities async MCP runs", () => {
       hasName: true,
       isMcp: true,
       agentId: "agent-1",
-    } satisfies import("../tool.helpers").ResolvedToolContext;
+    } satisfies import("../tool.helpers.js").ResolvedToolContext;
 
     const tools = await createChatTools(context, resolved);
     const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as { invoke: (args: { searchQuery: string }) => Promise<string> };
@@ -2179,7 +2244,7 @@ describe("discover_opportunities async MCP runs", () => {
       userId: testUserId,
       userName: "Test User",
       userEmail: "test@example.com",
-      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers.js").ResolvedToolContext["user"],
       userProfile: null,
       userNetworks: [],
       indexScope: ["idx-1"],
@@ -2187,7 +2252,7 @@ describe("discover_opportunities async MCP runs", () => {
       hasName: true,
       isMcp: true,
       agentId: "agent-1",
-    } satisfies import("../tool.helpers").ResolvedToolContext;
+    } satisfies import("../tool.helpers.js").ResolvedToolContext;
 
     const tools = await createChatTools(context, resolved);
     const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as { invoke: (args: { intentId: string }) => Promise<string> };
@@ -2238,7 +2303,7 @@ describe("discover_opportunities async MCP runs", () => {
       userId: testUserId,
       userName: "Test User",
       userEmail: "test@example.com",
-      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers.js").ResolvedToolContext["user"],
       userProfile: null,
       userNetworks: [],
       indexScope: ["idx-1"],
@@ -2246,7 +2311,7 @@ describe("discover_opportunities async MCP runs", () => {
       hasName: true,
       isMcp: true,
       agentId: "agent-1",
-    } satisfies import("../tool.helpers").ResolvedToolContext;
+    } satisfies import("../tool.helpers.js").ResolvedToolContext;
 
     const tools = await createChatTools(context, resolved);
     const tool = tools.find((t: { name: string }) => t.name === "get_discovery_run") as { invoke: (args: { discoveryRunId: string }) => Promise<string> };
@@ -2305,7 +2370,7 @@ describe("discover_opportunities async MCP runs", () => {
       userId: testUserId,
       userName: "Test User",
       userEmail: "test@example.com",
-      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      user: { id: testUserId, name: "Test User", email: "test@example.com" } as unknown as import("../tool.helpers.js").ResolvedToolContext["user"],
       userProfile: null,
       userNetworks: [],
       indexScope: ["idx-1"],
@@ -2313,7 +2378,7 @@ describe("discover_opportunities async MCP runs", () => {
       hasName: true,
       isMcp: true,
       agentId: "agent-1",
-    } satisfies import("../tool.helpers").ResolvedToolContext;
+    } satisfies import("../tool.helpers.js").ResolvedToolContext;
 
     const tools = await createChatTools(context, resolved);
     const tool = tools.find((t: { name: string }) => t.name === "cancel_discovery_run") as { invoke: (args: { discoveryRunId: string }) => Promise<string> };
@@ -2382,14 +2447,15 @@ describe("createChatTools — MCP connect-link wiring", () => {
   // Match the ResolvedToolContext shape that MCP callers construct (since
   // resolveChatContext does not set isMcp; the MCP entry point passes it via
   // preResolvedContext).
-  function buildMcpResolvedContext(): import("../tool.helpers").ResolvedToolContext {
+  function buildMcpResolvedContext(): import("../tool.helpers.js").ResolvedToolContext {
     return {
       userId: VIEWER_ID,
       userName: "Viewer",
       userEmail: "viewer@test",
-      user: { id: VIEWER_ID, name: "Viewer", email: "viewer@test" } as unknown as import("../tool.helpers").ResolvedToolContext["user"],
+      user: { id: VIEWER_ID, name: "Viewer", email: "viewer@test" } as unknown as import("../tool.helpers.js").ResolvedToolContext["user"],
       userProfile: null,
       userNetworks: [],
+      indexScope: [],
       isOnboarding: false,
       hasName: true,
       isMcp: true,
@@ -2619,6 +2685,18 @@ describe("createChatTools — MCP connect-link wiring", () => {
       mintConnectLink,
       apiBaseUrl: API_BASE_URL,
       frontendUrl: FRONTEND_URL,
+      opportunityPresentation: {
+        createPresenter: () => ({
+          presentHomeCard: async () => ({
+            personalizedSummary: "A pending introduction is awaiting the other party.",
+            suggestedAction: "Wait for the other party.",
+            headline: "Connection with Counterpart",
+            mutualIntentsLabel: "Suggested connection",
+            narratorRemark: "The introduction is pending.",
+          }),
+        }),
+        gatherPresenterContext: async () => ({}),
+      },
     } as ToolContext;
 
     const tools = await createChatTools(context, buildMcpResolvedContext());
@@ -2705,7 +2783,7 @@ describe("createChatTools — MCP connect-link wiring", () => {
           createdAt: new Date(),
           updatedAt: new Date(),
           expiresAt: null,
-        }) as import("../../interfaces/database.interface").Opportunity,
+        }) as unknown as import("../../interfaces/database.interface.js").Opportunity,
       getUser: async (uid: string) => {
         if (uid === VIEWER_ID) return { id: uid, name: "Viewer" };
         if (uid === "party-a") return { id: uid, name: "Party A" };

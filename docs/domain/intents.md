@@ -3,7 +3,7 @@ title: "Intents"
 type: domain
 tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle, pool-questions]
 created: 2026-03-26
-updated: 2026-07-16
+updated: 2026-07-23
 ---
 
 # Intents
@@ -220,6 +220,18 @@ This behavior is independently gated: `POOL_QUESTIONS_MINING` controls shadow-on
 
 ---
 
+## Intent-Page Refinement Questions
+
+An active owned intent may receive one ordinary Questioner-generated refinement for each material payload+summary version. Intent creation and both authoritative asynchronous discovery paths use the same surfacing service, so the Personal Agent does not depend on a no-opportunity outcome and completion retries are symmetric with pool-question production.
+
+Recovery remains private implementation metadata rather than a new user-facing question type. Rows persist and render as `mode='intent'`, `sourceType='intent'`, and `sourceId=intentId`, then answers follow the existing canonical intent-update, embedding/HyDE, and rediscovery lifecycle. Pool-discovery questions are independent and may coexist with recovery refinement.
+
+Generation is source-grounded. With no safely validated prior negotiation evidence, the model receives only the signal payload/summary and the owner's global context. Rejected negotiation history may influence the missing axis only as a bounded aggregate count after exact-trigger, bilateral-participant, capture-time fingerprint, completed-task, network-provenance, and single no-opportunity-artifact validation. IDs, identities, profiles, networks, transcripts/turns, outcome reasoning, evaluator reasoning, match reasons, candidate snapshots, and event/community context never enter generation or question persistence. Unsafe or unhelpful output produces no row.
+
+Cadence is one ordinary intent question per exact recipient, intent, and normalized payload+summary fingerprint across every status and expiry state. Persistence, owned exact-trigger opportunity creation, and exact-trigger reactivation share one recipient+intent advisory lock; the question side then rechecks ownership, active lifecycle, and fingerprint immediately before insertion, while an expression unique index remains the final concurrent-worker guard. A material edit permits one new question and system-voids stale pending rows. Answer admission follows the same advisory→intent-row→question-row order as material reconciliation, then carries the expected fingerprint and owner through the answer-only graph so the final intent row lock also requires active/non-archived lifecycle before mutation; delayed answers cannot update a drifted, paused, or archived signal.
+
+---
+
 ## Reconciliation
 
 When new content arrives (user input, uploaded document, integration sync), the system does not blindly create new intents. Instead, a three-stage pipeline runs:
@@ -237,6 +249,8 @@ The inferrer is grounded to the content: every inferred intent must be directly 
 
 The Semantic Verifier classifies each inferred intent (speech act type), scores its felicity conditions, computes semantic entropy, and identifies referential anchors. Intents classified as ASSERTIVE or EXPRESSIVE are flagged as NOISE and filtered out.
 
+Referential breadth is advisory for user-confirmed writes, not a validity boundary. A broad but otherwise actionable signal can be shown as a warned proposal and, after approval, persisted; an explicit edit of an existing owned signal follows the same rule. Breadth metadata and specificity warnings remain available for clarification and discovery quality, while non-actionable speech acts and genuinely vague or invalid candidates remain rejected.
+
 ### 3. Reconciliation
 
 The Intent Reconciler compares inferred intents against the user's existing active intents and decides on actions:
@@ -247,6 +261,8 @@ The Intent Reconciler compares inferred intents against the user's existing acti
 - **Conflict resolution**: A new goal contradicts an existing active intent. The old intent is expired and the new one is created.
 
 Matching uses Donnellan's distinction: referential intents match only if they share the same anchor, while attributive intents match if their descriptions are semantically similar.
+
+Explicit updates are the exception to general create-versus-update reconciliation: after inference and verification resolve exactly one candidate, the write is deterministically bound to the single caller-supplied active intent ID. It cannot create a new intent, update another intent, or cross the caller's ownership and request scope.
 
 ---
 

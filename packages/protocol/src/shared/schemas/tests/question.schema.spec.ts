@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { createRequire } from "node:module";
 
 import { QuestionOptionSchema, QuestionSchema, UnderspecificationTypeSchema, QuestionStrategySchema, QuestionWithStrategySchema, QuestionGeneratorResponseSchema, QuestionPurposeSchema, QuestionModeSchema, QuestionDetectionSchema, QuestionPoolSnapshotSchema, QuestionPoolPushSchema, QuestionVoidedReasonSchema, QuestionPoolPushRequestReasonSchema, QuestionActorSchema, QuestionAnswerSchema } from "../question.schema.js";
 
@@ -71,6 +72,27 @@ describe("QuestionSchema", () => {
   it("rejects missing multiSelect", () => {
     const { multiSelect: _, ...rest } = okQuestion;
     expect(() => QuestionSchema.parse(rest)).toThrow();
+  });
+
+  it("accepts a real string evidence chip unchanged", () => {
+    const parsed = QuestionSchema.parse({ ...okQuestion, evidence: "based on 18 people matching this intent" });
+    expect(parsed.evidence).toBe("based on 18 people matching this intent");
+  });
+
+  it("normalizes evidence: null to undefined (never 'evidence present')", () => {
+    const parsed = QuestionSchema.parse({ ...okQuestion, evidence: null });
+    expect(parsed.evidence).toBeUndefined();
+    // Behaves exactly like no evidence for the `!question.evidence` selection filter.
+    expect(!parsed.evidence).toBe(true);
+  });
+
+  it("treats omitted evidence as undefined", () => {
+    const parsed = QuestionSchema.parse(okQuestion);
+    expect(parsed.evidence).toBeUndefined();
+  });
+
+  it("rejects empty-string evidence", () => {
+    expect(() => QuestionSchema.parse({ ...okQuestion, evidence: "" })).toThrow();
   });
 });
 
@@ -152,11 +174,45 @@ describe("QuestionGeneratorResponseSchema", () => {
     }));
     expect(() => QuestionGeneratorResponseSchema.parse({ questions: four })).toThrow();
   });
+
+  it("normalizes evidence: null to undefined inside a nested question", () => {
+    const parsed = QuestionGeneratorResponseSchema.parse({
+      questions: [{
+        ...okQuestion,
+        evidence: null,
+        strategy: "refine_intent" as const,
+        underspecificationType: null,
+      }],
+    });
+    expect(parsed.questions[0].evidence).toBeUndefined();
+  });
+});
+
+/**
+ * Regression guard for the questioner LLM binding. `createStructuredModel`
+ * (see questioner.agent.ts) hands QuestionGeneratorResponseSchema to
+ * `@langchain/openai`, which converts it via OpenAI's zodResponseFormat in
+ * strict structured-output mode. Strict mode throws on any
+ * optional-without-nullable field, which previously made every QuestionerAgent
+ * call fail client-side before any network I/O. Run the exact conversion here
+ * (resolving the openai package @langchain/openai actually uses) so the binding
+ * cannot silently regress. A bare `.optional()` evidence field fails this test.
+ */
+describe("QuestionGeneratorResponseSchema strict structured-output conversion", () => {
+  const langchainRequire = createRequire(require.resolve("@langchain/openai/package.json"));
+  const { zodResponseFormat } = langchainRequire("openai/helpers/zod") as {
+    zodResponseFormat: (schema: unknown, name: string) => unknown;
+  };
+
+  it("serializes under OpenAI strict mode without throwing", () => {
+    expect(() => zodResponseFormat(QuestionGeneratorResponseSchema, "clarifying_questions")).not.toThrow();
+  });
 });
 
 describe("QuestionPurpose", () => {
-  it("accepts only the internal uptake discriminator", () => {
+  it("accepts only internal purpose discriminators", () => {
     expect(QuestionPurposeSchema.parse("uptake")).toBe("uptake");
+    expect(QuestionPurposeSchema.parse("recovery")).toBe("recovery");
     expect(QuestionPurposeSchema.safeParse("negotiation").success).toBe(false);
   });
 });
@@ -206,7 +262,7 @@ describe("QuestionDetection", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts optional purpose independently from QUD metadata", () => {
+  it("accepts versioned exact negotiation provenance independently from QUD metadata", () => {
     const result = QuestionDetectionSchema.safeParse({
       mode: "negotiation",
       purpose: "uptake",
@@ -214,8 +270,53 @@ describe("QuestionDetection", () => {
       sourceId: "opp-1",
       timestamp: new Date().toISOString(),
       underspecificationType: null,
+      negotiation: {
+        version: 1,
+        purpose: "uptake",
+        recipientUserId: "user-1",
+        recipientIntentId: "intent-1",
+        opportunityId: "opp-1",
+        networkId: "network-1",
+        counterpartyUserId: "user-2",
+        counterpartyIntentId: "intent-2",
+        counterpartyFelicityAuthority: 45,
+        intentFingerprint: "fingerprint",
+        opportunityStatus: "pending",
+        opportunityUpdatedAt: new Date().toISOString(),
+        questionOrdinal: 0,
+      },
     });
     expect(result.success).toBe(true);
+  });
+
+  it("fails closed for legacy or mismatched negotiation detection", () => {
+    const base = {
+      mode: "negotiation_inflight" as const,
+      purpose: "inflight_consultation" as const,
+      sourceType: "opportunity",
+      sourceId: "opp-1",
+      timestamp: new Date().toISOString(),
+    };
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(false);
+    const negotiation = {
+      version: 1 as const,
+      purpose: "inflight_consultation" as const,
+      recipientUserId: "user-1",
+      recipientIntentId: "intent-1",
+      opportunityId: "opp-1",
+      taskId: "task-1",
+      networkId: "network-1",
+      intentFingerprint: "fingerprint",
+      opportunityStatus: "negotiating" as const,
+      opportunityUpdatedAt: new Date().toISOString(),
+      taskState: "input_required" as const,
+      taskUpdatedAt: new Date().toISOString(),
+      questionOrdinal: 0,
+    };
+    expect(QuestionDetectionSchema.safeParse({ ...base, negotiation }).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, sourceId: "other-opp", negotiation }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, negotiation: { ...negotiation, taskId: undefined } }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, negotiation: { ...negotiation, taskState: "completed" } }).success).toBe(false);
   });
 
   it("accepts optional triggeredBy", () => {
@@ -228,6 +329,38 @@ describe("QuestionDetection", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data!.triggeredBy).toBe("intent-456");
+  });
+
+  it("ties recovery metadata to exact ordinary intent provenance", () => {
+    const base = {
+      mode: "intent",
+      purpose: "recovery",
+      sourceType: "intent",
+      sourceId: "intent-1",
+      triggeredBy: "intent-1",
+      timestamp: "2026-07-23T12:00:00.000Z",
+      recovery: {
+        version: 1,
+        intentFingerprint: "a".repeat(64),
+        completionSource: "discovery_run",
+        rejectedNegotiationCount: 2,
+        runId: "run-1",
+      },
+    };
+    expect(QuestionDetectionSchema.safeParse(base).success).toBe(true);
+    expect(QuestionDetectionSchema.safeParse({ ...base, mode: "discovery" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, sourceType: "opportunity" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, triggeredBy: "intent-2" }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, recovery: undefined }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({ ...base, purpose: undefined }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      recovery: { ...base.recovery, rejectedNegotiationCount: 51 },
+    }).success).toBe(false);
+    expect(QuestionDetectionSchema.safeParse({
+      ...base,
+      recovery: { ...base.recovery, completionSource: "intent_creation" },
+    }).success).toBe(true);
   });
 
   it("accepts the complete internal proactive push ledger", () => {
@@ -321,9 +454,10 @@ describe("QuestionDetection", () => {
     }).success).toBe(true);
   });
 
-  it("accepts only pool drift and intent edit as internal void reasons", () => {
+  it("accepts only canonical internal void reasons", () => {
     expect(QuestionVoidedReasonSchema.safeParse("pool_drift").success).toBe(true);
     expect(QuestionVoidedReasonSchema.safeParse("intent_edit").success).toBe(true);
+    expect(QuestionVoidedReasonSchema.safeParse("recovery_drift").success).toBe(true);
     expect(QuestionVoidedReasonSchema.safeParse("manual").success).toBe(false);
 
     const base = {

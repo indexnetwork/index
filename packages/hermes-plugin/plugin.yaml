@@ -1,5 +1,5 @@
 name: index-network
-version: 0.10.0
+version: 0.12.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and personal-agent APIs.
 provides_tools:
   - index_read_intents
@@ -11,11 +11,6 @@ provides_tools:
   - index_revoke_agent_permission
   - index_list_conversations
   - index_get_conversation
-  - index_import_contacts
-  - index_list_contacts
-  - index_add_contact
-  - index_remove_contact
-  - index_search_contacts
   - index_read_user_contexts
   - index_record_onboarding_privacy_consent
   - index_preview_user_context
@@ -25,7 +20,6 @@ provides_tools:
   - index_get_enrichment_run
   - index_cancel_enrichment_run
   - index_complete_onboarding
-  - index_import_gmail_contacts
   - index_create_intent
   - index_update_intent
   - index_delete_intent
@@ -54,7 +48,7 @@ provides_tools:
   - index_update_premise
   - index_retract_premise
   - index_read_pending_questions
-  - index_scrape_url
+  - index_read_activity_summary
   - index_read_docs
   - index_agent_me
   - index_pickup_negotiation
