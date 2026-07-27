@@ -373,7 +373,8 @@ export class OpportunityGraphFactory {
             const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
             const profileEnabled = discoveryProfileMatchingEnabled();
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
-            const rawContexts = profileEnabled && contextToIntentEnabled && typeof this.database.getUserContexts === 'function'
+            const contextToContextEnabled = profileEnabled && discoveryProfileSource() === 'user_context';
+            const rawContexts = profileEnabled && (contextToIntentEnabled || contextToContextEnabled) && typeof this.database.getUserContexts === 'function'
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts

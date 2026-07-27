@@ -586,12 +586,15 @@ describe('Opportunity Graph', () => {
   describe('discovery env gating', () => {
     const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
     const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
+    const previousContextToIntent = process.env.DISCOVERY_CONTEXT_TO_INTENT;
 
     afterEach(() => {
       if (previousAllowedTypes === undefined) delete process.env.DISCOVERY_ALLOWED_TYPES;
       else process.env.DISCOVERY_ALLOWED_TYPES = previousAllowedTypes;
       if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
       else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
+      if (previousContextToIntent === undefined) delete process.env.DISCOVERY_CONTEXT_TO_INTENT;
+      else process.env.DISCOVERY_CONTEXT_TO_INTENT = previousContextToIntent;
     });
 
     const gatingAlice = 'a0000000-0000-4000-8000-000000000001';
@@ -746,6 +749,39 @@ describe('Opportunity Graph', () => {
 
       expect(result.candidates).toEqual([]);
       expect(result.error).toBeUndefined();
+    });
+
+    it('lightweight mode: context→context runs when legacy context→intent switch is disabled', async () => {
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      process.env.DISCOVERY_CONTEXT_TO_INTENT = '0';
+      const { compiledGraph, mockDb } = createMockGraph();
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+      const searchUserContextsSpy = mock(async () => [
+        { contextId: 'ctx-b', userId: gatingBob, networkId: 'idx-1', text: 'A researcher working on decentralized coordination', similarity: 0.9 },
+      ]);
+      mockDb.searchUserContextsBySimilarity = searchUserContextsSpy;
+      const contextIntentSearchSpy = spyOn(mockDb, 'searchIntentsByContextEmbedding');
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(searchUserContextsSpy).toHaveBeenCalled();
+      const call = searchUserContextsSpy.mock.calls[0]?.[0];
+      expect(call?.networkIds).toEqual(['idx-1']);
+      expect(call?.excludeUserId).toBe(gatingAlice);
+      expect(contextIntentSearchSpy).not.toHaveBeenCalled();
+
+      const candidate = result.candidates.find((c) => c.candidateContextId === 'ctx-b');
+      expect(candidate).toBeDefined();
+      expect(candidate?.candidateUserId).toBe(gatingBob);
+      expect(candidate?.discoverySource).toBe('context-similarity');
+      expect(candidate?.lens).toBe('context_match');
+      expect(candidate?.candidatePayload).toContain('researcher');
+      expect(candidate?.evidence[0]?.kind).toBe('context_similarity');
     });
 
     it('premise mode (default): context→context does not run', async () => {
