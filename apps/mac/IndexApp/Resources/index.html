@@ -33784,6 +33784,18 @@ function createIndexApiClient(options = {}) {
     },
 
     users: {
+      // Public profile: name, intro (the bio), avatar, location, socials.
+      // Opportunity cards carry none of that, so the profile window fetches it
+      // for the counterpart it is showing.
+      get: (userId, options = {}) => request(
+        `/users/${encodeURIComponent(userId)}`,
+        options,
+      ),
+      // Same fields for several users at once, for list views.
+      batch: (ids = [], options = {}) => request(
+        `/users/batch${toQueryString({ ids: ids.join(',') })}`,
+        options,
+      ),
       // Full negotiation threads (counterparty, outcome, agent-to-agent turns).
       negotiations: (userId, query = {}, options = {}) => request(
         `/users/${encodeURIComponent(userId)}/negotiations${toQueryString(query)}`,
@@ -34016,6 +34028,9 @@ function mapPeopleFromHomeSections(sections = []) {
 function mapPersonFromHomeCard(card, section = {}) {
   return {
     id: card.opportunityId || card.userId,
+    // kept separate from `id` (which is the opportunity) so the profile window
+    // can fetch this person's own bio and links
+    userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
     location: section.title || '',
@@ -34035,26 +34050,39 @@ function mapPersonFromHomeCard(card, section = {}) {
 }
 
 /**
- * The counterpart's own words about themselves, when the payload carries them.
- * The presenter card does not expose bio or social handles today, so this
- * yields empty fields and the profile hides those sections, it is here so the
- * client picks them up without a change once the API does expose them.
+ * The counterpart's own words about themselves.
+ *
+ * Opportunity cards carry no bio or socials, so this yields empty fields there
+ * and the profile hides those sections. `GET /users/:id` does carry them, and
+ * the profile window fetches it, so this also accepts that payload's shape.
  * @param {Object} source
  * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
 function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
-  const socials = Array.isArray(profile.socials) ? profile.socials : [];
   return {
     bio: profile.bio || profile.intro || '',
-    socials: socials
-      .map((entry) => ({
-        id: entry.id || entry.platform || '',
-        prefix: entry.prefix || '',
-        handle: entry.handle || entry.username || '',
-      }))
-      .filter((entry) => entry.handle),
+    socials: mapSocials(profile.socials),
   };
+}
+
+/**
+ * Normalize social links onto the {id, prefix, handle} shape the UI draws.
+ *
+ * The API stores them as `{label, value}` where value is usually a full URL,
+ * so the label becomes the platform and the value is used verbatim as the
+ * destination. Handle-only sources keep their prefix.
+ * @param {Array<Object>} socials
+ */
+function mapSocials(socials) {
+  if (!Array.isArray(socials)) return [];
+  return socials
+    .map((entry) => {
+      const id = entry.id || entry.label || entry.platform || 'website';
+      const handle = entry.handle || entry.username || entry.value || '';
+      return { id: String(id).toLowerCase(), prefix: entry.prefix || '', handle };
+    })
+    .filter((entry) => entry.handle);
 }
 
 /**
@@ -34064,6 +34092,7 @@ function mapCounterpartProfile(source = {}) {
 function mapPeopleFromOpportunities(opportunities = []) {
   return opportunities.map((opportunity) => ({
     id: opportunity.id,
+    userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
     location: opportunity.index?.title || '',
@@ -34200,7 +34229,7 @@ function relativeAge(isoDate) {
   return `${weeks}w ago`;
 }
 
-window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary };
+window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary };
 
 })();
 </script>
@@ -35263,38 +35292,125 @@ const AGENT_FACES = [
    yours and a single picture. The runtimes on the agents page (hermes, claude
    code) are where it *runs*, not who it is, they keep their vendor tiles.
    Everything the negotiator says anywhere in the app wears this picture. */
+/* The record for whoever is signed in. Signing in replaces
+   window.INDEX_DATA.ME wholesale with the live user, while the demo `ME` const
+   stays as it was, so reading the const directly would keep naming the agent
+   after the demo profile. */
+function currentMe() {
+  const live = (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || null;
+  return live || (typeof ME !== "undefined" && ME) || {};
+}
+
+/* Where a shuffled face is kept.
+
+   The page is loaded from a file:// URL, so WebKit hands the document an
+   opaque origin and localStorage is not persisted between launches. The native
+   shell stores it in UserDefaults instead and injects it at document start, so
+   the saved face is already correct on the first paint. localStorage is still
+   written as the fallback for running this bundle in a browser, where there is
+   no shell to ask. */
+const AGENT_FACE_KEY = "index.agentFace";
+let agentFaceCache;
+
+function storedAgentFace() {
+  if (agentFaceCache !== undefined) return agentFaceCache;
+  const native = (typeof window !== "undefined" && window.INDEX_NATIVE && window.INDEX_NATIVE.agentFace) || null;
+  if (native) { agentFaceCache = native; return agentFaceCache; }
+  try {
+    const raw = window.localStorage.getItem(AGENT_FACE_KEY);
+    agentFaceCache = raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    agentFaceCache = null;   // storage disabled; the face falls back to your name
+  }
+  return agentFaceCache;
+}
+
+/** Save the negotiator's avatar so it survives a relaunch. */
+function setMyAgentFace(patch) {
+  const next = { ...(storedAgentFace() || {}), ...patch };
+  agentFaceCache = next;
+  Object.assign(currentMe(), {
+    agentFaceSeed: next.seed || null,
+    agentPhoto: next.photo || null,
+  });
+  try { window.localStorage.setItem(AGENT_FACE_KEY, JSON.stringify(next)); } catch (e) {}
+  const bridge = (typeof window !== "undefined" && window.webkit
+    && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth) || null;
+  if (bridge) {
+    try { bridge.postMessage({ action: "setAgentFace", value: next }); } catch (e) {}
+  }
+  return next;
+}
+
 function myAgent() {
-  const me = (typeof ME !== "undefined" && ME) || {};
+  const me = currentMe();
+  const saved = storedAgentFace() || {};
   const first = String(me.name || "").trim().split(/\s+/)[0] || "your";
   return {
     name: `${first}'s agent`,
-    // shuffling on the agents page stores an override; otherwise the face
-    // hangs off your name, so it is yours from the first launch
-    seed: me.agentFaceSeed || me.name || "index",
-    photo: me.agentPhoto || null,
+    // a shuffle wins, then whatever was saved on a previous run, and failing
+    // both the face hangs off your name so it is yours from the first launch
+    seed: me.agentFaceSeed || saved.seed || me.name || "index",
+    photo: me.agentPhoto || saved.photo || null,
   };
 }
 
 /** Back-compat alias for the seed alone. */
 function ownAgentSeed() { return myAgent().seed; }
 
-/** Your negotiator's picture, at any size. The one component every surface
-    uses so a change on the agents page lands everywhere at once. */
-function MyAgentAvatar({ size = 22, style, title }) {
-  const me = myAgent();
-  if (me.photo) {
+/** Just the agent's own mark, no owner attached. */
+function AgentMark({ size, agent, title }) {
+  if (agent.photo) {
     return (
-      <span title={title || me.name} style={{
-        flex:"0 0 auto", width:size, height:size, display:"block",
-        border:`${size >= 40 ? 2 : 1}px solid ${FACE_INK}`,
-        overflow:"hidden", boxSizing:"border-box", ...style,
+      <span title={title} style={{
+        width:size, height:size, display:"block", flex:"0 0 auto",
+        border:`1px solid ${FACE_INK}`, overflow:"hidden", boxSizing:"border-box",
       }}>
-        <img src={me.photo} alt={me.name}
-          style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+        <img src={agent.photo} alt="" style={{
+          width:"100%", height:"100%", objectFit:"cover", display:"block",
+        }}/>
       </span>
     );
   }
-  return <AgentFace seed={me.seed} size={size} title={title || me.name} style={style}/>;
+  return <AgentFace seed={agent.seed} size={size} title={title}/>;
+}
+
+/** Your negotiator's picture: your face with its mark set into the corner.
+    An agent is not a separate character in the network, it is you with
+    something acting on your behalf, so the picture says both. Your photo
+    carries who it speaks for and the mark says it is the agent speaking. One
+    component, so a change on the agents page lands everywhere at once. */
+function MyAgentAvatar({ size = 22, style, title }) {
+  const me = myAgent();
+  const owner = currentMe();
+  // The mark keeps a floor, since below about 8px the faces stop being marks
+  // and become specks. The ring scales too: a fixed 1.5px halo is invisible at
+  // 54px and swallows the mark at 16px.
+  const badge = Math.max(8, Math.round(size * 0.44));
+  const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
+  return (
+    <div
+      title={title || me.name}
+      style={{ position:"relative", width:size, height:size, flex:"0 0 auto", ...style }}>
+      {owner.photo ? (
+        <img src={owner.photo} alt="" style={{
+          width:"100%", height:"100%", objectFit:"cover", display:"block",
+          border:`1px solid ${FACE_INK}`, boxSizing:"border-box",
+          filter:"grayscale(1) contrast(1.05)",
+        }}/>
+      ) : (
+        <Avatar name={owner.name} size={size}/>
+      )}
+      {/* bottom-right, held inside the footprint so the mark never overlaps
+          whatever sits beside it in a tight row */}
+      <span style={{
+        position:"absolute", right:0, bottom:0, display:"block", lineHeight:0,
+        boxShadow:`0 0 0 ${ring}px ${A.paper}`,
+      }}>
+        <AgentMark size={badge} agent={me}/>
+      </span>
+    </div>
+  );
 }
 
 /** Deterministic face + palette draw for an owner. */
@@ -35353,10 +35469,13 @@ function AgentFace({ seed, size = 22, title, style }) {
 }
 
 function AgentAvatar({ size = 22, collective = false, seed, title, style }) {
-  // With an owner we can draw that agent's own face; without one there is no
-  // identity to draw, so it falls back to the generic mark.
-  if (!collective && seed) {
-    return <AgentFace seed={seed} size={size} title={title} style={style}/>;
+  // Every single agent gets a face. Named ones draw from their owner; a
+  // counterpart the API could not name still gets a stable face rather than a
+  // different-looking generic mark, so the app never mixes two visual
+  // languages for the same kind of thing. Only "several agents at once" is
+  // drawn differently, because it is not one agent.
+  if (!collective) {
+    return <AgentFace seed={seed || "someone"} size={size} title={title} style={style}/>;
   }
   return (
     <div
@@ -35382,11 +35501,68 @@ function AgentAvatar({ size = 22, collective = false, seed, title, style }) {
   );
 }
 
+/* ---------- Social links: one shape, whatever the source ----------
+   Socials arrive two ways: the demo record carries {id, prefix, handle}, while
+   the API carries {label, value} where value is usually a whole URL. Everything
+   is normalized to a platform plus a bare handle, because the logo already says
+   which platform it is: showing "x.com/seren" next to an X mark is the platform
+   said twice. The prefix only comes back when a link has to be built. */
+const SOCIAL_PREFIX = {
+  x: "x.com/",
+  twitter: "x.com/",
+  linkedin: "linkedin.com/in/",
+  github: "github.com/",
+  telegram: "t.me/",
+};
+
+/** Platform id from an entry's own label, or failing that from its url. */
+function socialPlatformOf(social = {}) {
+  const id = String(social.id || social.label || social.platform || "").toLowerCase().trim();
+  if (id) return id === "twitter" ? "x" : id;
+  const p = String(social.prefix || social.handle || social.value || "").toLowerCase();
+  if (p.includes("x.com") || p.includes("twitter")) return "x";
+  if (p.includes("linkedin")) return "linkedin";
+  if (p.includes("github")) return "github";
+  if (p.includes("t.me") || p.includes("telegram")) return "telegram";
+  return "website";
+}
+
+/** Just the part that identifies the person: no scheme, no platform host.
+    An unknown host keeps its domain, since there the domain IS the identity. */
+function socialHandleOf(social = {}) {
+  const raw = String(social.handle ?? social.value ?? "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw) && !raw.includes("/")) return raw.replace(/^@/, "");
+  const bare = raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
+  const known = /^(x\.com|twitter\.com|linkedin\.com|github\.com|t\.me|telegram\.me)\/(in\/|@)?/i;
+  return known.test(bare) ? bare.replace(known, "") : bare;
+}
+
+/** The address to open. Rebuilt from the platform when we only hold a handle. */
+function socialHrefOf(social = {}) {
+  const raw = String(social.handle ?? social.value ?? "").trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const handle = socialHandleOf(social);
+  if (!handle) return "";
+  const prefix = social.prefix || SOCIAL_PREFIX[socialPlatformOf(social)] || "";
+  return `https://${prefix}${handle}`;
+}
+
+/** {id, prefix, handle} for editing, from any of the shapes above. */
+function normalizeSocial(social = {}) {
+  const id = socialPlatformOf(social);
+  return { id, prefix: social.prefix || SOCIAL_PREFIX[id] || "", handle: socialHandleOf(social) };
+}
+
 /* ---------- SocialGlyph: 1-bit platform marks ----------
    Drawn rather than fetched: the bundle is offline, so a webfont or an SVG
    sprite from a CDN is not an option. Each is reduced to what survives at
    13px in one colour, the X cross, the "in" tile, the octocat silhouette as
    a head-and-tail, the telegram plane, a globe for anything else. */
+// SVG mask ids are document-global, so each rendered glyph needs its own or
+// they collide and every cat after the first renders against the wrong mask.
+let maskSeq = 0;
+
 function SocialGlyph({ id, size = 13, color = A.fg }) {
   const k = String(id || "").toLowerCase();
   const p = { width:size, height:size, viewBox:"0 0 16 16", style:{ display:"block", flex:"0 0 auto" } };
@@ -35410,15 +35586,25 @@ function SocialGlyph({ id, size = 13, color = A.fg }) {
     );
   }
   if (k === "github" || k === "git" || k === "gitlab") {
-    // a branch, not the octocat, at 13px in one colour the cat silhouette
-    // turns to mud inside its circle, while a fork still reads as code
+    // The cat, drawn as a solid silhouette rather than an outline: at 13px a
+    // 1.5px stroke closes up into mud, while a filled shape keeps its ears and
+    // legs. The legs are punched out with a mask instead of being painted in a
+    // paper colour, because this sits on white, on grey in the settings field,
+    // and inverts to black when a profile link is hovered.
+    const maskId = `gh-${maskSeq++}`;
     return (
-      <svg {...p} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="square">
-        <line x1="4.5" y1="4.5" x2="4.5" y2="12"/>
-        <path d="M11.5 5.5v1.6c0 1.3-1 2.1-2.4 2.1H4.5"/>
-        <circle cx="4.5" cy="3.4" r="1.6"/>
-        <circle cx="11.5" cy="3.4" r="1.6"/>
-        <circle cx="4.5" cy="12.6" r="1.6"/>
+      <svg {...p} fill="none">
+        <mask id={maskId}>
+          <rect width="16" height="16" fill="#000"/>
+          <circle cx="8" cy="8.7" r="6.1" fill="#fff"/>
+          <path d="M3.6 4.4C3.1 3.1 3.2 2.1 3.5 1.6c.7-.1 1.7.4 2.6 1.2z" fill="#fff"/>
+          <path d="M12.4 4.4c.5-1.3.4-2.3.1-2.8-.7-.1-1.7.4-2.6 1.2z" fill="#fff"/>
+          <path d="M6.05 15.2v-3.3h1.3v3.4z" fill="#000"/>
+          <path d="M8.8 15.2v-2.9h1.3v3.0z" fill="#000"/>
+        </mask>
+        <rect width="16" height="16" fill={color} mask={`url(#${maskId})`}/>
+        <path d="M3.75 11.9c-1.1-.3-1.5-1.25-1.5-1.25"
+          stroke={color} strokeWidth={1.4} strokeLinecap="round"/>
       </svg>
     );
   }
@@ -35612,14 +35798,16 @@ function useInterval(cb, delay) {
 }
 
 /* ---------- PipelineFunnel: Amiga gadget strip ---------- */
-// Minimal terminal-style readout, counts in monospace, hairline-divided.
-// No progress bars (they read too "SaaS dashboard"); the number is the data.
+// Label first, then its count in a badge. Each tab is sized to its own text
+// rather than to an equal share of the row: five equal columns cut "awaiting
+// you" down to "A…", and a tab whose name you cannot read is not a tab. If the
+// whole strip still does not fit, it scrolls sideways rather than truncating.
 function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
   const clickable = !!onClickStage;
   const allActive = activeStage === "all";
   return (
     <div style={{
-      display:"flex",
+      display:"flex", alignItems:"stretch", flexWrap:"wrap",
       fontFamily:"var(--mac-mono)",
     }}>
       {stages.map((s, i) => {
@@ -35635,29 +35823,31 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             key={s.label}
             onClick={handleClick}
             disabled={!clickable}
+            title={`${s.label} · ${s.count}`}
             style={{
-              flex:"1 1 0", minWidth:0,
-              display:"flex", alignItems:"baseline", gap:7,
-              padding:"7px 12px",
+              flex:"0 0 auto",
+              display:"flex", alignItems:"center", gap:5,
+              padding:"7px 9px",
               background: isActive ? A.fg : "transparent",
               color: isActive ? A.paper : A.fg,
-              opacity: dim ? 0.4 : 1,
+              opacity: dim ? 0.45 : 1,
               cursor: clickable ? "pointer" : "default",
               border:"none",
               borderRight: last ? "none" : `1px solid ${A.fg}`,
               borderRadius:0,
-              textAlign:"left",
+              whiteSpace:"nowrap",
               fontFamily:"var(--mac-mono)",
             }}>
             <span style={{
-              fontSize:17, fontWeight:700, lineHeight:1, letterSpacing:-0.5,
-              color: accent ? A.accent : (isActive ? A.paper : A.fg),
-            }}>{s.count}</span>
-            <span style={{
-              fontSize:10, letterSpacing:1, textTransform:"uppercase",
-              opacity: isActive ? 0.85 : 0.6, whiteSpace:"nowrap",
-              overflow:"hidden", textOverflow:"ellipsis",
+              fontSize:10, letterSpacing:0.4, textTransform:"uppercase",
             }}>{s.label}</span>
+            <span style={{
+              fontSize:10, fontWeight:700, lineHeight:1,
+              padding:"3px 4px", minWidth:14, textAlign:"center",
+              border:`1px solid ${isActive ? A.paper : A.fg}`,
+              background: accent ? A.accent : "transparent",
+              color: accent ? A.fg : (isActive ? A.paper : A.fg),
+            }}>{s.count}</span>
           </button>
         );
       })}
@@ -35667,10 +35857,13 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
 
 /* ---------- SourceBadge ---------- */
 function SourceBadge({ source, sourceMeta }) {
+  const owner = agentOwner(sourceMeta?.name);
   const cfg = {
-    // the agent wears its mark here too, not the runtime's initial
-    agent:      { glyph:<AgentGlyph size={11}/>, label:"from index" },
-    individual: { glyph:<AgentGlyph size={11}/>, label: `from ${agentLabel(sourceMeta?.name)}` },
+    // your agent wears the same picture it wears everywhere else; a named
+    // counterpart's wears its own
+    agent:      { face: <MyAgentAvatar size={14}/>, label:"from your agent" },
+    individual: { face: owner ? <AgentAvatar size={14} seed={owner}/> : <MyAgentAvatar size={14}/>,
+                  label: `from ${agentLabel(sourceMeta?.name)}` },
     collective: { glyph:"⁂", label: sourceMeta?.count ? `aggregated · ${sourceMeta.count} ${sourceMeta.of}` : "aggregated signal" },
     room:       { glyph:"≋", label: sourceMeta?.count ? `the room · ${sourceMeta.count} ${sourceMeta.of}` : "ambient · the room" },
   }[source] || { glyph:"·", label:"" };
@@ -35684,6 +35877,7 @@ function SourceBadge({ source, sourceMeta }) {
       color: A.fg, textTransform:"lowercase",
       boxShadow: `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
     }}>
+      {cfg.face || (
       <span style={{
         display:"inline-grid", placeItems:"center",
         width:14, height:14,
@@ -35691,7 +35885,7 @@ function SourceBadge({ source, sourceMeta }) {
         fontSize:10, fontWeight:700,
         border:`1px solid ${A.fg}`,
         boxShadow: `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`,
-      }}>{cfg.glyph}</span>
+      }}>{cfg.glyph}</span>)}
       <span>{cfg.label}</span>
     </div>
   );
@@ -35808,10 +36002,55 @@ function PicturePicker({ size = 46, label = "change picture", onPick, onError, c
   );
 }
 
+/* ---------- Escape closes the topmost window ----------
+   Windows push themselves onto a stack as they mount, so Escape always hits the
+   one opened most recently: the profile panel rather than the signals window
+   behind it. Doing it here rather than per screen means any window that takes
+   an `onClose` gets the shortcut for free.
+
+   Two things deliberately win over it. A menu or dialog that runs its own
+   Escape marks the event handled in the capture phase, so its listener fires
+   first and this one stands down. And Escape inside a text field blurs the
+   field instead, so escaping out of the composer never throws away a draft. */
+const macWindowStack = [];
+let macEscapeBound = false;
+
+function bindMacEscape() {
+  if (macEscapeBound || typeof document === "undefined") return;
+  macEscapeBound = true;
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    const el = document.activeElement;
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+      el.blur();
+      return;
+    }
+    for (let i = macWindowStack.length - 1; i >= 0; i--) {
+      const close = macWindowStack[i].get();
+      if (close) { e.preventDefault(); close(); return; }
+    }
+  });
+}
+
 /* ---------- AmigaWindow: title bar with close gadget on left, depth on right ---------- */
 // `dismiss` swaps the close gadget for the bar gadget, see the CSS note.
 // Use it for panels that sit beside the flow instead of holding it.
 function MacWindow({ title, children, style, bodyStyle, onClose, noShadow, dismiss }) {
+  // `onClose` is usually an inline arrow, so it is a new function every render.
+  // The ref keeps the stack entry stable: registering on identity instead would
+  // re-order the stack on every render and Escape would close the wrong window.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    bindMacEscape();
+    const entry = { get: () => closeRef.current };
+    macWindowStack.push(entry);
+    return () => {
+      const i = macWindowStack.indexOf(entry);
+      if (i !== -1) macWindowStack.splice(i, 1);
+    };
+  }, []);
+
   return (
     // minWidth:0 + overflow:hidden keep a window inside its own frame. As a
     // grid item it would otherwise be floored at its content's min-content
@@ -35878,7 +36117,8 @@ function MacSegmented({ value, onChange, options, size }) {
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
-  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar,
+  SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
+  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
@@ -36412,20 +36652,48 @@ function TextField({ label, required, value, onChange, disabled, placeholder, ri
 }
 
 // Prefix sits in its own raised cell so the editable part is unambiguous.
-function SocialField({ prefix, value, onChange }) {
+// The left cell is the platform's mark, and the field holds the username on its
+// own. The url prefix it replaced was both blank for API-sourced rows (which
+// carry no prefix) and redundant next to the logo: an X mark followed by
+// "x.com/seren" says the platform twice. The full address is rebuilt on save.
+// A row can be removed outright, which is the only way to take a link off a
+// profile.
+function SocialField({ social, value, onChange, onRemove }) {
+  const [hot, setHot] = useState(false);
+  const platform = socialPlatformOf(social);
+  const isWeb = platform === "website";
   return (
     <div style={{ display:"flex", border:"1px solid #000", background:"#fff" }}>
-      <span style={{
-        fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-        background:"#EDEAE1", padding:"8px 10px",
-        borderRight:"1px solid #000", whiteSpace:"nowrap",
-        display:"flex", alignItems:"center",
-      }}>{prefix}</span>
+      <span
+        title={platform}
+        style={{
+          background:"#EDEAE1", padding:"0 9px",
+          borderRight:"1px solid #000",
+          display:"flex", alignItems:"center", flex:"0 0 auto",
+        }}>
+        <SocialGlyph id={platform} size={15}/>
+      </span>
       <input
         value={value}
-        onChange={e => onChange && onChange(e.target.value)}
+        placeholder={isWeb ? "your-site.com" : "username"}
+        onChange={e => onChange && onChange(socialHandleOf({ ...social, handle: e.target.value }))}
         style={{ ...inputReset(false), padding:"8px 10px" }}
       />
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          onMouseEnter={() => setHot(true)}
+          onMouseLeave={() => setHot(false)}
+          title={`remove ${platform}`}
+          aria-label={`remove ${platform}`}
+          style={{
+            flex:"0 0 auto", width:30, cursor:"pointer",
+            borderLeft:"1px solid #000",
+            background: hot ? "var(--ink-warn)" : "#EDEAE1",
+            color: hot ? "#fff" : "var(--ink-2)",
+            fontFamily:"var(--mac-mono)", fontSize:13, lineHeight:1,
+          }}>×</button>
+      )}
     </div>
   );
 }
@@ -36545,21 +36813,23 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
       }}>
         {form.socials.map((s, i) => (
           <SocialField
-            key={s.id}
-            prefix={s.prefix}
-            value={s.handle}
+            key={s.id || s.label || i}
+            social={s}
+            value={socialHandleOf(s)}
             onChange={v => set("socials", form.socials.map(
               (x, j) => j === i ? { ...x, handle: v } : x
             ))}
+            onRemove={() => set("socials", form.socials.filter((_, j) => j !== i))}
           />
         ))}
 
         {form.websites.map((w, i) => (
           <SocialField
             key={`w${i}`}
-            prefix="https://"
+            social={{ id:"website", prefix:"https://" }}
             value={w}
             onChange={v => set("websites", form.websites.map((x, j) => j === i ? v : x))}
+            onRemove={() => set("websites", form.websites.filter((_, j) => j !== i))}
           />
         ))}
 
@@ -36862,9 +37132,14 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
   // What the agent assembled, the baseline "reset" restores to.
+  // Socials are normalized on the way in so the fields hold a bare username
+  // whatever the source stored: the demo record keeps {id, prefix, handle},
+  // the API returns {label, value} with value as a whole URL.
   const assembled = useRef({
     name: ME.name, email: ME.email, location: ME.location,
-    intro: ME.intro, socials: ME.socials, websites: ME.websites,
+    intro: ME.intro,
+    socials: (ME.socials || []).map(normalizeSocial),
+    websites: ME.websites,
     photo: ME.photo || null,
   });
   const [form, setForm] = useState(assembled.current);
@@ -36894,13 +37169,20 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       notify,
     });
     if (live && client) {
+      // The fields hold a bare username, so the full address is rebuilt here.
+      // Extra websites go up as 'custom', the one label the schema's per-user
+      // uniqueness index deliberately exempts, so more than one can be stored.
+      const socials = (form.socials || [])
+        .filter((s) => s && String(s.handle || "").trim())
+        .map((s) => ({ label: s.id || "link", value: socialHrefOf(s) }));
+      const sites = (form.websites || [])
+        .filter((w) => String(w || "").trim())
+        .map((w) => ({ label: "custom", value: socialHrefOf({ id: "website", handle: w }) }));
       client.auth.updateProfile({
         name: form.name,
         intro: form.intro,
         location: form.location,
-        socials: (form.socials || [])
-          .filter((s) => s && s.handle && s.handle.trim())
-          .map((s) => ({ label: s.id || "link", value: s.handle.trim() })),
+        socials: [...socials, ...sites],
       }).catch(() => {});
     }
     (onDone || onClose)();
@@ -37175,9 +37457,15 @@ function CreateNetwork({ onCancel, onCreate }) {
   const canCreate = named.length > 0;
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // capture + preventDefault: this form is on top of the networks window, so
+    // Escape has to cancel the form rather than close the window under it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onCancel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onCancel]);
 
   const submit = () => {
@@ -37816,16 +38104,13 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
 
 // Your negotiator's identity, the one agent that speaks for you, and the only
 // thing on this page with a face. Laid out like the profile block in settings
-// (picture on the left as the control, name beside it) because it is the same
-// kind of thing: who you are to the network, and who your agent is.
+// (picture on the left, name beside it) because it is the same kind of thing:
+// who you are to the network, and who your agent is.
 //
-// Shuffle is the primary move, a generated avatar's whole point is that a new
-// one is one click away, and the kit has 3,600 draws behind it. Uploading is
-// second because a picture you chose is the rarer case, and it can be dropped
-// again to fall back to the generated face.
-function NegotiatorProfile({ agent, onShuffle, onPick, onClear,
+// Shuffle is the whole control surface: a generated avatar's point is that a
+// new one is one click away, and the kit has 3,600 draws behind it.
+function NegotiatorProfile({ agent, onShuffle,
                             runtimeOptions, runtime, onChangeRuntime }) {
-  const [err, setErr] = useState("");
   const btn = {
     fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
     border:"1px solid #000", background:"#fff", color:"#000",
@@ -37833,27 +38118,20 @@ function NegotiatorProfile({ agent, onShuffle, onPick, onClear,
   };
   return (
     <div style={{ display:"grid", gap:16 }}>
+      {/* No edit badge over the picture. The upload affordance sat in the
+          bottom-right corner, which is exactly where the agent's mark now
+          sits, so the pencil covered the thing it was there to change.
+          Shuffle is the control. */}
       <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-        <PicturePicker size={54} label="change your agent's picture"
-          onPick={(d) => { setErr(""); onPick(d); }} onError={setErr}>
-          <MyAgentAvatar size={54}/>
-        </PicturePicker>
+        <MyAgentAvatar size={54}/>
 
         <div style={{ display:"grid", gap:6, minWidth:0 }}>
           <div style={{
             fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
           }}>{agent.name}</div>
           <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
-            <button style={btn} onClick={() => { setErr(""); onShuffle(); }}>⟳ shuffle</button>
-            {agent.photo
-              ? <button style={btn} onClick={() => { setErr(""); onClear(); }}>use generated</button>
-              : <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>
-                  generated · {agentFaceFor(agent.seed).face.name}
-                </span>}
+            <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
           </div>
-          {err && (
-            <div style={{ fontFamily:"var(--mac-sans)", fontSize:11, color:"var(--ink-warn)" }}>{err}</div>
-          )}
         </div>
       </div>
 
@@ -37891,12 +38169,18 @@ function NegotiatorSelect({ options, value, onChange }) {
     const onDown = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    // capture + preventDefault so the open dropdown takes the Escape before the
+    // window-closing handler in primitives sees it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -38043,25 +38327,23 @@ function Agents({ onClose }) {
     [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
   }));
 
-  // Your negotiator's picture. Written straight onto the shared ME record the
-  // way settings commits a profile edit, so every other surface, the feed, a
-  // question card, onboarding, picks it up the next time it renders. `bump`
-  // only exists to re-render this pane, since ME is a plain object.
+  // Your negotiator's picture. setMyAgentFace writes the shared record so every
+  // other surface (the feed, a question card, onboarding) picks it up on its
+  // next render, and persists it so the draw survives a relaunch. `bump` only
+  // exists to re-render this pane, since the record is a plain object.
   const [, bump] = useState(0);
   const myNegotiator = myAgent();
-  const commitFace = (patch) => { Object.assign(ME, patch); bump(n => n + 1); };
   // any distinct string moves the hash; the counter stops two shuffles in the
   // same millisecond from landing on the same draw
   const shuffleCount = useRef(0);
   const shuffleFace = () => {
     shuffleCount.current += 1;
-    commitFace({
-      agentFaceSeed: `${ME.name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
-      agentPhoto: null,
+    setMyAgentFace({
+      seed: `${currentMe().name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
+      photo: null,
     });
+    bump(n => n + 1);
   };
-  const pickPhoto = (photo) => commitFace({ agentPhoto: photo });
-  const clearPhoto = () => commitFace({ agentPhoto: null });
 
   // Only runtimes you've switched on can speak for you, so only those are
   // offered. Index is always available as the fallback.
@@ -38167,8 +38449,6 @@ function Agents({ onClose }) {
             <NegotiatorProfile
               agent={myNegotiator}
               onShuffle={shuffleFace}
-              onPick={pickPhoto}
-              onClear={clearPhoto}
               runtimeOptions={negotiatorOptions}
               runtime={negotiator}
               onChangeRuntime={setNegotiator}
@@ -38589,11 +38869,11 @@ function NetworksRow({ count, onClick }) {
   );
 }
 
-// The agent runtimes on this Mac. Same quiet shelf treatment as the networks
-// row above it: both are destinations, not settings. The glyph is the shared
-// agent mark (AgentGlyph), a head with an antenna, which reads as "an agent"
-// at a glance and matches the mark agents wear in the feed. Unframed here,
-// since this is a shelf row rather than something's profile picture.
+// The agents destination. Same quiet shelf treatment as the networks row above
+// it: both are destinations, not settings, so both get a plain glyph. Your
+// negotiator's picture belongs where the agent is speaking, not on a row whose
+// job is "take me to the agents screen", where next to the networks mark it
+// read as a stray photo in an icon column.
 function AgentsRow({ count, onClick }) {
   return (
     <button
@@ -38629,12 +38909,18 @@ function UserMenu({ me, onSelect }) {
     const onDown = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    // capture + preventDefault so this menu takes the Escape before the
+    // window-closing handler in primitives sees it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -40042,15 +40328,19 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => visiblePeople.filter(p => !["accepted", "ready", "expired", "passed"].includes(p.status)),
     [visiblePeople]
   );
+  // The five states an opportunity can be in for you, in the order they happen:
+  // it needs you, agents are still talking, you took it, you turned it down, it
+  // ran out. "awaiting you" leads because it is the only one you can act on.
   const funnelStages = useMemo(() => {
-    const by = (s) => visiblePeople.filter(p => p.status === s).length;
+    const by = (s) => visiblePeople.filter(p => opportunityBucket(p) === s).length;
     return [
-      { label:"negotiating", count: negotiatingPeople.length },
-      { label:"ready",       count: by("ready"),    accent:true },
-      { label:"accepted",    count: by("accepted"), accent:true },
-      { label:"expired",     count: by("expired") },
+      { label:"awaiting you", count: by("awaiting you"), accent:true },
+      { label:"negotiating",  count: by("negotiating") },
+      { label:"accepted",     count: by("accepted"), accent:true },
+      { label:"rejected",     count: by("rejected") },
+      { label:"missed",       count: by("missed") },
     ];
-  }, [visiblePeople, negotiatingPeople]);
+  }, [visiblePeople]);
 
   const answerClarifier = (item, choice) => {
     setConversation(prev => prev.map(it =>
@@ -40905,10 +41195,20 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
         background:"#fff",
       }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-          <h2 style={{
-            margin:0, fontFamily:"var(--amiga-title)", fontWeight:500,
-            fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2, flex:1, minWidth:0,
-          }}>{profile.intent || "your signal"}</h2>
+          {/* Capped at three lines. A long signal used to grow this header
+              without limit, and opening the third window narrowed the column
+              enough that the title pushed the status line straight through the
+              header's bottom rule. It clips to an ellipsis instead, and the
+              whole signal is one hover away. */}
+          <h2
+            title={profile.intent || "your signal"}
+            style={{
+              margin:0, fontFamily:"var(--amiga-title)", fontWeight:500,
+              fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2,
+              flex:1, minWidth:0,
+              display:"-webkit-box", WebkitBoxOrient:"vertical", WebkitLineClamp:3,
+              overflow:"hidden",
+            }}>{profile.intent || "your signal"}</h2>
           <div style={{ display:"flex", gap:6, flex:"0 0 auto" }}>
             <SignalAction
               label={paused ? "▶ resume" : "❚❚ pause"}
@@ -40923,28 +41223,39 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
             />
           </div>
         </div>
+        {/* One line, always. The state text gives up its width first so the
+            waiting-questions count is never the thing that gets pushed out of
+            the window. */}
         <div style={{
-          marginTop:8, display:"flex", alignItems:"center", gap:8,
+          marginTop:8, display:"flex", alignItems:"center", gap:8, minWidth:0,
           fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3, color:"var(--ink-2)",
         }}>
-          <span style={{
-            display:"inline-flex", alignItems:"center", gap:5,
-            color: paused ? "var(--ink-3)" : "#000",
-          }}>
+          <span
+            title={paused ? "paused · agent on hold" : "live · agent is looking in the background"}
+            style={{
+              display:"inline-flex", alignItems:"center", gap:5,
+              minWidth:0, flex:"0 1 auto",
+              color: paused ? "var(--ink-3)" : "#000",
+            }}>
             <span style={{
-              width:7, height:7, borderRadius:"50%",
+              width:7, height:7, borderRadius:"50%", flex:"0 0 auto",
               background: paused ? "var(--ink-4)" : "#1FA95B",
               boxShadow: paused ? "none" : "0 0 0 2px rgba(31,169,91,0.25)",
             }}/>
-            {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
+            <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>
+              {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
+            </span>
           </span>
           {!paused && (pendingCount + negotiatingPeople.length) > 0 && (
             <React.Fragment>
-              <span style={{ color:"var(--ink-4)" }}>·</span>
+              <span style={{ color:"var(--ink-4)", flex:"0 0 auto" }}>·</span>
               <span style={{
-                background:"#000", color:"#fff",
-                padding:"1px 8px",
-              }}>{pendingCount + negotiatingPeople.length} questions waiting on you</span>
+                background:"#000", color:"#fff", flex:"0 0 auto",
+                padding:"1px 8px", whiteSpace:"nowrap",
+              }}>
+                {pendingCount + negotiatingPeople.length}
+                {pendingCount + negotiatingPeople.length === 1 ? " question" : " questions"} waiting on you
+              </span>
             </React.Fragment>
           )}
         </div>
@@ -41342,16 +41653,25 @@ function UserLine({ children }) {
   );
 }
 
+/* Which tab a person belongs under. The internal statuses are the older
+   vocabulary (`ready`, `passed`, `expired`); these are the names the rest of
+   the product uses, so the tabs say what the state means to you rather than
+   what the record is called. */
+function opportunityBucket(p) {
+  switch (p.status) {
+    case "accepted": return "accepted";
+    case "ready":    return "awaiting you";
+    case "passed":   return "rejected";
+    case "expired":  return "missed";
+    default:         return "negotiating";
+  }
+}
+
 /* =================== RIGHT, MATCH FEED =================== */
 function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
-  const bucket = (p) => {
-    if (p.status === "accepted") return "accepted";
-    if (p.status === "expired")  return "expired";
-    if (p.status === "ready")    return "ready";
-    if (p.status === "passed")   return "passed";
-    return "negotiating";
-  };
-  const peopleForTab = tab === "all" ? people : people.filter(p => bucket(p) === tab);
+  const peopleForTab = tab === "all"
+    ? people
+    : people.filter(p => opportunityBucket(p) === tab);
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)",
@@ -41386,9 +41706,11 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
             fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
             border:"1px dashed #000",
           }}>{
-            tab === "accepted" ? "no one accepted yet. accept someone from your ready list."
-            : tab === "expired" ? "nothing expired. these are people the moment passed on."
-            : tab === "ready"   ? "no one ready yet. answer their questions in the feed first."
+            tab === "awaiting you" ? "nothing waiting on you. answer their questions in the feed first."
+            : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
+            : tab === "accepted"    ? "no one accepted yet. accept someone from the awaiting-you list."
+            : tab === "rejected"    ? "you haven't turned anyone down."
+            : tab === "missed"      ? "nothing missed. these are people the moment passed on."
             : "no one here right now. the field keeps moving, so check back."
           }</div>
         )}
@@ -41811,19 +42133,18 @@ function profileContent(person) {
   return { lead, bio, note, shared, socials, meta };
 }
 
-/* A social handle, rendered as the address it points at. The platform mark
-   carries the identification so the text can just be the handle. Bordered like
-   a gadget rather than like the flat share chips above, because unlike those
-   these are pressable. */
+/* A social link: the platform's mark and the username, nothing else. The
+   normalizing lives in primitives so this and the settings editor agree on what
+   a handle is. Bordered like a gadget rather than like the flat share chips
+   above, because unlike those these are pressable. */
 function SocialLink({ social }) {
   const [hover, setHover] = useState(false);
-  const href = /^https?:\/\//i.test(social.handle)
-    ? social.handle
-    : `https://${social.prefix || ""}${social.handle}`;
+  const platform = socialPlatformOf(social);
+  const href = socialHrefOf(social);
   const ink = hover ? "#fff" : "#000";
   return (
     <a href={href} target="_blank" rel="noreferrer noopener"
-      title={`${social.id} · ${social.handle}`}
+      title={`${platform} · ${href}`}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         display:"inline-flex", alignItems:"center", gap:6,
@@ -41833,8 +42154,8 @@ function SocialLink({ social }) {
         color: ink,
         boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
       }}>
-      <SocialGlyph id={social.id} size={13} color={ink}/>
-      <span>{social.handle}</span>
+      <SocialGlyph id={platform} size={13} color={ink}/>
+      <span>{socialHandleOf(social)}</span>
     </a>
   );
 }
@@ -41846,7 +42167,36 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
   const isExpired = status === "expired";
-  const { lead, bio, note, shared, socials, meta } = profileContent(person);
+
+  // Opportunity cards say nothing about the person themselves, so their bio and
+  // links are fetched here from GET /users/:id. Merged under whatever the card
+  // already carried, so a card that does supply them keeps winning.
+  const [fetched, setFetched] = useState(null);
+  useEffect(() => {
+    setFetched(null);
+    const userId = person.userId;
+    if (!userId || !window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client || !client.users || !client.users.get) return;
+    let cancelled = false;
+    client.users.get(userId)
+      .then((res) => {
+        if (cancelled) return;
+        const u = (res && res.user) || res;
+        if (u) setFetched(window.IndexApi.mapCounterpartProfile(u));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [person.userId]);
+
+  const merged = fetched
+    ? {
+        ...person,
+        bio: person.bio || fetched.bio,
+        socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
+      }
+    : person;
+  const { lead, bio, note, shared, socials, meta } = profileContent(merged);
   return (
     <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>

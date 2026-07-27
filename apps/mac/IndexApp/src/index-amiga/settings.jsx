@@ -54,20 +54,48 @@ function TextField({ label, required, value, onChange, disabled, placeholder, ri
 }
 
 // Prefix sits in its own raised cell so the editable part is unambiguous.
-function SocialField({ prefix, value, onChange }) {
+// The left cell is the platform's mark, and the field holds the username on its
+// own. The url prefix it replaced was both blank for API-sourced rows (which
+// carry no prefix) and redundant next to the logo: an X mark followed by
+// "x.com/seren" says the platform twice. The full address is rebuilt on save.
+// A row can be removed outright, which is the only way to take a link off a
+// profile.
+function SocialField({ social, value, onChange, onRemove }) {
+  const [hot, setHot] = useState(false);
+  const platform = socialPlatformOf(social);
+  const isWeb = platform === "website";
   return (
     <div style={{ display:"flex", border:"1px solid #000", background:"#fff" }}>
-      <span style={{
-        fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-        background:"#EDEAE1", padding:"8px 10px",
-        borderRight:"1px solid #000", whiteSpace:"nowrap",
-        display:"flex", alignItems:"center",
-      }}>{prefix}</span>
+      <span
+        title={platform}
+        style={{
+          background:"#EDEAE1", padding:"0 9px",
+          borderRight:"1px solid #000",
+          display:"flex", alignItems:"center", flex:"0 0 auto",
+        }}>
+        <SocialGlyph id={platform} size={15}/>
+      </span>
       <input
         value={value}
-        onChange={e => onChange && onChange(e.target.value)}
+        placeholder={isWeb ? "your-site.com" : "username"}
+        onChange={e => onChange && onChange(socialHandleOf({ ...social, handle: e.target.value }))}
         style={{ ...inputReset(false), padding:"8px 10px" }}
       />
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          onMouseEnter={() => setHot(true)}
+          onMouseLeave={() => setHot(false)}
+          title={`remove ${platform}`}
+          aria-label={`remove ${platform}`}
+          style={{
+            flex:"0 0 auto", width:30, cursor:"pointer",
+            borderLeft:"1px solid #000",
+            background: hot ? "var(--ink-warn)" : "#EDEAE1",
+            color: hot ? "#fff" : "var(--ink-2)",
+            fontFamily:"var(--mac-mono)", fontSize:13, lineHeight:1,
+          }}>×</button>
+      )}
     </div>
   );
 }
@@ -187,21 +215,23 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
       }}>
         {form.socials.map((s, i) => (
           <SocialField
-            key={s.id}
-            prefix={s.prefix}
-            value={s.handle}
+            key={s.id || s.label || i}
+            social={s}
+            value={socialHandleOf(s)}
             onChange={v => set("socials", form.socials.map(
               (x, j) => j === i ? { ...x, handle: v } : x
             ))}
+            onRemove={() => set("socials", form.socials.filter((_, j) => j !== i))}
           />
         ))}
 
         {form.websites.map((w, i) => (
           <SocialField
             key={`w${i}`}
-            prefix="https://"
+            social={{ id:"website", prefix:"https://" }}
             value={w}
             onChange={v => set("websites", form.websites.map((x, j) => j === i ? v : x))}
+            onRemove={() => set("websites", form.websites.filter((_, j) => j !== i))}
           />
         ))}
 
@@ -504,9 +534,14 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
   // What the agent assembled, the baseline "reset" restores to.
+  // Socials are normalized on the way in so the fields hold a bare username
+  // whatever the source stored: the demo record keeps {id, prefix, handle},
+  // the API returns {label, value} with value as a whole URL.
   const assembled = useRef({
     name: ME.name, email: ME.email, location: ME.location,
-    intro: ME.intro, socials: ME.socials, websites: ME.websites,
+    intro: ME.intro,
+    socials: (ME.socials || []).map(normalizeSocial),
+    websites: ME.websites,
     photo: ME.photo || null,
   });
   const [form, setForm] = useState(assembled.current);
@@ -536,13 +571,20 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       notify,
     });
     if (live && client) {
+      // The fields hold a bare username, so the full address is rebuilt here.
+      // Extra websites go up as 'custom', the one label the schema's per-user
+      // uniqueness index deliberately exempts, so more than one can be stored.
+      const socials = (form.socials || [])
+        .filter((s) => s && String(s.handle || "").trim())
+        .map((s) => ({ label: s.id || "link", value: socialHrefOf(s) }));
+      const sites = (form.websites || [])
+        .filter((w) => String(w || "").trim())
+        .map((w) => ({ label: "custom", value: socialHrefOf({ id: "website", handle: w }) }));
       client.auth.updateProfile({
         name: form.name,
         intro: form.intro,
         location: form.location,
-        socials: (form.socials || [])
-          .filter((s) => s && s.handle && s.handle.trim())
-          .map((s) => ({ label: s.id || "link", value: s.handle.trim() })),
+        socials: [...socials, ...sites],
       }).catch(() => {});
     }
     (onDone || onClose)();

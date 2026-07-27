@@ -21,7 +21,7 @@ API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
     "mapPeopleFromHomeSections", "mapPersonFromHomeCard", "mapPeopleFromOpportunities",
-    "mapCounterpartProfile",
+    "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
 ]
 

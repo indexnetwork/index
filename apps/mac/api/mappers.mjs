@@ -104,6 +104,9 @@ export function mapPeopleFromHomeSections(sections = []) {
 export function mapPersonFromHomeCard(card, section = {}) {
   return {
     id: card.opportunityId || card.userId,
+    // kept separate from `id` (which is the opportunity) so the profile window
+    // can fetch this person's own bio and links
+    userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
     location: section.title || '',
@@ -123,26 +126,39 @@ export function mapPersonFromHomeCard(card, section = {}) {
 }
 
 /**
- * The counterpart's own words about themselves, when the payload carries them.
- * The presenter card does not expose bio or social handles today, so this
- * yields empty fields and the profile hides those sections, it is here so the
- * client picks them up without a change once the API does expose them.
+ * The counterpart's own words about themselves.
+ *
+ * Opportunity cards carry no bio or socials, so this yields empty fields there
+ * and the profile hides those sections. `GET /users/:id` does carry them, and
+ * the profile window fetches it, so this also accepts that payload's shape.
  * @param {Object} source
  * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
 export function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
-  const socials = Array.isArray(profile.socials) ? profile.socials : [];
   return {
     bio: profile.bio || profile.intro || '',
-    socials: socials
-      .map((entry) => ({
-        id: entry.id || entry.platform || '',
-        prefix: entry.prefix || '',
-        handle: entry.handle || entry.username || '',
-      }))
-      .filter((entry) => entry.handle),
+    socials: mapSocials(profile.socials),
   };
+}
+
+/**
+ * Normalize social links onto the {id, prefix, handle} shape the UI draws.
+ *
+ * The API stores them as `{label, value}` where value is usually a full URL,
+ * so the label becomes the platform and the value is used verbatim as the
+ * destination. Handle-only sources keep their prefix.
+ * @param {Array<Object>} socials
+ */
+export function mapSocials(socials) {
+  if (!Array.isArray(socials)) return [];
+  return socials
+    .map((entry) => {
+      const id = entry.id || entry.label || entry.platform || 'website';
+      const handle = entry.handle || entry.username || entry.value || '';
+      return { id: String(id).toLowerCase(), prefix: entry.prefix || '', handle };
+    })
+    .filter((entry) => entry.handle);
 }
 
 /**
@@ -152,6 +168,7 @@ export function mapCounterpartProfile(source = {}) {
 export function mapPeopleFromOpportunities(opportunities = []) {
   return opportunities.map((opportunity) => ({
     id: opportunity.id,
+    userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
     location: opportunity.index?.title || '',

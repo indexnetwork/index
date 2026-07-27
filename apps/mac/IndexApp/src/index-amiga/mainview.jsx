@@ -236,15 +236,19 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => visiblePeople.filter(p => !["accepted", "ready", "expired", "passed"].includes(p.status)),
     [visiblePeople]
   );
+  // The five states an opportunity can be in for you, in the order they happen:
+  // it needs you, agents are still talking, you took it, you turned it down, it
+  // ran out. "awaiting you" leads because it is the only one you can act on.
   const funnelStages = useMemo(() => {
-    const by = (s) => visiblePeople.filter(p => p.status === s).length;
+    const by = (s) => visiblePeople.filter(p => opportunityBucket(p) === s).length;
     return [
-      { label:"negotiating", count: negotiatingPeople.length },
-      { label:"ready",       count: by("ready"),    accent:true },
-      { label:"accepted",    count: by("accepted"), accent:true },
-      { label:"expired",     count: by("expired") },
+      { label:"awaiting you", count: by("awaiting you"), accent:true },
+      { label:"negotiating",  count: by("negotiating") },
+      { label:"accepted",     count: by("accepted"), accent:true },
+      { label:"rejected",     count: by("rejected") },
+      { label:"missed",       count: by("missed") },
     ];
-  }, [visiblePeople, negotiatingPeople]);
+  }, [visiblePeople]);
 
   const answerClarifier = (item, choice) => {
     setConversation(prev => prev.map(it =>
@@ -1099,10 +1103,20 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
         background:"#fff",
       }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-          <h2 style={{
-            margin:0, fontFamily:"var(--amiga-title)", fontWeight:500,
-            fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2, flex:1, minWidth:0,
-          }}>{profile.intent || "your signal"}</h2>
+          {/* Capped at three lines. A long signal used to grow this header
+              without limit, and opening the third window narrowed the column
+              enough that the title pushed the status line straight through the
+              header's bottom rule. It clips to an ellipsis instead, and the
+              whole signal is one hover away. */}
+          <h2
+            title={profile.intent || "your signal"}
+            style={{
+              margin:0, fontFamily:"var(--amiga-title)", fontWeight:500,
+              fontSize:17, color:"#000", letterSpacing:-0.2, lineHeight:1.2,
+              flex:1, minWidth:0,
+              display:"-webkit-box", WebkitBoxOrient:"vertical", WebkitLineClamp:3,
+              overflow:"hidden",
+            }}>{profile.intent || "your signal"}</h2>
           <div style={{ display:"flex", gap:6, flex:"0 0 auto" }}>
             <SignalAction
               label={paused ? "▶ resume" : "❚❚ pause"}
@@ -1117,28 +1131,39 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
             />
           </div>
         </div>
+        {/* One line, always. The state text gives up its width first so the
+            waiting-questions count is never the thing that gets pushed out of
+            the window. */}
         <div style={{
-          marginTop:8, display:"flex", alignItems:"center", gap:8,
+          marginTop:8, display:"flex", alignItems:"center", gap:8, minWidth:0,
           fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3, color:"var(--ink-2)",
         }}>
-          <span style={{
-            display:"inline-flex", alignItems:"center", gap:5,
-            color: paused ? "var(--ink-3)" : "#000",
-          }}>
+          <span
+            title={paused ? "paused · agent on hold" : "live · agent is looking in the background"}
+            style={{
+              display:"inline-flex", alignItems:"center", gap:5,
+              minWidth:0, flex:"0 1 auto",
+              color: paused ? "var(--ink-3)" : "#000",
+            }}>
             <span style={{
-              width:7, height:7, borderRadius:"50%",
+              width:7, height:7, borderRadius:"50%", flex:"0 0 auto",
               background: paused ? "var(--ink-4)" : "#1FA95B",
               boxShadow: paused ? "none" : "0 0 0 2px rgba(31,169,91,0.25)",
             }}/>
-            {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
+            <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>
+              {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
+            </span>
           </span>
           {!paused && (pendingCount + negotiatingPeople.length) > 0 && (
             <React.Fragment>
-              <span style={{ color:"var(--ink-4)" }}>·</span>
+              <span style={{ color:"var(--ink-4)", flex:"0 0 auto" }}>·</span>
               <span style={{
-                background:"#000", color:"#fff",
-                padding:"1px 8px",
-              }}>{pendingCount + negotiatingPeople.length} questions waiting on you</span>
+                background:"#000", color:"#fff", flex:"0 0 auto",
+                padding:"1px 8px", whiteSpace:"nowrap",
+              }}>
+                {pendingCount + negotiatingPeople.length}
+                {pendingCount + negotiatingPeople.length === 1 ? " question" : " questions"} waiting on you
+              </span>
             </React.Fragment>
           )}
         </div>
@@ -1536,16 +1561,25 @@ function UserLine({ children }) {
   );
 }
 
+/* Which tab a person belongs under. The internal statuses are the older
+   vocabulary (`ready`, `passed`, `expired`); these are the names the rest of
+   the product uses, so the tabs say what the state means to you rather than
+   what the record is called. */
+function opportunityBucket(p) {
+  switch (p.status) {
+    case "accepted": return "accepted";
+    case "ready":    return "awaiting you";
+    case "passed":   return "rejected";
+    case "expired":  return "missed";
+    default:         return "negotiating";
+  }
+}
+
 /* =================== RIGHT, MATCH FEED =================== */
 function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
-  const bucket = (p) => {
-    if (p.status === "accepted") return "accepted";
-    if (p.status === "expired")  return "expired";
-    if (p.status === "ready")    return "ready";
-    if (p.status === "passed")   return "passed";
-    return "negotiating";
-  };
-  const peopleForTab = tab === "all" ? people : people.filter(p => bucket(p) === tab);
+  const peopleForTab = tab === "all"
+    ? people
+    : people.filter(p => opportunityBucket(p) === tab);
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)",
@@ -1580,9 +1614,11 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
             fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
             border:"1px dashed #000",
           }}>{
-            tab === "accepted" ? "no one accepted yet. accept someone from your ready list."
-            : tab === "expired" ? "nothing expired. these are people the moment passed on."
-            : tab === "ready"   ? "no one ready yet. answer their questions in the feed first."
+            tab === "awaiting you" ? "nothing waiting on you. answer their questions in the feed first."
+            : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
+            : tab === "accepted"    ? "no one accepted yet. accept someone from the awaiting-you list."
+            : tab === "rejected"    ? "you haven't turned anyone down."
+            : tab === "missed"      ? "nothing missed. these are people the moment passed on."
             : "no one here right now. the field keeps moving, so check back."
           }</div>
         )}
@@ -2005,19 +2041,18 @@ function profileContent(person) {
   return { lead, bio, note, shared, socials, meta };
 }
 
-/* A social handle, rendered as the address it points at. The platform mark
-   carries the identification so the text can just be the handle. Bordered like
-   a gadget rather than like the flat share chips above, because unlike those
-   these are pressable. */
+/* A social link: the platform's mark and the username, nothing else. The
+   normalizing lives in primitives so this and the settings editor agree on what
+   a handle is. Bordered like a gadget rather than like the flat share chips
+   above, because unlike those these are pressable. */
 function SocialLink({ social }) {
   const [hover, setHover] = useState(false);
-  const href = /^https?:\/\//i.test(social.handle)
-    ? social.handle
-    : `https://${social.prefix || ""}${social.handle}`;
+  const platform = socialPlatformOf(social);
+  const href = socialHrefOf(social);
   const ink = hover ? "#fff" : "#000";
   return (
     <a href={href} target="_blank" rel="noreferrer noopener"
-      title={`${social.id} · ${social.handle}`}
+      title={`${platform} · ${href}`}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         display:"inline-flex", alignItems:"center", gap:6,
@@ -2027,8 +2062,8 @@ function SocialLink({ social }) {
         color: ink,
         boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
       }}>
-      <SocialGlyph id={social.id} size={13} color={ink}/>
-      <span>{social.handle}</span>
+      <SocialGlyph id={platform} size={13} color={ink}/>
+      <span>{socialHandleOf(social)}</span>
     </a>
   );
 }
@@ -2040,7 +2075,36 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
   const isExpired = status === "expired";
-  const { lead, bio, note, shared, socials, meta } = profileContent(person);
+
+  // Opportunity cards say nothing about the person themselves, so their bio and
+  // links are fetched here from GET /users/:id. Merged under whatever the card
+  // already carried, so a card that does supply them keeps winning.
+  const [fetched, setFetched] = useState(null);
+  useEffect(() => {
+    setFetched(null);
+    const userId = person.userId;
+    if (!userId || !window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client || !client.users || !client.users.get) return;
+    let cancelled = false;
+    client.users.get(userId)
+      .then((res) => {
+        if (cancelled) return;
+        const u = (res && res.user) || res;
+        if (u) setFetched(window.IndexApi.mapCounterpartProfile(u));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [person.userId]);
+
+  const merged = fetched
+    ? {
+        ...person,
+        bio: person.bio || fetched.bio,
+        socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
+      }
+    : person;
+  const { lead, bio, note, shared, socials, meta } = profileContent(merged);
   return (
     <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
