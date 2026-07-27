@@ -60,7 +60,8 @@ alone.
 ## Held PRs
 
 A PR blocked on a sibling issue is **held**, not abandoned: it stays open (usually
-draft), its workspace/worktree/branch are explicitly preserved, and the journal
+draft), its Herdr tab (or standalone workspace), worktree, and branch are
+explicitly preserved, and the journal
 records the exact dependency (e.g. "held pending IND-517 baseline repair"). The
 wave cleanup invariant applies to a held PR only after it merges or is deliberately
 abandoned. A Linear comment records the hold and its dependency.

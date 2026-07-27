@@ -771,6 +771,20 @@
       "when": 1784975500000,
       "tag": "0109_migrate_agent_permission_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1784990334675,
+      "tag": "0110_add_intent_verification_backfill_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1784990503360,
+      "tag": "0111_add_intent_verification_backfill_checks",
+      "breakpoints": true
     }
   ]
 }

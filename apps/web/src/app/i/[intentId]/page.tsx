@@ -10,7 +10,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
 import { AnsweredQuestionLog } from "@/components/InjectedQuestions/AnsweredQuestionLog";
-import type { AnsweredThreadEntry } from "@/components/InjectedQuestions/AnsweredQuestionLog";
+import type { AnsweredThreadEntry, IntentRefinementOutcome } from "@/components/InjectedQuestions/AnsweredQuestionLog";
 import { InjectedQuestions } from "@/components/InjectedQuestions/InjectedQuestions";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
@@ -66,6 +66,31 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
     return status;
   }
   return "ACTIVE";
+}
+
+/** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
+const INTENT_POLL_INTERVAL_MS = 4_000;
+const INTENT_POLL_MAX_MS = 90_000;
+
+/**
+ * Derive a short snippet from the updated intent description that is absent in
+ * the pre-answer snapshot.  Returns `undefined` when no clean diff is found.
+ */
+function deriveSnippet(before: string, after: string): string | undefined {
+  if (!after || after === before) return undefined;
+  // Split into phrases on sentence boundaries and commas.
+  const sentencePat = /[.!?]+\s+|,\s+/;
+  const beforePhrases = new Set(
+    before.split(sentencePat).map((s) => s.trim().toLowerCase()).filter(Boolean)
+  );
+  const afterPhrases = after
+    .split(sentencePat)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 8);
+  const novel = afterPhrases.find(
+    (p) => !beforePhrases.has(p.toLowerCase())
+  );
+  return novel;
 }
 
 function formatAnswer(selectedOptions: string[], freeText?: string): string {
@@ -346,6 +371,15 @@ export default function IntentDetailPage() {
   const seenQuestionIdsRef = useRef<Set<string>>(new Set());
   const chainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  /**
+   * Per-question intent-refinement poll state.  Keyed by questionId.
+   * Stored in a ref (not state) so poll callbacks can read the latest
+   * intentId without stale-closure issues; the poll writes outcome via
+   * setAnswered which re-renders without needing another ref tick.
+   */
+  const intentPollsRef = useRef<
+    Map<string, { timerId: ReturnType<typeof setInterval>; deadline: number }>
+  >(new Map());
   const clearReactionTimers = useCallback(() => {
     for (const timer of reactionTimersRef.current) clearTimeout(timer);
     reactionTimersRef.current = [];
@@ -354,6 +388,8 @@ export default function IntentDetailPage() {
     () => () => {
       if (chainTimerRef.current) clearTimeout(chainTimerRef.current);
       clearReactionTimers();
+      for (const { timerId } of intentPollsRef.current.values()) clearInterval(timerId);
+      intentPollsRef.current.clear();
     },
     [clearReactionTimers],
   );
@@ -501,9 +537,28 @@ export default function IntentDetailPage() {
           return leftTime - rightTime || left.id.localeCompare(right.id);
         });
       setAnswered((current) => {
+        // Entries with an active intentRefinement are optimistic live-status
+        // entries for intent-mode answers still being polled.  Preserve them
+        // if the server hasn't returned them yet (they may not be committed);
+        // and carry their refinement state forward when they do appear.
+        const pendingRefinement = current.filter(
+          (e) => e.intentRefinement && !canonical.some((c) => c.id === e.id)
+        );
+        const mergedCanonical = canonical.map((entry) => {
+          const opt = current.find((e) => e.id === entry.id && e.intentRefinement);
+          return opt ? { ...entry, mode: opt.mode, intentRefinement: opt.intentRefinement } : entry;
+        });
+        const merged = [
+          ...pendingRefinement,
+          ...mergedCanonical,
+        ].sort((a, b) => {
+          const at = Date.parse(a.answeredAt ?? a.detectedAt ?? a.createdAt ?? '') || 0;
+          const bt = Date.parse(b.answeredAt ?? b.detectedAt ?? b.createdAt ?? '') || 0;
+          return at - bt || a.id.localeCompare(b.id);
+        });
         const unchanged =
-          canonical.length === current.length &&
-          canonical.every((entry, index) => {
+          merged.length === current.length &&
+          merged.every((entry, index) => {
             const previous = current[index];
             return (
               previous?.id === entry.id &&
@@ -512,10 +567,11 @@ export default function IntentDetailPage() {
               previous.messageId === entry.messageId &&
               previous.createdAt === entry.createdAt &&
               previous.detectedAt === entry.detectedAt &&
-              previous.answeredAt === entry.answeredAt
+              previous.answeredAt === entry.answeredAt &&
+              previous.intentRefinement === entry.intentRefinement
             );
           });
-        return unchanged ? current : canonical;
+        return unchanged ? current : merged;
       });
     } catch {
       // Best-effort hydration; keep optimistic entries on failure.
@@ -762,6 +818,7 @@ export default function IntentDetailPage() {
       await questionsService.answer(questionId, body);
       // Keep the answered exchange visible in the conversation thread.
       if (answered) {
+        const isIntentMode = answered.detection?.mode === "intent";
         setAnswered((prev) => [
           ...prev.filter((entry) => entry.id !== questionId),
           {
@@ -771,8 +828,57 @@ export default function IntentDetailPage() {
             messageId: answered.detection?.messageId,
             createdAt: answered.createdAt,
             detectedAt: answered.detection?.timestamp,
+            mode: answered.detection?.mode,
+            // Intent-mode answers start in 'pending' so the live outcome
+            // line shows the ⟳ spinner until the poll settles.
+            intentRefinement: isIntentMode
+              ? { status: "pending" }
+              : undefined,
           },
         ]);
+
+        // Start bounded intent-description poll for intent-mode answers.
+        if (isIntentMode && intentId) {
+          // Cancel any previous poll for this question.
+          const existing = intentPollsRef.current.get(questionId);
+          if (existing) clearInterval(existing.timerId);
+
+          const snapshot = intent
+            ? (intent.summary?.trim() || intent.payload || "")
+            : "";
+          const deadline = Date.now() + INTENT_POLL_MAX_MS;
+
+          const resolve = (outcome: IntentRefinementOutcome) => {
+            clearInterval(intentPollsRef.current.get(questionId)?.timerId);
+            intentPollsRef.current.delete(questionId);
+            setAnswered((prev) =>
+              prev.map((e) =>
+                e.id === questionId ? { ...e, intentRefinement: outcome } : e
+              )
+            );
+          };
+
+          const timerId = setInterval(async () => {
+            if (Date.now() >= deadline) {
+              resolve({ status: "fallback" });
+              return;
+            }
+            try {
+              const fresh = await intentsService.getIntent(intentId);
+              const freshDesc = (fresh.summary?.trim() || fresh.payload || "").trim();
+              if (freshDesc && freshDesc !== snapshot) {
+                // Intent updated — refresh the page header and resolve.
+                setIntent(fresh);
+                const snippet = deriveSnippet(snapshot, freshDesc);
+                resolve({ status: "applied", snippet });
+              }
+            } catch {
+              // Transient error — keep polling until the deadline.
+            }
+          }, INTENT_POLL_INTERVAL_MS);
+
+          intentPollsRef.current.set(questionId, { timerId, deadline });
+        }
       }
       setQuestions((prev) => prev.filter((q) => q.id !== questionId));
       void loadAnswered();
@@ -812,7 +918,7 @@ export default function IntentDetailPage() {
         }, 1200);
       }
     },
-    [questions, questionsService, intentId, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
+    [questions, questionsService, intentId, intent, intentsService, loadAnswered, refreshQuestionCounts, scheduleBoundedWorkspaceRefresh],
   );
 
   const handleDismiss = useCallback(

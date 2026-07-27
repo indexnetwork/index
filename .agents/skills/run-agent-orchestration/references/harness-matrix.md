@@ -9,7 +9,8 @@ lives in `model-routing.md`.
 ## Launch lines
 
 Always launch through the exact, non-focusing pane ID returned by
-`herdr worktree open --no-focus --json`:
+`herdr worktree open --no-focus --json` (root and standalone sessions) or
+`herdr tab create --no-focus` (wave children):
 
 ```bash
 herdr pane send-text "$PANE_ID" "<launch line>"

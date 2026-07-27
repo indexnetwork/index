@@ -87,6 +87,100 @@ index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
 ```
 
+### Inspect the Protocol
+
+Intent detail:
+
+```console
+$ index intent show <intent-id>
+
+Signal Details
+────────────────────────────────────────
+Status          ACTIVE
+Summary         Build a secure identity layer for autonomous agents
+Confidence      ########-- 82%
+
+Network Assignments
+* AI Research Collaborations (0.92)
+* Crypto & Identity (0.78)
+* Personal Network (1.00)
+```
+
+Negotiation detail:
+
+```console
+$ index negotiation show <negotiation-id>
+
+Negotiation Details
+────────────────────────────────────────
+Counterparty    Alex Chen
+Outcome         opportunity
+Your Role       helper
+Turns           3
+
+Turn-by-Turn
+Turn 1  Your Agent    propose  Shared intent and complementary expertise.
+Turn 2  Alex's Agent  counter  Reframed this as a peer collaboration.
+Turn 3  Your Agent    accept   Strong alignment on verification mechanisms.
+```
+
+Opportunity detail:
+
+```console
+$ index opportunity show <opportunity-id>
+
+Opportunity
+────────────────────────────────────────
+Status:       pending
+Category:     Research Collaboration
+Confidence:   ########-- 87%
+
+Parties:
+  You         Seeker
+  Alex Chen   Helper
+  David Kim   Peer
+
+Reasoning:
+  Shared interest in decentralized identity protocols,
+  with complementary research and infrastructure expertise.
+
+Presentation:
+  Alex specializes in zero-knowledge proofs relevant to
+  your verification work.
+```
+
+## Documentation
+
+Detailed documentation lives in the `docs/` directory:
+
+### Guides
+
+- **[Getting Started](docs/guides/getting-started.md)** -- Full setup walkthrough with prerequisites, environment config, database setup, and troubleshooting
+
+### Design
+
+- **[Architecture Overview](docs/design/architecture-overview.md)** -- Monorepo structure, protocol layering, agent system, data flow diagrams
+- **[Protocol Deep Dive](docs/design/protocol-deep-dive.md)** -- Detailed graph, agent, and tool documentation with sequence diagrams
+
+### Domain
+
+- **[Intents](docs/domain/intents.md)** -- Intent lifecycle, semantic governance, speech act validation
+- **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
+- **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
+- **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
+- **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
+
+
+
+### Specs
+
+- **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
+- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
+- **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
+- **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
+
+
+
 ## Development
 
 ### Prerequisites
@@ -173,38 +267,6 @@ bun run db:studio      # Open Drizzle Studio (DB GUI)
 # Code quality
 bun run lint           # Run ESLint
 ```
-
-
-
-## Documentation
-
-Detailed documentation lives in the `docs/` directory:
-
-### Guides
-
-- **[Getting Started](docs/guides/getting-started.md)** -- Full setup walkthrough with prerequisites, environment config, database setup, and troubleshooting
-
-### Design
-
-- **[Architecture Overview](docs/design/architecture-overview.md)** -- Monorepo structure, protocol layering, agent system, data flow diagrams
-- **[Protocol Deep Dive](docs/design/protocol-deep-dive.md)** -- Detailed graph, agent, and tool documentation with sequence diagrams
-
-### Domain
-
-- **[Intents](docs/domain/intents.md)** -- Intent lifecycle, semantic governance, speech act validation
-- **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
-- **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
-- **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
-- **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
-
-
-
-### Specs
-
-- **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
-- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
-- **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
-- **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
 
 
 

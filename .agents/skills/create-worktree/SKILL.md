@@ -84,10 +84,13 @@ bun run worktree:setup "$FOLDER"
 
 Setup is mandatory: it installs dependencies and links the root environment files.
 
-## Open the Herdr workspace without focus
+## Open the Herdr surface without focus
 
-Open the exact existing Git worktree and use the dashed folder as the stable workspace
-label. Always preserve the user's active `index` workspace by opening without focus:
+Always preserve the user's active `index` workspace by opening without focus.
+Two modes exist:
+
+**Standalone session (no orchestration wave):** open the exact existing Git
+worktree as its own workspace, with the dashed folder as the stable label:
 
 ```bash
 herdr worktree open \
@@ -98,15 +101,39 @@ herdr worktree open \
 ```
 
 Record the returned `.result.workspace.workspace_id` and
-`.result.root_pane.pane_id`. The response may report `already_open: true`; that means
-reuse, not permission to skip identity checks. Confirm the returned worktree path and
-branch, and inspect the IDs directly when needed:
+`.result.root_pane.pane_id`. **Nesting invariant (mandatory):** the returned
+`.result.workspace.worktree` metadata must report `is_linked_worktree: true`
+with `repo_root` equal to the canonical root — that metadata is what makes the
+workspace collapse under `index` in the sidebar. If it is absent, close the
+workspace and re-open via `herdr worktree open` rather than continuing with a
+top-level orphan. The response may report `already_open: true`; that means
+reuse, not permission to skip identity checks. Confirm the returned worktree
+path and branch, and inspect the IDs directly when needed:
 
 ```bash
 herdr workspace get "$WORKSPACE_ID"
 herdr pane get "$PANE_ID"
 herdr agent get "$PANE_ID"
 ```
+
+**Wave child (an orchestration `ROOT_WS_ID` exists):** do not open a new
+workspace. Create a named tab in the wave root's workspace, with the dashed
+folder as the tab label and the worktree as cwd, and record the returned
+`.result.tab.tab_id` and `.result.root_pane.pane_id`:
+
+```bash
+herdr tab create --workspace "$ROOT_WS_ID" --cwd "$WORKTREE" \
+  --label "$FOLDER" --no-focus
+```
+
+Reuse an existing tab only when its label is `$FOLDER` and its pane cwd is
+`$WORKTREE`; reject collisions.
+
+**Prohibitions (both modes):** never use `herdr workspace create --cwd` for any
+repository checkout — it records no worktree metadata and produces a permanent
+top-level sidebar orphan. Never run `herdr worktree open --path` against the
+canonical root — Herdr dedupes it into the user's `index` workspace and renames
+it (recover with `herdr workspace rename <INDEX_WS_ID> index`).
 
 If the root pane is an interactive shell with no agent, launch Codex, Pi, or Kimi through the
 exact non-focusing pane ID. Choose the command and any supported model options before
@@ -123,7 +150,7 @@ per-harness capabilities live in the `run-agent-orchestration` references
 
 All pane reads, text, and keys are explicit-ID-targeted and non-focusing. If an agent
 already exists in that pane, reuse it only when its cwd is `WORKTREE` and its identity
-belongs to this workspace. Never start a second writer in the same worktree. Do not
+belongs to this workspace or tab. Never start a second writer in the same worktree. Do not
 use `herdr agent start` as the normal launch path; if an environment forces that
 fallback, capture the active workspace first and immediately restore `index` so focus
 is never left changed.
@@ -144,8 +171,8 @@ escalate only genuine product/architecture ambiguity, destructive actions, exter
 infrastructure mutation, credentials/secrets, or merge approval.
 
 Parallel implementation is allowed only when it is genuinely useful: give each writer
-a separate semantic branch, Git worktree, Herdr workspace, and agent session. One writer
-per worktree remains mandatory.
+a separate semantic branch, Git worktree, Herdr surface (workspace or wave-root tab),
+and agent session. One writer per worktree remains mandatory.
 
 The repository's `bun run worktree:session` launcher remains a legacy fallback when
 Herdr is unavailable; it is not the default orchestration path.

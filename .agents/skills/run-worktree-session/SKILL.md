@@ -9,10 +9,10 @@ description: >-
 
 # run-worktree-session
 
-Tier vocabulary is fixed (see `run-agent-orchestration`): the coordinating agent in
-the canonical root is the **parent** (`root` in a wave, or `main` acting alone); the
-visible agent in the exact Herdr worktree workspace is the **`child`** and owns code
-mutations. Do not use hidden `Agent` subagents for
+Tier vocabulary is fixed (see `run-agent-orchestration`): the coordinating agent is
+the **parent** (`root` in its wave coordination worktree, or `main` acting alone
+from the canonical root); the visible agent in the exact Herdr worktree workspace
+or wave-root tab is the **`child`** and owns code mutations. Do not use hidden `Agent` subagents for
 implementation or fix rounds, and do not create a watcher process or watcher pane.
 
 ## 1. Create or reuse the visible session
@@ -22,13 +22,19 @@ Follow `create-worktree` from the canonical root:
 1. derive the semantic branch, dashed folder, and absolute worktree path;
 2. create or reuse the exact Git worktree after collision checks;
 3. run `bun run worktree:setup <folder>`;
-4. open it with Herdr without changing the active `index` workspace;
+4. open it with Herdr without changing the active `index` workspace — as its own
+   nested workspace (standalone) or as a named tab of the wave root workspace
+   (wave child); see `create-worktree` for the mode split, the nesting
+   invariant, and the prohibitions;
 5. launch Codex, Pi, or Kimi only if the returned root pane has no existing agent.
 
 The installed CLI contract is:
 
 ```bash
+# standalone session — own workspace, nests under `index` (verify worktree metadata):
 herdr worktree open --path "$WORKTREE" --label "$FOLDER" --no-focus --json
+# wave child — named tab in the orchestration root workspace:
+herdr tab create --workspace "$ROOT_WS_ID" --cwd "$WORKTREE" --label "$FOLDER" --no-focus
 # launch Codex, Kimi, or Pi with a preselected model/thinking level:
 herdr pane send-text "$PANE_ID" "codex" # or: kimi, or: pi --model provider/model:thinking
 herdr pane send-keys "$PANE_ID" enter
@@ -43,15 +49,18 @@ pane launch path. Do not use `herdr agent start` normally; if an environment for
 that fallback, capture the active workspace first and immediately restore `index` so
 focus is never left changed.
 
-Capture the returned workspace and pane IDs. Reuse the existing workspace/agent when
-Herdr reports the worktree is already open. Reject a cwd, branch, workspace, pane, or
-agent-name collision rather than sending work to the wrong checkout.
+Capture the returned workspace or tab ID plus the pane ID. Reuse the existing
+workspace/tab/agent when Herdr reports the worktree is already open, or when a
+tab with matching label and pane cwd exists. Reject a cwd, branch, workspace,
+tab, pane, or agent-name collision rather than sending work to the wrong
+checkout.
 
 ## 2. Deliver one complete handoff
 
 Write one complete handoff with the absolute worktree, branch, scope, constraints,
 verification commands, the requested `CHILD_RESULT` envelope, the exact
-`PARENT_PANE_ID`, and the recipient harness's capability line (a kimi `--auto`
+`PARENT_PANE_ID` (for a wave child, the root's pane in the `<wave>-root`
+workspace), and the recipient harness's capability line (a kimi `--auto`
 child cannot ask questions and must report blockers in its envelope). Inspect the
 exact pane before delivery, then submit without waiting:
 
@@ -140,19 +149,20 @@ reconcile it deliberately in the worktree before reporting completion.
 
 Opening a PR is not merge approval. The coordinator's `finish-pr` workflow owns
 readiness, explicit merge confirmation, deployment verification, issue updates, and
-cleanup — including closing this Herdr workspace (by verified ID, never the canonical
-root) before removing the Git worktree, so no stale sidebar entry survives.
+cleanup — including closing this child's Herdr tab (wave) or workspace
+(standalone) by verified ID — never the canonical root or the `index`
+workspace — before removing the Git worktree, so no stale surface survives.
 
 ## 6. Reuse for fix rounds
 
-For review or finish-pr findings, return to the same Herdr workspace, pane, and
-agent. Send one consolidated fix prompt under the same asymmetric handoff rule,
+For review or finish-pr findings, return to the same Herdr workspace or tab,
+pane, and agent. Send one consolidated fix prompt under the same asymmetric handoff rule,
 answer routine questions through the targeted pane, and reconcile the durable
 checks/commit/push result without polling. Do not create a fresh worktree, agent, or
 prompt per comment.
 
-Parallel work uses separate visible Herdr workspaces and separate Git worktrees, with
-one writer per worktree. Merge or reconcile those branches deliberately; never let two
+Parallel work uses separate visible Herdr surfaces (workspaces or wave-root
+tabs) and separate Git worktrees, with one writer per worktree. Merge or reconcile those branches deliberately; never let two
 agents mutate one checkout.
 
 ## 7. Manual compaction checkpoint

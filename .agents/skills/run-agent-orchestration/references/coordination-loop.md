@@ -12,7 +12,7 @@ ticks its children. Every tick:
 1. **Re-read the contracts** — this skill's SKILL.md and the references relevant to
    the wave (role profiles, model routing, completion contract, and this file).
 2. **Identity pass** — `herdr agent get` on `root` (from `main`) or on every tracked
-   child (from `root`). Confirm workspace/pane/cwd/branch still match the checkpoint
+   child (from `root`). Confirm tab/pane/cwd/branch still match the checkpoint
    journal's child map.
 3. **Bounded pane reads** — `herdr pane read <PANE_ID> --source visible --lines
    15000` at the `root` tier; smaller reads at `main`. Never focus the pane.
@@ -37,8 +37,9 @@ When `main` or `root` runs on Pi, run the wave under an active `/goal` so the lo
 continues across turns until wave-end verification, and mirror wave state in the
 `todo` tool: one task per child/PR, `blockedBy` encoding merge/rebase sequencing
 (e.g. "rebase B" blocked by "merge E" when both touch `package.json`). Call
-`goal_complete` only after every PR is merged or deliberately held, workspaces are
-cleaned per the wave cleanup invariant, and Linear reflects reality.
+`goal_complete` only after every PR is merged or deliberately held, tabs and
+workspaces are cleaned per the wave cleanup invariant, and Linear reflects
+reality.
 
 ## The checkpoint journal
 
@@ -51,7 +52,7 @@ and harness differences. Path convention:
 
 `root` creates it at wave start and updates it after **every** significant event:
 child launched, handoff sent, envelope received, PR opened/ready/merged/held,
-blocker recorded, correction routed, workspace cleaned. Required sections:
+blocker recorded, correction routed, tab/workspace cleaned. Required sections:
 
 ```markdown
 # <wave> orchestration checkpoint
@@ -60,9 +61,11 @@ blocker recorded, correction routed, workspace cleaned. Required sections:
 - harness + model per tier (incl. user overrides), wave mode (direct-to-dev or
   integration branch), version floor, merge authorization scope.
 
-## Child map
-- child ↔ workspace/pane IDs, worktree path, branch, Linear issue, role, model,
-  session identity for resume.
+## Root and child map
+- root: `ROOT_WS_ID`/`ROOT_TAB_ID`/`ROOT_PANE_ID`, coordination worktree path
+  (`.worktrees/<wave>-root`).
+- child ↔ tab/pane IDs (tab label = dashed worktree folder), worktree path,
+  branch, Linear issue, role, model, session identity for resume.
 
 ## Integration state   (integration-branch waves only)
 - integration branch + current verified integration SHA, merge queue/order.
