@@ -29,6 +29,16 @@ export type { PresenterDatabase } from "../opportunity/application/opportunity.p
 export { createOpportunityTools } from "../opportunity/application/opportunity.tools.js";
 export type { OpportunityToolDeps } from "./opportunities.tools.port.js";
 
+// ── Discovery env accessors ───────────────────────────────────────────────────
+export {
+  discoveryAllowedTypes,
+  discoveryIntentMatchingEnabled,
+  discoveryProfileMatchingEnabled,
+  discoveryProfileSource,
+  resetDiscoveryEnvWarningsForTests,
+} from "../opportunity/discovery.env.js";
+export type { DiscoveryMatchType, DiscoveryProfileSource } from "../opportunity/discovery.env.js";
+
 // ── Pool discriminator (Lens A) ───────────────────────────────────────────────
 export { PoolDiscriminatorMiner } from "../opportunity/discriminator/discriminator.miner.js";
 export { PoolDiscriminatorAssigner } from "../opportunity/discriminator/discriminator.assigner.js";

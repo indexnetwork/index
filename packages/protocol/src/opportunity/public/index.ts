@@ -127,6 +127,19 @@ export {
   poolQuestionsVisitTrigger,
   POOL_VISIT_MINING_DEBOUNCE_MS,
 } from "../discriminator/discriminator.env.js";
+
+// discovery env accessors
+export {
+  discoveryAllowedTypes,
+  discoveryIntentMatchingEnabled,
+  discoveryProfileMatchingEnabled,
+  discoveryProfileSource,
+  resetDiscoveryEnvWarningsForTests,
+} from "../discovery.env.js";
+export type {
+  DiscoveryMatchType,
+  DiscoveryProfileSource,
+} from "../discovery.env.js";
 export {
   buildPoolAdjustment,
   planPoolAdjustments,

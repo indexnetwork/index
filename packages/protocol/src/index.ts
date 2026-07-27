@@ -210,6 +210,16 @@ export {
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
 } from "./capabilities/opportunities.facade.js";
 export { poolQuestionsRanking, POOL_RERUN_DEBOUNCE_MS } from "./capabilities/opportunities.facade.js";
+
+// Discovery env accessors (IND-XXX)
+export {
+  discoveryAllowedTypes,
+  discoveryIntentMatchingEnabled,
+  discoveryProfileMatchingEnabled,
+  discoveryProfileSource,
+  resetDiscoveryEnvWarningsForTests,
+} from "./capabilities/opportunities.facade.js";
+export type { DiscoveryMatchType, DiscoveryProfileSource } from "./capabilities/opportunities.facade.js";
 export { poolQuestionsVisitTrigger, POOL_VISIT_MINING_DEBOUNCE_MS } from "./capabilities/opportunities.facade.js";
 export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./capabilities/opportunities.facade.js";
 export type { PoolAdjustment, PoolAdjustmentSignal } from "./capabilities/opportunities.facade.js";
