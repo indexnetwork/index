@@ -181,4 +181,45 @@ describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)"
     expect(stubs.createdMessages[0].parts[0].data.action).toBe("outreach");
     expect(result.outcome?.reason).not.toBe("screened_out");
   }, 30_000);
+
+  /**
+   * The cross-PR case neither IND-610 nor IND-611 could catch alone.
+   *
+   * IND-611 added a second route to `screened_out` (a turn-0 refusal). The
+   * outcome-reasoning precedence still preferred the screen record, which was
+   * correct while the screen node was the only route. With a `reach_out`
+   * screen followed by a turn-0 withdraw, the outcome would carry the screen's
+   * argument FOR the match — and IND-610's owner-only gate card renders that
+   * field verbatim under "Your agent did not reach out".
+   *
+   * Dev runs NEGOTIATION_SCREEN_MODE=enforce, so this path is reachable in
+   * practice, and the `evaluator` stance makes turn-0 refusals more likely.
+   */
+  it("a reach_out screen overtaken by a turn-0 withdraw reports the REFUSAL's reasoning, not the screen's", async () => {
+    const stubs = mkStubs();
+    agentScript = [{
+      action: "withdraw",
+      assessment: { reasoning: "Bob's ML work does not actually serve Alice's stated need", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+      message: null,
+    }];
+
+    // The screen let this through and said why. The agent then refused.
+    const result = await runGraph(stubs, {
+      screenDecision: {
+        decision: "reach_out",
+        reasoning: "strong overlap — worth spending Alice's name on",
+        evidence: { counterpartyPremiseFit: "both in ML", intentAlignment: "aligned" },
+        mode: "enforce",
+        screenedAt: new Date().toISOString(),
+        durationMs: 12,
+      },
+    });
+
+    expect(result.outcome?.reason).toBe("screened_out");
+    // The honest text is the refusal's own.
+    expect(result.outcome?.reasoning).toContain("does not actually serve");
+    // The screen's pro-match argument must never be published as the reason
+    // the agent did not reach out.
+    expect(result.outcome?.reasoning).not.toContain("worth spending Alice's name");
+  }, 30_000);
 });

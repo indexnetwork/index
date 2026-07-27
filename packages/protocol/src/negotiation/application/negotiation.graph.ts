@@ -1135,8 +1135,23 @@ export class NegotiationGraphFactory {
       const outcome: NegotiationOutcome = {
         hasOpportunity,
         agreedRoles,
+        // Which refusal's reasoning is the honest one depends on WHICH path
+        // screened this out. Two now reach `screened_out`:
+        //   - the screen node blocked before any turn → the screen decision is
+        //     the only reasoning that exists;
+        //   - IND-611: the agent refused on its opening turn → the withdrawing
+        //     turn's reasoning is authoritative, and a screen record (if any)
+        //     describes a decision that refusal *overtook*.
+        // Preferring the screen record unconditionally was harmless while the
+        // screen node was the only route here. It is not any more: with
+        // NEGOTIATION_SCREEN_MODE=enforce a `reach_out` screen followed by a
+        // turn-0 withdraw would publish the screen's argument FOR the match as
+        // the reason the agent did not reach out — the owner's gate card
+        // (IND-610) renders exactly this field.
         reasoning: screenedOut
-          ? (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? "")
+          ? (state.firstTurnScreenedOut === true
+              ? (lastTurn?.assessment?.reasoning ?? state.screenDecision?.reasoning ?? "")
+              : (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? ""))
           : (lastTurn?.assessment.reasoning ?? ""),
         turnCount: state.turnCount,
         ...(screenedOut
