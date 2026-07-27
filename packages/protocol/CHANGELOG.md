@@ -13,6 +13,26 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 ## [Unreleased]
 
 ### Added
+- Add canonical shared guidance source and unified MCP_INSTRUCTIONS/read_docs
+  (IND-602/603; 7.10.0): The single normative `CANONICAL_GUIDANCE_SUMMARY`
+  (1,555 chars, under the 4,500-char MCP context budget) covers Index Network
+  entity model (identity/context, premises, signals, communities/networks,
+  opportunities), negotiation semantics with the critical distinction
+  **"A2A acceptance is not owner approval"** (separate gates), H2A/A2A
+  workflows, and the boundary **"H2H (human-to-human) never exposed; escalation
+  to native surfaces (web, Telegram) is outside MCP scope."** Seven detailed
+  canonical topics (identity-context, premises, signals, communities-networks,
+  opportunities, negotiations, workflows) are published via read_docs on both
+  MCP and REST/chat surfaces. MCP surface read_docs serves canonical guidance
+  only; REST/chat retains legacy supplemental topics for backwards compatibility.
+  New internal shared constants (packages/protocol/src/shared/agent/canonical-guidance.ts):
+  `CANONICAL_GUIDANCE_SUMMARY`, `CANONICAL_GUIDANCE_TOPICS` (const array),
+  `CANONICAL_GUIDANCE_TOPICS_CONTENT` (record). Not public root protocol exports.
+  MCP_INSTRUCTIONS now delegates entity/lifecycle details to read_docs, dropping
+  verbose inline model. Published MCP guidance/read_docs contract now includes
+  canonical seven-topic structure and H2A/A2A/owner-approval semantics. No data,
+  migration, capability, permission, or runtime behavior changes.
+
 - Add a host-injected MCP authorization-observability seam (IND-581; 7.8.0):
   `McpAuthorizationObserver`, the secret-free `McpAuthorizationDenialEvent`, and
   the central `buildMcpAuthorizationDenialEvent` constructor, plus an optional

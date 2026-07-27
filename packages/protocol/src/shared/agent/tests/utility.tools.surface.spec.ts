@@ -98,11 +98,38 @@ describe("createUtilityTools surface profile", () => {
     }
   });
 
-  test("MCP read_docs (summary, contacts, workflows) never advertises any removed name", async () => {
+  // Canonical MCP read_docs topic inventory (IND-602/603). These are the only
+  // topics the canonical guidance source exposes on the MCP surface.
+  const CANONICAL_READ_DOCS_TOPICS = [
+    "identity-context",
+    "premises",
+    "signals",
+    "communities-networks",
+    "opportunities",
+    "negotiations",
+    "workflows",
+  ] as const;
+
+  // Current entity/capability/lifecycle facts each canonical topic must state.
+  const CANONICAL_TOPIC_FACTS: Record<(typeof CANONICAL_READ_DOCS_TOPICS)[number], string[]> = {
+    "identity-context": ["identity", "context"],
+    premises: ["premise"],
+    signals: ["signal"],
+    "communities-networks": ["community", "network"],
+    opportunities: ["opportunity"],
+    negotiations: ["negotiation", "owner approval", "A2A"],
+    workflows: ["H2A", "A2A"],
+  };
+
+  // Retired MCP guidance vocabulary: contact/Gmail/scrape/profile/ghost-user
+  // workflows were removed from the MCP surface and must never resurface.
+  const RETIRED_GUIDANCE_FRAGMENTS = ["ghost user", "gmail", "scrape", "personal network"];
+
+  test("MCP read_docs (summary + every canonical topic) never advertises any removed name", async () => {
     const mcp = capture();
     createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
     // 'undefined' returns the full summary doc (all sections joined).
-    for (const topic of [undefined, "contacts", "workflows"]) {
+    for (const topic of [undefined, ...CANONICAL_READ_DOCS_TOPICS]) {
       const doc = await readDocs(mcp.tools, topic);
       for (const name of ALL_MCP_REMOVED_NAMES) {
         expect(doc, `MCP read_docs(${topic ?? "summary"}) must not mention ${name}`).not.toContain(name);
@@ -110,11 +137,69 @@ describe("createUtilityTools surface profile", () => {
     }
   });
 
-  test("MCP read_docs keeps the contact concept and personal-network guidance", async () => {
+  test("MCP read_docs summary lists the canonical topic inventory and each topic resolves", async () => {
     const mcp = capture();
     createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
-    const contacts = await readDocs(mcp.tools, "contacts");
-    expect(contacts).toContain("Ghost users");
-    expect(contacts).toContain("personal network");
+    const summary = await readDocs(mcp.tools);
+    for (const topic of CANONICAL_READ_DOCS_TOPICS) {
+      expect(summary, `summary must list canonical topic ${topic}`).toContain(topic);
+      const doc = await readDocs(mcp.tools, topic);
+      expect(doc.length).toBeGreaterThan(0);
+      expect(doc).not.toContain("Unknown topic");
+    }
+  });
+
+  test("MCP read_docs per-topic content states current entity, capability, and lifecycle facts", async () => {
+    const mcp = capture();
+    createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
+    for (const [topic, facts] of Object.entries(CANONICAL_TOPIC_FACTS)) {
+      const doc = await readDocs(mcp.tools, topic);
+      for (const fact of facts) {
+        expect(doc, `read_docs(${topic}) must state ${fact}`).toContain(fact);
+      }
+    }
+  });
+
+  test("MCP read_docs guides H2A and A2A but never exposes H2H", async () => {
+    const mcp = capture();
+    createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
+    const summary = await readDocs(mcp.tools);
+    expect(summary).toContain("H2A");
+    expect(summary).toContain("A2A");
+    for (const topic of [undefined, ...CANONICAL_READ_DOCS_TOPICS]) {
+      const doc = await readDocs(mcp.tools, topic);
+      expect(doc, `read_docs(${topic ?? "summary"}) must never expose H2H`).not.toContain("H2H");
+    }
+  });
+
+  test("negotiations guidance distinguishes owner approval from A2A negotiation acceptance", async () => {
+    const mcp = capture();
+    createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
+    const doc = await readDocs(mcp.tools, "negotiations");
+    expect(doc).toContain("owner approval");
+    expect(doc).toContain("acceptance");
+    expect(doc).toContain("is not owner approval");
+  });
+
+  test("MCP read_docs never exposes retired contact/Gmail/scrape/profile/ghost-user guidance", async () => {
+    const mcp = capture();
+    createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
+    for (const topic of [undefined, ...CANONICAL_READ_DOCS_TOPICS]) {
+      const doc = await readDocs(mcp.tools, topic).then((d) => d.toLowerCase());
+      for (const fragment of RETIRED_GUIDANCE_FRAGMENTS) {
+        expect(doc, `read_docs(${topic ?? "summary"}) must not mention ${fragment}`).not.toContain(fragment);
+      }
+    }
+  });
+
+  test("read_docs is available pre-registration (no authenticated context required)", async () => {
+    const mcp = capture();
+    createUtilityTools(mcp.defineTool, stubDeps, { surface: "mcp" });
+    // An empty ResolvedToolContext stands in for a caller that has not
+    // completed registration/onboarding; guidance must still be served.
+    const summary = await readDocs(mcp.tools);
+    expect(summary.length).toBeGreaterThan(0);
+    expect(summary).toContain("H2A");
+    expect(summary).not.toMatch(/unauthorized|sign in|register first/i);
   });
 });
