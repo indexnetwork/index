@@ -50,7 +50,6 @@ export interface RunCaseOptions {
 }
 
 export interface CaseRunBatches {
-  documents: CaseCandidateDocuments;
   batches: Record<RetrievalMode, EvalRunBatch<ModeRunOutput>>;
 }
 
@@ -166,14 +165,13 @@ export async function runMode(input: RunModeInput): Promise<ModeRunOutput> {
   };
 }
 
-/** Run all three retrieval modes with attempt evidence while reusing the candidate embeddings. */
+/** Run all three retrieval modes, embedding candidates within every governed attempt. */
 export async function runCase(
   deps: { hyde: HydeLike; embedder: EmbedderLike },
   c: DiscoveryRetrievalCase,
   runs: number,
   options: RunCaseOptions = {},
 ): Promise<CaseRunBatches> {
-  const documents = await buildCaseCandidateDocuments(c, deps.embedder);
   const settings = {
     maxAttempts: options.maxAttempts ?? RETRIEVAL_EVAL_MAX_ATTEMPTS,
     retryDelayMs: options.retryDelayMs ?? RETRIEVAL_EVAL_RETRY_DELAY_MS,
@@ -185,10 +183,10 @@ export async function runCase(
   const batches = {} as Record<RetrievalMode, EvalRunBatch<ModeRunOutput>>;
   for (const mode of MODES) {
     batches[mode] = await executeRuns(
-      () => runMode({ mode, c, hyde: deps.hyde, embedder: deps.embedder, documents }),
+      () => runMode({ mode, c, hyde: deps.hyde, embedder: deps.embedder }),
       runs,
       { ...settings, caseId: `${c.id}/${mode}` },
     );
   }
-  return { documents, batches };
+  return { batches };
 }
