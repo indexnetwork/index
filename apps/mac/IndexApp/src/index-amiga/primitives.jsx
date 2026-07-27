@@ -437,6 +437,64 @@ function EditBadge({ hover, size = 16 }) {
   );
 }
 
+// A data URL is roughly ⅓ larger than the file it came from; keep it sane for
+// the WebView.
+const PICTURE_MAX_BYTES = 4 * 1024 * 1024;
+
+// The one way to replace a picture anywhere in the app — a profile photo, a
+// network tile. The picture itself is the control, wearing the EditBadge in its
+// corner; pass whatever renders it as children. Nothing is uploaded: the file
+// is read locally into a data URL, so it still works with no network. The
+// rules and their wording live here so every picker rejects the same things the
+// same way, and the caller places `err` wherever its own layout wants it.
+function PicturePicker({ size = 46, label = "change picture", onPick, onError, children }) {
+  const fileRef = useRef(null);
+  // hover or keyboard focus — the badge lights up for both, so tabbing to it
+  // looks the same as pointing at it
+  const [hot, setHot] = useState(false);
+
+  const choose = (file) => {
+    if (!file) return;
+    const fail = (msg) => onError && onError(msg);
+    if (!file.type.startsWith("image/")) { fail("that isn't an image."); return; }
+    if (file.size > PICTURE_MAX_BYTES) { fail("that image is over 4mb. pick a smaller one."); return; }
+    const reader = new FileReader();
+    reader.onload  = () => { fail(""); onPick(reader.result); };
+    reader.onerror = () => fail("couldn't read that file.");
+    reader.readAsDataURL(file);
+  };
+
+  const open = () => fileRef.current && fileRef.current.click();
+
+  return (
+    <span
+      onClick={open}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
+      onMouseEnter={() => setHot(true)}
+      onMouseLeave={() => setHot(false)}
+      onFocus={() => setHot(true)}
+      onBlur={() => setHot(false)}
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      title={label}
+      style={{
+        position:"relative", flex:"0 0 auto", display:"block",
+        width:size, height:size, cursor:"pointer", outline:"none",
+      }}>
+      {children}
+      <EditBadge hover={hot}/>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={e => { choose(e.target.files && e.target.files[0]); e.target.value = ""; }}
+        style={{ display:"none" }}
+      />
+    </span>
+  );
+}
+
 /* ---------- AmigaWindow — title bar with close gadget on left, depth on right ---------- */
 function MacWindow({ title, children, style, bodyStyle, onClose, noShadow }) {
   return (
@@ -493,6 +551,6 @@ Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl, RuleLabel, Btn, Chip,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
-  MacWindow, MacSegmented, EditBadge,
+  MacWindow, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
   AMIGA_PALETTE: A,
 });

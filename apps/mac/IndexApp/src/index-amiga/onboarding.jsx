@@ -650,8 +650,7 @@ function ChoiceRow({ c, onClick }) {
 
 // Right column during onboarding
 function OnboardingFieldPreview({ answers, stepIdx }) {
-  // Contextual log — the headline counts are pulled out into the Stat strip
-  // above, so this stays the narrative of what the agent is doing with you.
+  // Just the narrative of what the agent is doing with you.
   const lines = [
     "getting a read on what you need…",
     answers.intent ? `you're after: "${truncate(answers.intent, 40)}"` : null,
@@ -668,12 +667,6 @@ function OnboardingFieldPreview({ answers, stepIdx }) {
       display:"flex", flexDirection:"column", gap:8,
       overflow:"hidden", flex:1, minHeight:0,
     }}>
-      {/* legible headline counts, using the shared Stat component */}
-      <div style={{ display:"flex", gap:28, margin:"4px 0 10px" }}>
-        <Stat value="184" label="indexed"/>
-        <Stat value="62" label="online now" accent/>
-      </div>
-
       <div className="mac-scroll" style={{
         flex:1, minHeight:0, overflowY:"auto",
         fontFamily:"var(--mac-mono)", fontSize:13,

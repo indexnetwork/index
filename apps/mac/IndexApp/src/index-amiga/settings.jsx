@@ -78,48 +78,14 @@ function SectionRule({ children }) {
 
 /* ---------- pane 1 · profile ---------- */
 
-// Reads the picked file locally and keeps it as a data URL — nothing is
-// uploaded, so the picker still works with no network.
+// The picture is the control — see PicturePicker in primitives for the shared
+// icon, interaction and file rules.
 function PhotoPicker({ me, name, photo, onPick }) {
-  const fileRef = useRef(null);
   const [err, setErr] = useState("");
-  const [hover, setHover] = useState(false);
-
-  const choose = (file) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setErr("that isn't an image.");
-      return;
-    }
-    // A data URL roughly ⅓ larger than the file; keep it sane for the WebView.
-    if (file.size > 4 * 1024 * 1024) {
-      setErr("that image is over 4mb. pick a smaller one.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => { setErr(""); onPick(reader.result); };
-    reader.onerror = () => setErr("couldn't read that file.");
-    reader.readAsDataURL(file);
-  };
-
-  const open = () => fileRef.current && fileRef.current.click();
 
   return (
     <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-      {/* The photo is the control — hovering reveals the edit scrim. */}
-      <span
-        onClick={open}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        role="button"
-        tabIndex={0}
-        aria-label="change photo"
-        title="change photo"
-        style={{
-          position:"relative", flex:"0 0 auto", cursor:"pointer",
-          width:54, height:54, display:"block",
-        }}>
+      <PicturePicker size={54} label="change photo" onPick={onPick} onError={setErr}>
         {photo
           ? <img
               src={photo}
@@ -133,9 +99,7 @@ function PhotoPicker({ me, name, photo, onPick }) {
                 filter:"grayscale(1) contrast(1.05)",
               }}/>
           : <Avatar name={me.name} size={54}/>}
-
-        <EditBadge hover={hover} size={16}/>
-      </span>
+      </PicturePicker>
 
       <div style={{ minWidth:0 }}>
         <div style={{
@@ -149,14 +113,6 @@ function PhotoPicker({ me, name, photo, onPick }) {
           }}>{err}</div>
         )}
       </div>
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        onChange={e => { choose(e.target.files && e.target.files[0]); e.target.value = ""; }}
-        style={{ display:"none" }}
-      />
     </div>
   );
 }

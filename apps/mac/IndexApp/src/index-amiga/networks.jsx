@@ -35,53 +35,21 @@ function NetworkTile({ name, size = 36, photo }) {
 }
 
 // The tile is generated from the name; this lets you replace it with an image.
-// Reads the file locally into a data URL, same as the profile picker, so it
-// still works with no network.
+// Same picker as the profile photo — see PicturePicker in primitives.
 function NetworkPhoto({ name, photo, onPick, size = 42 }) {
-  const fileRef = useRef(null);
   const [err, setErr] = useState("");
-  const [hover, setHover] = useState(false);
-
-  const choose = (file) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) { setErr("that isn't an image."); return; }
-    if (file.size > 4 * 1024 * 1024) { setErr("that image is over 4mb. pick a smaller one."); return; }
-    const reader = new FileReader();
-    reader.onload = () => { setErr(""); onPick(reader.result); };
-    reader.onerror = () => setErr("couldn't read that file.");
-    reader.readAsDataURL(file);
-  };
-  const open = () => fileRef.current && fileRef.current.click();
 
   return (
     <span style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
-      <span
-        onClick={open}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        role="button"
-        tabIndex={0}
-        aria-label="change network picture"
-        title="change network picture"
-        style={{ position:"relative", flex:"0 0 auto", width:size, height:size, display:"block" }}>
+      <PicturePicker size={size} label="change network picture" onPick={onPick} onError={setErr}>
         <NetworkTile name={name || "?"} size={size} photo={photo}/>
-        <EditBadge hover={hover} size={14}/>
-      </span>
+      </PicturePicker>
 
       {err && (
         <span style={{
           fontFamily:"var(--mac-sans)", fontSize:11, color:"var(--ink-warn)",
         }}>{err}</span>
       )}
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        onChange={e => { choose(e.target.files && e.target.files[0]); e.target.value = ""; }}
-        style={{ display:"none" }}
-      />
     </span>
   );
 }

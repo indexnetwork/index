@@ -340,17 +340,9 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                 display:"flex", flexDirection:"column", gap:8,
                 paddingRight: 6,
               }}>
-                {ordered.length === 0 && (
-                  <div style={{
-                    border:"1px dashed #000", padding:"18px 16px",
-                    fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5,
-                    color:"var(--ink-2)",
-                  }}>
-                    no signals yet. tell index who you're looking for and it
-                    starts working in the background.
-                  </div>
-                )}
-
+                {/* No empty state: the blurb above already says what a signal
+                    does, and an empty list whose only row is "start a new
+                    signal" doesn't need a second box to explain itself. */}
                 {ordered.map(intent => (
                   <IntentRow
                     key={intent.id}
