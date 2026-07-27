@@ -1,15 +1,16 @@
 ---
 name: open-spec-preview
-description: Open a freshly written spec/design markdown in a new Herdr pane on the right rendered with glow, so the user can review it inline. Use right after writing or substantially updating a spec, plan, or design doc (e.g. docs/superpowers/specs/*.md) and asking the user to review it.
+description: Open a freshly written spec or implementation-plan markdown in a new Herdr pane on the right rendered with glow, so the user can review it inline. Use right after writing or substantially updating a spec, plan, or design doc (docs/superpowers/specs/*.md or docs/superpowers/plans/*.md) and asking the user to review it.
 ---
 
 # Open Spec Preview
 
-After writing a spec, plan, or design doc, show it to the user rendered — don't just
-hand them a path.
+After writing a spec, implementation plan, or design doc, show it to the user rendered —
+don't just hand them a path.
 
 Skill input: optional path to the markdown file. When omitted, use the markdown file
-you most recently wrote or edited (typically under `docs/superpowers/specs/`).
+you most recently wrote or edited (typically under `docs/superpowers/specs/` or
+`docs/superpowers/plans/`).
 
 ## Steps
 
