@@ -122,7 +122,8 @@ export function buildSmokeSeedPlan(marker: string) {
   };
 }
 
-async function withDiscoveryProfileSource<T>(
+/** Runs a graph with its discovery source override restored on every exit path. */
+export async function withDiscoveryProfileSource<T>(
   source: 'premise' | 'user_context',
   run: () => Promise<T>,
 ): Promise<T> {

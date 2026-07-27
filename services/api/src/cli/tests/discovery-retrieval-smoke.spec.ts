@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { assertSmokeEnvironment, buildSmokeSeedPlan, runSmoke, SMOKE_CLEANUP_ORDER } from '../discovery-retrieval-smoke';
+import { assertSmokeEnvironment, buildSmokeSeedPlan, runSmoke, SMOKE_CLEANUP_ORDER, withDiscoveryProfileSource } from '../discovery-retrieval-smoke';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
   DISCOVERY_RETRIEVAL_EVAL_CONFIRM: '1',
@@ -62,6 +62,25 @@ describe('deterministic smoke plans', () => {
   });
 });
 
+describe('withDiscoveryProfileSource', () => {
+  it('restores DISCOVERY_PROFILE_SOURCE when graph invocation throws', async () => {
+    const previous = process.env.DISCOVERY_PROFILE_SOURCE;
+    process.env.DISCOVERY_PROFILE_SOURCE = 'original-source';
+
+    try {
+      await expect(withDiscoveryProfileSource('user_context', async () => {
+        expect(process.env.DISCOVERY_PROFILE_SOURCE).toBe('user_context');
+        throw new Error('graph invocation failed');
+      })).rejects.toThrow('graph invocation failed');
+
+      expect(process.env.DISCOVERY_PROFILE_SOURCE).toBe('original-source');
+    } finally {
+      if (previous === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
+      else process.env.DISCOVERY_PROFILE_SOURCE = previous;
+    }
+  });
+});
+
 describe('runSmoke', () => {
   it('runs lightweight then premise assertions and always cleans up', async () => {
     const calls: string[] = [];
@@ -79,6 +98,24 @@ describe('runSmoke', () => {
     });
 
     expect(calls).toEqual(['user_context', 'premise', 'cleanup']);
+  });
+
+  it('cleans up when seed rejects after partial work', async () => {
+    const cleanup = mock(async () => {});
+    const partialWork: string[] = [];
+
+    await expect(runSmoke(SAFE_ENV, {
+      seed: async () => {
+        partialWork.push('seeded-network');
+        throw new Error('seed failed after partial work');
+      },
+      runDiscovery: async () => ({ candidateUserIds: [], contextSearchCalls: 0 }),
+      cleanup,
+      log: () => {},
+    })).rejects.toThrow('seed failed after partial work');
+
+    expect(partialWork).toEqual(['seeded-network']);
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
   it('cleans up after a failed lightweight assertion', async () => {
