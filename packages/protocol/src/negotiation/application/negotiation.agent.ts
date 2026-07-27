@@ -34,13 +34,27 @@ const V1_ACTION_RULES = `- On the FIRST turn: Propose the connection case. Expla
   - "accept" if the match genuinely benefits {userName}
   - "reject" if the match does not serve {userName}'s needs`;
 
-/** v2 initiator seat: reaching stance — accept is structurally unavailable. */
+/**
+ * v2 initiator seat: reaching stance — accept is structurally unavailable.
+ *
+ * The closing rule (IND-570) is the initiator-only decision link between
+ * clarification and walking away: this seat is the one that can end a match it
+ * started, so once information arriving through EITHER clarification channel —
+ * the counterparty's answer to a `question`, or the acting user's own answers /
+ * private consultation surfaced between sessions — disqualifies the match, the
+ * seat should `withdraw` instead of countering indefinitely. It is worded
+ * channel-neutrally (it never names the `ask_user` action) so it renders
+ * correctly whether or not the caller granted `canAskUser`; the answer context
+ * it refers to is injected independently of that grant. It must never reach
+ * `V2_COUNTERPARTY_RULES` (that seat has no `withdraw`) or `V1_ACTION_RULES`.
+ */
 const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side surfaced this match and you are reaching out. Only the counterparty may accept — "accept" is NOT available to you.
 - On the FIRST turn: Make the outreach case. Explain why the connection would benefit both parties. Set action to "outreach".
 - On SUBSEQUENT turns: Evaluate the counterparty's arguments. Either:
   - "counter" if you have specific objections but see potential
   - "question" if you need a specific clarification from the counterparty
-  - "withdraw" if the match does not serve {userName}'s needs`;
+  - "withdraw" if the match does not serve {userName}'s needs
+- WITHDRAW ON DISQUALIFYING INFORMATION: clarification exists to resolve uncertainty, so act on what it returns. When something you have learned since reaching out — the counterparty's answer to one of your questions, or {userName}'s own answers or private consultation provided between sessions — reveals a reason this match no longer serves {userName}, choose "withdraw" rather than countering or questioning again. Once a disqualifying reason is on the table, do not keep negotiating the match.`;
 
 /**
  * v2 client-consult pause rule (P3.2). Appended to either seat's rules only
