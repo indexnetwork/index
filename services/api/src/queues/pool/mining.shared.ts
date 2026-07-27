@@ -249,10 +249,7 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
   let resolvedAxes: import('@indexnetwork/protocol').QuestionPoolDiscriminator[] = [];
   if (questionsEnabled && intentId && intentFingerprint) {
     try {
-      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId, {
-        currentIntentFingerprint: intentFingerprint,
-        currentIntentText: intentText,
-      });
+      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId);
     } catch {
       // Durable semantic references are fail-open enrichment for mining.
     }

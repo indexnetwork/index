@@ -1190,7 +1190,7 @@ export class QuestionerAdapter {
               eq(questions.status, 'pending'),
               or(isNull(questions.expiresAt), sql`${questions.expiresAt} > NOW()`),
             ),
-            sql`${questions.detection}->'pool'->>'intentFingerprint' = ${fingerprint}`,
+            inArray(questions.status, ['answered', 'dismissed']),
           ),
         ))
         .limit(1);
@@ -2095,10 +2095,9 @@ export class QuestionerAdapter {
   }
 
   /**
-   * Discriminator labels used for exact dedup. Pending labels always count;
-   * resolved labels count only while their intent snapshot is fresh when
-   * freshness options are supplied. Omitting options preserves the legacy
-   * any-status behavior.
+   * Discriminator labels used for exact dedup. Pending and resolved labels
+   * always count; resolved labels remain durable across material intent
+   * versions. Freshness options are retained for legacy non-resolved rows.
    *
    * @param userId - Owner of the pool questions.
    * @param intentId - Intent tied to the questions.
@@ -2135,43 +2134,18 @@ export class QuestionerAdapter {
   }
 
   /**
-   * Read fresh answered or dismissed axes for durable semantic novelty.
-   * "Both matter" answers and dismissals intentionally remain references;
-   * they resolve the axis even though they do not create a ranking preference.
+   * Read answered or dismissed axes for durable semantic novelty. "Both
+   * matter" answers and dismissals intentionally remain references; they
+   * resolve the axis even though they do not create a ranking preference.
    *
    * @param userId - Owner of the resolved questions.
    * @param intentId - Intent tied to the questions.
-   * @param freshness - Current full-intent fingerprint and text.
-   * @returns Fresh resolved discriminator snapshots, newest first.
+   * @returns Resolved discriminator snapshots, newest first.
    */
   async listResolvedPoolAxes(
     userId: string,
     intentId: string,
-    freshness: PoolQuestionFreshnessOptions,
   ): Promise<import('@indexnetwork/protocol').QuestionPoolDiscriminator[]> {
-    const storedFingerprint = sql<string | null>`${questions.detection}->'pool'->>'intentFingerprint'`;
-    const storedIntentText = sql<string | null>`${questions.detection}->'pool'->>'intentText'`;
-    const normalizedStoredIntentText = sql<string>`regexp_replace(btrim(normalize(COALESCE(${storedIntentText}, ''), NFKC)), '[[:space:]]+', ' ', 'g')`;
-    const normalizedCurrentIntentText = freshness.currentIntentText
-      ? normalizeIntentText(freshness.currentIntentText)
-      : undefined;
-    const freshnessPredicate = or(
-      freshness.currentIntentFingerprint
-        ? sql`${storedFingerprint} = ${freshness.currentIntentFingerprint}`
-        : undefined,
-      normalizedCurrentIntentText
-        ? and(
-            sql`${storedFingerprint} IS NULL`,
-            sql`${storedIntentText} IS NOT NULL`,
-            sql`(
-              (char_length(${normalizedStoredIntentText}) < 160 AND ${normalizedStoredIntentText} = ${normalizedCurrentIntentText})
-              OR
-              (char_length(${normalizedStoredIntentText}) = 160 AND left(${normalizedCurrentIntentText}, 160) = ${normalizedStoredIntentText})
-            )`,
-          )
-        : undefined,
-    ) ?? sql`false`;
-
     const rows = await this.db
       .select({
         discriminator: sql<import('@indexnetwork/protocol').QuestionPoolDiscriminator | null>`${questions.detection}->'pool'->'discriminator'`,
@@ -2183,7 +2157,6 @@ export class QuestionerAdapter {
         sql`${questions.detection}->>'mode' = 'pool_discovery'`,
         sql`${questions.detection}->>'triggeredBy' = ${intentId}`,
         sql`${questions.detection}->>'voidedReason' IS NULL`,
-        freshnessPredicate,
       ))
       .orderBy(desc(questions.createdAt))
       .limit(24);
@@ -3050,7 +3023,7 @@ function isPoolQuestionFresh(
   pool: Pick<import('@indexnetwork/protocol').QuestionPoolSnapshot, 'intentFingerprint' | 'intentText'>,
   freshness?: PoolQuestionFreshnessOptions,
 ): boolean {
-  if (!freshness || status === 'pending') return true;
+  if (!freshness || status === 'pending' || status === 'answered' || status === 'dismissed') return true;
   if (
     pool.intentFingerprint
     && freshness.currentIntentFingerprint

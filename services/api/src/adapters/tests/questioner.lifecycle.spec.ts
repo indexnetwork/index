@@ -25,6 +25,43 @@ function discriminator(label: string, opportunityIds = [crypto.randomUUID()]) {
   };
 }
 
+function poolQuestion(
+  userId: string,
+  intentId: string,
+  label: string,
+  fingerprint: string | undefined,
+  assignmentIds = [crypto.randomUUID()],
+): AdapterPersistableQuestion {
+  return {
+    detection: {
+      mode: 'pool_discovery',
+      sourceType: 'intent',
+      sourceId: intentId,
+      triggeredBy: intentId,
+      timestamp: new Date().toISOString(),
+      pool: {
+        poolSize: Math.max(5, assignmentIds.length),
+        opportunityIds: assignmentIds,
+        minedAt: new Date().toISOString(),
+        ...(fingerprint ? { intentFingerprint: fingerprint } : {}),
+        discriminator: discriminator(label, assignmentIds),
+        alternates: [],
+      },
+    },
+    actors: [{ userId, role: 'subject' }],
+    payload: {
+      title: label,
+      prompt: `Which ${label}?`,
+      options: [
+        { label: 'Builder', description: 'Builder' },
+        { label: 'Advisor', description: 'Advisor' },
+      ],
+      multiSelect: false,
+    },
+    strategy: 'refine_intent',
+  };
+}
+
 const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
@@ -35,42 +72,18 @@ describe('QuestionerAdapter material intent lifecycle', () => {
   let intentId: string;
   const questionIds: string[] = [];
   const opportunityIds: string[] = [];
+  const extraIntentIds: string[] = [];
 
   async function createQuestion(
     label: string,
     status: 'pending' | 'answered' | 'dismissed',
     fingerprint: string | undefined,
     assignmentIds = [crypto.randomUUID()],
+    questionIntentId = intentId,
   ): Promise<string> {
-    const question: AdapterPersistableQuestion = {
-      detection: {
-        mode: 'pool_discovery',
-        sourceType: 'intent',
-        sourceId: intentId,
-        triggeredBy: intentId,
-        timestamp: new Date().toISOString(),
-        pool: {
-          poolSize: Math.max(5, assignmentIds.length),
-          opportunityIds: assignmentIds,
-          minedAt: new Date().toISOString(),
-          ...(fingerprint ? { intentFingerprint: fingerprint } : {}),
-          discriminator: discriminator(label, assignmentIds),
-          alternates: [],
-        },
-      },
-      actors: [{ userId, role: 'subject' }],
-      payload: {
-        title: label,
-        prompt: `Which ${label}?`,
-        options: [
-          { label: 'Builder', description: 'Builder' },
-          { label: 'Advisor', description: 'Advisor' },
-        ],
-        multiSelect: false,
-      },
-      strategy: 'refine_intent',
-    };
-    const [id] = await adapter.persist([question]);
+    const [id] = await adapter.persist([
+      poolQuestion(userId, questionIntentId, label, fingerprint, assignmentIds),
+    ]);
     if (status !== 'pending') await db.update(questions).set({ status }).where(eq(questions.id, id));
     questionIds.push(id);
     return id;
@@ -94,6 +107,7 @@ describe('QuestionerAdapter material intent lifecycle', () => {
   afterAll(async () => {
     if (questionIds.length) await db.delete(questions).where(inArray(questions.id, questionIds)).catch(() => {});
     if (opportunityIds.length) await db.delete(opportunities).where(inArray(opportunities.id, opportunityIds)).catch(() => {});
+    if (extraIntentIds.length) await db.delete(intents).where(inArray(intents.id, extraIntentIds)).catch(() => {});
     await db.delete(intents).where(eq(intents.id, intentId)).catch(() => {});
     await users.deleteById(userId).catch(() => {});
   });
@@ -198,10 +212,8 @@ describe('QuestionerAdapter material intent lifecycle', () => {
       currentIntentFingerprint: oldFingerprint,
       currentIntentText: 'Find builders (Prototype collaborators)',
     })).toEqual(['ordinary dismissal']);
-    expect((await adapter.listResolvedPoolAxes(userId, intentId, {
-      currentIntentFingerprint: oldFingerprint,
-      currentIntentText: 'Find builders (Prototype collaborators)',
-    })).map((axis) => axis.label)).toEqual(['ordinary dismissal']);
+    expect((await adapter.listResolvedPoolAxes(userId, intentId)).map((axis) => axis.label))
+      .toEqual(['ordinary dismissal']);
   }, 30_000);
 
   test('does nothing when a delayed material-update event is superseded by authoritative intent state', async () => {
@@ -238,29 +250,50 @@ describe('QuestionerAdapter material intent lifecycle', () => {
       .toEqual([{ questionId: 'delayed-adjustment', recipientUserId: userId, intentId, intentFingerprint: authoritativeFingerprint, factor: 0.6 }]);
   }, 30_000);
 
-  test('allows an external-edit re-ask, then dedups the newly persisted current-fingerprint axis', async () => {
-    const oldFingerprint = computeIntentFingerprint('Find trusted local advisors', 'Prototype collaborators');
+  test('retains resolved axes and blocks exact labels across material intent versions', async () => {
+    const poolIntentId = crypto.randomUUID();
+    extraIntentIds.push(poolIntentId);
+    const oldPayload = 'Find trusted local advisors';
     const newPayload = 'Find trusted local advisors for healthcare';
-    const newFingerprint = computeIntentFingerprint(newPayload, 'Prototype collaborators');
-    await createQuestion('External edit axis', 'answered', oldFingerprint);
-    await db.update(intents).set({ payload: newPayload }).where(eq(intents.id, intentId));
-    await adapter.handleMaterialIntentUpdate({ intentId, userId, oldFingerprint, newFingerprint });
-
-    const axis = discriminator('External edit axis');
-    const labelsAfterEdit = await adapter.listPoolQuestionLabels(userId, intentId, {
-      currentIntentFingerprint: newFingerprint,
-      currentIntentText: `${newPayload} (Prototype collaborators)`,
+    const summary = 'Prototype collaborators';
+    const oldFingerprint = computeIntentFingerprint(oldPayload, summary);
+    const newFingerprint = computeIntentFingerprint(newPayload, summary);
+    await db.insert(intents).values({
+      id: poolIntentId,
+      userId,
+      payload: oldPayload,
+      summary,
+      status: 'ACTIVE',
     });
-    expect(labelsAfterEdit).not.toContain('External edit axis');
-    expect(dedupDiscriminators([axis], labelsAfterEdit)).toEqual([axis]);
+    await createQuestion('Working style', 'answered', oldFingerprint, undefined, poolIntentId);
+    await db.update(intents).set({ payload: newPayload }).where(eq(intents.id, poolIntentId));
 
-    await createQuestion('External edit axis', 'pending', newFingerprint);
-    const labelsAfterReask = await adapter.listPoolQuestionLabels(userId, intentId, {
+    expect((await adapter.listResolvedPoolAxes(userId, poolIntentId)).map((axis) => axis.label))
+      .toContain('Working style');
+    const labels = await adapter.listPoolQuestionLabels(userId, poolIntentId, {
       currentIntentFingerprint: newFingerprint,
-      currentIntentText: `${newPayload} (Prototype collaborators)`,
+      currentIntentText: `${newPayload} (${summary})`,
     });
-    expect(labelsAfterReask).toContain('External edit axis');
-    expect(dedupDiscriminators([axis], labelsAfterReask)).toEqual([]);
+    expect(labels).toContain('Working style');
+    expect(dedupDiscriminators([discriminator('Working style')], labels)).toEqual([]);
+
+    expect(await adapter.persistFreshPoolQuestion(
+      poolQuestion(userId, poolIntentId, 'Working style', newFingerprint),
+      userId,
+      () => true,
+      3,
+      () => true,
+    )).toBeNull();
+
+    const distinctQuestionId = await adapter.persistFreshPoolQuestion(
+      poolQuestion(userId, poolIntentId, 'Industry focus', newFingerprint),
+      userId,
+      () => true,
+      3,
+      () => true,
+    );
+    expect(distinctQuestionId).toEqual(expect.any(String));
+    if (distinctQuestionId) questionIds.push(distinctQuestionId);
   }, 30_000);
 
   test('keeps the just-answered axis fresh when answer refinement stamps the new fingerprint', async () => {
