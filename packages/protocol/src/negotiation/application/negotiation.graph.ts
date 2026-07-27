@@ -1115,7 +1115,17 @@ export class NegotiationGraphFactory {
       // IND-564: an opening-move `withdraw` blocked before any message was
       // persisted is the same quiet screen-out outcome (no in-task outreach to
       // retract), reached from the turn node rather than the screen node.
-      const screenedOut = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount) || state.firstTurnScreenedOut === true;
+      // Two DISTINCT routes reach the same quiet `screened_out` outcome, and
+      // they disagree about who authored the decision:
+      //  - the screen node blocked before any turn was drafted → the screen
+      //    decision is the reason;
+      //  - the acting agent refused on its opening turn (IND-611) → the
+      //    withdrawing TURN is the reason.
+      // They are collapsed into `screenedOut` for status/lifecycle purposes but
+      // must stay separate when attributing `outcome.reasoning` below.
+      const blockedByScreenNode = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
+      const refusedAtOpeningTurn = state.firstTurnScreenedOut === true;
+      const screenedOut = blockedByScreenNode || refusedAtOpeningTurn;
       const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
@@ -1135,9 +1145,19 @@ export class NegotiationGraphFactory {
       const outcome: NegotiationOutcome = {
         hasOpportunity,
         agreedRoles,
-        reasoning: screenedOut
+        // IND-611: attribute the reasoning to whoever actually made the
+        // decision. Before the turn-0 refusal path existed, `screenedOut`
+        // implied the screen node, so preferring `screenDecision.reasoning`
+        // was always right. It is now wrong for an opening-turn refusal taken
+        // while the screen said `reach_out`: that record argues FOR the match,
+        // and surfacing it as the reason the agent did NOT reach out is exactly
+        // the dishonesty this work removes (IND-610 renders this string in the
+        // owner-only gate-decision card). The screen-node branch is unchanged.
+        reasoning: blockedByScreenNode
           ? (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? "")
-          : (lastTurn?.assessment.reasoning ?? ""),
+          : refusedAtOpeningTurn
+            ? (lastTurn?.assessment?.reasoning ?? state.screenDecision?.reasoning ?? "")
+            : (lastTurn?.assessment.reasoning ?? ""),
         turnCount: state.turnCount,
         ...(screenedOut
           ? { reason: "screened_out" as const }
