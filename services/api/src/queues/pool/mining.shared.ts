@@ -21,7 +21,7 @@
  * QUESTIONER_ENABLED (via questionerEnqueueIfEnabled). All off = no-op.
  */
 import { POOL_DISCRIMINATOR_MAX_CANDIDATES, POOL_DISCRIMINATOR_MIN_POOL_SIZE, PoolDiscriminatorMiner, poolQuestionsMiningMode, poolQuestionsMode, runPoolDiscriminatorShadow, selectQuestionDiscriminators, toQuestionDiscriminator } from '@indexnetwork/protocol';
-import type { DiscriminatorShadowResult, PoolCandidate } from '@indexnetwork/protocol';
+import type { PoolCandidate } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import db from '../../lib/drizzle/drizzle';
@@ -96,7 +96,7 @@ export function isPoolMiningActivated(): boolean {
 
 /** Reject question admission only when durable resolved-axis comparison failed. */
 export function shouldEnqueuePoolQuestionForResolvedHistory(
-  shadow: Pick<DiscriminatorShadowResult, 'priorReferenceComparisonUnavailable'>,
+  shadow: { priorReferenceComparisonUnavailable?: boolean },
 ): boolean {
   return shadow.priorReferenceComparisonUnavailable !== true;
 }

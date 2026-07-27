@@ -1,6 +1,6 @@
 # Durable Discriminator-Axis Memory
 
-**Status:** Approved for planning  
+**Status:** Approved for planning
 **Scope:** `pool_discovery` discriminator questions only
 
 ## Problem
