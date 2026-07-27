@@ -6,7 +6,7 @@ import { inArray } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 
 import db from '../../lib/drizzle/drizzle';
-import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, users } from '../../schemas/database.schema';
+import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, userContexts, users } from '../../schemas/database.schema';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../database.adapter';
 import { EmbedderAdapter } from '../embedder.adapter';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
@@ -34,6 +34,8 @@ const ids = {
   activePremise: uuidv4(),
   removedPremise: uuidv4(),
   deletedNetworkPremise: uuidv4(),
+  activeNet1Context: uuidv4(),
+  activeGlobalContext: uuidv4(),
 };
 
 const vector = makeVector(17);
@@ -122,6 +124,26 @@ beforeAll(async () => {
     { premiseId: ids.removedPremise, networkId: ids.activeNetwork, relevancyScore: '1' },
     { premiseId: ids.deletedNetworkPremise, networkId: ids.deletedNetwork, relevancyScore: '1' },
   ]);
+  await db.insert(userContexts).values([
+    {
+      id: ids.activeNet1Context,
+      userId: ids.activeCandidate,
+      networkId: ids.activeNetwork,
+      text: 'B is a researcher in net1',
+      embedding: vector,
+      premiseHash: 'net1-hash',
+      generatedAt: new Date(),
+    },
+    {
+      id: ids.activeGlobalContext,
+      userId: ids.activeCandidate,
+      networkId: null,
+      text: 'B is a researcher globally',
+      embedding: vector,
+      premiseHash: 'global-hash',
+      generatedAt: new Date(),
+    },
+  ]);
 }, 30_000);
 
 afterAll(async () => {
@@ -137,6 +159,10 @@ afterAll(async () => {
     ids.activePremise,
     ids.removedPremise,
     ids.deletedNetworkPremise,
+  ]));
+  await db.delete(userContexts).where(inArray(userContexts.id, [
+    ids.activeNet1Context,
+    ids.activeGlobalContext,
   ]));
   await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, [
     ids.selectedIntent,
@@ -300,6 +326,21 @@ describe('network discovery adapter isolation', () => {
     });
     expect(context.map((row) => row.intentId)).toContain(ids.activeIntent);
     expect(context.map((row) => row.intentId)).not.toContain(ids.removedIntent);
+  });
+
+  it('searchUserContextsBySimilarity returns network-scoped contexts excluding self and the global row', async () => {
+    const rows = await opportunity.searchUserContextsBySimilarity({
+      embedding: vector,
+      networkIds: [ids.activeNetwork],
+      excludeUserId: ids.viewer,
+      limit: 10,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].contextId).toBe(ids.activeNet1Context);
+    expect(rows[0].userId).toBe(ids.activeCandidate);
+    expect(rows[0].networkId).toBe(ids.activeNetwork);
+    expect(rows[0].text).toContain('researcher');
+    expect(rows[0].similarity).toBeGreaterThan(0.99);
   });
 
   it('selects and transactionally patches only exact triggeredBy pool rows', async () => {
