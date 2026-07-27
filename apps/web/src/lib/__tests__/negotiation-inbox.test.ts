@@ -17,6 +17,7 @@ function conversation(
     acceptedByViewer?: boolean;
     withMessage?: boolean;
     updatedAt?: string;
+    screenDecision?: NonNullable<ConversationSummary['negotiation']>['screenDecision'];
   } = {},
 ): ConversationSummary {
   const action = input.action ?? 'counter';
@@ -48,9 +49,24 @@ function conversation(
       signalCount: 2,
       outcome: input.outcome ?? null,
       updatedAt: input.updatedAt ?? '2026-07-24T11:00:00.000Z',
+      ...(input.screenDecision ? { screenDecision: input.screenDecision } : {}),
     },
   };
 }
+
+/**
+ * The API projects `screenDecision` ONLY to the negotiation's initiator, so a
+ * fixture carrying it represents what the OWNER receives, and one without it
+ * represents exactly what a counterparty receives for the same negotiation.
+ */
+const OWNER_GATE_DECISION = {
+  source: 'screen' as const,
+  decision: 'pass' as const,
+  reasoning: 'Bob is not working on anything close to what Alice needs.',
+  counterpartyPremiseFit: 'different domain',
+  intentAlignment: 'no overlap',
+  screenedAt: '2026-07-24T11:00:00.000Z',
+};
 
 describe('negotiations inbox presentation', () => {
   it('puts consultations before agent agreements in Your move', () => {
@@ -108,6 +124,49 @@ describe('negotiations inbox presentation', () => {
   it('does not surface zero-turn private or abandoned rows', () => {
     const groups = deriveNegotiationInbox([
       conversation('screened', { state: 'completed', withMessage: false, outcome: { hasOpportunity: false, reason: 'screened_out' } }),
+    ], 'viewer', NOW);
+
+    expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
+  });
+
+  it('surfaces the owner-only gate decision as a resolved row (IND-610)', () => {
+    const groups = deriveNegotiationInbox([
+      conversation('gated', {
+        state: 'completed',
+        withMessage: false,
+        outcome: { hasOpportunity: false, reason: 'screened_out' },
+        screenDecision: OWNER_GATE_DECISION,
+      }),
+    ], 'viewer', NOW);
+
+    expect(groups.resolved).toHaveLength(1);
+    const [row] = groups.resolved;
+    expect(row.conversationId).toBe('gated');
+    expect(row.status).toBe('not_sent');
+    expect(row.lastAction).toBe('Your agent did not reach out');
+    expect(row.turnCount).toBe(0);
+    // The row is a link to the existing card; it must not leak the reasoning
+    // itself into the list surface.
+    expect(JSON.stringify(row)).not.toContain('not working on anything close');
+  });
+
+  it('gives a NON-OWNER viewer no gate row for the same negotiation', () => {
+    // Identical negotiation, counterparty's view: the API withheld
+    // screenDecision, so nothing here can reconstruct the row.
+    const groups = deriveNegotiationInbox([
+      conversation('gated', {
+        state: 'completed',
+        withMessage: false,
+        outcome: { hasOpportunity: false, reason: 'screened_out' },
+      }),
+    ], 'counterparty', NOW);
+
+    expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
+  });
+
+  it('still hides a zero-turn shell that carries no gate decision', () => {
+    const groups = deriveNegotiationInbox([
+      conversation('abandoned', { state: 'working', withMessage: false }),
     ], 'viewer', NOW);
 
     expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
