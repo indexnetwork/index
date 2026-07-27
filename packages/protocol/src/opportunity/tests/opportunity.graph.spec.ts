@@ -697,6 +697,72 @@ describe('Opportunity Graph', () => {
       });
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
     });
+
+    it('lightweight mode: context→context finds candidates via searchUserContextsBySimilarity', async () => {
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      const { compiledGraph, mockDb } = createMockGraph();
+      // One idx-1-scoped source context with an embedding.
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+      const searchUserContextsSpy = mock(async () => [
+        { contextId: 'ctx-b', userId: gatingBob, networkId: 'idx-1', text: 'A researcher working on decentralized coordination', similarity: 0.9 },
+      ]);
+      mockDb.searchUserContextsBySimilarity = searchUserContextsSpy;
+
+      // Context source (no searchQuery → discoverySource 'context').
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(searchUserContextsSpy).toHaveBeenCalled();
+      const call = searchUserContextsSpy.mock.calls[0]?.[0];
+      expect(call?.networkIds).toEqual(['idx-1']);
+      expect(call?.excludeUserId).toBe(gatingAlice);
+
+      const candidate = result.candidates.find((c) => c.candidateContextId === 'ctx-b');
+      expect(candidate).toBeDefined();
+      expect(candidate?.candidateUserId).toBe(gatingBob);
+      expect(candidate?.discoverySource).toBe('context-similarity');
+      expect(candidate?.lens).toBe('context_match');
+      expect(candidate?.candidatePayload).toContain('researcher');
+      expect(candidate?.evidence[0]?.kind).toBe('context_similarity');
+    });
+
+    it('lightweight mode: context→context no-ops when adapter omits searchUserContextsBySimilarity', async () => {
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      const { compiledGraph, mockDb } = createMockGraph();
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+      // Fixture deliberately omits searchUserContextsBySimilarity (optional method).
+      expect(mockDb.searchUserContextsBySimilarity).toBeUndefined();
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.candidates).toEqual([]);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('premise mode (default): context→context does not run', async () => {
+      const { compiledGraph, mockDb } = createMockGraph();
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+      const searchUserContextsSpy = mock(async () => []);
+      mockDb.searchUserContextsBySimilarity = searchUserContextsSpy;
+
+      await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      expect(searchUserContextsSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('Evaluation node: userId dedup', () => {

@@ -933,27 +933,32 @@ export class OpportunityGraphFactory {
                 },
               });
 
-              const [premiseCands, contextCands] = await Promise.all([
+              const [premiseCands, contextCands, contextSimCands] = await Promise.all([
                 runPremiseDiscovery(),
                 runContextToIntentDiscovery(),
+                runContextToContextDiscovery(),
               ]);
-              const withPremisesAndContext = mergeStrategyCandidates(queryCandidates, premiseCands, contextCands);
+              const withPremisesAndContext = mergeStrategyCandidates(queryCandidates, premiseCands, contextCands, contextSimCands);
               if (premiseCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `premise-to-premise → ${premiseCands.length} candidate(s)` });
               }
               if (contextCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `context-to-intent → ${contextCands.length} candidate(s)` });
               }
+              if (contextSimCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `context-to-context → ${contextSimCands.length} candidate(s)` });
+              }
               return { candidates: filterByTarget(withPremisesAndContext), trace: traceEntries };
             }
 
             // No search query — premise-to-premise + context-to-intent discovery
-            const [premiseCands, contextCands] = await Promise.all([
+            const [premiseCands, contextCands, contextSimCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
+              runContextToContextDiscovery(),
             ]);
-            if (premiseCands.length > 0 || contextCands.length > 0) {
-              const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            if (premiseCands.length > 0 || contextCands.length > 0 || contextSimCands.length > 0) {
+              const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
               if (premiseCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `premise-to-premise → ${premiseCands.length} candidate(s)` });
@@ -961,9 +966,12 @@ export class OpportunityGraphFactory {
               if (contextCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `context-to-intent → ${contextCands.length} candidate(s)` });
               }
+              if (contextSimCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `context-to-context → ${contextSimCands.length} candidate(s)` });
+              }
               traceEntries.push({
                 node: "discovery",
-                detail: `${[premiseCands.length > 0 && 'premise-to-premise', contextCands.length > 0 && 'context-to-intent'].filter(Boolean).length} strategies → ${premiseCands.length + contextCands.length} raw, ${merged.length} after dedup`,
+                detail: `${[premiseCands.length > 0 && 'premise-to-premise', contextCands.length > 0 && 'context-to-intent', contextSimCands.length > 0 && 'context-to-context'].filter(Boolean).length} strategies → ${premiseCands.length + contextCands.length + contextSimCands.length} raw, ${merged.length} after dedup`,
               });
               return { candidates: filterByTarget(merged), trace: traceEntries };
             }
@@ -1060,6 +1068,7 @@ export class OpportunityGraphFactory {
               total: all.length,
               fromIntent: intentCount,
               fromPremise: premiseCount,
+              fromContext: all.filter((c) => c.candidateContextId).length,
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
@@ -1270,6 +1279,60 @@ export class OpportunityGraphFactory {
           }
 
           /**
+           * Context-to-context discovery (lightweight profile mode only).
+           * Raw network-scoped context embeddings → candidate user_contexts.
+           * No HyDE: both sides are the same document type (synthesized
+           * 3–6 sentence paragraphs), so direct paragraph similarity is correct
+           * (same rationale as raw premise-to-premise).
+           */
+          async function runContextToContextDiscovery(): Promise<CandidateMatch[]> {
+            if (!contextResultsEnabled) return [];
+            if (!state.sourceContexts?.length) return [];
+            if (typeof self.database.searchUserContextsBySimilarity !== 'function') return [];
+
+            const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
+            if (targetNetworkIds.length === 0) return [];
+
+            const contextCandidates: CandidateMatch[] = [];
+            for (const ctx of state.sourceContexts.filter(c => targetNetworkIds.includes(c.networkId))) {
+              const results = await self.database.searchUserContextsBySimilarity({
+                embedding: ctx.embedding,
+                networkIds: [ctx.networkId],
+                excludeUserId: discoveryUserId,
+                limit: 20,
+                minScore,
+              });
+              for (const r of results) {
+                contextCandidates.push(withCandidateEvidence({
+                  candidateUserId: r.userId as Id<'users'>,
+                  candidateContextId: r.contextId,
+                  sourceContextId: ctx.contextId,
+                  networkId: r.networkId as Id<'networks'>,
+                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                  lens: 'context_match',
+                  candidatePayload: r.text ?? '',
+                  discoverySource: 'context-similarity' as const,
+                }));
+              }
+            }
+
+            // Dedup by userId + contextId + networkId (mirror premise dedup)
+            const byKey = new Map<string, CandidateMatch>();
+            for (const c of contextCandidates) {
+              const key = `${c.candidateUserId}:${c.candidateContextId ?? 'none'}:${c.networkId}`;
+              if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+                byKey.set(key, c);
+              }
+            }
+            const deduped = Array.from(byKey.values());
+            discoveryLog.verbose('runContextToContextDiscovery complete', {
+              rawCount: contextCandidates.length,
+              dedupedCount: deduped.length,
+            });
+            return deduped;
+          }
+
+          /**
            * Merge candidates from multiple strategies. Deduplicates by userId + networkId + entityId,
            * keeps the highest similarity, tracks which strategies found each candidate,
            * and applies a multi-strategy boost (+0.05 per additional strategy, boost capped at 0.15,
@@ -1279,7 +1342,7 @@ export class OpportunityGraphFactory {
             const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();
             for (const group of groups) {
               for (const c of group) {
-                const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? 'none';
+                const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? c.candidateContextId ?? 'none';
                 const key = `${c.candidateUserId}:${c.networkId}:${entityId}`;
                 const existing = merged.get(key);
                 if (!existing) {
@@ -1313,15 +1376,16 @@ export class OpportunityGraphFactory {
           const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
           if (!searchText) {
             discoveryLog.warn('No search text available for intent path');
-            const [premiseCands, contextCands] = await Promise.all([
+            const [premiseCands, contextCands, contextSimCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
+              runContextToContextDiscovery(),
             ]);
-            const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
             if (merged.length > 0) {
               return {
                 candidates: filterByTarget(merged),
-                trace: [{ node: "discovery", detail: `No search text; premise → ${premiseCands.length}, context → ${contextCands.length}, merged → ${merged.length} candidate(s)` }],
+                trace: [{ node: "discovery", detail: `No search text; premise → ${premiseCands.length}, context → ${contextCands.length}, context-sim → ${contextSimCands.length}, merged → ${merged.length} candidate(s)` }],
               };
             }
             return { candidates: [] };
@@ -1341,16 +1405,17 @@ export class OpportunityGraphFactory {
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
           if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-            const [premiseCands, contextCands] = await Promise.all([
+            const [premiseCands, contextCands, contextSimCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
+              runContextToContextDiscovery(),
             ]);
-            const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
             if (merged.length > 0) {
               return {
                 hydeEmbeddings: {} as Record<string, number[]>,
                 candidates: filterByTarget(merged),
-                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise → ${premiseCands.length}, context → ${contextCands.length}, merged → ${merged.length} candidate(s)` }],
+                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise → ${premiseCands.length}, context → ${contextCands.length}, context-sim → ${contextSimCands.length}, merged → ${merged.length} candidate(s)` }],
               };
             }
             return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
@@ -1506,15 +1571,16 @@ export class OpportunityGraphFactory {
             });
           }
 
-          const [premiseCands, contextCands] = await Promise.all([
+          const [premiseCands, contextCands, contextSimCands] = await Promise.all([
             runPremiseDiscovery(),
             runContextToIntentDiscovery(),
+            runContextToContextDiscovery(),
           ]);
-          const allStrategies = mergeStrategyCandidates(candidates, premiseCands, contextCands);
-          if (premiseCands.length > 0 || contextCands.length > 0) {
+          const allStrategies = mergeStrategyCandidates(candidates, premiseCands, contextCands, contextSimCands);
+          if (premiseCands.length > 0 || contextCands.length > 0 || contextSimCands.length > 0) {
             traceEntries.push({
               node: "discovery",
-              detail: `+ Premise → ${premiseCands.length}, Context → ${contextCands.length}, merged to ${allStrategies.length} candidate(s)`,
+              detail: `+ Premise → ${premiseCands.length}, Context → ${contextCands.length}, Context-sim → ${contextSimCands.length}, merged to ${allStrategies.length} candidate(s)`,
             });
           }
           return {
