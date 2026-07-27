@@ -37,7 +37,7 @@ export const CASES: DiscoveryRetrievalCase[] = [
     expect: {
       expectedUserIds: ["candidate-operator"],
       excludedUserIds: ["candidate-founder"],
-      topK: 3,
+      topK: 2,
       maxExpectedRank: 2,
       reasoningCriteria: "The result must prioritize a supply-chain operator complementary to the founder and avoid treating another founder as the requested operator.",
     },
@@ -74,7 +74,7 @@ export const CASES: DiscoveryRetrievalCase[] = [
     expect: {
       expectedUserIds: ["candidate-seed-investor"],
       excludedUserIds: ["candidate-devtools-founder"],
-      topK: 3,
+      topK: 2,
       maxExpectedRank: 2,
       reasoningCriteria: "The result must identify an investor rather than matching the source with another founder who is on the same fundraising side.",
     },
@@ -111,7 +111,7 @@ export const CASES: DiscoveryRetrievalCase[] = [
     expect: {
       expectedUserIds: ["candidate-berlin-engineer"],
       excludedUserIds: ["candidate-london-engineer"],
-      topK: 3,
+      topK: 2,
       maxExpectedRank: 2,
       reasoningCriteria: "The result must satisfy both the Berlin location and machine-learning grid-flexibility role constraints.",
     },
@@ -148,7 +148,7 @@ export const CASES: DiscoveryRetrievalCase[] = [
     expect: {
       expectedUserIds: ["candidate-foundation-lead"],
       excludedUserIds: ["candidate-consultancy-lead"],
-      topK: 3,
+      topK: 2,
       maxExpectedRank: 2,
       reasoningCriteria: "The result must match both the Open Source Climate Foundation affiliation and the product-lead role.",
     },
@@ -185,7 +185,7 @@ export const CASES: DiscoveryRetrievalCase[] = [
     expect: {
       expectedUserIds: ["candidate-community-energy"],
       excludedUserIds: ["candidate-solar-finance"],
-      topK: 3,
+      topK: 2,
       maxExpectedRank: 2,
       reasoningCriteria: "The result must preserve the combined community-solar finance and local-utility coordination relationship, not only one topic.",
     },
@@ -222,7 +222,7 @@ export const CASES: DiscoveryRetrievalCase[] = [
     expect: {
       expectedUserIds: ["candidate-lab-automation"],
       excludedUserIds: ["candidate-office-automation"],
-      topK: 3,
+      topK: 2,
       maxExpectedRank: 2,
       reasoningCriteria: "The result must distinguish wet-lab synthetic-biology automation from superficially similar back-office workflow automation.",
     },
@@ -243,6 +243,9 @@ export function validateCorpus(cases: DiscoveryRetrievalCase[]): void {
     }
     if (c.expect.topK < 1 || c.expect.maxExpectedRank < 1 || c.expect.maxExpectedRank > c.expect.topK) {
       throw new Error(`${c.id}: invalid rank expectations`);
+    }
+    if (c.expect.excludedUserIds.length > 0 && c.expect.topK >= c.candidates.length) {
+      throw new Error(`${c.id}: topK must be smaller than the candidate pool when exclusions are required`);
     }
   }
 }

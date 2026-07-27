@@ -4,18 +4,23 @@ import { CASES } from "../discovery-retrieval.cases.js";
 import { scoreModeRun } from "../discovery-retrieval.scorer.js";
 
 describe("scoreModeRun", () => {
-  it("passes when expected candidate is rank 1 and excluded candidate is outside topK", async () => {
+  it("passes a full candidate ranking when an excluded candidate is outside topK", async () => {
+    const c = CASES[0]!;
+    const [expected, excluded, neutral] = c.candidates;
     const result = await scoreModeRun(
-      CASES[0]!,
+      c,
       "intent_to_context",
       [
-        { userId: CASES[0]!.expect.expectedUserIds[0]!, score: 0.91, text: "target" },
-        { userId: "neutral", score: 0.72, text: "neutral" },
+        { userId: expected!.userId, score: 0.91, text: expected!.userContext },
+        { userId: neutral!.userId, score: 0.72, text: neutral!.userContext },
+        { userId: excluded!.userId, score: 0.68, text: excluded!.userContext },
       ],
       async () => true,
     );
+
     expect(result.passed).toBe(true);
     expect(result.assertions.some((a) => a.kind === "recall_at_k" && a.passed)).toBe(true);
+    expect(result.detail.excludedInTopK).toEqual([]);
   });
 
   it("fails when an excluded candidate appears in topK", async () => {

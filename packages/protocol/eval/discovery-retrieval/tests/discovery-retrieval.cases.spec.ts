@@ -12,11 +12,22 @@ describe("discovery retrieval corpus", () => {
       expect(c.tier).toBe(1);
       expect(c.candidates.every((p) => p.premises.length > 0 && p.userContext.length > 0)).toBe(true);
       expect(c.expect.expectedUserIds.length).toBeGreaterThan(0);
+      if (c.expect.excludedUserIds.length > 0) {
+        expect(c.expect.topK).toBeLessThan(c.candidates.length);
+      }
     }
   });
 
   it("rejects an expected candidate absent from the paired candidate pool", () => {
     expect(() => validateCorpus([{ ...CASES[0]!, expect: { ...CASES[0]!.expect, expectedUserIds: ["missing"] } }])).toThrow("expectedUserIds");
+  });
+
+  it("rejects excluded cases whose topK includes the entire candidate pool", () => {
+    const c = CASES.find((candidate) => candidate.expect.excludedUserIds.length > 0)!;
+
+    expect(() => validateCorpus([{ ...c, expect: { ...c.expect, topK: c.candidates.length } }])).toThrow(
+      "topK must be smaller than the candidate pool when exclusions are required",
+    );
   });
 
   it("covers every required retrieval rule", () => {
