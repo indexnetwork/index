@@ -384,28 +384,20 @@ All feature and fix work happens in Git worktrees, keeping the canonical working
 on `dev` and read-only for source changes. Worktrees use semantic slash branches such
 as `feat/my-feature`; the folder is the dashed form `feat-my-feature`.
 
-Use the execution path that owns the request:
+Inspect `git worktree list --porcelain`, then use the
+`create-worktree` and `run-worktree-session` skills. Reuse only an exact
+path/branch match; otherwise create from `origin/dev` and run mandatory setup:
 
-- **Delegated or multi-task request:** load `run-agent-orchestration`. The pinned
-  `pi-herdr-orchestrator` package owns root/child worktree creation, Herdr workspaces
-  and tabs, Pi launches, `/goal`, durable status, child reports, and surface closure.
-  Persistent `main` calls `orchestrator_start`; the interactive root delegates with
-  `orchestrator_delegate`; children finish through `orchestrator_report`. Do not
-  reproduce those mechanics with commands or a second completion protocol.
-- **Standalone request:** inspect `git worktree list --porcelain`, then use the
-  `create-worktree` and `run-worktree-session` skills. Reuse only an exact
-  path/branch match; otherwise create from `origin/dev` and run mandatory setup:
-
-  ```bash
-  git fetch origin dev
-  git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
-  bun run worktree:setup feat-my-feature
-  herdr worktree open \
-    --path "$PWD/.worktrees/feat-my-feature" \
-    --label feat-my-feature \
-    --no-focus \
-    --json
-  ```
+```bash
+git fetch origin dev
+git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
+bun run worktree:setup feat-my-feature
+herdr worktree open \
+  --path "$PWD/.worktrees/feat-my-feature" \
+  --label feat-my-feature \
+  --no-focus \
+  --json
+```
 
   For an existing unmounted branch, omit `-b`. Record the returned workspace and
   pane IDs, verify linked-worktree metadata, and launch an agent only when that exact

@@ -4,13 +4,22 @@ description: >-
   Create or reuse an isolated Index worktree and open its standalone visible
   Herdr-managed Pi, Codex, or Kimi session. Use before standalone implementation
   from the canonical root or when validating a standalone branch/worktree/workspace
-  identity.
+  identity. Do not use for roots or children owned by pi-herdr-orchestrator.
 ---
 
 # Create a standalone worktree session
 
 Keep the canonical root on `dev` and read-only for source changes. This workflow is
 for a **standalone** implementation session only.
+
+If the installed orchestrator extension owns the request:
+
+- `orchestrator_start` creates the root worktree-backed workspace;
+- `orchestrator_delegate` creates child semantic branches, worktrees, and named tabs;
+- this skill must not pre-create, reopen, or relaunch either surface.
+
+Use `run-agent-orchestration` instead. Never recreate extension mechanics with Herdr
+CLI commands.
 
 ## Herdr preflight
 
@@ -98,6 +107,7 @@ Never:
 
 - use `herdr workspace create --cwd` for a repository checkout;
 - open the canonical root itself with `herdr worktree open`;
+- manually create a wave root or child tab for an extension-managed request;
 - start a second writer in an existing worktree.
 
 If the pane is an interactive shell with no agent, launch the chosen standalone
@@ -135,5 +145,8 @@ Never disable signing repository-wide.
 
 ## See also
 
-- `run-worktree-session` — standalone handoff and implementation lifecycle.
+- `run-worktree-session` — standalone handoff and implementation lifecycle, or child
+  execution after the extension has already created a worktree.
+- `run-agent-orchestration` — project policy adapter for extension-managed roots and
+  children.
 - `finish-pr` — explicit merge approval and post-merge verification.

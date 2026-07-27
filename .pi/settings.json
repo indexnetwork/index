@@ -1,5 +1,11 @@
 {
   "packages": [
-    "git:github.com/yanekyuk/pi-herdr-orchestrator@v0.1.0"
+    "git:github.com/obra/superpowers",
+    "npm:@juicesharp/rpiv-advisor",
+    "npm:@juicesharp/rpiv-args",
+    "npm:@juicesharp/rpiv-ask-user-question",
+    "npm:@juicesharp/rpiv-btw",
+    "npm:@juicesharp/rpiv-todo",
+    "npm:@juicesharp/rpiv-web-tools"
   ]
 }

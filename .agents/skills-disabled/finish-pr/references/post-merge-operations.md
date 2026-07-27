@@ -89,7 +89,7 @@ Removal procedure:
    cd /Users/yanek/Projects/index
    ```
 
-2. Close the session's execution plane before removing its Git worktree:
+2. Respect the execution-plane owner before removing a Git worktree:
 
    - **Standalone session:** close its exact verified Herdr workspace first. A removed
      worktree otherwise leaves an idle agent/surface behind.
@@ -100,8 +100,17 @@ Removal procedure:
      herdr workspace list                   # verify it is gone
      ```
 
-   If a recorded ID/path/branch does not match, **stop and report**. Never close
-   another surface or remove its worktree until identity is resolved.
+   - **Extension-managed root or child:** do not manually close its tracked
+     workspace/tab and do not remove its worktree while the root goal is active.
+     `pi-herdr-orchestrator` closes all tracked Herdr surfaces when the root calls
+     `goal_complete`, and deliberately removes no Git worktree or branch. Record the
+     exact root/child paths and branches; after the root surface is gone, perform a
+     later cleanup pass from the canonical root or another checkout and continue at
+     step 3. Never make the running root remove itself.
+
+   If a recorded ID/path/branch does not match, or an expected surface remains after
+   extension completion, **stop and report**. Never close another surface or remove
+   its worktree until identity is resolved.
 
 3. Before removing the worktree, inspect and restore any external local pointers that target it. Example: a local Hermes plugin install may be a symlink to the PR worktree; repoint it to the canonical package before deletion so local tooling does not reference a removed path:
 

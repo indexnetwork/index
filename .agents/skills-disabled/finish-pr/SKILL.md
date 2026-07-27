@@ -1,6 +1,6 @@
 ---
 name: finish-pr
-description: "Finish a pull request end-to-end from the canonical/root session: investigate PR health, coordinate fixes in the existing visible Herdr-managed worktree session, apply explicitly authorized merge approval, verify post-merge GitHub/Railway health, and close or update related issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
+description: "Finish a pull request end-to-end from the canonical/root session: investigate PR health, coordinate fixes in the existing visible Herdr-managed worktree session, apply standalone or extension-provided merge authorization, verify post-merge GitHub/Railway health, and close or update related issues. Use when the user says a PR is ready to finish, ship, merge, or close out."
 ---
 
 # Finish PR
@@ -9,17 +9,17 @@ Use this workflow when a pull request is ready to ship and the user wants the su
 
 ## Goal
 
-Safely finish a PR end-to-end from the canonical/root session: identify the PR/issues, investigate PR health (base freshness, local build/test, checks, reviews, version bumps), make any needed fixes only in the verified PR worktree, execute an explicitly authorized merge only after no findings remain, verify post-merge CI and Railway deployment health, update/close related issues, and apply the cleanup boundary before summarizing what shipped.
+Safely finish a PR end-to-end from the canonical/root session: identify the PR/issues, investigate PR health (base freshness, local build/test, checks, reviews, version bumps), make any needed fixes only in the verified PR worktree, execute an explicitly authorized merge only after no findings remain, verify post-merge CI and Railway deployment health, update/close related issues, and apply the standalone or extension-managed cleanup boundary before summarizing what shipped.
 
 ## Safety rules
 
-- Do not merge without explicit user confirmation in the coordinator session. A worktree implementation session never merges.
+- Do not merge without explicit user confirmation in the owning coordinator session. In an extension-managed request, the root's mandatory initial Yes is that confirmation for the one fully verified result and parent target named by the extension, so do not ask a second routine question after readiness passes; No forbids the merge. A changed target or additional external PR outside that question needs fresh confirmation. Children never merge.
 - Do not deploy, restart, rollback, or mutate Railway resources unless the user explicitly asked for that action. Verification is okay; mutation needs confirmation.
 - Do not close Linear or GitHub issues until the PR is merged and post-merge deployment checks pass, unless the user explicitly asks to close them earlier.
 - Never claim deployment success from a queued/in-progress status. Wait for a terminal success state or report that it is still pending.
 - If Railway MCP tools are unavailable, report deployment as unverified; do not claim success or close related issues until it can be verified. GitHub merge safety does not depend on MCP availability.
 - If checks fail, keep issues open and report the blocker.
-- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. Coordinate fixes in the existing visible Herdr-managed worktree session rather than creating a second session, worktree, tab, agent, or watcher. Every worktree session verifies its absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine. Merge execution belongs to the root/coordinator session: internal squash-merges run from its integration checkout, and `dev`/`main` merges run via `gh pr merge` from a non-canonical coordination worktree — never from the canonical root, and never delegated to a child.
+- Never edit files or run mutating git commands (commit, rebase, push, force-push) from the canonical root. In an extension-managed request, the interactive root coordinates fixes in the existing tracked child and uses `orchestrator_status`/`orchestrator_reconcile` rather than creating a second coordinator, worktree, tab, agent, or checkpoint protocol. In a standalone request, reuse the existing visible Herdr-managed Pi, Codex, or Kimi worktree session. Every child verifies its absolute path and feature branch before mutation. GitHub-side actions (review-thread replies/resolutions, the merge itself, issue updates) and read-only verification (builds, tests, diffs against remote refs) are fine. Merge execution belongs to the root/coordinator session: internal squash-merges run from its integration checkout, and `dev`/`main` merges run via `gh pr merge` from a non-canonical coordination worktree — never from the canonical root, and never delegated to a child.
 - Do not use hidden `Agent` subagents for implementation/fix rounds, and do not create a watcher process or watcher pane. Reuse the same Herdr workspace/tab, pane, and agent.
 - A PR-branch rebase is executed only from the verified PR worktree, and only ever on the PR's own feature branch — never a shared/long-lived head branch (`dev`, `main` — e.g. a release PR's head): that rewrites shared history and breaks other worktrees. Use `--force-with-lease`, never plain `--force`.
 - Do not remove a git worktree until the PR is merged and every dirty/unpushed change has been inspected. A dirty tree may be force-removed only when each leftover is proven disposable or preserved elsewhere; keep it or ask when that cannot be established. Honor any user request to keep it.
@@ -27,26 +27,28 @@ Safely finish a PR end-to-end from the canonical/root session: identify the PR/i
 ## Internal mode (non-dev base)
 
 When the snapshot's `baseRefName` is neither `dev` nor `main`, treat the PR as an
-**internal PR** targeting the request's integration branch. The coordinator session
-owns that branch and its worktree sessions; do not create a parallel integration-owner.
+**internal PR** targeting the request's integration branch. In an extension-managed
+request, that branch and its children remain owned by the interactive root; do not
+create a parallel integration-owner or manual orchestration plane.
 
 - Inspect the actual workflow configuration and `statusCheckRollup`; do not assume CI
   is absent merely because the base is nonstandard. When required checks do not run,
   independently execute production lint, the affected build,
   `architecture:check` for protocol changes, and targeted tests before readiness and
   merge.
-- The coordinator session performs the merge from its own verified integration checkout after local
-  gates; worktree implementation sessions never merge.
+- The root performs the merge from its own verified integration checkout after local
+  gates; children never merge. The extension's initial Yes/No applies only to the
+  concrete result/target it named.
 - Nothing deploys merely from an internal branch, so record Railway as N/A unless the
   repository's live deployment configuration proves otherwise.
 - Measure base freshness against the actual integration branch. Never rebase or
-  force-push a shared integration branch; the coordinator owns deliberate SemVer/lockfile
+  force-push a shared integration branch; root owns deliberate SemVer/lockfile
   reconciliation.
 - Keep held PR worktrees/surfaces and record the dependency in Linear plus the
-  session handoff record.
+  extension's durable task state (or standalone handoff record).
 
 Everything else — snapshot-first investigation, independent verification, and the
-cleanup boundary — applies unchanged.
+extension-aware cleanup boundary — applies unchanged.
 
 ## Supporting skills
 
@@ -64,7 +66,12 @@ herdr agent read "$AGENT_NAME" --source recent-unwrapped --lines 200
 herdr agent prompt "$AGENT_NAME" "$(< /absolute/path/to/fix-handoff.md)"
 ```
 
-Never poll, sleep, wait, or create a watcher. If a
+For an extension-managed task, obtain the exact child pane from
+`orchestrator_status` and use `orchestrator_reconcile` for at most one live status
+pass; v0.1.0 has no correction tool, so the targeted `herdr agent prompt` above is
+only for a consolidated fix in that already-tracked child, never for lifecycle or
+state management. Keep the child report nonterminal until the fix loop ends because a
+terminal report is immutable. Never poll, sleep, wait, or create a watcher. If a
 structured prompt is active, answer it through the exact pane instead of appending a
 new prompt. Independently verify every reported git/test/PR fact before merging.
 
@@ -246,11 +253,15 @@ Before merging, summarize:
 - env variable decisions (what was set in Railway / `.env.development` / `.env.test`, what was deliberately left unset),
 - related GitHub/Linear issues that will be updated after merge.
 
-Do not obtain merge authorization while findings are outstanding. Ask for explicit
-confirmation in the coordinator session once readiness is green, and ask again if the
-target changes or an additional external PR is pulled in.
+Do not obtain merge authorization while findings are outstanding in a standalone
+workflow. In an extension-managed request, the mandatory initial root question is
+asked before delegation by design: treat Yes as conditional authorization that becomes
+executable only after every readiness finding is cleared, and do not ask a second
+routine question. Treat No as final. For a changed target or an additional external PR
+outside that original question, ask fresh explicit confirmation in the coordinator
+session.
 
-After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. `gh pr merge` completes the merge server-side, so run it from the **coordinator session's own worktree** — never from the canonical root, and never from an implementation worktree session. In multi-worktree repos where the base branch is checked out in the canonical root, `gh pr merge --delete-branch` may complete the server-side merge but fail local branch cleanup if it tries to touch a branch already used by another worktree; that is the expected exit-code-1 case below, or avoid it by merging without `--delete-branch` and deleting the remote branch during cleanup.
+After confirmation, merge using the repository's preferred strategy. If unknown, inspect repo conventions or ask. `gh pr merge` completes the merge server-side, so run it from the **root session's own worktree** — never from the canonical root, and never from a child. In multi-worktree repos where the base branch is checked out in the canonical root, `gh pr merge --delete-branch` may complete the server-side merge but fail local branch cleanup if it tries to touch a branch already used by another worktree; that is the expected exit-code-1 case below, or avoid it by merging without `--delete-branch` and deleting the remote branch during cleanup.
 
 Common command:
 
@@ -322,7 +333,11 @@ Follow `references/post-merge-operations.md` for the detailed Railway MCP verifi
 - For squash-merged PRs, the local branch may not appear in `git branch --merged`; use the PR merged state and merge commit as the source of truth.
 - Before removing a finished worktree, restore any external local pointers that target it (for example `~/.hermes/plugins/index-network` symlinked to a PR worktree).
 - For a standalone session, close its exact verified Herdr workspace before removing
-  the worktree. Never turn PR closeout into an unrelated sweep.
+  the worktree. For an extension-managed request, do not manually close a tracked tab
+  or remove its worktree while the root is active: the extension closes all tracked
+  surfaces on root `goal_complete` and intentionally leaves every Git worktree/branch.
+  Record exact cleanup candidates for a later pass from another checkout after
+  closure. Never turn PR closeout into an unrelated sweep.
 
 ### 12. Final summary
 

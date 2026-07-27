@@ -489,21 +489,11 @@ use semantic `<type>/<description>` names and the only valid folder is the dashe
 
 Before visible worktree execution, follow the Herdr setup in
 `docs/guides/getting-started.md`; its server and the required agent integration must be
-available. Two paths are deliberately separate:
+available. Then follow `create-worktree` and `run-worktree-session` to create/reuse one
+semantic branch, run `bun run worktree:setup <dashed-folder>`, and open the exact
+linked worktree with `herdr worktree open --no-focus --json`.
 
-- **Orchestrated request:** use the pinned `pi-herdr-orchestrator` package through the
-  `run-agent-orchestration` skill. Persistent `main` calls `orchestrator_start`; the
-  interactive root uses `orchestrator_delegate`, `orchestrator_status`, and
-  `orchestrator_reconcile`; children finish through `orchestrator_report`. The
-  extension alone creates root/child worktrees and Herdr surfaces, launches Pi,
-  starts `/goal`, records durable state, routes reports, and closes tracked surfaces.
-  Do not recreate those mechanisms with Herdr CLI commands, hidden subagents,
-  checkpoint files, or a second completion protocol.
-- **Standalone request:** follow `create-worktree` and `run-worktree-session` to
-  create/reuse one semantic branch, run `bun run worktree:setup <dashed-folder>`, and
-  open the exact linked worktree with `herdr worktree open --no-focus --json`.
-
-In both paths, keep one writer per worktree, reuse the same execution plane for review
+Keep one writer per worktree, reuse the same execution plane for review
 and finish-pr fixes, and independently verify every completion claim. Never wait,
 poll, sleep, create watcher processes/panes, infer merge approval, or treat
 `idle`/`done` as success. Escalate only genuine product/architecture ambiguity,
@@ -521,9 +511,8 @@ dirty checkout prevents the fast-forward, preserve its work and report the pendi
 reconciliation rather than merging or resetting over it.
 
 Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
-execution planes, and agent sessions, with one writer per worktree. The orchestrator
-extension places child tabs inside its root workspace; standalone worktrees use their
-own workspace. Reuse the same visible session for review and finish-pr fix loops. The
+execution planes, and agent sessions, with one writer per worktree and one Herdr
+workspace per worktree. Reuse the same visible session for review and finish-pr fix loops. The
 legacy `bun run worktree:session` helper remains a fallback when Herdr is unavailable,
 not the default workflow.
 
@@ -559,19 +548,15 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
    `git pull --ff-only origin dev`; otherwise preserve its work and report pending
    reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
-7. Clean up only after merge and preservation checks. In an extension-managed
-   request, let the extension close tracked Herdr surfaces on root completion, then
-   remove its retained Git worktrees/branches later from another checkout.
+7. Clean up only after merge and preservation checks. Close the worktree's Herdr
+   workspace first, then remove its Git worktree and branch from another checkout.
 
 ## Superpowers Workflow
 
 ### Implementation in Visible Herdr Worktrees
 
 Execute implementation and fix plans in visible Herdr-managed sessions for isolated
-Git worktrees. For delegated or multi-task work, direct the installed
-`pi-herdr-orchestrator` extension through `run-agent-orchestration`; the skill supplies
-Index policy but never replaces the extension's root/child lifecycle. For one
-standalone implementation, follow `create-worktree` and `run-worktree-session`.
+Git worktrees, following `create-worktree` and `run-worktree-session`.
 Keep `dev` stable, never use hidden implementation subagents, and preserve one writer
 per checkout.
 
