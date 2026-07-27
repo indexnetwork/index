@@ -583,6 +583,122 @@ describe('Opportunity Graph', () => {
     });
   });
 
+  describe('discovery env gating', () => {
+    const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
+    const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
+
+    afterEach(() => {
+      if (previousAllowedTypes === undefined) delete process.env.DISCOVERY_ALLOWED_TYPES;
+      else process.env.DISCOVERY_ALLOWED_TYPES = previousAllowedTypes;
+      if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
+      else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
+    });
+
+    const gatingAlice = 'a0000000-0000-4000-8000-000000000001';
+    const gatingBob = 'b0000000-0000-4000-8000-000000000002';
+
+    function wirePremiseAndContextSources(mockDb: OpportunityGraphDatabase) {
+      mockDb.getPremisesForUserInNetworks = async (userId) => [
+        { id: 'premise-1', userId, assertion: { text: 'Builds protocols', tier: 'assertive' as const }, provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null },
+      ];
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+    }
+
+    it('DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches', async () => {
+      process.env.DISCOVERY_ALLOWED_TYPES = 'intent';
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      wirePremiseAndContextSources(mockDb);
+      const premiseBatchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch');
+      const premiseLegacySpy = spyOn(mockDb, 'searchPremisesBySimilarity');
+      const contextSearchSpy = spyOn(mockDb, 'searchIntentsByContextEmbedding');
+      const getUserContextsSpy = spyOn(mockDb, 'getUserContexts');
+      // Embedder returns only profile-corpus candidates; with intent-only matching
+      // they must all be filtered out post-search.
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'premise' as const, id: 'premise-bob', userId: gatingBob, score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+        { type: 'user_context' as const, id: 'ctx-bob', userId: gatingBob, score: 0.88, matchedVia: 'mirror' as const, networkId: 'idx-1', text: 'Bob context' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(premiseBatchSpy).not.toHaveBeenCalled();
+      expect(premiseLegacySpy).not.toHaveBeenCalled();
+      expect(contextSearchSpy).not.toHaveBeenCalled();
+      expect(getUserContextsSpy).not.toHaveBeenCalled();
+      expect(result.candidates).toEqual([]);
+    });
+
+    it('DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped', async () => {
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      wirePremiseAndContextSources(mockDb);
+      const premiseBatchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch');
+      const premiseLegacySpy = spyOn(mockDb, 'searchPremisesBySimilarity');
+      const gatingCarol = 'c0000000-0000-4000-8000-000000000003';
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: gatingBob, score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+        { type: 'premise' as const, id: 'premise-bob', userId: gatingBob, score: 0.88, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+        // Distinct user so the candidate survives the evaluation node's userId dedup.
+        { type: 'user_context' as const, id: 'ctx-carol', userId: gatingCarol, score: 0.87, matchedVia: 'mirror' as const, networkId: 'idx-1', text: 'Carol builds DeFi infra' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(premiseBatchSpy).not.toHaveBeenCalled();
+      expect(premiseLegacySpy).not.toHaveBeenCalled();
+      // Corpus gating must be composed from env and passed to the embedder.
+      expect(searchSpy.mock.calls[0]?.[1]?.corpusGating).toEqual({
+        intents: true,
+        profile: true,
+        profileCorpus: 'user_context',
+      });
+      // Defense-in-depth: premise results dropped post-search; user_context flows.
+      expect(result.candidates.some((c) => c.candidatePremiseId)).toBe(false);
+      expect(result.candidates.some((c) => c.candidateIntentId === 'intent-bob')).toBe(true);
+      expect(result.candidates.some((c) => c.candidateContextId === 'ctx-carol')).toBe(true);
+    });
+
+    it('defaults unchanged: premise + context strategies run as today', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      wirePremiseAndContextSources(mockDb);
+      const getUserContextsSpy = spyOn(mockDb, 'getUserContexts');
+      const premiseBatchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch').mockResolvedValue([
+        { sourcePremiseId: 'premise-1', premiseId: 'candidate-premise-1', userId: gatingBob, networkId: 'idx-1', assertionText: 'Can help protocols find founders', similarity: 0.88 },
+      ]);
+      const contextSearchSpy = spyOn(mockDb, 'searchIntentsByContextEmbedding').mockResolvedValue([]);
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: gatingBob, score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(getUserContextsSpy).toHaveBeenCalled();
+      expect(premiseBatchSpy).toHaveBeenCalled();
+      expect(contextSearchSpy).toHaveBeenCalled();
+      expect(searchSpy).toHaveBeenCalled();
+      expect(searchSpy.mock.calls[0]?.[1]?.corpusGating).toEqual({
+        intents: true,
+        profile: true,
+        profileCorpus: 'premise',
+      });
+      expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   describe('Evaluation node: userId dedup', () => {
     test('when same user appears via multiple indexes, evaluates them only once (deduped by userId)', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({

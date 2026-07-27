@@ -60,6 +60,7 @@ import { renderNetworkContext } from '../../shared/network/metadata.renderer.js'
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from '../domain/opportunity.evidence.js';
+import { discoveryIntentMatchingEnabled, discoveryProfileMatchingEnabled, discoveryProfileSource } from '../discovery.env.js';
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from '../domain/opportunity.actor.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
@@ -167,7 +168,7 @@ function buildEvaluatorEvidenceKey(candidate: CandidateMatch): string {
   return [
     candidate.candidateUserId,
     candidate.networkId,
-    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.sourceContextId ?? 'profile',
+    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.candidateContextId ?? candidate.sourceContextId ?? 'profile',
   ].join(':');
 }
 
@@ -370,8 +371,9 @@ export class OpportunityGraphFactory {
             // DISCOVERY_SOURCE_PREMISE_LIMIT. Loading all premises here caused
             // BACKEND-5: thousands of parallel vector searches for premise-rich users.
             const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
+            const profileEnabled = discoveryProfileMatchingEnabled();
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
-            const rawContexts = contextToIntentEnabled && typeof this.database.getUserContexts === 'function'
+            const rawContexts = profileEnabled && contextToIntentEnabled && typeof this.database.getUserContexts === 'function'
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
@@ -854,6 +856,18 @@ export class OpportunityGraphFactory {
           // Similarity threshold for recall (0.30 = 30% similarity)
           const minScore = 0.3;
 
+          // Discovery match-type gating (DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE).
+          // Result filtering below is defense-in-depth: corpusGating already scopes the
+          // embedder's corpus searches, but adapters may still return other types.
+          const intentResultsEnabled = discoveryIntentMatchingEnabled();
+          const premiseResultsEnabled = discoveryProfileMatchingEnabled() && discoveryProfileSource() === 'premise';
+          const contextResultsEnabled = discoveryProfileMatchingEnabled() && discoveryProfileSource() === 'user_context';
+          const corpusGating = {
+            intents: discoveryIntentMatchingEnabled(),
+            profile: discoveryProfileMatchingEnabled(),
+            profileCorpus: discoveryProfileSource(),
+          } as const;
+
           if (state.discoverySource === 'context') {
             // Context discovery: HyDE (when search query exists) + premise-to-premise.
             if (state.searchQuery?.trim()) {
@@ -1000,8 +1014,9 @@ export class OpportunityGraphFactory {
                   limitPerStrategy,
                   limit: perIndexLimit,
                   minScore,
+                  corpusGating,
                 });
-                for (const r of results.filter((x) => x.type === 'intent')) {
+                if (intentResultsEnabled) for (const r of results.filter((x) => x.type === 'intent')) {
                   all.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.id as Id<'intents'>,
@@ -1013,7 +1028,7 @@ export class OpportunityGraphFactory {
                     discoverySource: 'query' as const,
                   }));
                 }
-                for (const r of results.filter((x) => x.type === 'premise')) {
+                if (premiseResultsEnabled) for (const r of results.filter((x) => x.type === 'premise')) {
                   all.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidatePremiseId: r.id as Id<'premises'>,
@@ -1021,6 +1036,18 @@ export class OpportunityGraphFactory {
                     similarity: r.score,
                     lens: r.matchedVia,
                     candidatePayload: '',
+                    candidateSummary: undefined,
+                    discoverySource: 'query' as const,
+                  }));
+                }
+                if (contextResultsEnabled) for (const r of results.filter((x) => x.type === 'user_context')) {
+                  all.push(withCandidateEvidence({
+                    candidateUserId: r.userId as Id<'users'>,
+                    candidateContextId: r.id,
+                    networkId: targetIndex.networkId,
+                    similarity: r.score,
+                    lens: r.matchedVia,
+                    candidatePayload: r.text ?? '',
                     candidateSummary: undefined,
                     discoverySource: 'query' as const,
                   }));
@@ -1038,7 +1065,11 @@ export class OpportunityGraphFactory {
             for (const c of all) {
               // Dedup by candidateUserId + entity (intent or premise), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
+              const entityKey = c.candidateIntentId
+                ? `intent:${c.candidateIntentId}`
+                : c.candidatePremiseId
+                  ? `premise:${c.candidatePremiseId}`
+                  : `context:${c.candidateContextId}`;
               const key = `${c.candidateUserId}:${entityKey}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
@@ -1055,6 +1086,11 @@ export class OpportunityGraphFactory {
           async function runPremiseDiscovery(): Promise<CandidateMatch[]> {
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];
+
+            if (!discoveryProfileMatchingEnabled() || discoveryProfileSource() === 'user_context') {
+              discoveryLog.verbose('runPremiseDiscovery disabled by DISCOVERY_ALLOWED_TYPES/DISCOVERY_PROFILE_SOURCE');
+              return [];
+            }
 
             const sourceLimit = getSourcePremiseDiscoveryLimit();
             if (sourceLimit === 0) {
@@ -1142,6 +1178,7 @@ export class OpportunityGraphFactory {
             if (!state.sourceContexts?.length) return [];
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
             if (!contextToIntentEnabled) return [];
+            if (!discoveryProfileMatchingEnabled() || !discoveryIntentMatchingEnabled()) return [];
 
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];
@@ -1177,6 +1214,7 @@ export class OpportunityGraphFactory {
                   limitPerStrategy: limitPerStrategy,
                   limit: 20,
                   minScore,
+                  corpusGating,
                 });
                 for (const r of results.filter(r => r.type === 'intent')) {
                   contextCandidates.push(withCandidateEvidence({
@@ -1334,8 +1372,9 @@ export class OpportunityGraphFactory {
                 limitPerStrategy,
                 limit: perIndexLimit,
                 minScore,
+                corpusGating,
               });
-              for (const result of results.filter((r) => r.type === 'intent')) {
+              if (intentResultsEnabled) for (const result of results.filter((r) => r.type === 'intent')) {
                 allCandidates.push(withCandidateEvidence({
                   candidateUserId: result.userId as Id<'users'>,
                   candidateIntentId: result.id as Id<'intents'>,
@@ -1347,7 +1386,7 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 }));
               }
-              for (const result of results.filter((r) => r.type === 'premise')) {
+              if (premiseResultsEnabled) for (const result of results.filter((r) => r.type === 'premise')) {
                 allCandidates.push(withCandidateEvidence({
                   candidateUserId: result.userId as Id<'users'>,
                   candidatePremiseId: result.id as Id<'premises'>,
@@ -1359,11 +1398,27 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 }));
               }
+              if (contextResultsEnabled) for (const result of results.filter((r) => r.type === 'user_context')) {
+                allCandidates.push(withCandidateEvidence({
+                  candidateUserId: result.userId as Id<'users'>,
+                  candidateContextId: result.id,
+                  networkId: targetIndex.networkId,
+                  similarity: result.score,
+                  lens: result.matchedVia,
+                  candidatePayload: result.text ?? '',
+                  candidateSummary: undefined,
+                  discoverySource: 'query' as const,
+                }));
+              }
             })
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
+            const entityKey = c.candidateIntentId
+              ? `intent:${c.candidateIntentId}`
+              : c.candidatePremiseId
+                ? `premise:${c.candidatePremiseId}`
+                : `context:${c.candidateContextId}`;
             const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);
