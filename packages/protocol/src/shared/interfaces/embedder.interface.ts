@@ -28,7 +28,7 @@ export interface HydeSearchOptions {
   minScore?: number;
   /**
    * Discovery corpus gating, composed by the caller (defaults preserve legacy behavior).
-   * Omitted fields default to: intents true, profile true, profileCorpus 'premises'.
+   * Omitted fields default to: intents true, profile true, profileCorpus 'premise'.
    */
   corpusGating?: {
     /** Search the intents corpus. */

@@ -3708,6 +3708,20 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Cosine similarity search against user-context embeddings, scoped to shared networks.
+   * Delegates to OpportunityDatabaseAdapter (which hosts the raw SQL query).
+   */
+  async searchUserContextsBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }) {
+    return this.opportunityAdapter.searchUserContextsBySimilarity(params);
+  }
+
+  /**
    * Find the most-similar ACTIVE premise owned by the same user whose cosine
    * similarity to `embedding` meets or exceeds `threshold`. Powers near-duplicate
    * skipping on premise create. Returns null when nothing clears the threshold.

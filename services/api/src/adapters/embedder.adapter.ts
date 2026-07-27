@@ -31,7 +31,7 @@ export interface HydeSearchOptions {
   minScore?: number;
   /**
    * Discovery corpus gating, composed by the caller (defaults preserve legacy behavior).
-   * Omitted fields default to: intents true, profile true, profileCorpus 'premises'.
+   * Omitted fields default to: intents true, profile true, profileCorpus 'premise'.
    */
   corpusGating?: {
     /** Search the intents corpus. */
@@ -231,9 +231,10 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    // Corpus selection honors the discovery env gates (DISCOVERY_ALLOWED_TYPES /
-    // DISCOVERY_PROFILE_SOURCE). 'profiles' hints remap to the active profile
-    // corpus: premises (default) or user_contexts (lightweight mode).
+    // Corpus selection honors the caller-composed `corpusGating` option, composed
+    // by the discovery graph from DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE.
+    // 'profiles' hints remap to the active profile corpus: premises (default) or
+    // user_contexts (lightweight mode).
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
