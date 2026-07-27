@@ -1,4 +1,4 @@
-// Onboarding — Mac System 6 chrome, conversational. + Calibrating screen.
+// Onboarding, Mac System 6 chrome, conversational. + Calibrating screen.
 
 // The second step adapts to whatever intent the person gave in step one, so the
 // follow-up question is actually relevant to what they're looking for.
@@ -12,7 +12,7 @@ function resolveStep(baseStep, answers) {
   return baseStep;
 }
 
-// Off-limits chips, tuned to whatever they're actually looking for — so the
+// Off-limits chips, tuned to whatever they're actually looking for, so the
 // suggestions feel like the agent gets the context, not a canned list.
 function offLimitsFor(intent) {
   const t = (intent || "").toLowerCase();
@@ -130,7 +130,7 @@ function followUpFor(intent) {
     };
   }
 
-  // default — meeting people generally
+  // default, meeting people generally
   return {
     prompt: "what're you into these days?",
     hint: "what's on your mind. it helps me pattern-match.",
@@ -146,7 +146,7 @@ function followUpFor(intent) {
 function Onboarding({ onDone, onBack }) {
   const { ONBOARDING_STEPS } = window.INDEX_DATA;
   const SHAPE_STEP = ONBOARDING_STEPS[ONBOARDING_STEPS.length - 1];
-  // How many follow-up questions sit between "intent" and "shape" — the live
+  // How many follow-up questions sit between "intent" and "shape", the live
   // flow asks the backend for the same number the local script would.
   const DYN_MAX = Math.max(1, ONBOARDING_STEPS.length - 2);
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
@@ -198,7 +198,7 @@ function Onboarding({ onDone, onBack }) {
   // ---- chat-driven clarification (same machinery as the web app) ----------
   //
   // The first answer opens a /chat/stream turn. The agent asks clarifying
-  // questions via ask_user_question — each arrives as a `user_question` SSE
+  // questions via ask_user_question, each arrives as a `user_question` SSE
   // event and becomes the next onboarding step; answering it resumes the same
   // blocked turn. The turn ends in an ```intent_proposal``` block, which we
   // confirm through POST /intents/confirm.
@@ -238,7 +238,7 @@ function Onboarding({ onDone, onBack }) {
     setStep(resolveStep(SHAPE_STEP, answersRef.current));
   };
 
-  // No dynamic flow available (demo, stream error before anything happened) —
+  // No dynamic flow available (demo, stream error before anything happened),
   // continue with the original scripted follow-ups.
   const fallbackLocal = () => {
     if (cancelledRef.current) return;
@@ -262,7 +262,7 @@ function Onboarding({ onDone, onBack }) {
     } catch (e) { /* finish() falls back to a direct create */ }
   };
 
-  // The agent may have created the signal directly (no proposal block) —
+  // The agent may have created the signal directly (no proposal block), so
   // detect it so the flow still closes out as "created".
   const newestIntentSinceStart = async () => {
     const res = await client.intents.list({}).catch(() => null);
@@ -273,7 +273,7 @@ function Onboarding({ onDone, onBack }) {
   };
 
   const handleDone = async (response) => {
-    // Only act when the flow is waiting on this turn — a late `done` (e.g. the
+    // Only act when the flow is waiting on this turn, a late `done` (e.g. the
     // question wait timed out while the user idles) must not clobber the step.
     if (cancelledRef.current || !awaitingRef.current) return;
     const proposal = (window.IndexApp.parseIntentProposals(response) || [])[0];
@@ -346,7 +346,7 @@ function Onboarding({ onDone, onBack }) {
 
     if (step.id === "shape") { finish(newAns); return; }
 
-    // A structured chat question — answering it resumes the blocked turn, and
+    // A structured chat question, answering it resumes the blocked turn, and
     // the same stream carries the next question or the final proposal.
     if (step.question && client) {
       const isChip = (step.examples || []).includes(raw);
@@ -355,17 +355,17 @@ function Onboarding({ onDone, onBack }) {
       setThinking(true);
       client.questions.answer(step.question.id, body)
         .then((res) => {
-          // Turn already ended (timeout) — carry the answer as a follow-up.
-          if (!res || !res.resumed) startTurn(`Re: "${step.prompt}" — ${v}`);
+          // Turn already ended (timeout), carry the answer as a follow-up.
+          if (!res || !res.resumed) startTurn(`Re: "${step.prompt}": ${v}`);
         })
-        .catch(() => startTurn(`Re: "${step.prompt}" — ${v}`));
+        .catch(() => startTurn(`Re: "${step.prompt}": ${v}`));
       return;
     }
 
-    // A prose question from the agent — the answer is the next chat message.
+    // A prose question from the agent, the answer is the next chat message.
     if (step.chatTurn && client) { startTurn(v); return; }
 
-    // The first answer IS the signal — hand it to the agent, which clarifies
+    // The first answer IS the signal, hand it to the agent, which clarifies
     // and proposes, exactly like the web app's guided intake.
     if (step.id === "intent" && client) {
       startTurn(
@@ -375,7 +375,7 @@ function Onboarding({ onDone, onBack }) {
       return;
     }
 
-    // Demo / scripted fallback — the original local flow.
+    // Demo / scripted fallback, the original local flow.
     localIdx.current += 1;
     const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
     setStep(resolveStep(next, newAns));
@@ -386,7 +386,7 @@ function Onboarding({ onDone, onBack }) {
     (async () => {
       let created = createdRef.current;
       if (client && !created) {
-        // Live but the early create failed (or never ran) — create from the
+        // Live but the early create failed (or never ran), create from the
         // composed script answers, exactly like the original flow.
         try {
           await window.IndexApp.createIntent(composeDescription(ans));
@@ -419,7 +419,7 @@ function Onboarding({ onDone, onBack }) {
         display:"grid", gridTemplateColumns:"minmax(0, 1.4fr) minmax(0, 1fr)", gap:18,
         height: "min(720px, calc(100vh - 128px))",
       }}>
-        {/* LEFT — conversation window */}
+        {/* LEFT, conversation window */}
         <MacWindow title="index · calibrating" onClose={onBack}>
           <div style={{
             padding:"18px 28px 12px",
@@ -437,7 +437,7 @@ function Onboarding({ onDone, onBack }) {
               <div style={{ flex:1 }}/>
             </div>
 
-            {/* progress — pinstripe segments */}
+            {/* progress, pinstripe segments */}
             <div style={{ display:"flex", gap:3, marginBottom:24 }}>
               {ONBOARDING_STEPS.map((_, i) => (
                 <div key={i} style={{
@@ -488,7 +488,7 @@ function Onboarding({ onDone, onBack }) {
                     </div>
                   ) : (
                     <React.Fragment>
-                      {/* type your own answer first — the suggestions are the
+                      {/* type your own answer first, the suggestions are the
                           "or pick one" fallback, so they come after */}
                       <form onSubmit={(e) => { e.preventDefault(); submit(); }}
                         style={{ display:"flex", gap:12, alignItems:"center", maxWidth:560 }}>
@@ -539,7 +539,7 @@ function Onboarding({ onDone, onBack }) {
           </div>
         </MacWindow>
 
-        {/* RIGHT — the field warming */}
+        {/* RIGHT, the field warming */}
         <MacWindow title="the field, warming">
           <OnboardingFieldPreview answers={answers} stepIdx={stepIdx}/>
         </MacWindow>
@@ -548,20 +548,14 @@ function Onboarding({ onDone, onBack }) {
   );
 }
 
+// Onboarding is the same agent that speaks on the signals page, so it wears the
+// same mark. The "h" tile this replaced named the runtime (hermes) at the one
+// moment you have no idea what that is, and made your first conversation with
+// index look like it came from something else.
 function AgentBubble({ children }) {
   return (
     <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-      <div style={{
-        width:26, height:26,
-        border:"1px solid #000",
-        display:"grid", placeItems:"center",
-        flex:"0 0 auto", marginTop:3,
-        background:"#000", color:"#fff",
-      }}>
-        <span style={{
-          fontFamily:"var(--mac-mono)", fontSize:12, letterSpacing:0.2, fontWeight:600,
-        }}>h</span>
-      </div>
+      <MyAgentAvatar size={26} style={{ marginTop:3 }}/>
       <div style={{
         fontFamily:"var(--mac-sans)", fontSize:21,
         color:"#000", fontWeight:500, lineHeight:1.35, letterSpacing:-0.2,
@@ -594,7 +588,7 @@ function PastTurn({ step, answer }) {
   );
 }
 
-// Suggested answer — Workbench gadget sized up to match the question's altitude.
+// Suggested answer, Workbench gadget sized up to match the question's altitude.
 // Mirrors the bevel of the shared Chip/Btn primitives, but legible at a glance.
 function SuggestChip({ children, onClick }) {
   const [down, setDown] = useState(false);

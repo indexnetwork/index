@@ -1,4 +1,4 @@
-// Settings — reached from the account chip on the hub. Three panes: what the
+// Settings, reached from the account chip on the hub. Three panes: what the
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
@@ -21,7 +21,7 @@ function FieldLabel({ children, required, right }) {
   );
 }
 
-// Sunken well — the inverse of a raised gadget, so inputs read as editable.
+// Sunken well, the inverse of a raised gadget, so inputs read as editable.
 const wellStyle = (disabled) => ({
   border:"1px solid #000",
   background: disabled ? "#EDEAE1" : "#fff",
@@ -78,7 +78,7 @@ function SectionRule({ children }) {
 
 /* ---------- pane 1 · profile ---------- */
 
-// The picture is the control — see PicturePicker in primitives for the shared
+// The picture is the control, see PicturePicker in primitives for the shared
 // icon, interaction and file rules.
 function PhotoPicker({ me, name, photo, onPick }) {
   const [err, setErr] = useState("");
@@ -146,7 +146,7 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
           label="email" disabled
           value={form.email}
         />
-        {/* One column like name/email — a full-width field for "NYC, United
+        {/* One column like name/email, a full-width field for "NYC, United
             States" was far more room than the value ever needs. */}
         <TextField
           label="location"
@@ -264,7 +264,7 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
 /* ---------- danger zone ---------- */
 
-// Collapsed by default — destructive actions shouldn't sit in the tab order of
+// Collapsed by default, destructive actions shouldn't sit in the tab order of
 // a form you opened to fix a typo.
 function DangerZone() {
   const [open, setOpen] = useState(false);
@@ -317,7 +317,7 @@ function DangerZone() {
 
 /* ---------- pane 2 · notifications ---------- */
 
-// Workbench checkbox — a raised square that fills when checked.
+// Workbench checkbox, a raised square that fills when checked.
 function Toggle({ on, onClick, title, blurb }) {
   return (
     <button
@@ -492,10 +492,10 @@ function ApiKeysPane() {
 
 /* ---------- shell ---------- */
 
-// onClose  — leave without committing. In settings that closes the pane; at
+// onClose , leave without committing. In settings that closes the pane; at
 //            first run there's nothing behind this screen, so the caller sends
 //            it back to sign-in. The titlebar gadget uses this too.
-// onDone   — the single committing path. Defaults to onClose so the ordinary
+// onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
 function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
   const { ME } = window.INDEX_DATA;
@@ -503,7 +503,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
-  // What the agent assembled — the baseline "reset" restores to.
+  // What the agent assembled, the baseline "reset" restores to.
   const assembled = useRef({
     name: ME.name, email: ME.email, location: ME.location,
     intro: ME.intro, socials: ME.socials, websites: ME.websites,
@@ -517,7 +517,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggle = (id) => setNotify(n => ({ ...n, [id]: !n[id] }));
 
-  // Edited relative to what was assembled — drives whether reset is offered.
+  // Edited relative to what was assembled, drives whether reset is offered.
   const dirty = JSON.stringify(form) !== JSON.stringify(assembled.current);
   const reset = () => setForm(assembled.current);
 
@@ -568,10 +568,10 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
-          {/* first-run shows only the profile — no notifications / api keys.
+          {/* first-run shows only the profile, no notifications / api keys.
               The titlebar already reads "index · getting started", so repeating
               "getting started" as a heading here was the same words twice; the
-              band carries the instruction instead — the one thing the titlebar
+              band carries the instruction instead, the one thing the titlebar
               can't say. */}
           {profileOnly ? (
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
@@ -613,12 +613,12 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             borderTop:"2px solid #000", padding:"11px 24px",
             display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10,
           }}>
-            {/* Three separate intents, three controls — "cancel" used to mean
+            {/* Three separate intents, three controls, "cancel" used to mean
                 both "undo my edits" and "get me out of here", which is why it
                 read as ambiguous next to a confirm button.
 
                 reset     restores the assembled values, stays on the screen
-                sign out  leaves without committing (first run only — there is
+                sign out  leaves without committing (first run only, there is
                           no app behind this screen to fall back to)
                 confirm   the only committing action */}
             {profileOnly && dirty && (

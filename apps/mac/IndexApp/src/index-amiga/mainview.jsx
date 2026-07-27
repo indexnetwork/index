@@ -1,11 +1,11 @@
-// Main view — Mac System 6 split-window layout with full flow logic
+// Main view, Mac System 6 split-window layout with full flow logic
 // Same simulation logic as the original; only chrome/skin is reworked.
 
 // How long conversations are kept before auto-deleting. Adjustable inline.
 const RETENTION_OPTIONS = ["1 week", "2 weeks", "1 month", "3 months", "never"];
 
 // Width of the window row below which three side-by-side windows stop being
-// readable — the radar steps aside for the third window instead.
+// readable, the radar steps aside for the third window instead.
 const THREE_COLUMN_MIN = 1020;
 
 // Inline privacy note: chats auto-delete after a window you can change.
@@ -141,7 +141,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     ]);
   };
 
-  // Ambient chatter disabled — the feed shows only questions + your responses.
+  // Ambient chatter disabled, the feed shows only questions + your responses.
   useInterval(() => {}, null);
 
   /* ----- ambient pipeline breathing ----- */
@@ -231,7 +231,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const visiblePeople = useMemo(() => people.filter(p => !p.hidden), [people]);
   const filtered = useMemo(() => [...visiblePeople].sort((a, b) => b.score - a.score), [visiblePeople]);
 
-  // People you're still in negotiation with — anyone not yet ready/accepted/gone.
+  // People you're still in negotiation with, anyone not yet ready/accepted/gone.
   const negotiatingPeople = useMemo(
     () => visiblePeople.filter(p => !["accepted", "ready", "expired", "passed"].includes(p.status)),
     [visiblePeople]
@@ -318,7 +318,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       return;
     }
 
-    // demo fallback — the agent reads what you wrote and reaches back.
+    // demo fallback, the agent reads what you wrote and reaches back.
     const reply = agentReplyTo(text, { profile, negotiatingPeople, people });
     setTimeout(() => {
       setConversation(prev => [
@@ -336,7 +336,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       .catch(() => {});
   };
 
-  /* ----- chat (3rd window) — opens when you click someone in the pipeline ----- */
+  /* ----- chat (3rd window): opens when you click someone in the pipeline ----- */
   const [chatId, setChatId] = useState(null);
   const chatIdRef = useRef(null);
   useEffect(() => { chatIdRef.current = chatId; }, [chatId]);
@@ -392,7 +392,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   const closeChats = () => { setChatId(null); setSummaryId(null); setProfileId(null); };
 
   // Negotiating people are waiting on a response to their question. Responding
-  // clears the negotiation and makes them ready — that's when the opportunity
+  // clears the negotiation and makes them ready, that's when the opportunity
   // to accept appears. Accepting (only available once ready) opens the chat.
   const respondPerson = (personId, text) => {
     const person = people.find(p => p.id === personId);
@@ -429,7 +429,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         .catch(() => {});
     }
   };
-  // Pass is the other half of the ready-stage decision — decline the intro
+  // Pass is the other half of the ready-stage decision, decline the intro
   // instead of accepting it. They drop out of the radar into "passed".
   const passPerson = (personId) => {
     if (chatId === personId) closeChats();
@@ -460,7 +460,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   };
 
   // Agents you've already talked to occasionally ping you. If their chat isn't
-  // the one you're looking at, it just bumps a quiet unread marker — no popups.
+  // the one you're looking at, it just bumps a quiet unread marker, no popups.
   useInterval(() => {
     if (paused) return;
     const candidates = Object.keys(chats).filter(id => id !== chatId);
@@ -471,7 +471,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setUnread(prev => ({ ...prev, [pid]: (prev[pid] || 0) + 1 }));
   }, (paused || live || Object.keys(chats).length === 0) ? null : 16000 / simRate);
 
-  // Live inbox — append counterpart/agent messages to any open H2H thread.
+  // Live inbox, append counterpart/agent messages to any open H2H thread.
   useEffect(() => {
     if (!live || !window.IndexApp) return;
     const sub = window.IndexApp.streamInbox((event) => {
@@ -492,7 +492,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   // Pause holds the signal: the agent stops taking on new work, but the
   // opportunities and questions it already surfaced stay put. On a live signal
-  // that's a real status change, not just a local hold — revert if it doesn't
+  // that's a real status change, not just a local hold, revert if it doesn't
   // land so the button never claims something the backend didn't do.
   const togglePause = () => {
     const next = !paused;
@@ -504,7 +504,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   };
 
   // Archive retires the signal and drops it off the hub. Only leave the screen
-  // once the backend has taken it — otherwise you'd land back on a hub still
+  // once the backend has taken it, otherwise you'd land back on a hub still
   // showing the signal you thought you'd just archived.
   const archiveSignal = () => {
     if (!(live && client && intentId)) { onBack && onBack(); return Promise.resolve(); }
@@ -583,7 +583,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }}>
       <div ref={shellRef} style={{
         display:"grid",
-        // Opening a chat splits into a third column — the pipeline narrows to
+        // Opening a chat splits into a third column, the pipeline narrows to
         // make room rather than the chat floating on top.
         // The minimums are 0, not a px floor: a floor larger than the window
         // makes the tracks overflow the desktop and the last column runs off
@@ -662,7 +662,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 function now() { return Date.now(); }
 
 // Lightweight in-app responder. Reads what you wrote and reaches back in the
-// agent's voice — acknowledging an instruction, declining, or answering an
+// agent's voice, acknowledging an instruction, declining, or answering an
 // info question. Heuristic, not a model: it routes on intent words.
 function agentReplyTo(raw, ctx = {}) {
   const t = (raw || "").trim().toLowerCase();
@@ -674,17 +674,17 @@ function agentReplyTo(raw, ctx = {}) {
   const has = (...ws) => ws.some(w => t.includes(w));
   const isQuestion = /\?\s*$/.test(t) || /^(who|what|when|where|why|how|which|do|does|is|are|can|could|should|any)\b/.test(t);
 
-  // asking for something — answer from the field
+  // asking for something, answer from the field
   if (isQuestion) {
     if (has("how many", "how much") && has("negotiat", "talking", "pending"))
       return `${negCount} in negotiation right now · ${ready} ready when you are.`;
     if (has("who", "best", "top", "strongest", "closest"))
       return top
-        ? `closest overlap right now is ${top.name.toLowerCase()} — ${top.blurb || "strong signal on what you're tracking"}.`
-        : "field's still warming up — nothing strong enough to surface yet.";
+        ? `closest overlap right now is ${top.name.toLowerCase()}, ${top.blurb || "strong signal on what you're tracking"}.`
+        : "field's still warming up. nothing strong enough to surface yet.";
     if (has("ready"))
       return `${ready} ready to move. they're at the top of your radar, marked ready.`;
-    return "looking. i'll surface what's relevant on your radar — give me a beat.";
+    return "looking. i'll surface what's relevant on your radar. give me a beat.";
   }
 
   // declining / stop / negation
@@ -695,9 +695,9 @@ function agentReplyTo(raw, ctx = {}) {
   if (has("remember", "keep in mind", "note", "later", "for now", "fyi"))
     return "noted. i'll keep that in mind as i read the field.";
 
-  // instruction / preference — focus, prioritize, find
+  // instruction / preference, focus, prioritize, find
   if (has("focus", "prioriti", "anchor", "narrow", "only", "more of", "find", "look for", "show me", "surface", "prefer"))
-    return "okay, i'll do that — re-weighting your radar toward it now.";
+    return "okay, i'll do that. re-weighting your radar toward it now.";
 
   // greeting / smalltalk
   if (has("hey", "hi", "hello", "yo", "thanks", "thank you", "ok", "okay", "cool", "got it"))
@@ -721,7 +721,7 @@ function agentAckFor(clarifier, choice) {
     "q3/downstairs":        "anchoring downstairs. payments + crews cluster narrows on maren and kai.",
     "q3/let me float":      "floating. i'll keep both clusters warm and surface whichever pulls harder.",
     "q4/mention it casually": "noted. ren's agent will keep the camera away unless you bring it up.",
-    "q4/decline politely":  "declined for tonight. ren's still open to meet — no press attached.",
+    "q4/decline politely":  "declined for tonight. ren's still open to meet, no press attached.",
     "q4/hold for later":    "held. i'll re-raise next week if you're still curious.",
     "q5/widen":             "widening. pulling 3 founder-leaning people from the deep pool.",
     "q5/keep it tight":     "kept tight. dropping the bottom 2 from the pipeline.",
@@ -770,7 +770,7 @@ function agentAckFor(clarifier, choice) {
     "q19/ping just one":    "pinged the warmer of the two.",
     "q20/commit":           "committed. pipeline focuses on maren only.",
     "q20/keep options":     "options stay open. pipeline broadens slightly.",
-    "q20/let me see her thread first": "opening her room now — check the right column.",
+    "q20/let me see her thread first": "opening her room now. check the right column.",
     "q21/accept blind":     "accepted blindly · 2 candidates appear with dani's vouch attached.",
     "q21/vet first":        "vetting · holding both until i'm sure they're worth your time.",
     "q21/decline politely": "declined. dani's agent said no hard feelings.",
@@ -797,7 +797,7 @@ function improvAgentReply(text) {
   return "noted. recalibrating the right column accordingly.";
 }
 
-/* applyClarifierEffect — full mapping from original */
+/* applyClarifierEffect, full mapping from original */
 function applyClarifierEffect(clarifier, choice, setPeople, setField) {
   let mode;
   const k = `${clarifier.id}/${choice}`;
@@ -986,20 +986,30 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
   );
 }
 
-/* =================== LEFT — CONVERSATION =================== */
+/* =================== LEFT, CONVERSATION =================== */
 // Small Workbench-style control for managing the running signal (pause / stop).
-function SignalAction({ label, active = false, onClick }) {
+// `danger` carries the app's destructive treatment (--ink-warn, same as the
+// delete-account gadget in settings): warn-red outline at rest so archiving
+// never looks like the pause next to it, a red wash on hover, and a solid red
+// fill once it's armed, the point of no return is the only thing that fills.
+function SignalAction({ label, active = false, onClick, danger = false }) {
   const [hover, setHover] = useState(false);
   const on = active || hover;
+  const edge = danger ? "var(--ink-warn)" : "#000";
   return (
     <button onClick={onClick}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         fontFamily:"var(--mac-mono)", fontSize:11,
         padding:"2px 10px", whiteSpace:"nowrap",
-        border:"1px solid #000",
-        background: on ? "#000" : "#fff",
-        color: on ? "#fff" : "#000",
+        border:`1px solid ${edge}`,
+        background: danger
+          ? (active ? "var(--ink-warn)" : hover ? "#FFF3F3" : "#fff")
+          : (on ? "#000" : "#fff"),
+        color: danger
+          ? (active ? "#fff" : "var(--ink-warn)")
+          : (on ? "#fff" : "#000"),
+        fontWeight: danger && active ? 700 : 400,
         boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
       }}>{label}</button>
   );
@@ -1045,11 +1055,11 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
     if (!el) return;
     const grew = conversation.length > lastLen.current;
     if (bottomGap.current <= 24) {
-      // pinned to the bottom — stay pinned, following new content
+      // pinned to the bottom, stay pinned, following new content
       el.scrollTop = el.scrollHeight;
       setUnread(0);
     } else {
-      // scrolled up — hold the same spot so nothing jumps under you
+      // scrolled up, hold the same spot so nothing jumps under you
       el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - bottomGap.current);
       if (grew) setUnread(u => u + (conversation.length - lastLen.current));
     }
@@ -1075,12 +1085,12 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr auto",
-      // an explicit minmax(0,1fr) column — the implicit `auto` one is floored
+      // an explicit minmax(0,1fr) column, the implicit `auto` one is floored
       // at the widest row's min-content and would push past the window frame
       gridTemplateColumns:"minmax(0, 1fr)",
       flex:1, minHeight:0, minWidth:0, position:"relative",
     }}>
-      {/* fixed signal header — the signal you're tracking, plus the controls
+      {/* fixed signal header, the signal you're tracking, plus the controls
           to pause or stop the agent working on it */}
       <div style={{
         padding:"12px 18px 12px",
@@ -1100,8 +1110,9 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               onClick={() => onTogglePause && onTogglePause()}
             />
             <SignalAction
+              danger
               label={archiving ? "archiving…" : armed ? "archive · confirm" : "archive"}
-              active={armed}
+              active={armed || archiving}
               onClick={clickArchive}
             />
           </div>
@@ -1138,7 +1149,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
         overflowY:"auto", padding:"16px 18px 8px",
         display:"flex", flexDirection:"column",
       }}>
-        {/* inner column pinned to the bottom — messages stack just above the
+        {/* inner column pinned to the bottom, messages stack just above the
             input and only grow upward into the scrollback as they accumulate */}
         <div style={{
           marginTop:"auto",
@@ -1153,7 +1164,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
             )
           )}
 
-          {/* one chronological stream — questions stay exactly where they
+          {/* one chronological stream, questions stay exactly where they
               arrived. answering one updates it in place (shows your reply)
               instead of yanking it up to the top of the feed */}
           {conversation
@@ -1189,7 +1200,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
           conversation rather than as the place you type, so the band gets the
           quiet fill and the 2px rule the app uses for major divisions, and the
           field itself gets the sunken well from the settings inputs. Grey
-          around, white sunken inside — the input is the only editable thing
+          around, white sunken inside, the input is the only editable thing
           here, so it should be the only thing that looks editable. */}
       <div style={{
         borderTop:"2px solid #000",
@@ -1207,7 +1218,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") sendDraft(); }}
-            placeholder="message index — or just let it keep working"
+            placeholder="message index, or just let it keep working"
             style={{
               flex:1, background:"transparent", border:"none", outline:"none",
               color:"#000", fontFamily:"var(--mac-sans)", fontSize:13,
@@ -1235,7 +1246,7 @@ function groupQuestions(people) {
   return Object.keys(m).map(q => ({ q, people: m[q] }));
 }
 
-/* When 2+ people's agents ask the same thing — answer once, respond to all. */
+/* When 2+ people's agents ask the same thing, answer once, respond to all. */
 // Shared shell for every feed question. The question is the focal point;
 // the source line and chrome stay quiet so the eye lands on what's being asked.
 function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite, writePlaceholder = "type your own answer" }) {
@@ -1255,13 +1266,13 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
         <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{source}</span>
         {tag && <span style={{ color:"var(--ink-4)", flex:"0 0 auto" }}>· {tag}</span>}
       </div>
-      {/* the question — the hero */}
+      {/* the question, the hero */}
       <div style={{
         fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
         lineHeight:1.4, color:"#000", letterSpacing:-0.1,
       }}>{question}</div>
       {/* suggested options as a lettered list, then a write-your-own row that
-          shares the exact same framing — answer however you like */}
+          shares the exact same framing, answer however you like */}
       <div style={{ display:"grid", gap:6 }}>
         {chips.map((c, i) => (
           <OptionRow key={c} letter={String.fromCharCode(65 + i)} label={c} onClick={() => onChip && onChip(c)}/>
@@ -1294,7 +1305,7 @@ function QuestionCard({ icon, source, tag, question, chips = [], onChip, onWrite
   );
 }
 
-// A single stacked option — letter badge + full-width label, in the same frame
+// A single stacked option, letter badge + full-width label, in the same frame
 // as the write-your-own row so every answer choice reads consistently.
 function OptionRow({ letter, label, onClick }) {
   const [hover, setHover] = useState(false);
@@ -1322,7 +1333,7 @@ function OptionRow({ letter, label, onClick }) {
 function CollectiveQuestionCard({ question, people, onRespond }) {
   return (
     <QuestionCard
-      icon={<span style={{ fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:700, color:"#000" }}>⁂</span>}
+      icon={<AgentAvatar size={18} collective title={`${people.length} agents asking the same`}/>}
       source={`${people.length} people asking the same`}
       tag="collective"
       question={question}
@@ -1340,8 +1351,8 @@ function PersonQuestionCard({ person, onRespond }) {
   const q = personQuestion(person);
   return (
     <QuestionCard
-      icon={<Avatar name={person.name} size={18}/>}
-      source={`from ${person.name}`}
+      icon={<AgentAvatar size={18} seed={agentOwner(person.name)} title={agentLabel(person.name)}/>}
+      source={`from ${agentLabel(person.name)}`}
       tag="negotiating"
       question={q}
       chips={questionChips(q)}
@@ -1356,40 +1367,56 @@ function ClarifierCard({ item, onAnswer, onDismiss }) {
   const meta = item.sourceMeta || {};
   const sourceLabel = collective
     ? (meta.count ? `${meta.count} ${meta.of || "agents"}` : "your circle")
-    : (meta.name ? `from ${meta.name}` : "from an agent");
+    : `from ${agentLabel(meta.name)}`;
+  // a named counterpart's agent wears its own face; an unnamed one is yours,
+  // and yours is the negotiator identity from the agents page
+  const owner = agentOwner(meta.name);
+  const mark = (size, style) => collective
+    ? <AgentAvatar size={size} collective title={sourceLabel} style={style}/>
+    : owner
+      ? <AgentAvatar size={size} seed={owner} title={sourceLabel} style={style}/>
+      : <MyAgentAvatar size={size} title={sourceLabel} style={style}/>;
 
-  // Answered clarifiers stay in place as a resolved record — same black frame
-  // as a live question, with the choice you made shown as a filled answer.
+  // An answered clarifier is a record, not a control, so nothing in it carries
+  // a fill, in this app a filled black block is something you press (the
+  // options above, the send gadget), and the answer you already gave read as a
+  // button you could press again. It's typography and a rule instead: the
+  // frame drops to a hairline so settled cards recede behind live questions,
+  // the question steps back to secondary ink now that it's been dealt with,
+  // and the answer is quoted under a black rule, the one black thing left,
+  // because your words are the point of the card once it's resolved.
   if (item.answered) {
     return (
       <div className="fade-up" style={{
-        border:"1px solid #000", background:"#fff",
-        padding:"12px 16px", display:"grid", gap:9,
-        opacity: item.dismissed ? 0.5 : 1,
+        border:"1px solid var(--ink-4)", background:"#fff",
+        padding:"11px 15px", display:"grid", gap:8,
+        opacity: item.dismissed ? 0.55 : 1,
       }}>
         <div style={{
           display:"flex", alignItems:"center", gap:7, minWidth:0,
           fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
         }}>
-          <span style={{ color:"#000", fontWeight: collective ? 700 : 400 }}>{collective ? "⁂" : "›"}</span>
+          {mark(16, { opacity:0.75 })}
           <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{sourceLabel}</span>
           <div style={{ flex:1 }}/>
-          <span style={{
-            flex:"0 0 auto", color:"#fff", background:"#000",
-            padding:"1px 8px", letterSpacing:0.3,
-          }}>{item.dismissed ? "dismissed" : "✓ answered"}</span>
+          <span style={{ flex:"0 0 auto", letterSpacing:0.3 }}>
+            {item.dismissed ? "dismissed" : "✓ answered"}
+          </span>
         </div>
         <div style={{
-          fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:500,
-          color:"#000", lineHeight:1.4, letterSpacing:-0.1,
+          fontFamily:"var(--mac-sans)", fontSize:13.5, fontWeight:400,
+          color:"var(--ink-2)", lineHeight:1.45, letterSpacing:-0.1,
         }}>{item.text}</div>
         {!item.dismissed && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", flex:"0 0 auto" }}>you</span>
+          <div style={{
+            display:"grid", gap:3, minWidth:0,
+            borderLeft:"2px solid #000", paddingLeft:10,
+          }}>
             <span style={{
-              fontFamily:"var(--mac-sans)", fontSize:13,
-              background:"#000", color:"#fff",
-              padding:"3px 12px", lineHeight:1.35,
+              fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)", letterSpacing:0.3,
+            }}>you said</span>
+            <span style={{
+              fontFamily:"var(--mac-sans)", fontSize:13.5, color:"#000", lineHeight:1.4,
             }}>{item.choice}</span>
           </div>
         )}
@@ -1398,9 +1425,11 @@ function ClarifierCard({ item, onAnswer, onDismiss }) {
   }
   return (
     <QuestionCard
-      icon={<span style={{ fontFamily:"var(--mac-mono)", fontSize:12, fontWeight: collective ? 700 : 400, color:"#000" }}>{collective ? "⁂" : "›"}</span>}
+      icon={mark(18)}
       source={sourceLabel}
-      tag={collective ? "collective" : "agent"}
+      // the mark and the label already say whose agent this is, an "agent"
+      // tag next to "from katherine's agent" is just the word twice
+      tag={collective ? "collective" : null}
       question={item.text}
       chips={item.chips}
       onChip={(c) => onAnswer(c)}
@@ -1472,47 +1501,15 @@ function HELLO_FOR(profile) {
   return "i'll surface a handful and check in before negotiating.";
 }
 
-// Monochrome robot mark — the agent's face. Stroked black on white so it
-// sits in the Workbench palette next to the human avatars.
-function RobotGlyph({ size = 14 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="#000" strokeWidth={2} strokeLinecap="square" strokeLinejoin="miter"
-      style={{ display:"block" }}>
-      <line x1="12" y1="3" x2="12" y2="6"/>
-      <circle cx="12" cy="2.5" r="1" fill="#000" stroke="none"/>
-      <rect x="4" y="6" width="16" height="12" rx="1.5"/>
-      <line x1="2" y1="11" x2="4" y2="11"/>
-      <line x1="20" y1="11" x2="22" y2="11"/>
-      <rect x="8.5" y="10" width="2" height="2.5" fill="#000" stroke="none"/>
-      <rect x="13.5" y="10" width="2" height="2.5" fill="#000" stroke="none"/>
-      <line x1="9" y1="15" x2="15" y2="15"/>
-    </svg>
-  );
-}
+// The agent mark itself lives in primitives as AgentAvatar, every surface
+// where something speaks on your behalf uses that one visual.
 
 function AgentLine({ children, pending, highlight, collective }) {
   return (
     <div className="fade-up" style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-      {collective ? (
-        <div style={{
-          width:22, height:22, marginTop:2,
-          border:"1px solid #000",
-          display:"grid", placeItems:"center", flex:"0 0 auto",
-          background:"#000", color:"#fff",
-        }}>
-          <span style={{ fontFamily:"var(--mac-mono)", fontSize:10 }}>⁂</span>
-        </div>
-      ) : (
-        <div style={{
-          width:22, height:22, marginTop:2,
-          border:"1px solid #000",
-          display:"grid", placeItems:"center", flex:"0 0 auto",
-          background:"#fff",
-        }}>
-          <RobotGlyph size={14}/>
-        </div>
-      )}
+      {collective
+        ? <AgentAvatar size={22} collective style={{ marginTop:2, boxShadow:"none" }}/>
+        : <MyAgentAvatar size={22} style={{ marginTop:2 }}/>}
       <div style={{
         fontFamily:"var(--mac-sans)", fontSize: highlight ? 14.5 : 14,
         color:"#000", lineHeight:1.45, maxWidth:520,
@@ -1520,7 +1517,7 @@ function AgentLine({ children, pending, highlight, collective }) {
     </div>
   );
 }
-// A message you typed — rendered as a sent bubble on the right, so the
+// A message you typed, rendered as a sent bubble on the right, so the
 // conversation reads like a chat: your words land at the bottom, distinct
 // from the questions coming in on the left.
 function UserLine({ children }) {
@@ -1539,7 +1536,7 @@ function UserLine({ children }) {
   );
 }
 
-/* =================== RIGHT — MATCH FEED =================== */
+/* =================== RIGHT, MATCH FEED =================== */
 function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
   const bucket = (p) => {
     if (p.status === "accepted") return "accepted";
@@ -1583,10 +1580,10 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
             fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
             border:"1px dashed #000",
           }}>{
-            tab === "accepted" ? "no one accepted yet — accept someone from your ready list."
-            : tab === "expired" ? "nothing expired — these are people the moment passed on."
-            : tab === "ready"   ? "no one ready yet — answer their questions in the feed first."
-            : "no one here right now. the field keeps moving — check back."
+            tab === "accepted" ? "no one accepted yet. accept someone from your ready list."
+            : tab === "expired" ? "nothing expired. these are people the moment passed on."
+            : tab === "ready"   ? "no one ready yet. answer their questions in the feed first."
+            : "no one here right now. the field keeps moving, so check back."
           }</div>
         )}
       </div>
@@ -1597,7 +1594,7 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
 // Each negotiation question carries a few predefined responses (chips) plus the
 // option to write your own.
 const PERSON_QUESTIONS = [
-  { q: "before we talk — are you hiring, collaborating, or just comparing notes?",
+  { q: "before we talk, are you hiring, collaborating, or just comparing notes?",
     chips: ["hiring", "collaborating", "comparing notes"] },
   { q: "what's the timeline you're working with?",
     chips: ["soon", "this quarter", "no rush"] },
@@ -1642,7 +1639,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
   const readyStage = person.status === "ready";   // opportunity to accept
   const isPassed = person.status === "passed";
   const isExpired = person.status === "expired";
-  // everyone else discovered is still in negotiation — they have an open question
+  // everyone else discovered is still in negotiation, they have an open question
   const negotiating = !accepted && !readyStage && !isPassed && !isExpired;
   const cardClickable = accepted || isExpired;    // accepted opens chat; expired opens summary
   const handleClick = accepted
@@ -1662,7 +1659,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         background:"#fff", color:"#000",
         border:"1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
-        // filter (not opacity) — the .fade-up animation ends at opacity:1 and would override it
+        // filter (not opacity), the .fade-up animation ends at opacity:1 and would override it
         filter: (isPassed || isExpired) ? "opacity(0.45)" : "none",
         boxShadow: (cardClickable && hover) ? "2px 2px 0 rgba(0,0,0,0.22)" : "none",
         transform: (cardClickable && hover) ? "translate(-1px, -1px)" : "none",
@@ -1753,13 +1750,13 @@ function seedChat(person, priorAnswer) {
     msgs.push({ who: "you",  text: priorAnswer });
     msgs.push({ who: "them",
       text: ov
-        ? `thanks — and we've both got '${ov}' in common, so this should be easy. when works to talk?`
+        ? `thanks, and we've both got '${ov}' in common, so this should be easy. when works to talk?`
         : `thanks for that. when works to talk?` });
   } else {
     msgs.push({ who: "them",
       text: ov
-        ? `hi — good to meet you. looks like we've both got '${ov}' in common, so this might be easy. what are you hoping to get out of this?`
-        : `hi — good to meet you. looks like our signals line up. what are you hoping to get out of this?` });
+        ? `hi, good to meet you. looks like we've both got '${ov}' in common, so this might be easy. what are you hoping to get out of this?`
+        : `hi, good to meet you. looks like our signals line up. what are you hoping to get out of this?` });
   }
   return msgs.map(m => ({ id: rid(), ...m }));
 }
@@ -1767,21 +1764,21 @@ function seedChat(person, priorAnswer) {
 function chatReplyFor(text) {
   const t = text.toLowerCase();
   if (t.includes("meet") || t.includes("call") || t.includes("time") || t.includes("week") || t.includes("coffee"))
-    return "i've got a couple of openings this week — want to grab 20 minutes?";
+    return "i've got a couple of openings this week. want to grab 20 minutes?";
   if (t.includes("no") || t.includes("pass") || t.includes("not interested"))
-    return "all good — i'll keep an eye out if anything changes.";
+    return "all good. i'll keep an eye out if anything changes.";
   if (t.includes("?"))
-    return "good question — let me think on it and get back to you.";
+    return "good question. let me think on it and get back to you.";
   return "got it. anything you'd want me to know up front?";
 }
 
 function incomingPing(person) {
   const lines = [
-    "quick follow-up — i freed up some time this week if you want it.",
+    "quick follow-up: i freed up some time this week if you want it.",
     "i just re-read your signal. still keen.",
     "small nudge: i'd love to compare notes when you're free.",
     "i'm around tomorrow afternoon if that helps.",
-    "wanted to check — would you want a warm intro first?",
+    "wanted to check: would you want a warm intro first?",
   ];
   return lines[Math.floor(Math.random() * lines.length)];
 }
@@ -1828,7 +1825,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
               padding:24, textAlign:"center",
               fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
               border:"1px dashed #000",
-            }}>no conversations yet — open someone from your radar to start one.</div>
+            }}>no conversations yet, open someone from your radar to start one.</div>
           ) : conversations.map(c => (
             <button key={c.id} onClick={() => onOpen(c.id)} style={{
               textAlign:"left", display:"grid", gridTemplateColumns:"auto 1fr auto",
@@ -1875,9 +1872,9 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
 // Deterministic "why it expired" line for the summary view.
 function expiryReason(person) {
   const R = [
-    "the moment passed — they committed to something else before you replied.",
+    "the moment passed. they committed to something else before you replied.",
     "they went quiet, and your agent stopped surfacing them after a few days.",
-    "the overlap cooled as your signal sharpened — your edges drifted apart.",
+    "the overlap cooled as your signal sharpened, and your edges drifted apart.",
     "they matched elsewhere first; your agent closed the thread to keep the radar clean.",
   ];
   const s = person.id || person.name || "x";
@@ -1886,13 +1883,16 @@ function expiryReason(person) {
   return R[h % R.length];
 }
 
+// A plain bold heading in the reading face. The em-dash-and-tracked-caps
+// treatment this replaced dressed up ordinary section labels as machine
+// output; a heading over a paragraph is just a heading over a paragraph.
 function SummarySection({ label, children }) {
   return (
-    <div style={{ display:"grid", gap:6 }}>
+    <div style={{ display:"grid", gap:5 }}>
       <div style={{
-        fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1.5,
-        textTransform:"uppercase", color:"#000",
-      }}>— {label}</div>
+        fontFamily:"var(--mac-sans)", fontSize:12.5, fontWeight:700,
+        color:"#000", letterSpacing:-0.1,
+      }}>{label}</div>
       <div style={{ fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"#000" }}>
         {children}
       </div>
@@ -1900,10 +1900,10 @@ function SummarySection({ label, children }) {
   );
 }
 
-/* Summary of an expired person — opens in the 3rd window when you click one. */
+/* Summary of an expired person, opens in the 3rd window when you click one. */
 function SummaryWindow({ person, onClose }) {
   return (
-    <MacWindow title={`summary · ${person.name}`} onClose={onClose} style={{ minHeight:0 }}>
+    <MacWindow title={`summary · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         <div style={{
           padding:"12px 16px", borderBottom:"1px solid #000",
@@ -1955,77 +1955,173 @@ function SummaryWindow({ person, onClose }) {
   );
 }
 
-function statusWord(status) {
-  return {
-    accepted: "accepted", ready: "ready to accept",
-    negotiating: "in negotiation", warm: "in negotiation", considering: "in negotiation",
-    expired: "expired", passed: "passed",
-  }[status] || "discovered";
+/* The card's fields overlap heavily by construction, the API mappers build
+   `overlap` out of the same headline as `blurb`, and `signals` out of the same
+   two strings as `location`/`distance`, so rendering every field gave the
+   profile the same sentence three times under three different headings. This
+   walks the fields in order of importance and drops anything already said. */
+function normText(v) {
+  return String(v == null ? "" : v).trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/* Full profile for a person — opens in the 3rd window when you click their
+// "Feedback on Collaborative Interfaces: Luc Baracat", the header two lines
+// up already says whose profile this is.
+function stripSelfName(text, name) {
+  const t = String(text || "").trim();
+  const n = String(name || "").trim();
+  if (!t || !n) return t;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return t.replace(new RegExp("\\s*[:\\u2013\\u2014-]\\s*" + esc + "\\s*$", "i"), "").trim() || t;
+}
+
+function profileContent(person) {
+  const seen = new Set();
+  const block = (v) => { const k = normText(v); if (k) seen.add(k); };
+  const take = (v) => {
+    const k = normText(v);
+    if (!k || seen.has(k)) return null;
+    seen.add(k);
+    return String(v).trim();
+  };
+
+  const lead = take(stripSelfName(person.blurb, person.name));
+  block(person.blurb); // `overlap` is usually the raw headline again
+  const bio = take(person.bio);
+  const note = take(person.pitchFromAgent);
+  const shared = [...(person.signals || []), ...(person.overlap || [])]
+    .map(take).filter(Boolean);
+  const socials = (person.socials || []).filter(s => s && s.handle);
+
+  const meta = [];
+  const loc = take(person.location);   if (loc) meta.push(loc);
+  const when = take(person.distance);  if (when) meta.push(when);
+  if (person.mutuals > 0) {
+    meta.push(`${person.mutuals} mutual${person.mutuals === 1 ? "" : "s"}`);
+  }
+  const via = String(person.introVia || "").trim();
+  // "intro via Index" is the product telling you it's the product
+  if (via && !/^index(\s*network)?$/i.test(via)) meta.push(`intro via ${via}`);
+
+  return { lead, bio, note, shared, socials, meta };
+}
+
+/* A social handle, rendered as the address it points at. The platform mark
+   carries the identification so the text can just be the handle. Bordered like
+   a gadget rather than like the flat share chips above, because unlike those
+   these are pressable. */
+function SocialLink({ social }) {
+  const [hover, setHover] = useState(false);
+  const href = /^https?:\/\//i.test(social.handle)
+    ? social.handle
+    : `https://${social.prefix || ""}${social.handle}`;
+  const ink = hover ? "#fff" : "#000";
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener"
+      title={`${social.id} · ${social.handle}`}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display:"inline-flex", alignItems:"center", gap:6,
+        fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:0.2,
+        padding:"4px 9px", border:"1px solid #000", textDecoration:"none",
+        background: hover ? "#000" : "#fff",
+        color: ink,
+        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+      }}>
+      <SocialGlyph id={social.id} size={13} color={ink}/>
+      <span>{social.handle}</span>
+    </a>
+  );
+}
+
+/* Full profile for a person, opens in the 3rd window when you click their
    name or avatar on the radar. */
 function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
   const status = person.status;
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
   const isExpired = status === "expired";
+  const { lead, bio, note, shared, socials, meta } = profileContent(person);
   return (
-    <MacWindow title={`profile · ${person.name}`} onClose={onClose} style={{ minHeight:0 }}>
+    <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
-        {/* header */}
+        {/* header, just who this is. the stage they're at is already said by
+            the footer (accept/pass vs send message), and a match percentage is
+            the agent grading a person at you */}
         <div style={{
           padding:"14px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
           <Avatar name={person.name} size={42} ring={isAccepted}/>
-          <div style={{ display:"grid", gap:3, minWidth:0 }}>
-            <div style={{ fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000" }}>
-              {person.name}
-            </div>
-            <div style={{
-              fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
-              letterSpacing:1, textTransform:"uppercase",
-            }}>{statusWord(status)}</div>
-          </div>
+          <div style={{
+            fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
+            minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+          }}>{person.name}</div>
         </div>
 
-        {/* body */}
+        {/* body, the lead sentence carries the profile, so it gets no heading;
+            everything under it is support, and anything the lead already said
+            has been dropped upstream rather than repeated under a new label */}
         <div className="mac-scroll" style={{
-          overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:16,
+          overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
           alignContent:"start", background:"#fff",
         }}>
-          <SummarySection label="about">{person.blurb}</SummarySection>
-          {person.pitchFromAgent && (
-            <SummarySection label="what your agent sees">{person.pitchFromAgent}</SummarySection>
+          {lead && (
+            <div style={{
+              fontFamily:"var(--mac-sans)", fontSize:15, lineHeight:1.45,
+              color:"#000", letterSpacing:-0.1,
+            }}>{lead}</div>
           )}
-          <SummarySection label="signals">
-            <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-              {(person.signals || []).map(s => (
-                <span key={s} style={{
-                  fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3,
-                  padding:"1px 6px", border:"1px solid #000",
-                }}>{s}</span>
-              ))}
-            </div>
-          </SummarySection>
-          {person.overlap && person.overlap.length > 0 && (
-            <SummarySection label="what you share">{person.overlap.join(" · ")}</SummarySection>
+
+          {bio && (
+            <SummarySection label="bio">
+              <div style={{ display:"grid", gap:9 }}>
+                {bio.split(/\n{2,}/).map((para, i) => (
+                  <div key={i}>{para.trim()}</div>
+                ))}
+              </div>
+            </SummarySection>
           )}
-          <SummarySection label="details">
-            <div style={{ display:"grid", gap:4, fontFamily:"var(--mac-mono)", fontSize:11, color:"#000" }}>
-              {person.location && <div>· {person.location}</div>}
-              {person.distance && <div>· {person.distance}</div>}
-              {typeof person.mutuals === "number" && <div>· {person.mutuals} mutual{person.mutuals === 1 ? "" : "s"}</div>}
-              {person.introVia && <div>· intro via {person.introVia}</div>}
-            </div>
-          </SummarySection>
+
+          {note && (
+            <SummarySection label="why your agent surfaced them">{note}</SummarySection>
+          )}
+
+          {socials.length > 0 && (
+            <SummarySection label="elsewhere">
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {socials.map(s => <SocialLink key={`${s.id}${s.handle}`} social={s}/>)}
+              </div>
+            </SummarySection>
+          )}
+
+          {shared.length > 0 && (
+            <SummarySection label="what you share">
+              <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                {shared.map(s => (
+                  <span key={s} style={{
+                    fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3,
+                    textTransform:"lowercase",
+                    padding:"2px 7px", border:"1px solid #000",
+                  }}>{s}</span>
+                ))}
+              </div>
+            </SummarySection>
+          )}
+
           {isExpired && (
             <SummarySection label="why it closed">{expiryReason(person)}</SummarySection>
           )}
+
+          {/* the leftovers, one quiet line, not four bullets under a heading */}
+          {meta.length > 0 && (
+            <div style={{
+              fontFamily:"var(--mac-mono)", fontSize:10.5, color:"var(--ink-3)",
+              letterSpacing:0.3, lineHeight:1.6,
+            }}>{meta.join("  ·  ")}</div>
+          )}
         </div>
 
-        {/* footer CTA — matches the radar stage */}
+        {/* footer CTA, matches the radar stage */}
         <div style={{
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
           display:"flex", alignItems:"center", gap:10,
@@ -2062,7 +2158,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
   return (
-    <MacWindow title={`chat · ${person.name}`} onClose={onClose} style={{ minHeight:0 }}>
+    <MacWindow title={`chat · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
         <div style={{
           display:"grid",
           gridTemplateRows: "auto 1fr auto",

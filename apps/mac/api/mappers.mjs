@@ -112,11 +112,36 @@ export function mapPersonFromHomeCard(card, section = {}) {
     mutuals: 0,
     signals: compact([section.title, card.mutualIntentsLabel]),
     overlap: compact([card.headline]),
-    score: null,
+    // the presenter card carries a 0-1 match score; it was being dropped
+    score: typeof card.score === 'number' ? card.score : null,
     status: mapOpportunityStatusToPrototype(card.status),
     pitchFromAgent: card.narratorChip?.text || card.mainText || '',
     introVia: card.narratorChip?.name || card.cta || '',
+    ...mapCounterpartProfile(card),
     source: card,
+  };
+}
+
+/**
+ * The counterpart's own words about themselves, when the payload carries them.
+ * The presenter card does not expose bio or social handles today, so this
+ * yields empty fields and the profile hides those sections, it is here so the
+ * client picks them up without a change once the API does expose them.
+ * @param {Object} source
+ * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
+ */
+export function mapCounterpartProfile(source = {}) {
+  const profile = source.profile || source.counterpart || source;
+  const socials = Array.isArray(profile.socials) ? profile.socials : [];
+  return {
+    bio: profile.bio || profile.intro || '',
+    socials: socials
+      .map((entry) => ({
+        id: entry.id || entry.platform || '',
+        prefix: entry.prefix || '',
+        handle: entry.handle || entry.username || '',
+      }))
+      .filter((entry) => entry.handle),
   };
 }
 
@@ -140,6 +165,7 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     pitchFromAgent: opportunity.interpretation?.reasoning || opportunity.presentation?.callToAction || '',
     introVia: opportunity.introducedBy?.name || '',
     hidden: opportunity.status === 'latent',
+    ...mapCounterpartProfile(opportunity),
     source: opportunity,
   }));
 }

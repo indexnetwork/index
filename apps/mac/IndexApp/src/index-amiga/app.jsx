@@ -1,4 +1,4 @@
-// App — orchestrates the Mac System 6 prototype against the live backend.
+// App, orchestrates the Mac System 6 prototype against the live backend.
 // Auth source of truth is the native Keychain credential surfaced as
 // window.INDEX_NATIVE.apiKey (bridged through window.IndexApp). When there is no
 // credential the app shows sign-in; INDEX_DATA is only a signed-out demo
@@ -23,7 +23,7 @@ function nativeAuthed() {
 
 function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
-  // True until the user creates their first signal — the hub opens empty.
+  // True until the user creates their first signal, the hub opens empty.
   const [freshUser, setFreshUser] = useState(false);
   const [profile, setProfile] = useState({});
   // Live snapshot state; null until loadSnapshot() resolves (or in demo mode).
@@ -110,7 +110,7 @@ function App() {
   };
 
   // Bridge: MainView publishes its chats (per active signal) up here so the top
-  // menubar can show a 2-step menu — signals, and the chats within each — and
+  // menubar can show a 2-step menu, signals, and the chats within each, and
   // it persists across screens (so it works from the landing screen too).
   const [chatGroups, setChatGroups] = useState({}); // signalTitle -> [{id,name,unread}]
   const chatOpenRef = useRef(null);                  // { signal, open } for the active session
@@ -169,7 +169,7 @@ function App() {
   const finishOnboarding = async (answers, created) => {
     setConversation([]);
     setField([]);
-    setFreshUser(false);   // they've created a signal — hub is no longer empty
+    setFreshUser(false);   // they've created a signal, hub is no longer empty
 
     // When the intent was created live, reload the snapshot and open the main
     // view on the freshly created signal (newest by createdAt).
@@ -218,7 +218,7 @@ function App() {
       // Native bridge present: wait for __indexAuthChanged; Login shows waiting.
       return true;
     }
-    // No native bridge (browser preview) — drop into the demo flow.
+    // No native bridge (browser preview), drop into the demo flow.
     setScreen("building");
     return false;
   };

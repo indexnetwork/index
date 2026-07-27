@@ -1,10 +1,11 @@
-// Intents — Workbench shelf of saved searches. This is the app's hub:
-// brand promise, active signals, and the entry point for a new signal.
+// Intents, Workbench shelf of saved searches. This is the app's hub:
+// brand promise ("find your others"), active signals, and the entry point for
+// a new signal.
 
 /* ---------- account shelf ---------- */
 
 // Your photo if you've set one, otherwise a solid accent tile with lowercase
-// initials — deliberately not the photo Avatar used on the radar, so "you"
+// initials, deliberately not the photo Avatar used on the radar, so "you"
 // reads differently from "them".
 function InitialsTile({ name, size = 46, photo }) {
   if (photo) {
@@ -35,7 +36,7 @@ function InitialsTile({ name, size = 46, photo }) {
   );
 }
 
-// The communities you belong to. Intentionally quiet — no border or shadow, so
+// The communities you belong to. Intentionally quiet, no border or shadow, so
 // it reads as a shelf item rather than competing with the account row below it.
 // The glyph occupies the same 34px block as the account tile and the label uses
 // the same size and weight, so the two rows line up even though their fills
@@ -70,9 +71,10 @@ function NetworksRow({ count, onClick }) {
 }
 
 // The agent runtimes on this Mac. Same quiet shelf treatment as the networks
-// row above it: both are destinations, not settings. The glyph is a head with
-// an antenna, which reads as "an agent" at a glance. The chip it replaced read
-// as hardware, and nothing about a chip says something is acting for you.
+// row above it: both are destinations, not settings. The glyph is the shared
+// agent mark (AgentGlyph), a head with an antenna, which reads as "an agent"
+// at a glance and matches the mark agents wear in the feed. Unframed here,
+// since this is a shelf row rather than something's profile picture.
 function AgentsRow({ count, onClick }) {
   return (
     <button
@@ -84,20 +86,9 @@ function AgentsRow({ count, onClick }) {
       }}>
       <span style={{
         flex:"0 0 auto", width:34, height:34,
-        display:"flex", flexDirection:"column",
-        alignItems:"center", justifyContent:"center",
+        display:"grid", placeItems:"center",
       }}>
-        {/* antenna: tip, then stem */}
-        <span style={{ width:4, height:4, background:"#000" }}/>
-        <span style={{ width:2, height:3, background:"#000" }}/>
-        {/* head, with two eyes */}
-        <span style={{
-          width:22, height:15, border:"2px solid #000",
-          display:"flex", alignItems:"center", justifyContent:"center", gap:5,
-        }}>
-          <span style={{ width:3, height:3, background:"#000" }}/>
-          <span style={{ width:3, height:3, background:"#000" }}/>
-        </span>
+        <AgentGlyph size={26}/>
       </span>
       <span style={{
         flex:1, minWidth:0,
@@ -107,7 +98,7 @@ function AgentsRow({ count, onClick }) {
   );
 }
 
-// The account row. Click it for the account menu — closes on outside click or
+// The account row. Click it for the account menu, closes on outside click or
 // Escape, like a real menubar menu. Opens upward: it's the last thing in the
 // column, so there's headroom above and none below.
 function UserMenu({ me, onSelect }) {
@@ -206,7 +197,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const joinedCount = (NETWORKS || []).filter(n => n.joined !== false).length;
   const agentCount  = (AGENTS || []).filter(a => a.state === "connected").length;
 
-  // A just-onboarded user has no signals yet — the hub opens empty.
+  // A just-onboarded user has no signals yet, the hub opens empty.
   const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
   useEffect(() => {
     setSignals(fresh ? [] : (env.data.INTENTS || []));
@@ -221,7 +212,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
   // new-signal row below can line up with the rows inside. Measured rather
-  // than hardcoded to 16px — it's zero whenever the list fits.
+  // than hardcoded to 16px, it's zero whenever the list fits.
   const shelfRef = useRef(null);
   const [shelfGutter, setShelfGutter] = useState(0);
   useEffect(() => {
@@ -242,7 +233,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     if (id === "signout")  onSignOut && onSignOut();
   };
 
-  // Both take over the whole surface — they're screens, not sheets.
+  // Both take over the whole surface, they're screens, not sheets.
   if (settingsTab) {
     return <Settings initialTab={settingsTab} onClose={() => setSettingsTab(null)}/>;
   }
@@ -311,19 +302,11 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                   }}>← back</button>
                 )}
                 <h1 style={{
-                  fontFamily:"var(--amiga-mono)", fontWeight:500,
+                  fontFamily:"var(--amiga-mono)", fontWeight:700,
                   fontSize:34, lineHeight:1.05, letterSpacing:-0.6,
                   margin:0, color:"#000",
                 }}>
-                  meet the person index is{" "}
-                  <span style={{
-                    background:"#FF8A00", color:"#000",
-                    padding:"0 6px", display:"inline-block",
-                    border:"1px solid #000",
-                    boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 2px 2px 0 rgba(0,0,0,0.22)",
-                    fontWeight:700,
-                  }}>already</span>{" "}
-                  looking for.
+                  find your others.
                 </h1>
                 <p style={{
                   marginTop:12, color:"#000",
@@ -335,7 +318,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                 </p>
               </div>
 
-              {/* sidebar footer — sits on the pane's floor, not under the copy */}
+              {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
                 <NetworksRow count={joinedCount} onClick={() => setShowNetworks(true)}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
@@ -350,18 +333,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
               flexDirection:"column",
             }}>
               <RuleLabel>your signals</RuleLabel>
-
-              <p style={{
-                margin:"6px 0 14px",
-                fontFamily:"var(--mac-sans)",
-                fontSize:13,
-                lineHeight:1.5,
-                color:"var(--ink-2)",
-                maxWidth:430,
-              }}>
-                each signal stays active in the background. index keeps
-                looking until the right people surface, or you close it.
-              </p>
+              <div style={{ height:8 }}/>
 
               {/* sized to its content when the list is short (so the new-signal
                   row sits right under the last one), shrinking and scrolling
@@ -387,13 +359,13 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
               </div>
 
               {/* Starting a signal is what this screen is for, so it sits
-                  outside the shelf — a long list scrolls behind it rather than
+                  outside the shelf, a long list scrolls behind it rather than
                   pushing it out of reach. The right padding matches the rows
                   above, which sit clear of the scrollbar when one is showing. */}
               <div style={{
                 flex:"0 0 auto", paddingTop:8, paddingRight: 6 + shelfGutter,
                 // flex, so the row stretches the way it did as a child of the
-                // shelf — a bare <button> shrinks to fit its label
+                // shelf, a bare <button> shrinks to fit its label
                 display:"flex", flexDirection:"column",
               }}>
                 <NewIntentRow onClick={onNew}/>
@@ -425,7 +397,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         height: 72,
         // the shelf is a column flex container, so without this the rows
         // shrink to share whatever height is left instead of the shelf
-        // scrolling — squashing every signal and pushing the question count
+        // scrolling, squashing every signal and pushing the question count
         // out through the row's own border
         flex: "0 0 auto",
         boxSizing: "border-box",
@@ -449,16 +421,15 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         }}>
           {intent.title}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-          {isActive && <LiveDot size={6}/>}
-          <span style={{
-            fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
-            letterSpacing:1, textTransform:"uppercase",
-          }}>{statusLabel}</span>
-        </div>
+        {/* the word carries the state on its own; a blinking square in front of
+            every row made a list of running signals look like an alarm panel */}
+        <span style={{
+          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
+          letterSpacing:1, textTransform:"uppercase",
+        }}>{statusLabel}</span>
       </div>
 
-      {/* questions — the hero */}
+      {/* questions, the hero */}
       <QCount n={intent.questions} muted={!hasQ}/>
     </button>
   );
@@ -471,22 +442,22 @@ function QCount({ n, muted }) {
   }
   return (
     <span style={{
-      display:"flex", alignItems:"center", gap:8,
-      padding:"6px 12px",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      minWidth:24, padding:"3px 7px",
       border:"1px solid #000",
       background:"#FF8A00",
       boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
       flex:"0 0 auto",
     }}>
       <span style={{
-        fontFamily:"var(--mac-sans)", fontSize:22, fontWeight:700,
-        lineHeight:1, color:"#000", letterSpacing:-0.5,
+        fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
+        lineHeight:1, color:"#000", letterSpacing:-0.3,
       }}>{n}</span>
     </span>
   );
 }
 
-/* ---------- "new intent" row — bottom of the shelf ---------- */
+/* ---------- "new intent" row: bottom of the shelf ---------- */
 function NewIntentRow({ onClick }) {
   const [down, setDown] = useState(false);
   return (

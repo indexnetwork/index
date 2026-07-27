@@ -1,18 +1,6 @@
 // Agents: the runtimes on this Mac, and which one speaks for you.
 // Reached from the agents row on the hub's sidebar footer, same as networks.
 
-// Runtime badge. Coloured initial tile from the reference, squared off.
-function AgentBadge({ initial, tint }) {
-  return (
-    <span style={{
-      flex:"0 0 auto", width:26, height:26,
-      border:"1px solid #000", background:tint,
-      display:"flex", alignItems:"center", justifyContent:"center",
-      fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#fff",
-    }}>{initial}</span>
-  );
-}
-
 // On/off switch. A sliding knob rather than a checkmark: these rows are states
 // a runtime is in, not items you tick, and the knob's position reads at a
 // glance down a column. Squared off, since a rounded pill would be the only
@@ -90,10 +78,12 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           padding:"9px 12px",
           background: (connected && (hover || expanded)) ? "#F2EFE6" : "#fff",
         }}>
-        <AgentBadge initial={agent.initial} tint={agent.tint}/>
+        {/* no picture here. a runtime is a process on this mac, not somebody.
+            the only thing in the app with a face is your negotiator, above */}
         <span style={{
-          flex:"0 0 auto", minWidth:104,
+          flex:"0 0 auto", minWidth:140,
           fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
         }}>{agent.name}</span>
         <span style={{ flex:1, minWidth:0 }}>
           <AgentState state={agent.state} negotiator={isNegotiator}/>
@@ -105,7 +95,7 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           <MiniSwitch on={agent.on} onClick={() => onToggleOn(agent.id)}
             label={`${agent.name} on`}/>
         </span>
-        {/* indicator now, not a control — the row carries the click */}
+        {/* indicator now, not a control, the row carries the click */}
         <span aria-hidden="true" style={{
           flex:"0 0 auto", width:18, textAlign:"center",
           fontFamily:"var(--mac-mono)", fontSize:12,
@@ -157,6 +147,70 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Your negotiator's identity, the one agent that speaks for you, and the only
+// thing on this page with a face. Laid out like the profile block in settings
+// (picture on the left as the control, name beside it) because it is the same
+// kind of thing: who you are to the network, and who your agent is.
+//
+// Shuffle is the primary move, a generated avatar's whole point is that a new
+// one is one click away, and the kit has 3,600 draws behind it. Uploading is
+// second because a picture you chose is the rarer case, and it can be dropped
+// again to fall back to the generated face.
+function NegotiatorProfile({ agent, onShuffle, onPick, onClear,
+                            runtimeOptions, runtime, onChangeRuntime }) {
+  const [err, setErr] = useState("");
+  const btn = {
+    fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
+    border:"1px solid #000", background:"#fff", color:"#000",
+    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
+  };
+  return (
+    <div style={{ display:"grid", gap:16 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+        <PicturePicker size={54} label="change your agent's picture"
+          onPick={(d) => { setErr(""); onPick(d); }} onError={setErr}>
+          <MyAgentAvatar size={54}/>
+        </PicturePicker>
+
+        <div style={{ display:"grid", gap:6, minWidth:0 }}>
+          <div style={{
+            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
+          }}>{agent.name}</div>
+          <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
+            <button style={btn} onClick={() => { setErr(""); onShuffle(); }}>⟳ shuffle</button>
+            {agent.photo
+              ? <button style={btn} onClick={() => { setErr(""); onClear(); }}>use generated</button>
+              : <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>
+                  generated · {agentFaceFor(agent.seed).face.name}
+                </span>}
+          </div>
+          {err && (
+            <div style={{ fontFamily:"var(--mac-sans)", fontSize:11, color:"var(--ink-warn)" }}>{err}</div>
+          )}
+        </div>
+      </div>
+
+      {/* Which runtime carries it. This used to be its own section, but "who
+          your agent is" and "what it runs on" are two facts about one agent.
+          split across two headings they read as two different settings. */}
+      <div style={{ display:"grid", gap:7 }}>
+        <span style={{
+          fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
+          textTransform:"uppercase", color:"var(--ink-2)",
+        }}>runs on</span>
+        <NegotiatorSelect
+          options={runtimeOptions}
+          value={runtime}
+          onChange={onChangeRuntime}
+        />
+        <span style={{
+          fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
+        }}>index takes over if it's unavailable.</span>
+      </div>
     </div>
   );
 }
@@ -280,7 +334,7 @@ function Agents({ onClose }) {
   const [agents, setAgents] = useState(AGENTS);
   const [expanded, setExpanded] = useState(null);
 
-  // Live agents are read-only — fetch and display, but toggles stay local.
+  // Live agents are read-only, fetch and display, but toggles stay local.
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
     const client = window.IndexApp.getClient();
@@ -325,6 +379,26 @@ function Agents({ onClose }) {
     ...p,
     [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
   }));
+
+  // Your negotiator's picture. Written straight onto the shared ME record the
+  // way settings commits a profile edit, so every other surface, the feed, a
+  // question card, onboarding, picks it up the next time it renders. `bump`
+  // only exists to re-render this pane, since ME is a plain object.
+  const [, bump] = useState(0);
+  const myNegotiator = myAgent();
+  const commitFace = (patch) => { Object.assign(ME, patch); bump(n => n + 1); };
+  // any distinct string moves the hash; the counter stops two shuffles in the
+  // same millisecond from landing on the same draw
+  const shuffleCount = useRef(0);
+  const shuffleFace = () => {
+    shuffleCount.current += 1;
+    commitFace({
+      agentFaceSeed: `${ME.name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
+      agentPhoto: null,
+    });
+  };
+  const pickPhoto = (photo) => commitFace({ agentPhoto: photo });
+  const clearPhoto = () => commitFace({ agentPhoto: null });
 
   // Only runtimes you've switched on can speak for you, so only those are
   // offered. Index is always available as the fallback.
@@ -384,6 +458,9 @@ function Agents({ onClose }) {
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"18px 24px 22px",
           }}>
+            {/* What's on the machine first, then who speaks for you out of it.
+                the inventory is the concrete thing, the negotiator is the choice
+                you make from it. */}
             <RuleLabel>runtimes</RuleLabel>
             <p style={{
               margin:"8px 0 10px", maxWidth:560,
@@ -415,19 +492,23 @@ function Agents({ onClose }) {
               ))}
             </div>
 
-            <SectionRule>which agent negotiates for you?</SectionRule>
+            <SectionRule>negotiator agent</SectionRule>
             <p style={{
               margin:"8px 0 12px", maxWidth:560,
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              pick who represents you when agents negotiate. index takes over
-              if it's unavailable.
+              this is how your agent appears wherever it speaks for you, asking
+              you a question, sending an update, negotiating with someone else's.
             </p>
 
-            <NegotiatorSelect
-              options={negotiatorOptions}
-              value={negotiator}
-              onChange={setNegotiator}
+            <NegotiatorProfile
+              agent={myNegotiator}
+              onShuffle={shuffleFace}
+              onPick={pickPhoto}
+              onClear={clearPhoto}
+              runtimeOptions={negotiatorOptions}
+              runtime={negotiator}
+              onChangeRuntime={setNegotiator}
             />
           </div>
         </MacWindow>

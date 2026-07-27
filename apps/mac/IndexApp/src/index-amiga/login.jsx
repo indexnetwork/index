@@ -1,4 +1,4 @@
-// Login — the first surface, before the signals hub. An agent acts on your
+// Login, the first surface, before the signals hub. An agent acts on your
 // behalf, so signing in is really "give your agent an identity to run under".
 
 function SignInButton({ children, primary, onClick, disabled }) {
@@ -61,7 +61,7 @@ function BuildingProfile({ onDone }) {
             }}>index</span>
           </div>
 
-          {/* indeterminate progress, pinstripe — same as Calibrating */}
+          {/* indeterminate progress, pinstripe, same as Calibrating */}
           <div style={{
             border:"1px solid #000", height: 10, overflow:"hidden",
             margin:"0 auto 18px", background: "#fff",

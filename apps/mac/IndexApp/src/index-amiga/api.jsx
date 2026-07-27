@@ -1,4 +1,4 @@
-// api.jsx — live backend bridge for the mac app.
+// api.jsx, live backend bridge for the mac app.
 //
 // Defines the single window.IndexApp façade the screens talk to. It builds an
 // IndexApi client from window.INDEX_NATIVE (injected by the Swift shell:
@@ -194,7 +194,7 @@ window.IndexApp = (function () {
     return resolvedSession;
   }
 
-  // GET /conversations/stream — live inbox events. Returns an abort handle.
+  // GET /conversations/stream, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
     const controller = new AbortController();
     const headers = {};
@@ -251,13 +251,13 @@ window.IndexApp = (function () {
     return parseMcpResult(result);
   }
 
-  // create_intent has no plain REST POST — go through the MCP tool. autoApprove
+  // create_intent has no plain REST POST, go through the MCP tool. autoApprove
   // persists immediately (there is no proposal-card UI here).
   function createIntent(description, extra) {
     return mcpCall("create_intent", { description, autoApprove: true, ...(extra || {}) });
   }
 
-  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks — the
+  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
   // same format the web app and CLI confirm through POST /intents/confirm.
   function parseIntentProposals(text) {
     if (!text) return [];
@@ -309,5 +309,5 @@ window.IndexApp = (function () {
   };
 })();
 
-// Back-compat alias — some early screens referenced window.Api.
+// Back-compat alias, some early screens referenced window.Api.
 window.Api = window.IndexApp;

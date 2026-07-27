@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>index — Workbench 1.3</title>
+<title>index, Workbench 1.3</title>
 
 <style>
   /* Both faces are bundled, not fetched: assemble.py rewrites these url()s
      into base64 data: URIs, so the app renders identically with the network
-     off — same reason React and Babel are inlined. Editing src/index-amiga.html
+     off, same reason React and Babel are inlined. Editing src/index-amiga.html
      directly in a browser still works, since the relative paths resolve.
 
      Both are variable fonts carrying 400–700 in a single file, so one @font-face
@@ -34,18 +34,18 @@
     --amiga-light:  #FFFFFF;   /* bevel highlight */
     --amiga-dark:   #000000;   /* bevel shadow */
 
-    /* Text ink — four steps, not ten. The greys are warm-biased (they carry a
+    /* Text ink, four steps, not ten. The greys are warm-biased (they carry a
        little of the accent's hue) so they read as chosen against the white
        paper rather than as default browser greys. Before this existed the app
        used #444/#555/#666/#888/#999/#bbb/#ccc AND #5A5548/#6B6659/#8A8578
        interchangeably for the same two or three jobs. */
-    --ink:      #000000;   /* primary — body, headings */
-    --ink-2:    #5A5548;   /* secondary — helper text, supporting copy */
-    --ink-3:    #8A8578;   /* tertiary — meta, timestamps, hints */
-    --ink-4:    #B5AF9F;   /* faint — separators, placeholder-weight tags */
-    --ink-warn: #8A0000;   /* destructive — leave/remove/disconnect */
+    --ink:      #000000;   /* primary, body, headings */
+    --ink-2:    #5A5548;   /* secondary, helper text, supporting copy */
+    --ink-3:    #8A8578;   /* tertiary, meta, timestamps, hints */
+    --ink-4:    #B5AF9F;   /* faint, separators, placeholder-weight tags */
+    --ink-warn: #8A0000;   /* destructive, leave/remove/disconnect */
 
-    /* Two families, six roles — the roles differ by weight, not by family:
+    /* Two families, six roles, the roles differ by weight, not by family:
          window titles  JetBrains Mono 500   (.mac-titlebar .mac-title)
          labels         JetBrains Mono 400   (--amiga-mono, the small-text face)
          hero headings  JetBrains Mono 500   (the big display h1 on login/landing/intents)
@@ -61,7 +61,7 @@
     --amiga-mono: "JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
     /* body + form inputs */
     --amiga-sans: "IBM Plex Sans","Helvetica Neue","Tahoma","Geneva",-apple-system,system-ui,sans-serif;
-    /* headings — same family as body, separated so it can diverge later */
+    /* headings, same family as body, separated so it can diverge later */
     --amiga-title: "IBM Plex Sans","Helvetica Neue",-apple-system,system-ui,sans-serif;
 
     /* keep the existing --mac-* variables aliased so the shared primitives still work */
@@ -151,7 +151,7 @@
     font-family: var(--amiga-sans);
   }
   /* Close gadget: Workbench-style square button on LEFT.
-     Outlined square with a solid centre block — the 1.3 close gadget. An
+     Outlined square with a solid centre block, the 1.3 close gadget. An
      outline on its own reads as an empty box, so the centre is what makes it
      legible as a button. */
   .mac-titlebar .mac-close{
@@ -181,6 +181,16 @@
   /* pressed: whole gadget inverts to the highlight colour, gadget ink stays black */
   .mac-titlebar .mac-close:active{ background: var(--amiga-accent); }
   .mac-titlebar .mac-close:active::before{ background: var(--amiga-accent); }
+
+  /* Dismiss gadget: the same square, but a bar where close has its solid
+     centre block. Panels that sit beside the flow rather than holding it
+     (a profile, a summary, a thread) are put away, not closed: the work
+     behind them carries on. Two different consequences should not share one
+     gadget, so the filled centre means "close this" and the bar means
+     "set this down". */
+  .mac-titlebar .mac-dismiss::after{
+    width:10px; height:2px;
+  }
   /* Title: text chip on the left, dotted drag-bar filling the rest */
   .mac-titlebar .mac-title{
     flex: 1; min-width:0;
@@ -188,7 +198,7 @@
     padding: 0;
     margin: 0;
     font-size:13px;
-    /* window title role: JetBrains Mono Medium — the mono face, not the
+    /* window title role: JetBrains Mono Medium, the mono face, not the
        heading face, so chrome and content read as different systems */
     font-weight:500;
     white-space:nowrap; line-height:1;
@@ -244,18 +254,33 @@
   }
 
   /* ---------- Scrollbars (Workbench style) ---------- */
-  .mac-scroll::-webkit-scrollbar{ width:16px; height:16px; background: var(--amiga-paper) }
+  /* Scrollbar. The 16px beveled slab this replaced was as wide as a gadget and
+     read as a piece of the layout rather than an indicator, at that size the
+     bevel also crowded the content it sat beside. A slim bar keeps the
+     Workbench palette (accent thumb, black hairline, square corners, nothing
+     in this app is rounded) while giving the width back to the list. The thumb
+     is inset from the track by a wider left border so it reads as a mark
+     travelling down a channel instead of a lid sliding in a groove.
+
+     Deliberately NOT using the standard `scrollbar-width`/`scrollbar-color`:
+     setting either one makes the engine ignore every ::-webkit-scrollbar rule
+     below and fall back to a plain overlay bar, which drops the palette and
+     takes no layout width at all. */
+  .mac-scroll::-webkit-scrollbar{ width:9px; height:9px; background: var(--amiga-paper) }
   .mac-scroll::-webkit-scrollbar-track{
     background: var(--amiga-paper);
-    border-left: 2px solid var(--amiga-fg);
+    border-left: 1px solid var(--ink-4);
   }
   .mac-scroll::-webkit-scrollbar-thumb{
     background: var(--amiga-accent);
     border: 1px solid var(--amiga-fg);
-    box-shadow:
-      inset 1px 1px 0 #FFD7A0,
-      inset -1px -1px 0 #8A4500;
+    /* keeps the thumb clear of the track's hairline on both sides */
+    border-left-width: 2px;
+    background-clip: padding-box;
+    min-height: 28px;
   }
+  .mac-scroll::-webkit-scrollbar-thumb:hover{ background: #FF7A00 }
+  .mac-scroll::-webkit-scrollbar-thumb:active{ background: #8A4500 }
   .mac-scroll::-webkit-scrollbar-corner{ background: var(--amiga-paper) }
 
   /* ---------- Animations (kept identical) ---------- */
@@ -326,7 +351,7 @@
       inset -1px -1px 0 var(--amiga-paper);
   }
 
-  /* Override any leftover hard borders on inner panels — handled per-component */
+  /* Override any leftover hard borders on inner panels, handled per-component */
 </style>
 
 <!-- Bundler thumbnail -->

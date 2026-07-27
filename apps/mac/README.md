@@ -1,6 +1,6 @@
 # Index macOS Client
 
-The native macOS application for Index — a React-based UI wrapped in a Swift WKWebView app with an Amiga Workbench 1.3 aesthetic.
+The native macOS application for Index, a React-based UI wrapped in a Swift WKWebView app with an Amiga Workbench 1.3 aesthetic.
 
 ## Architecture
 
@@ -58,7 +58,7 @@ This will:
 3. Compile Swift to a native binary
 4. Package into `dist/index.app`
 
-The app will be in `dist/index.app` — double-click to launch.
+The app will be in `dist/index.app`, double-click to launch.
 
 ### Development: Hot-Reload Mode
 
@@ -74,7 +74,7 @@ This will:
 - Re-run `assemble.py` on each change to update `Resources/index.html`
 - Automatically open the app (if not running) or trigger a reload
 
-The app will hot-reload as you edit files — great for UI tweaking.
+The app will hot-reload as you edit files, great for UI tweaking.
 
 **To manually reload** during development, press **Cmd+R** (standard browser reload) in the app, or close and relaunch.
 
@@ -121,7 +121,7 @@ For structural changes (new components, imports), the hot-reload will automatica
    const MyComponent = () => { /* ... */ }
    export default MyComponent
    ```
-3. Save — `assemble.py` will inline it on next change (or on next build)
+3. Save, `assemble.py` will inline it on next change (or on next build)
 
 ### Changing Fonts
 
@@ -160,7 +160,41 @@ The app runs fully offline with no backend dependency. To test networking:
 - **Offline-first:** All assets are bundled; the app works without network
 - **macOS native window chrome:** Custom WKWebView wrapper for native window management and file dialogs
 - **Dark mode:** Not explicitly supported; uses Amiga palette throughout
-- **Code signing:** Ad-hoc (local only) — not suitable for distribution
+- **Code signing:** Ad-hoc (local only), not suitable for distribution
+
+## Credential storage, known dev-only compromise
+
+The API key minted by `index login` is written as **plain JSON** to
+`~/Library/Application Support/network.index.system6/credential.json`
+(`0600`, in a `0700` directory). It is **not** in the Keychain.
+
+This is deliberate and it is a downgrade. The dev build is signed ad-hoc, so its
+code identity is its exact binary hash; every rebuild looked like a different
+application to the login Keychain's per-binary ACL, which re-prompted for the
+login password on every launch. A file has no ACL, so no prompt. The cost is a
+cleartext key on disk, readable by anything running as that user, and swept up
+by Time Machine or any backup pointed at Application Support.
+
+**Do not ship a build that touches real user credentials until every box is
+ticked.** The authoritative copy of this list lives beside the code, in the
+`CredentialStore` block in `IndexApp/Sources/main.swift`:
+
+- [ ] Sign with a Developer ID Application certificate. A real identity gives a
+      stable code requirement, which is the actual fix for the prompt. Ad-hoc
+      signing was the root cause, not the Keychain.
+- [ ] Restore Keychain storage (revert `CredentialStore` to the `SecItem`
+      generic password in git history, keeping `kSecAttrAccessibleAfterFirstUnlock`)
+- [ ] Prefer the data-protection keychain (`kSecUseDataProtectionKeychain` plus a
+      keychain-access-group entitlement) so access is governed by entitlement
+      rather than per-binary ACL
+- [ ] Enable the hardened runtime and App Sandbox; notarize the bundle
+- [ ] Add an upgrade migration: read the file once, write it to the Keychain,
+      then delete the file **and** its directory, otherwise a cleartext key is
+      stranded on every machine that ran a dev build
+- [ ] Confirm the key never reaches `localStorage`, a WKWebView data store, or a
+      log line (today it is injected into the page in memory only)
+- [ ] Give the minted credential a server-side TTL and re-verify that logout
+      still revokes it
 
 ## Next Steps
 
