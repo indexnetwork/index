@@ -94,14 +94,18 @@ function mockBaseDatabase(selectResults: Array<Array<{ id: string }>> = []): {
 }
 
 describe('discovery environment matrix base policy', () => {
-  it('resolves historical fixtures from the workspace protocol distribution', () => {
+  it('loads historical fixture source from the workspace after the protocol build', async () => {
     const expected = path.resolve(
       import.meta.dir,
-      '../../../../../packages/protocol/dist/eval/discovery-env-matrix/historical-matrix.cases.js',
+      '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.ts',
     );
 
     expect(HISTORICAL_MATRIX_CASES_PATH).toBe(expected);
     expect(HISTORICAL_MATRIX_CASES_PATH).not.toContain('/services/packages/');
+    const fixtureModule = await import(HISTORICAL_MATRIX_CASES_PATH) as {
+      HISTORICAL_MATRIX_CASES: readonly unknown[];
+    };
+    expect(fixtureModule.HISTORICAL_MATRIX_CASES).toHaveLength(5);
   });
 
   it('refuses a non-evaluation database or unconfirmed base refresh', () => {

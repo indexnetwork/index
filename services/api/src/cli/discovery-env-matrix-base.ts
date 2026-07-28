@@ -17,7 +17,7 @@ import { BASE_FIXTURE_CORPUS_VERSION, BASE_METADATA_KEY, assertBaseEnvironment, 
 const MIGRATIONS_DIRECTORY = path.resolve(import.meta.dir, '../../drizzle');
 export const HISTORICAL_MATRIX_CASES_PATH = path.resolve(
   import.meta.dir,
-  '../../../../packages/protocol/dist/eval/discovery-env-matrix/historical-matrix.cases.js',
+  '../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.ts',
 );
 
 function sha256(value: string): string {
