@@ -107,6 +107,15 @@ export function assertMatrixEnvironment(env: NodeJS.ProcessEnv): { databaseUrl: 
   return { databaseUrl, childBranch, baseBranch };
 }
 
+/**
+ * Identifies a database target without credentials or connection-only options.
+ * Child isolation is about the Neon host/port/database, not which role connects.
+ */
+function matrixChildTargetIdentity(databaseUrl: string): string {
+  const url = new URL(databaseUrl);
+  return `${url.hostname}:${url.port || '5432'}${url.pathname}`;
+}
+
 /** Validates the operator-provided, already-created child branches before any provider/database work. */
 export function parseChildManifest(raw: string | undefined, expectedChildKeys: readonly string[]): MatrixChildManifest {
   if (!raw) throw new Error('DISCOVERY_ENV_MATRIX_CHILDREN must declare all matrix child branches');
@@ -146,7 +155,7 @@ export function parseChildManifest(raw: string | undefined, expectedChildKeys: r
   if (new Set(normalized.map((child) => child.branch)).size !== normalized.length) {
     throw new Error('Discovery environment matrix manifest must use a different child branch per configuration/repetition');
   }
-  if (new Set(normalized.map((child) => new URL(child.databaseUrl).toString())).size !== normalized.length) {
+  if (new Set(normalized.map((child) => matrixChildTargetIdentity(child.databaseUrl))).size !== normalized.length) {
     throw new Error('Discovery environment matrix manifest must use a different normalized DATABASE_URL target per configuration/repetition');
   }
   return { children: normalized };

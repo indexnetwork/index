@@ -45,6 +45,10 @@ describe('discovery environment matrix runtime seams', () => {
     sameTargetDifferentBranches[1]!.databaseUrl = sameTargetDifferentBranches[0]!.databaseUrl;
     expect(() => parseChildManifest(JSON.stringify({ children: sameTargetDifferentBranches }), keys)).toThrow('different normalized DATABASE_URL target');
 
+    const credentialVariants = children.map((child) => ({ ...child }));
+    credentialVariants[1]!.databaseUrl = 'postgres://another-user:secret@ep-1.neon.tech/protocol_eval?sslmode=require#ignored';
+    expect(() => parseChildManifest(JSON.stringify({ children: credentialVariants }), keys)).toThrow('different normalized DATABASE_URL target');
+
     children[1]!.branch = children[0]!.branch;
     expect(() => parseChildManifest(JSON.stringify({ children }), keys)).toThrow('different child branch');
   });
