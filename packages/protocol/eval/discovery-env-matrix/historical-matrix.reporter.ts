@@ -75,7 +75,11 @@ export function leanMatrixScorecard(scorecard: MatrixScorecard): MatrixBaselineS
       evidenceTypes: [...evidenceTypes],
       assertions: assertions.map((assertion) => ({ ...assertion })),
       configDeltas: configDeltas.map((delta) => ({ ...delta })),
-      candidates: candidates.map(({ id, evidenceTypes: candidateEvidence }) => ({ id, evidenceTypes: [...candidateEvidence] })),
+      candidates: candidates.map(({ id, evidenceTypes: candidateEvidence, evidenceIds }) => ({
+        id,
+        evidenceTypes: [...candidateEvidence],
+        evidenceIds: { ...evidenceIds },
+      })),
     })),
   };
 }

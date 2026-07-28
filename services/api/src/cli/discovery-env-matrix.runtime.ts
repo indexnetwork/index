@@ -146,5 +146,8 @@ export function parseChildManifest(raw: string | undefined, expectedChildKeys: r
   if (new Set(normalized.map((child) => child.branch)).size !== normalized.length) {
     throw new Error('Discovery environment matrix manifest must use a different child branch per configuration/repetition');
   }
+  if (new Set(normalized.map((child) => new URL(child.databaseUrl).toString())).size !== normalized.length) {
+    throw new Error('Discovery environment matrix manifest must use a different normalized DATABASE_URL target per configuration/repetition');
+  }
   return { children: normalized };
 }

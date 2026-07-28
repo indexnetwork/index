@@ -24,7 +24,18 @@ const HARNESS_VERSION = '1';
 const ATTEMPT_TIMEOUT_MS = 180_000;
 
 type DatabaseCase = HistoricalMatrixFixture;
-type MatrixCandidate = { id: string; evidenceTypes: Array<'intent' | 'premise' | 'user_context'>; rawText?: string };
+export type MatrixCandidateEvidenceIds = {
+  candidateIntentId?: string;
+  candidatePremiseId?: string;
+  candidateContextId?: string;
+};
+
+type MatrixCandidate = {
+  id: string;
+  evidenceTypes: Array<'intent' | 'premise' | 'user_context'>;
+  evidenceIds: MatrixCandidateEvidenceIds;
+  rawText?: string;
+};
 type MatrixSlotResult = Record<string, unknown> & { caseId: string; rule: string; rowId: string; repetition: number; runs: number; passes: number; passRate: number; flaky: boolean };
 type ChildOutput = { slots: MatrixSlotResult[]; execution: { policy: 'strict'; runs: unknown[] } };
 
@@ -99,15 +110,21 @@ function evidenceTypes(candidate: Record<string, unknown>): MatrixCandidate['evi
   return [...types];
 }
 
-function collectCandidates(result: Record<string, unknown>, fixtureIds: Set<string>): MatrixCandidate[] {
+/** Preserves graph evidence IDs/types in the raw run artifact before policy scoring. */
+export function collectCandidates(result: Record<string, unknown>, fixtureIds: Set<string>): MatrixCandidate[] {
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
   return candidates.map((candidate) => {
     const value = candidate as Record<string, unknown>;
     const id = typeof value.candidateUserId === 'string' ? value.candidateUserId : '';
+    const evidenceIds: MatrixCandidateEvidenceIds = {
+      ...(typeof value.candidateIntentId === 'string' ? { candidateIntentId: value.candidateIntentId } : {}),
+      ...(typeof value.candidatePremiseId === 'string' ? { candidatePremiseId: value.candidatePremiseId } : {}),
+      ...(typeof value.candidateContextId === 'string' ? { candidateContextId: value.candidateContextId } : {}),
+    };
     // Fail closed before the judge: unknown candidates remain visible to the
     // deterministic fixture-ownership assertion and are never normalized away.
-    if (!fixtureIds.has(id)) return { id, evidenceTypes: evidenceTypes(value), rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
-    return { id, evidenceTypes: evidenceTypes(value), rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+    if (!fixtureIds.has(id)) return { id, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+    return { id, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
   });
 }
 

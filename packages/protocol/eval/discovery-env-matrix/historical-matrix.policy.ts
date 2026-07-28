@@ -13,11 +13,20 @@ export type MatrixRow = typeof MATRIX_ROWS[number];
 export type MatrixRowId = MatrixRow["id"];
 export type MatrixEvidenceType = MatrixRow["allowedEvidence"][number];
 
+export interface MatrixCandidateEvidenceIds {
+  /** Concrete graph evidence IDs retained for run-artifact inspection. */
+  candidateIntentId?: string;
+  candidatePremiseId?: string;
+  candidateContextId?: string;
+}
+
 export interface MatrixCandidate {
   /** The database/user id returned by the live discovery graph. */
   id: string;
   /** Evidence source labels retained from the graph result. */
   evidenceTypes: readonly MatrixEvidenceType[];
+  /** Concrete graph evidence IDs retained alongside evidence types. */
+  evidenceIds: MatrixCandidateEvidenceIds;
   /** Run-artifact-only provider text; baseline artifacts must remove this field. */
   rawText?: string;
 }
@@ -89,6 +98,7 @@ export type MatrixScorecard = ScorecardLike<MatrixSlotResult>;
 export interface MatrixBaselineCandidate {
   id: string;
   evidenceTypes: MatrixEvidenceType[];
+  evidenceIds: MatrixCandidateEvidenceIds;
 }
 
 export interface MatrixBaselineSlotResult extends Omit<MatrixSlotResult, "candidates"> {
@@ -227,7 +237,11 @@ export async function scoreMatrixSlot(input: ScoreMatrixSlotInput): Promise<Matr
     evidenceTypes: deterministic.evidenceTypes,
     configDeltas: input.configDeltas ? input.configDeltas.map((delta) => ({ ...delta })) : [],
     assertions,
-    candidates: input.candidates.map((candidate) => ({ ...candidate, evidenceTypes: [...candidate.evidenceTypes] })),
+    candidates: input.candidates.map((candidate) => ({
+      ...candidate,
+      evidenceTypes: [...candidate.evidenceTypes],
+      evidenceIds: { ...candidate.evidenceIds },
+    })),
     judge,
   };
 }

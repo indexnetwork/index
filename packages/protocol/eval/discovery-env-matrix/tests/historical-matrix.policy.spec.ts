@@ -29,9 +29,9 @@ describe("historical discovery environment matrix policy", () => {
       repetition: 0,
       completed: true,
       candidates: [
-        { id: matrixCase.expectedUserId, evidenceTypes: ["intent", "premise"], rawText: "expected raw candidate evidence" },
-        { id: matrixCase.excludedUserIds[0]!, evidenceTypes: ["intent"], rawText: "excluded raw candidate evidence" },
-        { id: "unknown-candidate", evidenceTypes: ["intent"], rawText: "unknown raw candidate evidence" },
+        { id: matrixCase.expectedUserId, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-expected", candidatePremiseId: "premise-expected" }, rawText: "expected raw candidate evidence" },
+        { id: matrixCase.excludedUserIds[0]!, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-excluded" }, rawText: "excluded raw candidate evidence" },
+        { id: "unknown-candidate", evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-unknown" }, rawText: "unknown raw candidate evidence" },
       ],
       judge: async () => {
         judgeCalls += 1;
@@ -57,6 +57,10 @@ describe("historical discovery environment matrix policy", () => {
     expect(result.assertions.find((assertion) => assertion.kind === "judge")).toMatchObject({
       passed: false,
       detail: "not_run: deterministic assertions failed",
+    });
+    expect(result.candidates[0]!.evidenceIds).toEqual({
+      candidateIntentId: "intent-expected",
+      candidatePremiseId: "premise-expected",
     });
   });
 

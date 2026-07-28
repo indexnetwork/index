@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 
+import { collectCandidates } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -39,7 +40,34 @@ describe('discovery environment matrix runtime seams', () => {
     }));
 
     expect(parseChildManifest(JSON.stringify({ children }), keys).children).toHaveLength(15);
+
+    const sameTargetDifferentBranches = children.map((child) => ({ ...child }));
+    sameTargetDifferentBranches[1]!.databaseUrl = sameTargetDifferentBranches[0]!.databaseUrl;
+    expect(() => parseChildManifest(JSON.stringify({ children: sameTargetDifferentBranches }), keys)).toThrow('different normalized DATABASE_URL target');
+
     children[1]!.branch = children[0]!.branch;
     expect(() => parseChildManifest(JSON.stringify({ children }), keys)).toThrow('different child branch');
+  });
+
+  it('preserves concrete graph evidence IDs alongside evidence types in run candidates', () => {
+    const candidates = collectCandidates({
+      candidates: [{
+        candidateUserId: 'fixture-user',
+        candidateIntentId: 'intent-1',
+        candidatePremiseId: 'premise-1',
+        candidateContextId: 'context-1',
+        evidence: [{ kind: 'query_intent' }, { kind: 'query_premise' }, { kind: 'query_context' }],
+      }],
+    }, new Set(['fixture-user']));
+
+    expect(candidates).toEqual([{
+      id: 'fixture-user',
+      evidenceTypes: ['intent', 'premise', 'user_context'],
+      evidenceIds: {
+        candidateIntentId: 'intent-1',
+        candidatePremiseId: 'premise-1',
+        candidateContextId: 'context-1',
+      },
+    }]);
   });
 });
