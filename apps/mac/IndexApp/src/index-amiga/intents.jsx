@@ -283,7 +283,9 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
         minWidth: 0,
         maxHeight: "calc(100vh - 112px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
+        {/* the shelf inside already says "your signals"; the title bar only has
+            to say which app the window belongs to */}
+        <MacWindow title="index" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",
@@ -327,8 +329,8 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                   fontSize:13, lineHeight:1.5, maxWidth:540,
                   fontFamily:"var(--mac-sans)",
                 }}>
-                  tell index what you're after. it works quietly in the
-                  background and tells you when there's an alignment.
+                  start a signal. your agent takes it to other agents. when both
+                  sides want it, you get the intro.
                 </p>
               </div>
 
@@ -396,13 +398,44 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   );
 }
 
+/* A signal reads as what it is after, not as a sentence about wanting it. The
+   summary that comes back from the API is written as prose ("Receive feedback
+   on a launch video for an AI product from designers, founders, ..."), so the
+   shelf drops the opening verb, lowercases it, and cuts it at a word so no row
+   ends mid-word. This is a display fix. Titles that arrive already shaped, and
+   short enough to sit whole in a row, pass through untouched. */
+const TITLE_MAX = 45;
+const TITLE_LEAD = /^(receive|explore|find|discover|connect with|connect to|connect|meet|seeking|seek|looking for|look for|get)\s+/;
+
+function signalTitle(raw) {
+  const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ").replace(TITLE_LEAD, "");
+  if (!text) return "untitled signal";
+  if (text.length <= TITLE_MAX) return text;
+  const head = text.slice(0, TITLE_MAX + 1);
+  const lastSpace = head.lastIndexOf(" ");
+  const cut = lastSpace > 12 ? head.slice(0, lastSpace) : text.slice(0, TITLE_MAX);
+  return cut.replace(/[\s,;:.·/+-]+$/, "") + "…";
+}
+
+/* What the signal is doing, in its own words: scanning, mid-negotiation with
+   another agent, resolved, or ended. "running" said the process was alive
+   without saying what it was doing with the time. */
+function signalStatus(intent) {
+  if (intent.status === "archived") return "closed";
+  if (intent.status === "paused") return "paused";
+  if (intent.matches > 0) return "matched";
+  if ((intent.pipeline || {}).negotiating > 0) return "negotiating";
+  return "live";
+}
+
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  const isActive = intent.status === "active";
   const hasQ = intent.questions > 0;
-  // Display label: active signals read as "running" in the status line.
-  const statusLabel = isActive ? "running" : intent.status;
+  const statusLabel = signalStatus(intent);
+  // the blink is the signal working. only the states that are actually running
+  // get it, so a shelf of closed and matched rows stays still
+  const running = statusLabel === "live" || statusLabel === "negotiating";
 
   return (
     <button
@@ -436,15 +469,17 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
           color:"#000", fontWeight: 500, letterSpacing:-0.1,
           lineHeight: 1.2,
           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-        }}>
-          {intent.title}
+        }} title={intent.title}>
+          {signalTitle(intent.title)}
         </div>
-        {/* the word carries the state on its own; a blinking square in front of
-            every row made a list of running signals look like an alarm panel */}
         <span style={{
+          display:"flex", alignItems:"center", gap:6,
           fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
-          letterSpacing:1, textTransform:"uppercase",
-        }}>{statusLabel}</span>
+          letterSpacing:1,
+        }}>
+          {running && <LiveDot size={6}/>}
+          {statusLabel}
+        </span>
       </div>
 
       {/* questions, the hero */}
@@ -454,23 +489,30 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
 }
 
 /* ---------- Inbound-questions hero count ---------- */
+// A bare number left you to guess what it counted. These are questions holding
+// on your answer, so the badge says pending and the number keeps its weight.
 function QCount({ n, muted }) {
   if (muted) {
     return null;
   }
   return (
-    <span style={{
-      display:"flex", alignItems:"center", justifyContent:"center",
-      minWidth:24, padding:"3px 7px",
-      border:"1px solid #000",
-      background:"#FF8A00",
-      boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
-      flex:"0 0 auto",
-    }}>
+    <span
+      title={`${n} question${n === 1 ? "" : "s"} waiting on you`}
+      style={{
+        display:"flex", alignItems:"baseline", justifyContent:"center", gap:4,
+        padding:"3px 8px",
+        border:"1px solid #000",
+        background:"#FF8A00",
+        boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
+        flex:"0 0 auto",
+      }}>
       <span style={{
         fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
         lineHeight:1, color:"#000", letterSpacing:-0.3,
       }}>{n}</span>
+      <span style={{
+        fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1, color:"#000",
+      }}>pending</span>
     </span>
   );
 }
@@ -512,7 +554,7 @@ function NewIntentRow({ onClick }) {
         <div style={{
           fontFamily:"var(--mac-sans)", fontSize: 15, fontWeight: 700,
           letterSpacing:-0.2,
-        }}>start a new signal</div>
+        }}>new signal</div>
       </div>
     </button>
   );

@@ -34033,11 +34033,19 @@ function mapPersonFromHomeCard(card, section = {}) {
     userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
-    location: section.title || '',
+    // The card's full write-up: what the opportunity is and how these two
+    // fit. `blurb` keeps only the headline when there is one, so without
+    // this the long form was dropped everywhere but the card itself.
+    detail: card.mainText || '',
+    // A home card carries no location. This used to borrow the section heading,
+    // which is a presenter's shout ("GIVE FEEDBACK NOW", "OPPORTUNITIES") and
+    // read as a place under the person's name in chat. Left empty until a real
+    // location arrives; the profile window fetches one from GET /users/:id.
+    location: '',
     arrived: 0,
     distance: card.mutualIntentsLabel || '',
     mutuals: 0,
-    signals: compact([section.title, card.mutualIntentsLabel]),
+    signals: compact([card.mutualIntentsLabel]),
     overlap: compact([card.headline]),
     // the presenter card carries a 0-1 match score; it was being dropped
     score: typeof card.score === 'number' ? card.score : null,
@@ -34097,6 +34105,7 @@ function mapPeopleFromOpportunities(opportunities = []) {
     userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
+    detail: opportunity.presentation?.description || opportunity.interpretation?.summary || '',
     location: opportunity.index?.title || '',
     arrived: 0,
     distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
@@ -39127,7 +39136,9 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
         minWidth: 0,
         maxHeight: "calc(100vh - 112px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
+        {/* the shelf inside already says "your signals"; the title bar only has
+            to say which app the window belongs to */}
+        <MacWindow title="index" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",
@@ -39171,8 +39182,8 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                   fontSize:13, lineHeight:1.5, maxWidth:540,
                   fontFamily:"var(--mac-sans)",
                 }}>
-                  tell index what you're after. it works quietly in the
-                  background and tells you when there's an alignment.
+                  start a signal. your agent takes it to other agents. when both
+                  sides want it, you get the intro.
                 </p>
               </div>
 
@@ -39240,13 +39251,44 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   );
 }
 
+/* A signal reads as what it is after, not as a sentence about wanting it. The
+   summary that comes back from the API is written as prose ("Receive feedback
+   on a launch video for an AI product from designers, founders, ..."), so the
+   shelf drops the opening verb, lowercases it, and cuts it at a word so no row
+   ends mid-word. This is a display fix. Titles that arrive already shaped, and
+   short enough to sit whole in a row, pass through untouched. */
+const TITLE_MAX = 45;
+const TITLE_LEAD = /^(receive|explore|find|discover|connect with|connect to|connect|meet|seeking|seek|looking for|look for|get)\s+/;
+
+function signalTitle(raw) {
+  const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ").replace(TITLE_LEAD, "");
+  if (!text) return "untitled signal";
+  if (text.length <= TITLE_MAX) return text;
+  const head = text.slice(0, TITLE_MAX + 1);
+  const lastSpace = head.lastIndexOf(" ");
+  const cut = lastSpace > 12 ? head.slice(0, lastSpace) : text.slice(0, TITLE_MAX);
+  return cut.replace(/[\s,;:.·/+-]+$/, "") + "…";
+}
+
+/* What the signal is doing, in its own words: scanning, mid-negotiation with
+   another agent, resolved, or ended. "running" said the process was alive
+   without saying what it was doing with the time. */
+function signalStatus(intent) {
+  if (intent.status === "archived") return "closed";
+  if (intent.status === "paused") return "paused";
+  if (intent.matches > 0) return "matched";
+  if ((intent.pipeline || {}).negotiating > 0) return "negotiating";
+  return "live";
+}
+
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  const isActive = intent.status === "active";
   const hasQ = intent.questions > 0;
-  // Display label: active signals read as "running" in the status line.
-  const statusLabel = isActive ? "running" : intent.status;
+  const statusLabel = signalStatus(intent);
+  // the blink is the signal working. only the states that are actually running
+  // get it, so a shelf of closed and matched rows stays still
+  const running = statusLabel === "live" || statusLabel === "negotiating";
 
   return (
     <button
@@ -39280,15 +39322,17 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
           color:"#000", fontWeight: 500, letterSpacing:-0.1,
           lineHeight: 1.2,
           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-        }}>
-          {intent.title}
+        }} title={intent.title}>
+          {signalTitle(intent.title)}
         </div>
-        {/* the word carries the state on its own; a blinking square in front of
-            every row made a list of running signals look like an alarm panel */}
         <span style={{
+          display:"flex", alignItems:"center", gap:6,
           fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
-          letterSpacing:1, textTransform:"uppercase",
-        }}>{statusLabel}</span>
+          letterSpacing:1,
+        }}>
+          {running && <LiveDot size={6}/>}
+          {statusLabel}
+        </span>
       </div>
 
       {/* questions, the hero */}
@@ -39298,23 +39342,30 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
 }
 
 /* ---------- Inbound-questions hero count ---------- */
+// A bare number left you to guess what it counted. These are questions holding
+// on your answer, so the badge says pending and the number keeps its weight.
 function QCount({ n, muted }) {
   if (muted) {
     return null;
   }
   return (
-    <span style={{
-      display:"flex", alignItems:"center", justifyContent:"center",
-      minWidth:24, padding:"3px 7px",
-      border:"1px solid #000",
-      background:"#FF8A00",
-      boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
-      flex:"0 0 auto",
-    }}>
+    <span
+      title={`${n} question${n === 1 ? "" : "s"} waiting on you`}
+      style={{
+        display:"flex", alignItems:"baseline", justifyContent:"center", gap:4,
+        padding:"3px 8px",
+        border:"1px solid #000",
+        background:"#FF8A00",
+        boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
+        flex:"0 0 auto",
+      }}>
       <span style={{
         fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
         lineHeight:1, color:"#000", letterSpacing:-0.3,
       }}>{n}</span>
+      <span style={{
+        fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1, color:"#000",
+      }}>pending</span>
     </span>
   );
 }
@@ -39356,7 +39407,7 @@ function NewIntentRow({ onClick }) {
         <div style={{
           fontFamily:"var(--mac-sans)", fontSize: 15, fontWeight: 700,
           letterSpacing:-0.2,
-        }}>start a new signal</div>
+        }}>new signal</div>
       </div>
     </button>
   );
@@ -40751,7 +40802,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         gridTemplateRows: "minmax(0, 1fr)",
         gap: 8, minHeight:0,
       }}>
-        <MacWindow title="index · your signals" onClose={onBack}>
+        <MacWindow title="signal" onClose={onBack}>
           <ConversationPane
             profile={profile}
             conversation={conversation}
@@ -40767,7 +40818,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         </MacWindow>
 
         {showRadar && (
-        <MacWindow title="index · your radar" onClose={onBack}>
+        <MacWindow title="radar" onClose={onBack}>
           <MatchFeed
             tab={tab} setTab={setTab}
             profile={profile}
@@ -41968,7 +42019,7 @@ function initials(name) {
 function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention }) {
   const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
   return (
-    <MacWindow title="index · messages" onClose={onClose} style={{ minHeight:0 }}>
+    <MacWindow title="messages" onClose={onClose} style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
         {/* header */}
         <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
@@ -42076,7 +42127,7 @@ function SummarySection({ label, children }) {
 /* Summary of an expired person, opens in the 3rd window when you click one. */
 function SummaryWindow({ person, onClose }) {
   return (
-    <MacWindow title={`summary · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
+    <MacWindow title="summary" onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         <div style={{
           padding:"12px 16px", borderBottom:"1px solid #000",
@@ -42090,7 +42141,7 @@ function SummaryWindow({ person, onClose }) {
             <div style={{
               fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
               letterSpacing:1, textTransform:"uppercase",
-            }}>expired · {person.location}</div>
+            }}>expired{person.location ? ` · ${person.location}` : ""}</div>
           </div>
         </div>
 
@@ -42246,7 +42297,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
     : person;
   const { bio, note, socials, meta } = profileContent(merged);
   return (
-    <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
+    <MacWindow title="profile" onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         {/* header, just who this is. the stage they're at is already said by
             the footer (accept/pass vs send message), and a match percentage is
@@ -42341,7 +42392,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
   return (
-    <MacWindow title={`chat · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
+    <MacWindow title="chat" onClose={onClose} dismiss style={{ minHeight:0 }}>
         <div style={{
           display:"grid",
           gridTemplateRows: "auto 1fr auto",
@@ -42358,9 +42409,11 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}
               </div>
-              <div style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)" }}>
-                {person.location}
-              </div>
+              {person.location && (
+                <div style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)" }}>
+                  {person.location}
+                </div>
+              )}
             </div>
           </div>
 
@@ -42369,6 +42422,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             overflowY:"auto", padding:"14px 16px",
             display:"flex", flexDirection:"column", gap:10, background:"#fff",
           }}>
+            <ChatOpener person={person}/>
             {messages.map(m => <ChatBubble key={m.id} m={m}/>)}
           </div>
 
@@ -42396,6 +42450,38 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
           </div>
         </div>
     </MacWindow>
+  );
+}
+
+/* The whole opportunity, at the top of the thread: what it is, and what these
+   two can do for each other. Without it the chat opens as a blank page
+   addressed to a stranger, and the one-line headline was too thin to act on.
+   It scrolls away with the log, because it is the first thing said rather than
+   part of the chrome.
+
+   The card's long write-up carries the substance; the headline sits above it
+   when it says something the write-up does not already open with. */
+function ChatOpener({ person }) {
+  const headline = String(person.blurb || "").trim();
+  const detail = String(person.detail || person.pitchFromAgent || "").trim();
+  const body = detail || headline;
+  if (!body) return null;
+  const showHeadline = headline && normText(headline) !== normText(body);
+  return (
+    <div style={{
+      border:"1px solid var(--ink-4)", background:"#FBFAF7",
+      padding:"12px 14px", display:"grid", gap:7, marginBottom:6,
+    }}>
+      {showHeadline && (
+        <span style={{
+          fontFamily:"var(--mac-sans)", fontSize:13.5, fontWeight:600,
+          color:"#000", lineHeight:1.35, letterSpacing:-0.1,
+        }}>{headline}</span>
+      )}
+      <span style={{
+        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
+      }}>{body}</span>
+    </div>
   );
 }
 

@@ -109,11 +109,19 @@ export function mapPersonFromHomeCard(card, section = {}) {
     userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
-    location: section.title || '',
+    // The card's full write-up: what the opportunity is and how these two
+    // fit. `blurb` keeps only the headline when there is one, so without
+    // this the long form was dropped everywhere but the card itself.
+    detail: card.mainText || '',
+    // A home card carries no location. This used to borrow the section heading,
+    // which is a presenter's shout ("GIVE FEEDBACK NOW", "OPPORTUNITIES") and
+    // read as a place under the person's name in chat. Left empty until a real
+    // location arrives; the profile window fetches one from GET /users/:id.
+    location: '',
     arrived: 0,
     distance: card.mutualIntentsLabel || '',
     mutuals: 0,
-    signals: compact([section.title, card.mutualIntentsLabel]),
+    signals: compact([card.mutualIntentsLabel]),
     overlap: compact([card.headline]),
     // the presenter card carries a 0-1 match score; it was being dropped
     score: typeof card.score === 'number' ? card.score : null,
@@ -173,6 +181,7 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
+    detail: opportunity.presentation?.description || opportunity.interpretation?.summary || '',
     location: opportunity.index?.title || '',
     arrived: 0,
     distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',

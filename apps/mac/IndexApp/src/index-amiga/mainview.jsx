@@ -602,7 +602,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         gridTemplateRows: "minmax(0, 1fr)",
         gap: 8, minHeight:0,
       }}>
-        <MacWindow title="index · your signals" onClose={onBack}>
+        <MacWindow title="signal" onClose={onBack}>
           <ConversationPane
             profile={profile}
             conversation={conversation}
@@ -618,7 +618,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         </MacWindow>
 
         {showRadar && (
-        <MacWindow title="index · your radar" onClose={onBack}>
+        <MacWindow title="radar" onClose={onBack}>
           <MatchFeed
             tab={tab} setTab={setTab}
             profile={profile}
@@ -1819,7 +1819,7 @@ function initials(name) {
 function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention }) {
   const totalUnread = conversations.reduce((a, c) => a + (c.unread || 0), 0);
   return (
-    <MacWindow title="index · messages" onClose={onClose} style={{ minHeight:0 }}>
+    <MacWindow title="messages" onClose={onClose} style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", flex:1, minHeight:0 }}>
         {/* header */}
         <div style={{ padding:"12px 16px", borderBottom:"1px solid #000", background:"#fff" }}>
@@ -1927,7 +1927,7 @@ function SummarySection({ label, children }) {
 /* Summary of an expired person, opens in the 3rd window when you click one. */
 function SummaryWindow({ person, onClose }) {
   return (
-    <MacWindow title={`summary · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
+    <MacWindow title="summary" onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         <div style={{
           padding:"12px 16px", borderBottom:"1px solid #000",
@@ -1941,7 +1941,7 @@ function SummaryWindow({ person, onClose }) {
             <div style={{
               fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
               letterSpacing:1, textTransform:"uppercase",
-            }}>expired · {person.location}</div>
+            }}>expired{person.location ? ` · ${person.location}` : ""}</div>
           </div>
         </div>
 
@@ -2097,7 +2097,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
     : person;
   const { bio, note, socials, meta } = profileContent(merged);
   return (
-    <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
+    <MacWindow title="profile" onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
         {/* header, just who this is. the stage they're at is already said by
             the footer (accept/pass vs send message), and a match percentage is
@@ -2192,7 +2192,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
   return (
-    <MacWindow title={`chat · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
+    <MacWindow title="chat" onClose={onClose} dismiss style={{ minHeight:0 }}>
         <div style={{
           display:"grid",
           gridTemplateRows: "auto 1fr auto",
@@ -2209,9 +2209,11 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}
               </div>
-              <div style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)" }}>
-                {person.location}
-              </div>
+              {person.location && (
+                <div style={{ fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)" }}>
+                  {person.location}
+                </div>
+              )}
             </div>
           </div>
 
@@ -2220,6 +2222,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             overflowY:"auto", padding:"14px 16px",
             display:"flex", flexDirection:"column", gap:10, background:"#fff",
           }}>
+            <ChatOpener person={person}/>
             {messages.map(m => <ChatBubble key={m.id} m={m}/>)}
           </div>
 
@@ -2247,6 +2250,38 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
           </div>
         </div>
     </MacWindow>
+  );
+}
+
+/* The whole opportunity, at the top of the thread: what it is, and what these
+   two can do for each other. Without it the chat opens as a blank page
+   addressed to a stranger, and the one-line headline was too thin to act on.
+   It scrolls away with the log, because it is the first thing said rather than
+   part of the chrome.
+
+   The card's long write-up carries the substance; the headline sits above it
+   when it says something the write-up does not already open with. */
+function ChatOpener({ person }) {
+  const headline = String(person.blurb || "").trim();
+  const detail = String(person.detail || person.pitchFromAgent || "").trim();
+  const body = detail || headline;
+  if (!body) return null;
+  const showHeadline = headline && normText(headline) !== normText(body);
+  return (
+    <div style={{
+      border:"1px solid var(--ink-4)", background:"#FBFAF7",
+      padding:"12px 14px", display:"grid", gap:7, marginBottom:6,
+    }}>
+      {showHeadline && (
+        <span style={{
+          fontFamily:"var(--mac-sans)", fontSize:13.5, fontWeight:600,
+          color:"#000", lineHeight:1.35, letterSpacing:-0.1,
+        }}>{headline}</span>
+      )}
+      <span style={{
+        fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
+      }}>{body}</span>
+    </div>
   );
 }
 
