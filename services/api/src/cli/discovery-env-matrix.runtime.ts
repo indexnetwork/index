@@ -54,6 +54,15 @@ export function buildMatrixPlan<TCase, TRow extends MatrixRowEnvironment>(
   return slots;
 }
 
+/** Plans the explicitly non-baselineable one-case, five-row, first-repetition canary. */
+export function buildCanaryPlan<TCase, TRow extends MatrixRowEnvironment>(
+  matrixCase: TCase,
+  rows: readonly TRow[],
+): MatrixPlanSlot<TCase, TRow>[] {
+  if (rows.length !== 5) throw new Error(`Discovery environment matrix canary requires exactly five rows (received ${rows.length})`);
+  return rows.map((row) => ({ matrixCase, row, repetition: 0, childKey: matrixChildKey(row.id, 0) }));
+}
+
 /** Restores both graph gates even when provider execution throws or times out. */
 export async function withMatrixEnvironment<T>(row: MatrixRowEnvironment, run: () => Promise<T>): Promise<T> {
   const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
@@ -132,7 +141,9 @@ export function parseChildManifest(raw: string | undefined, expectedChildKeys: r
       : null;
   if (!children) throw new Error('DISCOVERY_ENV_MATRIX_CHILDREN must be an array or { children: [...] }');
   const expected = new Set(expectedChildKeys);
-  if (expected.size !== 15) throw new Error('Discovery environment matrix manifest requires exactly 15 child keys');
+  if (expected.size !== 15 && expected.size !== 5) {
+    throw new Error('Discovery environment matrix manifest requires either 15 full-matrix or 5 canary child keys');
+  }
   if (children.length !== expected.size) throw new Error(`Discovery environment matrix manifest requires exactly ${expected.size} child branches`);
   const normalized = children.map((entry): MatrixChildManifestEntry => {
     if (!entry || typeof entry !== 'object') throw new Error('Discovery environment matrix child entry must be an object');

@@ -3,8 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 
-import { collectCandidates } from '../discovery-env-matrix';
-import { assertCompleteMatrix, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
+import { collectCandidates, resolveMatrixExecutionSelection } from '../discovery-env-matrix';
+import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
   it('plans 75 slots and isolates each configuration/repetition child', () => {
@@ -12,6 +12,37 @@ describe('discovery environment matrix runtime seams', () => {
 
     expect(slots).toHaveLength(75);
     expect(new Set(slots.map((slot) => slot.childKey)).size).toBe(15);
+  });
+
+  it('plans a non-baselineable one-case five-row r1 canary with exactly five children', () => {
+    const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
+    const selection = resolveMatrixExecutionSelection(HISTORICAL_MATRIX_CASES, MATRIX_ROWS, {
+      caseId: matrixCase.id,
+      canary: true,
+      runsRequested: false,
+      updateBaseline: false,
+    });
+
+    expect(selection.canary).toBe(true);
+    expect(selection.plan).toEqual(buildCanaryPlan(matrixCase, MATRIX_ROWS));
+    expect(selection.plan).toHaveLength(5);
+    expect(selection.plan.every((slot) => slot.repetition === 0 && slot.childKey.endsWith('-r1'))).toBe(true);
+
+    const children = selection.plan.map((slot, index) => ({
+      childKey: slot.childKey,
+      branch: `eval-discovery-env-matrix-canary-${index + 1}`,
+      databaseUrl: `postgres://x@canary-${index + 1}.neon.tech/protocol_eval`,
+      baseBranch: 'eval-discovery-base',
+    }));
+    expect(parseChildManifest(JSON.stringify({ children }), children.map((child) => child.childKey)).children).toHaveLength(5);
+    children[1]!.databaseUrl = children[0]!.databaseUrl;
+    expect(() => parseChildManifest(JSON.stringify({ children }), children.map((child) => child.childKey))).toThrow('different normalized DATABASE_URL target');
+    expect(() => resolveMatrixExecutionSelection(HISTORICAL_MATRIX_CASES, MATRIX_ROWS, {
+      caseId: matrixCase.id,
+      canary: true,
+      runsRequested: false,
+      updateBaseline: true,
+    })).toThrow('non-baselineable');
   });
 
   it('restores both discovery env variables after a graph error', async () => {

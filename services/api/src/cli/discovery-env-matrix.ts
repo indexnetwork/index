@@ -15,7 +15,7 @@ import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityEvaluator, Op
 
 import { baseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 import { expectedBaseMetadata, verifyProtectedBase } from './discovery-env-matrix-base';
-import { MATRIX_REPETITIONS, assertCompleteMatrix, assertMatrixEnvironment, buildMatrixPlan, parseChildManifest, withMatrixEnvironment, type MatrixChildManifestEntry, type MatrixPlanSlot } from './discovery-env-matrix.runtime';
+import { MATRIX_REPETITIONS, assertCompleteMatrix, assertMatrixEnvironment, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment, type MatrixChildManifestEntry, type MatrixPlanSlot } from './discovery-env-matrix.runtime';
 
 const RUNS_DIR = path.resolve(import.meta.dir, '../../eval/discovery-env-matrix/runs');
 const BASELINE_PATH = path.resolve(import.meta.dir, '../../eval/discovery-env-matrix/baselines/discovery-env-matrix.baseline.json');
@@ -59,6 +59,47 @@ async function loadJudge(): Promise<(output: unknown, criteria: string) => Promi
   return (await loadModule(protocolSourcePath('shared/agent/tests/llm-assert.js'))).assertLLM;
 }
 
+type MatrixRuntimeRow = { id: string; allowedTypes: string; profileSource: string };
+type MatrixRuntimePlan = MatrixPlanSlot<HistoricalMatrixFixture, MatrixRuntimeRow>;
+
+export interface MatrixExecutionSelection {
+  plan: MatrixRuntimePlan[];
+  cases: HistoricalMatrixFixture[];
+  canary: boolean;
+  caseId?: string;
+}
+
+/** Resolves the only supported filtered mode: one case across the five r1 rows. */
+export function resolveMatrixExecutionSelection(
+  cases: readonly HistoricalMatrixFixture[],
+  rows: readonly MatrixRuntimeRow[],
+  options: { caseId?: string; canary: boolean; runsRequested: boolean; updateBaseline: boolean },
+): MatrixExecutionSelection {
+  if (options.runsRequested) throw new Error('--runs is not supported; --canary always runs exactly repetition r1');
+  if (options.canary !== Boolean(options.caseId)) {
+    throw new Error('--case <id> and --canary must be provided together');
+  }
+  if (options.canary && options.updateBaseline) {
+    throw new Error('--canary is non-baselineable and cannot use --update-baseline');
+  }
+  if (!options.canary) {
+    const fullCases = [...cases];
+    return {
+      plan: buildMatrixPlan(fullCases, rows, MATRIX_REPETITIONS),
+      cases: fullCases,
+      canary: false,
+    };
+  }
+  const matrixCase = cases.find((candidate) => candidate.id === options.caseId);
+  if (!matrixCase) throw new Error(`Unknown discovery environment matrix case: ${options.caseId}`);
+  return {
+    plan: buildCanaryPlan(matrixCase, rows),
+    cases: [matrixCase],
+    canary: true,
+    caseId: matrixCase.id,
+  };
+}
+
 function usage(): string {
   return `Discovery environment matrix eval
 
@@ -68,9 +109,13 @@ Required operator attestation:
   DISCOVERY_ENV_MATRIX_BASE_BRANCH=eval-discovery-base
   DISCOVERY_ENV_MATRIX_CHILDREN='{"children":[{"childKey":"intent-only-r1","branch":"eval-discovery-env-matrix-…","databaseUrl":"postgres://…neon.tech/protocol_eval","baseBranch":"eval-discovery-base"}, …]}'
 
-The manifest must contain all 15 unique row/repetition children. This command never creates or deletes Neon branches.
+Default full-matrix runs require all 15 unique row/repetition children. This command never creates or deletes Neon branches.
 
 Baseline updates require --update-baseline --reason <text> --force (when replacing an existing baseline).
+
+Canary (never baselineable):
+  --case <id> --canary  Run exactly one case × five rows × repetition r1.
+  This requires exactly five matching row-r1 child entries and rejects --update-baseline.
 `;
 }
 
@@ -180,15 +225,14 @@ async function composeCaseRuntime(
   return { sourceUserId: matrixCase.sourceUserId, networkId: network.id };
 }
 
-async function runChild(child: MatrixChildManifestEntry): Promise<ChildOutput> {
-  const { HISTORICAL_MATRIX_CASES, MATRIX_ROWS, scoreMatrixSlot, buildExecutionEvidence, executeRuns } = await loadMatrixEval();
+async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecutionSelection): Promise<ChildOutput> {
+  const { HISTORICAL_MATRIX_CASES, scoreMatrixSlot, buildExecutionEvidence, executeRuns } = await loadMatrixEval();
   const assertLLM = await loadJudge();
-  const plan: Array<MatrixPlanSlot<HistoricalMatrixFixture, { id: string; allowedTypes: string; profileSource: string }>> = buildMatrixPlan(
-    HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[],
-    MATRIX_ROWS as Array<{ id: string; allowedTypes: string; profileSource: string }>,
-    MATRIX_REPETITIONS,
-  ).filter((slot) => slot.childKey === child.childKey);
-  if (plan.length !== HISTORICAL_MATRIX_CASES.length) throw new Error(`Child ${child.childKey} does not own exactly five matrix cases`);
+  const plan = selection.plan.filter((slot) => slot.childKey === child.childKey);
+  const expectedSlots = selection.canary ? 1 : HISTORICAL_MATRIX_CASES.length;
+  if (plan.length !== expectedSlots) {
+    throw new Error(`Child ${child.childKey} does not own exactly ${expectedSlots} matrix case slot(s)`);
+  }
   const environment = assertMatrixEnvironment(process.env);
   if (environment.databaseUrl.toString() !== new URL(child.databaseUrl).toString() || environment.childBranch !== child.branch) {
     throw new Error(`Child ${child.childKey} environment does not match its declared manifest attestation`);
@@ -276,10 +320,14 @@ async function runParent(): Promise<void> {
     performGovernedBaselineUpdate, writeBaseline, formatBaselineUpdateSummary,
     writeRunReport, runEvalEvidenceFlow, formatGovernedComparison, formatConsole,
   } = await loadMatrixEval();
-  const plan = buildMatrixPlan(HISTORICAL_MATRIX_CASES, MATRIX_ROWS, MATRIX_REPETITIONS);
-  const childKeys = [...new Set(plan.map((slot) => slot.childKey))];
-  const manifest = parseChildManifest(process.env.DISCOVERY_ENV_MATRIX_CHILDREN, childKeys);
   const updateBaseline = has('--update-baseline');
+  const selection = resolveMatrixExecutionSelection(
+    HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[],
+    MATRIX_ROWS as MatrixRuntimeRow[],
+    { caseId: flagValue('--case'), canary: has('--canary'), runsRequested: has('--runs'), updateBaseline },
+  );
+  const childKeys = [...new Set(selection.plan.map((slot) => slot.childKey))];
+  const manifest = parseChildManifest(process.env.DISCOVERY_ENV_MATRIX_CHILDREN, childKeys);
   const reason = flagValue('--reason');
   const force = has('--force');
   const report = has('--report');
@@ -314,7 +362,10 @@ async function runParent(): Promise<void> {
     for (const child of manifest.children) {
       const outputPath = path.join(temporaryDirectory, `${child.childKey}.json`);
       const proc = Bun.spawn({
-        cmd: [process.execPath, import.meta.path, '--child-key', child.childKey, '--child-output', outputPath],
+        cmd: [
+          process.execPath, import.meta.path, '--child-key', child.childKey, '--child-output', outputPath,
+          ...(selection.canary ? ['--case', selection.caseId!, '--canary'] : []),
+        ],
         env: { ...process.env, DATABASE_URL: child.databaseUrl, DISCOVERY_ENV_MATRIX_CHILD_BRANCH: child.branch, DISCOVERY_ENV_MATRIX_BASE_BRANCH: child.baseBranch },
         stdout: 'inherit', stderr: 'inherit',
       });
@@ -330,21 +381,25 @@ async function runParent(): Promise<void> {
       harnessVersion: HARNESS_VERSION,
       models: [process.env.CHAT_MODEL ?? 'configured runtime models', resolveEvalJudgeModelId()],
       runs: 1,
-      selection: { fullCorpus: true, filters: {} },
-      corpusFingerprint: fingerprintEvalCorpus(HISTORICAL_MATRIX_CASES),
-      configFingerprint: buildEvalScoringConfigFingerprint({ rows: MATRIX_ROWS, repetitions: MATRIX_REPETITIONS, judge: true }),
+      selection: selection.canary
+        ? { fullCorpus: false, filters: { case: selection.caseId!, canary: 'true' } }
+        : { fullCorpus: true, filters: {} },
+      corpusFingerprint: fingerprintEvalCorpus(selection.cases),
+      configFingerprint: buildEvalScoringConfigFingerprint({ rows: MATRIX_ROWS, repetitions: selection.canary ? 1 : MATRIX_REPETITIONS, judge: true, canary: selection.canary }),
       git,
       startedAt: scorecard.generatedAt,
       completedAt: new Date().toISOString(),
       execution,
     };
     const flow = await runEvalEvidenceFlow({
-      evidencePolicy: 'strict',
+      evidencePolicy: selection.canary ? 'normal' : 'strict',
       execution: summary,
       noComparison: emptyGovernedComparison(),
-      compareBaseline: () => compareAgainstGovernedBaseline({ scorecard, alpha: 0.05, evidencePolicy: 'strict', meta, execution: summary, baselinePath: BASELINE_PATH, forUpdate: updateBaseline }),
+      compareBaseline: selection.canary
+        ? async () => emptyGovernedComparison()
+        : () => compareAgainstGovernedBaseline({ scorecard, alpha: 0.05, evidencePolicy: 'strict', meta, execution: summary, baselinePath: BASELINE_PATH, forUpdate: updateBaseline }),
       regressionCount: governedRegressionCount,
-      comparisonStatus: (comparison: unknown) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
+      comparisonStatus: selection.canary ? undefined : (comparison: unknown) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
       updateBaseline: updateBaseline ? async (comparison: unknown) => {
         assertCompleteMatrix({ requested: summary.requestedRuns, completed: summary.completedRuns, failed: summary.failedRuns });
         const baselineScorecard = leanMatrixScorecard(scorecard);
@@ -357,7 +412,7 @@ async function runParent(): Promise<void> {
       persistDiagnosticReport: () => writeRunReport(reportPath, scorecard, { meta, force }),
     });
     const { regressions, skippedCaseIds } = flow.comparison;
-    if (flow.compared) console.log(formatGovernedComparison(flow.comparison, { fullCorpus: true }));
+    if (flow.compared && !selection.canary) console.log(formatGovernedComparison(flow.comparison, { fullCorpus: true }));
     console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: 'Discovery environment matrix scorecard', execution }));
     if (htmlPath) await writeHtmlReport(htmlPath, scorecard, regressions, execution);
     const failedAssertions = slots.some((slot) => slot.passes !== slot.runs);
@@ -373,11 +428,15 @@ async function main(): Promise<void> {
   const childKey = arg('--child-key');
   if (childKey) {
     const { HISTORICAL_MATRIX_CASES, MATRIX_ROWS } = await loadMatrixEval();
-    const plan = buildMatrixPlan(HISTORICAL_MATRIX_CASES, MATRIX_ROWS, MATRIX_REPETITIONS);
-    const manifest = parseChildManifest(process.env.DISCOVERY_ENV_MATRIX_CHILDREN, [...new Set(plan.map((slot) => slot.childKey))]);
+    const selection = resolveMatrixExecutionSelection(
+      HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[],
+      MATRIX_ROWS as MatrixRuntimeRow[],
+      { caseId: flagValue('--case'), canary: has('--canary'), runsRequested: has('--runs'), updateBaseline: has('--update-baseline') },
+    );
+    const manifest = parseChildManifest(process.env.DISCOVERY_ENV_MATRIX_CHILDREN, [...new Set(selection.plan.map((slot) => slot.childKey))]);
     const child = manifest.children.find((entry) => entry.childKey === childKey);
     if (!child) throw new Error(`Unknown matrix child key ${childKey}`);
-    const output = await runChild(child);
+    const output = await runChild(child, selection);
     const outputPath = flagValue('--child-output');
     if (!outputPath) throw new Error('--child-output is required for a child invocation');
     await Bun.write(outputPath, JSON.stringify(output));
