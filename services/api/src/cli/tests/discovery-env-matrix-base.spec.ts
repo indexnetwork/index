@@ -170,12 +170,26 @@ describe('protected base transaction', () => {
     expect(state.metadata).toBeNull();
   });
 
+  it('rejects a proposal that would be mutated to a null consumed intent', async () => {
+    const { db, state } = mockBaseDatabase([
+      [], [], [], [], [], [],
+      [{ id: 'outside-fixture-proposal' }],
+    ]);
+
+    await expect(seedProtectedBase(db, schema, payload, metadata)).rejects.toThrow(
+      'unexpected intent proposal outside-fixture-proposal',
+    );
+
+    expect(state.calls).toEqual(Array.from({ length: 7 }, () => 'select'));
+    expect(state.upserts).toEqual([]);
+  });
+
   it('persists and verifies the durable metadata only after dependent checks pass', async () => {
-    const { db, state } = mockBaseDatabase(Array.from({ length: 7 }, () => []));
+    const { db, state } = mockBaseDatabase(Array.from({ length: 8 }, () => []));
 
     await seedProtectedBase(db, schema, payload, metadata);
 
-    expect(state.calls.slice(0, 7)).toEqual(Array.from({ length: 7 }, () => 'select'));
+    expect(state.calls.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => 'select'));
     expect(state.upserts).toContain('evalMatrixMetadata');
     expect(state.metadata).toMatchObject(metadata);
     await expect(verifyProtectedBase(db, schema, metadata)).resolves.toBeUndefined();

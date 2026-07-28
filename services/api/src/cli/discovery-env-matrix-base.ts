@@ -102,6 +102,11 @@ async function assertNoUnexpectedBaseDependents(
         )).limit(1),
     },
     {
+      label: 'intent proposal',
+      query: tx.select({ id: schema.intentProposals.id }).from(schema.intentProposals)
+        .where(inArray(schema.intentProposals.consumedIntentId, intentIds)).limit(1),
+    },
+    {
       label: 'unexpected fixture membership',
       query: tx.select({ id: schema.networkMembers.userId }).from(schema.networkMembers)
         .where(or(
