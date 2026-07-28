@@ -2,8 +2,9 @@ import { describe, expect, it } from 'bun:test';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
+import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
-import { collectCandidates, resolveMatrixExecutionSelection } from '../discovery-env-matrix';
+import { buildMatrixArtifactEvidence, collectCandidates, resolveMatrixExecutionSelection, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -82,6 +83,59 @@ describe('discovery environment matrix runtime seams', () => {
 
     children[1]!.branch = children[0]!.branch;
     expect(() => parseChildManifest(JSON.stringify({ children }), keys)).toThrow('different child branch');
+  });
+
+  it('builds a canary artifact accepted by the shared v2 schema with scored run IDs', () => {
+    const slot: MatrixSlotResult = {
+      caseId: 'h1/intent-only/r1',
+      rule: 'intent-only',
+      rowId: 'intent-only',
+      repetition: 0,
+      runs: 1,
+      passes: 1,
+      passRate: 1,
+      flaky: false,
+    };
+    const execution: MatrixExecutionEvidence = {
+      policy: 'strict',
+      runs: [{
+        runId: 'intent-only-r1::run:1',
+        caseId: 'intent-only-r1',
+        runIndex: 0,
+        outcome: 'success',
+        recovered: false,
+        attempts: [{
+          attemptId: 'intent-only-r1::run:1::attempt:1',
+          runId: 'intent-only-r1::run:1',
+          runIndex: 0,
+          attemptNumber: 1,
+          startedAt: '2026-07-28T00:00:00.000Z',
+          completedAt: '2026-07-28T00:00:01.000Z',
+          durationMs: 1000,
+          outcome: 'success',
+          retryable: false,
+          backoffMs: 0,
+        }],
+      }],
+    };
+    const projected = buildMatrixArtifactEvidence([slot], execution);
+    const scorecard = buildScorecard(projected.slots, { model: 'test-model', runs: 1 });
+    const artifact = buildEvalArtifact(EVAL_RUN_REPORT_ARTIFACT_TYPE, scorecard, {
+      harness: 'discovery-env-matrix',
+      harnessVersion: '1',
+      models: ['test-model'],
+      runs: 1,
+      selection: { fullCorpus: false, filters: { case: 'h1', canary: 'true' } },
+      corpusFingerprint: 'a'.repeat(64),
+      configFingerprint: 'b'.repeat(64),
+      git: { revision: 'c'.repeat(40), dirty: false },
+      startedAt: '2026-07-28T00:00:00.000Z',
+      completedAt: '2026-07-28T00:00:01.000Z',
+      execution: projected.execution,
+    });
+
+    expect(artifact.payload.cases[0]!.scoredRunIds).toEqual([`${encodeURIComponent(slot.caseId)}::run:1`]);
+    expect(artifact.execution.runs[0]!.caseId).toBe(slot.caseId);
   });
 
   it('preserves concrete graph evidence IDs alongside evidence types in run candidates', () => {

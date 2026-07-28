@@ -36,8 +36,81 @@ type MatrixCandidate = {
   evidenceIds: MatrixCandidateEvidenceIds;
   rawText?: string;
 };
-type MatrixSlotResult = Record<string, unknown> & { caseId: string; rule: string; rowId: string; repetition: number; runs: number; passes: number; passRate: number; flaky: boolean };
-type ChildOutput = { slots: MatrixSlotResult[]; execution: { policy: 'strict'; runs: unknown[] } };
+export type MatrixSlotResult = Record<string, unknown> & {
+  caseId: string;
+  rule: string;
+  rowId: string;
+  repetition: number;
+  runs: number;
+  passes: number;
+  passRate: number;
+  flaky: boolean;
+  scoredRunIds?: string[];
+};
+
+type MatrixAttemptEvidence = {
+  attemptId: string;
+  runId: string;
+  runIndex: number;
+  attemptNumber: number;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  outcome: 'success' | 'failure' | 'timeout' | 'cancelled';
+  retryable: boolean;
+  backoffMs: number;
+  error?: unknown;
+};
+
+type MatrixRunEvidence = {
+  runId: string;
+  caseId: string;
+  runIndex: number;
+  outcome: 'success' | 'failed' | 'cancelled';
+  recovered: boolean;
+  attempts: MatrixAttemptEvidence[];
+};
+
+export type MatrixExecutionEvidence = { policy: 'strict'; runs: MatrixRunEvidence[] };
+type ChildOutput = { slots: MatrixSlotResult[]; execution: MatrixExecutionEvidence };
+
+/**
+ * Re-keys child-batch evidence to the persisted matrix slot case IDs. The shared
+ * v2 artifact schema requires one deterministic run ID per scored case, rather
+ * than the child-cohort batch IDs used while executing graph calls.
+ */
+export function buildMatrixArtifactEvidence(
+  slots: MatrixSlotResult[],
+  execution: MatrixExecutionEvidence,
+): { slots: MatrixSlotResult[]; execution: MatrixExecutionEvidence } {
+  if (slots.length !== execution.runs.length) {
+    throw new Error('Matrix slot results must align one-to-one with execution evidence');
+  }
+  const runs = execution.runs.map((run, index) => {
+    const slot = slots[index]!;
+    const runId = `${encodeURIComponent(slot.caseId)}::run:1`;
+    return {
+      ...run,
+      runId,
+      caseId: slot.caseId,
+      runIndex: 0,
+      attempts: run.attempts.map((attempt, attemptIndex) => ({
+        ...attempt,
+        runId,
+        runIndex: 0,
+        attemptNumber: attemptIndex + 1,
+        attemptId: `${runId}::attempt:${attemptIndex + 1}`,
+      })),
+    };
+  });
+  return {
+    slots: slots.map((slot, index) => ({
+      ...slot,
+      scoredRunIds: runs[index]!.outcome === 'success' ? [runs[index]!.runId] : [],
+    })),
+    execution: { ...execution, runs },
+  };
+}
 
 const protocolEvalPath = (relativePath: string): string => path.resolve(import.meta.dir, '../../../../packages/protocol/eval', relativePath);
 const protocolSourcePath = (relativePath: string): string => path.resolve(import.meta.dir, '../../../../packages/protocol/src', relativePath);
@@ -298,7 +371,11 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
     })),
     caseId: `${plan[index]!.matrixCase.id}/${plan[index]!.row.id}/r${plan[index]!.repetition + 1}`,
   }));
-  return { slots, execution: buildExecutionEvidence([batch]) as ChildOutput['execution'] };
+  const artifactEvidence = buildMatrixArtifactEvidence(
+    slots,
+    buildExecutionEvidence([batch]) as MatrixExecutionEvidence,
+  );
+  return artifactEvidence;
 }
 
 async function runParent(): Promise<void> {
@@ -356,6 +433,7 @@ async function runParent(): Promise<void> {
     force,
   });
 
+  const startedAt = new Date().toISOString();
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'discovery-env-matrix-'));
   try {
     const outputs: ChildOutput[] = [];
@@ -387,7 +465,7 @@ async function runParent(): Promise<void> {
       corpusFingerprint: fingerprintEvalCorpus(selection.cases),
       configFingerprint: buildEvalScoringConfigFingerprint({ rows: MATRIX_ROWS, repetitions: selection.canary ? 1 : MATRIX_REPETITIONS, judge: true, canary: selection.canary }),
       git,
-      startedAt: scorecard.generatedAt,
+      startedAt,
       completedAt: new Date().toISOString(),
       execution,
     };
