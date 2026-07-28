@@ -104,10 +104,21 @@ export function buildMatrixArtifactEvidence(
     };
   });
   return {
-    slots: slots.map((slot, index) => ({
-      ...slot,
-      scoredRunIds: runs[index]!.outcome === 'success' ? [runs[index]!.runId] : [],
-    })),
+    slots: slots.map((slot, index) => {
+      const run = runs[index]!;
+      if (run.outcome === 'success') return { ...slot, scoredRunIds: [run.runId] };
+      // Shared v2 artifacts score only terminal-success outputs. A failed or
+      // cancelled child slot is retained as execution evidence, not as a run.
+      return {
+        ...slot,
+        runs: 0,
+        passes: 0,
+        passRate: 0,
+        flaky: false,
+        passed: false,
+        scoredRunIds: [],
+      };
+    }),
     execution: { ...execution, runs },
   };
 }

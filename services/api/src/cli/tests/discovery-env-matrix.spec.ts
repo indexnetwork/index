@@ -138,6 +138,60 @@ describe('discovery environment matrix runtime seams', () => {
     expect(artifact.execution.runs[0]!.caseId).toBe(slot.caseId);
   });
 
+  it('builds a shared-schema-valid failed canary artifact with zero scored runs', () => {
+    const slot: MatrixSlotResult = {
+      caseId: 'h1/profile-premise/r1',
+      rule: 'profile-premise',
+      rowId: 'profile-premise',
+      repetition: 0,
+      // Deliberately nonzero input proves artifact projection excludes failed output.
+      runs: 1,
+      passes: 1,
+      passRate: 1,
+      flaky: false,
+    };
+    const execution: MatrixExecutionEvidence = {
+      policy: 'strict',
+      runs: [{
+        runId: 'profile-premise-r1::run:1',
+        caseId: 'profile-premise-r1',
+        runIndex: 0,
+        outcome: 'failed',
+        recovered: false,
+        attempts: [{
+          attemptId: 'profile-premise-r1::run:1::attempt:1',
+          runId: 'profile-premise-r1::run:1',
+          runIndex: 0,
+          attemptNumber: 1,
+          startedAt: '2026-07-28T00:00:00.000Z',
+          completedAt: '2026-07-28T00:00:01.000Z',
+          durationMs: 1000,
+          outcome: 'failure',
+          error: { class: 'Error', message: 'graph failed' },
+          retryable: false,
+          backoffMs: 0,
+        }],
+      }],
+    };
+    const projected = buildMatrixArtifactEvidence([slot], execution);
+    const scorecard = buildScorecard(projected.slots, { model: 'test-model', runs: 1 });
+    const artifact = buildEvalArtifact(EVAL_RUN_REPORT_ARTIFACT_TYPE, scorecard, {
+      harness: 'discovery-env-matrix',
+      harnessVersion: '1',
+      models: ['test-model'],
+      runs: 1,
+      selection: { fullCorpus: false, filters: { case: 'h1', canary: 'true' } },
+      corpusFingerprint: 'a'.repeat(64),
+      configFingerprint: 'b'.repeat(64),
+      git: { revision: 'c'.repeat(40), dirty: false },
+      startedAt: '2026-07-28T00:00:00.000Z',
+      completedAt: '2026-07-28T00:00:01.000Z',
+      execution: projected.execution,
+    });
+
+    expect(artifact.payload.cases[0]).toMatchObject({ runs: 0, passes: 0, passRate: 0, scoredRunIds: [] });
+  });
+
   it('preserves concrete graph evidence IDs alongside evidence types in run candidates', () => {
     const candidates = collectCandidates({
       candidates: [{
