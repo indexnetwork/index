@@ -291,7 +291,7 @@ describe('QuestionerAdapter', () => {
     expect(scopedIds.has(insertedIds[2])).toBe(false);
   });
 
-  it('applies fingerprint and boundary-safe legacy freshness', async () => {
+  it('keeps resolved labels and axes durable across fingerprint changes', async () => {
     const cappedLegacyText = 'x'.repeat(160);
     const ids = await adapter.persist([
       makePoolPersistable('pending-old', 'fingerprint-v1'),
@@ -318,32 +318,27 @@ describe('QuestionerAdapter', () => {
       currentIntentFingerprint: 'fingerprint-v2',
       currentIntentText: 'Find collaborators for local prototypes',
     };
+    const durableLabels = [
+      'pending-old',
+      'answered-fresh',
+      'dismissed-fresh',
+      'answered-stale',
+      'legacy-fresh',
+      'legacy-short-prefix-stale',
+      'legacy-capped-fresh',
+    ];
     expect((await adapter.listPoolQuestionLabels('test-user-1', SELECTED_INTENT_ID, freshness)).sort())
-      .toEqual(['answered-fresh', 'dismissed-fresh', 'legacy-fresh', 'pending-old'].sort());
-    expect((await adapter.listResolvedPoolAxes('test-user-1', SELECTED_INTENT_ID, freshness))
+      .toEqual(durableLabels.sort());
+    expect((await adapter.listResolvedPoolAxes('test-user-1', SELECTED_INTENT_ID))
       .map((axis) => axis.label).sort())
-      .toEqual(['answered-fresh', 'dismissed-fresh', 'legacy-fresh'].sort());
+      .toEqual(durableLabels.filter((label) => label !== 'pending-old').sort());
 
-    // Backward-compatible callers without freshness context still see every status.
+    // Callers without freshness context preserve the same durable history.
     expect((await adapter.listPoolQuestionLabels('test-user-1', SELECTED_INTENT_ID)).sort())
-      .toEqual([
-        'pending-old',
-        'answered-fresh',
-        'dismissed-fresh',
-        'answered-stale',
-        'legacy-fresh',
-        'legacy-short-prefix-stale',
-        'legacy-capped-fresh',
-      ].sort());
-
-    const cappedFreshAxes = await adapter.listResolvedPoolAxes('test-user-1', SELECTED_INTENT_ID, {
-      currentIntentFingerprint: 'different-fingerprint',
-      currentIntentText: `${cappedLegacyText} with uncapped suffix`,
-    });
-    expect(cappedFreshAxes.map((axis) => axis.label)).toEqual(['legacy-capped-fresh']);
+      .toEqual(durableLabels.sort());
   });
 
-  it('filters freshness before capping resolved axes at 24', async () => {
+  it('returns every resolved axis across fingerprints without a 24-axis cap', async () => {
     const fresh = Array.from({ length: 25 }, (_, index) =>
       makePoolPersistable(`fresh-${index}`, 'current', 'Current intent', OTHER_INTENT_ID));
     const stale = Array.from({ length: 24 }, (_, index) =>
@@ -358,12 +353,10 @@ describe('QuestionerAdapter', () => {
     };
     await Promise.all([...freshIds, ...staleIds].map((id) => adapter.answer(id, 'test-user-1', answer)));
 
-    const axes = await adapter.listResolvedPoolAxes('test-user-1', OTHER_INTENT_ID, {
-      currentIntentFingerprint: 'current',
-      currentIntentText: 'Current intent',
-    });
-    expect(axes).toHaveLength(24);
-    expect(axes.every((axis) => axis.label.startsWith('fresh-'))).toBe(true);
+    const axes = await adapter.listResolvedPoolAxes('test-user-1', OTHER_INTENT_ID);
+    expect(axes).toHaveLength(49);
+    expect(axes.some((axis) => axis.label === 'fresh-24')).toBe(true);
+    expect(axes.some((axis) => axis.label === 'newer-stale-23')).toBe(true);
   });
 
   it('reads only strict fresh answered owner preferences', async () => {

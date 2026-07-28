@@ -86,6 +86,40 @@ describe("runPoolDiscriminatorShadow", () => {
     expect(result.discriminators[0].embedding).toEqual([0.4, 0.6, 0.2]);
   });
 
+  it("uses every prior resolved-axis text, including an equivalent 25th reference", async () => {
+    const d = minedDiscriminator("working style", (i) => (i < 3 ? "A" : "B"));
+    const priorReferenceTexts = Array.from({ length: 25 }, (_, i) =>
+      i === 24 ? "equivalent resolved working style" : `resolved axis ${i}`,
+    );
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: [],
+      priorReferenceTexts,
+      miner: { mine: async () => [d] },
+      embedder: fakeEmbedder((text) =>
+        text.startsWith("working style") || text === "equivalent resolved working style"
+          ? [1, 0]
+          : [0, 1]),
+    });
+    expect(result.discriminators[0].novelty).toBeCloseTo(0, 6);
+    expect(result.discriminators[0].voi).toBeCloseTo(0, 6);
+  });
+
+  it("uses every prior resolved-axis embedding, including an equivalent 25th reference", async () => {
+    const d = minedDiscriminator("working style", (i) => (i < 3 ? "A" : "B"));
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: [],
+      priorReferenceEmbeddings: Array.from({ length: 25 }, (_, i) => i === 24 ? [1, 0] : [0, 1]),
+      miner: { mine: async () => [d] },
+      embedder: fakeEmbedder(() => [1, 0]),
+    });
+    expect(result.discriminators[0].novelty).toBeCloseTo(0, 6);
+    expect(result.discriminators[0].voi).toBeCloseTo(0, 6);
+  });
+
   it("does not embed without novelty references merely to retain vectors", async () => {
     const d = minedDiscriminator("fresh axis", (i) => (i < 3 ? "A" : "B"));
     let embeddingCalls = 0;
@@ -118,7 +152,7 @@ describe("runPoolDiscriminatorShadow", () => {
     expect(result.discriminators[0].embeddingModel).toBeUndefined();
   });
 
-  it("keeps current intent references when prior text references fill their own budget", async () => {
+  it("keeps current intent references alongside prior text history", async () => {
     const d = minedDiscriminator("current constraint axis", (i) => (i < 3 ? "A" : "B"));
     const result = await runPoolDiscriminatorShadow({
       intentText: "intent",
@@ -154,6 +188,59 @@ describe("runPoolDiscriminatorShadow", () => {
     expect(result.discriminators[0].voi).toBeGreaterThan(0);
     expect(result.discriminators[0].embedding).toBeUndefined();
     expect(result.discriminators[0].embeddingModel).toBeUndefined();
+  });
+
+  it("signals when historical discriminator comparison is unavailable", async () => {
+    const d = minedDiscriminator("resilient history", (i) => (i < 3 ? "A" : "B"));
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: [],
+      priorReferenceEmbeddings: [[0.4, 0.6, 0.2]],
+      miner: { mine: async () => [d] },
+      embedder: {
+        async generate() {
+          throw new Error("embedding provider down");
+        },
+      },
+    });
+    expect(result.priorReferenceComparisonUnavailable).toBe(true);
+  });
+
+  it("signals unavailable history comparison for incompatible vector dimensions", async () => {
+    const d = minedDiscriminator("dimension mismatch", (i) => (i < 3 ? "A" : "B"));
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: [],
+      priorReferenceEmbeddings: [[0.4, 0.6, 0.2]],
+      miner: { mine: async () => [d] },
+      embedder: fakeEmbedder(() => [0.4, 0.6]),
+    });
+    expect(result.priorReferenceComparisonUnavailable).toBe(true);
+    expect(result.discriminators[0].novelty).toBe(1);
+    expect(result.discriminators[0].voi).toBeGreaterThan(0);
+  });
+
+  it("does not signal unavailable history comparison when no history was supplied", async () => {
+    const d = minedDiscriminator("resilient fresh", (i) => (i < 3 ? "A" : "B"));
+    let embeddingCalls = 0;
+    const result = await runPoolDiscriminatorShadow({
+      intentText: "intent",
+      candidates,
+      referenceTexts: ["ordinary current reference"],
+      miner: { mine: async () => [d] },
+      embedder: {
+        async generate() {
+          embeddingCalls++;
+          throw new Error("embedding provider down");
+        },
+      },
+    });
+    expect(embeddingCalls).toBe(1);
+    expect(result.priorReferenceComparisonUnavailable).toBeUndefined();
+    expect(result.discriminators[0].novelty).toBe(1);
+    expect(result.discriminators[0].voi).toBeGreaterThan(0);
   });
 
   it("returns an empty result when the miner yields no axes", async () => {

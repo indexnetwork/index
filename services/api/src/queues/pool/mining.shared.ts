@@ -94,6 +94,13 @@ export function isPoolMiningActivated(): boolean {
   return poolQuestionsMiningMode() === 'shadow' || poolQuestionsMode() === 'on';
 }
 
+/** Reject question admission only when durable resolved-axis comparison failed. */
+export function shouldEnqueuePoolQuestionForResolvedHistory(
+  shadow: { priorReferenceComparisonUnavailable?: boolean },
+): boolean {
+  return shadow.priorReferenceComparisonUnavailable !== true;
+}
+
 export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrigger): Promise<void> {
   // Lens C (IND-433) runs on its OWN flag, independent of the Lens A pool
   // flags below — fire-and-forget and fully failure-isolated so it neither
@@ -249,10 +256,7 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
   let resolvedAxes: import('@indexnetwork/protocol').QuestionPoolDiscriminator[] = [];
   if (questionsEnabled && intentId && intentFingerprint) {
     try {
-      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId, {
-        currentIntentFingerprint: intentFingerprint,
-        currentIntentText: intentText,
-      });
+      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId);
     } catch {
       // Durable semantic references are fail-open enrichment for mining.
     }
@@ -298,6 +302,16 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
       evidenceRate: round(d.evidenceRate),
     })),
   });
+
+  if (!shouldEnqueuePoolQuestionForResolvedHistory(shadow)) {
+    logger.warn('pool question skipped: resolved-axis comparison unavailable', {
+      source: trigger.source,
+      runId: trigger.runId ?? null,
+      userId,
+      intentId,
+    });
+    return;
+  }
 
   // IND-418: turn the top eligible discriminator into a pool_discovery
   // question. QUESTIONER_ENABLED gates via questionerEnqueueIfEnabled;

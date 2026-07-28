@@ -287,6 +287,16 @@ describe('QuestionerQueue pool_discovery arm', () => {
     expect(h.persisted[0][0].detection.pool?.alternates).toEqual([]);
   });
 
+  it('does not persist a new-fingerprint discriminator whose label was already asked', async () => {
+    h.setAskedLabels(['Working style']);
+    const input = poolInput([discriminator('Working style')]);
+    (input.context as { intentFingerprint: string }).intentFingerprint = 'fingerprint-v2';
+
+    await h.queue.processJob('generate_questions', input);
+
+    expect(h.persisted).toHaveLength(0);
+  });
+
   it('persists nothing when every discriminator was already asked', async () => {
     h.setAskedLabels(['top']);
     await h.queue.processJob('generate_questions', poolInput([discriminator('top')]));
