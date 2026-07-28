@@ -138,6 +138,11 @@ export function createIndexApiClient(options = {}) {
         `/users/${encodeURIComponent(userId)}`,
         options,
       ),
+      // Same fields for several users at once, for list views.
+      batch: (ids = [], options = {}) => request(
+        `/users/batch${toQueryString({ ids: ids.join(',') })}`,
+        options,
+      ),
       // Full negotiation threads (counterparty, outcome, agent-to-agent turns).
       negotiations: (userId, query = {}, options = {}) => request(
         `/users/${encodeURIComponent(userId)}/negotiations${toQueryString(query)}`,

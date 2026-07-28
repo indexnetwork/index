@@ -153,16 +153,13 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
 
 // Your negotiator's identity, the one agent that speaks for you, and the only
 // thing on this page with a face. Laid out like the profile block in settings
-// (picture on the left as the control, name beside it) because it is the same
-// kind of thing: who you are to the network, and who your agent is.
+// (picture on the left, name beside it) because it is the same kind of thing:
+// who you are to the network, and who your agent is.
 //
-// Shuffle is the primary move, a generated avatar's whole point is that a new
-// one is one click away, and the kit has 3,600 draws behind it. Uploading is
-// second because a picture you chose is the rarer case, and it can be dropped
-// again to fall back to the generated face.
-function NegotiatorProfile({ agent, onShuffle, onPick, onClear,
+// Shuffle is the whole control surface: a generated avatar's point is that a
+// new one is one click away, and the kit has 3,600 draws behind it.
+function NegotiatorProfile({ agent, onShuffle,
                             runtimeOptions, runtime, onChangeRuntime }) {
-  const [err, setErr] = useState("");
   const btn = {
     fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
     border:"1px solid #000", background:"#fff", color:"#000",
@@ -170,27 +167,20 @@ function NegotiatorProfile({ agent, onShuffle, onPick, onClear,
   };
   return (
     <div style={{ display:"grid", gap:16 }}>
+      {/* No edit badge over the picture. The upload affordance sat in the
+          bottom-right corner, which is exactly where the agent's mark now
+          sits, so the pencil covered the thing it was there to change.
+          Shuffle is the control. */}
       <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-        <PicturePicker size={54} label="change your agent's picture"
-          onPick={(d) => { setErr(""); onPick(d); }} onError={setErr}>
-          <MyAgentAvatar size={54}/>
-        </PicturePicker>
+        <MyAgentAvatar size={54}/>
 
         <div style={{ display:"grid", gap:6, minWidth:0 }}>
           <div style={{
             fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
           }}>{agent.name}</div>
           <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
-            <button style={btn} onClick={() => { setErr(""); onShuffle(); }}>⟳ shuffle</button>
-            {agent.photo
-              ? <button style={btn} onClick={() => { setErr(""); onClear(); }}>use generated</button>
-              : <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)" }}>
-                  generated · {agentFaceFor(agent.seed).face.name}
-                </span>}
+            <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
           </div>
-          {err && (
-            <div style={{ fontFamily:"var(--mac-sans)", fontSize:11, color:"var(--ink-warn)" }}>{err}</div>
-          )}
         </div>
       </div>
 
@@ -228,12 +218,18 @@ function NegotiatorSelect({ options, value, onChange }) {
     const onDown = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    // capture + preventDefault so the open dropdown takes the Escape before the
+    // window-closing handler in primitives sees it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -380,25 +376,23 @@ function Agents({ onClose }) {
     [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
   }));
 
-  // Your negotiator's picture. Written straight onto the shared ME record the
-  // way settings commits a profile edit, so every other surface, the feed, a
-  // question card, onboarding, picks it up the next time it renders. `bump`
-  // only exists to re-render this pane, since ME is a plain object.
+  // Your negotiator's picture. setMyAgentFace writes the shared record so every
+  // other surface (the feed, a question card, onboarding) picks it up on its
+  // next render, and persists it so the draw survives a relaunch. `bump` only
+  // exists to re-render this pane, since the record is a plain object.
   const [, bump] = useState(0);
   const myNegotiator = myAgent();
-  const commitFace = (patch) => { Object.assign(ME, patch); bump(n => n + 1); };
   // any distinct string moves the hash; the counter stops two shuffles in the
   // same millisecond from landing on the same draw
   const shuffleCount = useRef(0);
   const shuffleFace = () => {
     shuffleCount.current += 1;
-    commitFace({
-      agentFaceSeed: `${ME.name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
-      agentPhoto: null,
+    setMyAgentFace({
+      seed: `${currentMe().name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
+      photo: null,
     });
+    bump(n => n + 1);
   };
-  const pickPhoto = (photo) => commitFace({ agentPhoto: photo });
-  const clearPhoto = () => commitFace({ agentPhoto: null });
 
   // Only runtimes you've switched on can speak for you, so only those are
   // offered. Index is always available as the fallback.
@@ -504,8 +498,6 @@ function Agents({ onClose }) {
             <NegotiatorProfile
               agent={myNegotiator}
               onShuffle={shuffleFace}
-              onPick={pickPhoto}
-              onClear={clearPhoto}
               runtimeOptions={negotiatorOptions}
               runtime={negotiator}
               onChangeRuntime={setNegotiator}

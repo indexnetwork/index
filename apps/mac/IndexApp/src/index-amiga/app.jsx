@@ -161,6 +161,10 @@ function App() {
     shape: intent.shape || "warm",
   });
   const pickExistingIntent = (intent) => {
+    // The clarifier feed is app-level state; clear it so questions from the
+    // previously opened signal don't leak into this one.
+    setConversation([]);
+    setField([]);
     setProfile(profileFromIntent(intent));
     setScreen("main");
     seedField();

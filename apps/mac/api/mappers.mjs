@@ -138,17 +138,29 @@ export function mapPersonFromHomeCard(card, section = {}) {
  */
 export function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
-  const socials = Array.isArray(profile.socials) ? profile.socials : [];
   return {
     bio: profile.bio || profile.intro || '',
-    socials: socials
-      .map((entry) => ({
-        id: String(entry.id || entry.label || entry.platform || 'website').toLowerCase(),
-        prefix: entry.prefix || '',
-        handle: entry.handle || entry.username || entry.value || '',
-      }))
-      .filter((entry) => entry.handle),
+    socials: mapSocials(profile.socials),
   };
+}
+
+/**
+ * Normalize social links onto the {id, prefix, handle} shape the UI draws.
+ *
+ * The API stores them as `{label, value}` where value is usually a full URL,
+ * so the label becomes the platform and the value is used verbatim as the
+ * destination. Handle-only sources keep their prefix.
+ * @param {Array<Object>} socials
+ */
+export function mapSocials(socials) {
+  if (!Array.isArray(socials)) return [];
+  return socials
+    .map((entry) => {
+      const id = entry.id || entry.label || entry.platform || 'website';
+      const handle = entry.handle || entry.username || entry.value || '';
+      return { id: String(id).toLowerCase(), prefix: entry.prefix || '', handle };
+    })
+    .filter((entry) => entry.handle);
 }
 
 /**
@@ -158,6 +170,7 @@ export function mapCounterpartProfile(source = {}) {
 export function mapPeopleFromOpportunities(opportunities = []) {
   return opportunities.map((opportunity) => ({
     id: opportunity.id,
+    userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
     location: opportunity.index?.title || '',
@@ -238,6 +251,7 @@ export function mapOpportunityStatusToPrototype(status) {
   switch (status) {
     case 'accepted':
       return 'accepted';
+    case 'latent':
     case 'pending':
     case 'draft':
       return 'ready';
@@ -248,7 +262,6 @@ export function mapOpportunityStatusToPrototype(status) {
       return 'passed';
     case 'expired':
       return 'expired';
-    case 'latent':
     default:
       return 'considering';
   }

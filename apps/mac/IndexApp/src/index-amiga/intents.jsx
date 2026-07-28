@@ -78,11 +78,11 @@ function NetworksRow({ count, onClick }) {
   );
 }
 
-// The agent runtimes on this Mac. Same quiet shelf treatment as the networks
-// row above it: both are destinations, not settings. The glyph is the shared
-// agent mark (AgentGlyph), a head with an antenna, which reads as "an agent"
-// at a glance and matches the mark agents wear in the feed. Unframed here,
-// since this is a shelf row rather than something's profile picture.
+// The agents destination. Same quiet shelf treatment as the networks row above
+// it: both are destinations, not settings, so both get a plain glyph. Your
+// negotiator's picture belongs where the agent is speaking, not on a row whose
+// job is "take me to the agents screen", where next to the networks mark it
+// read as a stray photo in an icon column.
 function AgentsRow({ count, onClick }) {
   return (
     <button
@@ -118,12 +118,18 @@ function UserMenu({ me, onSelect }) {
     const onDown = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    // capture + preventDefault so this menu takes the Escape before the
+    // window-closing handler in primitives sees it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 

@@ -161,9 +161,15 @@ function CreateNetwork({ onCancel, onCreate }) {
   const canCreate = named.length > 0;
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // capture + preventDefault: this form is on top of the networks window, so
+    // Escape has to cancel the form rather than close the window under it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onCancel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onCancel]);
 
   const submit = () => {

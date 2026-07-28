@@ -131,6 +131,28 @@ enum CredentialStore {
     }
 }
 
+/// Which avatar the negotiator wears: `{seed}` for a generated face, or
+/// `{photo}` for an uploaded one. Purely cosmetic and purely local, so it lives
+/// in UserDefaults rather than going anywhere near the credential store.
+enum AgentFaceStore {
+    private static let key = "AGENT_FACE"
+
+    static func save(_ value: [String: Any]?) {
+        guard let value = value,
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let json = String(data: data, encoding: .utf8) else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
+        UserDefaults.standard.set(json, forKey: key)
+    }
+
+    /// The stored JSON, ready to interpolate into the injection script.
+    static func loadJSON() -> String {
+        UserDefaults.standard.string(forKey: key) ?? "null"
+    }
+}
+
 /// JSON-encode a string (or null) so it can be interpolated safely into JS.
 func jsonValue(_ s: String?) -> String {
     guard let s = s, let d = try? JSONEncoder().encode(s), let out = String(data: d, encoding: .utf8) else {
@@ -471,9 +493,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         if message.name == "indexAuth" {
-            let action = (message.body as? [String: Any])?["action"] as? String
+            let body = message.body as? [String: Any]
+            let action = body?["action"] as? String
             if action == "login" { startLogin() }
             else if action == "logout" { logout() }
+            else if action == "setAgentFace" {
+                // The page is loaded from a file:// URL, where WebKit gives the
+                // document an opaque origin and localStorage is not persisted.
+                // UserDefaults is the store that actually survives a relaunch.
+                AgentFaceStore.save(body?["value"] as? [String: Any])
+            }
             return
         }
         guard message.name == "windowDrag" else { return }
@@ -495,7 +524,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: - Native auth bridge
 
-    /// document-start script exposing the current API base + stored key to the page.
+    /// document-start script exposing the current API base + stored key to the
+    /// page, plus the negotiator's saved avatar so it is already correct on the
+    /// first paint rather than flashing a different face and then settling.
     private static func nativeInjectionScript() -> String {
         let cred = CredentialStore.load()
         let obj: [String: Any] = [
@@ -504,7 +535,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        return "window.INDEX_NATIVE = \(json);"
+        return """
+        window.INDEX_NATIVE = \(json);
+        window.INDEX_NATIVE.agentFace = \(AgentFaceStore.loadJSON());
+        """
     }
 
     /// Begin the browser login flow: open /cli-auth with a one-time state and a

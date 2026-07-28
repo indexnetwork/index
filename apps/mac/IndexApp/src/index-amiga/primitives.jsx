@@ -315,38 +315,125 @@ const AGENT_FACES = [
    yours and a single picture. The runtimes on the agents page (hermes, claude
    code) are where it *runs*, not who it is, they keep their vendor tiles.
    Everything the negotiator says anywhere in the app wears this picture. */
+/* The record for whoever is signed in. Signing in replaces
+   window.INDEX_DATA.ME wholesale with the live user, while the demo `ME` const
+   stays as it was, so reading the const directly would keep naming the agent
+   after the demo profile. */
+function currentMe() {
+  const live = (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || null;
+  return live || (typeof ME !== "undefined" && ME) || {};
+}
+
+/* Where a shuffled face is kept.
+
+   The page is loaded from a file:// URL, so WebKit hands the document an
+   opaque origin and localStorage is not persisted between launches. The native
+   shell stores it in UserDefaults instead and injects it at document start, so
+   the saved face is already correct on the first paint. localStorage is still
+   written as the fallback for running this bundle in a browser, where there is
+   no shell to ask. */
+const AGENT_FACE_KEY = "index.agentFace";
+let agentFaceCache;
+
+function storedAgentFace() {
+  if (agentFaceCache !== undefined) return agentFaceCache;
+  const native = (typeof window !== "undefined" && window.INDEX_NATIVE && window.INDEX_NATIVE.agentFace) || null;
+  if (native) { agentFaceCache = native; return agentFaceCache; }
+  try {
+    const raw = window.localStorage.getItem(AGENT_FACE_KEY);
+    agentFaceCache = raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    agentFaceCache = null;   // storage disabled; the face falls back to your name
+  }
+  return agentFaceCache;
+}
+
+/** Save the negotiator's avatar so it survives a relaunch. */
+function setMyAgentFace(patch) {
+  const next = { ...(storedAgentFace() || {}), ...patch };
+  agentFaceCache = next;
+  Object.assign(currentMe(), {
+    agentFaceSeed: next.seed || null,
+    agentPhoto: next.photo || null,
+  });
+  try { window.localStorage.setItem(AGENT_FACE_KEY, JSON.stringify(next)); } catch (e) {}
+  const bridge = (typeof window !== "undefined" && window.webkit
+    && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth) || null;
+  if (bridge) {
+    try { bridge.postMessage({ action: "setAgentFace", value: next }); } catch (e) {}
+  }
+  return next;
+}
+
 function myAgent() {
-  const me = (typeof ME !== "undefined" && ME) || {};
+  const me = currentMe();
+  const saved = storedAgentFace() || {};
   const first = String(me.name || "").trim().split(/\s+/)[0] || "your";
   return {
     name: `${first}'s agent`,
-    // shuffling on the agents page stores an override; otherwise the face
-    // hangs off your name, so it is yours from the first launch
-    seed: me.agentFaceSeed || me.name || "index",
-    photo: me.agentPhoto || null,
+    // a shuffle wins, then whatever was saved on a previous run, and failing
+    // both the face hangs off your name so it is yours from the first launch
+    seed: me.agentFaceSeed || saved.seed || me.name || "index",
+    photo: me.agentPhoto || saved.photo || null,
   };
 }
 
 /** Back-compat alias for the seed alone. */
 function ownAgentSeed() { return myAgent().seed; }
 
-/** Your negotiator's picture, at any size. The one component every surface
-    uses so a change on the agents page lands everywhere at once. */
-function MyAgentAvatar({ size = 22, style, title }) {
-  const me = myAgent();
-  if (me.photo) {
+/** Just the agent's own mark, no owner attached. */
+function AgentMark({ size, agent, title }) {
+  if (agent.photo) {
     return (
-      <span title={title || me.name} style={{
-        flex:"0 0 auto", width:size, height:size, display:"block",
-        border:`${size >= 40 ? 2 : 1}px solid ${FACE_INK}`,
-        overflow:"hidden", boxSizing:"border-box", ...style,
+      <span title={title} style={{
+        width:size, height:size, display:"block", flex:"0 0 auto",
+        border:`1px solid ${FACE_INK}`, overflow:"hidden", boxSizing:"border-box",
       }}>
-        <img src={me.photo} alt={me.name}
-          style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+        <img src={agent.photo} alt="" style={{
+          width:"100%", height:"100%", objectFit:"cover", display:"block",
+        }}/>
       </span>
     );
   }
-  return <AgentFace seed={me.seed} size={size} title={title || me.name} style={style}/>;
+  return <AgentFace seed={agent.seed} size={size} title={title}/>;
+}
+
+/** Your negotiator's picture: your face with its mark set into the corner.
+    An agent is not a separate character in the network, it is you with
+    something acting on your behalf, so the picture says both. Your photo
+    carries who it speaks for and the mark says it is the agent speaking. One
+    component, so a change on the agents page lands everywhere at once. */
+function MyAgentAvatar({ size = 22, style, title }) {
+  const me = myAgent();
+  const owner = currentMe();
+  // The mark keeps a floor, since below about 8px the faces stop being marks
+  // and become specks. The ring scales too: a fixed 1.5px halo is invisible at
+  // 54px and swallows the mark at 16px.
+  const badge = Math.max(8, Math.round(size * 0.44));
+  const ring = Math.max(1, Math.round(size * 0.055 * 10) / 10);
+  return (
+    <div
+      title={title || me.name}
+      style={{ position:"relative", width:size, height:size, flex:"0 0 auto", ...style }}>
+      {owner.photo ? (
+        <img src={owner.photo} alt="" style={{
+          width:"100%", height:"100%", objectFit:"cover", display:"block",
+          border:`1px solid ${FACE_INK}`, boxSizing:"border-box",
+          filter:"grayscale(1) contrast(1.05)",
+        }}/>
+      ) : (
+        <Avatar name={owner.name} size={size}/>
+      )}
+      {/* bottom-right, held inside the footprint so the mark never overlaps
+          whatever sits beside it in a tight row */}
+      <span style={{
+        position:"absolute", right:0, bottom:0, display:"block", lineHeight:0,
+        boxShadow:`0 0 0 ${ring}px ${A.paper}`,
+      }}>
+        <AgentMark size={badge} agent={me}/>
+      </span>
+    </div>
+  );
 }
 
 /** Deterministic face + palette draw for an owner. */
@@ -405,10 +492,13 @@ function AgentFace({ seed, size = 22, title, style }) {
 }
 
 function AgentAvatar({ size = 22, collective = false, seed, title, style }) {
-  // With an owner we can draw that agent's own face; without one there is no
-  // identity to draw, so it falls back to the generic mark.
-  if (!collective && seed) {
-    return <AgentFace seed={seed} size={size} title={title} style={style}/>;
+  // Every single agent gets a face. Named ones draw from their owner; a
+  // counterpart the API could not name still gets a stable face rather than a
+  // different-looking generic mark, so the app never mixes two visual
+  // languages for the same kind of thing. Only "several agents at once" is
+  // drawn differently, because it is not one agent.
+  if (!collective) {
+    return <AgentFace seed={seed || "someone"} size={size} title={title} style={style}/>;
   }
   return (
     <div
@@ -434,11 +524,68 @@ function AgentAvatar({ size = 22, collective = false, seed, title, style }) {
   );
 }
 
+/* ---------- Social links: one shape, whatever the source ----------
+   Socials arrive two ways: the demo record carries {id, prefix, handle}, while
+   the API carries {label, value} where value is usually a whole URL. Everything
+   is normalized to a platform plus a bare handle, because the logo already says
+   which platform it is: showing "x.com/seren" next to an X mark is the platform
+   said twice. The prefix only comes back when a link has to be built. */
+const SOCIAL_PREFIX = {
+  x: "x.com/",
+  twitter: "x.com/",
+  linkedin: "linkedin.com/in/",
+  github: "github.com/",
+  telegram: "t.me/",
+};
+
+/** Platform id from an entry's own label, or failing that from its url. */
+function socialPlatformOf(social = {}) {
+  const id = String(social.id || social.label || social.platform || "").toLowerCase().trim();
+  if (id) return id === "twitter" ? "x" : id;
+  const p = String(social.prefix || social.handle || social.value || "").toLowerCase();
+  if (p.includes("x.com") || p.includes("twitter")) return "x";
+  if (p.includes("linkedin")) return "linkedin";
+  if (p.includes("github")) return "github";
+  if (p.includes("t.me") || p.includes("telegram")) return "telegram";
+  return "website";
+}
+
+/** Just the part that identifies the person: no scheme, no platform host.
+    An unknown host keeps its domain, since there the domain IS the identity. */
+function socialHandleOf(social = {}) {
+  const raw = String(social.handle ?? social.value ?? "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw) && !raw.includes("/")) return raw.replace(/^@/, "");
+  const bare = raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
+  const known = /^(x\.com|twitter\.com|linkedin\.com|github\.com|t\.me|telegram\.me)\/(in\/|@)?/i;
+  return known.test(bare) ? bare.replace(known, "") : bare;
+}
+
+/** The address to open. Rebuilt from the platform when we only hold a handle. */
+function socialHrefOf(social = {}) {
+  const raw = String(social.handle ?? social.value ?? "").trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const handle = socialHandleOf(social);
+  if (!handle) return "";
+  const prefix = social.prefix || SOCIAL_PREFIX[socialPlatformOf(social)] || "";
+  return `https://${prefix}${handle}`;
+}
+
+/** {id, prefix, handle} for editing, from any of the shapes above. */
+function normalizeSocial(social = {}) {
+  const id = socialPlatformOf(social);
+  return { id, prefix: social.prefix || SOCIAL_PREFIX[id] || "", handle: socialHandleOf(social) };
+}
+
 /* ---------- SocialGlyph: 1-bit platform marks ----------
    Drawn rather than fetched: the bundle is offline, so a webfont or an SVG
    sprite from a CDN is not an option. Each is reduced to what survives at
    13px in one colour, the X cross, the "in" tile, the octocat silhouette as
    a head-and-tail, the telegram plane, a globe for anything else. */
+// SVG mask ids are document-global, so each rendered glyph needs its own or
+// they collide and every cat after the first renders against the wrong mask.
+let maskSeq = 0;
+
 function SocialGlyph({ id, size = 13, color = A.fg }) {
   const k = String(id || "").toLowerCase();
   const p = { width:size, height:size, viewBox:"0 0 16 16", style:{ display:"block", flex:"0 0 auto" } };
@@ -462,15 +609,25 @@ function SocialGlyph({ id, size = 13, color = A.fg }) {
     );
   }
   if (k === "github" || k === "git" || k === "gitlab") {
-    // a branch, not the octocat, at 13px in one colour the cat silhouette
-    // turns to mud inside its circle, while a fork still reads as code
+    // The cat, drawn as a solid silhouette rather than an outline: at 13px a
+    // 1.5px stroke closes up into mud, while a filled shape keeps its ears and
+    // legs. The legs are punched out with a mask instead of being painted in a
+    // paper colour, because this sits on white, on grey in the settings field,
+    // and inverts to black when a profile link is hovered.
+    const maskId = `gh-${maskSeq++}`;
     return (
-      <svg {...p} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="square">
-        <line x1="4.5" y1="4.5" x2="4.5" y2="12"/>
-        <path d="M11.5 5.5v1.6c0 1.3-1 2.1-2.4 2.1H4.5"/>
-        <circle cx="4.5" cy="3.4" r="1.6"/>
-        <circle cx="11.5" cy="3.4" r="1.6"/>
-        <circle cx="4.5" cy="12.6" r="1.6"/>
+      <svg {...p} fill="none">
+        <mask id={maskId}>
+          <rect width="16" height="16" fill="#000"/>
+          <circle cx="8" cy="8.7" r="6.1" fill="#fff"/>
+          <path d="M3.6 4.4C3.1 3.1 3.2 2.1 3.5 1.6c.7-.1 1.7.4 2.6 1.2z" fill="#fff"/>
+          <path d="M12.4 4.4c.5-1.3.4-2.3.1-2.8-.7-.1-1.7.4-2.6 1.2z" fill="#fff"/>
+          <path d="M6.05 15.2v-3.3h1.3v3.4z" fill="#000"/>
+          <path d="M8.8 15.2v-2.9h1.3v3.0z" fill="#000"/>
+        </mask>
+        <rect width="16" height="16" fill={color} mask={`url(#${maskId})`}/>
+        <path d="M3.75 11.9c-1.1-.3-1.5-1.25-1.5-1.25"
+          stroke={color} strokeWidth={1.4} strokeLinecap="round"/>
       </svg>
     );
   }
@@ -664,14 +821,16 @@ function useInterval(cb, delay) {
 }
 
 /* ---------- PipelineFunnel: Amiga gadget strip ---------- */
-// Minimal terminal-style readout, counts in monospace, hairline-divided.
-// No progress bars (they read too "SaaS dashboard"); the number is the data.
+// Label first, then its count in a badge. Each tab is sized to its own text
+// rather than to an equal share of the row: five equal columns cut "awaiting
+// you" down to "A…", and a tab whose name you cannot read is not a tab. If the
+// whole strip still does not fit, it scrolls sideways rather than truncating.
 function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
   const clickable = !!onClickStage;
   const allActive = activeStage === "all";
   return (
     <div style={{
-      display:"flex",
+      display:"flex", alignItems:"stretch", flexWrap:"wrap",
       fontFamily:"var(--mac-mono)",
     }}>
       {stages.map((s, i) => {
@@ -687,29 +846,31 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             key={s.label}
             onClick={handleClick}
             disabled={!clickable}
+            title={`${s.label} · ${s.count}`}
             style={{
-              flex:"1 1 0", minWidth:0,
-              display:"flex", alignItems:"baseline", gap:7,
-              padding:"7px 12px",
+              flex:"0 0 auto",
+              display:"flex", alignItems:"center", gap:5,
+              padding:"7px 9px",
               background: isActive ? A.fg : "transparent",
               color: isActive ? A.paper : A.fg,
-              opacity: dim ? 0.4 : 1,
+              opacity: dim ? 0.45 : 1,
               cursor: clickable ? "pointer" : "default",
               border:"none",
               borderRight: last ? "none" : `1px solid ${A.fg}`,
               borderRadius:0,
-              textAlign:"left",
+              whiteSpace:"nowrap",
               fontFamily:"var(--mac-mono)",
             }}>
             <span style={{
-              fontSize:17, fontWeight:700, lineHeight:1, letterSpacing:-0.5,
-              color: accent ? A.accent : (isActive ? A.paper : A.fg),
-            }}>{s.count}</span>
-            <span style={{
-              fontSize:10, letterSpacing:1, textTransform:"uppercase",
-              opacity: isActive ? 0.85 : 0.6, whiteSpace:"nowrap",
-              overflow:"hidden", textOverflow:"ellipsis",
+              fontSize:10, letterSpacing:0.4, textTransform:"uppercase",
             }}>{s.label}</span>
+            <span style={{
+              fontSize:10, fontWeight:700, lineHeight:1,
+              padding:"3px 4px", minWidth:14, textAlign:"center",
+              border:`1px solid ${isActive ? A.paper : A.fg}`,
+              background: accent ? A.accent : "transparent",
+              color: accent ? A.fg : (isActive ? A.paper : A.fg),
+            }}>{s.count}</span>
           </button>
         );
       })}
@@ -719,10 +880,13 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
 
 /* ---------- SourceBadge ---------- */
 function SourceBadge({ source, sourceMeta }) {
+  const owner = agentOwner(sourceMeta?.name);
   const cfg = {
-    // the agent wears its mark here too, not the runtime's initial
-    agent:      { glyph:<AgentGlyph size={11}/>, label:"from index" },
-    individual: { glyph:<AgentGlyph size={11}/>, label: `from ${agentLabel(sourceMeta?.name)}` },
+    // your agent wears the same picture it wears everywhere else; a named
+    // counterpart's wears its own
+    agent:      { face: <MyAgentAvatar size={14}/>, label:"from your agent" },
+    individual: { face: owner ? <AgentAvatar size={14} seed={owner}/> : <MyAgentAvatar size={14}/>,
+                  label: `from ${agentLabel(sourceMeta?.name)}` },
     collective: { glyph:"⁂", label: sourceMeta?.count ? `aggregated · ${sourceMeta.count} ${sourceMeta.of}` : "aggregated signal" },
     room:       { glyph:"≋", label: sourceMeta?.count ? `the room · ${sourceMeta.count} ${sourceMeta.of}` : "ambient · the room" },
   }[source] || { glyph:"·", label:"" };
@@ -736,6 +900,7 @@ function SourceBadge({ source, sourceMeta }) {
       color: A.fg, textTransform:"lowercase",
       boxShadow: `inset 1px 1px 0 ${A.paper}, inset -1px -1px 0 ${A.edge}`,
     }}>
+      {cfg.face || (
       <span style={{
         display:"inline-grid", placeItems:"center",
         width:14, height:14,
@@ -743,7 +908,7 @@ function SourceBadge({ source, sourceMeta }) {
         fontSize:10, fontWeight:700,
         border:`1px solid ${A.fg}`,
         boxShadow: `inset 1px 1px 0 ${A.highlight}, inset -1px -1px 0 ${A.shadow}`,
-      }}>{cfg.glyph}</span>
+      }}>{cfg.glyph}</span>)}
       <span>{cfg.label}</span>
     </div>
   );
@@ -860,10 +1025,55 @@ function PicturePicker({ size = 46, label = "change picture", onPick, onError, c
   );
 }
 
+/* ---------- Escape closes the topmost window ----------
+   Windows push themselves onto a stack as they mount, so Escape always hits the
+   one opened most recently: the profile panel rather than the signals window
+   behind it. Doing it here rather than per screen means any window that takes
+   an `onClose` gets the shortcut for free.
+
+   Two things deliberately win over it. A menu or dialog that runs its own
+   Escape marks the event handled in the capture phase, so its listener fires
+   first and this one stands down. And Escape inside a text field blurs the
+   field instead, so escaping out of the composer never throws away a draft. */
+const macWindowStack = [];
+let macEscapeBound = false;
+
+function bindMacEscape() {
+  if (macEscapeBound || typeof document === "undefined") return;
+  macEscapeBound = true;
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    const el = document.activeElement;
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+      el.blur();
+      return;
+    }
+    for (let i = macWindowStack.length - 1; i >= 0; i--) {
+      const close = macWindowStack[i].get();
+      if (close) { e.preventDefault(); close(); return; }
+    }
+  });
+}
+
 /* ---------- AmigaWindow: title bar with close gadget on left, depth on right ---------- */
 // `dismiss` swaps the close gadget for the bar gadget, see the CSS note.
 // Use it for panels that sit beside the flow instead of holding it.
 function MacWindow({ title, children, style, bodyStyle, onClose, noShadow, dismiss }) {
+  // `onClose` is usually an inline arrow, so it is a new function every render.
+  // The ref keeps the stack entry stable: registering on identity instead would
+  // re-order the stack on every render and Escape would close the wrong window.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    bindMacEscape();
+    const entry = { get: () => closeRef.current };
+    macWindowStack.push(entry);
+    return () => {
+      const i = macWindowStack.indexOf(entry);
+      if (i !== -1) macWindowStack.splice(i, 1);
+    };
+  }, []);
+
   return (
     // minWidth:0 + overflow:hidden keep a window inside its own frame. As a
     // grid item it would otherwise be floored at its content's min-content
@@ -930,7 +1140,8 @@ function MacSegmented({ value, onChange, options, size }) {
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
-  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar,
+  SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
+  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
