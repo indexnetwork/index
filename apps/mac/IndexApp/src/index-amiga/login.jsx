@@ -28,15 +28,19 @@ function SignInButton({ children, primary, onClick, disabled }) {
   );
 }
 
-// Between sign-in and the profile page: the agent assembles your profile from
-// your public presence. Mirrors the Calibrating screen's pinstripe + line
-// stagger. Auto-advances once it's "done".
+// Between sign-in and the profile page, while the agent works out who you are.
+// Mirrors the Calibrating screen's pinstripe + line stagger. Auto-advances
+// once it's "done".
+//
+// The lines this replaced read like an intake form being processed at you
+// ("reading your public profile", "pulling in what people already say about
+// you"), which is both cold and, in the case of what other people say, not
+// something index looks at. These are the agent thinking out loud instead.
 function BuildingProfile({ onDone }) {
   const lines = [
-    "reading your public profile…",
-    "pulling in what people already say about you…",
-    "drafting an intro in your voice…",
-    "almost ready.",
+    "getting a sense of you…",
+    "working out what you're into…",
+    "almost there.",
   ];
   useEffect(() => {
     const t = setTimeout(() => onDone && onDone(), 2400);

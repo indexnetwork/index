@@ -1984,17 +1984,21 @@ function profileContent(person) {
     return String(v).trim();
   };
 
-  const lead = take(stripSelfName(person.blurb, person.name));
-  block(person.blurb); // `overlap` is usually the raw headline again
+  // The headline and the shared-signal chips are both the system's summary of
+  // this person, and neither is theirs. What the profile shows is the intro
+  // they wrote about themselves, so the card's own blurb is only blocked here
+  // to keep it from reappearing through another field.
+  block(person.blurb);
   const bio = take(person.bio);
   const note = take(person.pitchFromAgent);
-  const shared = [...(person.signals || []), ...(person.overlap || [])]
-    .map(take).filter(Boolean);
   const socials = (person.socials || []).filter(s => s && s.handle);
 
+  // `location` and `distance` are not what they sound like on a home card: the
+  // mapper fills them with the section heading the card was grouped under and
+  // its mutual-intents label, which is how "MEET THESE NEW CONNECTIONS ·
+  // Aligned goals" ended up reading as this person's details. Both are the
+  // system describing its own grouping, so neither belongs on their profile.
   const meta = [];
-  const loc = take(person.location);   if (loc) meta.push(loc);
-  const when = take(person.distance);  if (when) meta.push(when);
   if (person.mutuals > 0) {
     meta.push(`${person.mutuals} mutual${person.mutuals === 1 ? "" : "s"}`);
   }
@@ -2002,7 +2006,7 @@ function profileContent(person) {
   // "intro via Index" is the product telling you it's the product
   if (via && !/^index(\s*network)?$/i.test(via)) meta.push(`intro via ${via}`);
 
-  return { lead, bio, note, shared, socials, meta };
+  return { bio, note, socials, meta };
 }
 
 /* A social handle, rendered as the address it points at. The platform mark
@@ -2040,7 +2044,35 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
   const isExpired = status === "expired";
-  const { lead, bio, note, shared, socials, meta } = profileContent(person);
+  // The intro someone wrote in their profile settings does not travel on an
+  // opportunity card, so it is fetched here from GET /users/:id and merged
+  // under anything the card already carried.
+  const [fetched, setFetched] = useState(null);
+  useEffect(() => {
+    setFetched(null);
+    const userId = person.userId;
+    if (!userId || !window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client || !client.users || !client.users.get) return;
+    let cancelled = false;
+    client.users.get(userId)
+      .then((res) => {
+        if (cancelled) return;
+        const u = (res && res.user) || res;
+        if (u) setFetched(window.IndexApi.mapCounterpartProfile(u));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [person.userId]);
+
+  const merged = fetched
+    ? {
+        ...person,
+        bio: person.bio || fetched.bio,
+        socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
+      }
+    : person;
+  const { bio, note, socials, meta } = profileContent(merged);
   return (
     <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
@@ -2065,13 +2097,6 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
           overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
           alignContent:"start", background:"#fff",
         }}>
-          {lead && (
-            <div style={{
-              fontFamily:"var(--mac-sans)", fontSize:15, lineHeight:1.45,
-              color:"#000", letterSpacing:-0.1,
-            }}>{lead}</div>
-          )}
-
           {bio && (
             <SummarySection label="bio">
               <div style={{ display:"grid", gap:9 }}>
@@ -2090,20 +2115,6 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
             <SummarySection label="elsewhere">
               <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                 {socials.map(s => <SocialLink key={`${s.id}${s.handle}`} social={s}/>)}
-              </div>
-            </SummarySection>
-          )}
-
-          {shared.length > 0 && (
-            <SummarySection label="what you share">
-              <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                {shared.map(s => (
-                  <span key={s} style={{
-                    fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3,
-                    textTransform:"lowercase",
-                    padding:"2px 7px", border:"1px solid #000",
-                  }}>{s}</span>
-                ))}
               </div>
             </SummarySection>
           )}

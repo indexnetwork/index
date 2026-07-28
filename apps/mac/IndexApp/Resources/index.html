@@ -33784,6 +33784,13 @@ function createIndexApiClient(options = {}) {
     },
 
     users: {
+      // Public profile: name, intro (the bio), avatar, location, socials.
+      // Opportunity cards carry none of that, so the profile window fetches it
+      // for the counterpart it is showing.
+      get: (userId, options = {}) => request(
+        `/users/${encodeURIComponent(userId)}`,
+        options,
+      ),
       // Full negotiation threads (counterparty, outcome, agent-to-agent turns).
       negotiations: (userId, query = {}, options = {}) => request(
         `/users/${encodeURIComponent(userId)}/negotiations${toQueryString(query)}`,
@@ -34016,6 +34023,9 @@ function mapPeopleFromHomeSections(sections = []) {
 function mapPersonFromHomeCard(card, section = {}) {
   return {
     id: card.opportunityId || card.userId,
+    // kept separate from `id` (which is the opportunity) so the profile window
+    // can fetch this person's own intro and links
+    userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
     location: section.title || '',
@@ -34035,10 +34045,13 @@ function mapPersonFromHomeCard(card, section = {}) {
 }
 
 /**
- * The counterpart's own words about themselves, when the payload carries them.
- * The presenter card does not expose bio or social handles today, so this
- * yields empty fields and the profile hides those sections, it is here so the
- * client picks them up without a change once the API does expose them.
+ * The counterpart's own words about themselves: the intro they wrote in their
+ * profile settings, plus their links.
+ *
+ * Opportunity cards carry neither, so this yields empty fields there and the
+ * profile hides those sections. `GET /users/:id` does carry them, and the
+ * profile window fetches it, so this also accepts that payload's shape, where
+ * the intro is `intro` and socials are `{label, value}`.
  * @param {Object} source
  * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
@@ -34049,9 +34062,9 @@ function mapCounterpartProfile(source = {}) {
     bio: profile.bio || profile.intro || '',
     socials: socials
       .map((entry) => ({
-        id: entry.id || entry.platform || '',
+        id: String(entry.id || entry.label || entry.platform || 'website').toLowerCase(),
         prefix: entry.prefix || '',
-        handle: entry.handle || entry.username || '',
+        handle: entry.handle || entry.username || entry.value || '',
       }))
       .filter((entry) => entry.handle),
   };
@@ -36234,15 +36247,19 @@ function SignInButton({ children, primary, onClick, disabled }) {
   );
 }
 
-// Between sign-in and the profile page: the agent assembles your profile from
-// your public presence. Mirrors the Calibrating screen's pinstripe + line
-// stagger. Auto-advances once it's "done".
+// Between sign-in and the profile page, while the agent works out who you are.
+// Mirrors the Calibrating screen's pinstripe + line stagger. Auto-advances
+// once it's "done".
+//
+// The lines this replaced read like an intake form being processed at you
+// ("reading your public profile", "pulling in what people already say about
+// you"), which is both cold and, in the case of what other people say, not
+// something index looks at. These are the agent thinking out loud instead.
 function BuildingProfile({ onDone }) {
   const lines = [
-    "reading your public profile…",
-    "pulling in what people already say about you…",
-    "drafting an intro in your voice…",
-    "almost ready.",
+    "getting a sense of you…",
+    "working out what you're into…",
+    "almost there.",
   ];
   useEffect(() => {
     const t = setTimeout(() => onDone && onDone(), 2400);
@@ -38521,6 +38538,14 @@ window.NegotiationHistory = NegotiationHistory;
 // brand promise ("find your others"), active signals, and the entry point for
 // a new signal.
 
+/* How tall the signals shelf is allowed to get. Six rows, then it scrolls.
+   IntentRow's own height and the shelf's gap live here so the cap stays
+   correct if either changes; a hardcoded pixel maxHeight would quietly start
+   cutting a row in half. */
+const SHELF_ROW_H = 72;
+const SHELF_ROW_GAP = 8;
+const SHELF_VISIBLE_ROWS = 6;
+
 /* ---------- account shelf ---------- */
 
 // Your photo if you've set one, otherwise a solid accent tile with lowercase
@@ -38854,12 +38879,16 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
               <RuleLabel>your signals</RuleLabel>
               <div style={{ height:8 }}/>
 
-              {/* sized to its content when the list is short (so the new-signal
-                  row sits right under the last one), shrinking and scrolling
-                  once there are too many to fit */}
+              {/* Sized to its content when the list is short (so the new-signal
+                  row sits right under the last one), and capped at six rows
+                  once it is long: past that the shelf reads as a backlog rather
+                  than the set of things you are running, and "start a new
+                  signal" drifts further down the screen. The rest scroll. */}
               <div ref={shelfRef} className="mac-scroll" style={{
                 flex:"0 1 auto", minHeight:0, overflowY:"auto",
-                display:"flex", flexDirection:"column", gap:8,
+                maxHeight: SHELF_VISIBLE_ROWS * SHELF_ROW_H
+                         + (SHELF_VISIBLE_ROWS - 1) * SHELF_ROW_GAP,
+                display:"flex", flexDirection:"column", gap: SHELF_ROW_GAP,
                 paddingRight: 6,
               }}>
                 {/* No empty state: the blurb above already says what a signal
@@ -38913,7 +38942,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
       style={{
         textAlign:"left",
         padding: "0 16px",
-        height: 72,
+        height: SHELF_ROW_H,
         // the shelf is a column flex container, so without this the rows
         // shrink to share whatever height is left instead of the shelf
         // scrolling, squashing every signal and pushing the question count
@@ -41790,17 +41819,21 @@ function profileContent(person) {
     return String(v).trim();
   };
 
-  const lead = take(stripSelfName(person.blurb, person.name));
-  block(person.blurb); // `overlap` is usually the raw headline again
+  // The headline and the shared-signal chips are both the system's summary of
+  // this person, and neither is theirs. What the profile shows is the intro
+  // they wrote about themselves, so the card's own blurb is only blocked here
+  // to keep it from reappearing through another field.
+  block(person.blurb);
   const bio = take(person.bio);
   const note = take(person.pitchFromAgent);
-  const shared = [...(person.signals || []), ...(person.overlap || [])]
-    .map(take).filter(Boolean);
   const socials = (person.socials || []).filter(s => s && s.handle);
 
+  // `location` and `distance` are not what they sound like on a home card: the
+  // mapper fills them with the section heading the card was grouped under and
+  // its mutual-intents label, which is how "MEET THESE NEW CONNECTIONS ·
+  // Aligned goals" ended up reading as this person's details. Both are the
+  // system describing its own grouping, so neither belongs on their profile.
   const meta = [];
-  const loc = take(person.location);   if (loc) meta.push(loc);
-  const when = take(person.distance);  if (when) meta.push(when);
   if (person.mutuals > 0) {
     meta.push(`${person.mutuals} mutual${person.mutuals === 1 ? "" : "s"}`);
   }
@@ -41808,7 +41841,7 @@ function profileContent(person) {
   // "intro via Index" is the product telling you it's the product
   if (via && !/^index(\s*network)?$/i.test(via)) meta.push(`intro via ${via}`);
 
-  return { lead, bio, note, shared, socials, meta };
+  return { bio, note, socials, meta };
 }
 
 /* A social handle, rendered as the address it points at. The platform mark
@@ -41846,7 +41879,35 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
   const isExpired = status === "expired";
-  const { lead, bio, note, shared, socials, meta } = profileContent(person);
+  // The intro someone wrote in their profile settings does not travel on an
+  // opportunity card, so it is fetched here from GET /users/:id and merged
+  // under anything the card already carried.
+  const [fetched, setFetched] = useState(null);
+  useEffect(() => {
+    setFetched(null);
+    const userId = person.userId;
+    if (!userId || !window.IndexApp || !window.IndexApp.isAuthed()) return;
+    const client = window.IndexApp.getClient();
+    if (!client || !client.users || !client.users.get) return;
+    let cancelled = false;
+    client.users.get(userId)
+      .then((res) => {
+        if (cancelled) return;
+        const u = (res && res.user) || res;
+        if (u) setFetched(window.IndexApi.mapCounterpartProfile(u));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [person.userId]);
+
+  const merged = fetched
+    ? {
+        ...person,
+        bio: person.bio || fetched.bio,
+        socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
+      }
+    : person;
+  const { bio, note, socials, meta } = profileContent(merged);
   return (
     <MacWindow title={`profile · ${person.name}`} onClose={onClose} dismiss style={{ minHeight:0 }}>
       <div style={{ display:"grid", gridTemplateRows:"auto 1fr auto", gridTemplateColumns:"minmax(0, 1fr)", flex:1, minHeight:0, minWidth:0 }}>
@@ -41871,13 +41932,6 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
           overflowY:"auto", padding:"16px", display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:15,
           alignContent:"start", background:"#fff",
         }}>
-          {lead && (
-            <div style={{
-              fontFamily:"var(--mac-sans)", fontSize:15, lineHeight:1.45,
-              color:"#000", letterSpacing:-0.1,
-            }}>{lead}</div>
-          )}
-
           {bio && (
             <SummarySection label="bio">
               <div style={{ display:"grid", gap:9 }}>
@@ -41896,20 +41950,6 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
             <SummarySection label="elsewhere">
               <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                 {socials.map(s => <SocialLink key={`${s.id}${s.handle}`} social={s}/>)}
-              </div>
-            </SummarySection>
-          )}
-
-          {shared.length > 0 && (
-            <SummarySection label="what you share">
-              <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                {shared.map(s => (
-                  <span key={s} style={{
-                    fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3,
-                    textTransform:"lowercase",
-                    padding:"2px 7px", border:"1px solid #000",
-                  }}>{s}</span>
-                ))}
               </div>
             </SummarySection>
           )}

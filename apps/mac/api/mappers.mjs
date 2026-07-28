@@ -104,6 +104,9 @@ export function mapPeopleFromHomeSections(sections = []) {
 export function mapPersonFromHomeCard(card, section = {}) {
   return {
     id: card.opportunityId || card.userId,
+    // kept separate from `id` (which is the opportunity) so the profile window
+    // can fetch this person's own intro and links
+    userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
     location: section.title || '',
@@ -123,10 +126,13 @@ export function mapPersonFromHomeCard(card, section = {}) {
 }
 
 /**
- * The counterpart's own words about themselves, when the payload carries them.
- * The presenter card does not expose bio or social handles today, so this
- * yields empty fields and the profile hides those sections, it is here so the
- * client picks them up without a change once the API does expose them.
+ * The counterpart's own words about themselves: the intro they wrote in their
+ * profile settings, plus their links.
+ *
+ * Opportunity cards carry neither, so this yields empty fields there and the
+ * profile hides those sections. `GET /users/:id` does carry them, and the
+ * profile window fetches it, so this also accepts that payload's shape, where
+ * the intro is `intro` and socials are `{label, value}`.
  * @param {Object} source
  * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
@@ -137,9 +143,9 @@ export function mapCounterpartProfile(source = {}) {
     bio: profile.bio || profile.intro || '',
     socials: socials
       .map((entry) => ({
-        id: entry.id || entry.platform || '',
+        id: String(entry.id || entry.label || entry.platform || 'website').toLowerCase(),
         prefix: entry.prefix || '',
-        handle: entry.handle || entry.username || '',
+        handle: entry.handle || entry.username || entry.value || '',
       }))
       .filter((entry) => entry.handle),
   };

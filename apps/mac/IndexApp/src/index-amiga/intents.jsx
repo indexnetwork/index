@@ -2,6 +2,14 @@
 // brand promise ("find your others"), active signals, and the entry point for
 // a new signal.
 
+/* How tall the signals shelf is allowed to get. Six rows, then it scrolls.
+   IntentRow's own height and the shelf's gap live here so the cap stays
+   correct if either changes; a hardcoded pixel maxHeight would quietly start
+   cutting a row in half. */
+const SHELF_ROW_H = 72;
+const SHELF_ROW_GAP = 8;
+const SHELF_VISIBLE_ROWS = 6;
+
 /* ---------- account shelf ---------- */
 
 // Your photo if you've set one, otherwise a solid accent tile with lowercase
@@ -335,12 +343,16 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
               <RuleLabel>your signals</RuleLabel>
               <div style={{ height:8 }}/>
 
-              {/* sized to its content when the list is short (so the new-signal
-                  row sits right under the last one), shrinking and scrolling
-                  once there are too many to fit */}
+              {/* Sized to its content when the list is short (so the new-signal
+                  row sits right under the last one), and capped at six rows
+                  once it is long: past that the shelf reads as a backlog rather
+                  than the set of things you are running, and "start a new
+                  signal" drifts further down the screen. The rest scroll. */}
               <div ref={shelfRef} className="mac-scroll" style={{
                 flex:"0 1 auto", minHeight:0, overflowY:"auto",
-                display:"flex", flexDirection:"column", gap:8,
+                maxHeight: SHELF_VISIBLE_ROWS * SHELF_ROW_H
+                         + (SHELF_VISIBLE_ROWS - 1) * SHELF_ROW_GAP,
+                display:"flex", flexDirection:"column", gap: SHELF_ROW_GAP,
                 paddingRight: 6,
               }}>
                 {/* No empty state: the blurb above already says what a signal
@@ -394,7 +406,7 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
       style={{
         textAlign:"left",
         padding: "0 16px",
-        height: 72,
+        height: SHELF_ROW_H,
         // the shelf is a column flex container, so without this the rows
         // shrink to share whatever height is left instead of the shelf
         // scrolling, squashing every signal and pushing the question count
