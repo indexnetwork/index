@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { and, eq, inArray } from 'drizzle-orm/sql';
+import { and, eq, inArray, notInArray, or, sql } from 'drizzle-orm/sql';
 
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import type * as DatabaseSchema from '../schemas/database.schema';
@@ -52,10 +52,75 @@ export async function expectedBaseMetadata(
   };
 }
 
+/** Rejects base-owned rows that would make a refresh non-fixture-scoped. */
+async function assertNoUnexpectedBaseDependents(
+  tx: Parameters<Parameters<DrizzleDB['transaction']>[0]>[0],
+  schema: typeof DatabaseSchema,
+  payload: BaseSeedPayload,
+): Promise<void> {
+  const userIds = payload.users.map((user) => user.id);
+  const networkIds = payload.networks.map((network) => network.id);
+  const intentIds = payload.intents.map((intent) => intent.id);
+  const checks: Array<{ label: string; query: Promise<Array<{ id: string }>> }> = [
+    {
+      label: 'user social',
+      query: tx.select({ id: schema.userSocials.id }).from(schema.userSocials)
+        .where(inArray(schema.userSocials.userId, userIds)).limit(1),
+    },
+    {
+      label: 'premise',
+      query: tx.select({ id: schema.premises.id }).from(schema.premises)
+        .where(inArray(schema.premises.userId, userIds)).limit(1),
+    },
+    {
+      label: 'user context',
+      query: tx.select({ id: schema.userContexts.id }).from(schema.userContexts)
+        .where(or(
+          inArray(schema.userContexts.userId, userIds),
+          inArray(schema.userContexts.networkId, networkIds),
+        )).limit(1),
+    },
+    {
+      label: 'premise network',
+      query: tx.select({ id: schema.premiseNetworks.premiseId }).from(schema.premiseNetworks)
+        .where(inArray(schema.premiseNetworks.networkId, networkIds)).limit(1),
+    },
+    {
+      label: 'unexpected fixture intent',
+      query: tx.select({ id: schema.intents.id }).from(schema.intents)
+        .where(and(
+          inArray(schema.intents.userId, userIds),
+          notInArray(schema.intents.id, intentIds),
+        )).limit(1),
+    },
+    {
+      label: 'unexpected intent network',
+      query: tx.select({ id: schema.intentNetworks.intentId }).from(schema.intentNetworks)
+        .where(and(
+          inArray(schema.intentNetworks.intentId, intentIds),
+          notInArray(schema.intentNetworks.networkId, networkIds),
+        )).limit(1),
+    },
+    {
+      label: 'unexpected fixture membership',
+      query: tx.select({ id: schema.networkMembers.userId }).from(schema.networkMembers)
+        .where(or(
+          and(inArray(schema.networkMembers.networkId, networkIds), notInArray(schema.networkMembers.userId, userIds)),
+          and(inArray(schema.networkMembers.userId, userIds), notInArray(schema.networkMembers.networkId, networkIds)),
+        )).limit(1),
+    },
+  ];
+
+  for (const { label, query } of checks) {
+    const [dependent] = await query;
+    if (dependent) throw new Error(`Refusing protected base refresh: unexpected ${label} ${dependent.id}`);
+  }
+}
+
 /**
- * Deletes and inserts only deterministic IDs derived from the fixture payload.
- * If another row references one of those IDs, the transaction fails closed
- * rather than broadening cleanup to data outside the fixture scope.
+ * Deletes only fixture-owned intent assignments, intents, and membership pairs.
+ * Fixture users and networks are upserted so the refresh never invokes their
+ * database cascades; unexpected dependents reject before any deletion.
  */
 export async function seedProtectedBase(
   db: DrizzleDB,
@@ -64,10 +129,9 @@ export async function seedProtectedBase(
   metadata: BaseMetadata,
 ): Promise<void> {
   const intentIds = payload.intents.map((intent) => intent.id);
-  const networkIds = payload.networks.map((network) => network.id);
-  const userIds = payload.users.map((user) => user.id);
-
   await db.transaction(async (tx) => {
+    await assertNoUnexpectedBaseDependents(tx, schema, payload);
+
     await tx.delete(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, intentIds));
     await tx.delete(schema.intents).where(inArray(schema.intents.id, intentIds));
 
@@ -77,14 +141,26 @@ export async function seedProtectedBase(
         eq(schema.networkMembers.userId, membership.userId),
       ));
     }
-    await tx.delete(schema.networks).where(inArray(schema.networks.id, networkIds));
-    await tx.delete(schema.users).where(inArray(schema.users.id, userIds));
-
     await tx.insert(schema.users).values(payload.users.map((user) => ({
       ...user,
       emailVerified: false,
-    })));
-    await tx.insert(schema.networks).values(payload.networks);
+    }))).onConflictDoUpdate({
+      target: schema.users.id,
+      set: {
+        email: sql`excluded.email`,
+        name: sql`excluded.name`,
+        intro: sql`excluded.intro`,
+        location: sql`excluded.location`,
+        emailVerified: sql`excluded.email_verified`,
+      },
+    });
+    await tx.insert(schema.networks).values(payload.networks).onConflictDoUpdate({
+      target: schema.networks.id,
+      set: {
+        title: sql`excluded.title`,
+        prompt: sql`excluded.prompt`,
+      },
+    });
     await tx.insert(schema.networkMembers).values(payload.memberships.map((membership) => ({
       ...membership,
       permissions: ['member'],
