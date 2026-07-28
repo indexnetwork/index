@@ -11,7 +11,6 @@ export default tseslint.config(
       "**/dist/",
       "**/node_modules/",
       "**/.worktrees/",
-      "**/.claude/",
       "services/api/drizzle/",
       "scripts/",
       "docs/",

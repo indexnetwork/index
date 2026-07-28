@@ -136,4 +136,4 @@ Never disable signing repository-wide.
 ## See also
 
 - `run-worktree-session` — standalone handoff and implementation lifecycle.
-- `finish-pr` — explicit merge approval and post-merge verification.
+- `manage-pr` — PR readiness, explicit merge approval, and post-merge verification.

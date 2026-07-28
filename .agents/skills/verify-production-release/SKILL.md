@@ -5,7 +5,7 @@ description: "Pre-merge and post-merge safety checks for promoting a dev→main 
 
 # verify-production-release
 
-Two production-release foot-guns observed shipping the `user_profiles` removal epic. Current CI catches lockfile drift, but Railway watched-path behavior and destructive-migration data readiness still deserve explicit release checks. Use this when promoting `dev`→`main` (pairs with `finish-pr` for merge/verify and `open-release-pr` for cutting the PR).
+Two production-release foot-guns observed shipping the `user_profiles` removal epic. Current CI catches lockfile drift, but Railway watched-path behavior and destructive-migration data readiness still deserve explicit release checks. Use this when promoting `dev`→`main` (pairs with `manage-pr` for merge/verify and `open-release-pr` for cutting the PR).
 
 ## 1. Stale root `bun.lock` breaks the prod build (not dev)
 
@@ -41,5 +41,5 @@ A `DROP TABLE`/column migration is a blind schema op — it does **no** data bac
 - Successful MCP tool calls may not be logged by name; for "is the old thing still used?" prefer a **persisted** signal (a runs/operations table) over app-log greps.
 
 ## See also
-- `finish-pr` — merge + post-merge deploy/Railway verification (run these checks as part of finishing a release PR).
+- `manage-pr` — merge + post-merge deploy/Railway verification (run these checks as part of finishing a release PR).
 - `open-release-pr` — cut the dated `release/<date>` PR into `main`.

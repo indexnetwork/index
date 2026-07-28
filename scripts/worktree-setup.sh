@@ -89,21 +89,6 @@ for legacy_dir in "${LEGACY_ENV_DIRS[@]}"; do
   done
 done
 
-# Symlink .claude/settings.local.json (gitignored, not present in worktrees)
-CLAUDE_SRC="$REPO_ROOT/.claude/settings.local.json"
-CLAUDE_DST="$WORKTREE/.claude/settings.local.json"
-if [ -f "$CLAUDE_SRC" ]; then
-  if [ -L "$CLAUDE_DST" ]; then
-    echo "  [.claude] settings.local.json already linked"
-  elif [ -f "$CLAUDE_DST" ]; then
-    echo "  [.claude] settings.local.json exists (not a symlink, skipping)"
-  else
-    mkdir -p "$WORKTREE/.claude"
-    ln -s "$CLAUDE_SRC" "$CLAUDE_DST"
-    echo "  [.claude] settings.local.json -> linked"
-  fi
-fi
-
 # Configure git hooks path (points to committed scripts/hooks/)
 git -C "$WORKTREE" config core.hooksPath "$REPO_ROOT/scripts/hooks"
 echo "  [git] hooksPath -> scripts/hooks"

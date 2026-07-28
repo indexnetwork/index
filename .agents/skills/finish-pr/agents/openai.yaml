@@ -1,4 +1,0 @@
-interface:
-  display_name: "Finish PR"
-  short_description: "Finish and verify an Index pull request"
-  default_prompt: "Use $finish-pr to verify, merge with confirmation, deploy-check, and clean up this pull request."

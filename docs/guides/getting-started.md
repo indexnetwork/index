@@ -94,7 +94,8 @@ index/
 ├── docs/                # Project documentation (design, domain, specs, guides)
 ├── scripts/             # Worktree helpers, hooks, dev launcher
 ├── package.json         # Root workspace config
-└── CLAUDE.md            # Comprehensive project reference
+├── AGENTS.md            # Coding-agent guidance
+└── docs/guides/         # Development Reference and setup guides
 ```
 
 ## Environment setup
@@ -506,7 +507,7 @@ bun run maintenance:fix-migrations
 
 This resets the database, regenerates a single migration with pgvector, then restores the drizzle directory.
 
-For more details on migration workflows, see the Database Workflow section in `CLAUDE.md`.
+For more details on migration workflows, see the Database Workflow section in the [Development Reference](development-reference.md).
 
 ### Port already in use
 

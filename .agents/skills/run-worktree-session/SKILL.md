@@ -39,7 +39,7 @@ because adjacent work is visible.
 
 ## 3. Execute the scoped implementation
 
-Before editing, read the relevant `AGENTS.md`, `CLAUDE.md`, templates, and
+Before editing, read the relevant `AGENTS.md`, Development Reference, templates, and
 path-specific skills. Keep changes within the assigned scope. Apply any role
 checklist supplied in the handoff when present.
 
@@ -82,7 +82,7 @@ a duplicate writer.
 
 ## 6. Fix rounds
 
-For review or `finish-pr` findings, return to the same worktree and agent session.
+For review or `manage-pr` findings, return to the same worktree and agent session.
 Verify identity again, implement, rerun focused gates, commit/push, then send the
 terminal result. Never create a new worktree or agent per review comment.
 
@@ -91,12 +91,12 @@ pane-targeted text/keys rather than appending an agent prompt.
 
 ## 7. Cleanup ownership
 
-The implementing session never cleans its own execution plane. `finish-pr` owns safe
+The implementing session never cleans its own execution plane. `manage-pr` owns safe
 feature worktree/branch cleanup after merge and after dirty/unpushed state is proven
 preserved or disposable.
 
 ## See also
 
 - `create-worktree` — standalone branch/worktree/setup/Herdr-open workflow only.
-- `finish-pr` — merge confirmation, post-merge verification, issue updates, and safe
+- `manage-pr` — merge confirmation, post-merge verification, issue updates, and safe
   cleanup.

@@ -1,11 +1,6 @@
----
-description:
-alwaysApply: true
----
+# Development Reference
 
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This is the canonical project reference for development commands, architecture, conventions, testing, Git workflow, and operational safety.
 
 ## Project Overview
 
@@ -494,7 +489,7 @@ semantic branch, run `bun run worktree:setup <dashed-folder>`, and open the exac
 linked worktree with `herdr worktree open --no-focus --json`.
 
 Keep one writer per worktree, reuse the same execution plane for review
-and finish-pr fixes, and independently verify every completion claim. Never wait,
+and PR-closeout fixes, and independently verify every completion claim. Never wait,
 poll, sleep, create watcher processes/panes, infer merge approval, or treat
 `idle`/`done` as success. Escalate only genuine product/architecture ambiguity,
 destructive actions, external infrastructure mutation, credentials/secrets, or merge
@@ -512,7 +507,7 @@ reconciliation rather than merging or resetting over it.
 
 Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
 execution planes, and agent sessions, with one writer per worktree and one Herdr
-workspace per worktree. Reuse the same visible session for review and finish-pr fix loops. The
+workspace per worktree. Reuse the same visible session for review and PR-closeout fix loops. The
 legacy `bun run worktree:session` helper remains a fallback when Herdr is unavailable,
 not the default workflow.
 
@@ -531,25 +526,24 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
 ### Finishing a Branch
 
 1. Update all relevant documentation (see **Documentation Directories** above for what belongs where):
-   - `CLAUDE.md` — if structural or architectural changes were introduced
+   - `AGENTS.md` — if agent workflow or repository-wide agent guidance changes
+   - this reference — if development workflow, architecture, or operational policy changes
    - `README.md` files — any affected package READMEs
    - `docs/design/` — if architecture or data flow changed
    - `docs/domain/` — if the domain model changed (entities, relationships, concepts)
    - `docs/specs/` — if public interfaces changed (API endpoints, CLI commands)
    - `docs/guides/` — if dev workflow or environment setup changed
-2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
-3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
-   - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
-4. Finish the PR through `finish-pr`: obtain the workflow's explicit merge
-   authorization, merge server-side with `gh pr merge` from a non-canonical
-   coordinator checkout, and verify the server-side result. Never check out or merge
-   `dev` in a feature worktree, and never mutate source from the canonical root.
-5. If the canonical `dev` checkout is clean, synchronize it only with
-   `git pull --ff-only origin dev`; otherwise preserve its work and report pending
-   reconciliation.
+2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`.
+3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/), before merging or pushing. `feat` is a minor bump, `fix` is a patch bump, and breaking changes are a major bump (minor before 1.0). Apply this to each touched package: `packages/protocol/`, `packages/cli/`, `services/api/`, and `apps/web/`; regenerate and commit the root `bun.lock` when a package version changes.
+4. Finish the PR through `manage-pr`:
+   - Snapshot the actual PR with `bun run pr:snapshot -- <number|URL|branch>`, inspect related issues and matching worktree state, and verify base freshness against the actual base/head refs.
+   - Resolve every blocking review thread, run targeted checks for changed surfaces, and require all required GitHub checks/reviews to be green. For environment changes, explain every variable and verify its committed schema/example, local development state, and applicable Railway service state before any mutation.
+   - Obtain a separate, explicit merge authorization only after every gate passes. Merge server-side from a non-canonical coordinator checkout; never check out or merge `dev` in a feature worktree, and never mutate source from the canonical root.
+   - Confirm the forge merge, wait for required post-merge checks and terminal Railway deployment success before claiming release health or closing related issues, then update issues and clean up the finished worktree only after preservation checks.
+   - For a squash-merged `dev`→`main` release, after main-branch checks pass, follow [squash-release reconciliation](../../.agents/skills/_shared/squash-release-reconciliation.md): prove the `main` and `dev` trees match and the merge simulation is clean, then have the root coordinator create and push the sanctioned no-content merge from `main` back into `dev` and wait for its `dev` workflows. Stop rather than force it when either check fails.
+5. If the canonical `dev` checkout is clean, synchronize it only with `git pull --ff-only origin dev`; otherwise preserve its work and report pending reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
-7. Clean up only after merge and preservation checks. Close the worktree's Herdr
-   workspace first, then remove its Git worktree and branch from another checkout.
+7. Clean up only after merge and preservation checks. Close the worktree's Herdr workspace first, then remove its Git worktree and branch from another checkout.
 
 ## Superpowers Workflow
 

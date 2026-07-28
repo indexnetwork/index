@@ -255,7 +255,7 @@ index/
 
 ### Development Commands
 
-For the full list of API service commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
+For the full list of API service commands (DB, workers, maintenance), see the [Development Reference](docs/guides/development-reference.md).
 
 ```bash
 cd services/api
