@@ -100,8 +100,8 @@ function SocialField({ social, value, onChange, onRemove }) {
   );
 }
 
-function SectionRule({ children }) {
-  return <div style={{ marginTop:26 }}><RuleLabel>{children}</RuleLabel></div>;
+function SectionRule({ children, size }) {
+  return <div style={{ marginTop:26 }}><RuleLabel size={size}>{children}</RuleLabel></div>;
 }
 
 /* ---------- pane 1 · profile ---------- */

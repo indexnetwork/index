@@ -81,8 +81,8 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
         {/* no picture here. a runtime is a process on this mac, not somebody.
             the only thing in the app with a face is your negotiator, above */}
         <span style={{
-          flex:"0 0 auto", minWidth:140,
-          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
+          flex:"0 0 auto", minWidth:150,
+          fontFamily:"var(--mac-mono)", fontSize:15, fontWeight:700, color:"#000",
           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
         }}>{agent.name}</span>
         <span style={{ flex:1, minWidth:0 }}>
@@ -114,7 +114,10 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           }}>
             <span style={{
               fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-            }}>{agent.connectedAs} · heartbeat {agent.heartbeat}</span>
+            }}>
+              connected as {agent.connectedAs}
+              {agent.heartbeat ? ` · last heartbeat ${agent.heartbeat}` : " · no heartbeat yet"}
+            </span>
             <span style={{ display:"flex", gap:8, flex:"0 0 auto" }}>
               <button style={{
                 fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
@@ -167,31 +170,11 @@ function NegotiatorProfile({ agent, onShuffle,
   };
   return (
     <div style={{ display:"grid", gap:16 }}>
-      {/* No edit badge over the picture. The upload affordance sat in the
-          bottom-right corner, which is exactly where the agent's mark now
-          sits, so the pencil covered the thing it was there to change.
-          Shuffle is the control. */}
-      <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-        <MyAgentAvatar size={54}/>
-
-        <div style={{ display:"grid", gap:6, minWidth:0 }}>
-          <div style={{
-            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
-          }}>{agent.name}</div>
-          <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
-            <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Which runtime carries it. This used to be its own section, but "who
-          your agent is" and "what it runs on" are two facts about one agent.
-          split across two headings they read as two different settings. */}
+      {/* Pick the runtime first, then dress it. Which one carries your
+          negotiator is the decision on this page; the face and the name are
+          how it shows up once that's settled, so they follow it rather than
+          lead it. */}
       <div style={{ display:"grid", gap:7 }}>
-        <span style={{
-          fontFamily:"var(--mac-mono)", fontSize:11, letterSpacing:1,
-          textTransform:"uppercase", color:"var(--ink-2)",
-        }}>runs on</span>
         <NegotiatorSelect
           options={runtimeOptions}
           value={runtime}
@@ -200,6 +183,33 @@ function NegotiatorProfile({ agent, onShuffle,
         <span style={{
           fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
         }}>index takes over if it's unavailable.</span>
+      </div>
+
+      {/* No edit badge over the picture. The upload affordance sat in the
+          bottom-right corner, which is exactly where the agent's mark now
+          sits, so the pencil covered the thing it was there to change.
+          Shuffle is the control. */}
+      <div style={{ display:"grid", gap:2 }}>
+        <RuleLabel size={13}>customize your agent</RuleLabel>
+        <p style={{
+          margin:"0 0 8px", maxWidth:560,
+          fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
+        }}>
+          this is how your agent appears wherever it speaks for you, asking you
+          a question, sending an update, negotiating with someone else's.
+        </p>
+        <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+          <MyAgentAvatar size={54}/>
+
+          <div style={{ display:"grid", gap:6, minWidth:0 }}>
+            <div style={{
+              fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
+            }}>{agent.name}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
+              <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -303,25 +313,40 @@ function mapLiveAgent(a) {
   const name = a.name || "agent";
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  const seen = a.lastSeenAt ? Date.parse(a.lastSeenAt) : 0;
-  const connected = !!seen && (Date.now() - seen) < 90000;
   const rel = (iso) => {
     const t = Date.parse(iso);
-    if (Number.isNaN(t)) return "unknown";
+    if (Number.isNaN(t)) return "";
     const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
     if (s < 60) return `${s}s ago`;
     const m = Math.floor(s / 60);
     return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
   };
+  // An agent registered against your account is connected, whether or not it
+  // has checked in lately. `lastSeenAt` is null on every agent the API has
+  // handed back so far, and reading that as "detected" left every row shut:
+  // only a connected row opens, so the permissions behind it were unreachable.
+  // The heartbeat is a separate fact and says for itself when there isn't one.
+  const active = a.status ? a.status === "active" : true;
+  const owner = String((currentMe() || {}).name || "").trim().split(/\s+/)[0];
   return {
     id: a.id,
     name,
     initial: (name[0] || "a").toLowerCase(),
     tint: TINTS[h % TINTS.length],
-    state: connected ? "connected" : "detected",
-    on: a.status ? a.status === "active" : true,
-    connectedAs: a.description || "personal agent",
-    heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "no heartbeat",
+    state: active ? "connected" : "detected",
+    on: active,
+    // the one agent the API says carries negotiations
+    negotiates: !!a.handleNegotiations,
+    connectedAs: a.description || (owner ? `${owner}'s ${name.toLowerCase()}` : name.toLowerCase()),
+    heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "",
+    // What this agent is actually allowed to do, off the record rather than
+    // off a demo id. Nightly indexing has no field behind it yet, so it starts
+    // off rather than claiming something the API never said.
+    perms: {
+      updates: !!a.notifyOnOpportunity,
+      brief: !!a.dailySummaryEnabled,
+      indexing: false,
+    },
   };
 }
 
@@ -329,6 +354,12 @@ function Agents({ onClose }) {
   const { AGENTS } = window.INDEX_DATA;
   const [agents, setAgents] = useState(AGENTS);
   const [expanded, setExpanded] = useState(null);
+  // Demo defaults, replaced wholesale by the live list below when signed in.
+  const [perms, setPerms] = useState(() => ({
+    hermes: { updates:true, indexing:true, brief:true },
+    claude: { updates:true, indexing:false, brief:false },
+  }));
+  const [negotiator, setNegotiator] = useState("hermes");
 
   // Live agents are read-only, fetch and display, but toggles stay local.
   useEffect(() => {
@@ -340,16 +371,19 @@ function Agents({ onClose }) {
       .then((res) => {
         if (cancelled) return;
         const list = window.IndexApp.normalizeList(res, "agents").map(mapLiveAgent);
-        if (list.length) setAgents(list);
+        if (!list.length) return;
+        setAgents(list);
+        // The permissions and the negotiator have to follow the live list.
+        // Seeded off the demo ids, nothing matched a real agent, so every
+        // expanded row showed its permissions unticked and no row read as the
+        // one speaking for you.
+        setPerms(Object.fromEntries(list.map(a => [a.id, a.perms])));
+        const carries = list.find(a => a.negotiates && a.on);
+        setNegotiator(carries ? carries.id : "index");
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
-  const [perms, setPerms] = useState(() => ({
-    hermes: { updates:true, indexing:true, brief:true },
-    claude: { updates:true, indexing:false, brief:false },
-  }));
-  const [negotiator, setNegotiator] = useState("hermes");
 
   // "check again" re-scans for runtimes. Nothing changes in the prototype, but
   // the button has to show it did something, so it spins for a beat and locks
@@ -408,11 +442,12 @@ function Agents({ onClose }) {
       gridTemplateColumns:"minmax(0, 1fr)",
       padding:"56px 40px", overflow:"auto",
     }}>
-      {/* Back to the shared networks/detail frame: the negotiator cards were
-          what overflowed 660px, and the dropdown that replaced them is one row. */}
+      {/* Takes the screen it is given: tall enough that the runtimes and the
+          negotiator both sit above the fold on a laptop, and it still gives way
+          to the desktop margin on a short one. */}
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 112px))",
+        height:"min(880px, calc(100vh - 96px))",
       }}>
         <MacWindow
           title="index · agents"
@@ -425,7 +460,7 @@ function Agents({ onClose }) {
             }}>
               <h2 style={{
                 margin:0,
-                fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
+                fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700, color:"#000",
               }}>agents</h2>
               <ActionButton
                 title="look for agent runtimes again"
@@ -455,7 +490,7 @@ function Agents({ onClose }) {
             {/* What's on the machine first, then who speaks for you out of it.
                 the inventory is the concrete thing, the negotiator is the choice
                 you make from it. */}
-            <RuleLabel>runtimes</RuleLabel>
+            <RuleLabel size={13}>runtimes</RuleLabel>
             <p style={{
               margin:"8px 0 10px", maxWidth:560,
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
@@ -486,13 +521,14 @@ function Agents({ onClose }) {
               ))}
             </div>
 
-            <SectionRule>negotiator agent</SectionRule>
+            <SectionRule size={13}>negotiator agent</SectionRule>
+            {/* no measure cap on this one: it is one sentence and it should
+                stay one line, so it gets the full width of the pane */}
             <p style={{
-              margin:"8px 0 12px", maxWidth:560,
+              margin:"8px 0 12px",
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              this is how your agent appears wherever it speaks for you, asking
-              you a question, sending an update, negotiating with someone else's.
+              one agent speaks for you in the network. pick which runtime carries it, then set how it looks when it does.
             </p>
 
             <NegotiatorProfile

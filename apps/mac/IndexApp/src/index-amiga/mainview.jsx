@@ -1053,10 +1053,6 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
   // this exact gap after any content change so answering a question (which
   // shrinks its card) never yanks the viewport around.
   const bottomGap = useRef(0);
-  const pendingCount = useMemo(
-    () => conversation.filter(it => it.kind === "clarifier" && !it.answered).length,
-    [conversation]
-  );
 
   React.useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -1135,9 +1131,9 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
             />
           </div>
         </div>
-        {/* One line, always. The state text gives up its width first so the
-            waiting-questions count is never the thing that gets pushed out of
-            the window. */}
+        {/* Just what the signal is doing. The questions are right below in the
+            feed, each one asking for itself, so a count of them up here was
+            saying the same thing twice. */}
         <div style={{
           marginTop:8, display:"flex", alignItems:"center", gap:8, minWidth:0,
           fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:0.3, color:"var(--ink-2)",
@@ -1158,18 +1154,6 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               {paused ? "paused · agent on hold" : "live · agent is looking in the background"}
             </span>
           </span>
-          {!paused && (pendingCount + negotiatingPeople.length) > 0 && (
-            <React.Fragment>
-              <span style={{ color:"var(--ink-4)", flex:"0 0 auto" }}>·</span>
-              <span style={{
-                background:"#000", color:"#fff", flex:"0 0 auto",
-                padding:"1px 8px", whiteSpace:"nowrap",
-              }}>
-                {pendingCount + negotiatingPeople.length}
-                {pendingCount + negotiatingPeople.length === 1 ? " question" : " questions"} waiting on you
-              </span>
-            </React.Fragment>
-          )}
         </div>
       </div>
 

@@ -657,11 +657,14 @@ function SocialGlyph({ id, size = 13, color = A.fg }) {
 }
 
 /* ---------- RuleLabel: section header with rule ---------- */
-function RuleLabel({ children }) {
+function RuleLabel({ children, size = 10 }) {
   return (
     <div style={{
       display:"flex", alignItems:"center", gap:10,
-      fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:2,
+      fontFamily:"var(--mac-mono)", fontSize:size,
+      // the tracking is what makes small caps read as a heading; past ~11px it
+      // starts to sprawl instead, so it eases off as the type grows
+      letterSpacing: size >= 12 ? 1.4 : 2,
       textTransform:"uppercase",
       color: A.fg, margin:"12px 0 8px",
       fontWeight: 700,
