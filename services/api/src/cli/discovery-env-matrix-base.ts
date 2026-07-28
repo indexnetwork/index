@@ -15,9 +15,9 @@ import type * as DatabaseSchema from '../schemas/database.schema';
 import { BASE_FIXTURE_CORPUS_VERSION, BASE_METADATA_KEY, assertBaseEnvironment, baseSeedPayload, computeFixtureFingerprint, type BaseMetadata, type BaseSeedPayload, type HistoricalMatrixFixture, verifyBaseContract } from './discovery-env-matrix.shared';
 
 const MIGRATIONS_DIRECTORY = path.resolve(import.meta.dir, '../../drizzle');
-const HISTORICAL_MATRIX_CASES_PATH = path.resolve(
+export const HISTORICAL_MATRIX_CASES_PATH = path.resolve(
   import.meta.dir,
-  '../../../packages/protocol/dist/eval/discovery-env-matrix/historical-matrix.cases.js',
+  '../../../../packages/protocol/dist/eval/discovery-env-matrix/historical-matrix.cases.js',
 );
 
 function sha256(value: string): string {

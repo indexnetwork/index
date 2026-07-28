@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test';
+import path from 'node:path';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
-import { seedProtectedBase, verifyProtectedBase } from '../discovery-env-matrix-base';
+import { HISTORICAL_MATRIX_CASES_PATH, seedProtectedBase, verifyProtectedBase } from '../discovery-env-matrix-base';
 import { BASE_FIXTURE_CORPUS_VERSION, assertBaseEnvironment, baseSeedPayload, computeFixtureFingerprint, type BaseMetadata, verifyBaseContract } from '../discovery-env-matrix.shared';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
@@ -93,6 +94,16 @@ function mockBaseDatabase(selectResults: Array<Array<{ id: string }>> = []): {
 }
 
 describe('discovery environment matrix base policy', () => {
+  it('resolves historical fixtures from the workspace protocol distribution', () => {
+    const expected = path.resolve(
+      import.meta.dir,
+      '../../../../../packages/protocol/dist/eval/discovery-env-matrix/historical-matrix.cases.js',
+    );
+
+    expect(HISTORICAL_MATRIX_CASES_PATH).toBe(expected);
+    expect(HISTORICAL_MATRIX_CASES_PATH).not.toContain('/services/packages/');
+  });
+
   it('refuses a non-evaluation database or unconfirmed base refresh', () => {
     expect(() => assertBaseEnvironment({})).toThrow('DISCOVERY_ENV_MATRIX_BASE_CONFIRM=1');
     expect(() => assertBaseEnvironment({
