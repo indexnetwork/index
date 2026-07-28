@@ -61,6 +61,7 @@ packages/protocol/eval/profile/runs/
 packages/protocol/eval/opportunity/runs/
 packages/protocol/eval/canary/runs/
 packages/protocol/eval/discovery-retrieval/runs/
+services/api/eval/discovery-env-matrix/runs/
 
 # superpowers brainstorm mockups
 .superpowers/

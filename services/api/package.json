@@ -35,6 +35,7 @@
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "eval:discovery-retrieval-smoke": "bun run --cwd ../../packages/protocol build && bun ./src/cli/discovery-retrieval-smoke.ts",
     "eval:discovery-env-matrix-base": "bun run --cwd ../../packages/protocol build && bun ./src/cli/discovery-env-matrix-base.ts",
+    "eval:discovery-env-matrix": "bun run --cwd ../../packages/protocol build && bun --env-file=../../.env.test ./src/cli/discovery-env-matrix.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
   },
