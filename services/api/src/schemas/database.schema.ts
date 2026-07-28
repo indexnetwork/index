@@ -373,6 +373,15 @@ export const userContexts = pgTable('user_contexts', {
   networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
 }));
 
+/** Durable protected-base fingerprints used to reject stale matrix child runs. */
+export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
+  key: text('key').primaryKey(),
+  schemaMigrationFingerprint: text('schema_migration_fingerprint').notNull(),
+  fixtureFingerprint: text('fixture_fingerprint').notNull(),
+  fixtureCorpusVersion: text('fixture_corpus_version').notNull(),
+  seededAt: timestamp('seeded_at', { withTimezone: true }).notNull(),
+});
+
 export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {

@@ -785,6 +785,13 @@
       "when": 1784990503360,
       "tag": "0111_add_intent_verification_backfill_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1785243202940,
+      "tag": "0112_add_eval_matrix_metadata",
+      "breakpoints": true
     }
   ]
 }
