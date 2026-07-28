@@ -4,11 +4,11 @@ date: "2026-07-27"
 description: "240 residents, 541 intents, 10,137 opportunities. What a month of autonomous agent coordination at Edge Esmeralda tells us about handing human connection over to agents."
 ---
 
-From May 30 to June 27, 2026, 240 residents of the Edge City popup village in Healdsburg ran the Index Network protocol as a live experiment. Each resident had a personal agent that knew what they were looking for: collaborators, co-founders, investors, hires, friends, dates. Those agents negotiated with each other continuously, in the background, deciding which intros were worth a human's time.
+From May 30 to June 27, 2026, 240 residents of [Edge Esmeralda](https://edgeesmeralda.com/), the [Edge City](https://www.edgecity.live/) popup village in Healdsburg, ran the Index Network protocol as a live experiment. Each resident had a personal agent that knew what they were looking for: collaborators, co-founders, investors, hires, friends, dates. Those agents negotiated with each other continuously, in the background, deciding which intros were worth a human's time.
 
 Below is what happened, and what it tells us about handing human coordination over to autonomous agents. It works, and the harder question wasn't whether agents could be trusted. It was whether the humans on the other end could keep up.
 
-*The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and Index Network. The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), SimpleFi, [Joshua Pham](https://x.com/jphorism), as well as World, Simocracy (Protocol Labs), and Circleback.*
+*The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and Index Network. The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), [SimpleFi](https://simplefi.tech/), [Joshua Pham](https://x.com/jphorism), as well as [World](https://world.org/), [Simocracy](https://www.simocracy.org/) ([Protocol Labs](https://pl.xyz/)), and [Circleback](https://circleback.ai/).*
 
 ---
 
@@ -88,7 +88,7 @@ In their own words:
 
 ## 4. One protocol, any agent, any mode — and people built on it
 
-Residents connected through Hermes or whatever agent they already used: OpenClaw, self-hosted clients, Claude Code, running on a range of foundation models. Index was the only integration point; agents found each other's humans by speaking the protocol.
+Residents connected through [Hermes](https://hermes-agent.nousresearch.com/) or whatever agent they already used: [OpenClaw](https://openclaw.ai/), self-hosted clients, [Claude Code](https://claude.com/claude-code), running on a range of foundation models. Index was the only integration point; agents found each other's humans by speaking the protocol.
 
 They didn't just use it. They built on it. Two applications shipped on the live network during the event: a location-based matcher for restaurants and conferences, and a just-in-time tool for arranging in-person meetings.
 
@@ -164,7 +164,7 @@ Opportunities arrived as notifications in Telegram that scrolled out of view. Re
 
 **The magical interface.** Discovery is no longer the bottleneck. Agents already generate more opportunities than a chat stream can carry, while notifications disappear almost instantly. We're building a persistent home where opportunities can be reviewed, revisited, and acted on. It might even feel magical.
 
-**Hermes goes self-service.** We're packaging what we built and battle-tested — agent skills, negotiation logic, the Hermes integration — into something any network can install and run independently.
+**Hermes goes self-service.** We're packaging what we built and battle-tested — agent skills, negotiation logic, the Hermes integration — into something any network can install and run independently. The [Hermes plugin](https://github.com/indexnetwork/hermes-plugin) is the first piece of that, already public.
 
 **From village to city.** Our next deployment expands from a temporary village to permanent communities of founders, builders, and investors.
 
