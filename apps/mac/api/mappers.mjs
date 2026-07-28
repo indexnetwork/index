@@ -249,6 +249,7 @@ export function mapOpportunityStatusToPrototype(status) {
   switch (status) {
     case 'accepted':
       return 'accepted';
+    case 'latent':
     case 'pending':
     case 'draft':
       return 'ready';
@@ -259,7 +260,6 @@ export function mapOpportunityStatusToPrototype(status) {
       return 'passed';
     case 'expired':
       return 'expired';
-    case 'latent':
     default:
       return 'considering';
   }

@@ -207,8 +207,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   const refreshRadar = React.useCallback(async () => {
     if (!live || !client) return;
+    // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
+    // otherwise the home endpoint only returns actionable rows and the
+    // accepted/rejected/missed tabs stay empty.
+    const radarStatuses = "latent,pending,negotiating,stalled,accepted,rejected,expired";
     const [homeR, qR] = await Promise.all([
-      (intentId ? client.opportunities.homeForIntent(intentId) : client.opportunities.home()).catch(() => null),
+      (intentId ? client.opportunities.homeForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.home()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
     ]);
     if (homeR) {
