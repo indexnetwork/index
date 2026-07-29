@@ -251,8 +251,10 @@ export class AgentController {
     }
   }
 
+  // API keys are allowed here (not SessionOnlyGuard) so desktop surfaces can
+  // deregister an agent they registered; deletion also revokes its tokens.
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
