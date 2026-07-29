@@ -695,11 +695,7 @@ export function createMcpServer(
                   type: 'text' as const,
                   text: JSON.stringify({
                     error: 'Rate limit exceeded',
-                    message:
-                      `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.` +
-                      (toolName === 'discover_opportunities'
-                        ? ` If a discovery run is in progress, poll get_discovery_run instead of calling discover_opportunities again.`
-                        : ''),
+                    message: `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.`,
                     retryAfterSec,
                   }),
                 }],
@@ -764,45 +760,6 @@ export function createMcpServer(
           });
 
           const { text: sanitizedText, isError: toolIsError } = sanitizeMcpResult(result);
-
-          // Slice 5: decision questions post-processing for discover_opportunities only.
-          if (toolName === "discover_opportunities" && !toolIsError) {
-            const questions = extractDecisionQuestions(sanitizedText);
-            if (questions) {
-              const envelopeBlock = {
-                type: "text" as const,
-                text: renderQuestionsEnvelope(questions),
-              };
-
-              const supportsElicitation =
-                !!server.server.getClientCapabilities()?.elicitation;
-
-              // Capture into a local const so TS preserves the narrowing
-              // inside the callback below. Optional chains don't survive
-              // across closure boundaries under strict mode.
-              const elicitInput = ctx.mcpReq?.elicitInput;
-
-              if (supportsElicitation && elicitInput) {
-                // Sequential — never parallel (day-one rule). We await the loop
-                // before returning the tool result so test harnesses can observe
-                // the dispatched calls deterministically.
-                await dispatchElicitations({
-                  userId,
-                  questions,
-                  elicitInput: (params) => elicitInput(params),
-                  chatMessageWriter: deps.chatMessageWriter,
-                });
-              }
-
-              return {
-                content: [
-                  { type: "text" as const, text: sanitizedText },
-                  envelopeBlock,
-                ],
-                ...(toolIsError ? { isError: true } : {}),
-              };
-            }
-          }
 
           return {
             content: [{ type: 'text' as const, text: sanitizedText }],
