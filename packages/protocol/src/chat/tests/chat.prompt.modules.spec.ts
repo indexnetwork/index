@@ -190,13 +190,13 @@ describe("resolveModules", () => {
     expect(result).not.toContain("### 6a. Discover who to introduce to someone");
   });
 
-  test("omits the introducer exception from regular discovery when disabled", () => {
+  test("omits all introducer-flow guidance from regular discovery when disabled", () => {
     process.env.INTRODUCER_DISCOVERY_ENABLED = "false";
     const result = resolveModules({
       recentTools: [{ name: "discover_opportunities", args: { searchQuery: "mentor" } }],
       ctx: mockCtx(),
     });
-    expect(result).not.toContain("Introducer exception");
+    expect(result).not.toMatch(/introduc/i);
   });
 
   test("keeps introduction guidance when introducer discovery is enabled", () => {
