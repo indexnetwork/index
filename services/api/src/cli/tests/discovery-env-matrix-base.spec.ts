@@ -6,7 +6,7 @@ import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/d
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
-import { HISTORICAL_MATRIX_CASES_PATH, parseBaseArgs, runBaseCommand, runBaseLifecycle, seedProtectedBase, verifyBaseFixtureIntegrity, verifyProtectedBase } from '../discovery-env-matrix-base';
+import { HISTORICAL_MATRIX_CASES_PATH, parseBaseArgs, runBaseCommand, runBaseLifecycle, seedProtectedBase, verifyBaseFixtureIntegrity, verifyProtectedBase } from '../discovery-env-matrix-base.main';
 import { BASE_FIXTURE_CORPUS_VERSION, assertBaseEnvironment, baseSeedPayload, computeFixtureFingerprint, type BaseMetadata, verifyBaseContract } from '../discovery-env-matrix.shared';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
@@ -253,7 +253,7 @@ describe('protected base transaction', () => {
   });
 
   it('indexes every fixture intent and rejects any intent left unembedded', async () => {
-    const { db, state } = mockBaseDatabase(Array.from({ length: 9 }, () => []));
+    const { db, state } = mockBaseDatabase(Array.from({ length: 10 }, () => []));
     const indexedIntentIds: string[] = [];
 
     await seedProtectedBase(db, schema, payload, metadata, async (intent) => {
@@ -261,14 +261,14 @@ describe('protected base transaction', () => {
     });
 
     expect(indexedIntentIds).toEqual(payload.intents.map((intent) => intent.id));
-    expect(state.calls.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => 'select'));
-    expect(state.calls.filter((call) => call === 'select')).toHaveLength(9);
+    expect(state.calls.slice(0, 9)).toEqual(Array.from({ length: 9 }, () => 'select'));
+    expect(state.calls.filter((call) => call === 'select')).toHaveLength(10);
     expect(state.upserts).toContain('evalMatrixMetadata');
   });
 
   it('refuses metadata persistence when an indexed fixture intent remains unembedded', async () => {
     const { db, state } = mockBaseDatabase([
-      ...Array.from({ length: 8 }, () => []),
+      ...Array.from({ length: 9 }, () => []),
       [{ id: payload.intents[0]!.id }],
     ]);
 
@@ -280,12 +280,12 @@ describe('protected base transaction', () => {
   });
 
   it('persists and verifies the durable metadata only after dependent checks pass', async () => {
-    const { db, state } = mockBaseDatabase(Array.from({ length: 9 }, () => []));
+    const { db, state } = mockBaseDatabase(Array.from({ length: 10 }, () => []));
 
     await seedProtectedBase(db, schema, payload, metadata, noOpFixtureIntentIndexer);
 
-    expect(state.calls.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => 'select'));
-    expect(state.calls.filter((call) => call === 'select')).toHaveLength(9);
+    expect(state.calls.slice(0, 9)).toEqual(Array.from({ length: 9 }, () => 'select'));
+    expect(state.calls.filter((call) => call === 'select')).toHaveLength(10);
     expect(state.upserts).toContain('evalMatrixMetadata');
     expect(state.metadata).toMatchObject(metadata);
     await expect(verifyProtectedBase(db, schema, metadata)).resolves.toBeUndefined();
