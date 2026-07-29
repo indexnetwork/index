@@ -114,10 +114,10 @@ function mockCurrentCommandDatabase(payload: ReturnType<typeof baseSeedPayload>,
   const structuralRows: unknown[][] = [
     payload.users.map((user) => ({ ...user, emailVerified: false, deletedAt: null })),
     payload.networks.map((network) => ({ ...network, deletedAt: null })),
-    payload.intents.map((intent) => ({ ...intent, status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId, embedding: Array(2000).fill(0.1) })),
+    payload.intents.map((intent) => ({ ...intent, status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId, archivedAt: null, embedding: Array(2000).fill(0.1) })),
     payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId, relevancyScore: '1' })),
     payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId, permissions: ['member'], autoAssign: false })),
-    [], [],
+    [], [], [],
     payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: Array(2000).fill(0.1) })),
     [],
   ];
@@ -307,11 +307,12 @@ describe('protected base lifecycle', () => {
       payload.networks.map((network) => ({ ...network, deletedAt: null })),
       payload.intents.map((intent) => ({
         ...intent,
-        status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId,
+        status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId, archivedAt: null,
         embedding: intent.id === options.unembeddedIntentId ? null : [0.1],
       })),
       payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId, relevancyScore: '1' })),
       payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId, permissions: ['member'], autoAssign: false })),
+      [],
       [],
       [],
       payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: Array(2000).fill(0.1) })),
@@ -325,7 +326,7 @@ describe('protected base lifecycle', () => {
     }));
 
     await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('is unembedded');
-    expect(state.reads).toBe(8);
+    expect(state.reads).toBe(9);
     expect(state.writes).toBe(0);
   });
 
@@ -412,7 +413,7 @@ describe('package verify command composition', () => {
       log,
     })).resolves.toBe('already-current');
 
-    expect(readOnly.state.reads).toBe(10);
+    expect(readOnly.state.reads).toBe(11);
     expect(readOnly.state.writes).toBe(0);
     expect(readOnly.state.closed).toBe(true);
     expect(createIndexer).not.toHaveBeenCalled();
