@@ -263,6 +263,8 @@ export class EvaluatorIncompleteError extends Error {
 function reconcileEvaluatorVerdicts(
   verdicts: EvaluatorVerdict[],
   candidateIds: string[],
+  discovererId: string,
+  introductionMode: boolean,
 ): EvaluatorVerdict[] {
   const expected = new Set(candidateIds);
   const seen = new Set<string>();
@@ -270,8 +272,18 @@ function reconcileEvaluatorVerdicts(
     if (!expected.has(verdict.candidateId) || seen.has(verdict.candidateId)) {
       throw new EvaluatorIncompleteError();
     }
-    if (verdict.accepted && verdict.actors.length < 2) {
-      throw new EvaluatorIncompleteError();
+    if (verdict.accepted) {
+      const expectedActorIds = introductionMode
+        ? expected
+        : new Set([discovererId, verdict.candidateId]);
+      const actorIds = verdict.actors.map((actor) => actor.userId);
+      if (
+        actorIds.length !== expectedActorIds.size ||
+        new Set(actorIds).size !== expectedActorIds.size ||
+        actorIds.some((actorId) => !expectedActorIds.has(actorId))
+      ) {
+        throw new EvaluatorIncompleteError();
+      }
     }
     seen.add(verdict.candidateId);
   }
@@ -554,7 +566,12 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
         const result = await invokeWithAbortSignal(this.entityBundleModel, messages, options.signal);
         const parsed = entityBundleResponseFormat.parse(result);
         parsedTotal = parsed.verdicts.length;
-        const verdicts = reconcileEvaluatorVerdicts(parsed.verdicts, candidateIds);
+        const verdicts = reconcileEvaluatorVerdicts(
+          parsed.verdicts,
+          candidateIds,
+          input.discovererId,
+          input.introductionMode ?? false,
+        );
         const accepted = verdicts
           .filter((verdict) => verdict.accepted)
           .map((verdict) => ({

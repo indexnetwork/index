@@ -712,7 +712,7 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.some((candidate) => candidate.evidence.some((evidence) => evidence.kind === 'context_to_intent'))).toBe(false);
     });
 
-    it('hydrates empty query-premise payloads before evaluator input', async () => {
+    it('hydrates empty query-premise payloads from HyDE results before evaluator input', async () => {
       process.env.DISCOVERY_ALLOWED_TYPES = 'profile';
       process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
       let evaluatorInput: EvaluatorInput | undefined;
@@ -729,21 +729,24 @@ describe('Opportunity Graph', () => {
           }];
         },
       };
-      const { compiledGraph, mockDb } = createMockGraph({ evaluator });
-      wirePremiseAndContextSources(mockDb);
-      mockDb.searchPremisesBySimilarityBatch = async () => [
-        { sourcePremiseId: 'premise-1', premiseId: 'candidate-premise-1', userId: gatingBob, networkId: 'idx-1', assertionText: '', similarity: 0.88 },
-      ];
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({ evaluator });
+      const premiseSearchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'premise' as const, id: 'candidate-premise-1', userId: gatingBob, score: 0.88, matchedVia: 'mirror' as const, networkId: 'idx-1' },
+      ]);
       mockDb.getPremise = async (premiseId) => premiseId === 'candidate-premise-1'
         ? { id: premiseId, userId: gatingBob, assertion: { text: 'Operates a structural biology lab', tier: 'assertive' as const, summary: 'Structural biology lab' }, provenance: { source: 'explicit' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null }
         : null;
 
-      await compiledGraph.invoke({
+      const result = await compiledGraph.invoke({
         userId: gatingAlice as Id<'users'>,
+        searchQuery: 'find structural biology collaborators',
         options: {},
-      } as OpportunityGraphInvokeInput);
+      } as OpportunityGraphInvokeInput) as OpportunityGraphInvokeResult;
 
       const candidate = evaluatorInput?.entities.find((entity) => entity.userId === gatingBob);
+      expect(premiseSearchSpy).not.toHaveBeenCalled();
+      expect(result.candidates[0]?.evidence[0]?.kind).toBe('query_premise');
       expect(candidate?.evidence?.[0]?.assertionText).toBe('Operates a structural biology lab');
       expect(candidate?.evidence?.[0]?.payload).toBe('Operates a structural biology lab');
     });
