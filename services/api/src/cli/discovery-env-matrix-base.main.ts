@@ -261,13 +261,13 @@ export async function verifyBaseFixtureIntegrity(
   const networkIds = payload.networks.map((network) => network.id);
   const intentIds = payload.intents.map((intent) => intent.id);
   const [users, networks, intents, intentNetworks, memberships, premises, contexts, hydeDocuments, opportunities] = await Promise.all([
-    db.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.id, userIds)),
-    db.select({ id: schema.networks.id }).from(schema.networks).where(inArray(schema.networks.id, networkIds)),
-    db.select({ id: schema.intents.id, embedding: schema.intents.embedding }).from(schema.intents)
+    db.select({ id: schema.users.id, email: schema.users.email, name: schema.users.name, intro: schema.users.intro, location: schema.users.location, emailVerified: schema.users.emailVerified, deletedAt: schema.users.deletedAt }).from(schema.users).where(inArray(schema.users.id, userIds)),
+    db.select({ id: schema.networks.id, title: schema.networks.title, prompt: schema.networks.prompt, deletedAt: schema.networks.deletedAt }).from(schema.networks).where(inArray(schema.networks.id, networkIds)),
+    db.select({ id: schema.intents.id, userId: schema.intents.userId, payload: schema.intents.payload, summary: schema.intents.summary, status: schema.intents.status, sourceType: schema.intents.sourceType, sourceId: schema.intents.sourceId, embedding: schema.intents.embedding }).from(schema.intents)
       .where(inArray(schema.intents.id, intentIds)),
-    db.select({ intentId: schema.intentNetworks.intentId, networkId: schema.intentNetworks.networkId })
+    db.select({ intentId: schema.intentNetworks.intentId, networkId: schema.intentNetworks.networkId, relevancyScore: schema.intentNetworks.relevancyScore })
       .from(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, intentIds)),
-    db.select({ userId: schema.networkMembers.userId, networkId: schema.networkMembers.networkId })
+    db.select({ userId: schema.networkMembers.userId, networkId: schema.networkMembers.networkId, permissions: schema.networkMembers.permissions, autoAssign: schema.networkMembers.autoAssign })
       .from(schema.networkMembers).where(and(
         inArray(schema.networkMembers.userId, userIds),
         inArray(schema.networkMembers.networkId, networkIds),
@@ -281,6 +281,12 @@ export async function verifyBaseFixtureIntegrity(
   assertExactFixtureIds('user', userIds, users.map((row) => row.id));
   assertExactFixtureIds('network', networkIds, networks.map((row) => row.id));
   assertExactFixtureIds('intent', intentIds, intents.map((row) => row.id));
+  const expectedUsers = new Map(payload.users.map((user) => [user.id, user]));
+  for (const user of users) { const expectedUser = expectedUsers.get(user.id); if (!expectedUser || user.email !== expectedUser.email || user.name !== expectedUser.name || user.intro !== expectedUser.intro || user.location !== expectedUser.location || user.emailVerified !== false || user.deletedAt !== null) throw new Error(`Discovery environment matrix base integrity failed: user scalar/lifecycle ${user.id}`); }
+  const expectedNetworks = new Map(payload.networks.map((network) => [network.id, network]));
+  for (const network of networks) { const expectedNetwork = expectedNetworks.get(network.id); if (!expectedNetwork || network.title !== expectedNetwork.title || network.prompt !== expectedNetwork.prompt || network.deletedAt !== null) throw new Error(`Discovery environment matrix base integrity failed: network scalar/lifecycle ${network.id}`); }
+  const expectedIntents = new Map(payload.intents.map((intent) => [intent.id, intent]));
+  for (const intent of intents) { const expectedIntent = expectedIntents.get(intent.id); if (!expectedIntent || intent.userId !== expectedIntent.userId || intent.payload !== expectedIntent.payload || intent.summary !== expectedIntent.summary || intent.status !== 'ACTIVE' || intent.sourceType !== 'discovery_form' || intent.sourceId !== expectedIntent.userId) throw new Error(`Discovery environment matrix base integrity failed: intent scalar/lifecycle ${intent.id}`); }
   const unembedded = intents.find((intent) => intent.embedding === null);
   if (unembedded) throw new Error(`Discovery environment matrix base integrity failed: intent ${unembedded.id} is unembedded`);
 
@@ -292,6 +298,8 @@ export async function verifyBaseFixtureIntegrity(
     if (!documents.length) throw new Error(`Discovery environment matrix base integrity failed: missing valid intent HyDE ${intent.id}`);
   }
 
+  for (const membership of memberships) if (!Array.isArray(membership.permissions) || membership.permissions.length !== 1 || membership.permissions[0] !== 'member' || membership.autoAssign !== false) throw new Error(`Discovery environment matrix base integrity failed: membership scalar/lifecycle ${membership.userId}:${membership.networkId}`);
+  for (const assignment of intentNetworks) if (assignment.relevancyScore !== '1') throw new Error(`Discovery environment matrix base integrity failed: intent-network scalar/lifecycle ${assignment.intentId}:${assignment.networkId}`);
   const expectedIntentNetworks = new Set(payload.intents.map((intent) => `${intent.id}:${intent.networkId}`));
   const actualIntentNetworks = new Set(intentNetworks.map((row) => `${row.intentId}:${row.networkId}`));
   const missingIntentNetwork = [...expectedIntentNetworks].find((key) => !actualIntentNetworks.has(key));
