@@ -5,7 +5,7 @@ import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { buildMatrixArtifactEvidence, collectCandidates, invokeMatrixDiscoveryGraph, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -54,25 +54,29 @@ describe('discovery environment matrix runtime seams', () => {
     const network = payload.networks[0]!;
     const triggerIntentId = resolveFixtureTriggerIntent(payload, fixtureCase.sourceUserId, network.id);
     const calls: Array<Record<string, unknown>> = [];
+    const signals: Array<AbortSignal | undefined> = [];
     const graph = {
-      invoke: async (input: Record<string, unknown>) => {
+      invoke: async (input: Record<string, unknown>, config?: { signal?: AbortSignal }) => {
         calls.push(input);
+        signals.push(config?.signal);
         return { discoverySource: 'intent' };
       },
     };
+    const controller = new AbortController();
 
     for (const row of [MATRIX_ROWS[0]!, MATRIX_ROWS[3]!]) {
       await invokeMatrixDiscoveryGraph(graph, {
         sourceUserId: fixtureCase.sourceUserId,
         networkId: network.id,
         triggerIntentId,
-      }, row);
+      }, row, controller.signal);
     }
 
     expect(calls).toEqual([
       expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
       expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
     ]);
+    expect(signals).toEqual([controller.signal, controller.signal]);
     expect(() => resolveFixtureTriggerIntent(
       { ...payload, memberships: payload.memberships.filter((membership) => membership.userId !== fixtureCase.sourceUserId) },
       fixtureCase.sourceUserId,
@@ -224,6 +228,74 @@ describe('discovery environment matrix runtime seams', () => {
     });
 
     expect(artifact.payload.cases[0]).toMatchObject({ runs: 0, passes: 0, passRate: 0, scoredRunIds: [] });
+  });
+
+  it('validates a positive child timeout with a strict 20-minute default', () => {
+    expect(parseMatrixChildTimeoutMs({})).toBe(20 * 60_000);
+    expect(parseMatrixChildTimeoutMs({ DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS: '1234' })).toBe(1234);
+    for (const value of ['0', '-1', '1.5', 'NaN', ' 1', '1e3']) {
+      expect(() => parseMatrixChildTimeoutMs({ DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS: value })).toThrow('positive integer');
+    }
+  });
+
+  it('cleans child database and cache resources after success without changing output', async () => {
+    const calls: string[] = [];
+    await expect(runWithChildCleanup(
+      async () => { calls.push('run'); return 'artifact'; },
+      async () => { calls.push('cleanup'); },
+    )).resolves.toBe('artifact');
+    expect(calls).toEqual(['run', 'cleanup']);
+  });
+
+  it('does not mask a child failure when resource cleanup also fails', async () => {
+    await expect(runWithChildCleanup(
+      async () => { throw new Error('primary graph failure'); },
+      async () => { throw new Error('cleanup failure'); },
+      { error: () => undefined },
+    )).rejects.toThrow('primary graph failure');
+  });
+
+  it('escalates a timed-out child without leaking its database URL and retains the artifact', async () => {
+    const signals: string[] = [];
+    let resolveExit!: (code: number) => void;
+    const exited = new Promise<number>((resolve) => { resolveExit = resolve; });
+    const child = { childKey: 'intent-only-r1', branch: 'eval-discovery-env-matrix-test', databaseUrl: 'postgres://secret@child.neon.tech/protocol_eval', baseBranch: 'eval-discovery-base' };
+    const error = await awaitMatrixChildProcess({
+      child,
+      outputPath: '/tmp/retained-child-artifact.json',
+      timeoutMs: 1,
+      process: { exited, kill: (signal: string) => { signals.push(signal); if (signal === 'SIGKILL') resolveExit(137); } },
+      artifactExists: async () => true,
+      sleep: async () => undefined,
+      logger: { info: () => undefined, warn: () => undefined },
+    }).then(() => undefined, (reason: unknown) => reason as Error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error!.message).toContain('intent-only-r1');
+    expect(error!.message).toContain('retained-child-artifact.json');
+    expect(error!.message).not.toContain('secret');
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
+  it('retains temporary child artifacts after abnormal completion and removes them only after success', async () => {
+    const removed: string[] = [];
+    const remove = async (target: string) => { removed.push(target); };
+    await finalizeMatrixChildArtifacts('/tmp/retained-child', false, remove, { warn: () => undefined });
+    expect(removed).toEqual([]);
+    await finalizeMatrixChildArtifacts('/tmp/complete-child', true, remove, { warn: () => undefined });
+    expect(removed).toEqual(['/tmp/complete-child']);
+  });
+
+  it('requires a successful child artifact before parent cleanup can remove temporary files', async () => {
+    const child = { childKey: 'intent-only-r1', branch: 'eval-discovery-env-matrix-test', databaseUrl: 'postgres://secret@child.neon.tech/protocol_eval', baseBranch: 'eval-discovery-base' };
+    await expect(awaitMatrixChildProcess({
+      child,
+      outputPath: '/tmp/missing-child-artifact.json',
+      timeoutMs: 1,
+      process: { exited: Promise.resolve(0), kill: () => undefined },
+      artifactExists: async () => false,
+      sleep: async () => undefined,
+      logger: { info: () => undefined, warn: () => undefined },
+    })).rejects.toThrow('missing-artifact');
   });
 
   it('preserves concrete graph evidence IDs alongside evidence types in run candidates', () => {

@@ -22,6 +22,141 @@ const BASELINE_PATH = path.resolve(import.meta.dir, '../../eval/discovery-env-ma
 const HARNESS = 'discovery-env-matrix';
 const HARNESS_VERSION = '1';
 const ATTEMPT_TIMEOUT_MS = 180_000;
+export const DEFAULT_CHILD_TIMEOUT_MS = 20 * 60_000;
+const CHILD_TERMINATION_GRACE_MS = 5_000;
+
+export function parseMatrixChildTimeoutMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS;
+  if (raw === undefined) return DEFAULT_CHILD_TIMEOUT_MS;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error('DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS must be a positive integer');
+  }
+  const timeoutMs = Number(raw);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error('DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS must be a positive integer');
+  }
+  return timeoutMs;
+}
+
+type ChildProcess = { exited: Promise<number>; kill(signal?: NodeJS.Signals): void };
+type MatrixChildLogger = Pick<Console, 'info' | 'warn' | 'error'>;
+
+type MatrixChildFailure = {
+  childKey: string;
+  branch: string;
+  timeoutMs: number;
+  exit: number | null;
+  artifactPath: string;
+  artifactExists: boolean;
+  reason: 'timeout' | 'exit' | 'missing-artifact';
+};
+
+export class MatrixChildProcessError extends Error {
+  readonly details: MatrixChildFailure;
+
+  constructor(details: MatrixChildFailure) {
+    super(`Discovery environment matrix child failure: ${JSON.stringify(details)}`);
+    this.name = 'MatrixChildProcessError';
+    this.details = details;
+  }
+}
+
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Waits for one isolated child and leaves its artifact in place on any abnormal outcome. */
+export async function awaitMatrixChildProcess(input: {
+  child: MatrixChildManifestEntry;
+  outputPath: string;
+  timeoutMs: number;
+  process: ChildProcess;
+  artifactExists?: () => Promise<boolean>;
+  sleep?: (ms: number) => Promise<void>;
+  logger?: Pick<MatrixChildLogger, 'info' | 'warn'>;
+}): Promise<void> {
+  const { child, outputPath, timeoutMs, process: childProcess } = input;
+  const artifactExists = input.artifactExists ?? (() => Bun.file(outputPath).exists());
+  const sleep = input.sleep ?? wait;
+  const logger = input.logger ?? console;
+  logger.info(`Discovery environment matrix child started: key=${child.childKey} branch=${child.branch}`);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    childProcess.exited.then((exit) => ({ kind: 'exit' as const, exit })),
+    new Promise<{ kind: 'timeout' }>((resolve) => { timer = setTimeout(() => resolve({ kind: 'timeout' }), timeoutMs); }),
+  ]);
+  if (timer !== undefined) clearTimeout(timer);
+  if (result.kind === 'timeout') {
+    logger.warn(`Discovery environment matrix child timed out: key=${child.childKey} timeoutMs=${timeoutMs}; sending SIGTERM`);
+    childProcess.kill('SIGTERM');
+    const terminated = await Promise.race([
+      childProcess.exited.then((exit) => ({ exited: true as const, exit })),
+      sleep(CHILD_TERMINATION_GRACE_MS).then(() => ({ exited: false as const })),
+    ]);
+    let finalExit: number | null;
+    if (terminated.exited) {
+      finalExit = terminated.exit;
+    } else {
+      logger.warn(`Discovery environment matrix child did not exit after SIGTERM: key=${child.childKey}; sending SIGKILL`);
+      childProcess.kill('SIGKILL');
+      const killed = await Promise.race([
+        childProcess.exited.then((exit) => ({ exited: true as const, exit })),
+        sleep(CHILD_TERMINATION_GRACE_MS).then(() => ({ exited: false as const })),
+      ]);
+      finalExit = killed.exited ? killed.exit : null;
+    }
+    const exists = await artifactExists();
+    logger.info(`Discovery environment matrix child artifact availability: key=${child.childKey} exists=${exists}`);
+    throw new MatrixChildProcessError({ childKey: child.childKey, branch: child.branch, timeoutMs, exit: finalExit, artifactPath: outputPath, artifactExists: exists, reason: 'timeout' });
+  }
+  const exists = await artifactExists();
+  logger.info(`Discovery environment matrix child exit: key=${child.childKey} exit=${result.exit}`);
+  logger.info(`Discovery environment matrix child artifact availability: key=${child.childKey} exists=${exists}`);
+  if (result.exit !== 0 || !exists) {
+    throw new MatrixChildProcessError({
+      childKey: child.childKey,
+      branch: child.branch,
+      timeoutMs,
+      exit: result.exit,
+      artifactPath: outputPath,
+      artifactExists: exists,
+      reason: result.exit === 0 ? 'missing-artifact' : 'exit',
+    });
+  }
+}
+
+/** Runs child work and always cleans process-global resource singletons without masking primary errors. */
+export async function finalizeMatrixChildArtifacts(
+  temporaryDirectory: string,
+  completedSuccessfully: boolean,
+  remove: (path: string, options: { recursive: true; force: true }) => Promise<void> = rm,
+  logger: Pick<MatrixChildLogger, 'warn'> = console,
+): Promise<void> {
+  if (completedSuccessfully) {
+    await remove(temporaryDirectory, { recursive: true, force: true });
+  } else {
+    logger.warn(`Discovery environment matrix retained child artifacts: ${temporaryDirectory}`);
+  }
+}
+
+export async function runWithChildCleanup<T>(run: () => Promise<T>, cleanup: () => Promise<void>, logger: Pick<MatrixChildLogger, 'error'> = console): Promise<T> {
+  let result: T | undefined;
+  let primaryError: unknown;
+  try {
+    result = await run();
+  } catch (error) {
+    primaryError = error;
+  }
+  let cleanupError: unknown;
+  try {
+    await cleanup();
+    logger.error('Discovery environment matrix child cleanup complete');
+  } catch (error) {
+    cleanupError = error;
+    logger.error(`Discovery environment matrix child cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (primaryError !== undefined) throw primaryError;
+  if (cleanupError !== undefined) throw cleanupError;
+  return result as T;
+}
 
 type DatabaseCase = HistoricalMatrixFixture;
 export type MatrixCandidateEvidenceIds = {
@@ -250,16 +385,17 @@ export interface MatrixGraphRuntimeInput {
 
 /** Provider-free seam around the exact graph invocation used by every matrix slot. */
 export async function invokeMatrixDiscoveryGraph<T>(
-  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: { minScore: number } }): Promise<T> },
+  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: { minScore: number } }, config?: { signal?: AbortSignal }): Promise<T> },
   runtime: MatrixGraphRuntimeInput,
   row: { id: string; allowedTypes: string; profileSource: string },
+  signal?: AbortSignal,
 ): Promise<T> {
   return withMatrixEnvironment(row, () => graph.invoke({
     userId: runtime.sourceUserId,
     networkId: runtime.networkId,
     triggerIntentId: runtime.triggerIntentId,
     options: { minScore: 50 },
-  }));
+  }, signal ? { signal } : undefined));
 }
 
 function evidenceTypes(candidate: Record<string, unknown>): MatrixCandidate['evidenceTypes'] {
@@ -322,6 +458,17 @@ async function createChildDependencies() {
   return { database, premiseGraph, contextGenerator, opportunityGraph };
 }
 
+/** Closes process-global clients created by the child composition, even after partial initialization. */
+async function closeChildResources(): Promise<void> {
+  const [drizzleModule, cacheModule] = await Promise.all([
+    import('../lib/drizzle/drizzle'),
+    import('../adapters/cache.adapter'),
+  ]);
+  const results = await Promise.allSettled([drizzleModule.closeDb(), cacheModule.closeRedisConnection()]);
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failure) throw failure.reason;
+}
+
 async function composeCaseRuntime(
   deps: Awaited<ReturnType<typeof createChildDependencies>>,
   matrixCase: DatabaseCase,
@@ -367,7 +514,7 @@ async function composeCaseRuntime(
   return { sourceUserId: matrixCase.sourceUserId, networkId: network.id, triggerIntentId };
 }
 
-async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecutionSelection): Promise<ChildOutput> {
+async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecutionSelection, deps: Awaited<ReturnType<typeof createChildDependencies>>): Promise<ChildOutput> {
   const { HISTORICAL_MATRIX_CASES, scoreMatrixSlot, buildExecutionEvidence, executeRuns } = await loadMatrixEval();
   const assertLLM = await loadJudge();
   const plan = selection.plan.filter((slot) => slot.childKey === child.childKey);
@@ -379,11 +526,10 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
   if (environment.databaseUrl.toString() !== new URL(child.databaseUrl).toString() || environment.childBranch !== child.branch) {
     throw new Error(`Child ${child.childKey} environment does not match its declared manifest attestation`);
   }
-  const deps = await createChildDependencies();
   const expected = await expectedBaseMetadata(HISTORICAL_MATRIX_CASES);
   await verifyProtectedBase((await import('../lib/drizzle/drizzle')).default, await import('../schemas/database.schema'), expected);
 
-  const batch = await executeRuns(async ({ runIndex }: { runIndex: number }) => {
+  const batch = await executeRuns(async ({ runIndex, signal }: { runIndex: number; signal: AbortSignal }) => {
     const slot = plan[runIndex]!;
     const matrixCase = databaseCase(slot.matrixCase);
     const fixturePayload = baseSeedPayload([slot.matrixCase]);
@@ -392,7 +538,7 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
     if (!network || !fixtureCase) throw new Error(`${slot.matrixCase.id}: missing protected-base network`);
     const triggerIntentId = resolveFixtureTriggerIntent(fixturePayload, fixtureCase.sourceUserId, network.id);
     const composed = await composeCaseRuntime(deps, matrixCase, network, triggerIntentId);
-    const graphResult = await invokeMatrixDiscoveryGraph(deps.opportunityGraph as never, composed, slot.row) as Record<string, unknown>;
+    const graphResult = await invokeMatrixDiscoveryGraph(deps.opportunityGraph as never, composed, slot.row, signal) as Record<string, unknown>;
     if (graphResult.error) throw new Error(`${matrixCase.id}: opportunity graph failed: ${String(graphResult.error)}`);
     const candidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
     const scored = await scoreMatrixSlot({
@@ -503,8 +649,10 @@ async function runParent(): Promise<void> {
     force,
   });
 
+  const childTimeoutMs = parseMatrixChildTimeoutMs(process.env);
   const startedAt = new Date().toISOString();
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'discovery-env-matrix-'));
+  let completedSuccessfully = false;
   try {
     const outputs: ChildOutput[] = [];
     for (const child of manifest.children) {
@@ -517,7 +665,7 @@ async function runParent(): Promise<void> {
         env: { ...process.env, DATABASE_URL: child.databaseUrl, DISCOVERY_ENV_MATRIX_CHILD_BRANCH: child.branch, DISCOVERY_ENV_MATRIX_BASE_BRANCH: child.baseBranch },
         stdout: 'inherit', stderr: 'inherit',
       });
-      if (await proc.exited !== 0) throw new Error(`Child ${child.childKey} failed`);
+      await awaitMatrixChildProcess({ child, outputPath, timeoutMs: childTimeoutMs, process: proc });
       outputs.push(await Bun.file(outputPath).json() as ChildOutput);
     }
     const slots = outputs.flatMap((output) => output.slots);
@@ -565,8 +713,9 @@ async function runParent(): Promise<void> {
     if (htmlPath) await writeHtmlReport(htmlPath, scorecard, regressions, execution);
     const failedAssertions = slots.some((slot) => slot.passes !== slot.runs);
     process.exitCode = failedAssertions && flow.exitCode === 0 ? 1 : flow.exitCode;
+    completedSuccessfully = process.exitCode === undefined || process.exitCode === 0;
   } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
+    await finalizeMatrixChildArtifacts(temporaryDirectory, completedSuccessfully);
   }
 }
 
@@ -584,10 +733,14 @@ async function main(): Promise<void> {
     const manifest = parseChildManifest(process.env.DISCOVERY_ENV_MATRIX_CHILDREN, [...new Set(selection.plan.map((slot) => slot.childKey))]);
     const child = manifest.children.find((entry) => entry.childKey === childKey);
     if (!child) throw new Error(`Unknown matrix child key ${childKey}`);
-    const output = await runChild(child, selection);
     const outputPath = flagValue('--child-output');
     if (!outputPath) throw new Error('--child-output is required for a child invocation');
-    await Bun.write(outputPath, JSON.stringify(output));
+    await runWithChildCleanup(async () => {
+      const deps = await createChildDependencies();
+      const output = await runChild(child, selection, deps);
+      await Bun.write(outputPath, JSON.stringify(output));
+      console.log(`Discovery environment matrix child artifact written: key=${child.childKey} path=${outputPath}`);
+    }, closeChildResources);
     return;
   }
   await runParent();
