@@ -1,11 +1,12 @@
 import { describe, expect, it, mock } from 'bun:test';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
-import { HISTORICAL_MATRIX_CASES_PATH, parseBaseArgs, runBaseLifecycle, seedProtectedBase, verifyBaseFixtureIntegrity, verifyProtectedBase } from '../discovery-env-matrix-base';
+import { HISTORICAL_MATRIX_CASES_PATH, parseBaseArgs, runBaseCommand, runBaseLifecycle, seedProtectedBase, verifyBaseFixtureIntegrity, verifyProtectedBase } from '../discovery-env-matrix-base';
 import { BASE_FIXTURE_CORPUS_VERSION, assertBaseEnvironment, baseSeedPayload, computeFixtureFingerprint, type BaseMetadata, verifyBaseContract } from '../discovery-env-matrix.shared';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
@@ -107,6 +108,36 @@ function mockReadOnlyDatabase(results: unknown[][]) {
     }),
   });
   return { db: { select } as unknown as DrizzleDB, state };
+}
+
+function mockCurrentCommandDatabase(payload: ReturnType<typeof baseSeedPayload>, metadata: BaseMetadata) {
+  const structuralRows: unknown[][] = [
+    payload.users.map((user) => ({ id: user.id })),
+    payload.networks.map((network) => ({ id: network.id })),
+    payload.intents.map((intent) => ({ id: intent.id, embedding: [0.1] })),
+    payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId })),
+    payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId })),
+  ];
+  const state = { reads: 0, writes: 0, closed: false };
+  const select = (fields: unknown) => {
+    const metadataRead = !!fields && typeof fields === 'object' && 'schemaMigrationFingerprint' in fields;
+    const rows = metadataRead ? [metadata] : structuralRows.shift() ?? [];
+    const query = {
+      then(resolve: (value: unknown[]) => void) {
+        state.reads += 1;
+        resolve(rows);
+      },
+      limit() {
+        return query;
+      },
+    };
+    return { from: () => ({ where: () => query }) };
+  };
+  return {
+    db: { select } as unknown as DrizzleDB,
+    closeDb: async () => { state.closed = true; },
+    state,
+  };
 }
 
 describe('discovery environment matrix base policy', () => {
@@ -339,5 +370,44 @@ describe('protected base lifecycle', () => {
 
     expect(createIndexer).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenCalledWith(indexer);
+  });
+});
+
+describe('package verify command composition', () => {
+  const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+  const metadata: BaseMetadata = {
+    schemaMigrationFingerprint: 'schema-fingerprint',
+    fixtureFingerprint: computeFixtureFingerprint(HISTORICAL_MATRIX_CASES),
+    fixtureCorpusVersion: BASE_FIXTURE_CORPUS_VERSION,
+  };
+
+  it('maps the documented verify script to the actual read-only command composition', async () => {
+    const packageJson = JSON.parse(await readFile(path.resolve(import.meta.dir, '../../../package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts['eval:discovery-env-matrix-base:verify']).toBe(
+      'bun ./src/cli/discovery-env-matrix-base.ts --verify',
+    );
+    expect(packageJson.scripts['eval:discovery-env-matrix-base:verify']).not.toContain('protocol build');
+
+    const readOnly = mockCurrentCommandDatabase(payload, metadata);
+    const createIndexer = mock(async () => {
+      throw new Error('verify must not construct the indexer');
+    });
+    const log = mock(() => {});
+
+    await expect(runBaseCommand(['--verify'], {
+      createReadOnly: async () => ({ db: readOnly.db, closeDb: readOnly.closeDb, schema }),
+      loadCases: async () => HISTORICAL_MATRIX_CASES,
+      expectedMetadata: async () => metadata,
+      createIndexer,
+      log,
+    })).resolves.toBe('already-current');
+
+    expect(readOnly.state.reads).toBe(6);
+    expect(readOnly.state.writes).toBe(0);
+    expect(readOnly.state.closed).toBe(true);
+    expect(createIndexer).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('Protected discovery environment matrix base is already current.');
   });
 });

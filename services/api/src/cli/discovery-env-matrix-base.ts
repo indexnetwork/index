@@ -3,9 +3,10 @@
  * Seeds the one protected, fixture-only base for discovery environment matrix
  * evaluations. Matrix child runs must verify this metadata before they run.
  *
- * Usage: bun run eval:discovery-env-matrix-base [--verify]
+ * Refresh: bun run eval:discovery-env-matrix-base
+ * Verify:  bun run eval:discovery-env-matrix-base:verify
  * --verify performs metadata and fixture-structure reads only; it never creates
- * the embedding/HyDE indexer or refreshes the protected base.
+ * the embedding/HyDE indexer, refreshes the protected base, or builds protocol.
  */
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
@@ -351,8 +352,54 @@ export function parseBaseArgs(args: readonly string[]): { verifyOnly: boolean } 
   return { verifyOnly: args.includes('--verify') };
 }
 
+export interface BaseCommandDeps {
+  createReadOnly(): Promise<{ db: DrizzleDB; closeDb(): Promise<void>; schema: typeof DatabaseSchema }>;
+  loadCases(): Promise<readonly HistoricalMatrixFixture[]>;
+  expectedMetadata(cases: readonly HistoricalMatrixFixture[]): Promise<BaseMetadata>;
+  createIndexer(): Promise<FixtureIntentIndexer>;
+  log(line: string): void;
+}
+
+/**
+ * Complete command composition used by production and provider-free tests. The
+ * initial dependency is DB/schema only; provider composition remains lazy.
+ */
+export async function runBaseCommand(
+  args: readonly string[],
+  deps: BaseCommandDeps,
+): Promise<'already-current' | 'refreshed'> {
+  const options = parseBaseArgs(args);
+  const { db, closeDb, schema } = await deps.createReadOnly();
+  try {
+    const cases = await deps.loadCases();
+    const payload = baseSeedPayload(cases);
+    const metadata = await deps.expectedMetadata(cases);
+    const result = await runBaseLifecycle(options, {
+      verifyCurrent: async () => {
+        await verifyProtectedBase(db, schema, metadata);
+        await verifyBaseFixtureIntegrity(db, schema, payload);
+      },
+      createIndexer: deps.createIndexer,
+      refresh: async (indexFixtureIntent) => {
+        await seedProtectedBase(db, schema, payload, metadata, indexFixtureIntent);
+        await verifyProtectedBase(db, schema, metadata);
+        await verifyBaseFixtureIntegrity(db, schema, payload);
+      },
+      log: deps.log,
+    });
+    if (result === 'refreshed') {
+      deps.log(
+        `Protected base fingerprints: schema=${metadata.schemaMigrationFingerprint} `
+          + `fixture=${metadata.fixtureFingerprint} corpus=${metadata.fixtureCorpusVersion}`,
+      );
+    }
+    return result;
+  } finally {
+    await closeDb();
+  }
+}
+
 async function main(): Promise<void> {
-  const options = parseBaseArgs(process.argv.slice(2));
   const environment = assertBaseEnvironment(process.env);
   console.log(
     `Protected base target: confirmation=${process.env.DISCOVERY_ENV_MATRIX_BASE_CONFIRM} `
@@ -360,34 +407,13 @@ async function main(): Promise<void> {
       + `path=${environment.databaseUrl.pathname} declaredBranch=${environment.declaredBranch}`,
   );
 
-  // Read-only DB/schema composition intentionally precedes fixture/provider work.
-  const { db, closeDb, schema } = await createReadOnlyProductionDependencies();
-  try {
-    const cases = await loadHistoricalMatrixCases();
-    const payload = baseSeedPayload(cases);
-    const metadata = await expectedBaseMetadata(cases);
-    const result = await runBaseLifecycle(options, {
-      verifyCurrent: async () => {
-        await verifyProtectedBase(db, schema, metadata);
-        await verifyBaseFixtureIntegrity(db, schema, payload);
-      },
-      createIndexer: createBaseFixtureIntentIndexer,
-      refresh: async (indexFixtureIntent) => {
-        await seedProtectedBase(db, schema, payload, metadata, indexFixtureIntent);
-        await verifyProtectedBase(db, schema, metadata);
-        await verifyBaseFixtureIntegrity(db, schema, payload);
-      },
-      log: console.log,
-    });
-    if (result === 'refreshed') {
-      console.log(
-        `Protected base fingerprints: schema=${metadata.schemaMigrationFingerprint} `
-          + `fixture=${metadata.fixtureFingerprint} corpus=${metadata.fixtureCorpusVersion}`,
-      );
-    }
-  } finally {
-    await closeDb();
-  }
+  await runBaseCommand(process.argv.slice(2), {
+    createReadOnly: createReadOnlyProductionDependencies,
+    loadCases: loadHistoricalMatrixCases,
+    expectedMetadata: expectedBaseMetadata,
+    createIndexer: createBaseFixtureIntentIndexer,
+    log: console.log,
+  });
 }
 
 if (import.meta.main) {
