@@ -8,7 +8,7 @@ async function attest(target: SmokeTarget, controlPlane: NeonControlPlane): Prom
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.pathname !== '/protocol_eval' || (url.port && url.port !== '5432') || !url.hostname.endsWith('.neon.tech')) throw new Error('Smoke target must be an exact Neon protocol_eval target');
   const [branch, parent] = await Promise.all([controlPlane.getBranch(target.projectId, target.branchId), controlPlane.getBranch(target.projectId, target.parentBranchId)]);
   if (parent.id !== target.parentBranchId || parent.name !== 'eval-discovery-base' || parent.primary) throw new Error('Smoke parent is not the protected evaluation base');
-  if (branch.id !== target.branchId || !branch.name.startsWith('eval-discovery-retrieval-') || branch.parentId !== parent.id || branch.primary || !branch.expiresAt || Date.parse(branch.expiresAt) <= Date.now()) throw new Error('Smoke branch is not a live disposable child of the protected base');
+  if (branch.id !== target.branchId || !branch.name.startsWith('eval-discovery-retrieval-') || branch.parentId !== parent.id || branch.primary || !branch.expiresAt || Number.isNaN(Date.parse(branch.expiresAt)) || Date.parse(branch.expiresAt) <= Date.now()) throw new Error('Smoke branch is not a live disposable child of the protected base');
   const endpoint = (await controlPlane.listEndpoints(target.projectId, target.branchId)).find((value) => value.id === target.endpointId);
   if (!endpoint || endpoint.branchId !== branch.id || endpoint.host !== url.hostname) throw new Error('Smoke endpoint does not match DATABASE_URL');
 }

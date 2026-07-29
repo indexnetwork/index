@@ -823,7 +823,7 @@ async function runParent(): Promise<void> {
       const outputPath = path.join(temporaryDirectory, `${child.childKey}.json`);
       const proc = Bun.spawn({
         cmd: [
-          process.execPath, import.meta.path, '--child-key', child.childKey, '--child-output', outputPath,
+          process.execPath, new URL('./discovery-env-matrix.ts', import.meta.url).pathname, '--child-key', child.childKey, '--child-output', outputPath,
           ...(selection.canary ? ['--case', selection.caseId!, '--canary'] : []),
         ],
         env: { ...process.env, DATABASE_URL: child.databaseUrl, DISCOVERY_ENV_MATRIX_CHILD_BRANCH: child.branch, DISCOVERY_ENV_MATRIX_BASE_BRANCH: child.baseBranch },
