@@ -12,7 +12,7 @@ export interface NeonControlPlane {
   listEndpoints(projectId: string, branchId: string): Promise<NeonEndpoint[]>;
 }
 
-export type AttestedBase = { projectId: string; branchId: string; databaseName: 'protocol_eval' };
+export type AttestedBase = { projectId: string; branchId: string; endpointId: string; databaseName: 'protocol_eval'; databaseUrl: string };
 export type AttestedChild = {
   childKey: string;
   branchId: string;
@@ -80,8 +80,9 @@ export function parseAttestedManifest(raw: string | undefined, expectedChildKeys
   const root = asRecord(parsed, 'DISCOVERY_ENV_MATRIX_CHILDREN must be an object');
   if (root.version !== 1) throw new Error('DISCOVERY_ENV_MATRIX_CHILDREN must use manifest version 1');
   const base = asRecord(root.base, 'DISCOVERY_ENV_MATRIX_CHILDREN must include base');
-  const parsedBase: AttestedBase = { projectId: asString(base.projectId, 'Manifest base projectId is required'), branchId: asString(base.branchId, 'Manifest base branchId is required'), databaseName: asString(base.databaseName, 'Manifest base databaseName is required') as 'protocol_eval' };
+  const parsedBase: AttestedBase = { projectId: asString(base.projectId, 'Manifest base projectId is required'), branchId: asString(base.branchId, 'Manifest base branchId is required'), endpointId: asString(base.endpointId, 'Manifest base endpointId is required'), databaseName: asString(base.databaseName, 'Manifest base databaseName is required') as 'protocol_eval', databaseUrl: asString(base.databaseUrl, 'Manifest base databaseUrl is required') };
   if (parsedBase.databaseName !== 'protocol_eval') throw new Error('Manifest base databaseName must be protocol_eval');
+  assertLocalTarget(new URL(parsedBase.databaseUrl));
   if (!Array.isArray(root.children) || root.children.length !== expectedChildKeys.length) throw new Error('Manifest must contain exactly the expected children');
   const expected = new Set(expectedChildKeys);
   const children = root.children.map((value): AttestedChild => {
@@ -100,6 +101,10 @@ export async function attestMatrixTargets(input: { manifest: AttestedManifest; c
   const now = input.now ?? new Date();
   const base = await controlPlane.getBranch(manifest.base.projectId, manifest.base.branchId);
   if (base.id !== manifest.base.branchId || base.name !== BASE_NAME || base.primary) throw new Error('Neon control-plane base branch identity is invalid');
+  const baseUrl = new URL(manifest.base.databaseUrl);
+  const baseEndpoints = await controlPlane.listEndpoints(manifest.base.projectId, manifest.base.branchId);
+  const baseEndpoint = baseEndpoints.find((candidate) => candidate.id === manifest.base.endpointId);
+  if (!baseEndpoint || baseEndpoint.branchId !== base.id || baseEndpoint.host !== baseUrl.hostname) throw new Error('Neon control-plane base endpoint host does not match DATABASE_URL');
   for (const child of manifest.children) {
     const url = new URL(child.databaseUrl);
     const branch = await controlPlane.getBranch(manifest.base.projectId, child.branchId);

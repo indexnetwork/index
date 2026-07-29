@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { attestMatrixTargets, parseAttestedManifest, type NeonControlPlane } from '../discovery-env-matrix.neon';
 
 const now = new Date('2026-07-29T12:00:00.000Z');
-const base = { projectId: 'proj', branchId: 'br-base', databaseName: 'protocol_eval' };
+const base = { projectId: 'proj', branchId: 'br-base', endpointId: 'ep-base', databaseName: 'protocol_eval', databaseUrl: 'postgresql://owner:secret@ep-base.neon.tech:5432/protocol_eval' };
 const child = {
   childKey: 'intent-only-r1',
   branchId: 'br-child',
@@ -16,7 +16,9 @@ const controlPlane: NeonControlPlane = {
   getBranch: async (_projectId, branchId) => branchId === 'br-base'
     ? { id: 'br-base', name: 'eval-discovery-base', parentId: null, expiresAt: null, primary: false }
     : { id: 'br-child', name: 'eval-discovery-env-matrix-test', parentId: 'br-base', expiresAt: '2026-07-30T12:00:00.000Z', primary: false },
-  listEndpoints: async () => [{ id: 'ep-child', branchId: 'br-child', host: 'ep-child.neon.tech' }],
+  listEndpoints: async (_projectId, branchId) => branchId === 'br-base'
+    ? [{ id: 'ep-base', branchId: 'br-base', host: 'ep-base.neon.tech' }]
+    : [{ id: 'ep-child', branchId: 'br-child', host: 'ep-child.neon.tech' }],
 };
 
 describe('Neon matrix control-plane attestation', () => {
@@ -24,7 +26,8 @@ describe('Neon matrix control-plane attestation', () => {
     expect(() => parseAttestedManifest(JSON.stringify({ version: 1, base, children: [{ ...child, databaseUrl: 'postgresql://owner:secret@ep-child.neon.tech:6543/protocol_eval' }] }), [child.childKey])).toThrow('port must be exactly 5432');
   });
 
-  it('binds project, base, child parent/expiry, endpoint, and URL host', async () => {
+  it('requires and binds the base endpoint and URL host', async () => {
+    expect(() => parseAttestedManifest(JSON.stringify({ version: 1, base: { ...base, endpointId: undefined }, children: [child] }), [child.childKey])).toThrow('endpointId');
     const manifest = parseAttestedManifest(JSON.stringify({ version: 1, base, children: [child] }), [child.childKey]);
     await expect(attestMatrixTargets({ manifest, controlPlane, now })).resolves.toEqual(manifest);
   });
