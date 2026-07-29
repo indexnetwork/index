@@ -8,6 +8,7 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, describe, test, it, expect, mock, spyOn } from 'bun:test';
+import type { Runnable } from '@langchain/core/runnables';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
@@ -132,6 +133,7 @@ function createMockGraph(deps?: {
   getNetworkIdsForIntent?: (intentId: string) => Promise<string[]>;
   getProfile?: Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
   evaluatorResult?: EvaluatedOpportunityWithActors[];
+  evaluator?: OpportunityEvaluatorLike;
 }) {
   const mockDb: OpportunityGraphDatabase = {
     ...createOpportunityGraphDatabaseFixture(),
@@ -208,7 +210,7 @@ function createMockGraph(deps?: {
       }),
   };
 
-  const evaluator = createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
+  const evaluator = deps?.evaluator ?? createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
   const queueNotification = async () => undefined;
   const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator, queueNotification);
   const compiledGraph = factory.createGraph();
@@ -932,6 +934,40 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Evaluation and Persist', () => {
+    test('forwards an aborted request signal to the evaluator model without retrying', async () => {
+      const controller = new AbortController();
+      const abortReason = new Error('caller cancelled discovery');
+      controller.abort(abortReason);
+      let evaluatorCalls = 0;
+      let receivedSignal: AbortSignal | undefined;
+      const entityBundleModel = {
+        invoke: async (_messages: unknown, config?: { signal?: AbortSignal }) => {
+          evaluatorCalls += 1;
+          receivedSignal = config?.signal;
+          throw config?.signal?.reason ?? new Error('missing evaluator cancellation signal');
+        },
+      } as unknown as Runnable;
+      const evaluator = new OpportunityEvaluator({ entityBundleModel });
+      const evaluatorSpy = spyOn(evaluator, 'invokeEntityBundle');
+      const { compiledGraph } = createMockGraph({ evaluator });
+
+      await requestContext.run({ abortSignal: controller.signal }, async () => {
+        await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: { minScore: 70 },
+        } as OpportunityGraphInvokeInput);
+      });
+
+      expect(evaluatorSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+      expect(receivedSignal?.aborted).toBe(true);
+      expect(receivedSignal?.reason).toBe(abortReason);
+      expect(evaluatorCalls).toBe(1);
+    });
+
     test('rejects unsafe custom-evaluator reasoning again at the persistence boundary', async () => {
       const { compiledGraph, mockDb } = createMockGraph({
         evaluatorResult: [{

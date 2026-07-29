@@ -40,7 +40,7 @@ export type OpportunityEvaluatorLike = {
     reasoning: string;
     valencyRole: 'Agent' | 'Patient' | 'Peer';
   }>>;
-  invokeEntityBundle?: (input: EvaluatorInput, options: { minScore?: number }) => Promise<Array<{
+  invokeEntityBundle?: (input: EvaluatorInput, options: { minScore?: number; returnAll?: boolean; signal?: AbortSignal }) => Promise<Array<{
     reasoning: string;
     score: number;
     actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
@@ -58,6 +58,7 @@ import { protocolLogger, withCallLogging } from '../../shared/observability/prot
 import { timed } from '../../shared/observability/performance.js';
 import { renderNetworkContext } from '../../shared/network/metadata.renderer.js';
 import { requestContext } from "../../shared/observability/request-context.js";
+import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from '../domain/opportunity.evidence.js';
 import { discoveryIntentMatchingEnabled, discoveryProfileMatchingEnabled, discoveryProfileSource } from '../discovery.env.js';
@@ -1857,6 +1858,7 @@ export class OpportunityGraphFactory {
 
           // Lower default threshold to 50 for better recall
           const minScore = state.options.minScore ?? 50;
+          const evaluatorSignalConfig = getAbortSignalConfig();
 
           const evaluator = typeof (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle === 'function'
             ? (evaluatorAgent as OpportunityEvaluator)
@@ -1887,7 +1889,7 @@ export class OpportunityGraphFactory {
                 const _traceEmitter = requestContext.getStore()?.traceEmitter;
                 _traceEmitter?.({ type: "agent_start", name: "opportunity-evaluator" });
                 const _candidateName = candidateEntity.profile?.name ?? "Unknown";
-                return evaluator.invokeEntityBundle(input, { minScore, returnAll: true })
+                return evaluator.invokeEntityBundle(input, { minScore, returnAll: true, ...evaluatorSignalConfig })
                   .then((res) => {
                     const _evalDuration = Date.now() - _evalStart;
                     agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
@@ -1951,7 +1953,7 @@ export class OpportunityGraphFactory {
             _traceEmitterSerial?.({ type: "agent_start", name: "opportunity-evaluator" });
             let opportunitiesWithActors: EvaluatedOpportunityWithActors[];
             try {
-              opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true });
+              opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true, ...evaluatorSignalConfig });
               const _evalDuration = Date.now() - _evalStart;
               agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
               _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `Evaluated ${candidateEntities.length} candidate(s)` });
@@ -2869,7 +2871,7 @@ export class OpportunityGraphFactory {
           _evalStart = Date.now();
           _traceEmitterIntro?.({ type: "agent_start", name: "intro-evaluator" });
           _introEvalStarted = true;
-          const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0 });
+          const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0, ...getAbortSignalConfig() });
           const _introDuration = Date.now() - _evalStart;
           agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introDuration });
           _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introDuration, summary: "Evaluated introduction" });
