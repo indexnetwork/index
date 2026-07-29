@@ -26,6 +26,11 @@ const ATTEMPT_TIMEOUT_MS = 180_000;
 export const DEFAULT_CHILD_TIMEOUT_MS = 20 * 60_000;
 const CHILD_TERMINATION_GRACE_MS = 5_000;
 
+/** Provider/DB errors may contain credentials or response bodies; never persist or log them. */
+export function sanitizeMatrixError(_error: unknown): string {
+  return 'internal_error';
+}
+
 export function parseMatrixChildTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS;
   if (raw === undefined) return DEFAULT_CHILD_TIMEOUT_MS;
@@ -152,7 +157,7 @@ export async function runWithChildCleanup<T>(run: () => Promise<T>, cleanup: () 
     logger.error('Discovery environment matrix child cleanup complete');
   } catch (error) {
     cleanupError = error;
-    logger.error(`Discovery environment matrix child cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Discovery environment matrix child cleanup failed: ${sanitizeMatrixError(error)}`);
   }
   if (primaryError !== undefined) throw primaryError;
   if (cleanupError !== undefined) throw cleanupError;
@@ -724,7 +729,7 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
           ].join('\n'));
           return { passed: true };
         } catch (error) {
-          return { passed: false, detail: error instanceof Error ? error.message : String(error) };
+          return { passed: false, detail: sanitizeMatrixError(error) };
         }
       },
     });

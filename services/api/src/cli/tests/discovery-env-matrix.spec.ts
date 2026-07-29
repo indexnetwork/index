@@ -5,10 +5,13 @@ import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
+  it('redacts provider, database, and API-key error content', () => {
+    expect(sanitizeMatrixError(new Error('postgresql://user:secret@host/protocol_eval NEON_API_KEY=secret provider body'))).toBe('internal_error');
+  });
   it('plans 75 slots and isolates each configuration/repetition child', () => {
     const slots = buildMatrixPlan(HISTORICAL_MATRIX_CASES, MATRIX_ROWS, 3);
 
