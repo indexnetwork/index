@@ -34,15 +34,18 @@ export interface ExpectedIntentUpdateSnapshot {
 }
 
 /**
- * Final recovery-answer guard. Ordinary writes omit an expected fingerprint
- * and deliberately preserve the existing lifecycle-agnostic update behavior.
+ * Final recovery-answer guard. Ordinary writes omit all expectations and
+ * preserve lifecycle-agnostic behavior; owner-scoped writes enforce ownership
+ * even when they intentionally omit a material fingerprint.
  */
 export function canApplyExpectedIntentUpdate(
   intent: ExpectedIntentUpdateSnapshot,
   expectedIntentFingerprint?: string,
   expectedIntentUserId?: string,
 ): boolean {
-  if (expectedIntentFingerprint === undefined) return true;
+  if (expectedIntentFingerprint === undefined) {
+    return expectedIntentUserId === undefined || intent.userId === expectedIntentUserId;
+  }
   return Boolean(expectedIntentUserId)
     && intent.userId === expectedIntentUserId
     && intent.archivedAt === null

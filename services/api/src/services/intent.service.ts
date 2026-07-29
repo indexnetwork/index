@@ -77,6 +77,7 @@ export class IntentService {
   private proposalAdapter: IntentProposalDatabaseAdapter;
   private embedder: EmbedderAdapter;
   private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+  private seedIndexQueue: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
   private questionerEnqueue?: QuestionerEnqueueFn;
   private emitProposalCreated: (intentId: string, userId: string) => void;
 
@@ -88,6 +89,7 @@ export class IntentService {
     proposalAdapter?: IntentProposalDatabaseAdapter;
     embedder?: EmbedderAdapter;
     proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+    seedIndexQueue?: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
     questionerEnqueue?: QuestionerEnqueueFn;
     emitProposalCreated?: (intentId: string, userId: string) => void;
   }) {
@@ -96,6 +98,7 @@ export class IntentService {
     this.db = this.adapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.proposalQueue = deps?.proposalQueue ?? intentQueue;
+    this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
     this.questionerEnqueue = deps?.questionerEnqueue ?? questionerEnqueueIfEnabled();
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue, this.questionerEnqueue);
@@ -505,7 +508,7 @@ export class IntentService {
     });
     if (!updated) throw new Error(`Seed intent ${intentId} was not found or is not owned by ${userId}`);
 
-    await intentQueue.runGenerateHydeSync(
+    await this.seedIndexQueue.runGenerateHydeSync(
       { intentId, userId },
       { skipOpportunity: true },
     );
