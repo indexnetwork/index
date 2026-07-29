@@ -97,16 +97,19 @@ function mockBaseDatabase(selectResults: Array<Array<{ id: string }>> = []): {
 
 function mockReadOnlyDatabase(results: unknown[][]) {
   const state = { reads: 0, writes: 0 };
-  const select = () => ({
-    from: () => ({
-      where: () => ({
-        then(resolve: (rows: unknown[]) => void) {
-          state.reads += 1;
-          resolve(results.shift() ?? []);
-        },
+  const select = () => {
+    const rows = results.shift() ?? [];
+    return {
+      from: () => ({
+        where: () => ({
+          then(resolve: (value: unknown[]) => void) {
+            state.reads += 1;
+            resolve(rows);
+          },
+        }),
       }),
-    }),
-  });
+    };
+  };
   return { db: { select } as unknown as DrizzleDB, state };
 }
 
@@ -308,7 +311,7 @@ describe('protected base lifecycle', () => {
       payload.intents.map((intent) => ({
         ...intent,
         status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId, archivedAt: null,
-        embedding: intent.id === options.unembeddedIntentId ? null : [0.1],
+        embedding: intent.id === options.unembeddedIntentId ? null : Array(2000).fill(0.1),
       })),
       payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId, relevancyScore: '1' })),
       payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId, permissions: ['member'], autoAssign: false })),
@@ -325,8 +328,23 @@ describe('protected base lifecycle', () => {
       unembeddedIntentId: payload.intents[0]!.id,
     }));
 
-    await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('is unembedded');
+    await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('invalid embedding');
     expect(state.reads).toBe(9);
+    expect(state.writes).toBe(0);
+  });
+
+  it.each([
+    ['extra', (documents: Array<Record<string, unknown>>) => documents.push({ ...documents[0] })],
+    ['wrong binding', (documents: Array<Record<string, unknown>>) => { documents[0]!.sourceId = payload.intents[1]!.id; }],
+    ['wrong source', (documents: Array<Record<string, unknown>>) => { documents[0]!.sourceType = 'profile'; }],
+    ['malformed vector', (documents: Array<Record<string, unknown>>) => { documents[0]!.embedding = [0.1]; }],
+  ])('rejects %s fixture intent HyDE state without writes', async (_label, mutate) => {
+    const rows = structuralRows();
+    const documents = rows[8] as Array<Record<string, unknown>>;
+    mutate(documents);
+    const { db, state } = mockReadOnlyDatabase(rows);
+
+    await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('fixture intent HyDE');
     expect(state.writes).toBe(0);
   });
 

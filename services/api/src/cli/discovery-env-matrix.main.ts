@@ -27,8 +27,37 @@ export const DEFAULT_CHILD_TIMEOUT_MS = 20 * 60_000;
 const CHILD_TERMINATION_GRACE_MS = 5_000;
 
 /** Provider/DB errors may contain credentials or response bodies; never persist or log them. */
-export function sanitizeMatrixError(_error: unknown): string {
-  return 'internal_error';
+type MatrixFailureClass = 'matrix_runtime_failure' | 'matrix_graph_failure' | 'matrix_scoring_failure' | 'matrix_judge_failure' | 'internal_error';
+
+export class MatrixExecutionError extends Error {
+  readonly classification: MatrixFailureClass;
+
+  constructor(classification: Exclude<MatrixFailureClass, 'internal_error'>) {
+    super(classification);
+    this.name = 'MatrixExecutionError';
+    this.classification = classification;
+  }
+}
+
+/** Converts an arbitrary matrix boundary error into a safe, persistable error. */
+export function sanitizeMatrixExecutionError(error: unknown, classification: Exclude<MatrixFailureClass, 'internal_error'>): MatrixExecutionError {
+  return error instanceof MatrixExecutionError ? error : new MatrixExecutionError(classification);
+}
+
+/** Executes one provider/graph boundary without letting raw failures reach retry evidence or logs. */
+export async function runMatrixBoundary<T>(
+  classification: Exclude<MatrixFailureClass, 'internal_error'>,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    throw sanitizeMatrixExecutionError(error, classification);
+  }
+}
+
+export function sanitizeMatrixError(error: unknown): MatrixFailureClass {
+  return error instanceof MatrixExecutionError ? error.classification : 'internal_error';
 }
 
 export function parseMatrixChildTimeoutMs(env: NodeJS.ProcessEnv): number {
@@ -689,21 +718,26 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
   await verifyProtectedBase(childDb, childSchema, expected);
   await verifyBaseFixtureIntegrity(childDb, childSchema, baseSeedPayload(HISTORICAL_MATRIX_CASES));
 
-  const batch = await executeRuns(async ({ runIndex, signal }: { runIndex: number; signal: AbortSignal }) => {
+  const batch = await executeRuns(async ({ runIndex, signal }: { runIndex: number; signal: AbortSignal }) => runMatrixBoundary('matrix_runtime_failure', async () => {
     const slot = plan[runIndex]!;
     const matrixCase = databaseCase(slot.matrixCase);
     const fixturePayload = baseSeedPayload([slot.matrixCase]);
     const fixtureCase = fixturePayload.cases[0];
     const network = fixturePayload.networks[0];
-    if (!network || !fixtureCase) throw new Error(`${slot.matrixCase.id}: missing protected-base network`);
+    if (!network || !fixtureCase) throw new MatrixExecutionError('matrix_runtime_failure');
     const triggerIntentId = resolveFixtureTriggerIntent(fixturePayload, fixtureCase.sourceUserId, network.id);
     const composed = await composeCaseRuntime(deps, matrixCase, network, triggerIntentId);
-    const graphResult = await invokeMatrixDiscoveryGraph(deps.opportunityGraph as never, composed, slot.row, signal) as Record<string, unknown>;
-    if (graphResult.error) throw new Error(`${matrixCase.id}: opportunity graph failed: ${String(graphResult.error)}`);
+    const graphResult = await runMatrixBoundary('matrix_graph_failure', async () => invokeMatrixDiscoveryGraph(
+      deps.opportunityGraph as never,
+      composed,
+      slot.row,
+      signal,
+    )) as Record<string, unknown>;
+    if (graphResult.error) throw new MatrixExecutionError('matrix_graph_failure');
     const rawCandidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
     const candidates = projectFinalCandidates(graphResult, rawCandidates, fixtureCase.sourceUserId, 50);
     const evaluatorTraces = collectEvaluatorTraces(graphResult, rawCandidates, candidates);
-    const scored = await scoreMatrixSlot({
+    const scored = await runMatrixBoundary('matrix_scoring_failure', async () => scoreMatrixSlot({
       matrixCase,
       rowId: slot.row.id,
       repetition: slot.repetition,
@@ -717,7 +751,7 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
       ],
       judge: async (input: { candidateIds: string[]; evidenceTypes: string[]; caseDescription: string; rowId: string; sourceText: string; expectedUserId: string; excludedUserIds: string[] }) => {
         try {
-          await assertLLM({ candidateIds: input.candidateIds, evidenceTypes: input.evidenceTypes }, [
+          await runMatrixBoundary('matrix_judge_failure', async () => assertLLM({ candidateIds: input.candidateIds, evidenceTypes: input.evidenceTypes }, [
             'Assess this discovery environment matrix result.',
             `Case: ${input.caseDescription}`,
             `Row: ${input.rowId}`,
@@ -726,15 +760,15 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
             `Excluded targets: ${input.excludedUserIds.join(', ') || 'none'}`,
             `Returned candidates: ${input.candidateIds.join(', ') || 'none'}`,
             `Evidence types: ${input.evidenceTypes.join(', ') || 'none'}`,
-          ].join('\n'));
+          ].join('\n')));
           return { passed: true };
         } catch (error) {
           return { passed: false, detail: sanitizeMatrixError(error) };
         }
       },
-    });
+    }));
     return { ...scored, caseId: `${slot.matrixCase.id}/${slot.row.id}/r${slot.repetition + 1}` };
-  }, plan.length, {
+  }), plan.length, {
     caseId: child.childKey,
     policy: 'strict',
     attemptTimeoutMs: ATTEMPT_TIMEOUT_MS,

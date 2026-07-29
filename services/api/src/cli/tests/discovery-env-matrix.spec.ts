@@ -2,15 +2,45 @@ import { describe, expect, it } from 'bun:test';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
-import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
+import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE, executeRuns } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
   it('redacts provider, database, and API-key error content', () => {
     expect(sanitizeMatrixError(new Error('postgresql://user:secret@host/protocol_eval NEON_API_KEY=secret provider body'))).toBe('internal_error');
+  });
+
+  it.each([
+    ['matrix_graph_failure', 'graph'],
+    ['matrix_judge_failure', 'judge'],
+    ['matrix_runtime_failure', 'retry'],
+  ] as const)('sanitizes %s failures before retry evidence or logs are retained', async (classification) => {
+    const secret = 'postgresql://fixture:password@host/protocol_eval NEON_API_KEY=neon-secret OPENROUTER_API_KEY=router-secret Authorization: Bearer auth-secret provider reasoning body';
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(' '));
+    try {
+      const batch = await executeRuns(
+        async () => runMatrixBoundary(classification, async () => { throw new Error(secret); }),
+        1,
+        { caseId: 'historical/safe-error', attemptTimeoutMs: 1_000, maxAttempts: 2, retryDelayMs: 0, label: 'matrix-test' },
+      );
+      const persisted = JSON.stringify(batch);
+      expect(persisted).not.toContain('password');
+      expect(persisted).not.toContain('neon-secret');
+      expect(persisted).not.toContain('router-secret');
+      expect(persisted).not.toContain('auth-secret');
+      expect(persisted).not.toContain('reasoning body');
+      expect(persisted).toContain(classification);
+      expect(warnings.join('\n')).not.toContain('password');
+      expect(warnings.join('\n')).not.toContain('reasoning body');
+      expect(warnings.join('\n')).toContain(classification);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
   it('plans 75 slots and isolates each configuration/repetition child', () => {
     const slots = buildMatrixPlan(HISTORICAL_MATRIX_CASES, MATRIX_ROWS, 3);

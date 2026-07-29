@@ -248,6 +248,12 @@ function assertExactFixtureIds(label: string, expected: readonly string[], actua
   }
 }
 
+function isValidFixtureVector(value: unknown): value is number[] {
+  return Array.isArray(value)
+    && value.length === 2000
+    && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry));
+}
+
 /**
  * Provider-free structural check for the exact durable fixture shape. It only
  * reads fixture-scoped IDs and never creates the embedder or Hyde graph.
@@ -288,16 +294,33 @@ export async function verifyBaseFixtureIntegrity(
   for (const network of networks) { const expectedNetwork = expectedNetworks.get(network.id); if (!expectedNetwork || network.title !== expectedNetwork.title || network.prompt !== expectedNetwork.prompt || network.deletedAt !== null) throw new Error(`Discovery environment matrix base integrity failed: network scalar/lifecycle ${network.id}`); }
   const expectedIntents = new Map(payload.intents.map((intent) => [intent.id, intent]));
   for (const intent of intents) { const expectedIntent = expectedIntents.get(intent.id); if (!expectedIntent || intent.userId !== expectedIntent.userId || intent.payload !== expectedIntent.payload || intent.summary !== expectedIntent.summary || intent.status !== 'ACTIVE' || intent.sourceType !== 'discovery_form' || intent.sourceId !== expectedIntent.userId || intent.archivedAt !== null) throw new Error(`Discovery environment matrix base integrity failed: intent scalar/lifecycle ${intent.id}`); }
-  const unembedded = intents.find((intent) => intent.embedding === null);
-  if (unembedded) throw new Error(`Discovery environment matrix base integrity failed: intent ${unembedded.id} is unembedded`);
+  const malformedIntentVector = intents.find((intent) => !isValidFixtureVector(intent.embedding));
+  if (malformedIntentVector) throw new Error(`Discovery environment matrix base integrity failed: intent ${malformedIntentVector.id} has an invalid embedding`);
 
   if (premises.length || premiseAssignments.length || contexts.length) throw new Error('Discovery environment matrix base integrity failed: unexpected fixture premise or context state');
+  if (hydeDocuments.length !== intentIds.length) {
+    throw new Error('Discovery environment matrix base integrity failed: unexpected fixture intent HyDE cardinality');
+  }
+  const expectedIntentPayloads = new Map(payload.intents.map((intent) => [intent.id, intent.payload]));
+  const seenHydeIntentIds = new Set<string>();
+  for (const document of hydeDocuments) {
+    const sourceId = document.sourceId;
+    if (typeof sourceId !== 'string') {
+      throw new Error('Discovery environment matrix base integrity failed: malformed fixture intent HyDE source ID');
+    }
+    const expectedPayload = expectedIntentPayloads.get(sourceId);
+    if (expectedPayload === undefined || seenHydeIntentIds.has(sourceId)) {
+      throw new Error(`Discovery environment matrix base integrity failed: unexpected fixture intent HyDE ${sourceId}`);
+    }
+    if (document.sourceType !== 'intent' || document.sourceText !== expectedPayload || !isValidFixtureVector(document.embedding)) {
+      throw new Error(`Discovery environment matrix base integrity failed: malformed fixture intent HyDE ${sourceId}`);
+    }
+    seenHydeIntentIds.add(sourceId);
+  }
+  const missingHydeIntentId = intentIds.find((intentId) => !seenHydeIntentIds.has(intentId));
+  if (missingHydeIntentId) throw new Error(`Discovery environment matrix base integrity failed: missing fixture intent HyDE ${missingHydeIntentId}`);
   const fixtureOpportunity = opportunities.find((opportunity) => Array.isArray(opportunity.actors) && opportunity.actors.some((actor) => userIds.includes(String(actor.userId))));
   if (fixtureOpportunity) throw new Error(`Discovery environment matrix base integrity failed: fixture opportunity ${fixtureOpportunity.id}`);
-  for (const intent of payload.intents) {
-    const documents = hydeDocuments.filter((document) => document.sourceType === 'intent' && document.sourceId === intent.id && document.sourceText === intent.payload && Array.isArray(document.embedding) && document.embedding.length === 2000 && document.embedding.every((value) => typeof value === 'number' && Number.isFinite(value)));
-    if (!documents.length) throw new Error(`Discovery environment matrix base integrity failed: missing valid intent HyDE ${intent.id}`);
-  }
 
   for (const membership of memberships) if (!Array.isArray(membership.permissions) || membership.permissions.length !== 1 || membership.permissions[0] !== 'member' || membership.autoAssign !== false) throw new Error(`Discovery environment matrix base integrity failed: membership scalar/lifecycle ${membership.userId}:${membership.networkId}`);
   for (const assignment of intentNetworks) if (assignment.relevancyScore !== '1') throw new Error(`Discovery environment matrix base integrity failed: intent-network scalar/lifecycle ${assignment.intentId}:${assignment.networkId}`);
