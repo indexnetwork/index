@@ -29,6 +29,20 @@ beforeAll(async () => {
   NetworkOpportunityControllerClass = mod.NetworkOpportunityController;
 });
 
+/** Mirrors main.ts router route selection without booting external services. */
+function dispatchControllerRouter(request: Request): Response {
+  const pathname = new URL(request.url).pathname;
+  for (const [target, controller] of RouteRegistry.getControllers()) {
+    for (const route of RouteRegistry.getRoutes(target)) {
+      const fullPath = (`/api${controller.path}${route.path}`).replace(/\/+/g, '/');
+      if (route.method === request.method && fullPath === pathname) {
+        return new Response('Matched', { status: 200 });
+      }
+    }
+  }
+  return new Response('Not Found', { status: 404 });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // OpportunityDatabaseAdapter Integration Tests
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -436,13 +450,10 @@ describe("OpportunityController Integration", () => {
     }
   });
 
-  test('does not register POST /opportunities/discover, so router dispatch falls through to 404', () => {
-    const directRoute = RouteRegistry.getRoutes(OpportunityControllerClass).find((route) =>
-      route.method === 'POST' && route.path === '/discover',
-    );
-    const response = directRoute
-      ? new Response('unexpected registered route', { status: 200 })
-      : new Response('Not Found', { status: 404 });
+  test('router dispatch returns 404 for POST /api/opportunities/discover', () => {
+    const response = dispatchControllerRouter(new Request('http://localhost/api/opportunities/discover', {
+      method: 'POST',
+    }));
 
     expect(response.status).toBe(404);
   });
