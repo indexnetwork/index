@@ -30,7 +30,8 @@ const scorecard: MatrixScorecard = {
       { kind: "completion", passed: true, detail: "slot completed" },
       { kind: "judge", passed: true, detail: "judge approved" },
     ],
-    candidates: [{ id: "candidate-a", rank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" }, rawText: "raw provider candidate text" }],
+    candidates: [{ id: "candidate-a", finalRank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" } }],
+    rawCandidates: [{ id: "candidate-a", retrievalRank: 2, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" }, rawText: "raw provider candidate text" }],
     judge: { passed: true, detail: "judge approved" },
   }],
 };
@@ -42,7 +43,8 @@ describe("historical discovery environment matrix reporter", () => {
     expect(html).toContain("Discovery environment matrix eval");
     expect(html).toContain("historical/case-a");
     expect(html).toContain("both-premise");
-    expect(html).toContain("target rank");
+    expect(html).toContain("final target rank");
+    expect(html).toContain("candidate-a @ retrieval 2");
     expect(html).toContain("intent, premise");
     expect(html).toContain("target_returned: pass");
     expect(html).toContain("judge: pass");
@@ -55,7 +57,8 @@ describe("historical discovery environment matrix reporter", () => {
     expect(JSON.stringify(scorecard)).toContain("raw provider candidate text");
     expect(JSON.stringify(baseline)).not.toContain("raw provider candidate text");
     expect(baseline.cases[0]!.candidates[0]).not.toHaveProperty("rawText");
-    expect(baseline.cases[0]!.candidates[0]!.rank).toBe(1);
+    expect(baseline.cases[0]!.candidates[0]!.finalRank).toBe(1);
+    expect(baseline.cases[0]!.rawCandidates[0]!.retrievalRank).toBe(2);
     expect(baseline.cases[0]!.candidates[0]!.evidenceIds).toEqual({ candidateIntentId: "intent-a", candidatePremiseId: "premise-a" });
   });
 });

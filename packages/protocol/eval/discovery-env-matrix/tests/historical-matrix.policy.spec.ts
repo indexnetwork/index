@@ -29,9 +29,9 @@ describe("historical discovery environment matrix policy", () => {
       repetition: 0,
       completed: true,
       candidates: [
-        { id: matrixCase.expectedUserId, rank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-expected", candidatePremiseId: "premise-expected" }, rawText: "expected raw candidate evidence" },
-        { id: matrixCase.excludedUserIds[0]!, rank: 2, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-excluded" }, rawText: "excluded raw candidate evidence" },
-        { id: "unknown-candidate", rank: 3, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-unknown" }, rawText: "unknown raw candidate evidence" },
+        { id: matrixCase.expectedUserId, finalRank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-expected", candidatePremiseId: "premise-expected" } },
+        { id: matrixCase.excludedUserIds[0]!, finalRank: 2, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-excluded" } },
+        { id: "unknown-candidate", finalRank: 3, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-unknown" } },
       ],
       judge: async () => {
         judgeCalls += 1;
@@ -62,6 +62,48 @@ describe("historical discovery environment matrix policy", () => {
       candidateIntentId: "intent-expected",
       candidatePremiseId: "premise-expected",
     });
+  });
+
+  it("scores only final evaluator candidates when raw retrieval contains an excluded candidate", async () => {
+    const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
+    const judgeInputs: string[][] = [];
+    const result = await scoreMatrixSlot({
+      matrixCase,
+      rowId: "intent-only",
+      repetition: 0,
+      completed: true,
+      candidates: [{
+        id: matrixCase.expectedUserId,
+        finalRank: 1,
+        evidenceTypes: ["intent"],
+        evidenceIds: { candidateIntentId: "intent-target" },
+      }],
+      rawCandidates: [{
+        id: matrixCase.expectedUserId,
+        retrievalRank: 2,
+        evidenceTypes: ["intent"],
+        evidenceIds: { candidateIntentId: "intent-target" },
+      }, {
+        id: matrixCase.excludedUserIds[0]!,
+        retrievalRank: 1,
+        evidenceTypes: ["intent"],
+        evidenceIds: { candidateIntentId: "intent-excluded" },
+      }],
+      judge: async (input) => {
+        judgeInputs.push(input.candidateIds);
+        return { passed: true };
+      },
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.targetRank).toBe(1);
+    expect(result.candidates.map((candidate) => candidate.id)).toEqual([matrixCase.expectedUserId]);
+    expect(result.rawCandidates.map((candidate) => candidate.id)).toEqual([
+      matrixCase.expectedUserId,
+      matrixCase.excludedUserIds[0]!,
+    ]);
+    expect(result.assertions.find((assertion) => assertion.kind === "excluded_absent")).toMatchObject({ passed: true });
+    expect(judgeInputs).toEqual([[matrixCase.expectedUserId]]);
   });
 
   it("constructs judge prompts from the explicit model-safe boundary only", () => {

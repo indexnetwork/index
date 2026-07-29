@@ -373,9 +373,13 @@ export class OpportunityGraphFactory {
             // BACKEND-5: thousands of parallel vector searches for premise-rich users.
             const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
             const profileEnabled = discoveryProfileMatchingEnabled();
-            const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
-            const contextToContextEnabled = profileEnabled && discoveryProfileSource() === 'user_context';
-            const rawContexts = profileEnabled && (contextToIntentEnabled || contextToContextEnabled) && typeof this.database.getUserContexts === 'function'
+            // Context-backed discovery is exclusively the user_context profile-source
+            // strategy. Premise mode must not load contexts or emit context-to-intent
+            // evidence merely because intent matching is also enabled.
+            const userContextProfileEnabled = profileEnabled && discoveryProfileSource() === 'user_context';
+            const contextToIntentEnabled = userContextProfileEnabled && process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
+            const contextToContextEnabled = userContextProfileEnabled;
+            const rawContexts = (contextToIntentEnabled || contextToContextEnabled) && typeof this.database.getUserContexts === 'function'
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
@@ -1189,7 +1193,7 @@ export class OpportunityGraphFactory {
             if (!state.sourceContexts?.length) return [];
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
             if (!contextToIntentEnabled) return [];
-            if (!discoveryProfileMatchingEnabled() || !discoveryIntentMatchingEnabled()) return [];
+            if (!discoveryProfileMatchingEnabled() || discoveryProfileSource() !== 'user_context' || !discoveryIntentMatchingEnabled()) return [];
 
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];

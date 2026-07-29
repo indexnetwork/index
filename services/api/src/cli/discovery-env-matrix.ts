@@ -20,7 +20,8 @@ import { MATRIX_REPETITIONS, assertCompleteMatrix, assertMatrixEnvironment, buil
 const RUNS_DIR = path.resolve(import.meta.dir, '../../eval/discovery-env-matrix/runs');
 const BASELINE_PATH = path.resolve(import.meta.dir, '../../eval/discovery-env-matrix/baselines/discovery-env-matrix.baseline.json');
 const HARNESS = 'discovery-env-matrix';
-const HARNESS_VERSION = '1';
+// Candidate policy now scores final evaluator outcomes, with raw retrieval retained separately.
+const HARNESS_VERSION = '2';
 const ATTEMPT_TIMEOUT_MS = 180_000;
 export const DEFAULT_CHILD_TIMEOUT_MS = 20 * 60_000;
 const CHILD_TERMINATION_GRACE_MS = 5_000;
@@ -165,13 +166,21 @@ export type MatrixCandidateEvidenceIds = {
   candidateContextId?: string;
 };
 
-type MatrixCandidate = {
+export type MatrixRetrievalCandidate = {
   id: string;
-  /** One-based graph-return order retained in the raw run artifact. */
-  rank: number;
+  /** One-based raw retrieval order. Diagnostic-only and never scored/judged. */
+  retrievalRank: number;
   evidenceTypes: Array<'intent' | 'premise' | 'user_context'>;
   evidenceIds: MatrixCandidateEvidenceIds;
   rawText?: string;
+};
+
+export type MatrixCandidate = {
+  id: string;
+  /** One-based final evaluator/ranking order used by policy and judge. */
+  finalRank: number;
+  evidenceTypes: Array<'intent' | 'premise' | 'user_context'>;
+  evidenceIds: MatrixCandidateEvidenceIds;
 };
 export type MatrixSlotResult = Record<string, unknown> & {
   caseId: string;
@@ -398,7 +407,7 @@ export async function invokeMatrixDiscoveryGraph<T>(
   }, signal ? { signal } : undefined));
 }
 
-function evidenceTypes(candidate: Record<string, unknown>): MatrixCandidate['evidenceTypes'] {
+function evidenceTypes(candidate: Record<string, unknown>): MatrixRetrievalCandidate['evidenceTypes'] {
   const types = new Set<'intent' | 'premise' | 'user_context'>();
   for (const evidence of Array.isArray(candidate.evidence) ? candidate.evidence : []) {
     const kind = evidence && typeof evidence === 'object' ? (evidence as { kind?: unknown }).kind : undefined;
@@ -415,7 +424,7 @@ function evidenceTypes(candidate: Record<string, unknown>): MatrixCandidate['evi
 }
 
 /** Preserves graph evidence IDs/types in the raw run artifact before policy scoring. */
-export function collectCandidates(result: Record<string, unknown>, fixtureIds: Set<string>): MatrixCandidate[] {
+export function collectCandidates(result: Record<string, unknown>, fixtureIds: Set<string>): MatrixRetrievalCandidate[] {
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
   return candidates.map((candidate, index) => {
     const value = candidate as Record<string, unknown>;
@@ -437,8 +446,67 @@ export function collectCandidates(result: Record<string, unknown>, fixtureIds: S
     };
     // Fail closed before the judge: unknown candidates remain visible to the
     // deterministic fixture-ownership assertion and are never normalized away.
-    if (!fixtureIds.has(id)) return { id, rank: index + 1, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
-    return { id, rank: index + 1, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+    if (!fixtureIds.has(id)) return { id, retrievalRank: index + 1, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+    return { id, retrievalRank: index + 1, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+  });
+}
+
+type EvaluatedOpportunityProjection = {
+  score: unknown;
+  actors: unknown;
+};
+
+/**
+ * Projects policy input from the graph's final evaluator/ranking output. Raw
+ * retrieval is retained separately for diagnostics, but cannot leak into the
+ * deterministic assertions or relationship judge.
+ */
+export function projectFinalCandidates(
+  result: Record<string, unknown>,
+  rawCandidates: readonly MatrixRetrievalCandidate[],
+  sourceUserId: string,
+  minScore: number,
+): MatrixCandidate[] {
+  if (!Array.isArray(result.evaluatedOpportunities)) {
+    throw new Error('Evaluator final outcomes cannot be projected: evaluatedOpportunities is missing');
+  }
+  const rawByUserId = new Map<string, MatrixRetrievalCandidate[]>();
+  for (const candidate of rawCandidates) {
+    const matches = rawByUserId.get(candidate.id) ?? [];
+    matches.push(candidate);
+    rawByUserId.set(candidate.id, matches);
+  }
+
+  return result.evaluatedOpportunities.flatMap((outcome, index) => {
+    if (!outcome || typeof outcome !== 'object') {
+      throw new Error(`Evaluator final outcome at rank ${index + 1} cannot be projected`);
+    }
+    const { score, actors } = outcome as EvaluatedOpportunityProjection;
+    if (typeof score !== 'number' || !Number.isFinite(score)) {
+      throw new Error(`Evaluator final outcome at rank ${index + 1} cannot be projected: score is missing`);
+    }
+    // The graph normally filters by minScore before ranking. Retain this guard so
+    // a malformed/alternate graph result cannot widen matrix policy input.
+    if (score < minScore) return [];
+    if (!Array.isArray(actors)) {
+      throw new Error(`Evaluator final outcome at rank ${index + 1} cannot be projected: actors are missing`);
+    }
+    const counterpartIds = actors.flatMap((actor) => actor && typeof actor === 'object' && typeof (actor as { userId?: unknown }).userId === 'string'
+      ? [(actor as { userId: string }).userId]
+      : []).filter((userId) => userId !== sourceUserId);
+    if (counterpartIds.length !== 1) {
+      throw new Error(`Evaluator final outcome at rank ${index + 1} cannot be projected: expected one counterpart`);
+    }
+    const retrieved = rawByUserId.get(counterpartIds[0]!);
+    if (!retrieved?.length) {
+      throw new Error(`Evaluator final outcome at rank ${index + 1} cannot be projected: counterpart was not retrieved`);
+    }
+    const evidenceTypes = [...new Set(retrieved.flatMap((candidate) => candidate.evidenceTypes))];
+    const evidenceIds: MatrixCandidateEvidenceIds = {};
+    for (const candidate of retrieved) {
+      Object.assign(evidenceIds, candidate.evidenceIds);
+    }
+    return [{ id: counterpartIds[0]!, finalRank: index + 1, evidenceTypes, evidenceIds }];
   });
 }
 
@@ -540,12 +608,14 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
     const composed = await composeCaseRuntime(deps, matrixCase, network, triggerIntentId);
     const graphResult = await invokeMatrixDiscoveryGraph(deps.opportunityGraph as never, composed, slot.row, signal) as Record<string, unknown>;
     if (graphResult.error) throw new Error(`${matrixCase.id}: opportunity graph failed: ${String(graphResult.error)}`);
-    const candidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
+    const rawCandidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
+    const candidates = projectFinalCandidates(graphResult, rawCandidates, fixtureCase.sourceUserId, 50);
     const scored = await scoreMatrixSlot({
       matrixCase,
       rowId: slot.row.id,
       repetition: slot.repetition,
       candidates,
+      rawCandidates,
       completed: true,
       configDeltas: [
         { key: 'DISCOVERY_ALLOWED_TYPES', before: null, after: slot.row.allowedTypes },

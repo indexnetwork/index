@@ -20,17 +20,25 @@ export interface MatrixCandidateEvidenceIds {
   candidateContextId?: string;
 }
 
-export interface MatrixCandidate {
-  /** The database/user id returned by the live discovery graph. */
+export interface MatrixRetrievalCandidate {
+  /** The database/user id returned by raw retrieval before evaluator approval. */
   id: string;
-  /** One-based live graph order, retained alongside the scorecard target rank. */
-  rank: number;
-  /** Evidence source labels retained from the graph result. */
+  /** One-based raw retrieval order. Diagnostic-only; never scored or judged. */
+  retrievalRank: number;
   evidenceTypes: readonly MatrixEvidenceType[];
-  /** Concrete graph evidence IDs retained alongside evidence types. */
   evidenceIds: MatrixCandidateEvidenceIds;
   /** Run-artifact-only provider text; baseline artifacts must remove this field. */
   rawText?: string;
+}
+
+export interface MatrixCandidate {
+  /** The database/user id in an evaluator-approved, graph-ranked opportunity. */
+  id: string;
+  /** One-based final evaluator/ranking order used by scorecard policy and judge. */
+  finalRank: number;
+  /** Evidence projected from raw retrieval for this final candidate. */
+  evidenceTypes: readonly MatrixEvidenceType[];
+  evidenceIds: MatrixCandidateEvidenceIds;
 }
 
 export type MatrixAssertionKind =
@@ -73,7 +81,10 @@ export interface ScoreMatrixSlotInput {
   matrixCase: HistoricalMatrixCase;
   rowId: MatrixRowId;
   repetition: number;
+  /** Evaluator-approved, graph-ranked candidates used by every policy assertion and judge. */
   candidates: readonly MatrixCandidate[];
+  /** Raw retrieval diagnostics retained in run artifacts but never scored or judged. */
+  rawCandidates?: readonly MatrixRetrievalCandidate[];
   completed: boolean;
   configDeltas?: readonly MatrixConfigDelta[];
   /** Invoked only after every deterministic assertion passes. */
@@ -89,7 +100,10 @@ export interface MatrixSlotResult extends CaseResultLike {
   evidenceTypes: MatrixEvidenceType[];
   configDeltas: MatrixConfigDelta[];
   assertions: MatrixAssertion[];
+  /** Final evaluator-approved candidates only. */
   candidates: MatrixCandidate[];
+  /** Raw retrieval diagnostics only; these never enter deterministic assertions or the judge. */
+  rawCandidates: MatrixRetrievalCandidate[];
   judge: MatrixJudgeResult | null;
 }
 
@@ -99,13 +113,21 @@ export type MatrixScorecard = ScorecardLike<MatrixSlotResult>;
 /** Baseline scorecard: deliberately excludes raw provider candidate text. */
 export interface MatrixBaselineCandidate {
   id: string;
-  rank: number;
+  finalRank: number;
   evidenceTypes: MatrixEvidenceType[];
   evidenceIds: MatrixCandidateEvidenceIds;
 }
 
-export interface MatrixBaselineSlotResult extends Omit<MatrixSlotResult, "candidates"> {
+export interface MatrixBaselineRetrievalCandidate {
+  id: string;
+  retrievalRank: number;
+  evidenceTypes: MatrixEvidenceType[];
+  evidenceIds: MatrixCandidateEvidenceIds;
+}
+
+export interface MatrixBaselineSlotResult extends Omit<MatrixSlotResult, "candidates" | "rawCandidates"> {
   candidates: MatrixBaselineCandidate[];
+  rawCandidates: MatrixBaselineRetrievalCandidate[];
 }
 
 export type MatrixBaselineScorecard = ScorecardLike<MatrixBaselineSlotResult>;
@@ -155,8 +177,8 @@ function deterministicAssertions(input: ScoreMatrixSlotInput): {
 } {
   const fixtureIds = new Set(input.matrixCase.participants.map((participant) => participant.id));
   const candidateIds = input.candidates.map((candidate) => candidate.id);
-  const targetIndex = candidateIds.indexOf(input.matrixCase.expectedUserId);
-  const targetRank = targetIndex < 0 ? null : targetIndex + 1;
+  const target = input.candidates.find((candidate) => candidate.id === input.matrixCase.expectedUserId);
+  const targetRank = target?.finalRank ?? null;
   const unknownCandidate = candidateIds.find((candidateId) => !fixtureIds.has(candidateId));
   const excludedCandidate = candidateIds.find((candidateId) => input.matrixCase.excludedUserIds.includes(candidateId));
   const evidenceTypes = [...new Set(input.candidates.flatMap((candidate) => candidate.evidenceTypes))];
@@ -241,6 +263,11 @@ export async function scoreMatrixSlot(input: ScoreMatrixSlotInput): Promise<Matr
     configDeltas: input.configDeltas ? input.configDeltas.map((delta) => ({ ...delta })) : [],
     assertions,
     candidates: input.candidates.map((candidate) => ({
+      ...candidate,
+      evidenceTypes: [...candidate.evidenceTypes],
+      evidenceIds: { ...candidate.evidenceIds },
+    })),
+    rawCandidates: (input.rawCandidates ?? []).map((candidate) => ({
       ...candidate,
       evidenceTypes: [...candidate.evidenceTypes],
       evidenceIds: { ...candidate.evidenceIds },

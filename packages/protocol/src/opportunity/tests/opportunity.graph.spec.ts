@@ -673,7 +673,9 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.some((c) => c.candidateContextId === 'ctx-carol')).toBe(true);
     });
 
-    it('defaults unchanged: premise + context strategies run as today', async () => {
+    it('premise mode never loads or searches user context while intent and premise strategies run', async () => {
+      process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
+      process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
       wirePremiseAndContextSources(mockDb);
       const getUserContextsSpy = spyOn(mockDb, 'getUserContexts');
@@ -691,9 +693,9 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(getUserContextsSpy).toHaveBeenCalled();
+      expect(getUserContextsSpy).not.toHaveBeenCalled();
       expect(premiseBatchSpy).toHaveBeenCalled();
-      expect(contextSearchSpy).toHaveBeenCalled();
+      expect(contextSearchSpy).not.toHaveBeenCalled();
       expect(searchSpy).toHaveBeenCalled();
       expect(searchSpy.mock.calls[0]?.[1]?.corpusGating).toEqual({
         intents: true,
@@ -701,6 +703,7 @@ describe('Opportunity Graph', () => {
         profileCorpus: 'premise',
       });
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+      expect(result.candidates.some((candidate) => candidate.evidence.some((evidence) => evidence.kind === 'context_to_intent'))).toBe(false);
     });
 
     it('lightweight mode: context→context finds candidates via searchUserContextsBySimilarity', async () => {

@@ -16,6 +16,14 @@ function assertionsHtml(scorecard: MatrixScorecard["cases"][number]): string {
     .join("<br>");
 }
 
+function retrievalDiagnosticsHtml(scorecard: MatrixScorecard["cases"][number]): string {
+  return scorecard.rawCandidates.length === 0
+    ? "none"
+    : scorecard.rawCandidates
+      .map((candidate) => `${htmlEscape(candidate.id)} @ retrieval ${candidate.retrievalRank}`)
+      .join("<br>");
+}
+
 function configDeltasHtml(scorecard: MatrixScorecard["cases"][number]): string {
   return scorecard.configDeltas.length === 0
     ? "—"
@@ -32,13 +40,14 @@ function matrixTable(scorecard: MatrixScorecard): string {
       <td>${htmlEscape(slot.rowId)}</td>
       <td>${slot.repetition + 1}</td>
       <td>${slot.targetRank ?? "not returned"}</td>
+      <td>${retrievalDiagnosticsHtml(slot)}</td>
       <td>${htmlEscape(slot.evidenceTypes.join(", ") || "none")}</td>
       <td>${assertionsHtml(slot)}</td>
       <td>${slot.judge ? (slot.judge.passed ? "pass" : "fail") : "not run"}</td>
       <td>${configDeltasHtml(slot)}</td>
     </tr>`)
     .join("");
-  return `<table><thead><tr><th>case</th><th>row</th><th>repetition</th><th>target rank</th><th>evidence types</th><th>deterministic assertions</th><th>judge result</th><th>config deltas</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>case</th><th>row</th><th>repetition</th><th>final target rank</th><th>raw retrieval diagnostics</th><th>final evidence types</th><th>deterministic assertions</th><th>judge result</th><th>config deltas</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 const INTRO = `<h2>What this report is measuring</h2>
@@ -70,14 +79,20 @@ export function leanMatrixScorecard(scorecard: MatrixScorecard): MatrixBaselineS
   return {
     ...scorecard,
     rules: scorecard.rules.map((rule) => ({ ...rule })),
-    cases: scorecard.cases.map(({ candidates, assertions, evidenceTypes, configDeltas, ...slot }) => ({
+    cases: scorecard.cases.map(({ candidates, rawCandidates, assertions, evidenceTypes, configDeltas, ...slot }) => ({
       ...slot,
       evidenceTypes: [...evidenceTypes],
       assertions: assertions.map((assertion) => ({ ...assertion })),
       configDeltas: configDeltas.map((delta) => ({ ...delta })),
-      candidates: candidates.map(({ id, rank, evidenceTypes: candidateEvidence, evidenceIds }) => ({
+      candidates: candidates.map(({ id, finalRank, evidenceTypes: candidateEvidence, evidenceIds }) => ({
         id,
-        rank,
+        finalRank,
+        evidenceTypes: [...candidateEvidence],
+        evidenceIds: { ...evidenceIds },
+      })),
+      rawCandidates: rawCandidates.map(({ id, retrievalRank, evidenceTypes: candidateEvidence, evidenceIds }) => ({
+        id,
+        retrievalRank,
         evidenceTypes: [...candidateEvidence],
         evidenceIds: { ...evidenceIds },
       })),

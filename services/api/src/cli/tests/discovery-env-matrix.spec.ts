@@ -5,7 +5,7 @@ import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -298,7 +298,67 @@ describe('discovery environment matrix runtime seams', () => {
     })).rejects.toThrow('missing-artifact');
   });
 
-  it('preserves concrete graph evidence IDs alongside evidence types in run candidates', () => {
+  it('projects only evaluator-approved final outcomes while retaining raw retrieval diagnostics', () => {
+    const rawCandidates = collectCandidates({
+      candidates: [{
+        candidateUserId: 'h1-b',
+        candidateIntentId: 'intent-target',
+        evidence: [{ kind: 'query_intent' }],
+      }, {
+        candidateUserId: 'h1-c',
+        candidateIntentId: 'intent-excluded',
+        evidence: [{ kind: 'query_intent' }],
+      }],
+      evaluatedOpportunities: [{
+        score: 91,
+        actors: [{ userId: 'h1-a' }, { userId: 'h1-b' }],
+      }],
+    }, new Set(['h1-a', 'h1-b', 'h1-c']));
+
+    const finalCandidates = projectFinalCandidates({
+      evaluatedOpportunities: [{
+        score: 91,
+        actors: [{ userId: 'h1-a' }, { userId: 'h1-b' }],
+      }],
+    }, rawCandidates, 'h1-a', 50);
+
+    expect(rawCandidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'h1-c', retrievalRank: 2 }),
+    ]));
+    expect(finalCandidates).toEqual([expect.objectContaining({
+      id: 'h1-b',
+      finalRank: 1,
+      evidenceTypes: ['intent'],
+    })]);
+  });
+
+  it('keeps final rank in the graph evaluator order rather than retrieval rank or score re-sorting', () => {
+    const rawCandidates = collectCandidates({
+      candidates: [
+        { candidateUserId: 'h1-c', evidence: [{ kind: 'query_intent' }] },
+        { candidateUserId: 'h1-b', evidence: [{ kind: 'query_intent' }] },
+      ],
+    }, new Set(['h1-a', 'h1-b', 'h1-c']));
+    const finalCandidates = projectFinalCandidates({
+      evaluatedOpportunities: [
+        { score: 61, actors: [{ userId: 'h1-a' }, { userId: 'h1-b' }] },
+        { score: 99, actors: [{ userId: 'h1-a' }, { userId: 'h1-c' }] },
+      ],
+    }, rawCandidates, 'h1-a', 50);
+
+    expect(finalCandidates.map(({ id, finalRank }) => ({ id, finalRank }))).toEqual([
+      { id: 'h1-b', finalRank: 1 },
+      { id: 'h1-c', finalRank: 2 },
+    ]);
+  });
+
+  it('fails closed when an evaluator outcome cannot be matched to raw retrieval evidence', () => {
+    expect(() => projectFinalCandidates({
+      evaluatedOpportunities: [{ score: 91, actors: [{ userId: 'h1-a' }, { userId: 'unretrieved' }] }],
+    }, [], 'h1-a', 50)).toThrow('cannot be projected');
+  });
+
+  it('preserves concrete graph evidence IDs alongside evidence types in raw retrieval candidates', () => {
     const candidates = collectCandidates({
       candidates: [{
         candidateUserId: 'fixture-user',
@@ -314,7 +374,7 @@ describe('discovery environment matrix runtime seams', () => {
 
     expect(candidates).toEqual([{
       id: 'fixture-user',
-      rank: 1,
+      retrievalRank: 1,
       evidenceTypes: ['intent', 'premise', 'user_context'],
       evidenceIds: {
         candidateIntentId: 'intent-1',
@@ -323,7 +383,7 @@ describe('discovery environment matrix runtime seams', () => {
       },
     }, {
       id: 'fixture-user-fallback',
-      rank: 2,
+      retrievalRank: 2,
       evidenceTypes: ['intent'],
       evidenceIds: {},
     }]);
