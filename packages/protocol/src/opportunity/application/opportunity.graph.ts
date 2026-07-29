@@ -92,6 +92,17 @@ const sendLog = protocolLogger('OpportunityGraph:Send');
 const negotiateExistingLog = protocolLogger('OpportunityGraph:NegotiateExisting');
 const routingLog = protocolLogger('OpportunityGraph:Routing');
 
+/**
+ * Error text can include provider response bodies, URLs, and credentials. Keep
+ * observability useful by retaining only a conservative error class at this
+ * boundary; detailed errors are intentionally not emitted from graph traces.
+ */
+export function safeOpportunityGraphError(error: unknown): string {
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  const safeName = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(name) ? name : 'Error';
+  return `${safeName}: [redacted]`;
+}
+
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const ACTIVE_NEGOTIATION_TASK_STATES = new Set([
@@ -313,7 +324,7 @@ export class OpportunityGraphFactory {
           return result;
         } catch (err) {
           const durationMs = Date.now() - nodeStart;
-          const errMsg = err instanceof Error ? err.message : String(err);
+          const errMsg = safeOpportunityGraphError(err);
           traceEmitter?.({ type: "agent_end", name: traceName, durationMs, summary: `error: ${errMsg}` });
           throw err;
         }
@@ -1733,7 +1744,7 @@ export class OpportunityGraphFactory {
             }
           } catch (err) {
             evaluationLog.warn('IND-567 rejection cool-down: lookup failed, skipping penalty', {
-              error: err instanceof Error ? err.message : String(err),
+              error: safeOpportunityGraphError(err),
             });
           }
         }
@@ -1915,12 +1926,12 @@ export class OpportunityGraphFactory {
                   })
                   .catch((err) => {
                     const _evalDuration = Date.now() - _evalStart;
-                    const _errMsg = err instanceof Error ? err.message : String(err);
+                    const _errMsg = safeOpportunityGraphError(err);
                     agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
                     _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `${_candidateName}: error — ${_errMsg}` });
                     evaluationLog.warn('Parallel eval failed for candidate', {
                       candidateUserId: candidateEntity.userId,
-                      error: err,
+                      error: _errMsg,
                     });
                     parallelErrors.push({
                       candidateUserId: candidateEntity.userId,
@@ -1974,7 +1985,7 @@ export class OpportunityGraphFactory {
               _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `Evaluated ${candidateEntities.length} candidate(s)` });
             } catch (serialErr) {
               const _evalDuration = Date.now() - _evalStart;
-              const _errMsg = serialErr instanceof Error ? serialErr.message : String(serialErr);
+              const _errMsg = safeOpportunityGraphError(serialErr);
               agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
               _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `error — ${_errMsg}` });
               throw serialErr; // Re-throw for the outer catch to handle
@@ -2159,8 +2170,8 @@ export class OpportunityGraphFactory {
             agentTimings: agentTimingsAccum,
           };
         } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          evaluationLog.error('Failed', { error });
+          const errMsg = safeOpportunityGraphError(error);
+          evaluationLog.error('Failed', { error: errMsg });
           return {
             evaluatedOpportunities: [],
             error: 'Failed to evaluate candidates.',

@@ -20,6 +20,7 @@ import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { computeHydeSourceTextHash } from '../../shared/hyde/hyde.documents.js';
 import { requestContext, type TraceEmitter } from '../../shared/observability/request-context.js';
+import { setLoggerFactory, type LoggerWithSource } from '../../shared/observability/log.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
@@ -3568,7 +3569,7 @@ function createTraceMockEvaluatorFn(
   };
 }
 
-function createTraceMockGraph() {
+function createTraceMockGraph(evaluatorOverride?: OpportunityEvaluatorLike) {
   const mockDb: OpportunityGraphDatabase = {
     ...createOpportunityGraphDatabaseFixture(),
     getProfile: () => Promise.resolve(null),
@@ -3647,7 +3648,7 @@ function createTraceMockGraph() {
       }),
   };
 
-  const evaluator = createTraceMockEvaluatorFn();
+  const evaluator = evaluatorOverride ?? createTraceMockEvaluatorFn();
   const queueNotification = async () => undefined;
   const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator, queueNotification);
   const compiledGraph = factory.createGraph();
@@ -3701,6 +3702,57 @@ describe('Opportunity Graph — Trace Events', () => {
     const evalEnds = traceEvents.filter(e => e.type === 'agent_end' && e.name === 'opportunity-evaluator');
     expect(evalStarts.length).toBeGreaterThanOrEqual(1);
     expect(evalEnds.length).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+
+  test('redacts evaluator provider failures before graph logs and traces', async () => {
+    const secret = 'postgresql://matrix:secret@neon.example/protocol_eval Authorization: Bearer sk-or-v1-secret NEON_API_KEY=neon-secret provider body: {"token":"provider-secret"}';
+    const capturedLogs: Array<{ message: string; meta?: Record<string, unknown> }> = [];
+    const captureLogger: LoggerWithSource = {
+      verbose: (message, meta) => capturedLogs.push({ message, meta }),
+      debug: (message, meta) => capturedLogs.push({ message, meta }),
+      info: (message, meta) => capturedLogs.push({ message, meta }),
+      warn: (message, meta) => capturedLogs.push({ message, meta }),
+      error: (message, meta) => capturedLogs.push({ message, meta }),
+    };
+    const silentLogger: LoggerWithSource = {
+      verbose: () => undefined,
+      debug: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+    };
+    const traceEvents: Array<{ type: string; name?: string; summary?: string }> = [];
+    const evaluator: OpportunityEvaluatorLike = {
+      invokeEntityBundle: async () => {
+        throw new Error(secret);
+      },
+    };
+
+    setLoggerFactory(() => captureLogger);
+    try {
+      const { compiledGraph } = createTraceMockGraph(evaluator);
+      await requestContext.run({ traceEmitter: (event) => traceEvents.push(event) }, async () => {
+        await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: {},
+        });
+      });
+    } finally {
+      setLoggerFactory(() => silentLogger);
+    }
+
+    const emitted = JSON.stringify({ capturedLogs, traceEvents });
+    for (const secretFragment of [
+      'matrix:secret',
+      'sk-or-v1-secret',
+      'neon-secret',
+      'provider-secret',
+      'Authorization:',
+    ]) {
+      expect(emitted).not.toContain(secretFragment);
+    }
+    expect(emitted).toContain('Error: [redacted]');
   }, 60_000);
 
   test('trace events are in correct chronological order (start before end)', async () => {
