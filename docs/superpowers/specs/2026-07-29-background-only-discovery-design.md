@@ -46,7 +46,7 @@ The opportunity graph remains because background queues depend on it. `list_oppo
 Use a two-release removal:
 
 1. **Code cutover:** remove all direct entry points and all runtime consumers of discovery-run persistence, but retain the dormant table. This prevents a rolling older API instance from trying to write a table dropped by a newer deployment.
-2. **Schema cleanup:** after the code cutover is fully deployed, drop `opportunity_discovery_runs` and its database artifacts in a dedicated destructive migration. Follow production-release destructive-migration checks; no data backfill is required because records are transient.
+2. **Schema cleanup:** run a dedicated destructive migration only after Release 1 is deployed everywhere, all old API and worker replicas plus queued discovery-run work are drained, and the owner has given explicit destructive-release authorization. Then drop only `opportunity_discovery_runs` and its database artifacts; retain the shared `discoveryRunStatusEnum`, which is still used by `enrichmentToolRuns`. Follow production-release destructive-migration checks; no data backfill is required because run records are transient.
 
 This is a breaking public-contract change. Protocol, API, and CLI versions must be bumped according to repository release policy, and public docs must no longer advertise direct discovery.
 
