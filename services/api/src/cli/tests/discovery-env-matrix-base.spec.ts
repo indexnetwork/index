@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import path from 'node:path';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
-import { HISTORICAL_MATRIX_CASES_PATH, seedProtectedBase, verifyProtectedBase } from '../discovery-env-matrix-base';
+import { HISTORICAL_MATRIX_CASES_PATH, parseBaseArgs, runBaseLifecycle, seedProtectedBase, verifyBaseFixtureIntegrity, verifyProtectedBase } from '../discovery-env-matrix-base';
 import { BASE_FIXTURE_CORPUS_VERSION, assertBaseEnvironment, baseSeedPayload, computeFixtureFingerprint, type BaseMetadata, verifyBaseContract } from '../discovery-env-matrix.shared';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
@@ -94,6 +94,21 @@ function mockBaseDatabase(selectResults: Array<Array<{ id: string }>> = []): {
   };
 }
 
+function mockReadOnlyDatabase(results: unknown[][]) {
+  const state = { reads: 0, writes: 0 };
+  const select = () => ({
+    from: () => ({
+      where: () => ({
+        then(resolve: (rows: unknown[]) => void) {
+          state.reads += 1;
+          resolve(results.shift() ?? []);
+        },
+      }),
+    }),
+  });
+  return { db: { select } as unknown as DrizzleDB, state };
+}
+
 describe('discovery environment matrix base policy', () => {
   it('loads historical fixture source from the workspace after the protocol build', async () => {
     const expected = path.resolve(
@@ -107,6 +122,12 @@ describe('discovery environment matrix base policy', () => {
       HISTORICAL_MATRIX_CASES: readonly unknown[];
     };
     expect(fixtureModule.HISTORICAL_MATRIX_CASES).toHaveLength(5);
+  });
+
+  it('parses --verify as the read-only lifecycle command', () => {
+    expect(parseBaseArgs(['--verify'])).toEqual({ verifyOnly: true });
+    expect(parseBaseArgs([])).toEqual({ verifyOnly: false });
+    expect(() => parseBaseArgs(['--refresh'])).toThrow('Usage');
   });
 
   it('refuses a non-evaluation database or unconfirmed base refresh', () => {
@@ -240,5 +261,83 @@ describe('protected base transaction', () => {
 
     state.metadata = { ...metadata, fixtureFingerprint: 'stale' };
     await expect(verifyProtectedBase(db, schema, metadata)).rejects.toThrow('fixture fingerprint mismatch');
+  });
+});
+
+describe('protected base lifecycle', () => {
+  const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+
+  function structuralRows(options: { unembeddedIntentId?: string } = {}): unknown[][] {
+    return [
+      payload.users.map((user) => ({ id: user.id })),
+      payload.networks.map((network) => ({ id: network.id })),
+      payload.intents.map((intent) => ({
+        id: intent.id,
+        embedding: intent.id === options.unembeddedIntentId ? null : [0.1],
+      })),
+      payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId })),
+      payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId })),
+    ];
+  }
+
+  it('fails a structural mutation through read-only fixture checks', async () => {
+    const { db, state } = mockReadOnlyDatabase(structuralRows({
+      unembeddedIntentId: payload.intents[0]!.id,
+    }));
+
+    await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('is unembedded');
+    expect(state.reads).toBe(5);
+    expect(state.writes).toBe(0);
+  });
+
+  it('exits already-current without constructing an indexer or writing', async () => {
+    const createIndexer = mock(async () => {
+      throw new Error('indexer must stay lazy');
+    });
+    const refresh = mock(async () => {});
+    const log = mock(() => {});
+
+    await expect(runBaseLifecycle({ verifyOnly: false }, {
+      verifyCurrent: async () => {},
+      createIndexer,
+      refresh,
+      log,
+    })).resolves.toBe('already-current');
+
+    expect(createIndexer).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('fails stale --verify without constructing an indexer or writing', async () => {
+    const createIndexer = mock(async () => {
+      throw new Error('indexer must stay lazy');
+    });
+    const refresh = mock(async () => {});
+
+    await expect(runBaseLifecycle({ verifyOnly: true }, {
+      verifyCurrent: async () => { throw new Error('fixture fingerprint mismatch'); },
+      createIndexer,
+      refresh,
+      log: () => {},
+    })).rejects.toThrow('verification failed');
+
+    expect(createIndexer).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('lazily constructs the indexer only when a normal refresh is stale', async () => {
+    const indexer = async () => {};
+    const createIndexer = mock(async () => indexer);
+    const refresh = mock(async () => {});
+
+    await expect(runBaseLifecycle({ verifyOnly: false }, {
+      verifyCurrent: async () => { throw new Error('metadata is missing'); },
+      createIndexer,
+      refresh,
+      log: () => {},
+    })).resolves.toBe('refreshed');
+
+    expect(createIndexer).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledWith(indexer);
   });
 });

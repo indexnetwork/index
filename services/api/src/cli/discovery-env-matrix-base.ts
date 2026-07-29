@@ -2,6 +2,10 @@
 /**
  * Seeds the one protected, fixture-only base for discovery environment matrix
  * evaluations. Matrix child runs must verify this metadata before they run.
+ *
+ * Usage: bun run eval:discovery-env-matrix-base [--verify]
+ * --verify performs metadata and fixture-structure reads only; it never creates
+ * the embedding/HyDE indexer or refreshes the protected base.
  */
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
@@ -229,6 +233,93 @@ export async function verifyProtectedBase(
   verifyBaseContract(metadata ?? null, expected);
 }
 
+function assertExactFixtureIds(label: string, expected: readonly string[], actual: readonly string[]): void {
+  const actualIds = new Set(actual);
+  const missing = expected.find((id) => !actualIds.has(id));
+  if (missing) throw new Error(`Discovery environment matrix base integrity failed: missing ${label} ${missing}`);
+  if (actualIds.size !== expected.length) {
+    throw new Error(`Discovery environment matrix base integrity failed: duplicate ${label} IDs`);
+  }
+}
+
+/**
+ * Provider-free structural check for the exact durable fixture shape. It only
+ * reads fixture-scoped IDs and never creates the embedder or Hyde graph.
+ */
+export async function verifyBaseFixtureIntegrity(
+  db: DrizzleDB,
+  schema: typeof DatabaseSchema,
+  payload: BaseSeedPayload,
+): Promise<void> {
+  const userIds = payload.users.map((user) => user.id);
+  const networkIds = payload.networks.map((network) => network.id);
+  const intentIds = payload.intents.map((intent) => intent.id);
+  const [users, networks, intents, intentNetworks, memberships] = await Promise.all([
+    db.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.id, userIds)),
+    db.select({ id: schema.networks.id }).from(schema.networks).where(inArray(schema.networks.id, networkIds)),
+    db.select({ id: schema.intents.id, embedding: schema.intents.embedding }).from(schema.intents)
+      .where(inArray(schema.intents.id, intentIds)),
+    db.select({ intentId: schema.intentNetworks.intentId, networkId: schema.intentNetworks.networkId })
+      .from(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, intentIds)),
+    db.select({ userId: schema.networkMembers.userId, networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers).where(and(
+        inArray(schema.networkMembers.userId, userIds),
+        inArray(schema.networkMembers.networkId, networkIds),
+      )),
+  ]);
+
+  assertExactFixtureIds('user', userIds, users.map((row) => row.id));
+  assertExactFixtureIds('network', networkIds, networks.map((row) => row.id));
+  assertExactFixtureIds('intent', intentIds, intents.map((row) => row.id));
+  const unembedded = intents.find((intent) => intent.embedding === null);
+  if (unembedded) throw new Error(`Discovery environment matrix base integrity failed: intent ${unembedded.id} is unembedded`);
+
+  const expectedIntentNetworks = new Set(payload.intents.map((intent) => `${intent.id}:${intent.networkId}`));
+  const actualIntentNetworks = new Set(intentNetworks.map((row) => `${row.intentId}:${row.networkId}`));
+  const missingIntentNetwork = [...expectedIntentNetworks].find((key) => !actualIntentNetworks.has(key));
+  if (missingIntentNetwork || actualIntentNetworks.size !== expectedIntentNetworks.size) {
+    throw new Error(`Discovery environment matrix base integrity failed: intent-network assignment ${missingIntentNetwork ?? 'mismatch'}`);
+  }
+
+  const expectedMemberships = new Set(payload.memberships.map((membership) => `${membership.userId}:${membership.networkId}`));
+  const actualMemberships = new Set(memberships.map((row) => `${row.userId}:${row.networkId}`));
+  const missingMembership = [...expectedMemberships].find((key) => !actualMemberships.has(key));
+  if (missingMembership || actualMemberships.size !== expectedMemberships.size) {
+    throw new Error(`Discovery environment matrix base integrity failed: membership ${missingMembership ?? 'mismatch'}`);
+  }
+}
+
+export interface BaseLifecycleDeps {
+  verifyCurrent(): Promise<void>;
+  createIndexer(): Promise<FixtureIntentIndexer>;
+  refresh(indexer: FixtureIntentIndexer): Promise<void>;
+  log(line: string): void;
+}
+
+/** Runs read-only verification first and lazily constructs providers only for a required refresh. */
+export async function runBaseLifecycle(
+  options: { verifyOnly: boolean },
+  deps: BaseLifecycleDeps,
+): Promise<'already-current' | 'refreshed'> {
+  try {
+    await deps.verifyCurrent();
+    deps.log('Protected discovery environment matrix base is already current.');
+    return 'already-current';
+  } catch (error) {
+    if (options.verifyOnly) {
+      throw new Error(
+        `Protected discovery environment matrix base verification failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  const indexer = await deps.createIndexer();
+  await deps.refresh(indexer);
+  deps.log('Protected discovery environment matrix base refreshed and verified.');
+  return 'refreshed';
+}
+
 /**
  * Composes the real embed/persist/HyDE indexer without importing IntentService,
  * whose application-level Questioner dependency is intentionally excluded from
@@ -244,16 +335,24 @@ export async function createBaseFixtureIntentIndexer(): Promise<FixtureIntentInd
   });
 }
 
-async function createProductionDependencies() {
-  const [drizzleModule, schema, indexFixtureIntent] = await Promise.all([
+async function createReadOnlyProductionDependencies() {
+  const [drizzleModule, schema] = await Promise.all([
     import('../lib/drizzle/drizzle'),
     import('../schemas/database.schema'),
-    createBaseFixtureIntentIndexer(),
   ]);
-  return { db: drizzleModule.default, closeDb: drizzleModule.closeDb, schema, indexFixtureIntent };
+  return { db: drizzleModule.default, closeDb: drizzleModule.closeDb, schema };
+}
+
+export function parseBaseArgs(args: readonly string[]): { verifyOnly: boolean } {
+  const unsupported = args.filter((arg) => arg !== '--verify');
+  if (unsupported.length > 0) {
+    throw new Error(`Usage: discovery-env-matrix-base [--verify]; unsupported argument ${unsupported[0]}`);
+  }
+  return { verifyOnly: args.includes('--verify') };
 }
 
 async function main(): Promise<void> {
+  const options = parseBaseArgs(process.argv.slice(2));
   const environment = assertBaseEnvironment(process.env);
   console.log(
     `Protected base target: confirmation=${process.env.DISCOVERY_ENV_MATRIX_BASE_CONFIRM} `
@@ -261,17 +360,31 @@ async function main(): Promise<void> {
       + `path=${environment.databaseUrl.pathname} declaredBranch=${environment.declaredBranch}`,
   );
 
-  const cases = await loadHistoricalMatrixCases();
-  const payload = baseSeedPayload(cases);
-  const metadata = await expectedBaseMetadata(cases);
-  const { db, closeDb, schema, indexFixtureIntent } = await createProductionDependencies();
+  // Read-only DB/schema composition intentionally precedes fixture/provider work.
+  const { db, closeDb, schema } = await createReadOnlyProductionDependencies();
   try {
-    await seedProtectedBase(db, schema, payload, metadata, indexFixtureIntent);
-    await verifyProtectedBase(db, schema, metadata);
-    console.log(
-      `Protected base seeded and verified: schema=${metadata.schemaMigrationFingerprint} `
-        + `fixture=${metadata.fixtureFingerprint} corpus=${metadata.fixtureCorpusVersion}`,
-    );
+    const cases = await loadHistoricalMatrixCases();
+    const payload = baseSeedPayload(cases);
+    const metadata = await expectedBaseMetadata(cases);
+    const result = await runBaseLifecycle(options, {
+      verifyCurrent: async () => {
+        await verifyProtectedBase(db, schema, metadata);
+        await verifyBaseFixtureIntegrity(db, schema, payload);
+      },
+      createIndexer: createBaseFixtureIntentIndexer,
+      refresh: async (indexFixtureIntent) => {
+        await seedProtectedBase(db, schema, payload, metadata, indexFixtureIntent);
+        await verifyProtectedBase(db, schema, metadata);
+        await verifyBaseFixtureIntegrity(db, schema, payload);
+      },
+      log: console.log,
+    });
+    if (result === 'refreshed') {
+      console.log(
+        `Protected base fingerprints: schema=${metadata.schemaMigrationFingerprint} `
+          + `fixture=${metadata.fixtureFingerprint} corpus=${metadata.fixtureCorpusVersion}`,
+      );
+    }
   } finally {
     await closeDb();
   }
