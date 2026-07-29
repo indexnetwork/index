@@ -16,9 +16,6 @@ import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.j
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
-import type { Question } from '../shared/schemas/question.schema.js';
-import { QuestionSchema } from '../shared/schemas/question.schema.js';
-import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../runtime/foreground/composition/tool.registry.js';
 import type { ToolRegistryDeps } from '../runtime/foreground/composition/tool.registry.js';
 import { bindOwnerApprovalProvenance } from '../opportunity/application/opportunity.owner-provenance.js';
@@ -225,48 +222,6 @@ export function sanitizeMcpResult(text: string): { text: string; isError: boolea
   }
 }
 
-/** Spec cap on the number of decision questions surfaced per turn. */
-const MAX_DECISION_QUESTIONS = 3;
-
-/**
- * Extracts decision questions from a parsed tool-result text, if present.
- * Validates each entry against `QuestionSchema` and drops malformed items;
- * caps the array at `MAX_DECISION_QUESTIONS` (defense-in-depth — Slice 2's
- * generator already caps at 3, but we don't trust the cast here).
- *
- * Returns null when the text isn't JSON, has no `data.questions`, or
- * contains zero valid questions after validation.
- */
-export function extractDecisionQuestions(text: string): Question[] | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return null;
-  }
-
-  const rawQs = (parsed as { data?: { questions?: unknown } } | null)?.data?.questions;
-  if (!Array.isArray(rawQs) || rawQs.length === 0) return null;
-
-  const valid: Question[] = [];
-  for (const raw of rawQs) {
-    const result = QuestionSchema.safeParse(raw);
-    if (result.success) valid.push(result.data);
-    if (valid.length === MAX_DECISION_QUESTIONS) break;
-  }
-  return valid.length > 0 ? valid : null;
-}
-
-/**
- * Renders the JSON-envelope text block appended to the tool result content
- * when decision questions are present. The leading sentinel string lets the
- * LLM client recognize and surface the questions in prose for clients
- * without elicitation support.
- */
-export function renderQuestionsEnvelope(questions: Question[]): string {
-  return `Decision questions (structured): ${JSON.stringify({ questions })}`;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP SERVER FACTORY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -403,10 +358,6 @@ API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/r
 # Tool Guidance
 Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.
 
-# Decision Questions
-When discover_opportunities returns \`Decision questions (structured): ...\`, parse the \`questions\` array. Each has \`title\`, \`prompt\`, \`options\` (with \`label\` and \`description\`). Present in natural language; never expose JSON. Fold answers into the next discover_opportunities call.
-
-Elicitation clients: answers are dispatched via \`elicitation/create\` and written to chat automatically.
 `.trim();
 
 /**
