@@ -39882,8 +39882,11 @@ function Onboarding({ onDone, onBack }) {
               {thinking ? (
                 <div key="thinking" className="fade-up" style={{ display:"grid", gap:10 }}>
                   <AgentBubble>
-                    <span style={{ color:"var(--ink-2)" }}>
-                      <StreamText text="reading your signal…" speed={30}/>
+                    <span style={{
+                      color:"var(--ink-2)", display:"inline-flex",
+                      alignItems:"center", flexWrap:"wrap",
+                    }}>
+                      working out who to look for<WorkingDots/>
                     </span>
                   </AgentBubble>
                 </div>
@@ -39980,6 +39983,25 @@ function AgentBubble({ children }) {
         maxWidth:620,
       }}>{children}</div>
     </div>
+  );
+}
+
+/* The agent is doing something and the line has to look like it. A typed-out
+   sentence finished typing and then sat there, which read as stuck: the only
+   moving thing was gone by the time you looked at it. Three squares taking
+   turns run for as long as the work does, on the same blink the live marks in
+   the rest of the app use, so "busy" looks the same everywhere. */
+function WorkingDots({ size = 8 }) {
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, marginLeft:10 }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          width:size, height:size, background:"#000",
+          animation:"mac-blink 1.05s steps(2) infinite",
+          animationDelay:`${i * 0.35}s`,
+        }}/>
+      ))}
+    </span>
   );
 }
 
