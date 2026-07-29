@@ -824,10 +824,9 @@ function useInterval(cb, delay) {
 }
 
 /* ---------- PipelineFunnel: Amiga gadget strip ---------- */
-// Label first, then its count in a badge. Each tab is sized to its own text
-// rather than to an equal share of the row: five equal columns cut "awaiting
-// you" down to "A…", and a tab whose name you cannot read is not a tab. If the
-// whole strip still does not fit, it scrolls sideways rather than truncating.
+// Label first, then its count in a badge. The tabs share the row equally so
+// the strip fills the window width; each keeps its text on one line and the
+// content stays centered inside its cell.
 function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
   const clickable = !!onClickStage;
   const allActive = activeStage === "all";
@@ -851,8 +850,8 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             disabled={!clickable}
             title={`${s.label} · ${s.count}`}
             style={{
-              flex:"0 0 auto",
-              display:"flex", alignItems:"center", gap:5,
+              flex:"1 1 0", minWidth:0,
+              display:"flex", alignItems:"center", justifyContent:"center", gap:5,
               padding:"7px 9px",
               background: isActive ? A.fg : "transparent",
               color: isActive ? A.paper : A.fg,
