@@ -47,6 +47,21 @@ window.IndexApp = (function () {
   function login() { return post("login"); }
   function logout() { return post("logout"); }
 
+  // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.
+  // Resolves with [{id,label,command,path}], or null when there is no native
+  // bridge (browser preview) so callers keep their demo data.
+  const harnessWaiters = [];
+  window.__indexHarnessesDetected = function (list) {
+    while (harnessWaiters.length) harnessWaiters.shift()(list || []);
+  };
+  function detectHarnesses() {
+    if (!hasBridge()) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      harnessWaiters.push(resolve);
+      post("detectHarnesses");
+    });
+  }
+
   // Swift calls window.__indexAuthChanged(apiKeyOrNull) after it updates
   // window.INDEX_NATIVE. Fan that out to any React subscribers.
   const authSubscribers = new Set();
@@ -300,6 +315,7 @@ window.IndexApp = (function () {
     loadSnapshot,
     login,
     logout,
+    detectHarnesses,
     onAuthChanged,
     createIntent,
     parseIntentProposals,

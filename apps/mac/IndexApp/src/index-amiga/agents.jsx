@@ -331,6 +331,7 @@ function mapLiveAgent(a) {
   return {
     id: a.id,
     name,
+    live: true,
     initial: (name[0] || "a").toLowerCase(),
     tint: TINTS[h % TINTS.length],
     state: active ? "connected" : "detected",
@@ -361,7 +362,16 @@ function Agents({ onClose }) {
   }));
   const [negotiator, setNegotiator] = useState("hermes");
 
-  // Live agents are read-only, fetch and display, but toggles stay local.
+  // Which local runtimes are already registered on the account: personal
+  // agents matched by name (lowercased). System agents (orchestrator, index
+  // negotiator) never appear as runtime rows — index stays the builtin
+  // negotiator fallback in the picker below.
+  const [registered, setRegistered] = useState({});
+  const noteRegistered = (a) => {
+    const row = mapLiveAgent(a);
+    setRegistered(r => ({ ...r, [row.name.toLowerCase()]: row }));
+    setPerms(p => ({ ...p, [row.id]: p[row.id] || row.perms }));
+  };
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
     const client = window.IndexApp.getClient();
@@ -370,40 +380,80 @@ function Agents({ onClose }) {
     client.agents.list()
       .then((res) => {
         if (cancelled) return;
-        const list = window.IndexApp.normalizeList(res, "agents").map(mapLiveAgent);
-        if (!list.length) return;
-        setAgents(list);
-        // The permissions and the negotiator have to follow the live list.
-        // Seeded off the demo ids, nothing matched a real agent, so every
-        // expanded row showed its permissions unticked and no row read as the
-        // one speaking for you.
-        setPerms(Object.fromEntries(list.map(a => [a.id, a.perms])));
-        const carries = list.find(a => a.negotiates && a.on);
+        const list = window.IndexApp.normalizeList(res, "agents")
+          .filter(a => a.type !== "system");
+        list.forEach(noteRegistered);
+        const carries = list.find(a => a.handleNegotiations && a.status !== "inactive");
         setNegotiator(carries ? carries.id : "index");
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
-  // "check again" re-scans for runtimes. Nothing changes in the prototype, but
-  // the button has to show it did something, so it spins for a beat and locks
-  // out re-clicks while it does.
+  // Real inventory: the Swift shell scans the login-shell PATH for known
+  // agent CLIs (claude, codex, goose, …). Until the first scan answers, or
+  // when there is no bridge (browser preview), the demo list stands in.
+  const [detected, setDetected] = useState(null);
+  const scan = () => (window.IndexApp && window.IndexApp.detectHarnesses)
+    ? window.IndexApp.detectHarnesses().then((list) => {
+        if (list) setDetected(list.map(h => ({
+          id: `local-${h.id}`, name: h.label, path: h.path,
+        })));
+      })
+    : Promise.resolve();
+  useEffect(() => { scan(); }, []);
+
+  // "check again" runs a real re-scan; the spin holds long enough to read.
   const [checking, setChecking] = useState(false);
   const checkTimer = useRef(null);
   useEffect(() => () => clearTimeout(checkTimer.current), []);
   const check = () => {
     if (checking) return;
     setChecking(true);
-    checkTimer.current = setTimeout(() => setChecking(false), 1400);
+    Promise.resolve(scan()).then(() => {
+      checkTimer.current = setTimeout(() => setChecking(false), 700);
+    });
   };
 
-  const toggleOn = (id) => setAgents(list => list.map(a => {
-    if (a.id !== id) return a;
-    const on = !a.on;
-    // switching a runtime off can't leave it as your negotiator
-    if (!on && negotiator === id) setNegotiator("index");
-    return { ...a, on };
-  }));
+  // Activating a detected runtime registers it as a personal agent via the
+  // MCP register_agent tool — the one agent write an app API key is allowed
+  // (the key is minted enrollmentCapable; every other agent-management write
+  // is deliberately session-only, so deactivation happens on the web).
+  const busy = useRef(new Set());
+  const toggleOn = (id) => {
+    // browser preview: the demo rows keep their local flip
+    if (detected === null) {
+      setAgents(list => list.map(a => {
+        if (a.id !== id) return a;
+        const on = !a.on;
+        if (!on && negotiator === id) setNegotiator("index");
+        return { ...a, on };
+      }));
+      return;
+    }
+    if (!window.IndexApp || !window.IndexApp.isAuthed()) {
+      alert("sign in first — registering an agent needs your account.");
+      return;
+    }
+    const row = rows.find(a => a.id === id);
+    if (!row) return;
+    if (row.live) {
+      alert(`"${row.name}" is already registered. manage or deactivate it from the agents page on the web.`);
+      return;
+    }
+    if (busy.current.has(id)) return;
+    busy.current.add(id);
+    const done = () => busy.current.delete(id);
+    window.IndexApp.mcpCall("register_agent", {
+        name: row.name,
+        description: `${row.name} on this mac (${row.path})`,
+      })
+      .then((res) => {
+        if (res && res.agent) noteRegistered(res.agent);
+      })
+      .catch((err) => alert(`could not register ${row.name}: ${err && err.message || err}`))
+      .then(done, done);
+  };
 
   const togglePerm = (agentId, permId) => setPerms(p => ({
     ...p,
@@ -428,11 +478,23 @@ function Agents({ onClose }) {
     bump(n => n + 1);
   };
 
+  // Rows are the detected local runtimes only. A runtime already registered
+  // on the account (matched by name) wears its live record: connected state,
+  // real id, on = active. Everything else is detected and off until the
+  // switch registers it.
+  const rows = detected === null ? agents : detected.map(d => {
+    const live = registered[d.name.toLowerCase()];
+    return live
+      ? { ...live, path: d.path }
+      : { id: d.id, name: d.name, state: "detected", on: false,
+          connectedAs: "", heartbeat: "", path: d.path };
+  });
+
   // Only runtimes you've switched on can speak for you, so only those are
   // offered. Index is always available as the fallback.
   const negotiatorOptions = [
     { id:"index", label:"index · system default" },
-    ...agents.filter(a => a.on).map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
+    ...rows.filter(a => a.on).map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
   ];
 
   return (
@@ -506,10 +568,16 @@ function Agents({ onClose }) {
               opacity: checking ? 0.5 : 1,
               transition:"opacity 140ms linear",
             }}>
-              {agents.map((a, i) => (
+              {rows.length === 0 && (
+                <div style={{
+                  padding:"12px",
+                  fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
+                }}>no agent runtimes found on this mac</div>
+              )}
+              {rows.map((a, i) => (
                 <AgentRow
                   key={a.id}
-                  last={i === agents.length - 1}
+                  last={i === rows.length - 1}
                   agent={a}
                   expanded={expanded === a.id}
                   onToggleExpand={(id) => setExpanded(e => e === id ? null : id)}
