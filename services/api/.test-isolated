@@ -29,6 +29,7 @@ src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
+src/services/tests/opportunity.service.maintenance.isolated.ts
 tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
