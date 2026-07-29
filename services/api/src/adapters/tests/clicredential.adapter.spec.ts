@@ -75,10 +75,12 @@ describe('CLI credential adapter, service, and auth compatibility', () => {
     expect(JSON.parse(rows.find((row) => row.id === v1.id)!.metadata!)).toEqual({
       client: 'cli',
       protocolVersion: 1,
+      enrollmentCapable: true,
     });
     expect(JSON.parse(rows.find((row) => row.id === v2.id)!.metadata!)).toEqual({
       client: 'cli',
       protocolVersion: 2,
+      enrollmentCapable: true,
     });
   });
 
