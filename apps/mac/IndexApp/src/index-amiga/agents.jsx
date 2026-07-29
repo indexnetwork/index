@@ -372,23 +372,31 @@ function Agents({ onClose }) {
     setRegistered(r => ({ ...r, [row.name.toLowerCase()]: row }));
     setPerms(p => ({ ...p, [row.id]: p[row.id] || row.perms }));
   };
-  useEffect(() => {
-    if (!window.IndexApp || !window.IndexApp.isAuthed()) return;
+  const fetchRegistered = () => {
+    if (!window.IndexApp || !window.IndexApp.isAuthed()) return Promise.resolve();
     const client = window.IndexApp.getClient();
-    if (!client) return;
-    let cancelled = false;
-    client.agents.list()
+    if (!client) return Promise.resolve();
+    return client.agents.list()
       .then((res) => {
-        if (cancelled) return;
         const list = window.IndexApp.normalizeList(res, "agents")
           .filter(a => a.type !== "system");
-        list.forEach(noteRegistered);
+        // Rebuild from scratch so agents deactivated or deleted elsewhere
+        // (e.g. on the web) drop their stale state here.
+        const next = {};
+        const nextPerms = {};
+        list.forEach((a) => {
+          const row = mapLiveAgent(a);
+          next[row.name.toLowerCase()] = row;
+          nextPerms[row.id] = row.perms;
+        });
+        setRegistered(next);
+        setPerms(p => ({ ...nextPerms, ...p }));
         const carries = list.find(a => a.handleNegotiations && a.status !== "inactive");
         setNegotiator(carries ? carries.id : "index");
       })
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  };
+  useEffect(() => { fetchRegistered(); }, []);
 
   // Real inventory: the Swift shell scans the login-shell PATH for known
   // agent CLIs (claude, codex, goose, …). Until the first scan answers, or
@@ -403,22 +411,22 @@ function Agents({ onClose }) {
     : Promise.resolve();
   useEffect(() => { scan(); }, []);
 
-  // "check again" runs a real re-scan; the spin holds long enough to read.
+  // "check again" re-scans local binaries AND re-fetches registration status
+  // from the API; the spin holds long enough to read.
   const [checking, setChecking] = useState(false);
   const checkTimer = useRef(null);
   useEffect(() => () => clearTimeout(checkTimer.current), []);
   const check = () => {
     if (checking) return;
     setChecking(true);
-    Promise.resolve(scan()).then(() => {
+    Promise.all([scan(), fetchRegistered()]).then(() => {
       checkTimer.current = setTimeout(() => setChecking(false), 700);
     });
   };
 
-  // Activating a detected runtime registers it as a personal agent via the
-  // MCP register_agent tool — the one agent write an app API key is allowed
-  // (the key is minted enrollmentCapable; every other agent-management write
-  // is deliberately session-only, so deactivation happens on the web).
+  // Activating a detected runtime registers it as a personal agent (MCP
+  // register_agent) and mints it an api key; deactivating deletes the agent
+  // (revoking its keys) and tears down any local plugin wiring.
   const busy = useRef(new Set());
   const toggleOn = (id) => {
     // browser preview: the demo rows keep their local flip
@@ -437,21 +445,59 @@ function Agents({ onClose }) {
     }
     const row = rows.find(a => a.id === id);
     if (!row) return;
-    if (row.live) {
-      alert(`"${row.name}" is already registered. manage or deactivate it from the agents page on the web.`);
-      return;
-    }
     if (busy.current.has(id)) return;
     busy.current.add(id);
     const done = () => busy.current.delete(id);
+    if (row.live) {
+      // Toggling off deregisters: delete the agent server-side (which also
+      // revokes its api keys) and, for hermes, uninstall the local plugin.
+      window.IndexApp.getClient().agents.remove(row.id)
+        .then(() => {
+          setRegistered(r => {
+            const next = { ...r };
+            delete next[row.name.toLowerCase()];
+            return next;
+          });
+          if (negotiator === row.id) setNegotiator("index");
+          if (row.name.toLowerCase() === "hermes") {
+            return window.IndexApp.teardownHermes().then((r) => {
+              if (!(r && r.ok)) alert(`deregistered, but plugin removal failed: ${(r && r.error) || "unknown error"}`);
+            });
+          }
+        })
+        .catch((err) => alert(`could not deregister ${row.name}: ${err && err.message || err}`))
+        .then(done, done);
+      return;
+    }
     window.IndexApp.mcpCall("register_agent", {
         name: row.name,
         description: `${row.name} on this mac (${row.path})`,
       })
       .then((res) => {
-        if (res && res.agent) noteRegistered(res.agent);
+        // tool results arrive wrapped: { success, data: { message, agent } }
+        const payload = (res && res.data) || res || {};
+        if (res && res.success === false) throw new Error(res.error || "registration failed");
+        if (!payload.agent) throw new Error("no agent in response");
+        noteRegistered(payload.agent);
+        return payload.agent;
       })
-      .catch((err) => alert(`could not register ${row.name}: ${err && err.message || err}`))
+      .then((agent) =>
+        // Mint an api key for the agent so the local runtime can act as it.
+        window.IndexApp.getClient().agents.createToken(agent.id).then((res) => {
+          const key = res && res.token && res.token.key;
+          if (!key) throw new Error("no key in bootstrap response");
+          if (row.id === "local-hermes") {
+            // Hand the key to the Swift shell: it writes ~/.hermes/.env and
+            // installs/enables the indexnetwork/hermes-plugin.
+            return window.IndexApp.setupHermes(key).then((r) => {
+              if (r && r.ok) alert("Hermes agent registered and its Index plugin is configured.");
+              else alert(`Hermes agent registered, but plugin setup failed: ${(r && r.error) || "unknown error"}`);
+            });
+          }
+          alert(`${row.name} registered. its api key (shown once):\n\n${key}`);
+        })
+      )
+      .catch((err) => alert(`could not activate ${row.name}: ${err && err.message || err}`))
       .then(done, done);
   };
 
@@ -493,7 +539,7 @@ function Agents({ onClose }) {
   // Only runtimes you've switched on can speak for you, so only those are
   // offered. Index is always available as the fallback.
   const negotiatorOptions = [
-    { id:"index", label:"index · system default" },
+    { id:"index", label:"Index · system default" },
     ...rows.filter(a => a.on).map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
   ];
 

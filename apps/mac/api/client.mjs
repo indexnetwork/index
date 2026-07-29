@@ -128,6 +128,14 @@ export function createIndexApiClient(options = {}) {
 
     agents: {
       list: (options = {}) => request('/agents', options),
+      createToken: (agentId, name, options = {}) => request(
+        `/agents/${encodeURIComponent(agentId)}/tokens`,
+        { ...options, method: 'POST', body: name ? { name } : {} },
+      ),
+      remove: (agentId, options = {}) => request(
+        `/agents/${encodeURIComponent(agentId)}`,
+        { ...options, method: 'DELETE' },
+      ),
     },
 
     users: {

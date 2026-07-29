@@ -339,16 +339,16 @@ final class LoopbackAuthServer {
 enum HarnessDetector {
     /// Known harnesses and the command that proves each one is installed.
     static let catalog: [(id: String, label: String, command: String)] = [
-        ("hermes",   "hermes",       "hermes"),
-        ("claude",   "claude code",  "claude"),
-        ("codex",    "codex",        "codex"),
-        ("goose",    "goose",        "goose"),
-        ("cursor",   "cursor agent", "cursor-agent"),
-        ("gemini",   "gemini cli",   "gemini"),
-        ("opencode", "opencode",     "opencode"),
-        ("kimi",     "kimi code",    "kimi"),
-        ("amp",      "amp",          "amp"),
-        ("aider",    "aider",        "aider"),
+        ("hermes",   "Hermes",       "hermes"),
+        ("claude",   "Claude Code",  "claude"),
+        ("codex",    "Codex",        "codex"),
+        ("goose",    "Goose",        "goose"),
+        ("cursor",   "Cursor Agent", "cursor-agent"),
+        ("gemini",   "Gemini CLI",   "gemini"),
+        ("opencode", "OpenCode",     "opencode"),
+        ("kimi",     "Kimi Code",    "kimi"),
+        ("amp",      "Amp",          "amp"),
+        ("aider",    "Aider",        "aider"),
     ]
 
     /// PATH from a login shell, fetched once (first access happens off the
@@ -405,6 +405,106 @@ enum HarnessDetector {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Hermes plugin setup: point the local hermes runtime at Index by writing the
+// plugin's env into ~/.hermes/.env, then install/enable the
+// indexnetwork/hermes-plugin. Non-interactive: the hermes CLI only prompts
+// for env values that are missing, and --enable skips the enable prompt.
+// ---------------------------------------------------------------------------
+enum HermesSetup {
+    /// Replace-or-append KEY=value lines in ~/.hermes/.env.
+    private static func writeEnv(_ values: [(String, String)]) throws {
+        let dir = NSHomeDirectory() + "/.hermes"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = dir + "/.env"
+        var lines = (try? String(contentsOfFile: path, encoding: .utf8))?
+            .split(separator: "\n", omittingEmptySubsequences: true).map(String.init) ?? []
+        for (key, _) in values {
+            lines.removeAll { $0.hasPrefix("\(key)=") }
+        }
+        for (key, value) in values { lines.append("\(key)=\(value)") }
+        try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+    }
+
+    private static func runCommand(_ path: String, _ args: [String]) -> (Int32, String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        do { try p.run() } catch { return (-1, "\(error)") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    static func run(apiKey: String) -> [String: Any] {
+        guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
+            return ["ok": false, "error": "hermes binary not found on this mac"]
+        }
+        do {
+            try writeEnv([
+                ("INDEX_API_KEY", apiKey),
+                ("INDEX_API_URL", AppConfig.apiBaseURL),
+                ("INDEX_MCP_URL", AppConfig.trimTrailingSlash(AppConfig.apiURL) + "/mcp"),
+            ])
+        } catch {
+            return ["ok": false, "error": "could not write ~/.hermes/.env"]
+        }
+        let installed = FileManager.default.fileExists(
+            atPath: NSHomeDirectory() + "/.hermes/plugins/index-network")
+        let args = installed
+            ? ["plugins", "enable", "index-network"]
+            : ["plugins", "install", "indexnetwork/hermes-plugin", "--enable"]
+        let (status, output) = runCommand(hermes, args)
+        if status != 0 {
+            return ["ok": false, "error": "hermes \(args.joined(separator: " ")): \(String(output.suffix(300)))"]
+        }
+        restartGatewayIfRunning(hermes)
+        return ["ok": true]
+    }
+
+    /// Plugins only load at gateway startup: if a gateway is running, bounce
+    /// it so an install/remove takes effect now instead of at next launch.
+    /// Best-effort — a stopped gateway picks the change up whenever it starts.
+    private static func restartGatewayIfRunning(_ hermes: String) {
+        let (status, output) = runCommand(hermes, ["gateway", "status"])
+        guard status == 0, output.contains("PID") else { return }
+        _ = runCommand(hermes, ["gateway", "restart"])
+    }
+
+    /// Undo run(): uninstall the plugin and drop the Index credentials from
+    /// ~/.hermes/.env. The agent (and its keys) are removed server-side by the
+    /// caller; this only cleans the local runtime.
+    static func teardown() -> [String: Any] {
+        if FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.hermes/plugins/index-network") {
+            guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
+                return ["ok": false, "error": "hermes binary not found on this mac"]
+            }
+            let (status, output) = runCommand(hermes, ["plugins", "remove", "index-network"])
+            if status != 0 {
+                return ["ok": false, "error": "hermes plugins remove: \(String(output.suffix(300)))"]
+            }
+            removeEnv(["INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+            restartGatewayIfRunning(hermes)
+            return ["ok": true]
+        }
+        removeEnv(["INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+        return ["ok": true]
+    }
+
+    /// Drop KEY=value lines from ~/.hermes/.env.
+    private static func removeEnv(_ keys: [String]) {
+        let path = NSHomeDirectory() + "/.hermes/.env"
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+            .filter { line in !keys.contains(where: { line.hasPrefix("\($0)=") }) }
+        try? (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    }
+}
+
 // Injected into the page: pressing "chrome" (desktop background, menu bar, or a
 // window's title bar) but not an interactive control asks the native side to
 // drag the window. The frameless WKWebView otherwise swallows every mouse event,
@@ -424,11 +524,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var window: NSWindow!
     var webView: WKWebView!
     private var authServer: LoopbackAuthServer?
-
-    /// index:// URLs that arrived before the page finished loading (e.g. the
-    /// app was launched by clicking a deep link). Flushed on didFinish.
-    private var pendingDeepLinks: [URL] = []
-    private var pageLoaded = false
 
     /// Smallest window the web layout renders correctly at. See the note where
     /// it's applied, the screens clip below roughly 860x600. The width is held
@@ -575,35 +670,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return true
     }
 
-    // MARK: - index:// deep links (CFBundleURLTypes in Info.plist)
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-        for url in urls where url.scheme == "index" {
-            if pageLoaded { deliverDeepLink(url) }
-            else { pendingDeepLinks.append(url) }
-        }
-    }
-
-    /// Hand the URL to the page: window.__indexDeepLink(url) if defined,
-    /// otherwise queued on window.INDEX_PENDING_DEEP_LINKS for the app to
-    /// drain once it installs the handler.
-    private func deliverDeepLink(_ url: URL) {
-        let u = jsonValue(url.absoluteString)
-        let js = """
-        if (typeof window.__indexDeepLink === 'function') { window.__indexDeepLink(\(u)); }
-        else { (window.INDEX_PENDING_DEEP_LINKS = window.INDEX_PENDING_DEEP_LINKS || []).push(\(u)); }
-        """
-        webView.evaluateJavaScript(js, completionHandler: nil)
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        pageLoaded = true
-        pendingDeepLinks.forEach(deliverDeepLink)
-        pendingDeepLinks.removeAll()
-    }
-
     // Surface JS alert()/confirm() as native dialogs so the experience matches.
     func webView(_ webView: WKWebView,
                  runJavaScriptAlertPanelWithMessage message: String,
@@ -648,6 +714,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             if action == "login" { startLogin() }
             else if action == "logout" { logout() }
             else if action == "detectHarnesses" { detectHarnesses() }
+            else if action == "setupHermes" {
+                if let key = body?["value"] as? String { setupHermes(apiKey: key) }
+            }
+            else if action == "teardownHermes" { teardownHermes() }
             else if action == "setAgentFace" {
                 // The page is loaded from a file:// URL, where WebKit gives the
                 // document an opaque origin and localStorage is not persisted.
@@ -683,6 +753,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             DispatchQueue.main.async {
                 self?.webView.evaluateJavaScript(
                     "if (typeof window.__indexHarnessesDetected === 'function') { window.__indexHarnessesDetected(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
+    /// Configure the local hermes runtime off the main thread, then hand the
+    /// result to the page via window.__indexHermesSetup.
+    private func setupHermes(apiKey: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = HermesSetup.run(apiKey: apiKey)
+            let json = (try? JSONSerialization.data(withJSONObject: result))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                self?.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
+    /// Uninstall the hermes plugin and scrub its env off the main thread,
+    /// then hand the result to the page via window.__indexHermesSetup.
+    private func teardownHermes() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = HermesSetup.teardown()
+            let json = (try? JSONSerialization.data(withJSONObject: result))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                self?.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
                     completionHandler: nil)
             }
         }
