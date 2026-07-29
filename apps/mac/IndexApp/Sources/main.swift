@@ -263,8 +263,8 @@ final class LoopbackAuthServer {
         }
 
         if let apiKey = q("api_key"), let keyId = q("key_id"), !apiKey.isEmpty, !keyId.isEmpty {
-            respond(conn, status: "200 OK", title: "All set.",
-                    message: "You can close this window and return to index.")
+            respond(conn, status: "200 OK", title: "Authentication complete",
+                    message: "You may now close this window", ok: true)
             finish(.success((apiKey: apiKey, keyId: keyId)))
         } else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed",
@@ -273,14 +273,52 @@ final class LoopbackAuthServer {
         }
     }
 
-    private func respond(_ conn: NWConnection, status: String, title: String, message: String) {
+    /// The web frontend's index-wordmark.svg, inlined so the page renders the
+    /// same header without depending on the web origin being reachable.
+    private static let wordmarkSVG = """
+    <svg viewBox="0 0 522 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M184.51 21.66C184.51 18.33 187.42 15.73 191.23 15.73C195.04 15.73 197.95 18.33 197.95 21.66C197.95 24.99 195.1 27.54 191.23 27.54C187.36 27.54 184.51 25 184.51 21.66Z" fill="white"/>
+    <path d="M0 0.72998H7.47V42.61H0V0.72998Z" fill="white"/>
+    <path d="M16.6301 0.72998H25.0701L44.3701 27.26H45.4001V0.72998H52.9301V42.61H44.4301L25.1901 16.08H24.1001V42.61H16.6301V0.72998Z" fill="white"/>
+    <path d="M99.91 21.67C99.91 33.63 90.74 42.61 78.54 42.61H62.03V0.72998H78.54C90.74 0.72998 99.91 9.70995 99.91 21.67ZM92.2 21.67C92.2 14.93 86.25 9.88998 78.3 9.88998H69.5V33.44H78.3C86.25 33.44 92.2 28.4 92.2 21.66V21.67Z" fill="white"/>
+    <path d="M137.61 33.45V42.62H107.08V0.73999H137.31V9.91H114.55V17.13H135.31V25.99H114.55V33.46H137.62L137.61 33.45Z" fill="white"/>
+    <path d="M167.53 21.7899L181.49 42.61H172.75L162.43 27.86H160.97L150.71 42.61H141.3L155.56 21.37L141.84 0.72998H150.58L160.66 15.36H162.06L172.14 0.72998H181.55L167.53 21.7899Z" fill="white"/>
+    <path d="M209.87 0.72998H218.31L237.61 27.26H238.64V0.72998H246.17V42.61H237.67L218.43 16.08H217.34V42.61H209.87V0.72998Z" fill="white"/>
+    <path d="M285.8 33.45V42.62H255.27V0.73999H285.5V9.91H262.74V17.13H283.5V25.99H262.74V33.46H285.81L285.8 33.45Z" fill="white"/>
+    <path d="M324.77 9.88998H311.48V42.61H304.01V9.88998H290.72V0.719971H324.77V9.88998Z" fill="white"/>
+    <path d="M328.96 0.72998H336.91L346.14 28.35H347.41L356.09 0.72998H362.71L371.45 28.35H372.79L381.89 0.72998H390.33L376.92 42.61H368.42L360.59 17.24H358.71L350.88 42.61H342.38L328.97 0.72998H328.96Z" fill="white"/>
+    <path d="M391.54 21.67C391.54 9.34998 401.07 0 413.7 0C426.33 0 435.86 9.34998 435.86 21.67C435.86 33.99 426.33 43.34 413.7 43.34C401.07 43.34 391.54 33.99 391.54 21.67ZM428.14 21.67C428.14 14.63 421.89 9.35004 413.69 9.35004C405.49 9.35004 399.24 14.63 399.24 21.67C399.24 28.71 405.49 33.99 413.69 33.99C421.89 33.99 428.14 28.71 428.14 21.67Z" fill="white"/>
+    <path d="M459.46 29.5H450.42V42.61H442.95V0.72998H462.13C470.57 0.72998 477 6.91996 477 15.12C477 21.31 473.36 26.35 467.9 28.47L477.55 42.61H468.45L459.47 29.5H459.46ZM450.42 20.33H461.95C466.44 20.33 469.23 18.27 469.23 15.11C469.23 11.95 466.44 9.88998 461.95 9.88998H450.42V20.33Z" fill="white"/>
+    <path d="M497.83 25.56L491.4 30.96V42.61H483.93V0.72998H491.4V17.67H492.92L509.07 0.72998H521.03L503.31 20.21L521.46 42.61H512.11L497.85 25.55L497.83 25.56Z" fill="white"/>
+    </svg>
+    """
+
+    /// Landing-styled response page: web frontend header (wordmark on the dark
+    /// green background) with a centered status, and a check on success.
+    private func respond(_ conn: NWConnection, status: String, title: String, message: String, ok: Bool = false) {
+        let check = ok ? """
+        <div class="check"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#0b1612" \
+        stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+        """ : ""
         let html = """
-        <!doctype html><html><head><meta charset="utf-8"><title>\(title), index</title>
-        <style>body{font-family:-apple-system,system-ui,sans-serif;background:#FDFDFD;color:#111;\
-        display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}\
-        .c{text-align:center;max-width:400px;padding:2rem}h1{font-size:1.25rem;margin:0 0 .5rem}\
-        p{font-size:.875rem;color:#666}</style></head>\
-        <body><div class="c"><h1>\(title)</h1><p>\(message)</p></div></body></html>
+        <!doctype html><html><head><meta charset="utf-8"><title>\(title) · index</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Public+Sans:wght@300;400;500;600&display=swap">
+        <style>
+        body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:#14241f;color:#F4FBF6;\
+        font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+        .nav{display:flex;align-items:center;padding:22px 56px;border-bottom:1px solid rgba(244,251,246,0.22)}
+        .nav svg{height:14px;width:auto;display:block}
+        main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+        .c{text-align:center;max-width:420px}
+        .check{width:56px;height:56px;margin:0 auto 26px;border-radius:50%;background:#3FBF7F;\
+        display:flex;align-items:center;justify-content:center}
+        h1{font-size:20px;font-weight:600;margin:0 0 10px}
+        p{font-size:14px;font-weight:500;margin:0;color:rgba(244,251,246,0.78)}
+        </style></head>
+        <body><nav class="nav">\(Self.wordmarkSVG)</nav>
+        <main><div class="c">\(check)<h1>\(title)</h1><p>\(message)</p></div></main></body></html>
         """
         let body = Data(html.utf8)
         let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
@@ -290,6 +328,81 @@ final class LoopbackAuthServer {
     }
 
     enum AuthError: Error { case noPort, timedOut, badState, missingCredential }
+}
+
+// ---------------------------------------------------------------------------
+// Harness detection: which agent CLIs are installed on this Mac. Follows the
+// approach block/buzz uses — a static catalog of known commands, each looked
+// up across the login-shell PATH plus well-known install dirs that a GUI app
+// doesn't inherit (homebrew, version-manager shims, nvm's node bins).
+// ---------------------------------------------------------------------------
+enum HarnessDetector {
+    /// Known harnesses and the command that proves each one is installed.
+    static let catalog: [(id: String, label: String, command: String)] = [
+        ("hermes",   "hermes",       "hermes"),
+        ("claude",   "claude code",  "claude"),
+        ("codex",    "codex",        "codex"),
+        ("goose",    "goose",        "goose"),
+        ("cursor",   "cursor agent", "cursor-agent"),
+        ("gemini",   "gemini cli",   "gemini"),
+        ("opencode", "opencode",     "opencode"),
+        ("kimi",     "kimi code",    "kimi"),
+        ("amp",      "amp",          "amp"),
+        ("aider",    "aider",        "aider"),
+    ]
+
+    /// PATH from a login shell, fetched once (first access happens off the
+    /// main thread). A GUI app's own PATH is the stripped launchd default,
+    /// so this is where user-installed CLIs actually live.
+    private static let loginShellPath: String? = {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-l", "-c", "echo $PATH"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = Pipe()
+        do { try p.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let out = String(data: data, encoding: .utf8)?
+            .split(separator: "\n").last
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        return (out?.isEmpty == false) ? out : nil
+    }()
+
+    private static func searchDirs() -> [String] {
+        let home = NSHomeDirectory()
+        var dirs = (loginShellPath ?? "").split(separator: ":").map(String.init)
+        dirs += [
+            "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
+            "\(home)/.local/bin", "\(home)/.volta/bin", "\(home)/.asdf/shims",
+            "\(home)/.local/share/mise/shims", "\(home)/.bun/bin",
+        ]
+        // nvm initializes in interactive shells only, so its node bins are
+        // invisible even to a login shell; probe every installed version.
+        let nvmNode = "\(home)/.nvm/versions/node"
+        if let versions = try? FileManager.default.contentsOfDirectory(atPath: nvmNode) {
+            dirs += versions.map { "\(nvmNode)/\($0)/bin" }
+        }
+        var seen = Set<String>()
+        return dirs.filter { seen.insert($0).inserted }
+    }
+
+    /// One pass over the catalog: [{id, label, command, path}] per hit.
+    static func detect() -> [[String: String]] {
+        let fm = FileManager.default
+        let dirs = searchDirs()
+        return catalog.compactMap { harness in
+            for dir in dirs {
+                let path = "\(dir)/\(harness.command)"
+                if fm.isExecutableFile(atPath: path) {
+                    return ["id": harness.id, "label": harness.label,
+                            "command": harness.command, "path": path]
+                }
+            }
+            return nil
+        }
+    }
 }
 
 // Injected into the page: pressing "chrome" (desktop background, menu bar, or a
@@ -312,9 +425,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var webView: WKWebView!
     private var authServer: LoopbackAuthServer?
 
+    /// index:// URLs that arrived before the page finished loading (e.g. the
+    /// app was launched by clicking a deep link). Flushed on didFinish.
+    private var pendingDeepLinks: [URL] = []
+    private var pageLoaded = false
+
     /// Smallest window the web layout renders correctly at. See the note where
-    /// it's applied, the screens clip below roughly 860x600.
-    static let minContentSize = NSSize(width: 900, height: 640)
+    /// it's applied, the screens clip below roughly 860x600. The width is held
+    /// higher than that: the radar column keeps a 600px floor so its funnel
+    /// strip stays on one line (mainview.jsx), and the signal column needs
+    /// breathing room beside it.
+    static let minContentSize = NSSize(width: 1080, height: 640)
 
     /// Fallback for the (unexpected) case of launching with no screen attached.
     static let fallbackContentSize = NSSize(width: 1280, height: 860)
@@ -454,6 +575,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return true
     }
 
+    // MARK: - index:// deep links (CFBundleURLTypes in Info.plist)
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        for url in urls where url.scheme == "index" {
+            if pageLoaded { deliverDeepLink(url) }
+            else { pendingDeepLinks.append(url) }
+        }
+    }
+
+    /// Hand the URL to the page: window.__indexDeepLink(url) if defined,
+    /// otherwise queued on window.INDEX_PENDING_DEEP_LINKS for the app to
+    /// drain once it installs the handler.
+    private func deliverDeepLink(_ url: URL) {
+        let u = jsonValue(url.absoluteString)
+        let js = """
+        if (typeof window.__indexDeepLink === 'function') { window.__indexDeepLink(\(u)); }
+        else { (window.INDEX_PENDING_DEEP_LINKS = window.INDEX_PENDING_DEEP_LINKS || []).push(\(u)); }
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        pageLoaded = true
+        pendingDeepLinks.forEach(deliverDeepLink)
+        pendingDeepLinks.removeAll()
+    }
+
     // Surface JS alert()/confirm() as native dialogs so the experience matches.
     func webView(_ webView: WKWebView,
                  runJavaScriptAlertPanelWithMessage message: String,
@@ -497,6 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             let action = body?["action"] as? String
             if action == "login" { startLogin() }
             else if action == "logout" { logout() }
+            else if action == "detectHarnesses" { detectHarnesses() }
             else if action == "setAgentFace" {
                 // The page is loaded from a file:// URL, where WebKit gives the
                 // document an opaque origin and localStorage is not persisted.
@@ -519,6 +670,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             window.setFrameOrigin(NSPoint(
                 x: startOrigin.x + (now.x - startMouse.x),
                 y: startOrigin.y + (now.y - startMouse.y)))
+        }
+    }
+
+    /// Scan for installed agent CLIs off the main thread, then hand the
+    /// result to the page via window.__indexHarnessesDetected.
+    private func detectHarnesses() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let found = HarnessDetector.detect()
+            let json = (try? JSONSerialization.data(withJSONObject: found))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            DispatchQueue.main.async {
+                self?.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHarnessesDetected === 'function') { window.__indexHarnessesDetected(\(json)); }",
+                    completionHandler: nil)
+            }
         }
     }
 
