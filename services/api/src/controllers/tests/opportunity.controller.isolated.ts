@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { OpportunityDatabaseAdapter, UserDatabaseAdapter, EnrichmentDatabaseAdapter, ChatDatabaseAdapter } from "../../adapters/database.adapter";
 import { deleteNetworkAndMembers } from "./test-helpers";
+import { RouteRegistry } from '../../lib/router/router.decorators';
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 const RUN_PAID_INTEGRATION = process.env.RUN_PAID_INTEGRATION_TESTS === '1'
@@ -435,195 +436,19 @@ describe("OpportunityController Integration", () => {
     }
   });
 
-  test("discover should return 400 if query is missing", async () => {
-    const mockRequest = new Request("http://localhost/opportunities/discover", {
-      method: "POST",
-      body: JSON.stringify({}),
-      headers: { "Content-Type": "application/json" },
-    });
+  test('does not register POST /opportunities/discover, so router dispatch falls through to 404', () => {
+    const directRoute = RouteRegistry.getRoutes(OpportunityControllerClass).find((route) =>
+      route.method === 'POST' && route.path === '/discover',
+    );
+    const response = directRoute
+      ? new Response('unexpected registered route', { status: 200 })
+      : new Response('Not Found', { status: 404 });
 
-    const mockUser: AuthenticatedUser = {
-      id: testUserId,
-      email: testEmail,
-      name: "Test Opportunity Controller User",
-    };
-
-    const response = await controller.discover(mockRequest, mockUser);
-
-    expect(response.status).toBe(400);
-    const result = await response.json();
-    expect((result as { error?: string }).error).toContain("query");
+    expect(response.status).toBe(404);
   });
 
-  test("discover should return 400 if query is not a string", async () => {
-    const mockRequest = new Request("http://localhost/opportunities/discover", {
-      method: "POST",
-      body: JSON.stringify({ query: 123 }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const mockUser: AuthenticatedUser = {
-      id: testUserId,
-      email: testEmail,
-      name: "Test Opportunity Controller User",
-    };
-
-    const response = await controller.discover(mockRequest, mockUser);
-
-    expect(response.status).toBe(400);
-    const result = await response.json();
-    expect((result as { error?: string }).error).toContain("query");
-  });
-
-  paidTest("discover should find opportunities based on query", async () => {
-    console.log("Testing opportunity discovery...");
-
-    const mockRequest = new Request("http://localhost/opportunities/discover", {
-      method: "POST",
-      body: JSON.stringify({
-        query: "Looking for machine learning engineers with startup experience",
-        limit: 5
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const mockUser: AuthenticatedUser = {
-      id: testUserId,
-      email: testEmail,
-      name: "Test Opportunity Controller User",
-    };
-
-    const response = await controller.discover(mockRequest, mockUser);
-    const result = await response.json();
-
-    console.log("Discovery result:", JSON.stringify(result, null, 2));
-
-    expect(response.status).toBe(200);
-    expect(result).toBeDefined();
-    // The result should contain userId (discoverer) and opportunities array
-    expect((result as { userId?: string }).userId).toBe(testUserId);
-  }, 60000); // Extended timeout for embedding/search
-
-  paidTest("discover should respect limit parameter", async () => {
-    console.log("Testing discover with limit...");
-
-    const mockRequest = new Request("http://localhost/opportunities/discover", {
-      method: "POST",
-      body: JSON.stringify({
-        query: "Full-stack developers",
-        limit: 2
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const mockUser: AuthenticatedUser = {
-      id: testUserId,
-      email: testEmail,
-      name: "Test Opportunity Controller User",
-    };
-
-    const response = await controller.discover(mockRequest, mockUser);
-    const result = await response.json() as { candidates?: { userId?: string; id?: string }[] };
-
-    console.log("Limited discovery result:", JSON.stringify(result, null, 2));
-
-    expect(response.status).toBe(200);
-    expect(result).toBeDefined();
-    // If candidates are found, they should be at most 'limit' count
-    if (result.candidates && Array.isArray(result.candidates)) {
-      expect(result.candidates.length).toBeLessThanOrEqual(2);
-    }
-  }, 60000);
-
-  paidTest("discover should exclude requesting user from results", async () => {
-    console.log("Testing self-exclusion...");
-
-    const mockRequest = new Request("http://localhost/opportunities/discover", {
-      method: "POST",
-      body: JSON.stringify({
-        query: "Startup CEO looking for AI products", // Query matching the user's own profile
-        limit: 10
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const mockUser: AuthenticatedUser = {
-      id: testUserId,
-      email: testEmail,
-      name: "Test Opportunity Controller User",
-    };
-
-    const response = await controller.discover(mockRequest, mockUser);
-    const result = await response.json() as { candidates?: { userId?: string; id?: string }[] };
-
-    console.log("Self-exclusion result:", JSON.stringify(result, null, 2));
-
-    expect(response.status).toBe(200);
-    // If candidates are returned, none should be the requesting user
-    if (result.candidates && Array.isArray(result.candidates)) {
-      const selfIncluded = result.candidates.some(
-        (c) => c.userId === testUserId || c.id === testUserId
-      );
-      expect(selfIncluded).toBe(false);
-    }
-  }, 60000);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // OpportunityController Edge Cases
 // ═══════════════════════════════════════════════════════════════════════════════
-
-describe.skipIf(!RUN_PAID_INTEGRATION)("OpportunityController Edge Cases", () => {
-  let controller: InstanceType<typeof OpportunityControllerClass>;
-  const userAdapter = new UserDatabaseAdapter();
-  let testUserIdNoProfile: string;
-  const testEmailNoProfile = `test-opp-no-profile-${Date.now()}@example.com`;
-
-  beforeAll(async () => {
-    controller = new OpportunityControllerClass();
-
-    const existingUser = await userAdapter.findByEmail(testEmailNoProfile);
-    if (existingUser) await userAdapter.deleteByEmail(testEmailNoProfile);
-
-    const user = await userAdapter.create({
-      email: testEmailNoProfile,
-      name: "Test No Profile User",
-    });
-    testUserIdNoProfile = user.id;
-    console.log(`Created test user without profile: ${testUserIdNoProfile}`);
-  });
-
-  afterAll(async () => {
-    if (testUserIdNoProfile) await userAdapter.deleteById(testUserIdNoProfile);
-  });
-
-  test("discover should handle user with no profile gracefully", async () => {
-    console.log("Testing discover with no profile...");
-
-    const mockRequest = new Request("http://localhost/opportunities/discover", {
-      method: "POST",
-      body: JSON.stringify({
-        query: "Looking for developers",
-        limit: 5
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const mockUser: AuthenticatedUser = {
-      id: testUserIdNoProfile,
-      email: testEmailNoProfile,
-      name: "Test No Profile User",
-    };
-
-    // The controller should still work even without a profile for the source user
-    // (profile is used for context but not required for basic discovery)
-    const response = await controller.discover(mockRequest, mockUser);
-    const result = await response.json();
-
-    console.log("No profile discover result:", JSON.stringify(result, null, 2));
-
-    // Should succeed (profile is loaded but may be null in the graph)
-    expect(response.status).toBe(200);
-    expect(result).toBeDefined();
-  }, 60000);
-});
