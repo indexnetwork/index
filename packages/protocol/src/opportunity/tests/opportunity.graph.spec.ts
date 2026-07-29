@@ -561,27 +561,33 @@ describe('Opportunity Graph', () => {
       }
     });
 
-    test('when search returns unsupported profile type, profile candidates are ignored', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'premise' as const,
-          id: 'b0000000-0000-4000-8000-000000000002',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'mirror' as const,
-          networkId: 'idx-1',
-        },
-      ]);
+    test('when user_context mode receives a premise result, it ignores the unsupported profile type', async () => {
+      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      try {
+        const { compiledGraph, mockEmbedder } = createMockGraph();
+        spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+          {
+            type: 'premise' as const,
+            id: 'b0000000-0000-4000-8000-000000000002',
+            userId: 'b0000000-0000-4000-8000-000000000002',
+            score: 0.9,
+            matchedVia: 'mirror' as const,
+            networkId: 'idx-1',
+          },
+        ]);
 
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+        const result = (await compiledGraph.invoke({
+          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+          searchQuery: 'co-founder',
+          options: {},
+        } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // HyDE search currently supports intent and premise candidates; profile rows are ignored.
-      expect(result.candidates.length).toBe(0);
+        expect(result.candidates.length).toBe(0);
+      } finally {
+        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
+        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
+      }
     });
   });
 
@@ -1156,6 +1162,9 @@ describe('Opportunity Graph', () => {
     });
 
     test('merges strategy evidence before persisting surfaced opportunities', async () => {
+      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      try {
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
         getUserIndexIds: () => Promise.resolve(['net-1'] as Id<'networks'>[]),
         getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
@@ -1197,11 +1206,17 @@ describe('Opportunity Graph', () => {
           ]),
         }),
       }));
+      } finally {
+        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
+        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
+      }
     });
 
     test('context discovery searches only the newest current frame generation', async () => {
       const previousFlag = process.env.HYDE_FRAME_CONSTRAINTS_ENABLED;
+      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
       process.env.HYDE_FRAME_CONSTRAINTS_ENABLED = 'true';
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
       const contextText = 'Alice is looking for protocol collaborators';
       const sourceTextHash = computeHydeSourceTextHash(contextText);
       const persistedDocument = (
@@ -1265,6 +1280,8 @@ describe('Opportunity Graph', () => {
       } finally {
         if (previousFlag === undefined) delete process.env.HYDE_FRAME_CONSTRAINTS_ENABLED;
         else process.env.HYDE_FRAME_CONSTRAINTS_ENABLED = previousFlag;
+        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
+        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
       }
     });
   });
