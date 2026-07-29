@@ -489,6 +489,29 @@ export class IntentService {
   }
 
   /**
+   * Index an already-persisted seed intent through the normal embedding and HyDE path.
+   * Unlike creation-time seed helpers, this preserves a caller-owned deterministic ID.
+   */
+  async indexExistingIntentForSeed(intentId: string, userId: string, description: string): Promise<void> {
+    logger.verbose('Indexing existing seed intent', { intentId, userId });
+    const generated = await this.embedder.generate(description);
+    if (!Array.isArray(generated) || generated.length !== 2000 || generated.some((value) => typeof value !== 'number')) {
+      throw new Error(`Seed intent ${intentId} did not receive a valid 2000-dimensional embedding`);
+    }
+
+    const updated = await this.adapter.updateIntent(intentId, {
+      embedding: generated as number[],
+      expectedIntentUserId: userId,
+    });
+    if (!updated) throw new Error(`Seed intent ${intentId} was not found or is not owned by ${userId}`);
+
+    await intentQueue.runGenerateHydeSync(
+      { intentId, userId },
+      { skipOpportunity: true },
+    );
+  }
+
+  /**
    * Create an intent for seed data with embedding and HyDE, without running the full intent graph
    * or enqueueing opportunity discovery. Used by db-seed to create test intents quickly without
    * LLM inference/verification or matching test users.

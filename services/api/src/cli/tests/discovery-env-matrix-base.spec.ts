@@ -87,6 +87,7 @@ function mockBaseDatabase(selectResults: Array<Array<{ id: string }>> = []): {
   return {
     db: {
       select,
+      insert: tx.insert,
       transaction: async (callback: (transaction: typeof tx) => Promise<void>) => callback(tx),
     } as unknown as DrizzleDB,
     state,
@@ -169,14 +170,14 @@ describe('protected base transaction', () => {
     fixtureFingerprint: computeFixtureFingerprint(HISTORICAL_MATRIX_CASES),
     fixtureCorpusVersion: BASE_FIXTURE_CORPUS_VERSION,
   };
-
+  const noOpFixtureIntentIndexer = async () => {};
   it('rejects an unexpected dependent before any fixture deletion', async () => {
     const { db, state } = mockBaseDatabase([
       [],
       [{ id: 'outside-fixture-premise' }],
     ]);
 
-    await expect(seedProtectedBase(db, schema, payload, metadata)).rejects.toThrow(
+    await expect(seedProtectedBase(db, schema, payload, metadata, noOpFixtureIntentIndexer)).rejects.toThrow(
       'unexpected premise outside-fixture-premise',
     );
 
@@ -191,7 +192,7 @@ describe('protected base transaction', () => {
       [{ id: 'outside-fixture-proposal' }],
     ]);
 
-    await expect(seedProtectedBase(db, schema, payload, metadata)).rejects.toThrow(
+    await expect(seedProtectedBase(db, schema, payload, metadata, noOpFixtureIntentIndexer)).rejects.toThrow(
       'unexpected intent proposal outside-fixture-proposal',
     );
 
@@ -199,12 +200,40 @@ describe('protected base transaction', () => {
     expect(state.upserts).toEqual([]);
   });
 
-  it('persists and verifies the durable metadata only after dependent checks pass', async () => {
-    const { db, state } = mockBaseDatabase(Array.from({ length: 8 }, () => []));
+  it('indexes every fixture intent and rejects any intent left unembedded', async () => {
+    const { db, state } = mockBaseDatabase(Array.from({ length: 9 }, () => []));
+    const indexedIntentIds: string[] = [];
 
-    await seedProtectedBase(db, schema, payload, metadata);
+    await seedProtectedBase(db, schema, payload, metadata, async (intent) => {
+      indexedIntentIds.push(intent.id);
+    });
+
+    expect(indexedIntentIds).toEqual(payload.intents.map((intent) => intent.id));
+    expect(state.calls.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => 'select'));
+    expect(state.calls.filter((call) => call === 'select')).toHaveLength(9);
+    expect(state.upserts).toContain('evalMatrixMetadata');
+  });
+
+  it('refuses metadata persistence when an indexed fixture intent remains unembedded', async () => {
+    const { db, state } = mockBaseDatabase([
+      ...Array.from({ length: 8 }, () => []),
+      [{ id: payload.intents[0]!.id }],
+    ]);
+
+    await expect(seedProtectedBase(db, schema, payload, metadata, noOpFixtureIntentIndexer)).rejects.toThrow(
+      `fixture intent ${payload.intents[0]!.id} remains unembedded`,
+    );
+
+    expect(state.upserts).not.toContain('evalMatrixMetadata');
+  });
+
+  it('persists and verifies the durable metadata only after dependent checks pass', async () => {
+    const { db, state } = mockBaseDatabase(Array.from({ length: 9 }, () => []));
+
+    await seedProtectedBase(db, schema, payload, metadata, noOpFixtureIntentIndexer);
 
     expect(state.calls.slice(0, 8)).toEqual(Array.from({ length: 8 }, () => 'select'));
+    expect(state.calls.filter((call) => call === 'select')).toHaveLength(9);
     expect(state.upserts).toContain('evalMatrixMetadata');
     expect(state.metadata).toMatchObject(metadata);
     await expect(verifyProtectedBase(db, schema, metadata)).resolves.toBeUndefined();

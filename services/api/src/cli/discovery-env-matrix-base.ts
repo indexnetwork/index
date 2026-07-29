@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { and, eq, inArray, notInArray, or, sql } from 'drizzle-orm/sql';
+import { and, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm/sql';
 
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import type * as DatabaseSchema from '../schemas/database.schema';
@@ -127,11 +127,18 @@ async function assertNoUnexpectedBaseDependents(
  * Fixture users and networks are upserted so the refresh never invokes their
  * database cascades; unexpected dependents reject before any deletion.
  */
+export type FixtureIntentIndexer = (intent: BaseSeedPayload['intents'][number]) => Promise<void>;
+
+/**
+ * Seeds deterministic fixture rows, then indexes each intent through the supplied
+ * supported service path before durable base metadata is allowed to exist.
+ */
 export async function seedProtectedBase(
   db: DrizzleDB,
   schema: typeof DatabaseSchema,
   payload: BaseSeedPayload,
   metadata: BaseMetadata,
+  indexFixtureIntent: FixtureIntentIndexer,
 ): Promise<void> {
   const intentIds = payload.intents.map((intent) => intent.id);
   await db.transaction(async (tx) => {
@@ -185,17 +192,26 @@ export async function seedProtectedBase(
       networkId: intent.networkId,
       relevancyScore: '1',
     })));
-    await tx.insert(schema.evalMatrixMetadata).values({
-      key: BASE_METADATA_KEY,
+    // A failed indexing run must leave no verified base metadata for children.
+    await tx.delete(schema.evalMatrixMetadata).where(eq(schema.evalMatrixMetadata.key, BASE_METADATA_KEY));
+  });
+
+  for (const intent of payload.intents) await indexFixtureIntent(intent);
+
+  const [unembedded] = await db.select({ id: schema.intents.id }).from(schema.intents)
+    .where(and(inArray(schema.intents.id, intentIds), isNull(schema.intents.embedding))).limit(1);
+  if (unembedded) throw new Error(`Refusing protected base refresh: fixture intent ${unembedded.id} remains unembedded`);
+
+  await db.insert(schema.evalMatrixMetadata).values({
+    key: BASE_METADATA_KEY,
+    ...metadata,
+    seededAt: new Date(),
+  }).onConflictDoUpdate({
+    target: schema.evalMatrixMetadata.key,
+    set: {
       ...metadata,
       seededAt: new Date(),
-    }).onConflictDoUpdate({
-      target: schema.evalMatrixMetadata.key,
-      set: {
-        ...metadata,
-        seededAt: new Date(),
-      },
-    });
+    },
   });
 }
 
@@ -214,11 +230,19 @@ export async function verifyProtectedBase(
 }
 
 async function createProductionDependencies() {
-  const [drizzleModule, schema] = await Promise.all([
+  const [drizzleModule, schema, intentServiceModule] = await Promise.all([
     import('../lib/drizzle/drizzle'),
     import('../schemas/database.schema'),
+    import('../services/intent.service'),
   ]);
-  return { db: drizzleModule.default, closeDb: drizzleModule.closeDb, schema };
+  return {
+    db: drizzleModule.default,
+    closeDb: drizzleModule.closeDb,
+    schema,
+    indexFixtureIntent: async (intent: BaseSeedPayload['intents'][number]) => {
+      await intentServiceModule.intentService.indexExistingIntentForSeed(intent.id, intent.userId, intent.payload);
+    },
+  };
 }
 
 async function main(): Promise<void> {
@@ -232,9 +256,9 @@ async function main(): Promise<void> {
   const cases = await loadHistoricalMatrixCases();
   const payload = baseSeedPayload(cases);
   const metadata = await expectedBaseMetadata(cases);
-  const { db, closeDb, schema } = await createProductionDependencies();
+  const { db, closeDb, schema, indexFixtureIntent } = await createProductionDependencies();
   try {
-    await seedProtectedBase(db, schema, payload, metadata);
+    await seedProtectedBase(db, schema, payload, metadata, indexFixtureIntent);
     await verifyProtectedBase(db, schema, metadata);
     console.log(
       `Protected base seeded and verified: schema=${metadata.schemaMigrationFingerprint} `
