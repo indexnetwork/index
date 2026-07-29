@@ -38,7 +38,6 @@ const isPrivateOrLoopbackIp = (ip: string): boolean => {
 
 /** Per-tool ceiling per principal per minute. `discover_opportunities` is expensive, so it is far tighter. */
 function toolLimit(toolName: string): number {
-  if (toolName === 'discover_opportunities') return intEnv('MCP_LIMIT_DISCOVER_PER_MIN', 10);
   return intEnv('MCP_LIMIT_TOOL_PER_MIN', 120);
 }
 
