@@ -229,20 +229,28 @@ export async function verifyProtectedBase(
   verifyBaseContract(metadata ?? null, expected);
 }
 
+/**
+ * Composes the real embed/persist/HyDE indexer without importing IntentService,
+ * whose application-level Questioner dependency is intentionally excluded from
+ * protected base setup.
+ */
+export async function createBaseFixtureIntentIndexer(): Promise<FixtureIntentIndexer> {
+  const { createSeedIntentIndexer } = await import('../lib/intent/seed-indexer');
+  const indexIntent = createSeedIntentIndexer();
+  return async (intent) => indexIntent({
+    intentId: intent.id,
+    userId: intent.userId,
+    description: intent.payload,
+  });
+}
+
 async function createProductionDependencies() {
-  const [drizzleModule, schema, intentServiceModule] = await Promise.all([
+  const [drizzleModule, schema, indexFixtureIntent] = await Promise.all([
     import('../lib/drizzle/drizzle'),
     import('../schemas/database.schema'),
-    import('../services/intent.service'),
+    createBaseFixtureIntentIndexer(),
   ]);
-  return {
-    db: drizzleModule.default,
-    closeDb: drizzleModule.closeDb,
-    schema,
-    indexFixtureIntent: async (intent: BaseSeedPayload['intents'][number]) => {
-      await intentServiceModule.intentService.indexExistingIntentForSeed(intent.id, intent.userId, intent.payload);
-    },
-  };
+  return { db: drizzleModule.default, closeDb: drizzleModule.closeDb, schema, indexFixtureIntent };
 }
 
 async function main(): Promise<void> {

@@ -8,6 +8,16 @@ mock.module('../../adapters/database.adapter', () => ({
   IntentDatabaseAdapter: class {},
   intentDatabaseAdapter: {},
 }));
+mock.module('../../adapters/intent.database.adapter', () => ({
+  IntentDatabaseAdapter: class {},
+  intentDatabaseAdapter: {},
+}));
+mock.module('../../adapters/chat.database.adapter', () => ({
+  ChatDatabaseAdapter: class {},
+}));
+mock.module('../../adapters/cache.adapter', () => ({
+  RedisCacheAdapter: class {},
+}));
 mock.module('../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class {},
 }));

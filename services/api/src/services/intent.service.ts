@@ -8,6 +8,7 @@ import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { IntentEvents } from '../events/intent.event';
 import { intentProposalAnalysisSchema } from '../lib/intent/intent-proposal';
+import { indexExistingIntentForSeed as indexSeedIntent } from '../lib/intent/seed-indexer';
 
 const logger = log.service.from("IntentService");
 
@@ -497,21 +498,14 @@ export class IntentService {
    */
   async indexExistingIntentForSeed(intentId: string, userId: string, description: string): Promise<void> {
     logger.verbose('Indexing existing seed intent', { intentId, userId });
-    const generated = await this.embedder.generate(description);
-    if (!Array.isArray(generated) || generated.length !== 2000 || generated.some((value) => typeof value !== 'number')) {
-      throw new Error(`Seed intent ${intentId} did not receive a valid 2000-dimensional embedding`);
-    }
-
-    const updated = await this.adapter.updateIntent(intentId, {
-      embedding: generated as number[],
-      expectedIntentUserId: userId,
-    });
-    if (!updated) throw new Error(`Seed intent ${intentId} was not found or is not owned by ${userId}`);
-
-    await this.seedIndexQueue.runGenerateHydeSync(
-      { intentId, userId },
-      { skipOpportunity: true },
-    );
+    await indexSeedIntent({
+      generateEmbedding: (text) => this.embedder.generate(text),
+      updateIntent: (id, data) => this.adapter.updateIntent(id, data),
+      runHyde: ({ intentId: id, userId: ownerId }) => this.seedIndexQueue.runGenerateHydeSync(
+        { intentId: id, userId: ownerId },
+        { skipOpportunity: true },
+      ),
+    }, { intentId, userId, description });
   }
 
   /**
