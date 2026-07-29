@@ -2,11 +2,20 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, test, expect } from 'bun:test';
+import { afterEach, describe, test, expect } from 'bun:test';
 
 import { createOpportunityTools } from '../opportunity.tools.js';
 import type { ToolDeps, ResolvedToolContext } from '../../shared/agent/tool.helpers.js';
 import type { CreateDiscoveryRunInput, DiscoveryRunRecord } from '../../shared/interfaces/discovery-run.interface.js';
+
+const originalIntroducerDiscoveryEnabled = process.env.INTRODUCER_DISCOVERY_ENABLED;
+afterEach(() => {
+  if (originalIntroducerDiscoveryEnabled === undefined) {
+    delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+  } else {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+  }
+});
 
 function parseToolResult(raw: string) {
   return JSON.parse(raw) as {
@@ -22,6 +31,7 @@ function makeRunStore() {
   let seq = 0;
   const store = {
     createCalls: 0,
+    listActiveCalls: 0,
     async create(input: CreateDiscoveryRunInput): Promise<DiscoveryRunRecord> {
       store.createCalls += 1;
       seq += 1;
@@ -38,6 +48,7 @@ function makeRunStore() {
       return rec;
     },
     async listActive(userId: string): Promise<DiscoveryRunRecord[]> {
+      store.listActiveCalls += 1;
       return runs
         .filter((r) => r.userId === userId && (r.status === 'queued' || r.status === 'running'))
         .sort((a, b) => +b.createdAt - +a.createdAt);
@@ -97,6 +108,52 @@ function captureDiscoverTool(deps: ToolDeps) {
 }
 
 describe('discover_opportunities — MCP run coalescing', () => {
+  test('disabled introducer discovery returns its stable result without coalescing, creating, or enqueueing a run', async () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = 'false';
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    const result = parseToolResult(
+      await tool.handler({
+        context: makeContext({}),
+        query: { introTargetUserId: 'target-user' },
+      }),
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        found: false,
+        count: 0,
+        message: 'Introducer discovery is currently disabled.',
+      },
+    });
+    expect(runStore.listActiveCalls).toBe(0);
+    expect(runStore.createCalls).toBe(0);
+    expect(queue.enqueueCalls).toBe(0);
+  });
+
+  test('enabled introducer discovery still creates and enqueues an MCP run', async () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = 'true';
+    const runStore = makeRunStore();
+    const queue = { enqueueCalls: 0 };
+    const tool = captureDiscoverTool(makeDeps(runStore, queue));
+
+    const result = parseToolResult(
+      await tool.handler({
+        context: makeContext({}),
+        query: { introTargetUserId: 'target-user' },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.status).toBe('queued');
+    expect(runStore.listActiveCalls).toBe(1);
+    expect(runStore.createCalls).toBe(1);
+    expect(queue.enqueueCalls).toBe(1);
+  });
+
   test('repeat call with the same query returns the in-flight run instead of a new one', async () => {
     const runStore = makeRunStore();
     const queue = { enqueueCalls: 0 };

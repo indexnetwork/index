@@ -13,6 +13,7 @@ import { buildOpportunityPresentation } from "./opportunity.card-presentation.js
 import { findCoalescedDiscoveryRun } from "../domain/opportunity.discovery-run-coalescing.js";
 import { finalizeMcpDiscoveryLifecycle } from './opportunity.discovery-mcp-lifecycle-finalization.js';
 import { runDiscoverFromQuery, continueDiscovery, type CompiledOpportunityGraph } from "./opportunity.discover.js";
+import { isIntroducerDiscoveryEnabled } from "./opportunity.introducer-feature.js";
 import { isDiscoveryQuestionsEnabled, isUptakeGuardEnabled } from "../../capabilities/questions.runtime.facade.js";
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from "./opportunity.presenter.js";
 import { loadNegotiationContext } from "./negotiation-context.loader.js";
@@ -611,6 +612,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       }
 
       if (context.isMcp && deps.discoveryRuns && deps.discoveryRunQueue) {
+        if (query.introTargetUserId?.trim() && !isIntroducerDiscoveryEnabled()) {
+          return success({
+            found: false,
+            count: 0,
+            message: "Introducer discovery is currently disabled.",
+          });
+        }
+
         // Coalesce: if an equivalent discovery is already queued/running for this
         // user, return that run instead of spawning a duplicate. An over-eager
         // MCP client that re-fires discover_opportunities (instead of polling
