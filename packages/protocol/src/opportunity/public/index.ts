@@ -26,10 +26,6 @@ export type {
   OpportunityTrigger,
   OpportunityGraphOptions,
 } from "../domain/opportunity.state.js";
-export type {
-  DiscoverDebugStep,
-  DiscoveryResultContract,
-} from "../domain/opportunity.discovery.contracts.js";
 export {
   MINIMAL_MAIN_TEXT_MAX_CHARS,
   PRIMARY_ACTION_LABEL_INTRODUCER,

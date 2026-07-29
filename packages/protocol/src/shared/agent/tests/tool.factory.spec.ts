@@ -200,12 +200,6 @@ let mockDiscoveryResult: {
   count: 0,
   message: "You need to join at least one index (community) to discover opportunities.",
 };
-// Route to canonical application path so the mock intercepts the import used
-// by opportunity.tools.ts after the IND-551 domain-first migration.
-mock.module("../../../opportunity/application/opportunity.discover.js", () => ({
-  runDiscoverFromQuery: async () => mockDiscoveryResult,
-  continueDiscovery: async () => mockDiscoveryResult,
-}));
 mock.module("../../../opportunity/opportunity.presenter.js", () => ({
   OpportunityPresenter: class {
     async presentHomeCard() {
