@@ -4,7 +4,8 @@ import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/d
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
-import { buildMatrixArtifactEvidence, collectCandidates, resolveMatrixExecutionSelection, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
+import { baseSeedPayload } from '../discovery-env-matrix.shared';
+import { buildMatrixArtifactEvidence, collectCandidates, invokeMatrixDiscoveryGraph, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -44,6 +45,39 @@ describe('discovery environment matrix runtime seams', () => {
       runsRequested: false,
       updateBaseline: true,
     })).toThrow('non-baselineable');
+  });
+
+  it('passes the seeded trigger intent to intent-only and both-row graph invocations', async () => {
+    const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
+    const payload = baseSeedPayload([matrixCase]);
+    const fixtureCase = payload.cases[0]!;
+    const network = payload.networks[0]!;
+    const triggerIntentId = resolveFixtureTriggerIntent(payload, fixtureCase.sourceUserId, network.id);
+    const calls: Array<Record<string, unknown>> = [];
+    const graph = {
+      invoke: async (input: Record<string, unknown>) => {
+        calls.push(input);
+        return { discoverySource: 'intent' };
+      },
+    };
+
+    for (const row of [MATRIX_ROWS[0]!, MATRIX_ROWS[3]!]) {
+      await invokeMatrixDiscoveryGraph(graph, {
+        sourceUserId: fixtureCase.sourceUserId,
+        networkId: network.id,
+        triggerIntentId,
+      }, row);
+    }
+
+    expect(calls).toEqual([
+      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
+      expect.objectContaining({ userId: fixtureCase.sourceUserId, networkId: network.id, triggerIntentId, options: { minScore: 50 } }),
+    ]);
+    expect(() => resolveFixtureTriggerIntent(
+      { ...payload, memberships: payload.memberships.filter((membership) => membership.userId !== fixtureCase.sourceUserId) },
+      fixtureCase.sourceUserId,
+      network.id,
+    )).toThrow('has no membership');
   });
 
   it('restores both discovery env variables after a graph error', async () => {
@@ -200,17 +234,26 @@ describe('discovery environment matrix runtime seams', () => {
         candidatePremiseId: 'premise-1',
         candidateContextId: 'context-1',
         evidence: [{ kind: 'query_intent' }, { kind: 'query_premise' }, { kind: 'query_context' }],
+      }, {
+        userId: 'fixture-user-fallback',
+        evidence: [{ kind: 'query_intent' }],
       }],
     }, new Set(['fixture-user']));
 
     expect(candidates).toEqual([{
       id: 'fixture-user',
+      rank: 1,
       evidenceTypes: ['intent', 'premise', 'user_context'],
       evidenceIds: {
         candidateIntentId: 'intent-1',
         candidatePremiseId: 'premise-1',
         candidateContextId: 'context-1',
       },
+    }, {
+      id: 'fixture-user-fallback',
+      rank: 2,
+      evidenceTypes: ['intent'],
+      evidenceIds: {},
     }]);
   });
 });

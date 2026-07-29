@@ -23,6 +23,8 @@ export interface MatrixCandidateEvidenceIds {
 export interface MatrixCandidate {
   /** The database/user id returned by the live discovery graph. */
   id: string;
+  /** One-based live graph order, retained alongside the scorecard target rank. */
+  rank: number;
   /** Evidence source labels retained from the graph result. */
   evidenceTypes: readonly MatrixEvidenceType[];
   /** Concrete graph evidence IDs retained alongside evidence types. */
@@ -97,6 +99,7 @@ export type MatrixScorecard = ScorecardLike<MatrixSlotResult>;
 /** Baseline scorecard: deliberately excludes raw provider candidate text. */
 export interface MatrixBaselineCandidate {
   id: string;
+  rank: number;
   evidenceTypes: MatrixEvidenceType[];
   evidenceIds: MatrixCandidateEvidenceIds;
 }

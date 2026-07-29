@@ -30,7 +30,7 @@ const scorecard: MatrixScorecard = {
       { kind: "completion", passed: true, detail: "slot completed" },
       { kind: "judge", passed: true, detail: "judge approved" },
     ],
-    candidates: [{ id: "candidate-a", evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" }, rawText: "raw provider candidate text" }],
+    candidates: [{ id: "candidate-a", rank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" }, rawText: "raw provider candidate text" }],
     judge: { passed: true, detail: "judge approved" },
   }],
 };
@@ -55,6 +55,7 @@ describe("historical discovery environment matrix reporter", () => {
     expect(JSON.stringify(scorecard)).toContain("raw provider candidate text");
     expect(JSON.stringify(baseline)).not.toContain("raw provider candidate text");
     expect(baseline.cases[0]!.candidates[0]).not.toHaveProperty("rawText");
+    expect(baseline.cases[0]!.candidates[0]!.rank).toBe(1);
     expect(baseline.cases[0]!.candidates[0]!.evidenceIds).toEqual({ candidateIntentId: "intent-a", candidatePremiseId: "premise-a" });
   });
 });

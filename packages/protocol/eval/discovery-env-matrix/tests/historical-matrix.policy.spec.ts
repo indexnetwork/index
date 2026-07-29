@@ -29,9 +29,9 @@ describe("historical discovery environment matrix policy", () => {
       repetition: 0,
       completed: true,
       candidates: [
-        { id: matrixCase.expectedUserId, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-expected", candidatePremiseId: "premise-expected" }, rawText: "expected raw candidate evidence" },
-        { id: matrixCase.excludedUserIds[0]!, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-excluded" }, rawText: "excluded raw candidate evidence" },
-        { id: "unknown-candidate", evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-unknown" }, rawText: "unknown raw candidate evidence" },
+        { id: matrixCase.expectedUserId, rank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-expected", candidatePremiseId: "premise-expected" }, rawText: "expected raw candidate evidence" },
+        { id: matrixCase.excludedUserIds[0]!, rank: 2, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-excluded" }, rawText: "excluded raw candidate evidence" },
+        { id: "unknown-candidate", rank: 3, evidenceTypes: ["intent"], evidenceIds: { candidateIntentId: "intent-unknown" }, rawText: "unknown raw candidate evidence" },
       ],
       judge: async () => {
         judgeCalls += 1;

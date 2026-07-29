@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 
 import { HydeGenerator, HydeGraphFactory, LensInferrer, OpportunityEvaluator, OpportunityGraphFactory, PremiseGraphFactory, UserContextGenerator, type HydeGraphDatabase, type OpportunityGraphDatabase, type PremiseGraphDatabase } from '@indexnetwork/protocol';
 
-import { baseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
+import { baseSeedPayload, type BaseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 import { expectedBaseMetadata, verifyProtectedBase } from './discovery-env-matrix-base';
 import { MATRIX_REPETITIONS, assertCompleteMatrix, assertMatrixEnvironment, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment, type MatrixChildManifestEntry, type MatrixPlanSlot } from './discovery-env-matrix.runtime';
 
@@ -32,6 +32,8 @@ export type MatrixCandidateEvidenceIds = {
 
 type MatrixCandidate = {
   id: string;
+  /** One-based graph-return order retained in the raw run artifact. */
+  rank: number;
   evidenceTypes: Array<'intent' | 'premise' | 'user_context'>;
   evidenceIds: MatrixCandidateEvidenceIds;
   rawText?: string;
@@ -223,6 +225,43 @@ function databaseCase(matrixCase: HistoricalMatrixFixture): DatabaseCase {
   };
 }
 
+/** Finds the seeded source intent and verifies every seeded fixture intent has its network membership. */
+export function resolveFixtureTriggerIntent(
+  payload: BaseSeedPayload,
+  sourceUserId: string,
+  networkId: string,
+): string {
+  const memberships = new Set(payload.memberships.map((membership) => `${membership.userId}\u0000${membership.networkId}`));
+  for (const intent of payload.intents) {
+    if (!memberships.has(`${intent.userId}\u0000${intent.networkId}`)) {
+      throw new Error(`Fixture intent ${intent.id} has no membership in ${intent.networkId}`);
+    }
+  }
+  const sourceIntent = payload.intents.find((intent) => intent.userId === sourceUserId && intent.networkId === networkId);
+  if (!sourceIntent) throw new Error(`Fixture source user ${sourceUserId} has no intent in ${networkId}`);
+  return sourceIntent.id;
+}
+
+export interface MatrixGraphRuntimeInput {
+  sourceUserId: string;
+  networkId: string;
+  triggerIntentId: string;
+}
+
+/** Provider-free seam around the exact graph invocation used by every matrix slot. */
+export async function invokeMatrixDiscoveryGraph<T>(
+  graph: { invoke(input: { userId: string; networkId: string; triggerIntentId: string; options: { minScore: number } }): Promise<T> },
+  runtime: MatrixGraphRuntimeInput,
+  row: { id: string; allowedTypes: string; profileSource: string },
+): Promise<T> {
+  return withMatrixEnvironment(row, () => graph.invoke({
+    userId: runtime.sourceUserId,
+    networkId: runtime.networkId,
+    triggerIntentId: runtime.triggerIntentId,
+    options: { minScore: 50 },
+  }));
+}
+
 function evidenceTypes(candidate: Record<string, unknown>): MatrixCandidate['evidenceTypes'] {
   const types = new Set<'intent' | 'premise' | 'user_context'>();
   for (const evidence of Array.isArray(candidate.evidence) ? candidate.evidence : []) {
@@ -242,9 +281,19 @@ function evidenceTypes(candidate: Record<string, unknown>): MatrixCandidate['evi
 /** Preserves graph evidence IDs/types in the raw run artifact before policy scoring. */
 export function collectCandidates(result: Record<string, unknown>, fixtureIds: Set<string>): MatrixCandidate[] {
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-  return candidates.map((candidate) => {
+  return candidates.map((candidate, index) => {
     const value = candidate as Record<string, unknown>;
-    const id = typeof value.candidateUserId === 'string' ? value.candidateUserId : '';
+    const nestedUserId = value.candidate && typeof value.candidate === 'object'
+      ? (value.candidate as Record<string, unknown>).userId
+      : undefined;
+    const id = typeof value.candidateUserId === 'string'
+      ? value.candidateUserId
+      : typeof value.userId === 'string'
+        ? value.userId
+        : typeof nestedUserId === 'string'
+          ? nestedUserId
+          : undefined;
+    if (!id) throw new Error(`Graph candidate at rank ${index + 1} is missing a user ID`);
     const evidenceIds: MatrixCandidateEvidenceIds = {
       ...(typeof value.candidateIntentId === 'string' ? { candidateIntentId: value.candidateIntentId } : {}),
       ...(typeof value.candidatePremiseId === 'string' ? { candidatePremiseId: value.candidatePremiseId } : {}),
@@ -252,8 +301,8 @@ export function collectCandidates(result: Record<string, unknown>, fixtureIds: S
     };
     // Fail closed before the judge: unknown candidates remain visible to the
     // deterministic fixture-ownership assertion and are never normalized away.
-    if (!fixtureIds.has(id)) return { id, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
-    return { id, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+    if (!fixtureIds.has(id)) return { id, rank: index + 1, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
+    return { id, rank: index + 1, evidenceTypes: evidenceTypes(value), evidenceIds, rawText: typeof value.candidatePayload === 'string' ? value.candidatePayload : undefined };
   });
 }
 
@@ -277,7 +326,8 @@ async function composeCaseRuntime(
   deps: Awaited<ReturnType<typeof createChildDependencies>>,
   matrixCase: DatabaseCase,
   network: { id: string; title: string; prompt: string },
-): Promise<{ sourceUserId: string; networkId: string }> {
+  triggerIntentId: string,
+): Promise<MatrixGraphRuntimeInput> {
   for (const participant of matrixCase.participants) {
     const premise = await deps.premiseGraph.invoke({
       userId: participant.id,
@@ -306,7 +356,15 @@ async function composeCaseRuntime(
       premiseHash: `discovery-env-matrix:${matrixCase.id}`,
     });
   }
-  return { sourceUserId: matrixCase.sourceUserId, networkId: network.id };
+  const memberships = await deps.database.getNetworkMemberships(matrixCase.sourceUserId);
+  if (!memberships.some((membership) => membership.networkId === network.id)) {
+    throw new Error(`${matrixCase.id}: source fixture user is not a member of ${network.id}`);
+  }
+  const intentNetworks = await deps.database.getNetworkIdsForIntent(triggerIntentId);
+  if (!intentNetworks.includes(network.id)) {
+    throw new Error(`${matrixCase.id}: source fixture intent is not assigned to ${network.id}`);
+  }
+  return { sourceUserId: matrixCase.sourceUserId, networkId: network.id, triggerIntentId };
 }
 
 async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecutionSelection): Promise<ChildOutput> {
@@ -328,12 +386,13 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
   const batch = await executeRuns(async ({ runIndex }: { runIndex: number }) => {
     const slot = plan[runIndex]!;
     const matrixCase = databaseCase(slot.matrixCase);
-    const network = baseSeedPayload([slot.matrixCase]).networks[0];
-    if (!network) throw new Error(`${slot.matrixCase.id}: missing protected-base network`);
-    const composed = await composeCaseRuntime(deps, matrixCase, network);
-    const graphResult = await withMatrixEnvironment(slot.row, async () =>
-      deps.opportunityGraph.invoke({ userId: composed.sourceUserId, networkId: composed.networkId, options: { minScore: 50 } } as never),
-    ) as Record<string, unknown>;
+    const fixturePayload = baseSeedPayload([slot.matrixCase]);
+    const fixtureCase = fixturePayload.cases[0];
+    const network = fixturePayload.networks[0];
+    if (!network || !fixtureCase) throw new Error(`${slot.matrixCase.id}: missing protected-base network`);
+    const triggerIntentId = resolveFixtureTriggerIntent(fixturePayload, fixtureCase.sourceUserId, network.id);
+    const composed = await composeCaseRuntime(deps, matrixCase, network, triggerIntentId);
+    const graphResult = await invokeMatrixDiscoveryGraph(deps.opportunityGraph as never, composed, slot.row) as Record<string, unknown>;
     if (graphResult.error) throw new Error(`${matrixCase.id}: opportunity graph failed: ${String(graphResult.error)}`);
     const candidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
     const scored = await scoreMatrixSlot({
