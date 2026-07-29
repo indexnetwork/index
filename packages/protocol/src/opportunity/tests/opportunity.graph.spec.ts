@@ -712,6 +712,42 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.some((candidate) => candidate.evidence.some((evidence) => evidence.kind === 'context_to_intent'))).toBe(false);
     });
 
+    it('hydrates empty query-premise payloads before evaluator input', async () => {
+      process.env.DISCOVERY_ALLOWED_TYPES = 'profile';
+      process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
+      let evaluatorInput: EvaluatorInput | undefined;
+      const evaluator: OpportunityEvaluatorLike = {
+        invokeEntityBundle: async (input) => {
+          evaluatorInput = input;
+          return [{
+            reasoning: 'The candidate provides relevant help.',
+            score: 90,
+            actors: [
+              { userId: gatingAlice, role: 'patient', intentId: null },
+              { userId: gatingBob, role: 'agent', intentId: null },
+            ],
+          }];
+        },
+      };
+      const { compiledGraph, mockDb } = createMockGraph({ evaluator });
+      wirePremiseAndContextSources(mockDb);
+      mockDb.searchPremisesBySimilarityBatch = async () => [
+        { sourcePremiseId: 'premise-1', premiseId: 'candidate-premise-1', userId: gatingBob, networkId: 'idx-1', assertionText: '', similarity: 0.88 },
+      ];
+      mockDb.getPremise = async (premiseId) => premiseId === 'candidate-premise-1'
+        ? { id: premiseId, userId: gatingBob, assertion: { text: 'Operates a structural biology lab', tier: 'assertive' as const, summary: 'Structural biology lab' }, provenance: { source: 'explicit' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null }
+        : null;
+
+      await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      const candidate = evaluatorInput?.entities.find((entity) => entity.userId === gatingBob);
+      expect(candidate?.evidence?.[0]?.assertionText).toBe('Operates a structural biology lab');
+      expect(candidate?.evidence?.[0]?.payload).toBe('Operates a structural biology lab');
+    });
+
     it('lightweight mode: context→context finds candidates via searchUserContextsBySimilarity', async () => {
       process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
       const { compiledGraph, mockDb } = createMockGraph();

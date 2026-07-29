@@ -1806,11 +1806,22 @@ export class OpportunityGraphFactory {
               const profile = await this.database.getProfile(c.candidateUserId);
               let intentPayload = c.candidatePayload;
               let intentSummary = c.candidateSummary;
+              let evidence = c.evidence;
               if (c.candidateIntentId != null && (!intentPayload || intentPayload === '')) {
                 const intent = await this.database.getIntent(c.candidateIntentId);
                 if (intent) {
                   intentPayload = intent.payload;
                   intentSummary = intent.summary ?? undefined;
+                }
+              }
+              if (c.candidatePremiseId != null && (!intentPayload || intentPayload === '')) {
+                const premise = await this.database.getPremise(c.candidatePremiseId);
+                if (premise) {
+                  intentPayload = premise.assertion.text;
+                  intentSummary = premise.assertion.summary;
+                  evidence = (c.evidence ?? []).map((item) => item.candidatePremiseId === c.candidatePremiseId
+                    ? { ...item, payload: premise.assertion.text, summary: premise.assertion.summary, assertionText: premise.assertion.text }
+                    : item);
                 }
               }
               const evidenceKey = buildEvaluatorEvidenceKey(c);
@@ -1830,7 +1841,7 @@ export class OpportunityGraphFactory {
                 evidenceKey,
                 ragScore: c.similarity * 100,
                 matchedVia: c.lens,
-                evidence: c.evidence,
+                evidence,
               };
             })
           );

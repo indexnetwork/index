@@ -115,17 +115,17 @@ Match patterns to consider:
 4. Intents+profile-to-intents+profile: Complementary or reciprocal goals between two or more people.
 
 Output:
-- A list of 0..N opportunities. Each opportunity has:
-  - reasoning: Third-party analytical explanation (for other LLM agents). Mention entities by role. Do NOT use "you". Never leak private intents.
-  - score: 0-100.
-    - 90-100: Must Meet — candidate's PRIMARY role directly matches what the discoverer seeks.
-      Example: discoverer seeks "AI/ML co-founder" → candidate IS an AI/ML engineer who wants to co-found.
-    - 70-89: Should Meet — meaningful overlap on role type AND complementary intent.
-    - 50-69: Worth Considering — tangential overlap only.
-    - <30 (return empty): Complementary-role mismatch (candidate cannot fill the discoverer's open argument position), same-side match, or already acquainted.
-      Example: discoverer seeks "co-founder" → candidate is a VC investor. The investor's contribution is external to the co-founding relation; they cannot substitute into it. Score 0.
-  - IMPORTANT: Include ALL reasonable matches with scores >= 30, and ONLY those. Any candidate you would reject (complementary-role mismatch, same-side, already-acquainted, or a hard location mismatch) must score strictly below 30 and be omitted entirely — the surfacing threshold is 30, so a rejected candidate parked at exactly 30 would be wrongly surfaced.
-  - actors: At least 2 actors per opportunity. Each actor has:
+- A list of verdicts with EXACTLY ONE verdict for EVERY candidate entity (never omit a candidate).
+- Each verdict has candidateId (the candidate USER ID), accepted, reasoning, score, and actors.
+- accepted=true verdicts must include exactly the source and that candidate as actors. accepted=false verdicts may use an empty actor list.
+- Rejected candidates still require a verdict: set accepted=false and score below the appropriate threshold.
+- A verdict score is 0-100:
+  - 90-100: Must Meet — candidate's PRIMARY role directly matches what the discoverer seeks.
+  - 70-89: Should Meet — meaningful overlap on role type AND complementary intent.
+  - 50-69: Worth Considering — tangential overlap only.
+  - <30: Complementary-role mismatch (candidate cannot fill the discoverer's open argument position), same-side match, or already acquainted.
+- IMPORTANT: Every candidate must be represented once and only once. Do not return an opportunity list and do not omit rejected candidates.
+- Actors in accepted verdicts:
     - userId
     - role: "agent" (can do something for others), "patient" (needs something from others), "peer" (symmetric collaboration)
     - intentId (optional): if the match is intent-driven, the specific intent ID for that user
@@ -229,19 +229,59 @@ const ActorSchema = z.object({
   evidenceKey: z.string().nullable().optional().describe('Stable evidence key for the matched entity; null if unknown'),
 });
 
-const OpportunityWithActorsSchema = z.object({
+const _OpportunityWithActorsSchema = z.object({
   reasoning: z.string(),
   score: z.number().min(0).max(100),
   actors: z.array(ActorSchema).min(2).describe('All actors in this opportunity with their roles'),
 });
 
+const EvaluatorVerdictSchema = z.object({
+  candidateId: z.string().describe('The candidate USER ID being evaluated'),
+  accepted: z.boolean().describe('Whether this candidate is a qualifying opportunity'),
+  score: z.number().min(0).max(100),
+  reasoning: z.string(),
+  actors: z.array(ActorSchema).describe('Accepted verdicts include source and candidate actors; rejected verdicts may use an empty list'),
+});
+
 const entityBundleResponseFormat = z.object({
-  opportunities: z.array(OpportunityWithActorsSchema).describe('List of opportunities (0..N)'),
+  verdicts: z.array(EvaluatorVerdictSchema).describe('Exactly one verdict for every candidate entity; include rejected candidates'),
 });
 
 export type EvaluatorActor = z.infer<typeof ActorSchema>;
-export type EvaluatedOpportunityWithActors = z.infer<typeof OpportunityWithActorsSchema>;
+export type EvaluatedOpportunityWithActors = z.infer<typeof _OpportunityWithActorsSchema>;
+type EvaluatorVerdict = z.infer<typeof EvaluatorVerdictSchema>;
 export type EvaluatorOutputBundle = z.infer<typeof entityBundleResponseFormat>;
+
+/** Raised only after both bounded attempts return an incomplete evaluator batch. */
+export class EvaluatorIncompleteError extends Error {
+  constructor() {
+    super('evaluator-incomplete');
+    this.name = 'EvaluatorIncompleteError';
+  }
+}
+
+function reconcileEvaluatorVerdicts(
+  verdicts: EvaluatorVerdict[],
+  candidateIds: string[],
+): EvaluatorVerdict[] {
+  const expected = new Set(candidateIds);
+  const seen = new Set<string>();
+  for (const verdict of verdicts) {
+    if (!expected.has(verdict.candidateId) || seen.has(verdict.candidateId)) {
+      throw new EvaluatorIncompleteError();
+    }
+    if (verdict.accepted && verdict.actors.length < 2) {
+      throw new EvaluatorIncompleteError();
+    }
+    seen.add(verdict.candidateId);
+  }
+  if (seen.size !== expected.size) throw new EvaluatorIncompleteError();
+  return verdicts;
+}
+
+function isEvaluatorOutputError(error: unknown): boolean {
+  return error instanceof z.ZodError || error instanceof EvaluatorIncompleteError;
+}
 
 // ──────────────────────────────────────────────────────────────
 // 3. TYPE DEFINITIONS
@@ -500,43 +540,57 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
       new SystemMessage(entityBundleSystemPrompt),
       new HumanMessage(humanContent),
     ];
-    let parsedTotal = 0;
-    try {
-      const result = await invokeWithAbortSignal(this.entityBundleModel, messages, options.signal);
-      const parsed = entityBundleResponseFormat.parse(result);
-      for (const op of parsed.opportunities) {
-        op.reasoning = stripUuids(op.reasoning);
-      }
-      parsedTotal = parsed.opportunities.length;
-      // Persistence safety is deterministic and precedes every score/returnAll
-      // path. Network/context placement is not typed support provenance, so an
-      // unsupported affiliation or presence claim rejects the whole result.
-      const claimSafe = parsed.opportunities.filter(
-        (op) => !hasUnsupportedOpportunityClaim(op.reasoning),
-      );
-      const introGuard =
-        input.introductionMode
-          ? claimSafe.filter((op) => op.actors.length === 2)
-          : claimSafe;
-      const filtered = introGuard.filter((op) => op.score >= minScore);
-      invokeEntityBundleLog.verbose('Done', {
-        total: parsed.opportunities.length,
-        afterClaimGuard: claimSafe.length,
-        afterIntroGuard: introGuard.length,
-        accepted: filtered.length,
-        returnAll,
-      });
-      return returnAll ? introGuard : filtered;
-    } catch (llmError) {
-      invokeEntityBundleLog.error('Failed', {
-        discovererId: input.discovererId,
-        totalEntities,
-        parsedTotal,
-        minScore,
-        llmError,
-      });
-      throw llmError;
+    const candidateIds = input.entities
+      .filter((entity) => entity.userId !== input.discovererId)
+      .map((entity) => entity.userId);
+    if (new Set(candidateIds).size !== candidateIds.length) {
+      throw new EvaluatorIncompleteError();
     }
+
+    let parsedTotal = 0;
+    let incompleteReason: string | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await invokeWithAbortSignal(this.entityBundleModel, messages, options.signal);
+        const parsed = entityBundleResponseFormat.parse(result);
+        parsedTotal = parsed.verdicts.length;
+        const verdicts = reconcileEvaluatorVerdicts(parsed.verdicts, candidateIds);
+        const accepted = verdicts
+          .filter((verdict) => verdict.accepted)
+          .map((verdict) => ({
+            reasoning: stripUuids(verdict.reasoning),
+            score: verdict.score,
+            actors: verdict.actors,
+          }))
+          .filter((op): op is EvaluatedOpportunityWithActors => op.actors.length >= 2);
+        // Persistence safety is deterministic and precedes every score/returnAll
+        // path. Network/context placement is not typed support provenance, so an
+        // unsupported affiliation or presence claim rejects the whole result.
+        const claimSafe = accepted.filter((op) => !hasUnsupportedOpportunityClaim(op.reasoning));
+        const introGuard = input.introductionMode ? claimSafe.filter((op) => op.actors.length === 2) : claimSafe;
+        const filtered = introGuard.filter((op) => op.score >= minScore);
+        invokeEntityBundleLog.verbose('Done', {
+          total: verdicts.length,
+          afterClaimGuard: claimSafe.length,
+          afterIntroGuard: introGuard.length,
+          accepted: filtered.length,
+          returnAll,
+        });
+        return returnAll ? introGuard : filtered;
+      } catch (error) {
+        if (!isEvaluatorOutputError(error)) throw error;
+        incompleteReason = error instanceof Error ? error.message : 'invalid output';
+      }
+    }
+
+    invokeEntityBundleLog.error('Evaluator batch incomplete', {
+      discovererId: input.discovererId,
+      totalEntities,
+      parsedTotal,
+      minScore,
+      reason: incompleteReason,
+    });
+    throw new EvaluatorIncompleteError();
   }
 
   /**
