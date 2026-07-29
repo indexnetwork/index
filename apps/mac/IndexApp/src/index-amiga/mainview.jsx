@@ -35,7 +35,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
                     onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled }) {
   const { EVENT, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES } = window.INDEX_DATA;
-  const [tab, setTab] = useState("all");
+  // "awaiting you" is the default tab: it is the only stage the user can act
+  // on, so the radar opens on the decisions rather than the whole field.
+  const [tab, setTab] = useState("awaiting you");
   const [paused, setPaused] = useState(false);
   const [pipelineMode, setPipelineMode] = useState("broad");
   const modeTimerRef = useRef(null);
@@ -209,8 +211,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     if (!live || !client) return;
     // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
     // otherwise the home endpoint only returns actionable rows and the
-    // accepted/rejected/missed tabs stay empty.
-    const radarStatuses = "latent,pending,negotiating,stalled,accepted,rejected,expired";
+    // accepted/missed tabs stay empty. `rejected` is deliberately excluded:
+    // most rejections are agent-side filtering, not user decisions, so
+    // showing them implies choices the user never made.
+    const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
     const [homeR, qR] = await Promise.all([
       (intentId ? client.opportunities.homeForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.home()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
@@ -240,16 +244,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     () => visiblePeople.filter(p => !["accepted", "ready", "expired", "passed"].includes(p.status)),
     [visiblePeople]
   );
-  // The five states an opportunity can be in for you, in the order they happen:
-  // it needs you, agents are still talking, you took it, you turned it down, it
-  // ran out. "awaiting you" leads because it is the only one you can act on.
+  // The four states an opportunity can be in for you, in the order they happen:
+  // it needs you, agents are still talking, you took it, it ran out.
+  // "awaiting you" leads because it is the only one you can act on.
+  // Rejected/passed people are not shown: those are mostly agent-side
+  // filtering decisions, and listing them reads as if the user (or the
+  // other person) did the rejecting.
   const funnelStages = useMemo(() => {
     const by = (s) => visiblePeople.filter(p => opportunityBucket(p) === s).length;
     return [
       { label:"awaiting you", count: by("awaiting you"), accent:true },
       { label:"negotiating",  count: by("negotiating") },
       { label:"accepted",     count: by("accepted"), accent:true },
-      { label:"rejected",     count: by("rejected") },
       { label:"missed",       count: by("missed") },
     ];
   }, [visiblePeople]);
@@ -428,14 +434,20 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       });
     }
   };
+  // Accepting means "I want to talk to this person", so go straight into the
+  // chat instead of letting the card silently jump to the accepted tab.
   const acceptPerson = (personId) => {
     setPeople(prev => prev.map(p =>
       p.id === personId ? { ...p, status: "accepted" } : p));
     if (live && client) {
+      // Open the chat only after the accept lands; startChatForIntent expects
+      // an accepted opportunity.
       client.opportunities.updateStatusForIntent(personId, "accepted", intentId)
-        .then(() => setTimeout(refreshRadar, 1500))
+        .then(() => { openChat(personId); setTimeout(refreshRadar, 1500); })
         .catch(() => {});
+      return;
     }
+    openChat(personId);
   };
   // Pass is the other half of the ready-stage decision, decline the intro
   // instead of accepting it. They drop out of the radar into "passed".
@@ -1557,7 +1569,7 @@ function opportunityBucket(p) {
   switch (p.status) {
     case "accepted": return "accepted";
     case "ready":    return "awaiting you";
-    case "passed":   return "rejected";
+    case "passed":   return null; // hidden — see funnelStages comment
     case "expired":  return "missed";
     default:         return "negotiating";
   }
@@ -1565,9 +1577,10 @@ function opportunityBucket(p) {
 
 /* =================== RIGHT, MATCH FEED =================== */
 function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
+  const shownPeople = people.filter(p => opportunityBucket(p) !== null);
   const peopleForTab = tab === "all"
-    ? people
-    : people.filter(p => opportunityBucket(p) === tab);
+    ? shownPeople
+    : shownPeople.filter(p => opportunityBucket(p) === tab);
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)",
@@ -1605,7 +1618,6 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
             tab === "awaiting you" ? "nothing waiting on you. answer their questions in the feed first."
             : tab === "negotiating" ? "no negotiations open. your agent starts one when it finds an overlap."
             : tab === "accepted"    ? "no one accepted yet. accept someone from the awaiting-you list."
-            : tab === "rejected"    ? "you haven't turned anyone down."
             : tab === "missed"      ? "nothing missed. these are people the moment passed on."
             : "no one here right now. the field keeps moving, so check back."
           }</div>
