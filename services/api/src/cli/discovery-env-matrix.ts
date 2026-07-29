@@ -194,6 +194,18 @@ export type MatrixSlotResult = Record<string, unknown> & {
   scoredRunIds?: string[];
 };
 
+/** Blocks governed baseline writes when any completed matrix slot failed its assertions. */
+export async function runBaselineUpdateAfterPassingAssertions<T>(
+  slots: readonly Pick<MatrixSlotResult, 'caseId' | 'runs' | 'passes'>[],
+  update: () => Promise<T>,
+): Promise<T> {
+  const failed = slots.filter((slot) => slot.passes !== slot.runs);
+  if (failed.length > 0) {
+    throw new Error(`Discovery environment matrix baseline requires all 75 matrix assertions to pass (${failed.length} failed: ${failed.map((slot) => slot.caseId).join(', ')})`);
+  }
+  return update();
+}
+
 type MatrixAttemptEvidence = {
   attemptId: string;
   runId: string;
@@ -767,13 +779,15 @@ async function runParent(): Promise<void> {
       regressionCount: governedRegressionCount,
       comparisonStatus: selection.canary ? undefined : (comparison: unknown) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
       updateBaseline: updateBaseline ? async (comparison: unknown) => {
-        assertCompleteMatrix({ requested: summary.requestedRuns, completed: summary.completedRuns, failed: summary.failedRuns });
-        const baselineScorecard = leanMatrixScorecard(scorecard);
-        const result = await performGovernedBaselineUpdate({
-          baselinePath: BASELINE_PATH, scorecard: baselineScorecard, meta, execution: summary, reason, force, comparison,
-          writeBaselineArtifact: () => writeBaseline(BASELINE_PATH, baselineScorecard, { meta, force }),
+        await runBaselineUpdateAfterPassingAssertions(slots, async () => {
+          assertCompleteMatrix({ requested: summary.requestedRuns, completed: summary.completedRuns, failed: summary.failedRuns });
+          const baselineScorecard = leanMatrixScorecard(scorecard);
+          const result = await performGovernedBaselineUpdate({
+            baselinePath: BASELINE_PATH, scorecard: baselineScorecard, meta, execution: summary, reason, force, comparison,
+            writeBaselineArtifact: () => writeBaseline(BASELINE_PATH, baselineScorecard, { meta, force }),
+          });
+          console.log(formatBaselineUpdateSummary(result));
         });
-        console.log(formatBaselineUpdateSummary(result));
       } : undefined,
       persistDiagnosticReport: () => writeRunReport(reportPath, scorecard, { meta, force }),
     });

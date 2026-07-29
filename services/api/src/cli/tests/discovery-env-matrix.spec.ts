@@ -5,7 +5,7 @@ import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -98,6 +98,24 @@ describe('discovery environment matrix runtime seams', () => {
 
   it('never marks incomplete provider execution baselineable', () => {
     expect(() => assertCompleteMatrix({ requested: 75, completed: 74, failed: 1 })).toThrow('75 complete slots');
+  });
+
+  it('does not write a baseline or update summary when all 75 executions complete but an assertion fails', async () => {
+    const slots = Array.from({ length: 75 }, (_, index) => ({
+      caseId: `historical/case-${index}/intent-only/r1`,
+      runs: 1,
+      passes: index === 37 ? 0 : 1,
+    } as MatrixSlotResult));
+    let baselineWrites = 0;
+    let summaryWrites = 0;
+
+    await expect(runBaselineUpdateAfterPassingAssertions(slots, async () => {
+      baselineWrites += 1;
+      summaryWrites += 1;
+    })).rejects.toThrow('all 75 matrix assertions to pass');
+
+    expect(baselineWrites).toBe(0);
+    expect(summaryWrites).toBe(0);
   });
 
   it('requires a distinct predeclared Neon child for every configuration/repetition', () => {

@@ -65,3 +65,6 @@ services/api/eval/discovery-env-matrix/runs/
 
 # superpowers brainstorm mockups
 .superpowers/
+
+# Root-only Pi subagent runtime state; nested/source artifacts remain visible.
+/.pi-subagents/
