@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import { attestMatrixTargets, parseAttestedManifest, type NeonControlPlane } from '../discovery-env-matrix.neon';
 
@@ -22,6 +24,14 @@ const controlPlane: NeonControlPlane = {
 };
 
 describe('Neon matrix control-plane attestation', () => {
+  it('keeps mutable bootstraps dependency-free and redacts wrapper failures', async () => {
+    for (const name of ['discovery-env-matrix.ts', 'discovery-env-matrix-base.ts', 'discovery-retrieval-smoke.ts']) {
+      const source = await readFile(path.resolve(import.meta.dir, '..', name), 'utf8');
+      expect(source).not.toContain("from '@indexnetwork/protocol'");
+      expect(source).not.toContain('error.message');
+      expect(source).toContain("await import('");
+    }
+  });
   it('rejects a non-5432 target before a control-plane port can be created', () => {
     expect(() => parseAttestedManifest(JSON.stringify({ version: 1, base, children: [{ ...child, databaseUrl: 'postgresql://owner:secret@ep-child.neon.tech:6543/protocol_eval' }] }), [child.childKey])).toThrow('port must be exactly 5432');
   });

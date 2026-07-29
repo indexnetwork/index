@@ -294,7 +294,7 @@ export async function verifyBaseFixtureIntegrity(
   const fixtureOpportunity = opportunities.find((opportunity) => Array.isArray(opportunity.actors) && opportunity.actors.some((actor) => userIds.includes(String(actor.userId))));
   if (fixtureOpportunity) throw new Error(`Discovery environment matrix base integrity failed: fixture opportunity ${fixtureOpportunity.id}`);
   for (const intent of payload.intents) {
-    const documents = hydeDocuments.filter((document) => document.sourceType === 'intent' && document.sourceId === intent.id && document.sourceText === intent.payload && document.embedding !== null);
+    const documents = hydeDocuments.filter((document) => document.sourceType === 'intent' && document.sourceId === intent.id && document.sourceText === intent.payload && Array.isArray(document.embedding) && document.embedding.length === 2000 && document.embedding.every((value) => typeof value === 'number' && Number.isFinite(value)));
     if (!documents.length) throw new Error(`Discovery environment matrix base integrity failed: missing valid intent HyDE ${intent.id}`);
   }
 

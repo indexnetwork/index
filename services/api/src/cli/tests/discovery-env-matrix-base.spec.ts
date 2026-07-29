@@ -114,11 +114,11 @@ function mockCurrentCommandDatabase(payload: ReturnType<typeof baseSeedPayload>,
   const structuralRows: unknown[][] = [
     payload.users.map((user) => ({ ...user, emailVerified: false, deletedAt: null })),
     payload.networks.map((network) => ({ ...network, deletedAt: null })),
-    payload.intents.map((intent) => ({ ...intent, status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId, embedding: [0.1] })),
+    payload.intents.map((intent) => ({ ...intent, status: 'ACTIVE', sourceType: 'discovery_form', sourceId: intent.userId, embedding: Array(2000).fill(0.1) })),
     payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId, relevancyScore: '1' })),
     payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId, permissions: ['member'], autoAssign: false })),
     [], [],
-    payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: [0.1] })),
+    payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: Array(2000).fill(0.1) })),
     [],
   ];
   const state = { reads: 0, writes: 0, closed: false };
@@ -314,7 +314,7 @@ describe('protected base lifecycle', () => {
       payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId, permissions: ['member'], autoAssign: false })),
       [],
       [],
-      payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: [0.1] })),
+      payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: Array(2000).fill(0.1) })),
       [],
     ];
   }
