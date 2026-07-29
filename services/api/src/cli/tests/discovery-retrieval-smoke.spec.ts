@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { assertSmokeEnvironment, buildSmokeSeedPlan, DeterministicSmokeEmbedder, runSmoke, SMOKE_CLEANUP_ORDER, withDiscoveryProfileSource } from '../discovery-retrieval-smoke';
+import { assertSmokeEnvironment, buildSmokeSeedPlan, DeterministicSmokeEmbedder, runSmoke, SMOKE_CLEANUP_ORDER, withDiscoveryProfileSource } from '../discovery-retrieval-smoke.main';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
   DISCOVERY_RETRIEVAL_EVAL_CONFIRM: '1',

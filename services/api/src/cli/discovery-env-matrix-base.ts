@@ -10,4 +10,4 @@ async function main(): Promise<void> {
   process.env.DATABASE_URL = manifest.base.databaseUrl;
   await (await import('./discovery-env-matrix-base.main')).main();
 }
-if (import.meta.main) main().catch((error) => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });
+if (import.meta.main) main().catch(() => { console.error('Protected base command failed'); process.exitCode = 1; });

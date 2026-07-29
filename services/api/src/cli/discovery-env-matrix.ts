@@ -7,7 +7,7 @@ const keys = (canary: boolean) => rowIds.flatMap((id) => canary ? [`${id}-r1`] :
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--help') || args.includes('-h')) return void (await import('./discovery-env-matrix.main')).main();
+  if (args.includes('--help') || args.includes('-h')) return void console.log('Discovery environment matrix eval\n\nRequires an attested Neon v1 manifest and NEON_API_KEY.');
   const manifest = parseAttestedManifest(process.env.DISCOVERY_ENV_MATRIX_CHILDREN, keys(args.includes('--canary')));
   await attestMatrixTargets({ manifest, controlPlane: createNeonControlPlane(process.env.NEON_API_KEY ?? '') });
   // Runtime receives only the attested projection; branch labels are no longer trusted input.
@@ -21,4 +21,4 @@ async function main(): Promise<void> {
   }
   await (await import('./discovery-env-matrix.main')).main();
 }
-if (import.meta.main) main().catch((error) => { console.error(error instanceof Error ? error.message : error); process.exitCode = 2; });
+if (import.meta.main) main().catch(() => { console.error('Discovery environment matrix command failed'); process.exitCode = 2; });
