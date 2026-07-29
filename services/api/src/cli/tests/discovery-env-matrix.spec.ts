@@ -5,7 +5,7 @@ import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runWithChildCleanup, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -374,6 +374,66 @@ describe('discovery environment matrix runtime seams', () => {
     expect(() => projectFinalCandidates({
       evaluatedOpportunities: [{ score: 91, actors: [{ userId: 'h1-a' }, { userId: 'unretrieved' }] }],
     }, [], 'h1-a', 50)).toThrow('cannot be projected');
+  });
+
+  it('retains sanitized evaluator diagnostics for a raw target rejected below threshold', () => {
+    const rawCandidates = collectCandidates({
+      candidates: [{ candidateUserId: 'h1-target', evidence: [{ kind: 'query_intent' }] }],
+      trace: [{ node: 'candidate', data: { userId: 'h1-target', score: 42, reasoning: 'provider reasoning must not persist' } }],
+    }, new Set(['h1-target']));
+    const traces = collectEvaluatorTraces({
+      trace: [{ node: 'candidate', data: { userId: 'h1-target', score: 42, reasoning: 'provider reasoning must not persist' } }],
+    }, rawCandidates, []);
+
+    expect(traces).toEqual([{
+      id: 'h1-target',
+      retrievalRank: 1,
+      evaluatorReturned: true,
+      evaluatorScore: 42,
+      finalIncluded: false,
+      finalRank: null,
+    }]);
+    expect(JSON.stringify(traces)).not.toContain('provider reasoning');
+  });
+
+  it('retains evaluator acceptance and final rank without exposing provider errors', () => {
+    const rawCandidates = collectCandidates({
+      candidates: [{ candidateUserId: 'h1-target', evidence: [{ kind: 'query_intent' }] }],
+    }, new Set(['h1-target']));
+    const traces = collectEvaluatorTraces({
+      trace: [{ node: 'candidate', data: { userId: 'h1-target', score: 83 } }, {
+        node: 'evaluation_errors',
+        data: { errors: [{ candidateUserId: 'other-user', error: 'sk-provider-secret' }] },
+      }],
+    }, rawCandidates, [{ id: 'h1-target', finalRank: 1, evidenceTypes: ['intent'], evidenceIds: {} }]);
+
+    expect(traces).toEqual([{
+      id: 'h1-target',
+      retrievalRank: 1,
+      evaluatorReturned: true,
+      evaluatorScore: 83,
+      finalIncluded: true,
+      finalRank: 1,
+    }]);
+    expect(JSON.stringify(traces)).not.toContain('sk-provider-secret');
+  });
+
+  it('classifies evaluator failures without retaining provider error content', () => {
+    const rawCandidates = collectCandidates({
+      candidates: [{ candidateUserId: 'h1-target', evidence: [{ kind: 'query_intent' }] }],
+    }, new Set(['h1-target']));
+    const traces = collectEvaluatorTraces({
+      trace: [{
+        node: 'evaluation_errors',
+        data: { errors: [{ candidateUserId: 'h1-target', error: 'provider secret / prompt text' }] },
+      }],
+    }, rawCandidates, []);
+
+    expect(traces[0]!.evaluatorError).toEqual({
+      classification: 'candidate_evaluation_failed',
+      message: 'Evaluator failed for this candidate.',
+    });
+    expect(JSON.stringify(traces)).not.toContain('provider secret');
   });
 
   it('preserves concrete graph evidence IDs alongside evidence types in raw retrieval candidates', () => {

@@ -41,6 +41,20 @@ export interface MatrixCandidate {
   evidenceIds: MatrixCandidateEvidenceIds;
 }
 
+/** Sanitized evaluator observation for a raw candidate; never policy or baseline input. */
+export interface MatrixEvaluatorTrace {
+  id: string;
+  retrievalRank: number;
+  evaluatorReturned: boolean;
+  evaluatorScore: number | null;
+  finalIncluded: boolean;
+  finalRank: number | null;
+  evaluatorError?: {
+    classification: "candidate_evaluation_failed" | "evaluation_fatal";
+    message: string;
+  };
+}
+
 export type MatrixAssertionKind =
   | "target_returned"
   | "excluded_absent"
@@ -85,6 +99,8 @@ export interface ScoreMatrixSlotInput {
   candidates: readonly MatrixCandidate[];
   /** Raw retrieval diagnostics retained in run artifacts but never scored or judged. */
   rawCandidates?: readonly MatrixRetrievalCandidate[];
+  /** Sanitized evaluator diagnostics retained in run artifacts but never scored or judged. */
+  evaluatorTraces?: readonly MatrixEvaluatorTrace[];
   completed: boolean;
   configDeltas?: readonly MatrixConfigDelta[];
   /** Invoked only after every deterministic assertion passes. */
@@ -104,6 +120,8 @@ export interface MatrixSlotResult extends CaseResultLike {
   candidates: MatrixCandidate[];
   /** Raw retrieval diagnostics only; these never enter deterministic assertions or the judge. */
   rawCandidates: MatrixRetrievalCandidate[];
+  /** Sanitized evaluator diagnostics only; these never enter deterministic assertions or the judge. */
+  evaluatorTraces: MatrixEvaluatorTrace[];
   judge: MatrixJudgeResult | null;
 }
 
@@ -125,7 +143,7 @@ export interface MatrixBaselineRetrievalCandidate {
   evidenceIds: MatrixCandidateEvidenceIds;
 }
 
-export interface MatrixBaselineSlotResult extends Omit<MatrixSlotResult, "candidates" | "rawCandidates"> {
+export interface MatrixBaselineSlotResult extends Omit<MatrixSlotResult, "candidates" | "rawCandidates" | "evaluatorTraces"> {
   candidates: MatrixBaselineCandidate[];
   rawCandidates: MatrixBaselineRetrievalCandidate[];
 }
@@ -271,6 +289,10 @@ export async function scoreMatrixSlot(input: ScoreMatrixSlotInput): Promise<Matr
       ...candidate,
       evidenceTypes: [...candidate.evidenceTypes],
       evidenceIds: { ...candidate.evidenceIds },
+    })),
+    evaluatorTraces: (input.evaluatorTraces ?? []).map((trace) => ({
+      ...trace,
+      ...(trace.evaluatorError ? { evaluatorError: { ...trace.evaluatorError } } : {}),
     })),
     judge,
   };

@@ -32,6 +32,7 @@ const scorecard: MatrixScorecard = {
     ],
     candidates: [{ id: "candidate-a", finalRank: 1, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" } }],
     rawCandidates: [{ id: "candidate-a", retrievalRank: 2, evidenceTypes: ["intent", "premise"], evidenceIds: { candidateIntentId: "intent-a", candidatePremiseId: "premise-a" }, rawText: "raw provider candidate text" }],
+    evaluatorTraces: [{ id: "candidate-a", retrievalRank: 2, evaluatorReturned: true, evaluatorScore: 82, finalIncluded: true, finalRank: 1 }],
     judge: { passed: true, detail: "judge approved" },
   }],
 };
@@ -45,6 +46,7 @@ describe("historical discovery environment matrix reporter", () => {
     expect(html).toContain("both-premise");
     expect(html).toContain("final target rank");
     expect(html).toContain("candidate-a @ retrieval 2");
+    expect(html).toContain("returned score 82; final 1");
     expect(html).toContain("intent, premise");
     expect(html).toContain("target_returned: pass");
     expect(html).toContain("judge: pass");
@@ -56,6 +58,7 @@ describe("historical discovery environment matrix reporter", () => {
 
     expect(JSON.stringify(scorecard)).toContain("raw provider candidate text");
     expect(JSON.stringify(baseline)).not.toContain("raw provider candidate text");
+    expect(JSON.stringify(baseline)).not.toContain("evaluatorTraces");
     expect(baseline.cases[0]!.candidates[0]).not.toHaveProperty("rawText");
     expect(baseline.cases[0]!.candidates[0]!.finalRank).toBe(1);
     expect(baseline.cases[0]!.rawCandidates[0]!.retrievalRank).toBe(2);

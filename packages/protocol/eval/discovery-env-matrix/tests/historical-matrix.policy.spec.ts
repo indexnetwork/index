@@ -106,6 +106,34 @@ describe("historical discovery environment matrix policy", () => {
     expect(judgeInputs).toEqual([[matrixCase.expectedUserId]]);
   });
 
+  it("retains evaluator traces only as diagnostics and keeps them out of judge input", async () => {
+    const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
+    const judgeInputs: string[][] = [];
+    const result = await scoreMatrixSlot({
+      matrixCase,
+      rowId: "intent-only",
+      repetition: 0,
+      completed: true,
+      candidates: [{ id: matrixCase.expectedUserId, finalRank: 1, evidenceTypes: ["intent"], evidenceIds: {} }],
+      evaluatorTraces: [{
+        id: matrixCase.expectedUserId,
+        retrievalRank: 1,
+        evaluatorReturned: true,
+        evaluatorScore: 51,
+        finalIncluded: true,
+        finalRank: 1,
+        evaluatorError: { classification: "candidate_evaluation_failed", message: "Evaluator failed for this candidate." },
+      }],
+      judge: async (input) => {
+        judgeInputs.push(input.candidateIds);
+        return { passed: true };
+      },
+    });
+
+    expect(result.evaluatorTraces).toEqual([expect.objectContaining({ evaluatorScore: 51, finalRank: 1 })]);
+    expect(judgeInputs).toEqual([[matrixCase.expectedUserId]]);
+  });
+
   it("constructs judge prompts from the explicit model-safe boundary only", () => {
     const prompt = buildJudgePrompt({
       sourceText: "Need a collaborator for a circuit-board design project.",

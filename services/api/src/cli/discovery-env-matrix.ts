@@ -182,6 +182,23 @@ export type MatrixCandidate = {
   evidenceTypes: Array<'intent' | 'premise' | 'user_context'>;
   evidenceIds: MatrixCandidateEvidenceIds;
 };
+
+/**
+ * Sanitized evaluator observation for a raw fixture candidate. It is diagnostic
+ * evidence only: policy, judge, and baseline projection never consume it.
+ */
+export type MatrixEvaluatorTrace = {
+  id: string;
+  retrievalRank: number;
+  evaluatorReturned: boolean;
+  evaluatorScore: number | null;
+  finalIncluded: boolean;
+  finalRank: number | null;
+  evaluatorError?: {
+    classification: 'candidate_evaluation_failed' | 'evaluation_fatal';
+    message: string;
+  };
+};
 export type MatrixSlotResult = Record<string, unknown> & {
   caseId: string;
   rule: string;
@@ -522,6 +539,61 @@ export function projectFinalCandidates(
   });
 }
 
+/**
+ * Extracts only fixture IDs and scalar evaluator outcomes from graph tracing.
+ * Deliberately never copies provider messages, prompts, reasoning, profiles, or
+ * the graph's rich trace payload into governed evaluation artifacts.
+ */
+export function collectEvaluatorTraces(
+  result: Record<string, unknown>,
+  rawCandidates: readonly MatrixRetrievalCandidate[],
+  finalCandidates: readonly MatrixCandidate[],
+): MatrixEvaluatorTrace[] {
+  const finalById = new Map(finalCandidates.map((candidate) => [candidate.id, candidate.finalRank]));
+  const observations = new Map<string, { returned: boolean; score: number | null; error?: MatrixEvaluatorTrace['evaluatorError'] }>();
+  let fatal = false;
+  for (const entry of Array.isArray(result.trace) ? result.trace : []) {
+    if (!entry || typeof entry !== 'object') continue;
+    const trace = entry as { node?: unknown; data?: unknown };
+    const data = trace.data && typeof trace.data === 'object' ? trace.data as Record<string, unknown> : {};
+    if (trace.node === 'candidate' && typeof data.userId === 'string') {
+      const score = typeof data.score === 'number' && Number.isFinite(data.score) ? data.score : null;
+      observations.set(data.userId, { returned: score !== null, score });
+    }
+    if (trace.node === 'evaluation_errors' && Array.isArray(data.errors)) {
+      for (const error of data.errors) {
+        if (!error || typeof error !== 'object') continue;
+        const candidateUserId = (error as { candidateUserId?: unknown }).candidateUserId;
+        if (typeof candidateUserId === 'string') {
+          const current = observations.get(candidateUserId) ?? { returned: false, score: null };
+          observations.set(candidateUserId, {
+            ...current,
+            error: { classification: 'candidate_evaluation_failed', message: 'Evaluator failed for this candidate.' },
+          });
+        }
+      }
+    }
+    if (trace.node === 'evaluation_fatal') fatal = true;
+  }
+  return rawCandidates.map((candidate) => {
+    const observation = observations.get(candidate.id) ?? { returned: false, score: null };
+    const finalRank = finalById.get(candidate.id) ?? null;
+    return {
+      id: candidate.id,
+      retrievalRank: candidate.retrievalRank,
+      evaluatorReturned: observation.returned,
+      evaluatorScore: observation.score,
+      finalIncluded: finalRank !== null,
+      finalRank,
+      ...(observation.error
+        ? { evaluatorError: observation.error }
+        : fatal
+          ? { evaluatorError: { classification: 'evaluation_fatal' as const, message: 'Evaluator failed before returning candidate outcomes.' } }
+          : {}),
+    };
+  });
+}
+
 async function createChildDependencies() {
   const [adapterModule, embedderModule, cacheModule] = await Promise.all([
     import('../adapters/database.adapter'),
@@ -622,12 +694,14 @@ async function runChild(child: MatrixChildManifestEntry, selection: MatrixExecut
     if (graphResult.error) throw new Error(`${matrixCase.id}: opportunity graph failed: ${String(graphResult.error)}`);
     const rawCandidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
     const candidates = projectFinalCandidates(graphResult, rawCandidates, fixtureCase.sourceUserId, 50);
+    const evaluatorTraces = collectEvaluatorTraces(graphResult, rawCandidates, candidates);
     const scored = await scoreMatrixSlot({
       matrixCase,
       rowId: slot.row.id,
       repetition: slot.repetition,
       candidates,
       rawCandidates,
+      evaluatorTraces,
       completed: true,
       configDeltas: [
         { key: 'DISCOVERY_ALLOWED_TYPES', before: null, after: slot.row.allowedTypes },
