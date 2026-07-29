@@ -239,6 +239,7 @@ export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors
 export { getPrimaryActionLabel } from "./capabilities/opportunities.facade.js";
 export { computeFeedHealth } from "./capabilities/opportunities.facade.js";
 export type { FeedHealthInput } from "./capabilities/opportunities.facade.js";
+export { isIntroducerDiscoveryEnabled } from "./capabilities/opportunities.facade.js";
 export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./capabilities/opportunities.facade.js";
 export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./capabilities/opportunities.facade.js";
 export { persistOpportunities } from "./capabilities/opportunities.facade.js";

@@ -129,6 +129,7 @@ import {
   FEED_SOFT_TARGETS,
   getPrimaryActionLabel,
   computeFeedHealth,
+  isIntroducerDiscoveryEnabled,
   selectContactsForDiscovery,
   shouldRunIntroducerDiscovery,
   runIntroducerDiscovery,

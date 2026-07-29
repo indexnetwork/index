@@ -177,6 +177,7 @@ export { computeFeedHealth } from "../feed/feed.health.js";
 export type { FeedHealthInput } from "../feed/feed.health.js";
 
 // ── Application exports ───────────────────────────────────────────────────────
+export { isIntroducerDiscoveryEnabled } from "../application/opportunity.introducer-feature.js";
 export { OpportunityGraphFactory } from "../application/opportunity.graph.js";
 export type {
   StampNewbornOpportunitiesFn,
