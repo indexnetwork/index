@@ -3724,7 +3724,9 @@ describe('Opportunity Graph — Trace Events', () => {
     const traceEvents: Array<{ type: string; name?: string; summary?: string }> = [];
     const evaluator: OpportunityEvaluatorLike = {
       invokeEntityBundle: async () => {
-        throw new Error(secret);
+        const error = new Error(secret);
+        error.name = 'Authorization: Bearer hostile-error-name-token';
+        throw error;
       },
     };
 
@@ -3749,10 +3751,11 @@ describe('Opportunity Graph — Trace Events', () => {
       'neon-secret',
       'provider-secret',
       'Authorization:',
+      'hostile-error-name-token',
     ]) {
       expect(emitted).not.toContain(secretFragment);
     }
-    expect(emitted).toContain('Error: [redacted]');
+    expect(emitted).toContain('OpportunityEvaluationError: [redacted]');
   }, 60_000);
 
   test('trace events are in correct chronological order (start before end)', async () => {

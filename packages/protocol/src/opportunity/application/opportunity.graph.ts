@@ -97,10 +97,8 @@ const routingLog = protocolLogger('OpportunityGraph:Routing');
  * observability useful by retaining only a conservative error class at this
  * boundary; detailed errors are intentionally not emitted from graph traces.
  */
-export function safeOpportunityGraphError(error: unknown): string {
-  const name = error instanceof Error ? error.name : 'UnknownError';
-  const safeName = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(name) ? name : 'Error';
-  return `${safeName}: [redacted]`;
+export function safeOpportunityGraphError(_error: unknown): string {
+  return 'OpportunityEvaluationError: [redacted]';
 }
 
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
