@@ -81,8 +81,8 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
         {/* no picture here. a runtime is a process on this mac, not somebody.
             the only thing in the app with a face is your negotiator, above */}
         <span style={{
-          flex:"0 0 auto", minWidth:150,
-          fontFamily:"var(--mac-mono)", fontSize:15, fontWeight:700, color:"#000",
+          flex:"0 0 auto", minWidth:146,
+          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:600, color:"#000",
           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
         }}>{agent.name}</span>
         <span style={{ flex:1, minWidth:0 }}>

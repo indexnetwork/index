@@ -136,15 +136,19 @@ function UserMenu({ me, onSelect }) {
   // "your network" moved out to its own shelf row above.
   const ITEMS = [
     { id: "profile",  label: "your profile" },
-    { id: "settings", label: "preferences" },
+    { id: "settings", label: "notifications" },
     { id: "history",  label: "negotiation history" },
     { id: "signout",  label: "sign out", danger: true },
   ];
 
   const pick = (item) => { setOpen(false); onSelect && onSelect(item.id); };
-  const rowHover = (on) => (e) => {
-    e.currentTarget.style.background = on ? "#000" : "transparent";
-    e.currentTarget.style.color = on ? "#FF8A00" : "#000";
+  // Destructive rows keep the app's warn treatment on hover, the same one the
+  // archive gadget uses: red stays red and the row washes pink. Inverting them
+  // to black-and-orange like the ordinary rows dropped the one colour that says
+  // this one is different, at the exact moment the pointer is on it.
+  const rowHover = (on, danger) => (e) => {
+    e.currentTarget.style.background = on ? (danger ? "#FFF3F3" : "#000") : "transparent";
+    e.currentTarget.style.color = danger ? "var(--ink-warn)" : (on ? "#FF8A00" : "#000");
   };
 
   return (
@@ -184,13 +188,14 @@ function UserMenu({ me, onSelect }) {
               key={item.id}
               role="menuitem"
               onClick={() => pick(item)}
-              onMouseEnter={rowHover(true)}
-              onMouseLeave={rowHover(false)}
+              onMouseEnter={rowHover(true, item.danger)}
+              onMouseLeave={rowHover(false, item.danger)}
               style={{
                 display:"block", width:"100%", textAlign:"left",
                 padding:"6px 12px", border:"none", background:"transparent",
                 fontFamily:"var(--mac-sans)", fontSize:12, cursor:"pointer",
                 color: item.danger ? "var(--ink-warn)" : "#000",
+                fontWeight: item.danger ? 600 : 400,
                 borderTop: item.danger ? "1px solid #000" : "none",
                 marginTop: item.danger ? 4 : 0,
               }}>{item.label}</button>

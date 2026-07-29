@@ -249,42 +249,9 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
           }}>+ add website</button>
       </div>
 
-      {/* integrations + danger zone belong to settings, not first-run setup */}
+      {/* the danger zone belongs to settings, not first-run setup */}
       {!profileOnly && (
         <React.Fragment>
-          <SectionRule>integrations</SectionRule>
-
-          <div style={{ marginTop:12 }}>
-            <div style={{
-              border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-              padding:"10px 12px",
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            }}>
-              <div style={{ display:"flex", alignItems:"center", gap:11, minWidth:0 }}>
-                <span style={{
-                  flex:"0 0 auto", width:26, height:26,
-                  border:"1px solid #000", background:"#EDEAE1",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:13,
-                }}>✉</span>
-                <div style={{ minWidth:0 }}>
-                  <div style={{
-                    fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
-                  }}>telegram</div>
-                  <div style={{
-                    marginTop:2, fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
-                  }}>receive notifications and updates via telegram</div>
-                </div>
-              </div>
-              <button style={{
-                flex:"0 0 auto",
-                fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 15px",
-                border:"1px solid #000", background:"#fff", color:"#000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-              }}>connect</button>
-            </div>
-          </div>
-
           <DangerZone/>
         </React.Fragment>
       )}
