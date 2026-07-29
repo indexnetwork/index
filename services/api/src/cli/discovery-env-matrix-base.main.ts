@@ -260,7 +260,7 @@ export async function verifyBaseFixtureIntegrity(
   const userIds = payload.users.map((user) => user.id);
   const networkIds = payload.networks.map((network) => network.id);
   const intentIds = payload.intents.map((intent) => intent.id);
-  const [users, networks, intents, intentNetworks, memberships] = await Promise.all([
+  const [users, networks, intents, intentNetworks, memberships, premises, contexts, hydeDocuments, opportunities] = await Promise.all([
     db.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.id, userIds)),
     db.select({ id: schema.networks.id }).from(schema.networks).where(inArray(schema.networks.id, networkIds)),
     db.select({ id: schema.intents.id, embedding: schema.intents.embedding }).from(schema.intents)
@@ -272,6 +272,10 @@ export async function verifyBaseFixtureIntegrity(
         inArray(schema.networkMembers.userId, userIds),
         inArray(schema.networkMembers.networkId, networkIds),
       )),
+    db.select({ id: schema.premises.id }).from(schema.premises).where(inArray(schema.premises.userId, userIds)),
+    db.select({ id: schema.userContexts.id }).from(schema.userContexts).where(or(inArray(schema.userContexts.userId, userIds), inArray(schema.userContexts.networkId, networkIds))),
+    db.select({ sourceId: schema.hydeDocuments.sourceId, sourceText: schema.hydeDocuments.sourceText, embedding: schema.hydeDocuments.hydeEmbedding, sourceType: schema.hydeDocuments.sourceType }).from(schema.hydeDocuments).where(inArray(schema.hydeDocuments.sourceId, intentIds)),
+    db.select({ id: schema.opportunities.id, actors: schema.opportunities.actors }).from(schema.opportunities),
   ]);
 
   assertExactFixtureIds('user', userIds, users.map((row) => row.id));
@@ -279,6 +283,14 @@ export async function verifyBaseFixtureIntegrity(
   assertExactFixtureIds('intent', intentIds, intents.map((row) => row.id));
   const unembedded = intents.find((intent) => intent.embedding === null);
   if (unembedded) throw new Error(`Discovery environment matrix base integrity failed: intent ${unembedded.id} is unembedded`);
+
+  if (premises.length || contexts.length) throw new Error('Discovery environment matrix base integrity failed: unexpected fixture premise or context state');
+  const fixtureOpportunity = opportunities.find((opportunity) => Array.isArray(opportunity.actors) && opportunity.actors.some((actor) => userIds.includes(String(actor.userId))));
+  if (fixtureOpportunity) throw new Error(`Discovery environment matrix base integrity failed: fixture opportunity ${fixtureOpportunity.id}`);
+  for (const intent of payload.intents) {
+    const documents = hydeDocuments.filter((document) => document.sourceType === 'intent' && document.sourceId === intent.id && document.sourceText === intent.payload && document.embedding !== null);
+    if (!documents.length) throw new Error(`Discovery environment matrix base integrity failed: missing valid intent HyDE ${intent.id}`);
+  }
 
   const expectedIntentNetworks = new Set(payload.intents.map((intent) => `${intent.id}:${intent.networkId}`));
   const actualIntentNetworks = new Set(intentNetworks.map((row) => `${row.intentId}:${row.networkId}`));

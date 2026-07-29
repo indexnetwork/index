@@ -117,6 +117,9 @@ function mockCurrentCommandDatabase(payload: ReturnType<typeof baseSeedPayload>,
     payload.intents.map((intent) => ({ id: intent.id, embedding: [0.1] })),
     payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId })),
     payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId })),
+    [], [],
+    payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: [0.1] })),
+    [],
   ];
   const state = { reads: 0, writes: 0, closed: false };
   const select = (fields: unknown) => {
@@ -131,7 +134,7 @@ function mockCurrentCommandDatabase(payload: ReturnType<typeof baseSeedPayload>,
         return query;
       },
     };
-    return { from: () => ({ where: () => query }) };
+    return { from: () => Object.assign(query, { where: () => query }) };
   };
   return {
     db: { select } as unknown as DrizzleDB,
@@ -308,6 +311,10 @@ describe('protected base lifecycle', () => {
       })),
       payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId })),
       payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId })),
+      [],
+      [],
+      payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: [0.1] })),
+      [],
     ];
   }
 
@@ -317,7 +324,7 @@ describe('protected base lifecycle', () => {
     }));
 
     await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('is unembedded');
-    expect(state.reads).toBe(5);
+    expect(state.reads).toBe(8);
     expect(state.writes).toBe(0);
   });
 
@@ -404,7 +411,7 @@ describe('package verify command composition', () => {
       log,
     })).resolves.toBe('already-current');
 
-    expect(readOnly.state.reads).toBe(6);
+    expect(readOnly.state.reads).toBe(10);
     expect(readOnly.state.writes).toBe(0);
     expect(readOnly.state.closed).toBe(true);
     expect(createIndexer).not.toHaveBeenCalled();
