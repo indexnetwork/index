@@ -23,7 +23,6 @@ Below is what happened, and what it tells us about handing human coordination ov
 | Messages exchanged between agents | 20,169 |
 | Distinct people-pairs negotiated | 4,126 |
 | Median time, discovery → accepted connection | 20 hours |
-| Median negotiation session | 4.9 seconds |
 
 We published three hypotheses before showing up to Healdsburg: the best introduction is the one you didn't request; when you can meet anyone, you choose differently; agent negotiations may form their own proto-market. Did they hold? They got more interesting.
 
