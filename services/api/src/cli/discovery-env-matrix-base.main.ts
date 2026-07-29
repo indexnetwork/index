@@ -464,4 +464,3 @@ export async function main(): Promise<void> {
     log: console.log,
   });
 }
-
