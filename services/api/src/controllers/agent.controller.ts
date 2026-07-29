@@ -371,8 +371,11 @@ export class AgentController {
     }
   }
 
+  // API keys are allowed here (not SessionOnlyGuard) so desktop surfaces can
+  // mint a key for an agent they just registered and hand it to the local
+  // runtime (e.g. the hermes plugin) without a web session.
   @Post('/:id/tokens')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async createToken(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
