@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 process.env.OPENROUTER_API_KEY ??= 'test';
 
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { continueDiscovery } from '../opportunity.discover.js';
 import { finalizeDiscoveryContinuation } from '../opportunity.discovery-continuation-finalization.js';
@@ -11,6 +11,15 @@ import type { Opportunity } from '../../shared/interfaces/database.interface.js'
 const viewerId = 'continuation-viewer';
 const candidateId = 'continuation-candidate';
 const persistedAt = new Date('2026-06-01T12:00:00.000Z');
+const originalIntroducerDiscoveryEnabled = process.env.INTRODUCER_DISCOVERY_ENABLED;
+
+afterEach(() => {
+  if (originalIntroducerDiscoveryEnabled === undefined) {
+    delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+  } else {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+  }
+});
 
 function opportunity(status: Opportunity['status']): Opportunity {
   return {
@@ -36,6 +45,59 @@ function opportunity(status: Opportunity['status']): Opportunity {
 }
 
 describe('continueDiscovery lifecycle refresh', () => {
+  test('returns the disabled result without invoking the graph for cached on-behalf discovery', async () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = 'false';
+    const invoke = mock(async () => ({ opportunities: [] }));
+
+    const result = await continueDiscovery({
+      opportunityGraph: { invoke } as never,
+      database: {} as never,
+      cache: {
+        get: async () => ({
+          candidates: [],
+          userId: viewerId,
+          onBehalfOfUserId: 'target-1',
+          query: 'find an investor',
+          indexScope: ['network-1'],
+          options: {},
+        }),
+      } as never,
+      userId: viewerId,
+      discoveryId: 'continuation-id',
+    });
+
+    expect(result).toMatchObject({
+      found: false,
+      count: 0,
+      message: 'Introducer discovery is currently disabled.',
+    });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  test('continues regular cached discovery while introducer discovery is disabled', async () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = 'false';
+    const invoke = mock(async () => ({ opportunities: [], remainingCandidates: [] }));
+
+    await continueDiscovery({
+      opportunityGraph: { invoke } as never,
+      database: {} as never,
+      cache: {
+        get: async () => ({
+          candidates: [],
+          userId: viewerId,
+          query: 'find a collaborator',
+          indexScope: ['network-1'],
+          options: {},
+        }),
+        delete: async () => undefined,
+      } as never,
+      userId: viewerId,
+      discoveryId: 'continuation-id',
+    });
+
+    expect(invoke).toHaveBeenCalled();
+  });
+
   test('preserves the current database status instead of the persist-time or chat-session projection', async () => {
     const graphOpportunity = opportunity('negotiating');
     const currentOpportunity = { ...graphOpportunity, status: 'rejected' as const, updatedAt: new Date(persistedAt.getTime() + 1_000) };

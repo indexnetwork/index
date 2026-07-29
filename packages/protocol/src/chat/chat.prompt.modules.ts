@@ -1,6 +1,7 @@
 import type { BaseMessage, AIMessage } from "@langchain/core/messages";
 
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import { isIntroducerDiscoveryEnabled } from "../opportunity/application/opportunity.introducer-feature.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -109,7 +110,12 @@ const discoveryModule: PromptModule = {
   id: "discovery",
   triggers: ["discover_opportunities", "update_opportunity", "list_opportunities"],
   triggerFilter: (iterCtx) => !hasIntroductionArgs(iterCtx.recentTools),
-  content: () => `
+  content: () => {
+    const introducerException = isIntroducerDiscoveryEnabled()
+      ? "- **Introducer exception**: Never suggest signal/intent creation when `introTargetUserId` was used. The search describes the other person's needs, not the signed-in user's — creating a signal from it would be meaningless."
+      : "";
+
+    return `
 ### 1. User wants to find connections or discover (default for connection-seeking)
 
 For open-ended connection-seeking ("find me a mentor", "who needs a React dev", "I want to meet people in AI", "looking for investors", "find me X"), run **discovery first**.
@@ -164,16 +170,18 @@ Draft or latent opportunities can be sent (update_opportunity with status='pendi
 - When the tool returns \`createIntentSuggested\`, the system may create an intent and retry; respond from the final discovery result.
 - Visibility-signal follow-up: apply the Pattern 1 rule above (\`suggestIntentCreationForVisibility\` → ask once; on yes, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block).
 - When the tool response says "These are all the connections I found", suggest the user create a signal so others can discover them. Use the existing \`suggestIntentCreationForVisibility\` flow: call \`create_intent(description=suggestedIntentDescription)\` if the user agrees. Do not ask "Would you like to see more?" when there are no more candidates.
-- **Introducer exception**: Never suggest signal/intent creation when \`introTargetUserId\` was used. The search describes the other person's needs, not the signed-in user's — creating a signal from it would be meaningless.
+${introducerException}
 - Only call \`discover_opportunities\` for: (a) discovery ("find me connections"), (b) introductions between two other people, or (c) direct connection with a specific mentioned person (Pattern 1a).
-`,
+`;
+  },
 };
 
 const introductionModule: PromptModule = {
   id: "introduction",
   triggers: ["discover_opportunities"],
   excludes: ["discovery"],
-  triggerFilter: (iterCtx) => hasIntroductionArgs(iterCtx.recentTools),
+  triggerFilter: (iterCtx) =>
+    isIntroducerDiscoveryEnabled() && hasIntroductionArgs(iterCtx.recentTools),
   content: () => `
 ### 6. Introduce two people
 

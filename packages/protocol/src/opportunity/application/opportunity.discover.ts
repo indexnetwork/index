@@ -34,6 +34,7 @@ import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { summarizeDiscoveryNegotiations } from "./opportunity.discovery-negotiation-summary.js";
 import { finalizeDiscoveryContinuation } from './opportunity.discovery-continuation-finalization.js';
 import type { DiscoverDebugStep } from '../domain/opportunity.discovery.contracts.js';
+import { isIntroducerDiscoveryEnabled } from './opportunity.introducer-feature.js';
 
 const logger = protocolLogger("OpportunityDiscover");
 const discoverFromQueryLog = protocolLogger("OpportunityDiscover:runDiscoverFromQuery");
@@ -240,6 +241,14 @@ export interface DiscoverResult {
 }
 
 /** Input for the shared enrichment helper. */
+function introducerDiscoveryDisabledResult(): DiscoverResult {
+  return {
+    found: false,
+    count: 0,
+    message: "Introducer discovery is currently disabled.",
+  };
+}
+
 interface EnrichOpportunitiesInput {
   opportunities: Opportunity[];
   database: ChatGraphCompositeDatabase;
@@ -640,6 +649,10 @@ export async function runDiscoverFromQuery(
     trigger,
     negotiateTimeoutMs,
   } = input;
+
+  if (onBehalfOfUserId && !isIntroducerDiscoveryEnabled()) {
+    return introducerDiscoveryDisabledResult();
+  }
 
   if (indexScope.length === 0) {
     return {
@@ -1179,6 +1192,10 @@ export async function continueDiscovery(input: {
       count: 0,
       message: "Discovery session was created in a different context. Please start a new search.",
     };
+  }
+
+  if (cached.onBehalfOfUserId && !isIntroducerDiscoveryEnabled()) {
+    return introducerDiscoveryDisabledResult();
   }
 
   const result = await invokeWithAbortSignal(opportunityGraph, {

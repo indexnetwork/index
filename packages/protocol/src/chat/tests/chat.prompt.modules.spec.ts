@@ -2,13 +2,27 @@
 import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
-import { describe, test, expect } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 import { buildSystemContent } from "../chat.prompt.js";
 import { extractRecentToolCalls, resolveModules, PROMPT_MODULES, type IterationContext } from "../chat.prompt.modules.js";
+
+const originalIntroducerDiscoveryEnabled = process.env.INTRODUCER_DISCOVERY_ENABLED;
+
+beforeEach(() => {
+  process.env.INTRODUCER_DISCOVERY_ENABLED = "true";
+});
+
+afterEach(() => {
+  if (originalIntroducerDiscoveryEnabled === undefined) {
+    delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+  } else {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+  }
+});
 
 describe("extractRecentToolCalls", () => {
   test("returns empty array when no tool calls in messages", () => {
@@ -165,14 +179,43 @@ describe("resolveModules", () => {
     expect(result).not.toContain("### 1. User wants to find connections or discover");
   });
 
-  test("activates introduction module when introTargetUserId present", () => {
+  test("omits introduction guidance when introducer discovery is disabled", () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = "false";
     const iterCtx: IterationContext = {
       recentTools: [{ name: "discover_opportunities", args: { introTargetUserId: "user-x" } }],
       ctx: mockCtx(),
     };
     const result = resolveModules(iterCtx);
+    expect(result).not.toContain("### 6. Introduce two people");
+    expect(result).not.toContain("### 6a. Discover who to introduce to someone");
+  });
+
+  test("omits the introducer exception from regular discovery when disabled", () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = "false";
+    const result = resolveModules({
+      recentTools: [{ name: "discover_opportunities", args: { searchQuery: "mentor" } }],
+      ctx: mockCtx(),
+    });
+    expect(result).not.toContain("Introducer exception");
+  });
+
+  test("keeps introduction guidance when introducer discovery is enabled", () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = "true";
+    const result = resolveModules({
+      recentTools: [{ name: "discover_opportunities", args: { introTargetUserId: "user-x" } }],
+      ctx: mockCtx(),
+    });
     expect(result).toContain("### 6. Introduce two people");
-    expect(result).not.toContain("### 1. User wants to find connections or discover");
+    expect(result).toContain("### 6a. Discover who to introduce to someone");
+  });
+
+  test("keeps the introducer exception in regular discovery when enabled", () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = "true";
+    const result = resolveModules({
+      recentTools: [{ name: "discover_opportunities", args: { searchQuery: "mentor" } }],
+      ctx: mockCtx(),
+    });
+    expect(result).toContain("Introducer exception");
   });
 
   test("activates intent-creation module on create_intent trigger", () => {
