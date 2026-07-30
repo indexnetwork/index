@@ -27,6 +27,43 @@ describe('test database readiness', () => {
     );
   });
 
+  test('refuses databases whose name marks them as carrying real data', () => {
+    // Every Neon branch in this project — production, dev and local-dev alike —
+    // exposes a `protocol_prod` database holding a copy of real user data, so the
+    // name is a reliable marker of real data rather than of the production branch.
+    for (const name of ['protocol_prod', 'prod', 'production', 'index_production', 'app_prod']) {
+      expect(() => validateTestDatabaseUrl(`postgresql://user:pass@host.example.com/${name}`)).toThrow(
+        '[test-db] Refusing to run tests against a database that carries real data',
+      );
+    }
+  });
+
+  test('names the remedy without leaking credentials', () => {
+    try {
+      validateTestDatabaseUrl('postgresql://user:sup3rs3cret@host.example.com/protocol_prod');
+      throw new Error('expected a refusal');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain('protocol_prod');
+      expect(message).toContain('neondb');
+      expect(message).not.toContain('sup3rs3cret');
+    }
+  });
+
+  test('allows disposable database names, including query strings and ports', () => {
+    expect(validateTestDatabaseUrl('postgresql://user:pass@host.example.com/neondb')).toContain('neondb');
+    expect(
+      validateTestDatabaseUrl('postgresql://user:pass@host.example.com:5432/neondb?sslmode=require'),
+    ).toContain('neondb');
+    expect(validateTestDatabaseUrl('postgresql://user:pass@localhost:5432/index_test')).toContain(
+      'index_test',
+    );
+    // "reproduction" contains "production" as a substring but is not a prod database.
+    expect(validateTestDatabaseUrl('postgresql://user:pass@localhost:5432/reproduction_fixtures')).toContain(
+      'reproduction_fixtures',
+    );
+  });
+
   test('requires an explicit disposable-database marker', async () => {
     await expect(
       checkTestDatabaseReadiness({
