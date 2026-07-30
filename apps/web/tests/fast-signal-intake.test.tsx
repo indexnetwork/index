@@ -183,6 +183,38 @@ describe("fast signal intake", () => {
     expect(mocks.proposal).toHaveBeenCalledTimes(2);
   });
 
+  test("a non-empty server synthesis wins over the locally derived answer label", async () => {
+    mocks.proposal.mockResolvedValue({
+      proposalId: "prop-1", description: "Looking for a design partner.",
+      lookingFor: "Server-synthesized: a hands-on product cofounder",
+      youBring: "Server-synthesized: five years of infra experience",
+    });
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+    fireEvent.click(await screen.findByText("Builders"));
+
+    await screen.findByText("Server-synthesized: a hands-on product cofounder");
+    await screen.findByText("Server-synthesized: five years of infra experience");
+    expect(screen.queryByText("A design partner", { selector: "p" })).toBeNull();
+  });
+
+  test("an empty server synthesis falls back to the locally derived answer label", async () => {
+    mocks.proposal.mockResolvedValue({
+      proposalId: "prop-1", description: "Looking for a design partner.",
+      lookingFor: "", youBring: "",
+    });
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+    fireEvent.click(await screen.findByText("Builders"));
+
+    await screen.findByText(/does this feel right/i);
+    expect(screen.getAllByText("A design partner", { selector: "p" }).length).toBeGreaterThanOrEqual(2);
+  });
+
   test("falls back to the legacy chat path when the flag is off", async () => {
     mocks.fastSignalIntake = false;
     renderPage();

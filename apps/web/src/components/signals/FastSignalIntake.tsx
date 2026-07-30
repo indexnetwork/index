@@ -207,13 +207,21 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     await resolve(pendingChoice ?? {}, merged);
   }, [bringAnswer, clarification, pendingChoice, resolve]);
 
-  const lookingFor = whoAnswer ? answerLabel(whoAnswer) : undefined;
-  const youBring = bringAnswer ? answerLabel(bringAnswer) : undefined;
+  // Controller resolution 1: a non-empty server value must win over the raw
+  // option-label join, so the explicit prop is only supplied as a fallback
+  // when the server's synthesis came back empty (the clean speculative-hit
+  // branch). ProposalCard resolves `lookingFor ?? proposal.lookingFor ??
+  // proposal.description`, so leaving these `undefined` lets the richer
+  // server copy carried on `proposalForCard` win instead of being shadowed.
+  const lookingFor = proposal?.lookingFor?.trim() ? undefined : (whoAnswer ? answerLabel(whoAnswer) : undefined);
+  const youBring = proposal?.youBring?.trim() ? undefined : (bringAnswer ? answerLabel(bringAnswer) : undefined);
 
   const proposalForCard: GuidedProposal | null = useMemo(() => (proposal ? {
     proposalId: proposal.proposalId,
     description: proposal.description,
     ...(selectedNetworkId ? { networkId: selectedNetworkId } : {}),
+    ...(proposal.lookingFor ? { lookingFor: proposal.lookingFor } : {}),
+    ...(proposal.youBring ? { youBring: proposal.youBring } : {}),
   } : null), [proposal, selectedNetworkId]);
 
   const handleConfirm = useCallback(async (description: string) => {
