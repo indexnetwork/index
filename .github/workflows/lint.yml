@@ -181,11 +181,9 @@ jobs:
     # drifting when #1301 deleted the discovery-run interface — both were broken
     # on dev for days without any red check.
     #
-    # NOTE: `architecture:cycles` is deliberately not run here yet. It fails on
-    # dev today (negotiation/application <-> questions/questioner <->
-    # shared/agent/tool.helpers form a 7-module cycle) and breaking that cycle is
-    # a refactor, not a check-wiring change. Add it to this job once that is
-    # fixed, and drop the individual steps for `bun run architecture:check`.
+    #
+    # Steps stay individual rather than one `bun run architecture:check` so a
+    # failure names the violated invariant directly in the checks list.
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
@@ -211,6 +209,9 @@ jobs:
 
       - name: Check capability boundaries
         run: cd packages/protocol && bun run architecture:capabilities
+
+      - name: Check production module cycles
+        run: cd packages/protocol && bun run architecture:cycles
 
       - name: Check published artifact inventory
         run: cd packages/protocol && bun run architecture:artifacts
