@@ -75,6 +75,59 @@ export function parseMatrixChildTimeoutMs(env: NodeJS.ProcessEnv): number {
   return timeoutMs;
 }
 
+// Children are fully isolated (dedicated Neon branch/endpoint per child), so
+// bounded concurrency only shares provider rate limits and local CPU.
+export const DEFAULT_CHILD_CONCURRENCY = 5;
+
+export function parseMatrixChildConcurrency(env: NodeJS.ProcessEnv): number {
+  const raw = env.DISCOVERY_ENV_MATRIX_CHILD_CONCURRENCY;
+  if (raw === undefined) return DEFAULT_CHILD_CONCURRENCY;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error('DISCOVERY_ENV_MATRIX_CHILD_CONCURRENCY must be a positive integer');
+  }
+  const concurrency = Number(raw);
+  if (!Number.isSafeInteger(concurrency) || concurrency <= 0) {
+    throw new Error('DISCOVERY_ENV_MATRIX_CHILD_CONCURRENCY must be a positive integer');
+  }
+  return concurrency;
+}
+
+/**
+ * Runs one task per item with bounded concurrency, preserving item order in the
+ * results. Fails fast: after the first rejection no further task starts,
+ * onFailure fires exactly once so in-flight children can be terminated, every
+ * in-flight task is awaited, and the first error is rethrown.
+ */
+export async function runBoundedChildTasks<T, R>(options: {
+  items: readonly T[];
+  concurrency: number;
+  task: (item: T, index: number) => Promise<R>;
+  onFailure?: () => void;
+}): Promise<R[]> {
+  const { items, concurrency, task, onFailure } = options;
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let firstFailure: { error: unknown } | undefined;
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
+    while (firstFailure === undefined) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      try {
+        results[index] = await task(items[index] as T, index);
+      } catch (error) {
+        if (firstFailure === undefined) {
+          firstFailure = { error };
+          onFailure?.();
+        }
+      }
+    }
+  });
+  await Promise.all(workers);
+  if (firstFailure !== undefined) throw firstFailure.error;
+  return results;
+}
+
 type ChildProcess = { exited: Promise<number>; kill(signal?: NodeJS.Signals): void };
 type MatrixChildLogger = Pick<Console, 'info' | 'warn' | 'error'>;
 
@@ -854,20 +907,32 @@ async function runParent(): Promise<void> {
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'discovery-env-matrix-'));
   let completedSuccessfully = false;
   try {
-    const outputs: ChildOutput[] = [];
-    for (const child of manifest.children) {
-      const outputPath = path.join(temporaryDirectory, `${child.childKey}.json`);
-      const proc = Bun.spawn({
-        cmd: [
-          process.execPath, new URL('./discovery-env-matrix.ts', import.meta.url).pathname, '--child-key', child.childKey, '--child-output', outputPath,
-          ...(selection.canary ? ['--case', selection.caseId!, '--canary'] : []),
-        ],
-        env: { ...process.env, DATABASE_URL: child.databaseUrl, DISCOVERY_ENV_MATRIX_CHILD_BRANCH: child.branch, DISCOVERY_ENV_MATRIX_BASE_BRANCH: child.baseBranch },
-        stdout: 'inherit', stderr: 'inherit',
-      });
-      await awaitMatrixChildProcess({ child, outputPath, timeoutMs: childTimeoutMs, process: proc });
-      outputs.push(await Bun.file(outputPath).json() as ChildOutput);
-    }
+    const activeChildren = new Set<ChildProcess>();
+    const outputs: ChildOutput[] = await runBoundedChildTasks({
+      items: manifest.children,
+      concurrency: parseMatrixChildConcurrency(process.env),
+      onFailure: () => {
+        for (const active of activeChildren) active.kill('SIGTERM');
+      },
+      task: async (child) => {
+        const outputPath = path.join(temporaryDirectory, `${child.childKey}.json`);
+        const proc = Bun.spawn({
+          cmd: [
+            process.execPath, new URL('./discovery-env-matrix.ts', import.meta.url).pathname, '--child-key', child.childKey, '--child-output', outputPath,
+            ...(selection.canary ? ['--case', selection.caseId!, '--canary'] : []),
+          ],
+          env: { ...process.env, DATABASE_URL: child.databaseUrl, DISCOVERY_ENV_MATRIX_CHILD_BRANCH: child.branch, DISCOVERY_ENV_MATRIX_BASE_BRANCH: child.baseBranch },
+          stdout: 'inherit', stderr: 'inherit',
+        });
+        activeChildren.add(proc);
+        try {
+          await awaitMatrixChildProcess({ child, outputPath, timeoutMs: childTimeoutMs, process: proc });
+        } finally {
+          activeChildren.delete(proc);
+        }
+        return await Bun.file(outputPath).json() as ChildOutput;
+      },
+    });
     const slots = outputs.flatMap((output) => output.slots);
     const execution = { policy: 'strict' as const, runs: outputs.flatMap((output) => output.execution.runs) };
     const summary = summarizeExecution(execution);

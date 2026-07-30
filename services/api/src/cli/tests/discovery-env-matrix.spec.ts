@@ -5,7 +5,7 @@ import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE, executeRuns } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
-import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildTimeoutMs, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
+import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildConcurrency, parseMatrixChildTimeoutMs, runBoundedChildTasks, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
 describe('discovery environment matrix runtime seams', () => {
@@ -287,6 +287,57 @@ describe('discovery environment matrix runtime seams', () => {
     for (const value of ['0', '-1', '1.5', 'NaN', ' 1', '1e3']) {
       expect(() => parseMatrixChildTimeoutMs({ DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS: value })).toThrow('positive integer');
     }
+  });
+
+  it('defaults bounded child concurrency to five isolated children', () => {
+    expect(parseMatrixChildConcurrency({})).toBe(5);
+    expect(parseMatrixChildConcurrency({ DISCOVERY_ENV_MATRIX_CHILD_CONCURRENCY: '2' })).toBe(2);
+    for (const value of ['0', '-1', '1.5', 'NaN', ' 1', '1e3']) {
+      expect(() => parseMatrixChildConcurrency({ DISCOVERY_ENV_MATRIX_CHILD_CONCURRENCY: value })).toThrow('positive integer');
+    }
+  });
+
+  it('runs bounded child tasks concurrently while preserving manifest order', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const items = [50, 10, 40, 5, 30, 1];
+    const results = await runBoundedChildTasks({
+      items,
+      concurrency: 3,
+      task: async (delayMs, index) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        inFlight -= 1;
+        return `slot-${index}:${delayMs}`;
+      },
+    });
+    expect(results).toEqual(items.map((delayMs, index) => `slot-${index}:${delayMs}`));
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(3);
+  });
+
+  it('fails fast on the first child failure, terminates in-flight children once, and rethrows it', async () => {
+    const started: number[] = [];
+    let failureSignals = 0;
+    const settled: number[] = [];
+    await expect(runBoundedChildTasks({
+      items: [0, 1, 2, 3, 4, 5],
+      concurrency: 2,
+      onFailure: () => { failureSignals += 1; },
+      task: async (item) => {
+        started.push(item);
+        if (item === 1) throw new Error('first child failure');
+        if (item === 2) throw new Error('second child failure');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        settled.push(item);
+        return item;
+      },
+    })).rejects.toThrow('first child failure');
+    expect(failureSignals).toBe(1);
+    expect(started).not.toContain(5);
+    // The already-started sibling was awaited before the rethrow.
+    expect(settled).toContain(0);
   });
 
   it('cleans child database and cache resources after success without changing output', async () => {
