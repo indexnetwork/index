@@ -1633,25 +1633,6 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
 }
 ```
 
-### POST /api/debug/intents/:id/discover
-
-
-**Auth**: DebugGuard + AuthGuard
-
-**Path params**:
-- `id` — Intent ID
-
-**Response**:
-```json
-{
-  "exportedAt": "...",
-  "preflight": { ... },
-  "result": { ... }
-}
-```
-
-Returns `diagnosis` string instead of `result` if there are no candidates or graph execution fails.
-
 ### GET /api/debug/chat/:id
 
 Returns a debug-friendly view of a chat session, including messages and per-turn debug metadata (graph, iterations, tools).

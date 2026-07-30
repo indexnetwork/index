@@ -11,6 +11,11 @@ const publicRuntimeFiles = [
   'services/api/src/controllers/opportunity.controller.ts',
   'services/api/src/main.ts',
   'services/api/src/controllers/debug.controller.ts',
+  'packages/protocol/src/shared/agent/canonical-guidance.ts',
+  'packages/protocol/src/chat/chat.prompt.ts',
+  'packages/protocol/src/README.md',
+  'docs/specs/api-reference.md',
+  'packages/cli/cli-output-reference.html',
 ];
 
 describe('Release 1 background-only opportunity inventory', () => {
@@ -18,7 +23,7 @@ describe('Release 1 background-only opportunity inventory', () => {
     const publicRuntimeSources = publicRuntimeFiles.map((file) => readFileSync(resolve(root, file), 'utf8')).join('\n');
     const schemaSources = readFileSync(resolve(root, 'services/api/src/schemas/database.schema.ts'), 'utf8');
 
-    expect(publicRuntimeSources).not.toMatch(/discover_opportunities|discoveryRunQueue/);
+    expect(publicRuntimeSources).not.toMatch(/discover_opportunities|get_discovery_run|cancel_discovery_run|discoveryRunQueue/);
     expect(schemaSources).toContain('opportunityDiscoveryRuns');
   });
 });

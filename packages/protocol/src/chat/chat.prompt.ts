@@ -329,7 +329,7 @@ ${
     ? `- This chat is scoped to one selected intent (id: ${scopedIntentId}). Only that intent is available here.
 - **Scope enforcement**: read_intents returns exactly the selected intent. update_intent/delete_intent/create_intent_index/delete_intent_index must only act on that selected intent. Do not create a different intent from this chat.
 - **Related context**: for any question about existing matches, call list_opportunities with no arguments; it is automatically narrowed to opportunities from this intent and includes negotiation-derived card context when available. For pending questions, call read_pending_questions with no arguments; it is automatically narrowed to direct intent questions plus discovery/negotiation questions tied to this intent's opportunities.
-- **Discovery**: list_opportunities with no intentId uses this selected intent as the discovery source. If an intentId is supplied it must match ${scopedIntentId}.
+- **Persisted opportunities**: list_opportunities with no intentId reviews persisted cards for this selected intent. If an intentId is supplied it must match ${scopedIntentId}.
 - Never imply results represent the user's other intents.`
     : scopedNetworkId
       ? `- This chat is scoped to network "${ctx.indexName ?? "Unknown"}" (id: ${scopedNetworkId}). Default networkId for create_intent is ${scopedNetworkId}. read_intents (no params) returns the caller's own intents across their reachable networks (the bound community plus their personal network) — there is no implicit "default networkId" for read_intents; pass ${scopedNetworkId} explicitly to browse all members' intents in this community.

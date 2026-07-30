@@ -241,7 +241,7 @@ User expresses signals (intents). Agent discovers matches and presents reasoning
 ### A2A: Agent→Agent Coordination
 Two agents coordinate on behalf of users to identify, vet, and propose matches.
 
-1. Agent A runs discovery for User A
+1. Approved signals for User A are evaluated in the background
 2. Agent B vets match from User B side (A2A negotiation)
 3. Agents reach agreement (A2A acceptance)
 4. Both agents present to users with shared reasoning
@@ -253,7 +253,7 @@ The MCP protocol carries H2A and A2A workflows only. Escalation to direct messag
 
 ### Best Practices
 - Call read_docs to understand the domain
-- Scope discovery to shared networks (networkId)
+- Create or refine approved signals in relevant shared networks; list_opportunities reviews persisted results
 - Present matches and reasoning to users
 - Get explicit owner approval before any commitment
 - Escalation to direct messaging is not MCP`,
