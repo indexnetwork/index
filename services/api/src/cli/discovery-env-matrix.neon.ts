@@ -38,8 +38,8 @@ function decodeBranch(value: unknown): NeonBranch {
   const parent = branch.parent_id;
   const expiry = branch.expires_at;
   if (parent !== null && typeof parent !== 'string') throw new Error('Neon control-plane branch response is missing parent_id');
-  if (expiry !== null && typeof expiry !== 'string') throw new Error('Neon control-plane branch response is missing expires_at');
-  return { id: asString(branch.id, 'Neon control-plane branch response is missing id'), name: asString(branch.name, 'Neon control-plane branch response is missing name'), parentId: parent, expiresAt: expiry, primary };
+  if (expiry !== undefined && expiry !== null && typeof expiry !== 'string') throw new Error('Neon control-plane branch response has an invalid expires_at');
+  return { id: asString(branch.id, 'Neon control-plane branch response is missing id'), name: asString(branch.name, 'Neon control-plane branch response is missing name'), parentId: parent, expiresAt: typeof expiry === 'string' ? expiry : null, primary };
 }
 function decodeEndpoints(value: unknown): NeonEndpoint[] {
   const record = Array.isArray(value) ? null : asRecord(value, 'Neon control-plane returned an invalid endpoint response');
@@ -73,6 +73,14 @@ function assertLocalTarget(url: URL): void {
   if (!url.hostname.endsWith('.neon.tech')) throw new Error('Discovery environment matrix target must use a Neon host');
 }
 
+/** Accept precisely Neon's canonical endpoint host or its one pooled counterpart. */
+function isEndpointHost(urlHost: string, endpointHost: string): boolean {
+  const firstDot = endpointHost.indexOf('.');
+  if (firstDot <= 0) return false;
+  const pooledHost = `${endpointHost.slice(0, firstDot)}-pooler${endpointHost.slice(firstDot)}`;
+  return urlHost === endpointHost || urlHost === pooledHost;
+}
+
 export function parseAttestedManifest(raw: string | undefined, expectedChildKeys: readonly string[]): AttestedManifest {
   if (!raw) throw new Error('DISCOVERY_ENV_MATRIX_CHILDREN must declare an attested manifest');
   let parsed: unknown;
@@ -104,14 +112,14 @@ export async function attestMatrixTargets(input: { manifest: AttestedManifest; c
   const baseUrl = new URL(manifest.base.databaseUrl);
   const baseEndpoints = await controlPlane.listEndpoints(manifest.base.projectId, manifest.base.branchId);
   const baseEndpoint = baseEndpoints.find((candidate) => candidate.id === manifest.base.endpointId);
-  if (!baseEndpoint || baseEndpoint.branchId !== base.id || baseEndpoint.host !== baseUrl.hostname) throw new Error('Neon control-plane base endpoint host does not match DATABASE_URL');
+  if (!baseEndpoint || baseEndpoint.branchId !== base.id || !isEndpointHost(baseUrl.hostname, baseEndpoint.host)) throw new Error('Neon control-plane base endpoint host does not match DATABASE_URL');
   for (const child of manifest.children) {
     const url = new URL(child.databaseUrl);
     const branch = await controlPlane.getBranch(manifest.base.projectId, child.branchId);
     if (branch.id !== child.branchId || !branch.name.startsWith(MATRIX_CHILD_BRANCH_PREFIX) || branch.parentId !== base.id || branch.primary || !branch.expiresAt || Number.isNaN(Date.parse(branch.expiresAt)) || Date.parse(branch.expiresAt) <= now.getTime()) throw new Error(`Neon control-plane child ${child.childKey} identity is invalid`);
     const endpoints = await controlPlane.listEndpoints(manifest.base.projectId, child.branchId);
     const endpoint = endpoints.find((candidate) => candidate.id === child.endpointId);
-    if (!endpoint || endpoint.branchId !== child.branchId || endpoint.host !== url.hostname) throw new Error(`Neon control-plane child ${child.childKey} endpoint host does not match DATABASE_URL`);
+    if (!endpoint || endpoint.branchId !== child.branchId || !isEndpointHost(url.hostname, endpoint.host)) throw new Error(`Neon control-plane child ${child.childKey} endpoint host does not match DATABASE_URL`);
   }
   return manifest;
 }

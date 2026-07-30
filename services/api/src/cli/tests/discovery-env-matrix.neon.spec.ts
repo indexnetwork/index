@@ -42,8 +42,17 @@ describe('Neon matrix control-plane attestation', () => {
     await expect(attestMatrixTargets({ manifest, controlPlane, now })).resolves.toEqual(manifest);
   });
 
-  it('rejects a child whose endpoint host differs from its URL', async () => {
-    const manifest = parseAttestedManifest(JSON.stringify({ version: 1, base, children: [{ ...child, databaseUrl: 'postgresql://owner:secret@other.neon.tech:5432/protocol_eval' }] }), [child.childKey]);
-    await expect(attestMatrixTargets({ manifest, controlPlane, now })).rejects.toThrow('endpoint host');
+  it('accepts only the exact pooled host corresponding to an attested endpoint', async () => {
+    const pooledBase = { ...base, databaseUrl: 'postgresql://owner:secret@ep-base-pooler.neon.tech:5432/protocol_eval' };
+    const pooledChild = { ...child, databaseUrl: 'postgresql://owner:secret@ep-child-pooler.neon.tech:5432/protocol_eval' };
+    const manifest = parseAttestedManifest(JSON.stringify({ version: 1, base: pooledBase, children: [pooledChild] }), [child.childKey]);
+    await expect(attestMatrixTargets({ manifest, controlPlane, now })).resolves.toEqual(manifest);
+  });
+
+  it('rejects deceptive or mismatched pooled endpoint hosts', async () => {
+    for (const host of ['ep-child-pooler-other.neon.tech', 'ep-child-other-pooler.neon.tech', 'other-pooler.neon.tech']) {
+      const manifest = parseAttestedManifest(JSON.stringify({ version: 1, base, children: [{ ...child, databaseUrl: `postgresql://owner:secret@${host}:5432/protocol_eval` }] }), [child.childKey]);
+      await expect(attestMatrixTargets({ manifest, controlPlane, now })).rejects.toThrow('endpoint host');
+    }
   });
 });
