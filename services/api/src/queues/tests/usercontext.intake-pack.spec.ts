@@ -72,8 +72,10 @@ describe('UserContextQueue per-network getNetwork failure isolation', () => {
   // Regression test: `getNetwork` is now resolved unconditionally per network (to
   // collect titles for the intake pack), outside `regenerateOne`'s try/catch. A
   // throwing `getNetwork` must not abort the rest of the loop or skip the
-  // intake-pack refresh that runs after it.
-  it('isolates a getNetwork failure to that network — other networks still process and the pack still refreshes', async () => {
+  // intake-pack refresh that runs after it — but it must still count toward
+  // `failures` so the job throws at the end and BullMQ retries that network's
+  // stale context row, exactly like a failure inside `regenerateOne` always has.
+  it('isolates a getNetwork failure to that network, still processes the rest, and still fails the job so BullMQ retries', async () => {
     const regenerateIntakePack = mock(async () => undefined);
     const generateContext = mock(async (input: { networkTitle: string }) => ({ text: `ctx-${input.networkTitle}`, embedding: [] }));
     const getNetwork = mock(async (networkId: string) => {
@@ -89,7 +91,11 @@ describe('UserContextQueue per-network getNetwork failure isolation', () => {
       regenerateIntakePack,
     }) as never);
 
-    await expect(queue.processJob('regenerate_contexts', { userId: 'user-1' })).resolves.toBeUndefined();
+    // Pins the retry semantics: a getNetwork failure must still fail the job so
+    // BullMQ retries netA's stale row on the next attempt — it must not be silently
+    // swallowed (which would leave netA permanently stale until the user's next
+    // premise change).
+    await expect(queue.processJob('regenerate_contexts', { userId: 'user-1' })).rejects.toThrow(/regeneration failed/);
 
     // netA's lookup failure didn't abort the loop — netB still regenerated.
     expect(generateContext).toHaveBeenCalledTimes(1);

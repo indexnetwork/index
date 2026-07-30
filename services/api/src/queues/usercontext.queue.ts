@@ -263,11 +263,15 @@ export class UserContextQueue {
         // Isolate a getNetwork failure to this network only — mirrors regenerateOne's
         // own per-row isolation. Previously getNetwork ran inside the `generate` closure
         // (inside regenerateOne's try/catch), so a lookup failure was contained to that
-        // one row. Now that it runs unconditionally per network (to collect titles for
-        // every network, not just stale ones), an uncaught failure here would otherwise
-        // propagate out of the whole loop and skip both the remaining networks and the
-        // intake-pack refresh below. Log and continue instead.
+        // one row but still counted toward `failures`, causing the job to throw at the
+        // end so BullMQ retries that row. Now that it runs unconditionally per network
+        // (to collect titles for every network, not just stale ones), an uncaught
+        // failure here would otherwise propagate out of the whole loop and skip both
+        // the remaining networks and the intake-pack refresh below. Log, count it the
+        // same way regenerateOne's own catch does (so the retry guarantee is preserved),
+        // and continue instead of aborting.
         this.logger.error('Failed to resolve network for context regeneration', { userId, networkId, error: err });
+        failures += 1;
         continue;
       }
       if (network) networkTitles.push(network.title);
