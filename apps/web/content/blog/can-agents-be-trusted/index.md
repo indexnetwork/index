@@ -1,6 +1,6 @@
 ---
 title: "Can agents be trusted? Yes, and…"
-date: "2026-07-27"
+date: "2026-07-29"
 description: "240 residents, 541 intents, 9,688 opportunities. What a month of autonomous agent coordination at Edge Esmeralda tells us about handing human connection over to agents."
 ---
 
