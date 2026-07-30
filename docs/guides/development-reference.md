@@ -185,7 +185,6 @@ bun install                                # Install dependencies for all worksp
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
-herdr worktree open --path <path> --label <name> --no-focus --json # Open a non-focusing visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run skills:validate                      # Validate every project-local Pi and Codex skill
@@ -482,18 +481,14 @@ read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Br
 use semantic `<type>/<description>` names and the only valid folder is the dashed form
 `<type>-<description>`; never accept a separate folder name.
 
-Before visible worktree execution, follow the Herdr setup in
-`docs/guides/getting-started.md`; its server and the required agent integration must be
-available. Then follow `create-worktree` and `run-worktree-session` to create/reuse one
-semantic branch, run `bun run worktree:setup <dashed-folder>`, and open the exact
-linked worktree with `herdr worktree open --no-focus --json`.
+Follow `create-worktree` and `run-worktree-session` to create or reuse one semantic
+branch and run mandatory setup with `bun run worktree:setup <dashed-folder>`.
 
-Keep one writer per worktree, reuse the same execution plane for review
-and PR-closeout fixes, and independently verify every completion claim. Never wait,
-poll, sleep, create watcher processes/panes, infer merge approval, or treat
-`idle`/`done` as success. Escalate only genuine product/architecture ambiguity,
-destructive actions, external infrastructure mutation, credentials/secrets, or merge
-approval.
+Keep one writer per worktree, reuse the same worktree for review and PR-closeout fixes,
+and independently verify every completion claim. Never wait, poll, sleep, create
+watcher processes, infer merge approval, or treat `idle`/`done` as success. Escalate
+only genuine product/architecture ambiguity, destructive actions, external
+infrastructure mutation, credentials/secrets, or merge approval.
 
 ### Git remote-state reconciliation
 
@@ -505,11 +500,8 @@ with `git pull --ff-only origin <base>`. Do not continue from stale remote refs.
 dirty checkout prevents the fast-forward, preserve its work and report the pending
 reconciliation rather than merging or resetting over it.
 
-Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
-execution planes, and agent sessions, with one writer per worktree and one Herdr
-workspace per worktree. Reuse the same visible session for review and PR-closeout fix loops. The
-legacy `bun run worktree:session` helper remains a fallback when Herdr is unavailable,
-not the default workflow.
+Parallel implementation uses separate semantic branches and Git worktrees, with one
+writer per worktree. Reuse the same worktree for review and PR-closeout fix loops.
 
 ### Conventional Commits
 
@@ -543,14 +535,14 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
    - For a squash-merged `dev`→`main` release, after main-branch checks pass, follow [squash-release reconciliation](../../.agents/skills/_shared/squash-release-reconciliation.md): prove the `main` and `dev` trees match and the merge simulation is clean, then have the root coordinator create and push the sanctioned no-content merge from `main` back into `dev` and wait for its `dev` workflows. Stop rather than force it when either check fails.
 5. If the canonical `dev` checkout is clean, synchronize it only with `git pull --ff-only origin dev`; otherwise preserve its work and report pending reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
-7. Clean up only after merge and preservation checks. Close the worktree's Herdr workspace first, then remove its Git worktree and branch from another checkout.
+7. Clean up only after merge and preservation checks. Remove the Git worktree and branch from another checkout.
 
 ## Superpowers Workflow
 
-### Implementation in Visible Herdr Worktrees
+### Implementation in Git Worktrees
 
-Execute implementation and fix plans in visible Herdr-managed sessions for isolated
-Git worktrees, following `create-worktree` and `run-worktree-session`.
+Execute implementation and fix plans in isolated Git worktrees, following
+`create-worktree` and `run-worktree-session`.
 Keep `dev` stable, never use hidden implementation subagents, and preserve one writer
 per checkout.
 

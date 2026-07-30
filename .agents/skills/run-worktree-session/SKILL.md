@@ -1,24 +1,20 @@
 ---
 name: run-worktree-session
 description: >-
-  Run feature or fix implementation in an isolated Index worktree inside a
-  standalone visible Herdr-managed Pi, Codex, or Kimi session. Use for
+  Run feature or fix implementation in an isolated Index Git worktree. Use for
   implementation, review fixes, and the verify-commit-push-PR loop.
 ---
 
 # Run a worktree implementation session
 
-This skill governs source implementation and the verify/commit/push/PR loop in a
-standalone visible Herdr-managed session.
+This skill governs source implementation and the verify/commit/push/PR loop in an
+isolated Git worktree.
 
-## 1. Set up the execution plane
+## 1. Set up the checkout
 
-Follow `create-worktree` from the canonical root to create/reuse the semantic
-branch, run mandatory setup, and open its own non-focusing Herdr worktree
-workspace. Record the workspace and pane IDs. Launch Pi, Codex, or Kimi only if no
-matching agent already owns that exact worktree.
-
-Do not use a hidden implementation subagent or watcher process/pane.
+Follow `create-worktree` from the canonical root to create or reuse the semantic
+branch and run mandatory setup. Confirm the exact worktree has one writer before
+implementation begins.
 
 ## 2. Verify identity before mutation
 
@@ -31,8 +27,8 @@ git branch --show-current
 git status --short --branch
 ```
 
-The path and semantic branch must match the handoff. Stop on a cwd,
-branch, worktree, workspace, pane, or writer collision. One writer owns one worktree.
+The path and semantic branch must match the handoff. Stop on a cwd, branch,
+worktree, or writer collision. One writer owns one worktree.
 
 Also confirm the handoff's task, scope, and non-goals. Do not broaden scope merely
 because adjacent work is visible.
@@ -75,28 +71,24 @@ A child may reconcile upstream drift only on its own feature branch. It never me
 
 ## 5. Report completion through the owning channel
 
-Send one concise terminal result to the parent pane recorded in the handoff, without
-`--wait`, then leave the visible session available for independent verification and
-possible fix rounds. The parent uses the existing pane/worktree rather than launching
-a duplicate writer.
+Send one concise terminal result through the normal owning channel, then leave the
+worktree available for independent verification and possible fix rounds. The owner
+uses the existing worktree rather than launching a duplicate writer.
 
 ## 6. Fix rounds
 
-For review or `manage-pr` findings, return to the same worktree and agent session.
-Verify identity again, implement, rerun focused gates, commit/push, then send the
-terminal result. Never create a new worktree or agent per review comment.
-
-If a structured UI is active in a standalone Herdr pane, answer it through exact
-pane-targeted text/keys rather than appending an agent prompt.
+For review or `manage-pr` findings, return to the same worktree. Verify identity
+again, implement, rerun focused gates, commit/push, then send the terminal result.
+Never create a new worktree per review comment.
 
 ## 7. Cleanup ownership
 
-The implementing session never cleans its own execution plane. `manage-pr` owns safe
-feature worktree/branch cleanup after merge and after dirty/unpushed state is proven
-preserved or disposable.
+The implementing session never cleans its own checkout. `manage-pr` owns safe feature
+worktree/branch cleanup after merge and after dirty/unpushed state is proven preserved
+or disposable.
 
 ## See also
 
-- `create-worktree` — standalone branch/worktree/setup/Herdr-open workflow only.
+- `create-worktree` — branch/worktree/setup workflow only.
 - `manage-pr` — merge confirmation, post-merge verification, issue updates, and safe
   cleanup.
