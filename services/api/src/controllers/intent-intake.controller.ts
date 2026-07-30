@@ -115,7 +115,7 @@ export class IntentIntakeController {
 
   /** Resolve the speculative proposal, or redo it when the where-text changed it. */
   @Post('/proposal')
-  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('intake_synthesis'), FastSignalIntakeEnabledGuard, AuthGuard)
   async proposal(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ProposalSchema.safeParse(await req.json().catch(() => ({})));
