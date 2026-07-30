@@ -98,7 +98,6 @@ function renderHelp(): void {
     "index intent list",
     "index negotiation list",
     "index opportunity list",
-    "index opportunity discover",
   ];
   const formsLW = Math.max(...formsLefts.map((s) => s.length));
 
@@ -168,7 +167,6 @@ function renderHelp(): void {
     helpRowCmd(formsLW, "index intent list", "supports --archived and --limit"),
     helpRowCmd(formsLW, "index negotiation list", "supports --since and --limit"),
     helpRowCmd(formsLW, "index opportunity list", "supports --status and --limit"),
-    helpRowCmd(formsLW, "index opportunity discover", "supports --target and --introduce"),
   ]);
 
   panel("commands", [
@@ -178,7 +176,6 @@ function renderHelp(): void {
     helpRowCmd(cmdLW, "intent", "list · show · create · update · archive"),
     helpRowCont(cmdLW, "link · unlink · links"),
     helpRowCmd(cmdLW, "negotiation", "list · show"),
-    helpRowCmd(cmdLW, "opportunity", "list · show · accept · reject · discover"),
     "",
     helpRowCmd(cmdLW, "profile", "show · sync · search · create · update"),
     helpRowCmd(cmdLW, "conversation", "sessions · list · with · show · send · stream"),
@@ -204,8 +201,6 @@ function renderHelp(): void {
     helpRowDim(optLW, "--name <name>", "name for contact add"),
     helpRowDim(optLW, "--gmail", "import contacts from Gmail"),
     helpRowDim(optLW, "--objective <text>", "objective for scrape command"),
-    helpRowDim(optLW, "--target <uid>", "target user for opportunity discovery"),
-    helpRowDim(optLW, "--introduce <uid>", "source user for introduction discovery"),
     helpRowDim(optLW, "--linkedin <url>", "LinkedIn URL for profile create"),
     helpRowDim(optLW, "--github <url>", "GitHub URL for profile create"),
     helpRowDim(optLW, "--twitter <url>", "Twitter URL for profile create"),

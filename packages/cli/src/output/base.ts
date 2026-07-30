@@ -119,7 +119,6 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   delete_network: "Deleting community...",
   create_network_membership: "Adding member to community...",
   read_network_memberships: "Fetching community memberships...",
-  discover_opportunities: "Searching for relevant connections...",
   list_opportunities: "Listing your opportunities...",
   update_opportunity: "Updating opportunity status...",
   scrape_url: "Reading content from URL...",

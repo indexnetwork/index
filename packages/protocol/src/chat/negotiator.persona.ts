@@ -173,8 +173,7 @@ export function createNegotiatorPersona(opts: NegotiatorPromptOptions): ChatPers
     buildSystemContent: (ctx, iterCtx) => buildNegotiatorSystemContent(ctx, opts, iterCtx),
     createTools: (deps, preResolvedContext) => createNegotiatorTools(deps, preResolvedContext),
     loopBehaviors: {
-      createIntentCallback: false,
-      hallucinationRecovery: true,
+        hallucinationRecovery: true,
     },
   };
 }

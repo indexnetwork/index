@@ -21,7 +21,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
-  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "sessions" | "help" | "update" | "delete" | "link" | "unlink" | "links" | "discover" | "search" | "add" | "remove" | "import" | "complete";
+  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "sessions" | "help" | "update" | "delete" | "link" | "unlink" | "links" | "search" | "add" | "remove" | "import" | "complete";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -70,7 +70,7 @@ export interface ParsedCommand {
 
 const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "contact", "scrape", "onboarding", "sync", "help", "version"]);
 
-const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "discover"]);
+const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
 const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show"]);
 
@@ -224,13 +224,13 @@ export function parseArgs(args: string[]): ParsedCommand {
     const sub = positionals[0];
     if (sub && OPPORTUNITY_SUBCOMMANDS.has(sub)) {
       result.subcommand = sub as ParsedCommand["subcommand"];
-      if (sub === "discover") {
-        // Remaining positionals are the search query
-        result.positionals = positionals.slice(1);
-      } else if (positionals[1]) {
+      if (positionals[1]) {
         // Second positional is the target ID (for show/accept/reject)
         result.targetId = positionals[1];
       }
+    } else if (sub) {
+      result.command = "unknown";
+      result.unknown = `opportunity ${sub}`;
     }
     return result;
   }

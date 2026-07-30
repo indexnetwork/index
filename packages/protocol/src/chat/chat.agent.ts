@@ -524,14 +524,6 @@ export class ChatAgent {
           let resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
-          if (tc.name === "discover_opportunities" && this.persona.loopBehaviors.createIntentCallback) {
-            const newResult = await this.handleCreateIntentCallback(resultStr, tc.args);
-            if (newResult !== null) {
-              resultStr = newResult;
-              result = newResult;
-            }
-          }
-
           logger.debug("Tool response", { name: tc.name, result: resultStr });
           logger.verbose("Tool completed", {
             name: tc.name,
@@ -564,57 +556,6 @@ export class ChatAgent {
     return results;
   }
 
-  /**
-   * When discover_opportunities returned createIntentSuggested, call create_intent then discover_opportunities.
-   * Returns the new discover_opportunities result string or null if no callback / create_intent failed.
-   */
-  private async handleCreateIntentCallback(
-    resultStr: string,
-    originalArgs: Record<string, unknown>
-  ): Promise<string | null> {
-    let parsed: { success?: boolean; error?: string; data?: { createIntentSuggested?: boolean; suggestedIntentDescription?: string } };
-    try {
-      parsed = JSON.parse(resultStr) as typeof parsed;
-    } catch {
-      return null;
-    }
-    if (
-      !parsed?.data?.createIntentSuggested ||
-      typeof parsed.data.suggestedIntentDescription !== "string"
-    ) {
-      return null;
-    }
-    // Never auto-create intents during introducer flows — signals are personal
-    if ((originalArgs as { introTargetUserId?: string }).introTargetUserId) {
-      return null;
-    }
-    const createIntentTool = this.toolsByName.get("create_intent");
-    const discoverOpportunitiesTool = this.toolsByName.get("discover_opportunities");
-    if (!createIntentTool || !discoverOpportunitiesTool) return null;
-
-    logger.verbose("Create-intent signal: auto-calling create_intent then discover_opportunities");
-    const createIntentResult = await createIntentTool.invoke({
-      description: parsed.data.suggestedIntentDescription,
-      networkId: (originalArgs as { networkId?: string }).networkId,
-    });
-    const createIntentStr =
-      typeof createIntentResult === "string" ? createIntentResult : JSON.stringify(createIntentResult);
-    let createIntentParsed: { success?: boolean; error?: string };
-    try {
-      createIntentParsed = JSON.parse(createIntentStr) as { success?: boolean; error?: string };
-    } catch {
-      createIntentParsed = {};
-    }
-    if (createIntentParsed.success === false) {
-      logger.warn("Create-intent failed; not re-running discover_opportunities", {
-        error: createIntentParsed.error,
-      });
-      return null;
-    }
-
-    const newResult = await discoverOpportunitiesTool.invoke(originalArgs);
-    return typeof newResult === "string" ? newResult : JSON.stringify(newResult);
-  }
 
   /**
    * Check whether any tool call produced valid opportunity blocks.
@@ -626,7 +567,7 @@ export class ChatAgent {
   ): boolean {
     return toolsUsed.some(
       (t) =>
-        (t.name === "discover_opportunities" || t.name === "list_opportunities") &&
+        t.name === "list_opportunities" &&
         t.success &&
         !t.resultSummary?.startsWith("Found 0") &&
         !t.resultSummary?.startsWith("No matches") &&
@@ -762,13 +703,6 @@ export class ChatAgent {
   }> {
     let normalized = resultStr;
 
-    // Run create_intent callback for discover_opportunities results (orchestrator behavior)
-    if (toolName === "discover_opportunities" && this.persona.loopBehaviors.createIntentCallback) {
-      const callbackResult = await this.handleCreateIntentCallback(normalized, toolArgs);
-      if (callbackResult !== null) {
-        normalized = callbackResult;
-      }
-    }
 
     type StepData = Record<string, unknown>;
     type DebugStep = { step: string; detail?: string; data?: StepData };
