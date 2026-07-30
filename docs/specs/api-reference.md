@@ -207,7 +207,6 @@ Clients may cancel in-flight MCP calls with `notifications/cancelled`. HTTP requ
 
 **Async discovery runs:**
 
-For MCP callers, `discover_opportunities` does not execute the full discovery graph inside the initial `tools/call`. It returns quickly with:
 
 ```json
 {
@@ -215,12 +214,10 @@ For MCP callers, `discover_opportunities` does not execute the full discovery gr
   "data": {
     "status": "queued",
     "discoveryRunId": "...",
-    "message": "Discovery started. Call get_discovery_run ..."
   }
 }
 ```
 
-Clients poll `get_discovery_run({ discoveryRunId })` until `status` is `succeeded`, `failed`, or `cancelled`. When `succeeded`, `data.result` contains the normal discovery payload. Clients may call `cancel_discovery_run({ discoveryRunId })` to cancel a queued run or request cancellation of a running run. Non-MCP chat/web paths remain synchronous.
 
 **Runtime error envelope:**
 
@@ -1652,7 +1649,6 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
 
 ### POST /api/debug/intents/:id/discover
 
-Runs the opportunity discovery pipeline for a specific intent and returns the full graph trace. **WARNING**: This persists results (creates/reactivates opportunities).
 
 **Auth**: DebugGuard + AuthGuard
 
@@ -3444,7 +3440,6 @@ Invoke a tool by name with a JSON query body.
 **Auth**: `AuthGuard`
 
 **Path params**:
-- `toolName` — Name of the tool to invoke (e.g. `read_intents`, `discover_opportunities`)
 
 **Request body**:
 ```json
@@ -3491,7 +3486,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network` | Network | Delete a network |
 | `create_network_membership` | Network | Add a member to a network |
 | `delete_network_membership` | Network | Remove a member from a network |
-| `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
 | `list_contacts` | Contact | List user's contacts |

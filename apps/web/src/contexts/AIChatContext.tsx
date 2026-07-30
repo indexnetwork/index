@@ -22,10 +22,8 @@ export interface DiscoveryOpportunity {
 
 /**
  * A draft opportunity delivered progressively during an orchestrator-driven
- * chat discovery run. Populated by the `opportunity_draft_ready` stream
- * event from the backend — one per accepted negotiation outcome — so the
- * chat UI can render cards as they settle rather than waiting for the whole
- * discovery fan-out to complete.
+ * historical chat message. Persisted records remain readable so old cards
+ * render after the direct-draft producer has been retired.
  *
  * `opportunity` mirrors the backend's Opportunity row; `counterparty`
  * carries the minimum the card needs to render without a second-round-trip
@@ -142,11 +140,7 @@ interface ChatMessage {
   stoppedAt?: number;
   attachmentNames?: string[];
   discoveries?: DiscoveryOpportunity[];
-  /**
-   * Drafts streamed in via the orchestrator's opportunity_draft_ready events.
-   * Appended progressively during the stream; persists on the message so
-   * cards stay visible after the stream ends.
-   */
+  /** Historical persisted draft cards retained for message compatibility. */
   streamingDrafts?: StreamingDraft[];
   traceEvents?: TraceEvent[];
   /** Decision questions to render below this assistant message (orchestrator path). */
@@ -696,11 +690,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ),
         );
       };
-      /**
-       * Local streaming-draft buffer scoped to this sendMessage call. Flushed
-       * to the server on `done` so cards survive session reload.
-       */
-      const streamingDraftsBuffer: StreamingDraft[] = [];
+
 
       try {
         const bodyPayload: Record<string, unknown> = {
@@ -1038,31 +1028,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     });
                     break;
                   }
-                  case "opportunity_draft_ready": {
-                    // Plan B Task 9: orchestrator-triggered negotiations
-                    // stream accepted drafts back one at a time so the UI
-                    // can render cards progressively. Append to the
-                    // message's streamingDrafts list; the message-list
-                    // component renders them inline alongside the LLM text.
-                    // The buffer is flushed to message metadata on `done`
-                    // so cards survive session reload.
-                    const draft: StreamingDraft = {
-                      opportunityId: event.opportunityId,
-                      opportunity: event.opportunity,
-                      personalizedSummary: event.personalizedSummary,
-                      counterparty: event.counterparty,
-                      receivedAt: Date.now(),
-                    };
-                    streamingDraftsBuffer.push(draft);
-                    setMessages((prev) =>
-                      prev.map((msg) => {
-                        if (msg.id !== assistantMessageId) return msg;
-                        const streamingDrafts = [...(msg.streamingDrafts || []), draft];
-                        return { ...msg, streamingDrafts };
-                      }),
-                    );
-                    break;
-                  }
+
                   case "steer_or_queue": {
                     const t = interruptTimeoutsRef.current.get((event as { messageId: string }).messageId ?? '');
                     if (t !== undefined) { clearTimeout(t); interruptTimeoutsRef.current.delete((event as { messageId: string }).messageId); }
@@ -1182,22 +1148,16 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     // Refetch sessions after streaming completes (title is generated on backend)
                     refetchSessions();
-                    // Persist trace events and streamed drafts for this
-                    // message (non-blocking). One POST carries both payloads
-                    // so rehydration on reload reproduces the full turn.
+                    // Persist trace events for this message (non-blocking). Historical
+                    // opportunity-card metadata remains readable on rehydration.
                     {
                       const serverMessageId = event.messageId as
                         | string
                         | undefined;
                       const hasTrace = streamTraceEvents.length > 0;
-                      const hasDrafts = streamingDraftsBuffer.length > 0;
-                      if (serverMessageId && (hasTrace || hasDrafts)) {
-                        const payload: {
-                          traceEvents?: TraceEvent[];
-                          streamingDrafts?: StreamingDraft[];
-                        } = {};
+                      if (serverMessageId && hasTrace) {
+                        const payload: { traceEvents?: TraceEvent[] } = {};
                         if (hasTrace) payload.traceEvents = streamTraceEvents;
-                        if (hasDrafts) payload.streamingDrafts = streamingDraftsBuffer;
                         apiClient
                           .post(
                             `/chat/message/${serverMessageId}/metadata`,

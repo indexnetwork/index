@@ -252,7 +252,6 @@ body {
 <span class="c-gray">│</span> <span class="bold c-cyan">index intent list</span>               supports --archived and --limit                <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">index negotiation list</span>          supports --since and --limit                   <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">index opportunity list</span>          supports --status and --limit                  <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="bold c-cyan">index opportunity discover</span>      supports --target and --introduce              <span class="c-gray">│</span>
 <span class="c-gray">╰────────────────────────────────────────────────────────╯</span>
 
 <span class="c-gray">╭─ commands ─────────────────────────────────────────────╮</span>
@@ -288,8 +287,6 @@ body {
 <span class="c-gray">│</span> <span class="c-gray">--name &lt;name&gt;       name for contact add</span>                                     <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--gmail             import contacts from Gmail</span>                               <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--objective &lt;text&gt;  objective for scrape command</span>                              <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="c-gray">--target &lt;uid&gt;      target user for opportunity discovery</span>                    <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="c-gray">--introduce &lt;uid&gt;   source user for introduction discovery</span>                   <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--linkedin &lt;url&gt;    LinkedIn URL for profile create</span>                          <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--github &lt;url&gt;      GitHub URL for profile create</span>                            <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--twitter &lt;url&gt;     Twitter URL for profile create</span>                           <span class="c-gray">│</span>
@@ -724,14 +721,12 @@ body {
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity discover "AI agent infra"</span></div>
       <div class="terminal-body"><span class="c-cyan">Discovering opportunities...</span>
 <span class="c-green bold">+</span> Discovery complete.
   <span class="c-gray">Found 2 potential opportunities based on your query.</span></div>
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity discover --introduce &lt;a&gt; &lt;b&gt;</span></div>
       <div class="terminal-body"><span class="c-cyan">Gathering data for introduction...</span>
   <span class="c-gray">Found shared network: f47ac10b</span>
   <span class="c-gray">Profiles and intents gathered. Creating introduction...</span>

@@ -2,7 +2,6 @@
 
 This guide covers the technical package surface for implementers embedding the canonical Index Network Protocol implementation. For the public protocol overview, see [README.md](./README.md).
 
-The package implements LangGraph-based workflows for signal processing, opportunity discovery, negotiation, and chat — decoupled from any specific infrastructure via adapter injection.
 
 ## Stability & versioning
 
@@ -247,7 +246,6 @@ MCP tools are bounded by `ToolInvocationRuntime`:
 
 Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, such as `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`. Tool outputs are capped by `MCP_TOOL_MAX_OUTPUT_BYTES` (default `1000000`) or `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES`; inbound MCP request bodies are capped by the backend with `MCP_MAX_REQUEST_BYTES` (default `1000000`). Runtime failures return JSON text envelopes with stable `code` values: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, or `TOOL_OUTPUT_TOO_LARGE`.
 
-For MCP callers, `discover_opportunities` is async: it returns a `discoveryRunId` immediately, and clients poll `get_discovery_run` or request cancellation with `cancel_discovery_run`. Non-MCP chat/web paths stay synchronous.
 
 ### `MCP_INSTRUCTIONS`
 
