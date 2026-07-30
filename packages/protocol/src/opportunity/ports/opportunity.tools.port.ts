@@ -15,9 +15,9 @@ export interface OpportunityOwnerApprovalDeps {
 /** Host capabilities consumed by opportunity discovery, delivery, and presentation tools. */
 export type OpportunityToolDeps = Pick<ToolRegistryCompositionDeps,
   "database" | "userDb" | "systemDb" | "cache" | "chatSummary"
-  | "opportunityDiscovery" | "opportunityPresentation" | "questionGenerator"
+  | "opportunityPresentation" | "questionGenerator"
   | "questionerEnqueue" | "findPendingQuestions" | "negotiationSummary"
-  | "negotiationDatabase" | "deliveryLedger" | "discoveryRuns" | "discoveryRunQueue"
+  | "negotiationDatabase" | "deliveryLedger"
   | "mintConnectLink" | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
 > & OpportunityOwnerApprovalDeps
   & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "index" | "networkMembership" | "opportunity"> };

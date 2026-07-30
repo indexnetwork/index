@@ -16,9 +16,6 @@ import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.j
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
-import type { Question } from '../shared/schemas/question.schema.js';
-import { QuestionSchema } from '../shared/schemas/question.schema.js';
-import { dispatchElicitations } from './elicitation.dispatcher.js';
 import { createToolRegistry } from '../runtime/foreground/composition/tool.registry.js';
 import type { ToolRegistryDeps } from '../runtime/foreground/composition/tool.registry.js';
 import { bindOwnerApprovalProvenance } from '../opportunity/application/opportunity.owner-provenance.js';
@@ -225,48 +222,6 @@ export function sanitizeMcpResult(text: string): { text: string; isError: boolea
   }
 }
 
-/** Spec cap on the number of decision questions surfaced per turn. */
-const MAX_DECISION_QUESTIONS = 3;
-
-/**
- * Extracts decision questions from a parsed tool-result text, if present.
- * Validates each entry against `QuestionSchema` and drops malformed items;
- * caps the array at `MAX_DECISION_QUESTIONS` (defense-in-depth — Slice 2's
- * generator already caps at 3, but we don't trust the cast here).
- *
- * Returns null when the text isn't JSON, has no `data.questions`, or
- * contains zero valid questions after validation.
- */
-export function extractDecisionQuestions(text: string): Question[] | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return null;
-  }
-
-  const rawQs = (parsed as { data?: { questions?: unknown } } | null)?.data?.questions;
-  if (!Array.isArray(rawQs) || rawQs.length === 0) return null;
-
-  const valid: Question[] = [];
-  for (const raw of rawQs) {
-    const result = QuestionSchema.safeParse(raw);
-    if (result.success) valid.push(result.data);
-    if (valid.length === MAX_DECISION_QUESTIONS) break;
-  }
-  return valid.length > 0 ? valid : null;
-}
-
-/**
- * Renders the JSON-envelope text block appended to the tool result content
- * when decision questions are present. The leading sentinel string lets the
- * LLM client recognize and surface the questions in prose for clients
- * without elicitation support.
- */
-export function renderQuestionsEnvelope(questions: Question[]): string {
-  return `Decision questions (structured): ${JSON.stringify({ questions })}`;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP SERVER FACTORY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -372,7 +327,6 @@ function createMcpTraceEmitter(toolName: string, ctx: ServerContext): TraceEmitt
       if (event.type === 'graph_end') return `${toolName}: ${event.name} finished${event.durationMs != null ? ` in ${event.durationMs}ms` : ''}`;
       if (event.type === 'agent_start') return `${toolName}: ${event.name} agent started`;
       if (event.type === 'agent_end') return `${toolName}: ${event.name} agent finished${event.durationMs != null ? ` in ${event.durationMs}ms` : ''}`;
-      if (event.type === 'opportunity_draft_ready') return `${toolName}: opportunity draft ready`;
       return `${toolName}: progress`;
     })();
 
@@ -403,10 +357,6 @@ API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/r
 # Tool Guidance
 Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.
 
-# Decision Questions
-When discover_opportunities returns \`Decision questions (structured): ...\`, parse the \`questions\` array. Each has \`title\`, \`prompt\`, \`options\` (with \`label\` and \`description\`). Present in natural language; never expose JSON. Fold answers into the next discover_opportunities call.
-
-Elicitation clients: answers are dispatched via \`elicitation/create\` and written to chat automatically.
 `.trim();
 
 /**
@@ -695,11 +645,7 @@ export function createMcpServer(
                   type: 'text' as const,
                   text: JSON.stringify({
                     error: 'Rate limit exceeded',
-                    message:
-                      `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.` +
-                      (toolName === 'discover_opportunities'
-                        ? ` If a discovery run is in progress, poll get_discovery_run instead of calling discover_opportunities again.`
-                        : ''),
+                    message: `Too many ${toolName} calls in a short period. Wait ${retryAfterSec}s before retrying.`,
                     retryAfterSec,
                   }),
                 }],
@@ -764,45 +710,6 @@ export function createMcpServer(
           });
 
           const { text: sanitizedText, isError: toolIsError } = sanitizeMcpResult(result);
-
-          // Slice 5: decision questions post-processing for discover_opportunities only.
-          if (toolName === "discover_opportunities" && !toolIsError) {
-            const questions = extractDecisionQuestions(sanitizedText);
-            if (questions) {
-              const envelopeBlock = {
-                type: "text" as const,
-                text: renderQuestionsEnvelope(questions),
-              };
-
-              const supportsElicitation =
-                !!server.server.getClientCapabilities()?.elicitation;
-
-              // Capture into a local const so TS preserves the narrowing
-              // inside the callback below. Optional chains don't survive
-              // across closure boundaries under strict mode.
-              const elicitInput = ctx.mcpReq?.elicitInput;
-
-              if (supportsElicitation && elicitInput) {
-                // Sequential — never parallel (day-one rule). We await the loop
-                // before returning the tool result so test harnesses can observe
-                // the dispatched calls deterministically.
-                await dispatchElicitations({
-                  userId,
-                  questions,
-                  elicitInput: (params) => elicitInput(params),
-                  chatMessageWriter: deps.chatMessageWriter,
-                });
-              }
-
-              return {
-                content: [
-                  { type: "text" as const, text: sanitizedText },
-                  envelopeBlock,
-                ],
-                ...(toolIsError ? { isError: true } : {}),
-              };
-            }
-          }
 
           return {
             content: [{ type: 'text' as const, text: sanitizedText }],

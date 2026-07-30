@@ -26,7 +26,6 @@ import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
 import type { PendingQuestionSummary } from "../schemas/pending-question.schema.js";
 import type { QuestionMode, QuestionPurpose } from "../schemas/question.schema.js";
-import type { DiscoveryRunQueue, DiscoveryRunStore } from "../interfaces/discovery-run.interface.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../interfaces/enrichment-run.interface.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 
@@ -287,10 +286,6 @@ interface ToolContextBindings {
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
-  /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
-  discoveryRuns?: DiscoveryRunStore;
-  /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
-  discoveryRunQueue?: DiscoveryRunQueue;
   /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
   enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
@@ -575,14 +570,6 @@ interface ToolDepsBindings {
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
   chatSummary?: ChatSummaryReader;
   /**
-   * Test seam for opportunity discovery helpers. Production compositions leave
-   * this unset so tools call the real discovery module directly.
-   */
-  opportunityDiscovery?: {
-    runDiscoverFromQuery?: (input: unknown) => Promise<unknown>;
-    continueDiscovery?: (input: unknown) => Promise<unknown>;
-  };
-  /**
    * Test seam for opportunity card presentation helpers. Production
    * compositions leave this unset so tools construct the real presenter.
    */
@@ -656,10 +643,6 @@ interface ToolDepsBindings {
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
-  /** Persistence for async MCP discovery runs (optional — absent in non-MCP/test contexts). */
-  discoveryRuns?: DiscoveryRunStore;
-  /** Queue for async MCP discovery run execution (optional — absent in non-MCP/test contexts). */
-  discoveryRunQueue?: DiscoveryRunQueue;
   /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
   enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */

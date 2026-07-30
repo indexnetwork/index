@@ -1,9 +1,6 @@
 /**
- * Tests for the onCandidateResolved callback added to negotiateCandidates in
- * Plan B Task 5. The orchestrator branch of OpportunityGraph uses this hook
- * to progressively stream `opportunity_draft_ready` events as each per-
- * candidate negotiation resolves, rather than waiting for the whole fan-out
- * to settle.
+ * Tests for the onCandidateResolved callback used by OpportunityGraph to
+ * aggregate each candidate negotiation for discovery follow-up.
  */
 
 import { describe, it, expect } from 'bun:test';

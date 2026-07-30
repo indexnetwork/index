@@ -52,11 +52,6 @@ function renderLegacyUptakeAdvisory(
   </body></html>`;
 }
 
-const discoverBodySchema = z.object({
-  query: z.string().min(1),
-  limit: z.number().int().positive().optional(),
-});
-
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
 /** Full lifecycle enum for the home view's explicit `statuses` filter (e.g. the intent radar). */
 const homeStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
@@ -685,34 +680,7 @@ export class OpportunityController {
     return new Response(INTRODUCTION_APPROVED_HTML, { status: 200, headers: { 'Content-Type': 'text/html' } });
   }
 
-  /**
-   * POST /opportunities/discover — discover opportunities via HyDE graph.
-   */
-  @Post('/discover')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async discover(req: Request, user: AuthenticatedUser) {
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
 
-    const parsed = discoverBodySchema.safeParse(body);
-    if (!parsed.success) {
-      return Response.json({ error: 'Missing or invalid "query" field in request body' }, { status: 400 });
-    }
-
-    const { query, limit = 5 } = parsed.data;
-
-    const result = await opportunityService.discoverOpportunities(user.id, query, limit);
-
-    if (result.error) {
-      return Response.json({ error: result.error }, { status: 500 });
-    }
-
-    return Response.json(result);
-  }
 }
 
 /**

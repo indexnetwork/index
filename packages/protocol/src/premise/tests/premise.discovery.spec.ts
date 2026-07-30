@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 
 import { deriveRolesFromCorpus } from '../../opportunity/opportunity.utils.js';
-import { resolveInitialStatus } from '../../opportunity/opportunity.state.js';
 import type { CandidateMatch } from '../../opportunity/opportunity.state.js';
 import type { OpportunityActor } from '../../shared/interfaces/database.interface.js';
 import type { Id } from '../../shared/interfaces/database.interface.js';
@@ -87,18 +86,4 @@ describe('Premise Discovery', () => {
     });
   });
 
-  describe('resolveInitialStatus', () => {
-    it('returns pending for ambient trigger without explicit status', () => {
-      expect(resolveInitialStatus('ambient', undefined)).toBe('pending');
-    });
-
-    it('returns negotiating for orchestrator trigger without explicit status', () => {
-      expect(resolveInitialStatus('orchestrator', undefined)).toBe('negotiating');
-    });
-
-    it('respects explicit status over trigger default', () => {
-      expect(resolveInitialStatus('ambient', 'latent')).toBe('latent');
-      expect(resolveInitialStatus('orchestrator', 'draft')).toBe('draft');
-    });
-  });
 });

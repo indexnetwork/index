@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import type { Id } from '../types/common.types';
-import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
-import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
+import { HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import type { OpportunityControllerDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm/sql';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -239,7 +238,6 @@ export class OpportunityService {
   private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
-  private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
@@ -268,26 +266,6 @@ export class OpportunityService {
     return this.presenter;
   }
 
-  private getDiscoveryGraph(): ReturnType<OpportunityGraphFactory['createGraph']> | null {
-    if (this.graph) return this.graph;
-    if (!this.db || !('getHydeDocument' in this.db)) return null;
-
-    const embedder: Embedder = new EmbedderAdapter();
-    const cache: HydeCache = new RedisCacheAdapter();
-    const compiledHydeGraph = new HydeGraphFactory(
-      this.db as unknown as HydeGraphDatabase,
-      embedder,
-      cache,
-      new LensInferrer(),
-      new HydeGenerator(),
-    ).createGraph();
-    this.graph = new OpportunityGraphFactory(
-      this.db as unknown as OpportunityGraphDatabase,
-      embedder,
-      compiledHydeGraph,
-    ).createGraph();
-    return this.graph;
-  }
 
   private getHomeGraph(): ReturnType<HomeGraphFactory['createGraph']> {
     this.homeGraph ??= new HomeGraphFactory(
@@ -1063,46 +1041,6 @@ export class OpportunityService {
     };
   }
 
-  /**
-   * Discover opportunities via HyDE graph.
-   *
-   * @param userId - The user ID
-   * @param query - Search query
-   * @param limit - Number of results
-   * @returns Discovery results
-   */
-  async discoverOpportunities(userId: string, query: string, limit: number = 5) {
-    logger.verbose('Discovering opportunities', { userId, query, limit });
-
-    const graph = this.getDiscoveryGraph();
-    if (!graph) {
-      return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
-    }
-
-    const memberships = await this.db.getNetworkMemberships(userId);
-    const indexScope = memberships.map((m) => m.networkId);
-
-    if (indexScope.length === 0) {
-      return {
-        userId: userId as Id<'users'>,
-        searchQuery: query,
-        options: { limit, initialStatus: 'latent' as const },
-        opportunities: [],
-      };
-    }
-
-    const result = await graph.invoke({
-      userId: userId as Id<'users'>,
-      searchQuery: query,
-      options: { limit, initialStatus: 'latent' as const },
-    });
-
-    return {
-      ...result,
-      opportunities: (result.opportunities ?? []).map((opportunity) =>
-        sanitizeOpportunityForResponse(opportunity)),
-    };
-  }
 
   /**
    * Get opportunities for a specific index.

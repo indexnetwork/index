@@ -16,23 +16,23 @@ The system does not create opportunities; it detects them. Opportunities exist l
 
 ## Discovery Triggers
 
-Opportunities are discovered through several triggers:
+Opportunity creation is background-only. Queues evaluate persisted context and save eligible opportunities for later review; a chat turn can help create or refine a signal and can review persisted cards, but it does not run matching.
 
-### Intent-based discovery
+### Intent queue
 
-When a user creates or updates an intent, the system searches for people whose profiles or intents complement it. This is the primary discovery path. The trigger intent's HyDE documents are used to find semantically similar candidates across the network.
+Creating, refining, or resuming an active assigned intent enqueues discovery. The queue uses the trigger intent's HyDE documents and current network assignments to find eligible candidates.
 
-### User query (chat-driven)
+### Enrichment queue
 
-When a user asks the chat agent to find connections ("Find me ML collaborators in SF"), the system runs a targeted discovery using the query as the search context. Query-driven discovery applies stricter scoring: the query is the primary evaluation criterion, and stored intents serve only as background context.
+Enrichment and premise changes regenerate user contexts and can enqueue discovery from that persisted context. Context-to-intent and premise representations provide the candidate evidence.
 
-### Direct connection (introduction)
+### Introducer queue
 
-A user can explicitly introduce two people. In introduction mode, the introducer is not an actor in the opportunity -- they are added separately by the system. The evaluator is more generous with scoring (70+ for any introduction with a plausible basis) because a human has already made the judgment that these people should connect.
+An explicit introduction is validated and processed asynchronously within the participants' shared-network scope. The introducer remains an actor on the resulting opportunity; the evaluator receives the explicit introduction context.
 
-### Member-added discovery
+### Maintenance queue
 
-When a new member joins an index, the system evaluates potential matches between the new member and existing members within that index's scope.
+Feed-health maintenance can enqueue rediscovery for active intents when persisted opportunity coverage is stale or unhealthy.
 
 ---
 
@@ -95,7 +95,7 @@ If both the discoverer and candidate are SEEKING the same resource (both looking
 
 ### Location matching
 
-When the discovery request mentions a specific location:
+When the source intent or introduction context mentions a specific location:
 - Known mismatch (request says "SF" but candidate is "New York"): Score capped at 40
 - Unknown or empty location: No penalty; noted as unverified
 - Compatible match ("Bay Area" matches "SF", "Remote" matches any): Score normally
@@ -109,7 +109,7 @@ Opportunities follow an eight-state lifecycle:
 | Status | Meaning |
 |---|---|
 | **latent** | Detected but not yet surfaced to any user. The system knows this coordination point exists. |
-| **draft** | Under construction or awaiting user review (e.g. orchestrator-produced drafts in chat). Not yet visible to counterparties. |
+| **draft** | Retained lifecycle state for persisted compatibility and introducer reactivation. Not newly produced as a live chat card. |
 | **negotiating** | Bilateral agent-to-agent negotiation is in flight. The opportunity is persisted but not yet visible to either party. |
 | **pending** | Negotiation accepted (or negotiation was skipped); opportunity is surfaced to the appropriate party based on role visibility rules. Awaiting user action. |
 | **stalled** | Negotiation reached its turn cap or timed out without resolution. Surfaced as an inconclusive match (not confidently accepted or rejected). |
@@ -150,13 +150,13 @@ The key design principle: agents (helpers/providers) are shielded from noise. Th
 
 A connection requires acceptance from two distinct actors. The system enforces this by stamping `actedAt` on the acting actor each time a user advances an opportunity's state, and refusing accept if the caller has already acted.
 
-- **Patient + agent:** the patient sends the draft (`actedAt` set on the patient); the agent then accepts (`actedAt` set on the agent). The patient cannot subsequently accept their own send — the API returns HTTP 409.
-- **Peer + peer:** the first peer "accepts" the draft, which maps to the same send mutation under the hood (`actedAt` set on them). The second peer then accepts on the resulting `pending` opportunity. Neither can self-accept.
+- **Patient + agent:** the patient sends an eligible latent or retained draft opportunity (`actedAt` set on the patient); the agent then accepts (`actedAt` set on the agent). The patient cannot subsequently accept their own send — the API returns HTTP 409.
+- **Peer + peer:** the first peer sends an eligible latent or retained draft opportunity (`actedAt` set on them). The second peer then accepts on the resulting `pending` opportunity. Neither can self-accept.
 - **Introducer + others:** the introducer sends after approving the intro (`actedAt` set on the introducer). The downstream patient/agent acceptance follows the same rules as above.
 
 The `actedAt` stamp is written atomically with the status change inside a row-locked transaction, so concurrent attempts serialize through Postgres' row lock. The guard runs at both layers:
 
-- **Graph** (`updateNode` and `sendNode` in `opportunity.graph.ts`): used by `update_opportunity` and `send_opportunity` MCP tools, and by chat-driven flows.
+- **Graph** (`updateNode` and `sendNode` in `opportunity.graph.ts`): used by `update_opportunity` and `send_opportunity` MCP tools.
 - **Service** (`OpportunityService.updateOpportunityStatus` and `OpportunityService.startChat`): used by REST `PATCH /api/opportunities/:id/status` and `POST /api/opportunities/:id/start-chat`.
 
 Reject and expire transitions are exempt from the guard — they are terminal flips, not commit signals, and may be invoked by either actor regardless of prior `actedAt`. Background system flips (negotiation finalize, timeout cleanup) also use the legacy `updateOpportunityStatus` path and do not stamp `actedAt` — only explicit user commits do.
@@ -200,7 +200,7 @@ Each opportunity record contains four JSONB fields that capture the full context
 
 Provenance information: what triggered the discovery, who or what caused it, and when.
 
-- `source`: How the opportunity was detected (`opportunity_graph`, `chat`, `manual`, `member_added`, `enrichment`, `introducer_discovery`)
+- `source`: How the opportunity was detected (`opportunity_graph`, `manual`, `member_added`, `enrichment`, `introducer_discovery`)
 - `triggeredBy`: The intent ID that caused detection (if intent-driven)
 - `createdBy` / `createdByName`: The user who triggered it (for attribution)
 - `timestamp`: When detection occurred
@@ -227,16 +227,16 @@ The evaluator's analysis:
 
 Additional metadata:
 - `indexId`: The network scope (if network-scoped discovery)
-- `conversationId`: The conversation where this opportunity was discussed (if chat-driven)
+- `conversationId`: Optional historical conversation association retained on persisted records
 
 ---
 
 ## Negotiation Gate
 
-Once the evaluator clears an opportunity, the graph persists it and then runs bilateral agent-to-agent negotiation (see [Negotiation](negotiation.md)) as a quality gate before surfacing. The opportunity is first written with status `negotiating` (or `draft` in the orchestrator trigger path) and remains invisible to either party while negotiation is in flight. Negotiation then drives the status to one of:
+Once the evaluator clears a background candidate, the graph persists it and then runs ambient bilateral agent-to-agent negotiation (see [Negotiation](negotiation.md)) as a quality gate before surfacing. The opportunity remains invisible to either party while negotiation is in flight. Negotiation then drives the status to one of:
 
 - **pending** — both agents agreed; the opportunity becomes visible per the visibility matrix.
 - **rejected** — at least one agent rejected; the opportunity stays persisted but hidden from both parties.
 - **stalled** — negotiation reached its turn cap without a decision; surfaced inconclusively so the user can decide.
 
-Persisting before negotiation (rather than gating persistence on negotiation) lets the system keep an audit trail of discovered-but-not-surfaced matches and lets the orchestrator stream partial results into chat as each candidate's negotiation resolves.
+Persisting before negotiation (rather than gating persistence on negotiation) keeps an audit trail of discovered-but-not-surfaced opportunities. Completed, persisted cards are available through the feed and home surfaces and can be reviewed from later chat turns or chat history.

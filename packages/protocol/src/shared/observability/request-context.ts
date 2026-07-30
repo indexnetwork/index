@@ -1,19 +1,9 @@
-import type { Opportunity } from "../interfaces/database.interface.js";
 import { AsyncLocalStorage } from "async_hooks";
 
 /**
- * Callback for streaming trace / domain events from deep inside graph nodes
- * back to the caller (typically chat.agent's stream pipeline).
- *
- * Carries two flavors of event:
- * - Trace events (`graph_start | graph_end | agent_start | agent_end`) — used
- *   by the chat TRACE panel to visualize what the agent is doing.
- * - Domain events (`opportunity_draft_ready`) — emitted by the orchestrator
- *   branch of OpportunityGraph.negotiateNode so the frontend can render each
- *   accepted draft card progressively as its negotiation resolves.
- *
- * Kept as a single emitter rather than splitting into two to minimize plumbing
- * through AsyncLocalStorage; the chat.agent relay branches on event.type.
+ * Callback for streaming trace events from deep inside graph nodes back to
+ * the caller (typically chat.agent's stream pipeline). Kept as a single emitter
+ * to minimize AsyncLocalStorage plumbing.
  */
 export type TraceEmitter = (
   event:
@@ -37,39 +27,12 @@ export type TraceEmitter = (
         type: "status";
         message: string;
       }
-    | {
-        type: "opportunity_draft_ready";
-        opportunityId: string;
-        opportunity: Opportunity;
-        /** Viewer-centric summary derived from interpretation.reasoning. */
-        personalizedSummary?: string;
-        /**
-         * Minimal counterparty data for rendering the inline card without a
-         * second-round-trip user lookup. Populated from the negotiation
-         * candidate's profile; avatar is intentionally omitted (the card
-         * falls back to initials) since UserNegotiationContext doesn't
-         * carry avatars.
-         */
-        counterparty: {
-          userId: string;
-          name?: string;
-        };
-      },
 ) => void;
 
 interface RequestContext {
   originUrl?: string;
   traceEmitter?: TraceEmitter;
-  /**
-   * Signal for cooperative cancellation — propagates the caller's AbortSignal
-   * into long-running graph nodes (e.g. orchestrator negotiation fan-out) so
-   * they can stop emitting events when the chat session closes.
-   *
-   * The orchestrator branch checks this before persisting status flips or
-   * pushing `opportunity_draft_ready` events. In-flight negotiations are not
-   * forcibly cancelled — they finish or time out naturally via their park
-   * window — but their results are suppressed once the signal trips.
-   */
+  /** Signal for cooperative cancellation in long-running graph nodes. */
   abortSignal?: AbortSignal;
 }
 

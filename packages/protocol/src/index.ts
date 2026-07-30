@@ -69,7 +69,6 @@ export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, Hy
 export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./shared/interfaces/integration.interface.js";
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper } from "./shared/interfaces/scraper.interface.js";
-export type { DiscoveryRunInput, DiscoveryRunRecord } from "./shared/interfaces/discovery-run.interface.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./shared/interfaces/enrichment-run.interface.js";
 export type { NegotiationTimeoutQueue, AskUserExpiryPayload } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";

@@ -76,11 +76,10 @@ function makeContext(onboarding: Record<string, unknown> = {}): ResolvedToolCont
 }
 
 describe("ONBOARDING_PERSONA", () => {
-  it("uses a first-class persisted persona with safe loop behavior", () => {
+  it("uses a first-class persisted persona with proposal recovery", () => {
     expect(ONBOARDING_PERSONA_ID).toBe("onboarding");
     expect(ONBOARDING_PERSONA.id).toBe(ONBOARDING_PERSONA_ID);
     expect(ONBOARDING_PERSONA.loopBehaviors).toEqual({
-      createIntentCallback: false,
       hallucinationRecovery: true,
     });
   });

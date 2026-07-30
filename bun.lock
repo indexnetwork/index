@@ -19,7 +19,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.32.0",
+      "version": "0.43.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -64,11 +64,11 @@
     },
     "packages/claude-plugin": {
       "name": "@indexnetwork/claude-plugin",
-      "version": "0.1.6",
+      "version": "0.3.0",
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -76,19 +76,19 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.12.0",
-        "@indexnetwork/cli-darwin-x64": "0.12.0",
-        "@indexnetwork/cli-linux-arm64": "0.12.0",
-        "@indexnetwork/cli-linux-x64": "0.12.0",
+        "@indexnetwork/cli-darwin-arm64": "0.13.0",
+        "@indexnetwork/cli-darwin-x64": "0.13.0",
+        "@indexnetwork/cli-linux-arm64": "0.13.0",
+        "@indexnetwork/cli-linux-x64": "0.13.0",
       },
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.10.0",
+      "version": "0.13.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "6.11.5",
+      "version": "8.0.0",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
@@ -104,7 +104,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.58.0",
+      "version": "0.67.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

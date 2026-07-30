@@ -12,7 +12,7 @@ npm install -g @indexnetwork/cli
 
 Index helps you find the right people—and helps the right people find you—based on what you are actually trying to do, not just a profile headline. The value is grounded intros: suggestions come from communities you share (syndicates, founder groups, firm networks), not from spraying the open web.
 
-The flow below is one complete story—shape a room, invite people, publish what you need, run discovery inside that context, watch broker negotiations, then accept a match.
+The flow below is one complete story—shape a room, invite people, publish an approved signal, let matching run in the background, then review a persisted match.
 
 ```bash
 # login + setup
@@ -22,14 +22,8 @@ index profile
 # 1. express intent (signals)
 index intent create "federated learning collaboration"
 
-# 2. discovery = sourcing + negotiations
-index opportunity discover "federated learning collaboration"
-
-# 3. check what the agents negotiated
-index negotiation list --since 1h
-index negotiation show <negotiation-id>
-
-# 4. review outcomes (opportunities) and decide
+# 2. background matching evaluates approved signals
+# Wait for persisted opportunities to be created, then review outcomes.
 index opportunity list --status pending
 index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
@@ -102,9 +96,6 @@ index opportunity list --limit 5           # Limit results
 index opportunity show <id>                # Show full details
 index opportunity accept <id>              # Accept an opportunity
 index opportunity reject <id>              # Reject an opportunity
-index opportunity discover "query"         # Discover opportunities by search
-index opportunity discover --target <id>   # Discover with a specific user
-index opportunity discover --introduce <a> <b>  # Introduce two users
 ```
 
 Status values: `pending`, `accepted`, `rejected`, `expired`.
@@ -184,75 +175,21 @@ index sync                             # Sync to ~/.index/context.json
 index sync --json                      # Output to stdout as JSON
 ```
 
-## Examples: Opportunity Discovery
+## Examples: Reviewing Opportunities
 
-The `opportunity discover` command supports multiple modes for creating connections. Each mode can be combined with flags to customize the discovery.
-
-### Search-based discovery
-
-Find people whose intents match a search query. The protocol runs HyDE-powered semantic search across your networks.
-
-```bash
-index opportunity discover "looking for an AI engineer with privacy expertise"
-```
-
-### Targeted discovery
-
-Scope discovery to a specific user. Use when you already know who you want to connect with.
-
-```bash
-# First, find the user
-index profile search "Jane Smith"
-
-# Then create a direct opportunity with them
-index opportunity discover "collaborate on open-source LLM tooling" --target <user-id>
-```
-
-### Introduction
-
-Introduce two people you think should connect. You become the introducer — both parties see you as the connector. The CLI automatically finds shared networks, gathers profiles and intents, then creates the introduction.
-
-```bash
-# Introduce two users to each other
-index opportunity discover --introduce <user-id-a> <user-id-b>
-
-# Provide a reason for the introduction
-index opportunity discover --introduce <user-id-a> <user-id-b> "both working on privacy-preserving ML"
-```
-
-### Complex social flows
-
-Use this when you want to propose an opportunity outright instead of running discovery: pick the community (`--network`), list each person (`--party`, two or more), and when it matters, tie a person to one of their signals with `userId:intentId` on that line and add why it fits (`--reason`). Here Alice and Bob carry explicit signals; Carol does not. This command is not in the CLI yet; it is the shape we intend to ship.
-
-```bash
-index opportunity create \
-  --network <network-id> \
-  --party <alice-id>:<alice-intent-id> \
-  --party <bob-id>:<bob-intent-id> \
-  --party <carol-id> \
-  --reason "Alice, Bob, and Carol are all working on federated learning from different angles" \
-  --category "collaboration" \
-  --confidence 0.9
-```
+Approved signals are matched in the background. `opportunity list` only reviews persisted results; it does not trigger matching.
 
 ### Review and act
 
-After discovery creates draft opportunities, review and accept/reject them.
-
 ```bash
-# List pending opportunities
+# List persisted pending opportunities
 index opportunity list --status pending
 
-# See full details (reasoning, scores, mutual intents)
+# See full details
 index opportunity show <id>
 
-# Accept — starts a conversation thread
+# Accept or reject
 index opportunity accept <id>
-
-# If preparatory questions are returned, resolve them first or explicitly continue
-index opportunity accept <id> --acknowledge-uptake <question-id[,question-id...]>
-
-# Or reject
 index opportunity reject <id>
 ```
 
@@ -273,8 +210,6 @@ index opportunity reject <id>
 | `--title <text>`     |       | Network title (for `network update`)                            |
 | `--name <name>`      |       | Display name (for `contact add`)                                |
 | `--gmail`            |       | Import from Gmail (for `contact import`)                        |
-| `--target <id>`      |       | Target user ID (for `opportunity discover`)                     |
-| `--introduce <id>`   |       | Introduce two users (for `opportunity discover`)                |
 | `--objective <text>` |       | Focus objective (for `scrape`)                                  |
 | `--json`             |       | Output raw JSON to stdout                                       |
 | `--help`             | `-h`  | Show help                                                       |

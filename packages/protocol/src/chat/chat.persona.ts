@@ -21,12 +21,6 @@ import type { IterationContext } from "./chat.prompt.modules.js";
  */
 export interface ChatPersonaLoopBehaviors {
   /**
-   * When `discover_opportunities` returns `createIntentSuggested`, auto-invoke
-   * `create_intent` and then re-run `discover_opportunities` with the original
-   * arguments.
-   */
-  createIntentCallback: boolean;
-  /**
    * Detect hallucinated ```opportunity / ```intent_proposal code blocks in model
    * text, auto-invoke the corresponding tool, and strip unbacked blocks from the
    * final response. Only meaningful for personas whose toolset can legitimately
@@ -80,7 +74,6 @@ export const ORCHESTRATOR_PERSONA: ChatPersonaConfig = {
   buildSystemContent: (ctx, iterCtx) => buildSystemContent(ctx, iterCtx),
   createTools: (deps, preResolvedContext) => createChatTools(deps, preResolvedContext),
   loopBehaviors: {
-    createIntentCallback: true,
     hallucinationRecovery: true,
   },
 };
