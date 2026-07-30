@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { UserContextGenerator, HydeGraphFactory, SignalIntakePackGenerator } from '@indexnetwork/protocol';
 
-import { UserContextQueue } from '../usercontext.queue';
+import { UserContextQueue, computePremiseHash } from '../usercontext.queue';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { signalIntakePackAdapter } from '../../adapters/signal-intake-pack.database.adapter';
 
@@ -65,6 +65,86 @@ describe('UserContextQueue intake pack regeneration', () => {
     }) as never);
 
     await expect(queue.processJob('regenerate_contexts', { userId: 'user-1' })).resolves.toBeUndefined();
+  });
+});
+
+describe('UserContextQueue per-network getNetwork failure isolation', () => {
+  // Regression test: `getNetwork` is now resolved unconditionally per network (to
+  // collect titles for the intake pack), outside `regenerateOne`'s try/catch. A
+  // throwing `getNetwork` must not abort the rest of the loop or skip the
+  // intake-pack refresh that runs after it.
+  it('isolates a getNetwork failure to that network — other networks still process and the pack still refreshes', async () => {
+    const regenerateIntakePack = mock(async () => undefined);
+    const generateContext = mock(async (input: { networkTitle: string }) => ({ text: `ctx-${input.networkTitle}`, embedding: [] }));
+    const getNetwork = mock(async (networkId: string) => {
+      if (networkId === 'netA') throw new Error('network lookup down');
+      return { title: networkId, prompt: null };
+    });
+
+    const queue = new UserContextQueue(baseDeps({
+      getUserNetworkIds: async () => ['netA', 'netB'],
+      getNetwork,
+      generateContext,
+      getExistingIntakePack: async () => null,
+      regenerateIntakePack,
+    }) as never);
+
+    await expect(queue.processJob('regenerate_contexts', { userId: 'user-1' })).resolves.toBeUndefined();
+
+    // netA's lookup failure didn't abort the loop — netB still regenerated.
+    expect(generateContext).toHaveBeenCalledTimes(1);
+    expect(generateContext).toHaveBeenCalledWith(expect.objectContaining({ networkTitle: 'netB' }));
+
+    // ...and the intake-pack refresh (which runs after the per-network loop) still ran.
+    expect(regenerateIntakePack).toHaveBeenCalledTimes(1);
+    const [, , input] = regenerateIntakePack.mock.calls[0] as [string, string, { networkTitles: string[] }];
+    // netA's title is omitted since its lookup failed; netB's is present.
+    expect(input.networkTitles).toEqual(['netB']);
+  });
+});
+
+describe('UserContextQueue intake pack global context fallback', () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
+  // Regression test: when the global context row is already fresh this run (so
+  // `generateGlobalContext` never runs and `globalContextText` stays null), the
+  // pack must fall back to the stored row's text instead of passing `null` — this
+  // is the realistic rollout path (existing user, fresh global context, no pack
+  // row yet).
+  it('falls back to the stored global context text when the global row is fresh and the pack needs regeneration', async () => {
+    const premises = [
+      { id: 'p1', updatedAt: new Date('2026-01-01T00:00:00.000Z'), assertion: { text: 'Ada builds tools.' } },
+    ];
+    const matchingHash = computePremiseHash(premises);
+
+    const getUserContextSpy = spyOn(chatDatabaseAdapter, 'getUserContext').mockResolvedValue({
+      text: 'Stored global context text.',
+    } as never);
+
+    const generateGlobalContext = mock(async () => ({ text: 'freshly-generated', embedding: [] }));
+    const regenerateIntakePack = mock(async () => undefined);
+
+    const queue = new UserContextQueue(baseDeps({
+      getActivePremises: async () => premises,
+      // Global row (networkId null) already matches the computed hash — skipped as
+      // fresh, so `generateGlobalContext` must never run.
+      getExistingContext: async (_userId: string, networkId: string | null) =>
+        networkId === null ? { premiseHash: matchingHash } : null,
+      generateGlobalContext,
+      getExistingIntakePack: async () => null,
+      regenerateIntakePack,
+    }) as never);
+
+    await queue.processJob('regenerate_contexts', { userId: 'user-1' });
+
+    expect(generateGlobalContext).not.toHaveBeenCalled();
+    expect(getUserContextSpy).toHaveBeenCalledWith('user-1', null);
+
+    expect(regenerateIntakePack).toHaveBeenCalledTimes(1);
+    const [, , input] = regenerateIntakePack.mock.calls[0] as [string, string, { globalContext: string | null }];
+    expect(input.globalContext).toBe('Stored global context text.');
   });
 });
 

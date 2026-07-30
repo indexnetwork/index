@@ -256,7 +256,20 @@ export class UserContextQueue {
     // communities, not just the ones whose context changed this run.
     const networkTitles: string[] = [];
     for (const networkId of networkIds) {
-      const network = await getNetwork(networkId);
+      let network: { title: string; prompt: string | null } | null = null;
+      try {
+        network = await getNetwork(networkId);
+      } catch (err) {
+        // Isolate a getNetwork failure to this network only — mirrors regenerateOne's
+        // own per-row isolation. Previously getNetwork ran inside the `generate` closure
+        // (inside regenerateOne's try/catch), so a lookup failure was contained to that
+        // one row. Now that it runs unconditionally per network (to collect titles for
+        // every network, not just stale ones), an uncaught failure here would otherwise
+        // propagate out of the whole loop and skip both the remaining networks and the
+        // intake-pack refresh below. Log and continue instead.
+        this.logger.error('Failed to resolve network for context regeneration', { userId, networkId, error: err });
+        continue;
+      }
       if (network) networkTitles.push(network.title);
       await regenerateOne(networkId, async () => {
         if (!network) return null;
