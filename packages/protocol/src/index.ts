@@ -200,6 +200,7 @@ export type {
   SynthesisInput,
   SynthesisResult,
 } from "./capabilities/signals.facade.js";
+export { normalizeIntentDescription } from "./capabilities/signals.facade.js";
 export { LensInferrer } from "./capabilities/participant-context.facade.js";
 export { NegotiationInsightsGenerator } from "./capabilities/negotiation.facade.js";
 export type { NegotiationDigest } from "./capabilities/negotiation.facade.js";

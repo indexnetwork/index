@@ -31,3 +31,4 @@ export {
   type SynthesisInput,
   type SynthesisResult,
 } from "../signals/application/intake.orchestrator.js";
+export { normalizeIntentDescription } from "../signals/domain/intent.proposal.js";
