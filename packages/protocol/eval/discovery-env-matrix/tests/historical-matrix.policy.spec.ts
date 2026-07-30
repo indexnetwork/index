@@ -203,6 +203,25 @@ describe("historical discovery environment matrix policy", () => {
       expect(gate.rows.find((row) => row.rowId === "profile-premise")).toMatchObject({ passed: false, blocking: false });
     });
 
+    it("fails rows with unexpected slot counts and unknown row ids", () => {
+      const short = evaluateControlCalibratedGate(fullMatrix().slice(0, 74));
+      expect(short.passed).toBe(false);
+      expect(short.failures.join(" ")).toContain("rows without 15 slots");
+
+      const unknown = evaluateControlCalibratedGate([
+        ...fullMatrix(),
+        { caseId: "historical/rogue/made-up/r1", rowId: "made-up" as MatrixRowId, runs: 1, passes: 1 },
+      ]);
+      expect(unknown.passed).toBe(false);
+      expect(unknown.failures.join(" ")).toContain("unknown rows");
+
+      const canary = evaluateControlCalibratedGate(
+        MATRIX_ROWS.map((row) => ({ caseId: `historical/case-0/${row.id}/r1`, rowId: row.id, runs: 1, passes: 1 })),
+        { expectedSlotsPerRow: 1 },
+      );
+      expect(canary.passed).toBe(true);
+    });
+
     it("fails incomplete slots and missing rows", () => {
       const missing = evaluateControlCalibratedGate(slotsFor({ "intent-only": 15 }));
       expect(missing.passed).toBe(false);

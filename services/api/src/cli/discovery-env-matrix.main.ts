@@ -119,6 +119,9 @@ export async function runBoundedChildTasks<T, R>(options: {
         if (firstFailure === undefined) {
           firstFailure = { error };
           onFailure?.();
+        } else {
+          // Never log error content: concurrent failures may carry provider/DB detail.
+          console.warn('Discovery environment matrix suppressed a concurrent child failure after fail-fast began');
         }
       }
     }
@@ -300,8 +303,12 @@ export type MatrixSlotResult = Record<string, unknown> & {
   scoredRunIds?: string[];
 };
 
+// Structural mirror of evaluateControlCalibratedGate: the provider-free
+// bootstrap loads the policy module dynamically, and a cross-package type
+// import would violate this package's rootDir, so this seam is checked by the
+// spec suite (which injects the real gate) rather than by tsc.
 type MatrixGateSlot = Pick<MatrixSlotResult, 'caseId' | 'rowId' | 'runs' | 'passes'>;
-type MatrixControlCalibratedGateFn = (slots: readonly MatrixGateSlot[]) => { passed: boolean; failures: string[]; controlPassRate: number; rows: Array<{ rowId: string; passes: number; runs: number; passRate: number; blocking: boolean; passed: boolean }> };
+type MatrixControlCalibratedGateFn = (slots: readonly MatrixGateSlot[], options?: { expectedSlotsPerRow?: number }) => { passed: boolean; failures: string[]; controlPassRate: number; rows: Array<{ rowId: string; slots: number; passes: number; runs: number; passRate: number; threshold: number | null; blocking: boolean; passed: boolean }> };
 
 /**
  * Blocks governed baseline writes unless the control-calibrated gate passes:
@@ -926,6 +933,12 @@ async function runParent(): Promise<void> {
       concurrency: parseMatrixChildConcurrency(process.env),
       onFailure: () => {
         for (const active of activeChildren) active.kill('SIGTERM');
+        // A SIGTERM-ignoring sibling should not stall fail-fast until its full
+        // watchdog deadline; escalate any survivor after the grace window.
+        const escalation = setTimeout(() => {
+          for (const active of activeChildren) active.kill('SIGKILL');
+        }, CHILD_TERMINATION_GRACE_MS);
+        escalation.unref?.();
       },
       task: async (child) => {
         const outputPath = path.join(temporaryDirectory, `${child.childKey}.json`);
@@ -965,7 +978,8 @@ async function runParent(): Promise<void> {
       completedAt: new Date().toISOString(),
       execution,
     };
-    const flow = await runEvalEvidenceFlow({
+    const gateFn: MatrixControlCalibratedGateFn = (gateSlots) => (evaluateControlCalibratedGate as MatrixControlCalibratedGateFn)(gateSlots, { expectedSlotsPerRow: selection.canary ? 1 : MATRIX_REPETITIONS * selection.cases.length });
+  const flow = await runEvalEvidenceFlow({
       evidencePolicy: selection.canary ? 'normal' : 'strict',
       execution: summary,
       noComparison: emptyGovernedComparison(),
@@ -975,7 +989,7 @@ async function runParent(): Promise<void> {
       regressionCount: governedRegressionCount,
       comparisonStatus: selection.canary ? undefined : (comparison: unknown) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
       updateBaseline: updateBaseline ? async (comparison: unknown) => {
-        await runBaselineUpdateAfterPassingAssertions(slots, evaluateControlCalibratedGate, async () => {
+        await runBaselineUpdateAfterPassingAssertions(slots, gateFn, async () => {
           assertCompleteMatrix({ requested: summary.requestedRuns, completed: summary.completedRuns, failed: summary.failedRuns });
           const baselineScorecard = leanMatrixScorecard(scorecard);
           const result = await performGovernedBaselineUpdate({
@@ -991,7 +1005,11 @@ async function runParent(): Promise<void> {
     if (flow.compared && !selection.canary) console.log(formatGovernedComparison(flow.comparison, { fullCorpus: true }));
     console.log(formatConsole(scorecard, regressions, skippedCaseIds, { title: 'Discovery environment matrix scorecard', execution }));
     if (htmlPath) await writeHtmlReport(htmlPath, scorecard, regressions, execution);
-    const failedAssertions = slots.some((slot) => slot.passes !== slot.runs);
+    // Canary runs keep the strict any-slot gate; full governed runs key their
+    // exit status off the control-calibrated gate, matching baseline policy.
+    const failedAssertions = selection.canary
+      ? slots.some((slot) => slot.passes !== slot.runs)
+      : !gateFn(slots).passed;
     process.exitCode = failedAssertions && flow.exitCode === 0 ? 1 : flow.exitCode;
     completedSuccessfully = process.exitCode === undefined || process.exitCode === 0;
   } finally {

@@ -162,6 +162,8 @@ export const MATRIX_CONTROL_CALIBRATION_MARGIN = 0.2;
  * comparison evidence and are recorded but non-blocking.
  */
 export const MATRIX_QUALIFICATION_ROW_IDS: readonly MatrixRowId[] = ["profile-context", "both-context"];
+/** Five historical cases times three repetitions; the full governed matrix per row. */
+export const MATRIX_EXPECTED_SLOTS_PER_ROW = 15;
 
 export interface MatrixRowRateSlot {
   caseId: string;
@@ -198,7 +200,11 @@ export interface MatrixControlCalibratedGate {
  * margin of the control row's pass rate. Comparison rows receive verdicts for
  * reporting but never block.
  */
-export function evaluateControlCalibratedGate(slots: readonly MatrixRowRateSlot[]): MatrixControlCalibratedGate {
+export function evaluateControlCalibratedGate(
+  slots: readonly MatrixRowRateSlot[],
+  options?: { expectedSlotsPerRow?: number },
+): MatrixControlCalibratedGate {
+  const expectedSlotsPerRow = options?.expectedSlotsPerRow ?? MATRIX_EXPECTED_SLOTS_PER_ROW;
   const failures: string[] = [];
   const incomplete = slots.filter((slot) => slot.runs < 1);
   if (incomplete.length > 0) {
@@ -206,9 +212,18 @@ export function evaluateControlCalibratedGate(slots: readonly MatrixRowRateSlot[
   }
   const byRow = new Map<MatrixRowId, MatrixRowRateSlot[]>();
   for (const slot of slots) byRow.set(slot.rowId, [...byRow.get(slot.rowId) ?? [], slot]);
+  const knownRowIds = new Set<string>(MATRIX_ROWS.map((row) => row.id));
+  const unknown = [...byRow.keys()].filter((rowId) => !knownRowIds.has(rowId));
+  if (unknown.length > 0) {
+    failures.push(`unknown rows: ${unknown.join(", ")}`);
+  }
   const missing = MATRIX_ROWS.filter((row) => !byRow.has(row.id));
   if (missing.length > 0) {
     failures.push(`missing rows: ${missing.map((row) => row.id).join(", ")}`);
+  }
+  const short = MATRIX_ROWS.filter((row) => byRow.has(row.id) && byRow.get(row.id)!.length !== expectedSlotsPerRow);
+  if (short.length > 0) {
+    failures.push(`rows without ${expectedSlotsPerRow} slots: ${short.map((row) => `${row.id} (${byRow.get(row.id)!.length})`).join(", ")}`);
   }
   const rate = (rowSlots: readonly MatrixRowRateSlot[]): { runs: number; passes: number; passRate: number } => {
     const runs = rowSlots.reduce((sum, slot) => sum + slot.runs, 0);
