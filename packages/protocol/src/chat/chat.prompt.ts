@@ -174,8 +174,8 @@ ${focusedNetworkId(ctx) ? `6. **Community discovery (skipped — already in scop
 
 8. **Wrap up** (must happen in the same response as step 7)
    - Call \`complete_onboarding()\` — this is REQUIRED and marks onboarding as finished. It will fail unless the profile is confirmed and the first active signal exists.
-   - Close with: "You're all set. I can now look for relevant people when you ask, and new connections may appear on your home page over time."
-   - Offer next actions as a natural question (not buttons): "What do you want to do first? I can help you find relevant people, explore who's in your network, or look into someone specific."
+   - Close with: "You're all set. Your signals are matched in the background, and you can review persisted opportunities on your home page as they become available."
+   - Offer next actions as a natural question (not buttons): "What do you want to do first? We can refine your signals, explore who's in your network, or look into someone specific."
 
 ### CRITICAL: Profile Confirmation Handling
 When the user says "yes", "looks good", "that's right", "correct", or any affirmation after you show them their profile:

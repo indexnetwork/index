@@ -39,6 +39,7 @@ describe('Release 1 background-only opportunity inventory', () => {
     expect(publicRuntimeSources).not.toMatch(/discover_opportunities|get_discovery_run|cancel_discovery_run|discoveryRunQueue/);
     expect(runtimeAndCurrentDocs).not.toMatch(/opportunity_draft_ready|OpportunityTrigger|trigger:\s*['"]orchestrator['"]/);
     expect(chatPrompt).not.toMatch(/only discover and surface matches during the active conversation/);
+    expect(chatPrompt).not.toMatch(/I can(?: now)? (?:look for|help you find) relevant people(?: when you ask)?/);
     expect(schemaSources).toContain('opportunityDiscoveryRuns');
   });
 });
