@@ -39,6 +39,12 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   with that change; this entry and the regenerated export inventory record it.
 
 ### Fixed
+- `architecture:cycles` graphs runtime edges only (8.0.3). It counted `import
+  type` / `export type` edges, which TypeScript erases, so it reported a
+  7-module negotiation/questions cycle that no runtime can observe — penalizing
+  the capability-facade pattern of depending on a port *type* instead of an
+  implementation. Tooling only; no source or public-surface change. The full
+  `architecture:check` suite now passes and runs in CI.
 - Stop force-rewriting an opening-move refusal (IND-611 prerequisite; 7.11.0):
   `negotiation.graph.ts` ran the turn-0 opening force *before* the IND-564
   opening-withdraw guard, so a v2 initiator that judged a match not worth making

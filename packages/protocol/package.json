@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "8.0.2",
+  "version": "8.0.3",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,7 +22,7 @@
     "dev": "tsc --watch",
     "test": "bun test",
     "test:isolated": "bun scripts/test.ts",
-    "test:architecture": "bun test src/architecture/tests",
+    "test:architecture": "bun test src/architecture/tests scripts/architecture/tests",
     "architecture:exports": "bun scripts/architecture/export-inventory.ts",
     "architecture:exports:update": "bun scripts/architecture/export-inventory.ts --write",
     "architecture:consumer": "bunx tsc --project architecture/consumer/tsconfig.json",
