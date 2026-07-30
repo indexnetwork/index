@@ -16,7 +16,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
-  const bareRoutes = ['/', '/i/new', '/onboarding', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages'];
+  const bareRoutes = ['/', '/i/new', '/onboarding', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.

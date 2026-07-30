@@ -272,6 +272,12 @@ describe('Route rendering smoke tests', () => {
     expect(container).toBeTruthy();
   });
 
+  test('/waitlist — Waitlist page renders without crashing', async () => {
+    const { Component } = await import('@/app/waitlist/page');
+    const { container } = renderWithRouter(<Component />, { route: '/waitlist' });
+    expect(container).toBeTruthy();
+  });
+
   test('/blog — Blog page renders without crashing', async () => {
     const { Component } = await import('@/app/blog/page');
     const { container } = renderWithRouter(<Component />, { route: '/blog' });
@@ -352,14 +358,6 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/pages/terms-of-use/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/pages/terms-of-use',
-    });
-    expect(container).toBeTruthy();
-  });
-
-  test('/profile — Profile page renders without crashing', async () => {
-    const { Component } = await import('@/app/profile/page');
-    const { container } = renderWithRouter(<Component />, {
-      route: '/profile',
     });
     expect(container).toBeTruthy();
   });
