@@ -300,14 +300,26 @@ export type MatrixSlotResult = Record<string, unknown> & {
   scoredRunIds?: string[];
 };
 
-/** Blocks governed baseline writes when any completed matrix slot failed its assertions. */
+type MatrixGateSlot = Pick<MatrixSlotResult, 'caseId' | 'rowId' | 'runs' | 'passes'>;
+type MatrixControlCalibratedGateFn = (slots: readonly MatrixGateSlot[]) => { passed: boolean; failures: string[]; controlPassRate: number; rows: Array<{ rowId: string; passes: number; runs: number; passRate: number; blocking: boolean; passed: boolean }> };
+
+/**
+ * Blocks governed baseline writes unless the control-calibrated gate passes:
+ * complete slots, control row above its floor, and every qualification
+ * (user_context) row within the calibration margin of the control pass rate.
+ * Comparison premise rows are logged as findings but never block.
+ */
 export async function runBaselineUpdateAfterPassingAssertions<T>(
-  slots: readonly Pick<MatrixSlotResult, 'caseId' | 'runs' | 'passes'>[],
+  slots: readonly MatrixGateSlot[],
+  gate: MatrixControlCalibratedGateFn,
   update: () => Promise<T>,
 ): Promise<T> {
-  const failed = slots.filter((slot) => slot.passes !== slot.runs);
-  if (failed.length > 0) {
-    throw new Error(`Discovery environment matrix baseline requires all 75 matrix assertions to pass (${failed.length} failed: ${failed.map((slot) => slot.caseId).join(', ')})`);
+  const verdict = gate(slots);
+  for (const row of verdict.rows) {
+    console.log(`Discovery environment matrix row ${row.rowId}: ${row.passes}/${row.runs} (${(row.passRate * 100).toFixed(1)}%)${row.blocking ? '' : ' [non-blocking comparison arm]'}${row.passed ? '' : ' FAILED'}`);
+  }
+  if (!verdict.passed) {
+    throw new Error(`Discovery environment matrix baseline blocked by control-calibrated gate: ${verdict.failures.join('; ')}`);
   }
   return update();
 }
@@ -865,6 +877,7 @@ async function runParent(): Promise<void> {
     compareAgainstGovernedBaseline, governedRegressionCount, governedComparisonExitStatus,
     performGovernedBaselineUpdate, writeBaseline, formatBaselineUpdateSummary,
     writeRunReport, runEvalEvidenceFlow, formatGovernedComparison, formatConsole,
+    evaluateControlCalibratedGate,
   } = await loadMatrixEval();
   const updateBaseline = has('--update-baseline');
   const selection = resolveMatrixExecutionSelection(
@@ -962,7 +975,7 @@ async function runParent(): Promise<void> {
       regressionCount: governedRegressionCount,
       comparisonStatus: selection.canary ? undefined : (comparison: unknown) => governedComparisonExitStatus(comparison, { forUpdate: updateBaseline }),
       updateBaseline: updateBaseline ? async (comparison: unknown) => {
-        await runBaselineUpdateAfterPassingAssertions(slots, async () => {
+        await runBaselineUpdateAfterPassingAssertions(slots, evaluateControlCalibratedGate, async () => {
           assertCompleteMatrix({ requested: summary.requestedRuns, completed: summary.completedRuns, failed: summary.failedRuns });
           const baselineScorecard = leanMatrixScorecard(scorecard);
           const result = await performGovernedBaselineUpdate({

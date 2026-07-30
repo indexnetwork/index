@@ -1,12 +1,22 @@
 import { describe, expect, it } from 'bun:test';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
-import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
+import { evaluateControlCalibratedGate, MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE, executeRuns } from '../../../../../packages/protocol/eval/shared/index.js';
 
 import { baseSeedPayload } from '../discovery-env-matrix.shared';
 import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildConcurrency, parseMatrixChildTimeoutMs, runBoundedChildTasks, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
+
+/** 15 single-run slots per row with the requested number of passing slots. */
+const buildGateSlots = (passesByRow: Record<string, number>): MatrixSlotResult[] =>
+  Object.entries(passesByRow).flatMap(([rowId, passes]) =>
+    Array.from({ length: 15 }, (_, index) => ({
+      caseId: `historical/case-${index % 5}/${rowId}/r${Math.floor(index / 5) + 1}`,
+      rowId,
+      runs: 1,
+      passes: index < passes ? 1 : 0,
+    } as MatrixSlotResult)));
 
 describe('discovery environment matrix runtime seams', () => {
   it('redacts provider, database, and API-key error content', () => {
@@ -133,22 +143,34 @@ describe('discovery environment matrix runtime seams', () => {
     expect(() => assertCompleteMatrix({ requested: 75, completed: 74, failed: 1 })).toThrow('75 complete slots');
   });
 
-  it('does not write a baseline or update summary when all 75 executions complete but an assertion fails', async () => {
-    const slots = Array.from({ length: 75 }, (_, index) => ({
-      caseId: `historical/case-${index}/intent-only/r1`,
-      runs: 1,
-      passes: index === 37 ? 0 : 1,
-    } as MatrixSlotResult));
+  it('blocks the baseline when a user_context qualification row falls below the control-calibrated threshold', async () => {
+    // Control 15/15; profile-context 11/15 (0.733) < 1.0 - 0.2 margin.
+    const slots = buildGateSlots({ 'intent-only': 15, 'profile-premise': 15, 'profile-context': 11, 'both-premise': 15, 'both-context': 15 });
     let baselineWrites = 0;
-    let summaryWrites = 0;
 
-    await expect(runBaselineUpdateAfterPassingAssertions(slots, async () => {
+    await expect(runBaselineUpdateAfterPassingAssertions(slots, evaluateControlCalibratedGate, async () => {
       baselineWrites += 1;
-      summaryWrites += 1;
-    })).rejects.toThrow('all 75 matrix assertions to pass');
+    })).rejects.toThrow('control-calibrated gate');
 
     expect(baselineWrites).toBe(0);
-    expect(summaryWrites).toBe(0);
+  });
+
+  it('blocks the baseline when the control row falls below its absolute floor', async () => {
+    const slots = buildGateSlots({ 'intent-only': 11, 'profile-premise': 15, 'profile-context': 15, 'both-premise': 15, 'both-context': 15 });
+    await expect(runBaselineUpdateAfterPassingAssertions(slots, evaluateControlCalibratedGate, async () => {})).rejects.toThrow('below floor');
+  });
+
+  it('writes the baseline when only non-blocking comparison premise arms lag behind control', async () => {
+    // Mirrors the observed governed run: control 13/15, context rows within margin,
+    // profile-premise 5/15 recorded as a finding but non-blocking.
+    const slots = buildGateSlots({ 'intent-only': 13, 'profile-premise': 5, 'profile-context': 12, 'both-premise': 14, 'both-context': 11 });
+    let baselineWrites = 0;
+
+    await runBaselineUpdateAfterPassingAssertions(slots, evaluateControlCalibratedGate, async () => {
+      baselineWrites += 1;
+    });
+
+    expect(baselineWrites).toBe(1);
   });
 
   it('requires a distinct predeclared Neon child for every configuration/repetition', () => {

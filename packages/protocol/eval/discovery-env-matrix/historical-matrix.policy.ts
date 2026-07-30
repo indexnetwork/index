@@ -150,6 +150,97 @@ export interface MatrixBaselineSlotResult extends Omit<MatrixSlotResult, "candid
 
 export type MatrixBaselineScorecard = ScorecardLike<MatrixBaselineSlotResult>;
 
+/** The unchanged production configuration; its pass rate measures judge noise. */
+export const MATRIX_CONTROL_ROW_ID: MatrixRowId = "intent-only";
+/** A run whose control row falls below this floor is never baselineable. */
+export const MATRIX_CONTROL_MINIMUM_PASS_RATE = 0.8;
+/** Maximum allowed shortfall of a qualification row below the control pass rate. */
+export const MATRIX_CONTROL_CALIBRATION_MARGIN = 0.2;
+/**
+ * Rows that must beat the control-calibrated threshold before a baseline write:
+ * the user_context arms this matrix exists to qualify. Premise arms are
+ * comparison evidence and are recorded but non-blocking.
+ */
+export const MATRIX_QUALIFICATION_ROW_IDS: readonly MatrixRowId[] = ["profile-context", "both-context"];
+
+export interface MatrixRowRateSlot {
+  caseId: string;
+  rowId: MatrixRowId;
+  runs: number;
+  passes: number;
+}
+
+export interface MatrixRowRateVerdict {
+  rowId: MatrixRowId;
+  slots: number;
+  runs: number;
+  passes: number;
+  passRate: number;
+  /** Control-calibrated pass-rate threshold; null for the control row itself. */
+  threshold: number | null;
+  blocking: boolean;
+  passed: boolean;
+}
+
+export interface MatrixControlCalibratedGate {
+  passed: boolean;
+  controlPassRate: number;
+  minimumControlPassRate: number;
+  calibrationMargin: number;
+  failures: string[];
+  rows: MatrixRowRateVerdict[];
+}
+
+/**
+ * Governed baseline gate calibrated against the stochastic judge's noise floor:
+ * the control row must clear an absolute floor, every slot must have completed,
+ * and each qualification row's pass rate must stay within the calibration
+ * margin of the control row's pass rate. Comparison rows receive verdicts for
+ * reporting but never block.
+ */
+export function evaluateControlCalibratedGate(slots: readonly MatrixRowRateSlot[]): MatrixControlCalibratedGate {
+  const failures: string[] = [];
+  const incomplete = slots.filter((slot) => slot.runs < 1);
+  if (incomplete.length > 0) {
+    failures.push(`incomplete slots: ${incomplete.map((slot) => slot.caseId).join(", ")}`);
+  }
+  const byRow = new Map<MatrixRowId, MatrixRowRateSlot[]>();
+  for (const slot of slots) byRow.set(slot.rowId, [...byRow.get(slot.rowId) ?? [], slot]);
+  const missing = MATRIX_ROWS.filter((row) => !byRow.has(row.id));
+  if (missing.length > 0) {
+    failures.push(`missing rows: ${missing.map((row) => row.id).join(", ")}`);
+  }
+  const rate = (rowSlots: readonly MatrixRowRateSlot[]): { runs: number; passes: number; passRate: number } => {
+    const runs = rowSlots.reduce((sum, slot) => sum + slot.runs, 0);
+    const passes = rowSlots.reduce((sum, slot) => sum + slot.passes, 0);
+    return { runs, passes, passRate: runs > 0 ? passes / runs : 0 };
+  };
+  const controlPassRate = rate(byRow.get(MATRIX_CONTROL_ROW_ID) ?? []).passRate;
+  if (byRow.has(MATRIX_CONTROL_ROW_ID) && controlPassRate < MATRIX_CONTROL_MINIMUM_PASS_RATE) {
+    failures.push(`control row ${MATRIX_CONTROL_ROW_ID} pass rate ${controlPassRate.toFixed(3)} below floor ${MATRIX_CONTROL_MINIMUM_PASS_RATE}`);
+  }
+  const threshold = Math.max(0, controlPassRate - MATRIX_CONTROL_CALIBRATION_MARGIN);
+  const rows: MatrixRowRateVerdict[] = MATRIX_ROWS.filter((row) => byRow.has(row.id)).map((row) => {
+    const rowSlots = byRow.get(row.id)!;
+    const { runs, passes, passRate } = rate(rowSlots);
+    const control = row.id === MATRIX_CONTROL_ROW_ID;
+    const blocking = control || MATRIX_QUALIFICATION_ROW_IDS.includes(row.id);
+    const passed = control ? passRate >= MATRIX_CONTROL_MINIMUM_PASS_RATE : passRate >= threshold;
+    if (!control && blocking && !passed) {
+      failures.push(`qualification row ${row.id} pass rate ${passRate.toFixed(3)} below control-calibrated threshold ${threshold.toFixed(3)}`);
+    }
+    return { rowId: row.id, slots: rowSlots.length, runs, passes, passRate, threshold: control ? null : threshold, blocking, passed };
+  });
+  return {
+    passed: failures.length === 0,
+    controlPassRate,
+    minimumControlPassRate: MATRIX_CONTROL_MINIMUM_PASS_RATE,
+    calibrationMargin: MATRIX_CONTROL_CALIBRATION_MARGIN,
+    failures,
+    rows,
+  };
+}
+
 function rowFor(rowId: MatrixRowId): MatrixRow {
   const row = MATRIX_ROWS.find((candidate) => candidate.id === rowId);
   if (!row) throw new Error(`Unknown discovery environment matrix row: ${rowId}`);

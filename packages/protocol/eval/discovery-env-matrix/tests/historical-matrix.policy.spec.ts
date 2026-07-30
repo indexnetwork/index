@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { HISTORICAL_MATRIX_CASES } from "../historical-matrix.cases.js";
-import { MATRIX_ROWS, assertAllowedEvidence, buildJudgePrompt, scoreMatrixSlot } from "../historical-matrix.policy.js";
+import { MATRIX_CONTROL_CALIBRATION_MARGIN, MATRIX_CONTROL_MINIMUM_PASS_RATE, MATRIX_CONTROL_ROW_ID, MATRIX_QUALIFICATION_ROW_IDS, MATRIX_ROWS, assertAllowedEvidence, buildJudgePrompt, evaluateControlCalibratedGate, scoreMatrixSlot, type MatrixRowId, type MatrixRowRateSlot } from "../historical-matrix.policy.js";
 
 describe("historical discovery environment matrix policy", () => {
   it("defines exactly the five supported discovery environment rows", () => {
@@ -148,5 +148,71 @@ describe("historical discovery environment matrix policy", () => {
     expect(prompt).toContain("candidate-a");
     expect(prompt).not.toContain("basis");
     expect(prompt).not.toContain("reportNames");
+  });
+
+  describe("control-calibrated baseline gate", () => {
+    const slotsFor = (passesByRow: Partial<Record<MatrixRowId, number>>): MatrixRowRateSlot[] =>
+      Object.entries(passesByRow).flatMap(([rowId, passes]) =>
+        Array.from({ length: 15 }, (_, index) => ({
+          caseId: `historical/case-${index % 5}/${rowId}/r${Math.floor(index / 5) + 1}`,
+          rowId: rowId as MatrixRowId,
+          runs: 1,
+          passes: index < (passes ?? 0) ? 1 : 0,
+        })));
+    const fullMatrix = (overrides: Partial<Record<MatrixRowId, number>> = {}): MatrixRowRateSlot[] =>
+      slotsFor({ "intent-only": 15, "profile-premise": 15, "profile-context": 15, "both-premise": 15, "both-context": 15, ...overrides });
+
+    it("qualifies exactly the user_context arms against the intent-only control", () => {
+      expect(MATRIX_CONTROL_ROW_ID).toBe("intent-only");
+      expect(MATRIX_QUALIFICATION_ROW_IDS).toEqual(["profile-context", "both-context"]);
+      expect(MATRIX_CONTROL_MINIMUM_PASS_RATE).toBe(0.8);
+      expect(MATRIX_CONTROL_CALIBRATION_MARGIN).toBe(0.2);
+    });
+
+    it("passes a perfect run and reports every row verdict", () => {
+      const gate = evaluateControlCalibratedGate(fullMatrix());
+      expect(gate.passed).toBe(true);
+      expect(gate.failures).toEqual([]);
+      expect(gate.rows).toHaveLength(5);
+      expect(gate.rows.every((row) => row.passed)).toBe(true);
+    });
+
+    it("fails when the control row is below its absolute floor even if other rows are perfect", () => {
+      const gate = evaluateControlCalibratedGate(fullMatrix({ "intent-only": 11 }));
+      expect(gate.passed).toBe(false);
+      expect(gate.failures.join(" ")).toContain("below floor");
+    });
+
+    it("fails a qualification row below the control-calibrated threshold", () => {
+      // Control 1.0 -> threshold 0.8; both-context 11/15 = 0.733 fails.
+      const gate = evaluateControlCalibratedGate(fullMatrix({ "both-context": 11 }));
+      expect(gate.passed).toBe(false);
+      expect(gate.failures.join(" ")).toContain("both-context");
+    });
+
+    it("calibrates the threshold to the observed control noise floor", () => {
+      // Control 13/15 = 0.867 -> threshold 0.667; both-context 11/15 = 0.733 passes.
+      const gate = evaluateControlCalibratedGate(fullMatrix({ "intent-only": 13, "both-context": 11 }));
+      expect(gate.passed).toBe(true);
+      expect(gate.rows.find((row) => row.rowId === "both-context")).toMatchObject({ passed: true, blocking: true });
+    });
+
+    it("records lagging comparison premise arms as non-blocking findings", () => {
+      const gate = evaluateControlCalibratedGate(fullMatrix({ "intent-only": 13, "profile-premise": 5, "both-premise": 14, "profile-context": 12, "both-context": 11 }));
+      expect(gate.passed).toBe(true);
+      expect(gate.rows.find((row) => row.rowId === "profile-premise")).toMatchObject({ passed: false, blocking: false });
+    });
+
+    it("fails incomplete slots and missing rows", () => {
+      const missing = evaluateControlCalibratedGate(slotsFor({ "intent-only": 15 }));
+      expect(missing.passed).toBe(false);
+      expect(missing.failures.join(" ")).toContain("missing rows");
+
+      const incomplete = fullMatrix();
+      (incomplete[0] as { runs: number }).runs = 0;
+      const gate = evaluateControlCalibratedGate(incomplete);
+      expect(gate.passed).toBe(false);
+      expect(gate.failures.join(" ")).toContain("incomplete slots");
+    });
   });
 });
