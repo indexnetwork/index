@@ -38,6 +38,7 @@ tests/questioner.adapter.isolated.ts
 tests/frame-drift-execution-attempt.database.adapter.isolated.ts
 tests/accepted-opportunity.isolated.ts
 src/controllers/tests/intent.controller.isolated.ts
+src/controllers/tests/intent-intake.controller.isolated.ts
 src/adapters/tests/auth.adapter.isolated.ts
 src/adapters/tests/database.adapter.isolated.ts
 src/adapters/tests/chat-summary.database.adapter.isolated.ts
