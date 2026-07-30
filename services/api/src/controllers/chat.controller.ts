@@ -1080,7 +1080,7 @@ export class ChatController {
       .filter((m: { role: string }) => m.role === 'assistant')
       .map((m: { id: string }) => m.id);
 
-    let metaMap = new Map<string, { traceEvents?: unknown; debugMeta?: unknown; streamingDrafts?: unknown }>();
+    let metaMap = new Map<string, { traceEvents?: unknown; debugMeta?: unknown; streamingDrafts?: unknown; discoveries?: unknown }>();
     if (assistantIds.length > 0) {
       const metadataRows = await chatSessionService.getMessageMetadataByMessageIds(assistantIds);
       metaMap = new Map(metadataRows.map((m) => [m.messageId, m]));
@@ -1094,6 +1094,7 @@ export class ChatController {
         traceEvents: meta?.traceEvents ?? null,
         debugMeta: meta?.debugMeta ?? null,
         streamingDrafts: meta?.streamingDrafts ?? null,
+        discoveries: meta?.discoveries ?? null,
       };
     });
 

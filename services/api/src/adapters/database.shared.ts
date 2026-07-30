@@ -422,6 +422,8 @@ export interface ChatMessageMeta {
    * these into message.streamingDrafts on loadSession.
    */
   streamingDrafts?: unknown;
+  /** Legacy discovery cards retained for historical chat-message rendering. */
+  discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
   [key: string]: unknown;
