@@ -20,12 +20,25 @@ const publicRuntimeFiles = [
   'docs/design/protocol-package-audit.html',
 ];
 
+const runtimeAndCurrentDocFiles = [
+  'packages/protocol/src/opportunity/application/opportunity.graph.ts',
+  'packages/protocol/src/chat/chat.prompt.ts',
+  'docs/design/protocol-deep-dive.md',
+  'docs/design/opportunity-status-lifecycle.md',
+  'docs/domain/opportunities.md',
+  'docs/domain/negotiation.md',
+];
+
 describe('Release 1 background-only opportunity inventory', () => {
   test('keeps direct discovery out of public runtime composition while retaining the Release 1 schema', () => {
     const publicRuntimeSources = publicRuntimeFiles.map((file) => readFileSync(resolve(root, file), 'utf8')).join('\n');
+    const runtimeAndCurrentDocs = runtimeAndCurrentDocFiles.map((file) => readFileSync(resolve(root, file), 'utf8')).join('\n');
+    const chatPrompt = readFileSync(resolve(root, 'packages/protocol/src/chat/chat.prompt.ts'), 'utf8');
     const schemaSources = readFileSync(resolve(root, 'services/api/src/schemas/database.schema.ts'), 'utf8');
 
     expect(publicRuntimeSources).not.toMatch(/discover_opportunities|get_discovery_run|cancel_discovery_run|discoveryRunQueue/);
+    expect(runtimeAndCurrentDocs).not.toMatch(/opportunity_draft_ready|OpportunityTrigger|trigger:\s*['"]orchestrator['"]/);
+    expect(chatPrompt).not.toMatch(/only discover and surface matches during the active conversation/);
     expect(schemaSources).toContain('opportunityDiscoveryRuns');
   });
 });

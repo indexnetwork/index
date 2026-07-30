@@ -45,11 +45,10 @@ All 8 statuses and every transition. Odd edges are annotated — see the notes b
 
 ```mermaid
 stateDiagram-v2
-    [*] --> latent: ambient discovery (initialStatus: latent)
-    [*] --> negotiating: orchestrator default
-    [*] --> pending: other discovery default
+    [*] --> latent: background queue discovery
+    [*] --> pending: explicit non-discovery write / DB default
 
-    negotiating --> draft: orchestrator candidate resolved
+    latent --> negotiating: ambient negotiation init
     negotiating --> pending: negotiation accept (agents agree)
     negotiating --> rejected: negotiation reject
     negotiating --> stalled: negotiation timeout/stall
@@ -101,7 +100,7 @@ stateDiagram-v2
 
 **Reading the diagram:**
 
-- **Three creation entry points** map to `resolveInitialStatus()` (`packages/protocol/src/opportunity/opportunity.state.ts:144-150`): explicit `initialStatus` wins (ambient discovery forces `latent`), else `orchestrator → negotiating`, else `pending`.
+- **Background queue creation** supplies explicit `initialStatus: 'latent'`; ambient negotiation later claims the persisted opportunity and promotes it to `negotiating`. The database default remains `pending` for non-discovery writes.
 - **The accept ambiguity** (detailed in Flow C and Flow D): negotiation `accept` writes status `pending` — *not* `accepted`. Only a human opening a DM writes `accepted`.
 - **`rejected` is terminal in practice** — MCP-blocked as a source and absent from every reactivation branch. (Caveat: the REST `PATCH /opportunities/:id/status` endpoint applies no source-status guard — `services/api/src/controllers/opportunity.controller.ts:222-231`, `services/api/src/services/opportunity.service.ts:459-508` — so it is an unguarded escape hatch; see §7.)
 - **`expired` / `stalled` look terminal but are reactivatable** by discovery dedup. The reactivation target depends on the path (see the `draft` note): introducer → `draft`, discovery → `initialStatus`.
@@ -134,23 +133,21 @@ Negotiation startup is an exact-state atomic claim. The graph passes both the pe
 
 Create-time discovery starts only from `IntentQueue` after assignment and HyDE generation. `IntentEvents.onCreated` runs maintenance but does not enqueue discovery, preserving the fail-closed empty-scope rule without racing assignment. Completion telemetry keeps the evaluator funnel separate from persistence: no search candidates, evaluator rejection, same-trigger suppression, pair-active suppression, cross-trigger admission, and final atomic conflicts are reported distinctly. This deliberately does not force a minimum candidate pool; the separate question of why only a small candidate set reaches negotiation can be investigated without conflating it with persistence starvation.
 
-### 3.B Chat / orchestrator draft + send
+### 3.B Send and retained draft compatibility
 
 ```mermaid
 stateDiagram-v2
-    [*] --> negotiating: orchestrator default
-    negotiating --> draft: onCandidateResolved (orchestrator only)
     latent --> pending: send
     draft --> pending: send
 ```
 
-The orchestrator default is `negotiating` (`opportunity.state.ts:149`). The hook `onCandidateResolved` flips accepted candidates `negotiating → draft` (`opportunity.graph.ts:2092-2120`, write at `:2120`), only for `trigger === 'orchestrator'`; the frontend keys cards off `status === 'draft'`, so the flip happens before the draft-ready card is emitted. **Send is a separate mutation** — MCP `update_opportunity({status:'pending'})` routes to `sendNode` (`opportunity.graph.ts:3360-3402`), which allows **only** `latent | draft` (`:3376`) and stamps `pending` via `stampOpportunityActorAction()` (`:3399-3402`). Allowed sender roles: `introducer`, `peer`, and `patient`/`party` only when there is no introducer (`:3387-3391`).
+**Send is a separate mutation** — MCP `update_opportunity({status:'pending'})` routes to `sendNode`, which allows `latent | draft` and stamps `pending` via `stampOpportunityActorAction()`. `draft` remains supported for existing records and introducer reactivation; background discovery does not create a live chat draft. Allowed sender roles are `introducer`, `peer`, and `patient`/`party` only when there is no introducer.
 
 ### 3.C Negotiation — the accept ambiguity
 
 ```mermaid
 stateDiagram-v2
-    [*] --> negotiating: negotiation init
+    latent --> negotiating: ambient negotiation init
     negotiating --> pending: accept (agents agree to surface)
     negotiating --> rejected: reject
     negotiating --> stalled: timeout / stall
@@ -243,15 +240,13 @@ Every status write. Trigger flow letters map to §3. "Actor JSONB" rows are the 
 | From | To | Trigger / flow | Write site (`file:line`) |
 |---|---|---|---|
 | _(new)_ | `latent` | Ambient discovery (A) | `opportunity.service.ts:791,799` → persist `opportunity.graph.ts:2565` → `database.adapter.ts:5001-5010` |
-| _(new)_ | `negotiating` | Orchestrator default (B) | `opportunity.state.ts:149` → persist insert `database.adapter.ts:5001-5010` |
-| _(pre-negotiation)_ | `negotiating` | Negotiation init (C) | `negotiation.graph.ts:102-105` (write `:103`, via `updateOpportunityStatus`) |
+| `latent` | `negotiating` | Ambient negotiation init (C) | `negotiation.graph.ts` → `updateOpportunityStatus()` |
 | _(new)_ | `pending` | Discovery default; DB column default | `opportunity.state.ts:149`; `database.schema.ts:446` / adapter fallback `:5010` |
-| `negotiating` | `draft` | Orchestrator candidate resolved (B) | `opportunity.graph.ts:2120` |
 | `negotiating` | `pending` | Negotiation **accept** — agents agree (C) | `negotiation.graph.ts:364-369`; polling `negotiation-polling.service.ts:400-402` |
 | `negotiating` | `rejected` | Negotiation reject (C) | `negotiation.graph.ts:364-369`; polling `:400-402` |
 | `negotiating` | `stalled` | Negotiation timeout/stall (C) | `negotiation.graph.ts:364-369`; polling `:400-402` |
 | `negotiating` | `pending` / `rejected` / `stalled` | Negotiation **timeout** finalize (C) | `services/api/src/queues/negotiations/timeout.queue.ts:254`; `services/api/src/queues/negotiations/claim-timeout.queue.ts:294` |
-| `latent` / `draft` | `pending` | Send (B) | `opportunity.graph.ts:3399-3402` |
+| `latent` / `draft` | `pending` | Send / retained-draft compatibility (B) | `opportunity.graph.ts` |
 | `latent` | `pending` | Introducer approval (E) | `opportunity.service.ts:594` |
 | `latent` / `draft` / `pending` | `accepted` | Human **accept** / Start Chat (D) | REST `opportunity.service.ts:501-504`; `startChat :728-732`; `updateNode opportunity.graph.ts:3287-3293` |
 | `pending` | `rejected` | Human / MCP reject (D) | `updateNode opportunity.graph.ts:3294-3300`; service terminal `opportunity.service.ts:507-508` |

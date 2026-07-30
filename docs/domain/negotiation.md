@@ -11,7 +11,7 @@ proposal: "Negotiations v2 — The Client-Advocate Protocol: see the visual prop
 
 > **Design rationale:** the v2 (client-advocate) behaviors described throughout this doc — rigid initiator seats, the outreach screen, `ask_user`, negotiator chat, and negotiator memory — are motivated and illustrated in the visual proposal attached to [IND-395](https://linear.app/indexnetwork/issue/IND-395/) (self-contained HTML).
 
-Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate over proposed matches. Two AI agents -- one representing each user -- debate whether a connection genuinely serves both parties. An opportunity is created before negotiation begins (with `negotiating` status) so users have real-time visibility; the negotiation then gates whether it transitions to `pending` (awaiting human acceptance), `rejected`, or `stalled` (turn cap hit without consensus).
+Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate over background-created opportunities. Two AI agents -- one representing each user -- debate whether a connection genuinely serves both parties. An opportunity is persisted before ambient negotiation begins (with `negotiating` status); negotiation then gates whether it transitions to `pending` (awaiting human acceptance), `rejected`, or `stalled` (turn cap hit without consensus). Completed persisted opportunities are presented through feed, home, and later chat-history review rather than a live discovery stream.
 
 This mechanism prevents the system from surfacing low-quality connections that passed the initial scoring threshold but would not withstand scrutiny from an advocate for each side.
 
@@ -103,7 +103,7 @@ IND-508 adds `NEGOTIATION_CONSULTATION_POLICY_MODE=off|shadow|on` (default/inval
 
 Flow: the `ask_user` turn is persisted → an exact settlement key and recipient/intent/opportunity/network binding are parked on the task → the **24 h answer window** is armed (`NEGOTIATION_ASK_USER_WINDOW_MS` overridable) → the task transitions to `input_required` → only validated structured `askUser` fields may be refined by the questioner's `negotiation_inflight` preset. Missing or unsafe fields, Redis enqueue failure, empty model output, and final-admission rejection create no card, but the armed timeout still closes and resumes the exact task. Raw turn text, assessment/evaluator reasoning, match reason, counterparty identity/profile/intent, community/event claims, and internal IDs never become Questioner prompt context or visible copy.
 
-The graph exits at the turn boundary, so chat-triggered runs never block a stream on a question. Cards carry a server-only versioned provenance envelope binding the exact recipient, owned opportunity actor intent, opportunity, non-personal network, and task. The API proves current ownership, ACTIVE lifecycle/fingerprint, assignment, membership, actor visibility, and exact task state before generation and again under one deterministic advisory/cohort/provenance lock order immediately before insertion.
+The graph exits at the turn boundary, so a user-facing request does not wait on a question. Cards carry a server-only versioned provenance envelope binding the exact recipient, owned opportunity actor intent, opportunity, non-personal network, and task. The API proves current ownership, ACTIVE lifecycle/fingerprint, assignment, membership, actor visibility, and exact task state before generation and again under one deterministic advisory/cohort/provenance lock order immediately before insertion.
 
 - **Answer in time**: one locked transaction stores the answer, appends established shared `metadata.userAnswers` context, closes only the stamped `input_required` task, and writes a durable deterministic continuation request into that task's metadata. Enqueue happens afterward with the exact task+settlement ID; a caller retry or the still-armed timeout reconciles enqueue failure.
 - **Dismissal or window expiry**: the same protocol writes the conservative no-disclosure default and settles any existing exact-task card cohort. Expiry does not require a question row. Answer, sibling answer, dismiss, and timeout serialize on the full cohort; no selected-card lock cycle exists.
@@ -207,14 +207,7 @@ When a negotiation graph reaches a turn the system cannot resolve synchronously 
 
 ### Parked-turn lifecycle
 
-A parked turn lives on a **single response-window budget** that is armed once at park time and *carried across* the `waiting_for_agent → claimed` transition — the park timer and the claim timer never stack. The budget depends on how the negotiation was triggered:
-
-| Trigger | Park-window budget |
-|---|---|
-| Ambient / background queue | `AMBIENT_PARK_WINDOW_MS` = **5 minutes** |
-| Chat-driven, external agent authorized on every candidate network | 5 minutes (same ambient budget — the agent polls) |
-| Chat-driven, no external agent somewhere | **30 seconds** (the system negotiator kicks in without stalling the chat) |
-| Orchestrator (chat-driven a2h fan-out) | **60 seconds** (the user is watching the stream) |
+A parked turn lives on a **single ambient response-window budget** that is armed once at park time and *carried across* the `waiting_for_agent → claimed` transition — the park timer and the claim timer never stack. Background negotiation uses `AMBIENT_PARK_WINDOW_MS` (5 minutes by default).
 
 1. The negotiation graph writes the turn into `tasks.state = 'waiting_for_agent'` and enqueues the park-window timeout with the trigger's budget.
 2. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` (authenticating with its API key). The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, cancels the park timeout, and enqueues a **claim timeout with the remaining budget** — `computeRemainingBudgetMs(parkStart, AMBIENT_PARK_WINDOW_MS)`, clamped to a 1-second floor — not a fresh window. The agent receives the turn number, a `deadline` (= park start + the 5-minute budget), counterparty action, full turn history, the projected own/other user context, and — since v2 — the caller's `seat`, the task's `protocolVersion`, and the `allowedActions` for that seat.

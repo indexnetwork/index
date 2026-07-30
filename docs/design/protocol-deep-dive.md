@@ -183,28 +183,22 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
-The graph supports multiple discovery paths, searching across intents and premises corpora:
-- **Intent-based (Path A):** Trigger intent is assigned to an index — use its HyDE documents for search
-- **Internal generated-source branch (Path B):** HyDE documents generated from `searchQuery`. Background `FromIntentQueue` currently supplies the stored intent payload here with `triggerIntentId`; the HyDE graph calls this internal source type `query`. That label does not imply the source is a direct user request.
-- **Context-to-intent (Path C):** User contexts (network-scoped paragraph representations from the premise graph) are embedded and used to search for matching intents via `searchIntentsByContextEmbedding()`. Candidates carry `discoverySource: 'context-to-intent'`.
-- **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared networks
+The graph supports background discovery across intents and premises corpora:
+- **Intent-based:** An assigned, active trigger intent supplies HyDE documents and the authoritative network scope.
+- **Enrichment/context-to-intent:** User contexts (network-scoped paragraph representations from the premise graph) are embedded and used to find matching intents via `searchIntentsByContextEmbedding()`. Candidates carry `discoverySource: 'context-to-intent'`.
+- **Introducer-driven:** The introducer queue validates an explicit introduction and constructs candidates from the participants' shared networks.
 
 All discovery strategies are merged via `mergeStrategyCandidates()`, which deduplicates by `userId:networkId:entityId` and applies a multi-strategy boost (+0.05 per additional strategy, capped at 0.15).
 
-**Trigger-intent network admission:** `FromIntentQueue` recomputes the authoritative target set for every run as the trigger intent's current assignments intersected with the owner's active memberships and any explicit caller/agent scope. Omitted explicit scope means all still-valid assigned networks—not all owner memberships—and an empty result ends the job before graph invocation or pool mining. Multi-network results use `indexScope` without collapsing to the first assignment. Query/ad-hoc discovery without a trigger intent retains its global all-membership behavior.
+**Trigger-intent network admission:** `FromIntentQueue` recomputes the authoritative target set for every run as the trigger intent's current assignments intersected with the owner's active memberships and any explicit queue scope. Omitted scope means all still-valid assigned networks—not all owner memberships—and an empty result ends the job before graph invocation or pool mining. Multi-network results use `indexScope` without collapsing to the first assignment.
 
 **Candidate membership invariants:** intent-HyDE, intent-vector, premise-HyDE/vector, and context-to-intent queries require an active candidate membership on the exact returned network and a non-deleted network. The check is permission-agnostic so contacts in a personal network remain eligible. The graph batch-rechecks the discoverer and candidate before profile loading/evaluation and rechecks every evaluated participant before dedup; final creation and reactivation run behind transaction-held active-membership and trigger-intent-assignment locks, with the current active owned intent row locked too, so concurrent member removal, pause/archive, or unassignment cannot race the write. Lookup failure is fail-closed. Selected-intent Radar independently derives valid networks from the viewer-owned intent's assignments plus active viewer memberships and requires every participant to retain an active anchor in that set, including for paused-intent history.
 
 Premise-based candidates carry `candidatePremiseId` in the persist node for actor tracking, regardless of discovery source.
 
-**Affiliation/presence claim safety:** network/event metadata is retrieval context, never evidence that a person attended, joined, resided, met someone, or shared a place/session. Evaluator and presenter prompts prohibit these inferences, evaluator post-validation rejects affected opportunities before persistence, and one deterministic sentence guard strips them from presenter output, raw-reasoning fallbacks, REST lists, MCP cards, notifications, delivery/chat cards, streaming drafts, and invite generation. Because typed support provenance does not exist yet, the guard deliberately fails closed even for genuinely supported phrasing. Home, category, delivery, and chat presentation caches use a versioned namespace and never persist presenter fallback output; unsafe categorizer titles/subtitles fall back before the category cache write.
+**Affiliation/presence claim safety:** network/event metadata is retrieval context, never evidence that a person attended, joined, resided, met someone, or shared a place/session. Evaluator and presenter prompts prohibit these inferences, evaluator post-validation rejects affected opportunities before persistence, and one deterministic sentence guard strips them from presenter output, raw-reasoning fallbacks, REST lists, MCP cards, notifications, persisted delivery cards, and invite generation. Because typed support provenance does not exist yet, the guard deliberately fails closed even for genuinely supported phrasing. Home, category, delivery, and chat presentation caches use a versioned namespace and never persist presenter fallback output; unsafe categorizer titles/subtitles fall back before the category cache write.
 
-**Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
-
-| Node | Ambient trigger | Orchestrator trigger |
-|---|---|---|
-| `persist` | Initial status = `options.initialStatus ?? 'pending'`. | Initial status = `options.initialStatus ?? 'negotiating'`. Also collects `dedupAlreadyAccepted` — accepted opps between the discoverer and each unique candidate — so the tool can tell the LLM to steer users toward the existing chat instead of creating a duplicate draft. |
-| `negotiate` | 5-min park window (`AMBIENT_PARK_WINDOW_MS`) with heartbeat-aware dispatcher. Results aggregate at the end of the fan-out. | 60-second park window (orchestrator cannot afford the ambient budget). Per-candidate `onCandidateResolved` hook flips each accepted opp to `draft` and emits an `opportunity_draft_ready` event via the requestContext `traceEmitter`, so the chat UI renders cards progressively. Honors `requestContext.abortSignal` — after the chat session closes, in-flight negotiations still finish via their park window but their cards are suppressed. |
+**Background-only execution:** opportunity discovery is admitted by background queues. Intent, enrichment, introducer, and maintenance paths supply the persisted source context and explicit initial status; current discovery queues create latent opportunities. There is no direct-chat trigger or live draft-card contract. The graph persists candidates, then ambient negotiation advances them to `pending`, `rejected`, or `stalled`. Persisted cards are subsequently available through feed, home, and chat-history presentation.
 
 **Dependencies:** `OpportunityGraphDatabase`, `Embedder`, compiled HyDE graph, optional `OpportunityEvaluator`, optional `NegotiationGraph`, optional `AgentDispatcher`
 
@@ -723,21 +717,21 @@ See [`../domain/hyde.md`](../domain/hyde.md) for cache identities, rejection sem
 
 ## 7. Opportunity Pipeline
 
-The opportunity discovery pipeline is the most complex workflow in the system. It transforms a user's intent or search query into ranked, evaluated connection opportunities.
+The opportunity discovery pipeline is the most complex workflow in the system. Background queues transform persisted intent and enrichment context into ranked, evaluated connection opportunities.
 
 ### End-to-end flow
 
 ```
-User intent/query
+Persisted intent or enrichment context (background queue)
     |
     v
 [Prep] Load user's network memberships, active intents, profile
     |
     v
-[Scope] Determine which indexes to search; score query relevancy per index
+[Scope] Determine eligible assigned indexes
     |
     v
-[Resolve] Match trigger intent to indexed intents; determine discovery source
+[Resolve] Validate the queued trigger intent and discovery source
     |
     v
 [Discovery] Generate HyDE embeddings -> vector search within scoped indexes
@@ -759,13 +753,11 @@ User intent/query
 
 **Intent-based discovery (Path A):** When a trigger intent is identified and it belongs to a target index, the system uses the intent's existing HyDE documents for vector search. This is the most common path for background discovery jobs.
 
-**Query-based discovery:** When the user provides a search query (e.g., "find me investors"), the system:
-1. Runs the full HyDE graph to infer lenses and generate hypothetical documents
-2. Embeds the generated documents
-3. Searches both the profiles and intents vector indexes per lens
-4. Merges candidates from all lenses with deduplication
+**Enrichment/context discovery:** Enrichment queues regenerate user-context and premise representations, which can be evaluated against active intents. The graph merges eligible candidates from the intent and premise representations with deduplication.
 
-**Direct connection:** When a `targetUserId` is specified (user @-mentioned someone), vector search is bypassed entirely. The system constructs candidates directly from shared network memberships and the target user's active intents.
+**Introducer discovery:** An introducer queue validates the requested participants and evaluates the explicit introduction within their shared-network scope.
+
+**Maintenance rediscovery:** The maintenance graph assesses persisted feed health and enqueues one background intent run per active intent when rediscovery is needed.
 
 ### Evaluation
 
@@ -786,7 +778,7 @@ When enabled, high-scoring candidates enter bilateral negotiation via the Negoti
 
 ### Persistence
 
-Surviving opportunities are persisted with status `latent`. They become visible to users but require explicit action ("send") to promote to `pending` status. The full status lifecycle is: `latent -> draft -> pending -> accepted | rejected | expired`.
+Surviving background opportunities are persisted with status `latent`; ambient negotiation and explicit lifecycle actions determine later states. Persisted opportunities are presented through the home feed and can be reviewed from a later chat turn or chat history. The full lifecycle, including retained `draft` compatibility and introducer reactivation, is documented in [Opportunity Status Lifecycle](./opportunity-status-lifecycle.md).
 
 ## 8. Intent Lifecycle
 
@@ -907,11 +899,11 @@ Each graph node accumulates `agentTimings` (array of `{ name, durationMs }`) in 
 
 **Negotiation events** (added 2026-04-17):
 
-- `negotiation_session_start` / `negotiation_session_end` — emitted by `negotiateCandidates` in `negotiation.graph.ts`, wrapping each per-candidate run. Carries `opportunityId`, `negotiationConversationId`, source/candidate user ids, `trigger` (`'orchestrator' | 'ambient'`), `startedAt`, and `durationMs` (on end).
+- `negotiation_session_start` / `negotiation_session_end` — emitted by `negotiateCandidates` in `negotiation.graph.ts`, wrapping each per-candidate ambient run. They carry the opportunity/conversation identifiers, participants, start time, and duration.
 - `negotiation_turn` — emitted by the negotiation graph's `turnNode` after each successful turn. Carries `opportunityId`, `turnIndex`, `actor` (`'source' | 'candidate'`), `action` (`propose | accept | reject | counter | question`), `reasoning`, `message`, `suggestedRoles`, `durationMs`.
 - `negotiation_outcome` — emitted from `finalizeNode` on every terminal path (`accepted`, `rejected_stalled`, `waiting_for_agent`, `timed_out`, `turn_cap`). Carries `opportunityId`, `outcome`, `turnCount`, `reasoning`, `agreedRoles`.
 
-Consumers: the live TRACE panel uses these to render per-candidate negotiation nodes. `/debug/chat/:id` uses `debugMeta.orchestratorNegotiations.opportunityIds` (persisted from `negotiation_session_start` during the turn) to hydrate full negotiation history from `tasks` + `messages` + `opportunities`. Existing `agent_start/end` emissions in `negotiation.graph.ts` are retained for backward compatibility with the rolled-up `debugMeta.tools[].graphs[].agents[]` render path.
+Consumers use these generic observability events to render negotiation progress and hydrate recorded negotiation history from `tasks`, `messages`, and `opportunities`. Existing `agent_start/end` emissions in `negotiation.graph.ts` remain available to the rolled-up debug render path.
 
 ## 11. Model Configuration
 
