@@ -6,6 +6,8 @@
  * runs the negotiator persona without an intent pin. Orchestrator sessions
  * keep the existing behavior (conversation-linked questions only).
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useLocation, useNavigate } from 'react-router';
 import { useEffect, type ComponentType, type ReactNode, type Ref } from 'react';
@@ -255,6 +257,25 @@ describe('persisted opportunity history hydration', () => {
     mocks.apiClient.post.mockReset();
     mocks.apiClient.post.mockResolvedValue({});
     mocks.questionsService.getPending.mockResolvedValue([]);
+  });
+
+  test('has no live draft-ready event in stream contracts while retaining historical draft hydration', () => {
+    const root = resolve(process.cwd(), '../..');
+    const streamContractFiles = [
+      'packages/protocol/src/chat/chat.agent.ts',
+      'packages/protocol/src/chat/chat-streaming.types.ts',
+      'packages/protocol/src/shared/observability/request-context.ts',
+      'packages/protocol/src/mcp/mcp.server.ts',
+      'services/api/src/types/chat-streaming.types.ts',
+      'services/api/src/controllers/mcp.controller.ts',
+      'apps/web/src/contexts/AIChatContext.tsx',
+      'apps/web/src/components/ChatContent.tsx',
+      'apps/web/src/components/chat/ToolCallsDisplay.tsx',
+    ];
+
+    for (const file of streamContractFiles) {
+      expect(readFileSync(resolve(root, file), 'utf8')).not.toContain('opportunity_draft_ready');
+    }
   });
 
   test('hydrates API discoveries and drafts through AIChatProvider into ChatContent without direct discovery', async () => {

@@ -92,7 +92,6 @@ export interface TraceEvent {
   sourceUserId?: string;
   candidateUserId?: string;
   candidateName?: string;
-  trigger?: "orchestrator" | "ambient";
   startedAt?: number;
   turnIndex?: number;
   actor?: "source" | "candidate";
@@ -984,7 +983,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       sourceUserId: event.sourceUserId,
                       candidateUserId: event.candidateUserId,
                       candidateName: event.candidateName,
-                      trigger: event.trigger,
                       startedAt: event.startedAt,
                     });
                     break;

@@ -327,7 +327,6 @@ function createMcpTraceEmitter(toolName: string, ctx: ServerContext): TraceEmitt
       if (event.type === 'graph_end') return `${toolName}: ${event.name} finished${event.durationMs != null ? ` in ${event.durationMs}ms` : ''}`;
       if (event.type === 'agent_start') return `${toolName}: ${event.name} agent started`;
       if (event.type === 'agent_end') return `${toolName}: ${event.name} agent finished${event.durationMs != null ? ` in ${event.durationMs}ms` : ''}`;
-      if (event.type === 'opportunity_draft_ready') return `${toolName}: opportunity draft ready`;
       return `${toolName}: progress`;
     })();
 
