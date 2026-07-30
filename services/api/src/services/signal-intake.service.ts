@@ -15,6 +15,7 @@ import { chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database
 import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
 import { computeAnswersHash, signalIntakeRunAdapter, SIGNAL_INTAKE_RUN_TTL_MS } from '../adapters/signal-intake-run.database.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
+import { questionerAdapter } from '../adapters/questioner.adapter.instance';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
@@ -416,6 +417,57 @@ async function getGlobalContextProduction(userId: string): Promise<string | null
   return context?.text ?? null;
 }
 
+/**
+ * Mirrors an intake round's answer into the `questions` table so it is
+ * visible to the same analytics/eval surfaces as chat-driven
+ * `ask_user_question` rounds. Writes through the exact same
+ * `QuestionerAdapter` singleton `chatQuestions.persist` (the orchestrator's
+ * ask_user_question host bridge) delegates to — first inserting a pending row
+ * via `persist`, then settling it to `answered` via `answer`, the same two
+ * primitives the live chat-answer flow composes. There is no bulk
+ * "insert-already-answered" primitive on the adapter, so this issues both
+ * calls back to back rather than inventing a new write path.
+ *
+ * The fast funnel has no chat session, so `conversationId` is left unset
+ * (stored as `null`), and the funnel's `record()` call sites only carry a
+ * `prompt` string (not the full round's title/options), so `payload.title`
+ * and `payload.options` are derived from the stage name and the user's
+ * actual selections rather than the original (unavailable) option set.
+ *
+ * @param input - Stage, prompt, answer, and owner to record.
+ */
+async function recordAnsweredQuestionProduction(input: {
+  userId: string;
+  prompt: string;
+  answer: IntakeAnswer;
+  stage: 'who' | 'bring';
+}): Promise<void> {
+  const now = new Date().toISOString();
+  const [questionId] = await questionerAdapter.persist([{
+    detection: {
+      mode: 'chat',
+      sourceType: 'conversation',
+      sourceId: `intake:${input.stage}`,
+      timestamp: now,
+    },
+    actors: [{ userId: input.userId, role: 'subject' }],
+    payload: {
+      title: input.stage === 'who' ? 'Who' : 'Bring',
+      prompt: input.prompt,
+      options: input.answer.selectedOptions.map((label) => ({ label, description: label })),
+      multiSelect: input.answer.selectedOptions.length > 1,
+    },
+    strategy: input.stage === 'who' ? 'refine_intent' : 'surface_missing_detail',
+  }]);
+  if (!questionId) return;
+  await questionerAdapter.answer(questionId, input.userId, {
+    selectedOptions: input.answer.selectedOptions,
+    ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
+    answeredBy: input.userId,
+    answeredAt: now,
+  });
+}
+
 /** Production singleton wired to the real adapters, compiled intent graph, and
  * context readers. Task 7's controller consumes this directly. */
 export const signalIntakeService = new SignalIntakeService({
@@ -428,4 +480,5 @@ export const signalIntakeService = new SignalIntakeService({
   getNetworkTitles: getNetworkTitlesProduction,
   getGlobalContext: getGlobalContextProduction,
   invokeIntentGraph: invokeIntentGraphProduction,
+  recordAnsweredQuestion: recordAnsweredQuestionProduction,
 });
