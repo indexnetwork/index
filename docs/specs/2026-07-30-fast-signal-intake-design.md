@@ -75,11 +75,20 @@ the second call and the graph overlapping user think-time.
 Speculative synthesis fires before the where-answer exists, so the generated
 description cannot contain it. Two consequences:
 
-1. **Network placement is unaffected.** The frontend already passes `networkId` to
-   `/intents/confirm` separately from `selectedNetwork.id`, and proposals are
-   network-agnostic in the store
-   (`packages/protocol/src/signals/domain/intent.proposal.ts`). Speculating
-   without a network stays valid; the picked community is applied at confirm.
+1. **The picked community must be written back onto the speculative proposal.**
+   Proposals are *not* network-agnostic at confirm time: `createFromProposal`
+   (`services/api/src/services/intent.service.ts`) rejects any confirmation whose
+   `networkId` differs from the stored `intent_proposals.network_id` with
+   `proposal_payload_mismatch` (409). That anti-tamper check is deliberate and
+   out of scope to change. Speculating without a network is still fine, but
+   `POST /intents/intake/proposal` has to persist the pick before it returns:
+   the serial paths create the proposal with the `networkId` already on it, and
+   the speculative-hit path issues an owner-scoped, membership-checked
+   `setProposalNetwork` against the existing row. `POST /intents/intake/revise`
+   carries the pick too, since it writes a replacement proposal row.
+   The client's `networkId` is never trusted: membership is verified
+   server-side (and again in the SQL predicate of `setProposalNetwork`), and a
+   non-member pick is a 403, not a silently network-less proposal.
 2. **"Where" narrows in meaning.** Today the prompt invites location, online
    space, or event as answers, which survive only as prose inside the description
    and are never persisted as structured data. The picker offers the user's
@@ -132,7 +141,10 @@ the profile-graph invocation in the propose path.
   `premiseHash` per user and already skips unchanged work, so the pack regenerates
   in the same job right after the global context row and short-circuits on an
   unchanged hash. No new queue and no new trigger points; every existing
-  premise-change path covers it automatically.
+  premise-change path covers it automatically. The refresh is gated on
+  `FAST_SIGNAL_INTAKE`: each regeneration is a real LLM call and nothing reads
+  the pack while the flag is off, so flag-off behavior stays byte-for-byte the
+  pre-feature job and flipping the flag is what starts the spend.
 - **Cold start:** if no row exists when `/intents/intake/start` is called,
   generate synchronously (one flash call, roughly 1–2s), persist, and return. The
   first visit pays once; every later visit is a table read.
@@ -170,15 +182,32 @@ signal_intake_runs
   unique (user_id, answers_hash)
 ```
 
-`answers_hash` is computed over the **full** answer set that feeds synthesis: the
-R1 answer, the R2 answer, and `whereText` (empty string during speculation). A
-`whereText` re-synthesis therefore hashes differently from the speculative run and
-gets its own row rather than colliding with it, and a user who repeats the same
-answers reuses the existing run instead of paying twice.
+`answers_hash` is computed over the two answers that feed speculation (R1 and
+R2). A `whereText` re-synthesis does **not** get its own row: like `revise`, it
+reuses the run the client already holds and replaces that run's `proposal_id` in
+place, which is what keeps `runId` a stable handle for the whole funnel.
+
+A hash match is therefore not sufficient grounds for reuse. With 3-4 canned
+options per round there are only a handful of distinct answer pairs, so a user
+creating a second signal inside the 24h run TTL can legitimately match their own
+earlier run. Replaying that run would hand back a proposal that was already
+confirmed, so `prepare` re-reads the matched run's proposal and only reuses the
+run while that proposal is still `pending` and unexpired; otherwise it reopens
+the run and speculates again. `POST /intents/intake/proposal` applies the same
+test before returning a speculative proposal.
+
+The run also stores the `looking_for` / `you_bring` summaries the settling
+synthesis produced. The speculative hit is the *expected* outcome, so it has to
+return the synthesized copy; without persisting it, the majority path would fall
+back to the raw option labels the user clicked and only the degraded paths would
+show the good copy.
 
 `revise` does not create a run. It synthesizes a replacement proposal and updates
 the existing run's `proposal_id` in place, so the run remains the single handle
-the client holds for the rest of the funnel.
+the client holds for the rest of the funnel. Its feedback travels in a dedicated
+`feedback` field on the synthesis input with its own prompt line — it is a
+correction to the whole draft ("make it about hardware, not software"), not a
+place constraint, and must not be rendered into the `Where constraint:` slot.
 
 ### Sequence
 
@@ -192,11 +221,14 @@ the client holds for the rest of the funnel.
 4. Network picked → `POST /intents/intake/proposal`
    `{ runId, networkId?, whereText? }`
    - without `whereText`: read the run. Normally already `ready`, so the proposal
-     card is instant; otherwise short poll.
-   - with `whereText`: discard the run and synthesize fresh.
+     card is instant; otherwise short poll. The picked community is written onto
+     that proposal before it is returned.
+   - with `whereText`: synthesize fresh (with the community already attached) and
+     repoint the same run at the replacement proposal.
 5. `POST /intents/confirm` `{ proposalId, description, networkId }` — unchanged.
-6. Revise → `POST /intents/intake/revise` `{ runId, feedback }` → replacement
-   proposal. One flash call plus the propose graph.
+   It succeeds only because step 4 persisted `networkId` on the proposal row.
+6. Revise → `POST /intents/intake/revise` `{ runId, feedback, networkId? }` →
+   replacement proposal. One flash call plus the propose graph.
 
 ### Modules
 
@@ -206,10 +238,17 @@ the client holds for the rest of the funnel.
   logic: next-question generation, synthesis, `whereText` invalidation. Takes
   ports for pack read, proposal creation, and the intent graph. Owns no I/O.
 - `services/api/src/controllers/intent-intake.controller.ts` — the five endpoints,
-  auth, rate limits, and run-row lifecycle.
+  auth, rate limits, and run-row lifecycle. `prepare` and `revise` do not use the
+  generic `write` class (600/min): each call launches a synthesis plus a full
+  intent-graph run and writes a durable proposal, so they carry the dedicated
+  `intake_synthesis` limiter class (default 20/min). Answers must carry at least
+  one selected option or non-empty free text — an entirely empty answer would
+  otherwise drive a synthesis and a durable write.
 - `apps/web/src/components/signals/GuidedSignalIntake.tsx` — gains an
   intake-driven mode reusing `GuidedQuestion` and `ProposalCard` verbatim, plus a
-  new `WherePicker`. `/onboarding` switches over too, since it shares this
+  new `WherePicker`. The picker lists **non-personal** networks only (`!isPersonal`,
+  matching `NetworksPanel` and the server-side brief's `getNonPersonalNetworkIds`):
+  a personal network is the user's own space, not a community to look in. `/onboarding` switches over too, since it shares this
   component and its `prepareSession`/`sendKickoff` props are dead in the new mode.
 
 ### Questions subsystem
@@ -266,7 +305,14 @@ funnel changes.
   every fallback branch.
 - **API:** controller isolated tests following
   `services/api/src/controllers/tests/intent.controller.isolated.ts`; queue handler
-  test covering pack regen inside `regenerate_contexts`.
+  test covering pack regen inside `regenerate_contexts` (flag on) and its absence
+  (flag off).
+- **Seam:** one test that drives the intake service and the REAL
+  `IntentService.createFromProposal` against a single proposal store, with the
+  exact payload the web client posts. Everything else on either side of
+  `/intents/confirm` is mocked, so this is the only place the
+  description/`networkId` equality check is actually exercised end to end
+  (`services/api/src/services/tests/signal-intake.confirm-seam.isolated.ts`).
 - **Web:** extend `apps/web/tests/guided-signal-flow.test.tsx` with intake mode and
   assert the where-picker renders before the proposal resolves.
 - **Regression:** one flagged-off run proving the legacy path is untouched.

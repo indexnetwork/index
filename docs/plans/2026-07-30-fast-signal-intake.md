@@ -10,6 +10,37 @@
 
 **Spec:** `docs/specs/2026-07-30-fast-signal-intake-design.md`
 
+## Post-implementation corrections (2026-07-30 branch review)
+
+A whole-branch review found three defects that originated in this plan and the
+spec, and were implemented faithfully from them. The **spec is the corrected
+source of truth**; the task listings below are left as the historical record
+except where a code snippet is explicitly corrected inline.
+
+1. **Proposals are not network-agnostic.** `createFromProposal` rejects any
+   confirmation whose `networkId` differs from the stored
+   `intent_proposals.network_id`, so `POST /intents/intake/proposal` (and
+   `/revise`) must persist the picked community onto the proposal row — with
+   server-side membership verification — before returning. Task 7's schema
+   parsed `networkId` and then dropped it, which 409'd every community pick at
+   confirm.
+2. **An answer-hash match is not sufficient grounds for run reuse.** With a
+   handful of canned options per round, a user's second signal can hash to their
+   first run; reusing it replays an already-consumed proposal. `prepare` now
+   reopens a matched run whose proposal is no longer pending.
+3. **Revise feedback is not a where-constraint.** Task 6 below mandated
+   `whereText: input.feedback`, which rendered content corrections into the
+   `Where constraint:` prompt slot. `SynthesisInput` now carries a distinct
+   `feedback` field with its own prompt line (snippet corrected inline in Task
+   6).
+
+Also corrected while fixing the above: the speculative-hit path now returns the
+synthesized `lookingFor`/`youBring` (persisted on the run) instead of empty
+strings; the background pack refresh is gated on `FAST_SIGNAL_INTAKE`;
+`prepare`/`revise` use a dedicated `intake_synthesis` limiter class; the where
+picker filters out personal networks; and empty intake answers are rejected at
+the controller.
+
 ## Global Constraints
 
 - Branch: `feat/fast-signal-intake`; worktree `/home/yanek/Projects/index/.worktrees/feat-fast-signal-intake`. Never commit from the canonical root.
@@ -1101,9 +1132,10 @@ export interface SignalIntakeRunRecord {
 /**
  * Deterministic key over the full answer set that feeds synthesis.
  *
- * `whereText` participates so a where-driven re-synthesis gets its own row
- * instead of colliding with the speculative run, while a blank constraint
- * hashes identically to the speculative run and reuses it.
+ * CORRECTED (branch review): a where-driven re-synthesis does NOT get its own
+ * row — it reuses the run and replaces `proposal_id` in place. Only the two
+ * answers are ever hashed, and a hash match is re-validated against the
+ * proposal's status before the run is reused. See the spec.
  *
  * @param input - Both answers plus the optional where constraint
  * @returns A 16-char hex digest, stable across option ordering
@@ -1741,9 +1773,12 @@ export class SignalIntakeService {
     const run = await this.deps.runStore.getRunForOwner(input.runId, userId);
     if (!run) throw new IntakeRunNotFoundError();
 
+    // CORRECTED (branch review): feedback is a correction to the whole draft,
+    // not a place constraint, so it travels in its own `feedback` slot. The
+    // original plan text said `whereText: input.feedback`.
     const proposal = await this.runSynthesis(userId, run.id, {
       ...input.answers,
-      whereText: input.feedback,
+      feedback: input.feedback,
     });
     logger.info('signal_intake_stage', {
       stage: 'revise', durationMs: Date.now() - started,
