@@ -57,6 +57,7 @@ describe('intake answer write-back', () => {
     expect(recorder).toHaveBeenCalledTimes(1);
     expect(recorder.mock.calls[0][0]).toMatchObject({
       userId: 'u1', stage: 'who', prompt: 'Who do you want to meet?',
+      question: { title: question.title, options: question.options, multiSelect: question.multiSelect },
     });
   });
 
@@ -68,6 +69,10 @@ describe('intake answer write-back', () => {
 
     expect(recorder).toHaveBeenCalledTimes(1);
     expect(recorder.mock.calls[0][0]).toMatchObject({ stage: 'bring', prompt: 'What would you bring?' });
+    // The round-2 question is not in scope at this call site (it would
+    // require editing the forbidden `PrepareSchema`), so no `question` is
+    // forwarded and the recorder falls back to its documented proxy.
+    expect(recorder.mock.calls[0][0]).not.toHaveProperty('question');
   });
 
   it('does not await the recorder before responding', async () => {
