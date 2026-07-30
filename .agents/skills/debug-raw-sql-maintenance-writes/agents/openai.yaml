@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug Raw SQL Maintenance Writes"
+  short_description: "Index project workflow: Debug Raw SQL Maintenance Writes"
+  default_prompt: "Use $debug-raw-sql-maintenance-writes to diagnose a maintenance CLI whose raw-SQL write path reports attempted rows but zero updates."
