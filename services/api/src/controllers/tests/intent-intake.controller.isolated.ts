@@ -63,16 +63,20 @@ describe('IntentIntakeController flag gating', () => {
     for (const response of responses) expect(response.status).toBe(404);
   });
 
-  it('rate-limits the two synthesizing routes far tighter than ordinary writes', () => {
-    // /prepare answers 202 and then launches an uncapped background synthesis
-    // plus a full intent-graph run and a durable proposal write; /revise does the
-    // same synchronously. The 600/min `write` budget is not a meaningful cap on
-    // that, so both carry the dedicated class.
-    for (const method of ['prepare', 'revise'] as const) {
+  it('rate-limits every synthesizing route far tighter than ordinary writes', () => {
+    // Each of these can launch an LLM synthesis plus a full intent-graph run and
+    // a durable proposal write: /prepare answers 202 and then does it in the
+    // background, /revise does it synchronously, and /proposal does it whenever
+    // `whereText` is supplied or the speculative run is unusable. `resolveProposal`
+    // also accepts the same runId repeatedly, so the 600/min `write` budget is not
+    // a meaningful cap on any of them.
+    for (const method of ['prepare', 'revise', 'proposal'] as const) {
       const names = RouteRegistry.getGuards(IntentIntakeController, method).map((guard) => guard.name);
       expect(names[0]).toBe('RateLimit(intake_synthesis)');
     }
-    for (const method of ['start', 'question', 'proposal'] as const) {
+    // /start and /question never synthesize: one is a pack lookup, the other is a
+    // single structured question call with no durable write.
+    for (const method of ['start', 'question'] as const) {
       const names = RouteRegistry.getGuards(IntentIntakeController, method).map((guard) => guard.name);
       expect(names[0]).toBe('RateLimit(write)');
     }
