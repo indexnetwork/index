@@ -493,7 +493,7 @@ function formatPostDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d
-    .toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" })
+    .toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit", timeZone: "UTC" })
     .toUpperCase();
 }
 

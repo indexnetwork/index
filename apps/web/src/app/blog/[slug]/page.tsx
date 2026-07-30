@@ -201,6 +201,7 @@ function BlogPostPage() {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
+                timeZone: "UTC",
               })}
             </div>
             <h1 className="post-title">{state.post.title}</h1>
