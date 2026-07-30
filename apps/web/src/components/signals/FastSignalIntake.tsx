@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { GuidedQuestion, ProposalCard, type GuidedProposal, type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
 import { WherePicker } from "@/components/signals/WherePicker";
 import { useNetworksState } from "@/contexts/IndexesContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient } from "@/lib/api";
 import { intakeService, type IntakeAnswerBody, type IntakeProposalResponse } from "@/services/intake";
 import type { PendingQuestion, QuestionPayload } from "@/services/questions";
@@ -42,6 +43,8 @@ function toPendingQuestion(id: string, payload: QuestionPayload): PendingQuestio
 export interface FastSignalIntakeProps {
   /** Runs only after /intents/confirm returns the exact persisted intent ID. */
   onConfirmed: (confirmation: GuidedSignalConfirmation) => Promise<void>;
+  /** Durable/local recovery ID for completion retries after a refresh. */
+  resumeIntentId?: string | null;
 }
 
 /**
@@ -49,8 +52,9 @@ export interface FastSignalIntakeProps {
  * round 2, a client-side community picker for round 3, and a proposal that
  * synthesis has usually already prepared speculatively in the background.
  */
-export function FastSignalIntake({ onConfirmed }: FastSignalIntakeProps) {
+export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalIntakeProps) {
   const { indexes } = useNetworksState();
+  const { error: showError } = useNotifications();
 
   const [stage, setStage] = useState<Stage>("who");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -67,17 +71,56 @@ export function FastSignalIntake({ onConfirmed }: FastSignalIntakeProps) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState(false);
 
   const startedRef = useRef(false);
   const prepareRef = useRef<Promise<{ runId: string }> | null>(null);
+  const resumeAttemptedRef = useRef(false);
 
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
+  // Depends only on identifiers already available at this point, so callbacks
+  // declared further down (resume completion included) can safely list it as
+  // a dependency without a temporal-dead-zone reference.
+  const networkTitle = useMemo(() => {
+    const network = selectedNetworkId ? indexes.find((item) => item.id === selectedNetworkId) : undefined;
+    return network?.title ?? "Everywhere";
+  }, [indexes, selectedNetworkId]);
+
+  const loadStart = useCallback(() => {
+    setLoadError(null);
     intakeService.start()
       .then(({ question }) => setWhoQuestion(question))
       .catch(() => setLoadError("We couldn't start your signal. Please try again."));
   }, []);
+
+  useEffect(() => {
+    // A resume ID means an earlier session already created and possibly
+    // confirmed this intent; the funnel must not restart underneath it.
+    if (resumeIntentId || startedRef.current) return;
+    startedRef.current = true;
+    loadStart();
+  }, [loadStart, resumeIntentId]);
+
+  // Mirrors the legacy resume branch: skip the funnel entirely and retry
+  // completion for the exact already-created intent.
+  const attemptResumeCompletion = useCallback(async () => {
+    if (!resumeIntentId) return;
+    setConfirming(true);
+    setError(null);
+    try {
+      await onConfirmed({ intentId: resumeIntentId, proposal: null, networkTitle });
+    } catch (caught) {
+      setError("Your signal was saved, but setup could not finish. Retry to continue.");
+      showError("Onboarding completion failed", caught instanceof Error ? caught.message : "Please try again.");
+    } finally {
+      setConfirming(false);
+    }
+  }, [networkTitle, onConfirmed, resumeIntentId, showError]);
+
+  useEffect(() => {
+    if (!resumeIntentId || resumeAttemptedRef.current) return;
+    resumeAttemptedRef.current = true;
+    void attemptResumeCompletion();
+  }, [attemptResumeCompletion, resumeIntentId]);
 
   const handleWhoAnswer = useCallback(async (answer: IntakeAnswerBody) => {
     if (!whoQuestion) return;
@@ -164,11 +207,6 @@ export function FastSignalIntake({ onConfirmed }: FastSignalIntakeProps) {
     await resolve(pendingChoice ?? {}, merged);
   }, [bringAnswer, clarification, pendingChoice, resolve]);
 
-  const networkTitle = useMemo(() => {
-    const network = selectedNetworkId ? indexes.find((item) => item.id === selectedNetworkId) : undefined;
-    return network?.title ?? "Everywhere";
-  }, [indexes, selectedNetworkId]);
-
   const lookingFor = whoAnswer ? answerLabel(whoAnswer) : undefined;
   const youBring = bringAnswer ? answerLabel(bringAnswer) : undefined;
 
@@ -215,12 +253,64 @@ export function FastSignalIntake({ onConfirmed }: FastSignalIntakeProps) {
     }
   }, [bringAnswer, runId, whoAnswer]);
 
+  // Mirrors the legacy chat path: skipping rejects the durable proposal
+  // server-side before landing on a terminal "nothing saved" state, rather
+  // than silently orphaning the pending row.
   const handleSkip = useCallback(async () => {
+    if (!proposal) return;
+    try {
+      await apiClient.post("/intents/reject", { proposalId: proposal.proposalId });
+      setSkipped(true);
+    } catch (caught) {
+      setError("Couldn't dismiss this signal. Please try again.");
+      showError("Signal dismissal failed", caught instanceof Error ? caught.message : "Please try again.");
+    }
+  }, [proposal, showError]);
+
+  const startOver = useCallback(() => {
+    setStage("who");
+    setLoadError(null);
+    setWhoQuestion(null);
+    setBringQuestion(null);
+    setClarification(null);
+    setAnsweredSteps([]);
+    setWhoAnswer(null);
+    setBringAnswer(null);
+    setPendingChoice(null);
+    setRunId(null);
+    setSelectedNetworkId(undefined);
     setProposal(null);
-    setStage("where");
-  }, []);
+    setError(null);
+    setSkipped(false);
+    prepareRef.current = null;
+    loadStart();
+  }, [loadStart]);
 
   const progressSteps = Math.max(4, answeredSteps.length + (stage === "proposal" ? 0 : 1));
+
+  if (resumeIntentId) {
+    return (
+      <section className="mt-12 rounded-3xl border border-gray-200 bg-white p-8 text-center">
+        {confirming ? (
+          <div role="status" className="flex items-center justify-center gap-3 text-sm text-gray-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Finishing setup…
+          </div>
+        ) : (
+          <>
+            <h2 className="text-xl font-semibold text-[#041729]">Your first signal is saved.</h2>
+            {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
+            <button
+              type="button"
+              onClick={() => void attemptResumeCompletion()}
+              className="mt-5 rounded-full bg-[#041729] px-5 py-2.5 text-sm text-white"
+            >
+              Retry completion
+            </button>
+          </>
+        )}
+      </section>
+    );
+  }
 
   return (
     <>
@@ -243,7 +333,12 @@ export function FastSignalIntake({ onConfirmed }: FastSignalIntakeProps) {
         <p role="alert" className="mt-5 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       )}
 
-      {stage === "proposal" && proposalForCard ? (
+      {skipped ? (
+        <section className="mt-12 rounded-3xl border border-gray-200 bg-white p-8 text-center">
+          <h2 className="text-xl font-semibold text-[#041729]">Nothing saved.</h2>
+          <button type="button" onClick={startOver} className="mt-5 rounded-full bg-[#041729] px-5 py-2.5 text-sm text-white">Start over</button>
+        </section>
+      ) : stage === "proposal" && proposalForCard ? (
         <ProposalCard
           key={proposalForCard.proposalId}
           proposal={proposalForCard}

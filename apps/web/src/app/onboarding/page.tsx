@@ -217,7 +217,7 @@ function RestrictedSignalPhase({ userId, durableIntentId }: { userId: string; du
           Tell your agent what connection matters first.
         </h1>
         {fastSignalIntakeEnabled ? (
-          <FastSignalIntake onConfirmed={handleConfirmed} />
+          <FastSignalIntake onConfirmed={handleConfirmed} resumeIntentId={resumeIntentId} />
         ) : (
           <GuidedSignalIntake
             prepareSession={prepareSession}

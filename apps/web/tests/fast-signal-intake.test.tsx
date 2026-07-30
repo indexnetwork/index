@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import NewSignalPage from "@/app/i/new/page";
+import { FastSignalIntake } from "@/components/signals/FastSignalIntake";
 
 const mocks = vi.hoisted(() => ({
   fastSignalIntake: true,
@@ -189,6 +190,80 @@ describe("fast signal intake", () => {
     await waitFor(() => expect(mocks.sendWebMessage).toHaveBeenCalledWith(
       "new-signal-kickoff", undefined, undefined, expect.objectContaining({ hidden: true, persona: "signal" }),
     ));
+    expect(mocks.start).not.toHaveBeenCalled();
+  });
+
+  test("skipping a proposal rejects it server-side and lands on the terminal state", async () => {
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+    fireEvent.click(await screen.findByText("Builders"));
+    await screen.findByText(/does this feel right/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /not yet/i }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/intents/reject", { proposalId: "prop-1" }));
+    await screen.findByText(/nothing saved/i);
+    expect(screen.queryByText(/does this feel right/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /start over/i }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(2));
+    await screen.findByText("Who do you want to meet?");
+  });
+
+  test("a failed skip surfaces an error instead of silently succeeding", async () => {
+    mocks.apiPost.mockImplementation((url: string) => {
+      if (url === "/intents/reject") return Promise.reject(new Error("boom"));
+      return Promise.resolve({ intentId: "intent-1" });
+    });
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+    fireEvent.click(await screen.findByText("Builders"));
+    await screen.findByText(/does this feel right/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /not yet/i }));
+
+    await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith("Signal dismissal failed", "boom"));
+    expect(screen.getAllByText(/couldn't dismiss this signal/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/nothing saved/i)).toBeNull();
+  });
+});
+
+describe("fast signal intake resume", () => {
+  test("a resumeIntentId short-circuits the funnel and drives completion", async () => {
+    const onConfirmed = vi.fn().mockResolvedValue(undefined);
+
+    render(<FastSignalIntake onConfirmed={onConfirmed} resumeIntentId="intent-resume" />);
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({
+      intentId: "intent-resume",
+      proposal: null,
+    })));
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(screen.queryByText("Who do you want to meet?")).toBeNull();
+    await screen.findByText(/your first signal is saved/i);
+  });
+
+  test("a resume completion failure shows the retry affordance instead of a fresh funnel", async () => {
+    let attempts = 0;
+    const onConfirmed = vi.fn(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("response lost");
+    });
+
+    render(<FastSignalIntake onConfirmed={onConfirmed} resumeIntentId="intent-resume" />);
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1));
+    await screen.findByRole("alert");
+    expect(mocks.showError).toHaveBeenCalledWith("Onboarding completion failed", "response lost");
+    expect(screen.queryByText("Who do you want to meet?")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /retry completion/i }));
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(2));
     expect(mocks.start).not.toHaveBeenCalled();
   });
 });
