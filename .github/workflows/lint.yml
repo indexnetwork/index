@@ -61,6 +61,13 @@ jobs:
       - name: Check adapter naming conventions
         run: ./scripts/check-adapter-names.sh
 
+      # Subtree mirrors (indexnetwork/protocol, indexnetwork/cli, ...) build and
+      # publish without the monorepo lockfile, so a floating range there resolves
+      # to whatever is newest on npm instead of what this repo built. Gate it
+      # here rather than discovering it in a mirror's publish run.
+      - name: Check subtree mirror dependency parity
+        run: bun run check:subtree-parity
+
   typecheck:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
