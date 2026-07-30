@@ -402,6 +402,10 @@ export const signalIntakeRuns = pgTable('signal_intake_runs', {
   answersHash: text('answers_hash').notNull(),
   status: signalIntakeRunStatusEnum('status').notNull().default('pending'),
   proposalId: text('proposal_id'),
+  /** "Looking for" card summary from the synthesis that settled this run. */
+  lookingFor: text('looking_for'),
+  /** "You bring" card summary from the synthesis that settled this run. */
+  youBring: text('you_bring'),
   error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

@@ -6,14 +6,20 @@ import { RateLimit } from '../guards/limiter.guard';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
-import { IntakeRunNotFoundError, IntakeVerificationRejectedError, signalIntakeService, type SignalIntakeService } from '../services/signal-intake.service';
+import { IntakeNetworkMembershipError, IntakeRunNotFoundError, IntakeVerificationRejectedError, signalIntakeService, type SignalIntakeService } from '../services/signal-intake.service';
 
 const logger = log.controller.from('intent-intake');
 
+// An answer with no selected options and no free text carries no signal, yet it
+// still drives synthesis, the intent graph, and a durable proposal write. Reject
+// it at the edge instead.
 const AnswerSchema = z.object({
-  selectedOptions: z.array(z.string()).default([]),
+  selectedOptions: z.array(z.string().trim().min(1)).default([]),
   freeText: z.string().trim().optional(),
-}).strict();
+}).strict().refine(
+  (answer) => answer.selectedOptions.length > 0 || Boolean(answer.freeText),
+  { message: 'answer must have at least one selected option or free text' },
+);
 const QuestionSchema = z.object({ whoAnswer: AnswerSchema }).strict();
 const PrepareSchema = z.object({
   whoAnswer: AnswerSchema,
@@ -32,6 +38,7 @@ const ReviseSchema = z.object({
   feedback: z.string().trim().min(1).max(600),
   whoAnswer: AnswerSchema,
   bringAnswer: AnswerSchema,
+  networkId: z.string().uuid('networkId must be a UUID').optional(),
 }).strict();
 
 /**
@@ -85,9 +92,15 @@ export class IntentIntakeController {
     }
   }
 
-  /** Start speculative synthesis and return immediately. */
+  /**
+   * Start speculative synthesis and return immediately.
+   *
+   * Rate-limited as `intake_synthesis`, not `write`: a 202 here launches a
+   * background synthesis plus a full intent-graph run and writes a durable
+   * proposal row, so the ordinary write budget is far too loose for it.
+   */
   @Post('/prepare')
-  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('intake_synthesis'), FastSignalIntakeEnabledGuard, AuthGuard)
   async prepare(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = PrepareSchema.safeParse(await req.json().catch(() => ({})));
@@ -107,12 +120,15 @@ export class IntentIntakeController {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ProposalSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
-    const { runId, whereText, whoAnswer, bringAnswer } = parsed.data;
+    const { runId, whereText, networkId, whoAnswer, bringAnswer } = parsed.data;
     try {
+      // `networkId` must reach the proposal row: /intents/confirm rejects any
+      // confirmation whose networkId differs from the stored one.
       const proposal = await this.service.resolveProposal(user.id, {
         runId,
         answers: { whoAnswer, bringAnswer },
         ...(whereText ? { whereText } : {}),
+        ...(networkId ? { networkId } : {}),
       });
       return Response.json(proposal);
     } catch (error) {
@@ -120,17 +136,25 @@ export class IntentIntakeController {
     }
   }
 
-  /** Replace the visible draft from user feedback. */
+  /**
+   * Replace the visible draft from user feedback.
+   *
+   * Shares `prepare`'s tighter limiter class: this also synthesizes and writes a
+   * replacement proposal row.
+   */
   @Post('/revise')
-  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('intake_synthesis'), FastSignalIntakeEnabledGuard, AuthGuard)
   async revise(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ReviseSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
-    const { runId, feedback, whoAnswer, bringAnswer } = parsed.data;
+    const { runId, feedback, networkId, whoAnswer, bringAnswer } = parsed.data;
     try {
+      // The replacement proposal is a new row, so the already-picked community
+      // travels with the revision too.
       const proposal = await this.service.revise(user.id, {
         runId, feedback, answers: { whoAnswer, bringAnswer },
+        ...(networkId ? { networkId } : {}),
       });
       return Response.json(proposal);
     } catch (error) {
@@ -152,6 +176,13 @@ export class IntentIntakeController {
   private fail(error: unknown, userId: string, stage: string) {
     if (error instanceof IntakeRunNotFoundError) {
       return Response.json({ error: 'run_not_found', code: 'run_not_found' }, { status: 404 });
+    }
+    if (error instanceof IntakeNetworkMembershipError) {
+      return Response.json({
+        error: 'forbidden',
+        code: 'network_membership_required',
+        networkId: error.networkId,
+      }, { status: 403 });
     }
     if (error instanceof IntakeVerificationRejectedError) {
       return Response.json({

@@ -63,6 +63,21 @@ describe('IntentIntakeController flag gating', () => {
     for (const response of responses) expect(response.status).toBe(404);
   });
 
+  it('rate-limits the two synthesizing routes far tighter than ordinary writes', () => {
+    // /prepare answers 202 and then launches an uncapped background synthesis
+    // plus a full intent-graph run and a durable proposal write; /revise does the
+    // same synchronously. The 600/min `write` budget is not a meaningful cap on
+    // that, so both carry the dedicated class.
+    for (const method of ['prepare', 'revise'] as const) {
+      const names = RouteRegistry.getGuards(IntentIntakeController, method).map((guard) => guard.name);
+      expect(names[0]).toBe('RateLimit(intake_synthesis)');
+    }
+    for (const method of ['start', 'question', 'proposal'] as const) {
+      const names = RouteRegistry.getGuards(IntentIntakeController, method).map((guard) => guard.name);
+      expect(names[0]).toBe('RateLimit(write)');
+    }
+  });
+
   it('registers FastSignalIntakeEnabledGuard before AuthGuard on every route, so an unauthenticated request to a flag-off deployment 404s before AuthGuard ever runs', () => {
     for (const method of ['start', 'question', 'prepare', 'proposal', 'revise'] as const) {
       const guards = RouteRegistry.getGuards(IntentIntakeController, method);
@@ -106,6 +121,80 @@ describe('IntentIntakeController routes', () => {
 
     expect(response.status).toBe(200);
     expect(data.proposalId).toBe('prop-1');
+  });
+
+  it('forwards the picked community to the service so it lands on the proposal', async () => {
+    const service = makeService();
+    const controller = new IntentIntakeController({ service: service as never });
+    const networkId = '22222222-2222-4222-8222-222222222222';
+
+    await controller.proposal(
+      request({ runId: '11111111-1111-4111-8111-111111111111', networkId, ...answers }), user,
+    );
+
+    // The regression: `networkId` was parsed and then dropped, so the proposal
+    // row kept a NULL network and /intents/confirm 409'd on every community pick.
+    expect(service.resolveProposal).toHaveBeenCalledWith('u1', expect.objectContaining({ networkId }));
+  });
+
+  it('forwards the picked community through /revise as well', async () => {
+    const service = makeService();
+    const controller = new IntentIntakeController({ service: service as never });
+    const networkId = '22222222-2222-4222-8222-222222222222';
+
+    await controller.revise(
+      request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'sharper', networkId, ...answers }), user,
+    );
+
+    expect(service.revise).toHaveBeenCalledWith('u1', expect.objectContaining({ networkId }));
+  });
+
+  it('maps a community the user does not belong to onto 403', async () => {
+    const service = makeService({
+      resolveProposal: mock(async () => {
+        const { IntakeNetworkMembershipError } = await import('../../services/signal-intake.service');
+        throw new IntakeNetworkMembershipError('22222222-2222-4222-8222-222222222222');
+      }),
+    });
+    const controller = new IntentIntakeController({ service: service as never });
+
+    const response = await controller.proposal(request({
+      runId: '11111111-1111-4111-8111-111111111111',
+      networkId: '22222222-2222-4222-8222-222222222222',
+      ...answers,
+    }), user);
+
+    expect(response.status).toBe(403);
+    expect((await response.json() as { code: string }).code).toBe('network_membership_required');
+  });
+
+  it('rejects an answer that carries nothing before any synthesis is started', async () => {
+    const service = makeService();
+    const controller = new IntentIntakeController({ service: service as never });
+
+    const empty = await controller.prepare(request({
+      whoAnswer: { selectedOptions: [] }, bringAnswer: answers.bringAnswer,
+    }), user);
+    const blank = await controller.prepare(request({
+      whoAnswer: { selectedOptions: [], freeText: '   ' }, bringAnswer: answers.bringAnswer,
+    }), user);
+
+    expect(empty.status).toBe(400);
+    expect(blank.status).toBe(400);
+    expect(service.prepare).not.toHaveBeenCalled();
+  });
+
+  it('still accepts a free-text-only answer', async () => {
+    const service = makeService();
+    const controller = new IntentIntakeController({ service: service as never });
+
+    const response = await controller.prepare(request({
+      whoAnswer: { selectedOptions: [], freeText: 'a robotics co-founder' },
+      bringAnswer: answers.bringAnswer,
+    }), user);
+
+    expect(response.status).toBe(202);
+    expect(service.prepare).toHaveBeenCalledTimes(1);
   });
 
   it('maps a foreign run to 404 run_not_found', async () => {

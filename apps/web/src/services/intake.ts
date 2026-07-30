@@ -63,8 +63,14 @@ export const intakeService = {
     apiClient.post<IntakeProposalResponse>("/intents/intake/proposal", input)
       .catch(unwrapVerificationRejection),
 
-  /** Replace the visible draft from feedback. */
-  revise: (input: IntakeAnswers & { runId: string; feedback: string }) =>
+  /**
+   * Replace the visible draft from feedback.
+   *
+   * `networkId` travels with the revision because the replacement is a new
+   * proposal row: `/intents/confirm` compares the posted network against the
+   * stored one, so a revision that dropped it would 409 at confirm.
+   */
+  revise: (input: IntakeAnswers & { runId: string; feedback: string; networkId?: string }) =>
     apiClient.post<IntakeProposalResponse>("/intents/intake/revise", input)
       .catch(unwrapVerificationRejection),
 };

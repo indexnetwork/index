@@ -50,11 +50,27 @@ export class IntakeRunNotFoundError extends Error {
   }
 }
 
+/** Raised when the picked community is not one the user belongs to. */
+export class IntakeNetworkMembershipError extends Error {
+  /**
+   * @param networkId - Community the client asked for
+   */
+  constructor(readonly networkId: string) {
+    super('network_membership_required');
+    this.name = 'IntakeNetworkMembershipError';
+  }
+}
+
 /** Injection surface; production values default to the real adapters. */
 export interface SignalIntakeServiceDeps {
   packStore: typeof signalIntakePackAdapter;
   runStore: typeof signalIntakeRunAdapter;
-  proposalStore: Pick<typeof intentProposalDatabaseAdapter, 'createProposals' | 'getProposalForOwner'>;
+  proposalStore: Pick<
+    typeof intentProposalDatabaseAdapter,
+    'createProposals' | 'getProposalForOwner' | 'setProposalNetwork'
+  >;
+  /** Server-side authority for the client-supplied `networkId`. */
+  isNetworkMember: (networkId: string, userId: string) => Promise<boolean>;
   orchestrator: Pick<SignalIntakeOrchestrator, 'nextQuestion' | 'synthesize'>;
   packGenerator: Pick<SignalIntakePackGenerator, 'generate'>;
   getPremises: (userId: string) => Promise<Array<{ text: string }>>;
@@ -204,7 +220,15 @@ export class SignalIntakeService {
     });
     const { run, claimed } = await this.deps.runStore.claimRun(userId, answersHash);
 
-    if (claimed) {
+    // The hash keys only on the answers, and each round offers a handful of
+    // canned options, so a user creating a second signal within the run TTL can
+    // legitimately collide with their first. Reusing that run would replay a
+    // proposal that was already confirmed (or rejected, or expired) and hand the
+    // user back their existing intent, so reopen it and speculate again.
+    const stale = !claimed && !(await this.isRunReusable(userId, run));
+    if (stale) await this.deps.runStore.resetRun(run.id);
+
+    if (claimed || stale) {
       // Deliberately not awaited: this is the speculation that overlaps the
       // user's community pick. Failures are recorded on the run, never thrown.
       void this.runSynthesis(userId, run.id, answers).catch(() => undefined);
@@ -226,12 +250,22 @@ export class SignalIntakeService {
    */
   async resolveProposal(
     userId: string,
-    input: { runId: string; whereText?: string; answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer } },
+    input: {
+      runId: string;
+      whereText?: string;
+      networkId?: string;
+      answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer };
+    },
   ): Promise<IntakeProposal> {
     const started = Date.now();
     const run = await this.deps.runStore.getRunForOwner(input.runId, userId);
     if (!run) throw new IntakeRunNotFoundError();
 
+    // The picked community must land on the proposal row: `createFromProposal`
+    // refuses any confirmation whose `networkId` differs from the stored one.
+    // The client's value is never trusted — membership is checked here, and
+    // again in SQL by `setProposalNetwork`.
+    const networkId = await this.authorizeNetwork(userId, input.networkId);
     const whereTextUsed = Boolean(input.whereText?.trim());
 
     // A where-constraint invalidates the speculative description, and a failed
@@ -240,7 +274,7 @@ export class SignalIntakeService {
       const proposal = await this.runSynthesis(userId, run.id, {
         ...input.answers,
         ...(input.whereText?.trim() ? { whereText: input.whereText.trim() } : {}),
-      });
+      }, networkId);
       logger.info('signal_intake_stage', {
         stage: 'proposal', durationMs: Date.now() - started,
         packHit: true, speculationHit: false, whereTextUsed, fallbackUsed: run.status === 'failed',
@@ -249,21 +283,18 @@ export class SignalIntakeService {
     }
 
     const ready = run.status === 'ready' ? run : await this.awaitRun(userId, run.id);
-    if (ready?.status === 'ready' && ready.proposalId) {
-      const stored = await this.deps.proposalStore.getProposalForOwner(ready.proposalId, userId);
+    const speculative = ready?.status === 'ready' && ready.proposalId
+      ? await this.claimSpeculativeProposal(userId, ready.proposalId, ready, networkId)
+      : null;
+    if (speculative) {
       logger.info('signal_intake_stage', {
         stage: 'proposal', durationMs: Date.now() - started,
         packHit: true, speculationHit: run.status === 'ready', whereTextUsed: false, fallbackUsed: false,
       });
-      return {
-        proposalId: ready.proposalId,
-        description: stored?.description ?? '',
-        lookingFor: '',
-        youBring: '',
-      };
+      return speculative;
     }
 
-    const proposal = await this.runSynthesis(userId, run.id, input.answers);
+    const proposal = await this.runSynthesis(userId, run.id, input.answers, networkId);
     logger.info('signal_intake_stage', {
       stage: 'proposal', durationMs: Date.now() - started,
       packHit: true, speculationHit: false, whereTextUsed: false, fallbackUsed: true,
@@ -283,6 +314,7 @@ export class SignalIntakeService {
     input: {
       runId: string;
       feedback: string;
+      networkId?: string;
       answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer };
     },
   ): Promise<IntakeProposal> {
@@ -290,10 +322,15 @@ export class SignalIntakeService {
     const run = await this.deps.runStore.getRunForOwner(input.runId, userId);
     if (!run) throw new IntakeRunNotFoundError();
 
+    // Revise replaces the proposal row, so the already-picked community has to
+    // be re-attached to the replacement or confirm would reject it.
+    const networkId = await this.authorizeNetwork(userId, input.networkId);
+    // Feedback is a correction to the whole draft, not a place constraint: it
+    // travels in its own synthesis slot.
     const proposal = await this.runSynthesis(userId, run.id, {
       ...input.answers,
-      whereText: input.feedback,
-    });
+      feedback: input.feedback,
+    }, networkId);
     logger.info('signal_intake_stage', {
       stage: 'revise', durationMs: Date.now() - started,
       packHit: true, speculationHit: false, whereTextUsed: false, fallbackUsed: false,
@@ -313,7 +350,8 @@ export class SignalIntakeService {
   private async runSynthesis(
     userId: string,
     runId: string,
-    answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer; whereText?: string },
+    answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer; whereText?: string; feedback?: string },
+    networkId?: string,
   ): Promise<IntakeProposal> {
     try {
       const { brief } = await this.getOrCreatePack(userId);
@@ -349,9 +387,13 @@ export class SignalIntakeService {
         proposalId,
         userId,
         description,
+        ...(networkId ? { networkId } : {}),
         analysis: { verifierOutput: first.verification, combinedScore: first.score ?? null },
       }]);
-      await this.deps.runStore.markReady(runId, proposalId);
+      await this.deps.runStore.markReady(runId, proposalId, {
+        lookingFor: synthesis.lookingFor,
+        youBring: synthesis.youBring,
+      });
 
       return {
         proposalId,
@@ -364,6 +406,75 @@ export class SignalIntakeService {
       await this.deps.runStore.markFailed(runId, error instanceof Error ? error.message : 'synthesis_failed');
       throw error;
     }
+  }
+
+  /**
+   * Verify a client-supplied community server-side.
+   *
+   * @param userId - Owner
+   * @param networkId - Community the client claims the user picked
+   * @returns The community when the user is a member, undefined when none was sent
+   * @throws IntakeNetworkMembershipError when the user is not a member
+   */
+  private async authorizeNetwork(userId: string, networkId?: string): Promise<string | undefined> {
+    if (!networkId) return undefined;
+    if (!await this.deps.isNetworkMember(networkId, userId)) {
+      throw new IntakeNetworkMembershipError(networkId);
+    }
+    return networkId;
+  }
+
+  /**
+   * Hand back a speculative proposal, attaching the picked community to it.
+   *
+   * @param userId - Owner
+   * @param proposalId - Proposal the run settled on
+   * @param run - The settled run, carrying the synthesized card summaries
+   * @param networkId - Already-authorized community, when one was picked
+   * @returns The proposal, or null when the row cannot be reused and the caller
+   * must synthesize a fresh one
+   */
+  private async claimSpeculativeProposal(
+    userId: string,
+    proposalId: string,
+    run: { lookingFor: string | null; youBring: string | null },
+    networkId?: string,
+  ): Promise<IntakeProposal | null> {
+    const stored = await this.deps.proposalStore.getProposalForOwner(proposalId, userId);
+    if (!stored || !this.isProposalUsable(stored)) return null;
+
+    if (networkId && stored.networkId !== networkId) {
+      // Loses only to a concurrent confirm/reject; re-synthesizing is the right
+      // answer there, since a consumed proposal must never be handed back.
+      const attached = await this.deps.proposalStore.setProposalNetwork(proposalId, userId, networkId);
+      if (!attached) return null;
+    }
+
+    return {
+      proposalId,
+      description: stored.description ?? '',
+      // Persisted by the speculative synthesis so the expected (hit) path shows
+      // the model's copy rather than the raw option labels the user clicked.
+      lookingFor: run.lookingFor ?? '',
+      youBring: run.youBring ?? '',
+    };
+  }
+
+  /** Whether an existing run's proposal can still be confirmed by its owner. */
+  private async isRunReusable(
+    userId: string,
+    run: { status: string; proposalId: string | null },
+  ): Promise<boolean> {
+    if (run.status !== 'ready') return true;
+    if (!run.proposalId) return false;
+    const stored = await this.deps.proposalStore.getProposalForOwner(run.proposalId, userId);
+    if (!stored) return false;
+    return this.isProposalUsable(stored);
+  }
+
+  /** A proposal is usable while it is still pending and unexpired. */
+  private isProposalUsable(proposal: { status: string; expiresAt: Date }): boolean {
+    return proposal.status === 'pending' && proposal.expiresAt.getTime() > this.now.getTime();
   }
 
   /** Poll a pending run until it settles or the ceiling elapses. */
@@ -504,6 +615,7 @@ export const signalIntakeService = new SignalIntakeService({
   packStore: signalIntakePackAdapter,
   runStore: signalIntakeRunAdapter,
   proposalStore: intentProposalDatabaseAdapter,
+  isNetworkMember: (networkId, userId) => intentDatabaseAdapter.isNetworkMember(networkId, userId),
   orchestrator: new SignalIntakeOrchestrator(),
   packGenerator: new SignalIntakePackGenerator(),
   getPremises: getPremisesProduction,

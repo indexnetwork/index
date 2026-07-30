@@ -1,6 +1,21 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { SignalIntakeService } from '../signal-intake.service';
+import { IntakeNetworkMembershipError, SignalIntakeService } from '../signal-intake.service';
+
+const NETWORK_ID = '22222222-2222-4222-8222-222222222222';
+
+/** A pending, unexpired proposal row as the adapter returns it. */
+function storedProposal(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'prop-1',
+    userId: 'u1',
+    description: 'Looking for a design partner.',
+    networkId: null,
+    status: 'pending',
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    ...overrides,
+  };
+}
 
 const question = {
   title: 'Question 1',
@@ -40,15 +55,20 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       })),
       markReady: mock(async () => undefined),
       markFailed: mock(async () => undefined),
+      resetRun: mock(async () => undefined),
       sweepStaleRuns: mock(async () => undefined),
       getRunForOwner: mock(async () => ({
-        id: 'run-1', userId: 'u1', answersHash: 'h', status: 'ready', proposalId: 'prop-1', error: null, createdAt: new Date(),
+        id: 'run-1', userId: 'u1', answersHash: 'h', status: 'ready', proposalId: 'prop-1',
+        lookingFor: 'A hands-on design partner', youBring: 'Engineering depth on developer tooling',
+        error: null, createdAt: new Date(),
       })),
     },
     proposalStore: {
       createProposals: mock(async () => undefined),
-      getProposalForOwner: mock(async () => ({ id: 'prop-1', description: 'Looking for a design partner.' })),
+      getProposalForOwner: mock(async () => storedProposal()),
+      setProposalNetwork: mock(async () => true),
     },
+    isNetworkMember: mock(async () => true),
     orchestrator: {
       nextQuestion: mock(async () => question),
       synthesize: mock(async () => ({ description: 'Looking for a design partner.', lookingFor: 'A design partner', youBring: 'Depth' })),
@@ -165,6 +185,67 @@ describe('SignalIntakeService.resolveProposal', () => {
     expect(result.description).toBe('Looking for a design partner');
   });
 
+  it('returns the summaries the speculative synthesis persisted, not empty strings', async () => {
+    const deps = makeDeps();
+    const service = new SignalIntakeService(deps as never);
+
+    const result = await service.resolveProposal('u1', { runId: 'run-1', answers });
+
+    // The hit path is the design's expected outcome, so it must carry the
+    // synthesized copy; returning '' here made the client fall back to the raw
+    // option labels the user clicked on almost every real run.
+    expect(result.lookingFor).toBe('A hands-on design partner');
+    expect(result.youBring).toBe('Engineering depth on developer tooling');
+    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+  });
+
+  it('attaches the picked community to the speculative proposal', async () => {
+    const deps = makeDeps();
+    const service = new SignalIntakeService(deps as never);
+
+    await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, answers });
+
+    expect(deps.isNetworkMember).toHaveBeenCalledWith(NETWORK_ID, 'u1');
+    expect(deps.proposalStore.setProposalNetwork).toHaveBeenCalledWith('prop-1', 'u1', NETWORK_ID);
+  });
+
+  it('creates the serial proposal with the picked community already on it', async () => {
+    const deps = makeDeps();
+    const service = new SignalIntakeService(deps as never);
+
+    await service.resolveProposal('u1', {
+      runId: 'run-1', networkId: NETWORK_ID, whereText: 'Berlin only', answers,
+    });
+
+    const [[created]] = deps.proposalStore.createProposals.mock.calls as [[Array<{ networkId?: string }>]];
+    expect(created[0]?.networkId).toBe(NETWORK_ID);
+  });
+
+  it('refuses a community the user does not belong to', async () => {
+    const deps = makeDeps({ isNetworkMember: mock(async () => false) });
+    const service = new SignalIntakeService(deps as never);
+
+    await expect(service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, answers }))
+      .rejects.toBeInstanceOf(IntakeNetworkMembershipError);
+    expect(deps.proposalStore.setProposalNetwork).not.toHaveBeenCalled();
+  });
+
+  it('re-synthesizes instead of replaying a proposal that was already consumed', async () => {
+    const deps = makeDeps({
+      proposalStore: {
+        createProposals: mock(async () => undefined),
+        getProposalForOwner: mock(async () => storedProposal({ status: 'consumed' })),
+        setProposalNetwork: mock(async () => true),
+      },
+    });
+    const service = new SignalIntakeService(deps as never);
+
+    const result = await service.resolveProposal('u1', { runId: 'run-1', answers });
+
+    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(result.proposalId).not.toBe('prop-1');
+  });
+
   it('rejects a run owned by another user', async () => {
     const deps = makeDeps({
       runStore: { ...makeDeps().runStore, getRunForOwner: mock(async () => null) },
@@ -172,6 +253,23 @@ describe('SignalIntakeService.resolveProposal', () => {
     const service = new SignalIntakeService(deps as never);
 
     await expect(service.resolveProposal('u1', { runId: 'run-1', answers })).rejects.toThrow('run_not_found');
+  });
+
+  it('re-synthesizes when the community can no longer be attached', async () => {
+    const deps = makeDeps({
+      proposalStore: {
+        createProposals: mock(async () => undefined),
+        getProposalForOwner: mock(async () => storedProposal()),
+        // Lost a race with a concurrent confirm/reject: the row is no longer pending.
+        setProposalNetwork: mock(async () => false),
+      },
+    });
+    const service = new SignalIntakeService(deps as never);
+
+    const result = await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, answers });
+
+    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+    expect(result.proposalId).not.toBe('prop-1');
   });
 
   it('surfaces verification rejection with a clarification question', async () => {
@@ -193,5 +291,126 @@ describe('SignalIntakeService.resolveProposal', () => {
       expect(error.clarification?.options.length).toBeGreaterThanOrEqual(2);
     });
     expect(deps.runStore.markFailed).toHaveBeenCalled();
+  });
+});
+
+describe('SignalIntakeService.prepare run reuse', () => {
+  const answers = {
+    whoAnswer: { selectedOptions: ['A design partner'] },
+    bringAnswer: { selectedOptions: ['Engineering depth'] },
+  };
+
+  function readyRun(proposalId: string | null = 'prop-1') {
+    return {
+      id: 'run-1', userId: 'u1', answersHash: 'h', status: 'ready', proposalId,
+      lookingFor: 'l', youBring: 'y', error: null, createdAt: new Date(),
+    };
+  }
+
+  it('reopens a matched run whose proposal was already consumed', async () => {
+    // The hash keys only on the two answers and each round offers a handful of
+    // canned options, so a user creating a second signal within the 24h TTL can
+    // hash to their first run. Replaying it returned the FIRST intent at confirm
+    // while the user believed they had created a second signal.
+    const deps = makeDeps({
+      runStore: {
+        ...makeDeps().runStore,
+        claimRun: mock(async () => ({ run: readyRun(), claimed: false })),
+      },
+      proposalStore: {
+        createProposals: mock(async () => undefined),
+        getProposalForOwner: mock(async () => storedProposal({ status: 'consumed' })),
+        setProposalNetwork: mock(async () => true),
+      },
+    });
+    const service = new SignalIntakeService(deps as never);
+
+    await service.prepare('u1', answers);
+    // Speculation is deliberately not awaited; let the microtask chain drain.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(deps.runStore.resetRun).toHaveBeenCalledWith('run-1');
+    expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses a matched run whose proposal is still pending', async () => {
+    const deps = makeDeps({
+      runStore: {
+        ...makeDeps().runStore,
+        claimRun: mock(async () => ({ run: readyRun(), claimed: false })),
+      },
+    });
+    const service = new SignalIntakeService(deps as never);
+
+    await service.prepare('u1', answers);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(deps.runStore.resetRun).not.toHaveBeenCalled();
+    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+  });
+
+  it('leaves an in-flight run alone so concurrent tabs single-flight', async () => {
+    const deps = makeDeps({
+      runStore: {
+        ...makeDeps().runStore,
+        claimRun: mock(async () => ({
+          run: {
+            id: 'run-1', userId: 'u1', answersHash: 'h', status: 'pending', proposalId: null,
+            lookingFor: null, youBring: null, error: null, createdAt: new Date(),
+          },
+          claimed: false,
+        })),
+      },
+    });
+    const service = new SignalIntakeService(deps as never);
+
+    await service.prepare('u1', answers);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(deps.runStore.resetRun).not.toHaveBeenCalled();
+    expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
+  });
+});
+
+describe('SignalIntakeService.revise', () => {
+  const answers = {
+    whoAnswer: { selectedOptions: ['A design partner'] },
+    bringAnswer: { selectedOptions: ['Engineering depth'] },
+  };
+
+  it('sends feedback in its own slot rather than as a where constraint', async () => {
+    const deps = makeDeps();
+    const service = new SignalIntakeService(deps as never);
+
+    await service.revise('u1', {
+      runId: 'run-1', feedback: 'make it about hardware, not software', answers,
+    });
+
+    const [input] = deps.orchestrator.synthesize.mock.calls[0] as [{ feedback?: string; whereText?: string }];
+    expect(input.feedback).toBe('make it about hardware, not software');
+    expect(input.whereText).toBeUndefined();
+  });
+
+  it('carries the already-picked community onto the replacement proposal', async () => {
+    const deps = makeDeps();
+    const service = new SignalIntakeService(deps as never);
+
+    await service.revise('u1', {
+      runId: 'run-1', feedback: 'more senior', networkId: NETWORK_ID, answers,
+    });
+
+    const [[created]] = deps.proposalStore.createProposals.mock.calls as [[Array<{ networkId?: string }>]];
+    expect(created[0]?.networkId).toBe(NETWORK_ID);
+  });
+
+  it('stores the synthesized summaries on the run it settles', async () => {
+    const deps = makeDeps();
+    const service = new SignalIntakeService(deps as never);
+
+    await service.revise('u1', { runId: 'run-1', feedback: 'more senior', answers });
+
+    expect(deps.runStore.markReady).toHaveBeenCalledWith(
+      'run-1', expect.any(String), { lookingFor: 'A design partner', youBring: 'Depth' },
+    );
   });
 });

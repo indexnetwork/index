@@ -21,16 +21,29 @@ export interface SignalIntakeRunRecord {
   answersHash: string;
   status: 'pending' | 'ready' | 'failed';
   proposalId: string | null;
+  /** Card summary from the synthesis that settled this run, when it succeeded. */
+  lookingFor: string | null;
+  /** Card summary from the synthesis that settled this run, when it succeeded. */
+  youBring: string | null;
   error: string | null;
   createdAt: Date;
 }
 
 /**
- * Deterministic key over the full answer set that feeds synthesis.
+ * Deterministic key over the answers that feed speculative synthesis.
  *
- * `whereText` participates so a where-driven re-synthesis gets its own row
- * instead of colliding with the speculative run, while a blank constraint
- * hashes identically to the speculative run and reuses it.
+ * Only `SignalIntakeService.prepare` computes this key, and it passes the two
+ * answers alone: a where-driven or feedback-driven re-synthesis does NOT get
+ * its own row. It reuses the run the client already holds and replaces that
+ * run's `proposal_id` in place, which is what keeps `runId` a stable handle for
+ * the whole funnel. `whereText` still participates in the digest when a caller
+ * supplies it, so the key stays correct if a future caller ever needs to
+ * separate those runs, but no caller does today.
+ *
+ * The key alone is not a reuse decision: with a handful of canned options per
+ * round, a user's second signal can legitimately hash to their first. `prepare`
+ * therefore re-checks that the matched run's proposal is still pending before
+ * reusing it (see {@link SignalIntakeRunDatabaseAdapter.resetRun}).
  *
  * @param input - Both answers plus the optional where constraint
  * @returns A 16-char hex digest, stable across option ordering
@@ -75,11 +88,47 @@ export class SignalIntakeRunDatabaseAdapter {
     return { run: existing as SignalIntakeRunRecord, claimed: false };
   }
 
-  /** Record a completed proposal against the run. Also used by revise. */
-  async markReady(runId: string, proposalId: string): Promise<void> {
+  /**
+   * Record a completed proposal against the run. Also used by revise.
+   *
+   * The synthesized card summaries are stored alongside the proposal id so the
+   * speculative-hit path can return the copy the model wrote instead of falling
+   * back to the raw option labels the user clicked.
+   *
+   * @param runId - Run to settle
+   * @param proposalId - Proposal the synthesis persisted
+   * @param summary - Card summaries from that synthesis
+   */
+  async markReady(
+    runId: string,
+    proposalId: string,
+    summary?: { lookingFor: string; youBring: string },
+  ): Promise<void> {
     await db
       .update(signalIntakeRuns)
-      .set({ status: 'ready', proposalId, error: null })
+      .set({
+        status: 'ready',
+        proposalId,
+        error: null,
+        lookingFor: summary?.lookingFor ?? null,
+        youBring: summary?.youBring ?? null,
+      })
+      .where(eq(signalIntakeRuns.id, runId));
+  }
+
+  /**
+   * Return a settled run to `pending` so it can be synthesized again.
+   *
+   * Used when an answer-hash match resolves to a run whose proposal is no longer
+   * usable (already confirmed, rejected, or expired). Replaying that run would
+   * hand the user back their previous signal instead of creating a new one.
+   *
+   * @param runId - Run to reopen
+   */
+  async resetRun(runId: string): Promise<void> {
+    await db
+      .update(signalIntakeRuns)
+      .set({ status: 'pending', proposalId: null, error: null, lookingFor: null, youBring: null })
       .where(eq(signalIntakeRuns.id, runId));
   }
 

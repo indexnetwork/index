@@ -102,6 +102,37 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
     expect(withoutWhere.prompt).not.toContain("Where constraint");
   });
 
+  it("renders revision feedback in its own slot, never as a where constraint", async () => {
+    const capture: { prompt?: string } = {};
+
+    await new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) }).synthesize({
+      brief: "b",
+      whoAnswer: { selectedOptions: ["x"] },
+      bringAnswer: { selectedOptions: ["y"] },
+      feedback: "make it about hardware, not software",
+    });
+
+    expect(capture.prompt).toContain("Revision feedback on the previous draft: make it about hardware, not software");
+    // The regression this pins: feedback used to be passed as `whereText`, so a
+    // content correction was presented to the model as a location constraint.
+    expect(capture.prompt).not.toContain("Where constraint");
+  });
+
+  it("keeps a where constraint and revision feedback in separate slots", async () => {
+    const capture: { prompt?: string } = {};
+
+    await new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) }).synthesize({
+      brief: "b",
+      whoAnswer: { selectedOptions: ["x"] },
+      bringAnswer: { selectedOptions: ["y"] },
+      whereText: "Berlin only",
+      feedback: "more senior",
+    });
+
+    expect(capture.prompt).toContain("Where constraint: Berlin only");
+    expect(capture.prompt).toContain("Revision feedback on the previous draft: more senior");
+  });
+
   it("propagates synthesis failures so the caller can degrade", async () => {
     const orchestrator = new SignalIntakeOrchestrator({
       synthesis: { invoke: async () => { throw new Error("model down"); } } as never,

@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, SignalIntakePackGenerator } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 
+import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 import { computePremiseHash, type ContextPremise } from '../lib/usercontext/premise-hash';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -289,24 +290,13 @@ export class UserContextQueue {
     // reuses the premises/titles/global-context text already assembled above. It is
     // best-effort: a pack failure must not fail context regeneration, because
     // `/intents/intake/start` regenerates synchronously on a cache miss anyway.
-    const getExistingIntakePack = this.deps?.getExistingIntakePack ?? this.defaultGetExistingIntakePack.bind(this);
-    const regenerateIntakePack = this.deps?.regenerateIntakePack ?? this.defaultRegenerateIntakePack.bind(this);
-    try {
-      const existingPack = await getExistingIntakePack(userId);
-      if (!existingPack || existingPack.premiseHash !== premiseHash) {
-        if (globalContextText === null) {
-          const existingGlobal = await chatDatabaseAdapter.getUserContext(userId, null);
-          globalContextText = existingGlobal?.text ?? null;
-        }
-        await regenerateIntakePack(userId, premiseHash, {
-          premises: premiseTexts,
-          networkTitles,
-          globalContext: globalContextText,
-        });
-        this.logger.verbose('Regenerated signal intake pack', { userId });
-      }
-    } catch (err) {
-      this.logger.error('Failed to regenerate signal intake pack', { userId, error: err });
+    //
+    // Gated on the same flag as the funnel it feeds: each refresh is a real LLM
+    // call, and nothing reads the pack while the flag is off, so flag-off
+    // regeneration is byte-for-byte the pre-feature behavior and flipping the
+    // flag is what starts the spend.
+    if (isFastSignalIntakeEnabled()) {
+      await this.regenerateIntakePackBestEffort(userId, premiseHash, premiseTexts, networkTitles, globalContextText);
     }
 
     if (failures > 0) {
@@ -314,6 +304,49 @@ export class UserContextQueue {
       throw new Error(
         `UserContext regeneration failed for ${failures}/${total} row(s) for user ${userId}; failing job so BullMQ retries`,
       );
+    }
+  }
+
+  /**
+   * Refresh the fast-intake pack when its premise hash is stale.
+   *
+   * Best-effort by contract: every failure is logged and swallowed so it can
+   * never fail context regeneration.
+   *
+   * @param userId - Owner
+   * @param premiseHash - Staleness key shared with the context rows
+   * @param premiseTexts - Active premise texts already assembled by the caller
+   * @param networkTitles - Titles of every network resolved this run
+   * @param globalContextText - Global context text, or null when not generated this run
+   */
+  private async regenerateIntakePackBestEffort(
+    userId: string,
+    premiseHash: string,
+    premiseTexts: Array<{ text: string }>,
+    networkTitles: string[],
+    globalContextText: string | null,
+  ): Promise<void> {
+    const getExistingIntakePack = this.deps?.getExistingIntakePack ?? this.defaultGetExistingIntakePack.bind(this);
+    const regenerateIntakePack = this.deps?.regenerateIntakePack ?? this.defaultRegenerateIntakePack.bind(this);
+    try {
+      const existingPack = await getExistingIntakePack(userId);
+      if (!existingPack || existingPack.premiseHash !== premiseHash) {
+        // A global row that was already fresh this run was never generated, so
+        // fall back to the stored paragraph rather than passing null.
+        let globalContext = globalContextText;
+        if (globalContext === null) {
+          const existingGlobal = await chatDatabaseAdapter.getUserContext(userId, null);
+          globalContext = existingGlobal?.text ?? null;
+        }
+        await regenerateIntakePack(userId, premiseHash, {
+          premises: premiseTexts,
+          networkTitles,
+          globalContext,
+        });
+        this.logger.verbose('Regenerated signal intake pack', { userId });
+      }
+    } catch (err) {
+      this.logger.error('Failed to regenerate signal intake pack', { userId, error: err });
     }
   }
 

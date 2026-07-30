@@ -353,11 +353,12 @@ Model settings centralized in `packages/protocol/src/shared/agent/model.config.t
 
 ### Rate Limiting
 
-The protocol applies per-route-class limits via the `RateLimit(class)` guard from `src/guards/limiter.guard.ts`. Three classes:
+The protocol applies per-route-class limits via the `RateLimit(class)` guard from `src/guards/limiter.guard.ts`. Four classes:
 
 - `read` — all `GET` routes (default 1200/min)
 - `write` — all `POST/PUT/PATCH/DELETE` routes (default 600/min)
 - `auth_write` — credential-mutation endpoints on `/api/auth/*` (default 100/min); enforced by Better Auth's own `rateLimit` block
+- `intake_synthesis` — write routes that launch an LLM synthesis plus a full intent-graph run and persist a durable proposal per call (`POST /intents/intake/prepare`, `POST /intents/intake/revise`); default 20/min via `LIMITER_INTAKE_SYNTHESIS_PER_MIN`
 
 Buckets are keyed per identifier: verified JWT user (signature-checked) or client IP for everything else. Unverified credentials (raw API keys, session cookies) deliberately do NOT get their own buckets — that would let a client rotate values per request to evade IP throttling. Apply via `@UseGuards(RateLimit('read'), AuthGuard)` — `RateLimit` must be FIRST so it short-circuits before any DB work. Agent-poller endpoints (`POST /agents/:id/negotiations/pickup`, `GET /agents/:id/opportunities/pending`, `GET /agents/:id/opportunities/accepted`) intentionally omit the guard. Storage is Redis (shared across Bun instances) when either `REDIS_URL` or `REDIS_HOST` is set; otherwise the limiter uses an in-memory fallback (single-process, dev only — not multi-instance safe). Set `LIMITER_DISABLE=1` to disable as an incident escape hatch.
 

@@ -77,6 +77,11 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   const prepareRef = useRef<Promise<{ runId: string }> | null>(null);
   const resumeAttemptedRef = useRef(false);
 
+  // Round 3 offers communities, and a personal network is not one: it is the
+  // user's own private space. Mirrors NetworksPanel's `!i.isPersonal` filter and
+  // the server-side brief, which is built from `getNonPersonalNetworkIds`.
+  const communities = useMemo(() => indexes.filter((item) => !item.isPersonal), [indexes]);
+
   // Depends only on identifiers already available at this point, so callbacks
   // declared further down (resume completion included) can safely list it as
   // a dependency without a temporal-dead-zone reference.
@@ -252,14 +257,20 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     setBusy(true);
     setError(null);
     try {
-      const result = await intakeService.revise({ runId, whoAnswer, bringAnswer, feedback });
+      // Revise replaces the proposal row server-side, so the already-picked
+      // community has to travel with it or the confirm below would 409 on the
+      // proposal/network equality check.
+      const result = await intakeService.revise({
+        runId, whoAnswer, bringAnswer, feedback,
+        ...(selectedNetworkId ? { networkId: selectedNetworkId } : {}),
+      });
       setProposal(result);
     } catch {
       setError("Couldn't revise your signal. Please try again.");
     } finally {
       setBusy(false);
     }
-  }, [bringAnswer, runId, whoAnswer]);
+  }, [bringAnswer, runId, selectedNetworkId, whoAnswer]);
 
   // Mirrors the legacy chat path: skipping rejects the durable proposal
   // server-side before landing on a terminal "nothing saved" state, rather
@@ -360,7 +371,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
           error={error}
         />
       ) : stage === "where" ? (
-        <WherePicker networks={indexes} onSelect={handleWhereSelect} busy={busy} />
+        <WherePicker networks={communities} onSelect={handleWhereSelect} busy={busy} />
       ) : stage === "clarify" && clarification ? (
         <GuidedQuestion
           question={toPendingQuestion("clarification", clarification)}

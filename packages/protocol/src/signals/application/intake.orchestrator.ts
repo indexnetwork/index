@@ -26,7 +26,14 @@ export interface SynthesisInput {
   brief: string;
   whoAnswer: IntakeAnswer;
   bringAnswer: IntakeAnswer;
+  /** Free-text place/community constraint from round 3. */
   whereText?: string;
+  /**
+   * Free-text correction the user typed against a draft they already saw.
+   * Distinct from {@link SynthesisInput.whereText}: feedback rewrites the
+   * signal, it does not constrain where to look.
+   */
+  feedback?: string;
 }
 
 /** Synthesized signal text plus its summary fields. */
@@ -89,7 +96,9 @@ Combine the brief and the person's answers into a specific description of who th
 want to meet, what they bring or need, and any stated constraint. Write it in the
 person's own voice, first person, 1-3 sentences, concrete and free of hype. Also
 return short "lookingFor" and "youBring" summaries for the confirmation card.
-Never invent facts beyond the brief and the answers.`;
+When revision feedback is present, it is the person correcting a draft they
+already read: apply it to the whole signal rather than treating it as a place or
+community constraint. Never invent facts beyond the brief and the answers.`;
 
 /**
  * Render an answer as a human-readable label.
@@ -140,9 +149,10 @@ export class SignalIntakeOrchestrator {
   }
 
   /**
-   * Write the signal from both answers and any where-constraint.
+   * Write the signal from both answers, any where-constraint, and any
+   * revision feedback.
    *
-   * @param input - Brief, both answers, optional free-text constraint
+   * @param input - Brief, both answers, optional where constraint, optional feedback
    * @returns Description plus card summary fields
    * @throws Propagates model failure so the caller can mark the run failed
    */
@@ -150,10 +160,13 @@ export class SignalIntakeOrchestrator {
     const whereLine = input.whereText?.trim()
       ? `\n\nWhere constraint: ${input.whereText.trim()}`
       : "";
+    const feedbackLine = input.feedback?.trim()
+      ? `\n\nRevision feedback on the previous draft: ${input.feedback.trim()}`
+      : "";
     const result = await this.synthesisModel.invoke([
       new SystemMessage(SYNTHESIS_SYSTEM_PROMPT),
       new HumanMessage(
-        `Brief:\n${input.brief}\n\nThey want to meet: ${answerLabel(input.whoAnswer)}\n\nThey bring: ${answerLabel(input.bringAnswer)}${whereLine}\n\nWrite the signal.`,
+        `Brief:\n${input.brief}\n\nThey want to meet: ${answerLabel(input.whoAnswer)}\n\nThey bring: ${answerLabel(input.bringAnswer)}${whereLine}${feedbackLine}\n\nWrite the signal.`,
       ),
     ]);
     return {

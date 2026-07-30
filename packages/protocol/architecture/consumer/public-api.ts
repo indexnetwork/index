@@ -80,6 +80,7 @@ import {
   answerLabel,
   FALLBACK_WHO_QUESTION,
   FALLBACK_BRING_QUESTION,
+  normalizeIntentDescription,
   LensInferrer,
   NegotiationInsightsGenerator,
   IndexNegotiator,

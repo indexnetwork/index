@@ -1137,6 +1137,12 @@
       "source": "./capabilities/signals.facade.js"
     },
     {
+      "name": "normalizeIntentDescription",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
       "name": "LensInferrer",
       "kind": "value",
       "stability": "stable",

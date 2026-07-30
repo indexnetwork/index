@@ -32,8 +32,15 @@ vi.mock("@/contexts/AuthContext", () => ({
     signOut: vi.fn(), openLoginModal: vi.fn(),
   }),
 }));
+// The personal network is deliberately in this fixture: it is a real membership
+// the context returns, and round 3 must not offer it as a community to look in.
 vi.mock("@/contexts/IndexesContext", () => ({
-  useNetworksState: () => ({ indexes: [{ id: "network-1", title: "Builders", isPersonal: false }] }),
+  useNetworksState: () => ({
+    indexes: [
+      { id: "network-1", title: "Builders", isPersonal: false },
+      { id: "personal-1", title: "My personal network", isPersonal: true },
+    ],
+  }),
 }));
 vi.mock("@/contexts/APIContext", () => ({ useQuestionsService: () => ({ answer: vi.fn() }) }));
 vi.mock("@/contexts/NotificationContext", () => ({
@@ -132,6 +139,37 @@ describe("fast signal intake", () => {
       runId: "run-1", networkId: "network-1",
     }));
     expect(mocks.proposal.mock.calls[0][0]).not.toHaveProperty("whereText");
+  });
+
+  test("the where picker offers communities but never the personal network", async () => {
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+
+    await screen.findByText("Builders");
+    expect(screen.queryByText("My personal network")).toBeNull();
+  });
+
+  test("revising carries the picked community so confirm still matches the proposal", async () => {
+    mocks.revise.mockResolvedValue({
+      proposalId: "prop-2", description: "Sharper signal.", lookingFor: "l", youBring: "y",
+    });
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+    fireEvent.click(await screen.findByText("Builders"));
+    await screen.findByText(/does this feel right/i);
+
+    fireEvent.change(screen.getByPlaceholderText(/tell it what to change/i), {
+      target: { value: "make it about hardware" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /revise with agent/i }));
+
+    await waitFor(() => expect(mocks.revise).toHaveBeenCalledWith(expect.objectContaining({
+      runId: "run-1", feedback: "make it about hardware", networkId: "network-1",
+    })));
   });
 
   test("free text sends whereText", async () => {
