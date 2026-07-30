@@ -199,48 +199,24 @@ I've created an intent for you!`;
     expect(callCount).toBe(2);
   }, 15000);
 
-  it("auto-invokes discover_opportunities when hallucinated opportunity block is detected", async () => {
+  it("strips a hallucinated opportunity block without invoking direct discovery", async () => {
     const agent = await createTestAgent();
-
     const hallucinatedText = `I found matches:
 
 \`\`\`opportunity
 { "name": "Blockchain developer meetup", "reasoning": "Aligns with interests" }
 \`\`\``;
+    mockModelInstance.stream = mock(() => makeTextStream(hallucinatedText));
 
-    const normalFollowUp =
-      "I've searched for opportunities matching your interests.";
-
-    let callCount = 0;
-    mockModelInstance.stream = mock(() => {
-      callCount++;
-      if (callCount === 1) return makeTextStream(hallucinatedText);
-      return makeTextStream(normalFollowUp);
-    });
-
-    const { events, writer } = createEventCollector();
-    await agent.streamRun(
+    const { writer } = createEventCollector();
+    const result = await agent.streamRun(
       [new HumanMessage("Find me connections in blockchain")],
       writer,
     );
 
-    // discover_opportunities auto-invoked with searchQuery from user's message (not hallucinated block)
-    const createOpsTool = capturedTools.find(
-      (t) => t.name === "discover_opportunities",
-    )!;
-    expect(createOpsTool.invoke).toHaveBeenCalledTimes(1);
-    const callArgs = createOpsTool.invoke.mock.calls[0][0] as Record<
-      string,
-      string
-    >;
-    expect(callArgs.searchQuery).toBe("Find me connections in blockchain");
-
-    // response_reset emitted
-    const resetEvents = events.filter((e) => e.type === "response_reset");
-    expect(resetEvents.length).toBeGreaterThanOrEqual(1);
-    expect((resetEvents[0] as { reason: string }).reason).toContain(
-      "opportunity",
-    );
+    const directTool = capturedTools.find((tool) => tool.name === "discover_opportunities");
+    expect(directTool?.invoke).not.toHaveBeenCalled();
+    expect(result.responseText).not.toContain("```opportunity");
   }, 15000);
 
   it("falls back to correction message if auto-invoked tool throws", async () => {

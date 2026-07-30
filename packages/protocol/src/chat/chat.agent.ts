@@ -601,15 +601,6 @@ export class ChatAgent {
       }
     }
 
-    // Check for hallucinated opportunity blocks
-    if (text.includes("```opportunity") && !ChatAgent.hasOpportunitySource(toolsUsed)) {
-      // Use the user's original message as the search query — NOT fields from the
-      // hallucinated JSON. The model fabricates person names and reasoning that have
-      // nothing to do with the user's actual request, leading to wrong results and
-      // the model re-calling the tool with the correct query (doubling negotiation cost).
-      const description = userMessage?.trim() || "find connections";
-      return { type: "opportunity", tool: "discover_opportunities", description };
-    }
 
     return null;
   }

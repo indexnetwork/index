@@ -303,8 +303,7 @@ All tools are simple read/write operations. No hidden logic.
 | **create_intent_index** | intentId, networkId | Link intent to network |
 | **read_intent_indexes** | intentId?, networkId?, userId? | Read intent↔network links |
 | **delete_intent_index** | intentId, networkId | Unlink intent from network |
-| **list_opportunities** | searchQuery?, networkId?, targetUserId?, partyUserIds?, entities?, hint? | Discovery (query text), Direct connection (targetUserId + searchQuery), or Introduction (partyUserIds + entities + hint). |
-| **list_opportunities** | networkId? | List draft and pending opportunities the user can act on. Use when user wants to review existing opportunities. |
+| **list_opportunities** | networkId? | Read persisted opportunity cards. Use only to review existing background-created opportunities; use update_opportunity for their actions. |
 | **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
 | **scrape_url** | url, objective? | Extract text from web page |
 | **read_docs** | topic? | Protocol documentation |

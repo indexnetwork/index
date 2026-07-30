@@ -411,8 +411,6 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         positionals: args.positionals,
-        target: args.target,
-        introduce: args.introduce,
         acknowledgeUptake: args.acknowledgeUptake,
       });
       return;

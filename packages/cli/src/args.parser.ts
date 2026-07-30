@@ -48,10 +48,6 @@ export interface ParsedCommand {
   gmail?: boolean;
   /** Objective for --objective flag (e.g. scrape). */
   objective?: string;
-  /** Target for --target flag (e.g. opportunity discover). */
-  target?: string;
-  /** Introduce for --introduce flag (e.g. opportunity discover). */
-  introduce?: string;
   /** LinkedIn URL for profile create. */
   linkedin?: string;
   /** GitHub URL for profile create. */
@@ -179,12 +175,6 @@ export function parseArgs(args: string[]): ParsedCommand {
       i++;
     } else if (arg === "--objective") {
       result.objective = args[i + 1];
-      i += 2;
-    } else if (arg === "--target") {
-      result.target = args[i + 1];
-      i += 2;
-    } else if (arg === "--introduce") {
-      result.introduce = args[i + 1];
       i += 2;
     } else if (arg === "--linkedin") {
       result.linkedin = args[i + 1];

@@ -78,9 +78,9 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
       "(via import_contacts, add_contact, or import_gmail_contacts) stored as members of their personal network.\n\n" +
       "**When to use:** To see who's in the user's network, find a contact's userId for other operations, " +
       "or check if a specific person is already a contact.\n\n" +
-      "**Returns:** Array of contacts, each with: userId (use with read_user_contexts or discover_opportunities), " +
+      "**Returns:** Array of contacts, each with: userId (use with read_user_contexts or list_opportunities), " +
       "name, email, avatar URL, and isGhost (true = no account yet, profile enriched from public data). " +
-      "Use the userId with read_user_contexts(userId) to get the full profile, or with discover_opportunities(targetUserId) to connect.",
+      "Use the userId with read_user_contexts(userId) to get the full profile, or with list_opportunities to connect.",
     querySchema: z.object({
       limit: z.number().optional().describe('Maximum number of contacts to return. Omit to return all contacts. Use for large networks to paginate results.'),
     }),
@@ -119,7 +119,7 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
       "The contact can then appear in opportunity discovery within the user's personal network.\n\n" +
       "**When to use:** When the user wants to add a specific person (e.g. 'add john@example.com to my network').\n\n" +
       "**Returns:** Confirmation with the contact's userId and whether a new ghost user was created (isNewGhost). " +
-      "Use the userId with discover_opportunities(targetUserId) to find connection opportunities.",
+      "Use the userId with list_opportunities to find connection opportunities.",
     querySchema: z.object({
       email: z.string().describe('Email address of the person to add. Used as unique identifier — if already a contact, the operation is idempotent.'),
       name: z.string().optional().describe('Full name of the contact. Optional — if omitted, the email prefix is used as name. Provide when known for better profile enrichment.'),
@@ -171,7 +171,7 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
     description:
       "Searches the authenticated user's personal network by name or email (case-insensitive substring). " +
       "Use when the user refers to a contact by partial name or email and you need their userId for another tool " +
-      "(e.g. read_user_contexts, discover_opportunities).\n\n" +
+      "(e.g. read_user_contexts, list_opportunities).\n\n" +
       "**When to use:** Before list_contacts when the network is large — returns only matching contacts, bounded by limit.\n\n" +
       "**Returns:** Array of matching contacts: userId, name, email, avatar, isGhost.",
     querySchema: z.object({
