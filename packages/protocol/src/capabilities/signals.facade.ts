@@ -21,6 +21,8 @@ export {
   type IntakePackInput,
   type IntakePackQuestion,
   type IntakePackQuestionOption,
+} from "../signals/application/intake.pack.generator.js";
+export {
   SignalIntakeOrchestrator,
   answerLabel,
   FALLBACK_WHO_QUESTION,
