@@ -57,17 +57,6 @@ function createMockTools() {
         }),
       ),
     },
-    {
-      name: "discover_opportunities",
-      description: "Find opportunities",
-      schema: {},
-      invoke: mock(async () =>
-        JSON.stringify({
-          success: true,
-          data: { count: 2, summary: "Found 2 match(es)" },
-        }),
-      ),
-    },
   ];
   return capturedTools;
 }
@@ -199,7 +188,7 @@ I've created an intent for you!`;
     expect(callCount).toBe(2);
   }, 15000);
 
-  it("strips a hallucinated opportunity block without invoking direct discovery", async () => {
+  it("strips a hallucinated opportunity block when no matching tool is available", async () => {
     const agent = await createTestAgent();
     const hallucinatedText = `I found matches:
 
@@ -214,8 +203,6 @@ I've created an intent for you!`;
       writer,
     );
 
-    const directTool = capturedTools.find((tool) => tool.name === "discover_opportunities");
-    expect(directTool?.invoke).not.toHaveBeenCalled();
     expect(result.responseText).not.toContain("```opportunity");
   }, 15000);
 

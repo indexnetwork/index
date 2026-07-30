@@ -82,7 +82,6 @@ describe("REPORTER_PERSONA", () => {
     expect(REPORTER_PERSONA.id).toBe(REPORTER_PERSONA_ID);
     expect(REPORTER_PERSONA_ID).not.toBe(ORCHESTRATOR_PERSONA_ID);
     expect(REPORTER_PERSONA.loopBehaviors).toEqual({
-      createIntentCallback: false,
       hallucinationRecovery: false,
     });
     expect(REPORTER_PERSONA.resolveDeterministicResponse?.(context(), {

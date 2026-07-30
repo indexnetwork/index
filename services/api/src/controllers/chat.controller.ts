@@ -1279,11 +1279,22 @@ export class ChatController {
       return Response.json({ error: "Message ID required" }, { status: 400 });
     }
 
-    let body: { traceEvents?: unknown; streamingDrafts?: unknown };
+    let body: Record<string, unknown>;
     try {
-      body = (await req.json()) as { traceEvents?: unknown; streamingDrafts?: unknown };
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return Response.json({ error: "Invalid request body" }, { status: 400 });
+      }
+      body = parsed as Record<string, unknown>;
     } catch {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'streamingDrafts')) {
+      return Response.json(
+        { error: "streamingDrafts is no longer accepted" },
+        { status: 400 },
+      );
     }
 
     const traceEventsSchema = z.array(z.unknown()).max(2000);
@@ -1298,24 +1309,11 @@ export class ChatController {
       );
     }
 
-    const streamingDraftsSchema = z.array(z.unknown()).max(200);
-    const draftsParsed =
-      body.streamingDrafts === undefined
-        ? { success: true as const, data: undefined }
-        : streamingDraftsSchema.safeParse(body.streamingDrafts);
-    if (!draftsParsed.success) {
-      return Response.json(
-        { error: "Invalid streamingDrafts payload" },
-        { status: 400 },
-      );
-    }
-
     try {
       await chatSessionService.saveMessageMetadata({
         messageId,
         userId: user.id,
         traceEvents: traceEventsParsed.data,
-        streamingDrafts: draftsParsed.data,
       });
       return Response.json({ success: true });
     } catch (error) {

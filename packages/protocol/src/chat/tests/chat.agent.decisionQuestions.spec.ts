@@ -1,7 +1,7 @@
 /**
  * Tests for ChatAgent.normalizeToolResult — decision-question harvest.
  *
- * Verifies that `discover_opportunities` results are correctly parsed:
+ * Verifies that tool-result envelopes are correctly parsed:
  *   - `questions` is extracted as decisionQuestions and PRESERVED in the LLM-facing string.
  *   - `_discoveryQuestionsDebug` is extracted as discoveryQuestionsDebug and STRIPPED
  *     from the LLM-facing string (internal trace data only).
@@ -99,7 +99,7 @@ async function makeAgent(): Promise<ChatAgent> {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
-  it("extracts questions + discoveryQuestionsDebug from a discover_opportunities envelope", async () => {
+  it("extracts questions + discoveryQuestionsDebug from a wrapped tool envelope", async () => {
     const agent = await makeAgent();
     const normalizeToolResult = (agent as unknown as { normalizeToolResult: NormalizeToolResultFn }).normalizeToolResult.bind(agent);
 
@@ -115,7 +115,7 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
       },
     });
 
-    const result = await normalizeToolResult("discover_opportunities", envelope, {});
+    const result = await normalizeToolResult("read_intents", envelope, {});
 
     // Metadata correctly extracted
     expect(result.decisionQuestions).toEqual([sampleQuestion]);
@@ -143,7 +143,7 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
       _discoveryQuestionsDebug: sampleDebug,
     });
 
-    const result = await normalizeToolResult("discover_opportunities", envelope, {});
+    const result = await normalizeToolResult("read_intents", envelope, {});
 
     expect(result.decisionQuestions).toEqual([sampleQuestion]);
     expect(result.discoveryQuestionsDebug).toEqual(sampleDebug);
@@ -162,7 +162,7 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
       data: { found: false, count: 0, summary: "no matches", debugSteps: [] },
     });
 
-    const result = await normalizeToolResult("discover_opportunities", envelope, {});
+    const result = await normalizeToolResult("read_intents", envelope, {});
 
     expect(result.decisionQuestions).toBeUndefined();
     expect(result.discoveryQuestionsDebug).toBeUndefined();
@@ -183,9 +183,7 @@ describe("ChatAgent.normalizeToolResult — decision-question harvest", () => {
     });
 
     // normalizeToolResult harvests questions from any tool that carries them,
-    // because the extraction is shape-based. This test documents that the
-    // createIntentCallback guard is only for discover_opportunities, while
-    // question harvesting is available for any tool result.
+    // because the extraction is shape-based.
     const result = await normalizeToolResult("read_intents", envelope, {});
 
     // questions and debug are extracted regardless of tool name
