@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
-import type { ServerContext, JsonSchemaType } from '@modelcontextprotocol/server';
+import type { ServerContext, JsonSchemaType, Tool } from '@modelcontextprotocol/server';
 
 import type { McpAuthResolver } from '../shared/interfaces/auth.interface.js';
 import type { McpAuthInput, McpResolvedIdentity } from '../shared/schemas/mcp-auth.schema.js';
@@ -768,7 +768,12 @@ export function createMcpServer(
         .map((tool) => ({
           name: tool.name,
           description: tool.description,
-          inputSchema: tool.jsonSchema,
+          // `jsonSchema` is the zod-derived JSON Schema for the tool's object
+          // input, so it always has `type: 'object'`. The SDK describes the same
+          // value with two different types — `JsonSchemaType` (json-schema-typed,
+          // used by `fromJsonSchema`) and the wire-level `Tool['inputSchema']` —
+          // which are structurally incompatible, so bridge them at this boundary.
+          inputSchema: tool.jsonSchema as Tool['inputSchema'],
         })),
     };
   });
