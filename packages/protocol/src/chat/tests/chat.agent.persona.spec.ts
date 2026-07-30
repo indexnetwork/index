@@ -2,10 +2,9 @@
  * P4.0 personafication — persona-gated loop behavior tests.
  *
  * ChatAgent accepts an injected ChatPersonaConfig. The orchestrator persona
- * keeps the create-intent callback and hallucination recovery ON (covered by
- * chat.agent.spec.ts via the default persona); these tests prove that a stub
- * persona with behaviors OFF never triggers them, and that the injected
- * prompt builder / toolset are actually used.
+ * keeps hallucination recovery ON (covered by chat.agent.spec.ts via the
+ * default persona); these tests prove that a stub persona with recovery OFF
+ * never triggers it, and that the injected prompt builder / toolset are used.
  */
 
 import { mock, describe, expect, it, afterAll } from "bun:test";
@@ -52,21 +51,7 @@ type MockTool = {
   invoke: ReturnType<typeof mock>;
 };
 
-function makeMockTools(opts?: { discoverSuggestsIntent?: boolean }): MockTool[] {
-  const discoverResult = opts?.discoverSuggestsIntent
-    ? JSON.stringify({
-        success: true,
-        data: {
-          createIntentSuggested: true,
-          suggestedIntentDescription: "Suggested intent from discovery",
-          summary: "Found 0 match(es)",
-        },
-      })
-    : JSON.stringify({
-        success: true,
-        data: { count: 2, summary: "Found 2 match(es)" },
-      });
-
+function makeMockTools(): MockTool[] {
   return [
     {
       name: "create_intent",
@@ -75,12 +60,6 @@ function makeMockTools(opts?: { discoverSuggestsIntent?: boolean }): MockTool[] 
       invoke: mock(async () =>
         JSON.stringify({ success: true, data: { intentId: "mock-intent-1", summary: "Intent created" } }),
       ),
-    },
-    {
-      name: "discover_opportunities",
-      description: "Find opportunities",
-      schema: {},
-      invoke: mock(async () => discoverResult),
     },
   ];
 }
@@ -149,7 +128,7 @@ describe("ChatAgent persona injection", () => {
   it("uses the persona's prompt builder for the system message", async () => {
     const tools = makeMockTools();
     const agent = await createTestAgent(
-      makePersona(tools, { createIntentCallback: false, hallucinationRecovery: false }),
+      makePersona(tools, { hallucinationRecovery: false }),
     );
 
     mockModelInstance.stream = mock(() => makeTextStream("Hello from stub."));
@@ -165,7 +144,7 @@ describe("ChatAgent persona injection", () => {
   it("uses the persona's toolset for tool execution", async () => {
     const tools = makeMockTools();
     const agent = await createTestAgent(
-      makePersona(tools, { createIntentCallback: false, hallucinationRecovery: false }),
+      makePersona(tools, { hallucinationRecovery: false }),
     );
 
     let callCount = 0;
@@ -175,7 +154,7 @@ describe("ChatAgent persona injection", () => {
         return (async function* () {
           yield new AIMessageChunk({
             content: "",
-            tool_calls: [{ id: "tc-1", name: "discover_opportunities", args: { searchQuery: "x" } }],
+            tool_calls: [{ id: "tc-1", name: "create_intent", args: { description: "Find people" } }],
           });
         })();
       }
@@ -185,8 +164,8 @@ describe("ChatAgent persona injection", () => {
     const { writer } = createEventCollector();
     await agent.streamRun([new HumanMessage("find people")], writer);
 
-    const discover = tools.find((t) => t.name === "discover_opportunities")!;
-    expect(discover.invoke).toHaveBeenCalledTimes(1);
+    const createIntent = tools.find((t) => t.name === "create_intent")!;
+    expect(createIntent.invoke).toHaveBeenCalledTimes(1);
   }, 15000);
 
   it("bypasses the model and tools for contextual reporter confirmations only", async () => {
@@ -198,7 +177,7 @@ describe("ChatAgent persona injection", () => {
     }));
     const persona = makePersona(
       tools,
-      { createIntentCallback: false, hallucinationRecovery: false },
+      { hallucinationRecovery: false },
     );
     persona.resolveDeterministicResponse = (_ctx, iterCtx) => resolveReporterDeterministicResponse(iterCtx);
     const agent = await createTestAgent(persona);
@@ -262,68 +241,10 @@ describe("ChatAgent persona injection", () => {
 });
 
 describe("ChatAgent loop behaviors — persona-gated", () => {
-  it("createIntentCallback OFF: discovery createIntentSuggested does NOT auto-create an intent", async () => {
-    const tools = makeMockTools({ discoverSuggestsIntent: true });
-    const agent = await createTestAgent(
-      makePersona(tools, { createIntentCallback: false, hallucinationRecovery: false }),
-    );
-
-    let callCount = 0;
-    mockModelInstance.stream = mock(() => {
-      callCount++;
-      if (callCount === 1) {
-        return (async function* () {
-          yield new AIMessageChunk({
-            content: "",
-            tool_calls: [{ id: "tc-1", name: "discover_opportunities", args: { searchQuery: "ai" } }],
-          });
-        })();
-      }
-      return makeTextStream("No matches found.");
-    });
-
-    const { writer } = createEventCollector();
-    await agent.streamRun([new HumanMessage("find ai people")], writer);
-
-    const createIntent = tools.find((t) => t.name === "create_intent")!;
-    const discover = tools.find((t) => t.name === "discover_opportunities")!;
-    expect(createIntent.invoke).toHaveBeenCalledTimes(0);
-    expect(discover.invoke).toHaveBeenCalledTimes(1); // no re-run either
-  }, 15000);
-
-  it("createIntentCallback ON: discovery createIntentSuggested auto-creates intent and re-runs discovery", async () => {
-    const tools = makeMockTools({ discoverSuggestsIntent: true });
-    const agent = await createTestAgent(
-      makePersona(tools, { createIntentCallback: true, hallucinationRecovery: true }),
-    );
-
-    let callCount = 0;
-    mockModelInstance.stream = mock(() => {
-      callCount++;
-      if (callCount === 1) {
-        return (async function* () {
-          yield new AIMessageChunk({
-            content: "",
-            tool_calls: [{ id: "tc-1", name: "discover_opportunities", args: { searchQuery: "ai" } }],
-          });
-        })();
-      }
-      return makeTextStream("Created an intent and looked again.");
-    });
-
-    const { writer } = createEventCollector();
-    await agent.streamRun([new HumanMessage("find ai people")], writer);
-
-    const createIntent = tools.find((t) => t.name === "create_intent")!;
-    const discover = tools.find((t) => t.name === "discover_opportunities")!;
-    expect(createIntent.invoke).toHaveBeenCalledTimes(1);
-    expect(discover.invoke).toHaveBeenCalledTimes(2); // original + post-intent re-run
-  }, 15000);
-
   it("hallucinationRecovery OFF: hallucinated blocks are neither auto-invoked nor stripped", async () => {
     const tools = makeMockTools();
     const agent = await createTestAgent(
-      makePersona(tools, { createIntentCallback: false, hallucinationRecovery: false }),
+      makePersona(tools, { hallucinationRecovery: false }),
     );
 
     const hallucinatedText = `Here you go:
@@ -357,7 +278,7 @@ Done!`;
   it("hallucinationRecovery ON: hallucinated block triggers auto-invoke (orchestrator behavior preserved)", async () => {
     const tools = makeMockTools();
     const agent = await createTestAgent(
-      makePersona(tools, { createIntentCallback: true, hallucinationRecovery: true }),
+      makePersona(tools, { hallucinationRecovery: true }),
     );
 
     const hallucinatedText = `\`\`\`intent_proposal

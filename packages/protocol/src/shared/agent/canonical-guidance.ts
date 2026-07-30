@@ -184,10 +184,8 @@ Discovery is networked — it only finds matches within shared networks. This pr
 4. **Rejected**: Recipient declined.
 5. **Expired**: Timed out without response.
 
-### Discovery Modes
-- **Semantic search**: discover_opportunities(searchQuery="AI engineers") finds matches based on text search and signal overlap
-- **Direct connection**: discover_opportunities(targetUserId=...) connects two specific people
-- **Introduction**: discover_opportunities(partyUserIds=[...], entities=[...]) introduces two people with explicit context
+### Background Matching
+Approved signals are evaluated in the background. Use list_opportunities only to review persisted cards; it does not start matching.
 
 ### Opportunity Evaluation
 - Candidate retrieval: Uses HyDE embeddings to find semantically related signals
@@ -235,15 +233,15 @@ These gates are independent. Do not conflate them.
 User expresses signals (intents). Agent discovers matches and presents reasoning.
 
 1. User creates intents (signals)
-2. Agent calls discover_opportunities
-3. Agent surfaces matches with reasoning
+2. Background matching evaluates approved signals
+3. Agent uses list_opportunities to surface persisted matches
 4. User reviews and approves (owner approval)
 5. Escalation via native surfaces
 
 ### A2A: Agent→Agent Coordination
 Two agents coordinate on behalf of users to identify, vet, and propose matches.
 
-1. Agent A runs discovery for User A
+1. Approved signals for User A are evaluated in the background
 2. Agent B vets match from User B side (A2A negotiation)
 3. Agents reach agreement (A2A acceptance)
 4. Both agents present to users with shared reasoning
@@ -255,7 +253,7 @@ The MCP protocol carries H2A and A2A workflows only. Escalation to direct messag
 
 ### Best Practices
 - Call read_docs to understand the domain
-- Scope discovery to shared networks (networkId)
+- Create or refine approved signals in relevant shared networks; list_opportunities reviews persisted results
 - Present matches and reasoning to users
 - Get explicit owner approval before any commitment
 - Escalation to direct messaging is not MCP`,

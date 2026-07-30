@@ -61,6 +61,13 @@ jobs:
       - name: Check adapter naming conventions
         run: ./scripts/check-adapter-names.sh
 
+      # Subtree mirrors (indexnetwork/protocol, indexnetwork/cli, ...) build and
+      # publish without the monorepo lockfile, so a floating range there resolves
+      # to whatever is newest on npm instead of what this repo built. Gate it
+      # here rather than discovering it in a mirror's publish run.
+      - name: Check subtree mirror dependency parity
+        run: bun run check:subtree-parity
+
   typecheck:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -167,3 +174,47 @@ jobs:
 
       - name: Verify eval suites (typecheck + provider-free tests)
         run: cd packages/protocol && bun run eval:verify
+
+  protocol-architecture:
+    # The packages/protocol architecture gates ran local-only until now, so
+    # nothing stopped the public export inventory and its consumer fixture from
+    # drifting when #1301 deleted the discovery-run interface — both were broken
+    # on dev for days without any red check.
+    #
+    #
+    # Steps stay individual rather than one `bun run architecture:check` so a
+    # failure names the violated invariant directly in the checks list.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+          no-cache: true
+
+      - name: Install dependencies
+        run: |
+          bun pm cache rm || true
+          bun install --frozen-lockfile
+
+      - name: Check public export inventory
+        run: cd packages/protocol && bun run architecture:exports
+
+      - name: Type check the external consumer fixture
+        run: cd packages/protocol && bun run architecture:consumer
+
+      - name: Check host isolation
+        run: cd packages/protocol && bun run architecture:host-isolation
+
+      - name: Check capability boundaries
+        run: cd packages/protocol && bun run architecture:capabilities
+
+      - name: Check production module cycles
+        run: cd packages/protocol && bun run architecture:cycles
+
+      - name: Check published artifact inventory
+        run: cd packages/protocol && bun run architecture:artifacts
+
+      - name: Run architecture tests
+        run: cd packages/protocol && bun run test:architecture

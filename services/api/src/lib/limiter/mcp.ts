@@ -13,9 +13,8 @@ const logger = log.server.from('limiter');
  * dispatched directly in `main.ts` before the `/api/*` branch), so without this
  * an authenticated agent can fire tool calls unbounded — which is how an
  * over-eager autonomous agent drove itself into provider rate limits. This caps
- * call volume two ways: a tight per-(principal, tool) bucket (with a much lower
- * ceiling for the expensive `discover_opportunities`) and a looser aggregate
- * per-principal bucket as a backstop across all tools.
+ * call volume two ways: an ordinary per-(principal, tool) bucket and a looser
+ * aggregate per-principal bucket as a backstop across all tools.
  */
 
 const WINDOW_SEC = 60;
@@ -36,9 +35,8 @@ const isPrivateOrLoopbackIp = (ip: string): boolean => {
   return PRIVATE_IPV4.some((re) => re.test(ip));
 };
 
-/** Per-tool ceiling per principal per minute. `discover_opportunities` is expensive, so it is far tighter. */
-function toolLimit(toolName: string): number {
-  if (toolName === 'discover_opportunities') return intEnv('MCP_LIMIT_DISCOVER_PER_MIN', 10);
+/** Ordinary per-tool ceiling per principal per minute. */
+function toolLimit(_toolName: string): number {
   return intEnv('MCP_LIMIT_TOOL_PER_MIN', 120);
 }
 

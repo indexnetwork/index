@@ -1410,10 +1410,8 @@ export interface NegotiationResult {
 
 /**
  * Per-candidate resolution hook — fires as each negotiation settles, before
- * Promise.all aggregates. Used by the orchestrator branch to progressively
- * stream `opportunity_draft_ready` events as each candidate resolves, rather
- * than emitting all at once after the full fan-out completes. Awaited so the
- * caller can run async work (DB update, event emit) before the next settle.
+ * Promise.all aggregates. Awaited so the caller can run async work before the
+ * next settle.
  *
  * `turns` and `outcome` are passed through from the underlying negotiation
  * graph so consumers can build per-candidate decision-question inputs without
@@ -1444,7 +1442,6 @@ export async function negotiateCandidates(
     indexContextOverrides?: Map<string, string>;
     timeoutMs?: number;
     onCandidateResolved?: OnNegotiationResolved;
-    trigger?: "orchestrator" | "ambient";
     /**
      * Initiator seat for every candidate session in this fan-out (v2 stamp).
      * Passed through to the negotiation graph, which may still override it by
@@ -1465,7 +1462,6 @@ export async function negotiateCandidates(
     indexContextOverrides,
     timeoutMs,
     onCandidateResolved,
-    trigger,
     initiatorUserId,
     resumeFromTaskId,
     continuationSettlementId,
@@ -1492,7 +1488,6 @@ export async function negotiateCandidates(
           candidateUserId: candidate.userId,
           initiatorUserId: initiatorUserId ?? candidateSourceUser.id,
           ...(candidateName && { candidateName }),
-          trigger: trigger ?? "ambient",
           startedAt: start,
         });
       }
@@ -1585,8 +1580,7 @@ export async function negotiateCandidates(
             });
           } catch (hookErr) {
             // Hook failures must not sink the candidate result — the aggregate
-            // return is still useful, and the orchestrator branch logs its own
-            // failures inline.
+            // return remains useful to the caller.
             negotiateCandidatesLog.error("onCandidateResolved hook threw", {
               candidateUserId: candidate.userId,
               error: hookErr,

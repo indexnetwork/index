@@ -416,12 +416,12 @@ export interface ChatMessageMeta {
   traceEvents?: unknown;
   debugMeta?: unknown;
   /**
-   * Orchestrator-driven draft opportunities streamed back via
-   * `opportunity_draft_ready` events during the response. Persisted so the
-   * rendered chat cards survive session reload — the frontend rehydrates
-   * these into message.streamingDrafts on loadSession.
+   * Legacy draft opportunities retained so historical chat cards survive
+   * session reload; the frontend rehydrates these into message.streamingDrafts.
    */
   streamingDrafts?: unknown;
+  /** Legacy discovery cards retained for historical chat-message rendering. */
+  discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
   [key: string]: unknown;

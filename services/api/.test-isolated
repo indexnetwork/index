@@ -29,6 +29,7 @@ src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
+src/services/tests/opportunity.service.maintenance.isolated.ts
 tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
@@ -45,6 +46,7 @@ src/adapters/tests/chat-summary.database.adapter.isolated.ts
 src/adapters/tests/agent-activity.database.adapter.isolated.ts
 src/adapters/tests/intent-opportunity-counts.database.isolated.ts
 src/controllers/tests/chat.controller.isolated.ts
+src/controllers/tests/chat.metadata.controller.isolated.ts
 src/controllers/tests/invitation-gaps.controller.isolated.ts
 src/controllers/tests/invitation.controller.isolated.ts
 src/services/tests/opportunity-delivery.isolated.ts
@@ -102,7 +104,6 @@ src/lib/limiter/tests/index.isolated.ts
 src/lib/limiter/tests/guard.isolated.ts
 src/lib/limiter/tests/mcp.isolated.ts
 src/lib/limiter/tests/identifier.isolated.ts
-src/queues/tests/discovery-run.queue.deps.isolated.ts
 src/controllers/tests/question.visitmining.isolated.ts
 src/controllers/tests/agent-action.controller.isolated.ts
 src/services/tests/agent-action.service.isolated.ts

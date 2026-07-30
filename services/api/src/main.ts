@@ -51,7 +51,6 @@ import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
 import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
-import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
@@ -160,11 +159,6 @@ fromIntroducerQueue.setRuntimeDeps({
 fromEnrichmentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
-});
-discoveryRunQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-  stampNewbornOpportunities,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -439,7 +433,6 @@ intentQueue.startWorker();
 fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
 fromEnrichmentQueue.startWorker();
-discoveryRunQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
@@ -943,7 +936,6 @@ const shutdown = async () => {
     fromIntentQueue.close(),
     fromIntroducerQueue.close(),
     fromEnrichmentQueue.close(),
-    discoveryRunQueue.close(),
     enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
     negotiationWatchdogQueue.close(),

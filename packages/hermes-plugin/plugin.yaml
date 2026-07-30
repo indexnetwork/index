@@ -1,5 +1,5 @@
 name: index-network
-version: 0.12.0
+version: 0.13.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and personal-agent APIs.
 provides_tools:
   - index_read_intents
@@ -37,9 +37,6 @@ provides_tools:
   - index_delete_network
   - index_create_network_membership
   - index_delete_network_membership
-  - index_discover_opportunities
-  - index_get_discovery_run
-  - index_cancel_discovery_run
   - index_list_opportunities
   - index_update_opportunity
   - index_confirm_opportunity_delivery

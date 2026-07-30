@@ -1515,11 +1515,7 @@ export default function ChatContent({
                       ))}
                     </div>
                   )}
-                {/* Orchestrator streaming drafts (Plan B): one card per
-                   opportunity_draft_ready event. Renders the same
-                   OpportunityCard used on the home feed for visual
-                   consistency; button wires to the atomic Start Chat
-                   endpoint for single-round-trip accept + navigate. */}
+                {/* Historical draft cards from persisted session metadata. */}
                 {msg.role === "assistant" &&
                   msg.streamingDrafts &&
                   msg.streamingDrafts.length > 0 && (

@@ -202,7 +202,6 @@ describe('MCP capability policy principal inventory', () => {
       'read_own_agent',
       'read_docs',
       'confirm_opportunity_delivery',
-      'discover_opportunities',
     ]);
   });
 
@@ -224,8 +223,26 @@ describe('MCP capability policy principal inventory', () => {
 
     expect(subject.profile).toBe('registered_global_agent');
     expect(subject.agentType).toBe('personal');
-    expect(policy.authorize(subject, 'discover_opportunities').allowed).toBe(true);
+    expect(policy.authorize(subject, 'discover_opportunities')).toEqual({
+      allowed: false,
+      reason: 'tool_unclassified',
+    });
     expect(policy.authorize(subject, 'confirm_opportunity_delivery').allowed).toBe(false);
+  });
+
+  test('direct discovery names are unclassified and denied', () => {
+    const subject = resolveMcpCapabilitySubject({
+      identity: identity({ isSessionAuth: true }),
+      isOnboarding: false,
+    });
+
+    for (const toolName of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run']) {
+      expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(toolName)).toBeUndefined();
+      expect(policy.authorize(subject, toolName)).toEqual({
+        allowed: false,
+        reason: 'tool_unclassified',
+      });
+    }
   });
 
   test('missing, inactive, and mismatched agents fail closed', () => {

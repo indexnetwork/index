@@ -1,8 +1,9 @@
 import '../src/startup.env';
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { createMcpServer, clearMcpToolMetadataCacheForTests } from '../../../packages/protocol/src/mcp/mcp.server';
+import { setIntentClarifierForTesting } from '../../../packages/protocol/src/signals/application/intent.tools';
 import type { ScopedDepsFactory } from '../../../packages/protocol/src/mcp/mcp.server';
 import type { McpAuthorizationDenialEvent, McpAuthorizationObserver } from '../../../packages/protocol/src/mcp/mcp.authorization-policy';
 import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
@@ -289,6 +290,39 @@ const AGENT_ID = 'agent-1';
 const AGENT_HEADERS = { 'x-api-key': SECRET_API_KEY };
 
 describe('IND-581 MCP authorization refresh + isolation + telemetry', () => {
+  const realFetch = globalThis.fetch;
+
+  beforeAll(() => {
+    // The granted create_intent case runs the real tool against a stub intent
+    // graph that verifies nothing, so `create_intent` falls into its
+    // clarification branch. Left unstubbed, that constructs the real
+    // IntentClarifier and calls OpenRouter — this suite is about authorization,
+    // not about the model, and a live call made it time out at 5s.
+    setIntentClarifierForTesting({
+      invoke: async () => ({
+        needsClarification: false,
+        underspecificationType: 'none',
+        suggestedDescription: '',
+        clarificationMessage: '',
+      }),
+    } as Parameters<typeof setIntentClarifierForTesting>[0]);
+
+    // Enforce the hermeticity this file claims: any escape to the network is a
+    // failure, not a slow test. Transport requests are same-process URLs.
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.startsWith('https://example.test')) {
+        throw new Error(`hermetic test attempted a network request: ${url}`);
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    setIntentClarifierForTesting(null);
+  });
+
   it('freshly resolves granted → revoked → deactivated across reconnects, denying before adapter work', async () => {
     const state: MutableAgentState = {
       status: 'active',

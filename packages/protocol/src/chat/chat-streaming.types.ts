@@ -39,7 +39,7 @@ export type ChatStreamEventType =
   | "agent_start"
   | "agent_end"
   | "hallucination_detected"
-  // Orchestrator-inline negotiation trace events
+  // Negotiation trace events
   | "negotiation_session_start"
   | "negotiation_session_end"
   | "negotiation_turn"
@@ -400,7 +400,7 @@ export interface DebugMetaLlm {
 }
 
 /**
- * Negotiation sessions initiated by the orchestrator during this turn.
+ * Negotiation sessions recorded during this turn.
  */
 export interface DebugMetaOrchestratorNegotiations {
   /** Opportunity IDs for which a negotiation_session_start was emitted. */
@@ -408,7 +408,7 @@ export interface DebugMetaOrchestratorNegotiations {
 }
 
 /**
- * Decision-question generation debug data (orchestrator path only).
+ * Decision-question generation debug data.
  */
 export interface DebugMetaDiscoveryQuestions {
   inputMode: "transcripts" | "insights";
@@ -427,7 +427,7 @@ export interface DebugMetaEvent extends ChatStreamEventBase {
   tools: DebugMetaToolCall[];
   llm: DebugMetaLlm;
   orchestratorNegotiations?: DebugMetaOrchestratorNegotiations;
-  /** Decision-question generation debug data (orchestrator path only). */
+  /** Decision-question generation debug data. */
   discoveryQuestions?: DebugMetaDiscoveryQuestions;
 }
 
@@ -477,7 +477,7 @@ export interface AgentEndEvent extends ChatStreamEventBase {
   summary: string;
 }
 
-/** Orchestrator per-candidate negotiation wrapper — emitted from `negotiateCandidates`. */
+/** Per-candidate negotiation wrapper emitted from `negotiateCandidates`. */
 export interface NegotiationSessionStartEvent extends ChatStreamEventBase {
   type: "negotiation_session_start";
   opportunityId: string;
@@ -487,7 +487,6 @@ export interface NegotiationSessionStartEvent extends ChatStreamEventBase {
   /** The user holding the initiating seat for this match (v2 stamp). */
   initiatorUserId?: string;
   candidateName?: string;
-  trigger: "orchestrator" | "ambient";
   startedAt: number;
 }
 

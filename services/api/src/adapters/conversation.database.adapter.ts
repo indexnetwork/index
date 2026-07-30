@@ -3530,7 +3530,7 @@ export class ConversationDatabaseAdapter {
   /**
    * Get message metadata (traceEvents, debugMeta) for a list of message IDs.
    */
-  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> {
+  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; discoveries: unknown; createdAt: Date }>> {
     if (messageIds.length === 0) return [];
     const rows = await db
       .select({ id: schema.messages.id, metadata: schema.messages.metadata, createdAt: schema.messages.createdAt })
@@ -3545,6 +3545,7 @@ export class ConversationDatabaseAdapter {
         traceEvents: meta.traceEvents ?? null,
         debugMeta: meta.debugMeta ?? null,
         streamingDrafts: meta.streamingDrafts ?? null,
+        discoveries: meta.discoveries ?? null,
         createdAt: r.createdAt,
       };
     });

@@ -167,23 +167,5 @@ describe("OpportunityService list status filtering (IND-254)", () => {
     });
   });
 
-  describe('discover response safety', () => {
-    it('removes unsupported claims from raw graph opportunities', async () => {
-      const db = {
-        getNetworkMemberships: mock(async () => [{ networkId: 'net-1' }]),
-      } as unknown as OpportunityControllerDatabase;
-      const service = new OpportunityService(db);
-      (service as unknown as {
-        graph: { invoke: () => Promise<{ opportunities: Opportunity[] }> };
-      }).graph = {
-        invoke: mock(async () => ({ opportunities: [unsafeOpportunity()] })),
-      };
 
-      const result = await service.discoverOpportunities('user-1', 'find a collaborator');
-
-      expect('error' in result).toBe(false);
-      if ('error' in result) throw new Error(result.error);
-      expect(result.opportunities[0]?.interpretation.reasoning).toBe('Connection opportunity');
-    });
-  });
 });

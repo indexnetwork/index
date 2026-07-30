@@ -27,9 +27,7 @@ import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { discoveryRunAdapter } from '../adapters/discovery-run.adapter';
 import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
-import { discoveryRunQueue } from '../queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
@@ -188,8 +186,6 @@ const protocolDeps = {
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route; threaded into chat tools by the protocol chat factory.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
-  discoveryRuns: discoveryRunAdapter,
-  discoveryRunQueue,
   enrichmentRuns: enrichmentRunAdapter,
   enrichmentRunQueue,
   negotiationTimeoutQueue,
@@ -762,8 +758,6 @@ function createMcpServerInstance(): McpServer {
     }),
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
     getUserContextText: ensureGlobalUserContext,
-    discoveryRuns: protocolDeps.discoveryRuns,
-    discoveryRunQueue: protocolDeps.discoveryRunQueue,
     enrichmentRuns: protocolDeps.enrichmentRuns,
     enrichmentRunQueue: protocolDeps.enrichmentRunQueue,
     mintConnectToken: protocolDeps.mintConnectToken,

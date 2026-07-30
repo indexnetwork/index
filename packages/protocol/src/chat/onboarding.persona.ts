@@ -122,7 +122,6 @@ export const ONBOARDING_PERSONA: ChatPersonaConfig = {
   buildSystemContent: (ctx, iterCtx) => buildOnboardingSystemContent(ctx, iterCtx),
   createTools: (deps, preResolvedContext) => createOnboardingTools(deps, preResolvedContext),
   loopBehaviors: {
-    createIntentCallback: false,
     hallucinationRecovery: true,
   },
 };

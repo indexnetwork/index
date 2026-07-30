@@ -189,7 +189,6 @@ describe('MCP Server Factory', () => {
       'read_intents',
       'create_intent',
       'read_user_profiles',
-      'discover_opportunities',
       'update_opportunity',
       'list_contacts',
       'scrape_url',
@@ -199,6 +198,9 @@ describe('MCP Server Factory', () => {
 
     for (const toolName of expectedTools) {
       expect(registry.has(toolName)).toBe(true);
+    }
+    for (const removedTool of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run']) {
+      expect(registry.has(removedTool)).toBe(false);
     }
   });
 
@@ -429,7 +431,9 @@ describe('MCP Server Factory', () => {
     expect(names).not.toContain('list_contacts');
     expect(names).not.toContain('read_user_profiles');
     expect(getCachedMcpToolMetadata(deps)).toBe(staticMetadata);
-    expect(staticMetadata.some((tool) => tool.name === 'discover_opportunities')).toBe(true);
+    for (const removedTool of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run']) {
+      expect(staticMetadata.some((tool) => tool.name === removedTool)).toBe(false);
+    }
   });
 
   it('keeps caller-specific tools/list decisions isolated across servers', async () => {
@@ -469,7 +473,9 @@ describe('MCP Server Factory', () => {
 
     const humanNames = humanResponse.result?.tools?.map((tool) => tool.name) ?? [];
     const unregisteredNames = unregisteredResponse.result?.tools?.map((tool) => tool.name) ?? [];
-    expect(humanNames).toContain('discover_opportunities');
+    for (const removedTool of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run']) {
+      expect(humanNames).not.toContain(removedTool);
+    }
     expect(humanNames).toContain('update_agent');
     expect(humanNames).not.toContain('confirm_opportunity_delivery');
     expect(humanNames).not.toContain('scrape_url');
@@ -496,7 +502,17 @@ describe('MCP Server Factory', () => {
     // handler runs. This is distinct from a policy denial (which returns a
     // result with isError + MCP_CAPABILITY_DENIED) or a handler error — both of
     // which must fail this assertion.
-    for (const removed of ['scrape_url', 'list_contacts', 'read_user_profiles', 'import_gmail_contacts', 'get_profile_run', 'report_agent_activity']) {
+    for (const removed of [
+      'discover_opportunities',
+      'get_discovery_run',
+      'cancel_discovery_run',
+      'scrape_url',
+      'list_contacts',
+      'read_user_profiles',
+      'import_gmail_contacts',
+      'get_profile_run',
+      'report_agent_activity',
+    ]) {
       const response = await invokeMcpRequest({
         server,
         method: 'tools/call',
@@ -549,12 +565,10 @@ describe('MCP Server Factory', () => {
       },
       headers: { 'x-api-key': 'ordinary-key' },
     });
-    const payload = JSON.parse(response.result?.content?.[0]?.text ?? '{}') as {
-      code?: string;
-    };
 
-    expect(response.result?.isError).toBe(true);
-    expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32602);
+    expect(response.error?.message).toBe('Tool discover_opportunities not found');
     expect(chatDatabaseReads).toBe(0);
     expect(scopedDatabaseCreations).toBe(0);
   });
@@ -627,12 +641,10 @@ describe('MCP Server Factory', () => {
       },
       headers: { 'x-api-key': 'agent-key' },
     });
-    const payload = JSON.parse(response.result?.content?.[0]?.text ?? '{}') as {
-      code?: string;
-    };
 
-    expect(response.result?.isError).toBe(true);
-    expect(payload.code).toBe('MCP_CAPABILITY_DENIED');
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32602);
+    expect(response.error?.message).toBe('Tool discover_opportunities not found');
     expect(chatDatabaseReads).toBe(0);
     expect(scopedDatabaseCreations).toBe(0);
   });
@@ -1814,50 +1826,18 @@ describe('MCP Server Factory', () => {
     expect(allowed).not.toContain(NETWORK_2);
   });
 
-  // ── IND-592: discovery capability gate (exact-principal ownership + ──────────
-  // coalescing partition are proven at the handler level in the protocol specs
-  // opportunity.tools.coalesce.spec.ts and discovery-run-ownership.spec.ts). ──
-
-  it('denies discovery run tools for an agent without manage:opportunities before DB work', async () => {
-    const cases = [
-      { tool: 'discover_opportunities', args: {} },
-      { tool: 'get_discovery_run', args: { discoveryRunId: 'run-1' } },
-      { tool: 'cancel_discovery_run', args: { discoveryRunId: 'run-1' } },
-    ];
-    for (const { tool, args } of cases) {
-      const counter = { reads: 0 };
-      const result = await callTool({
-        identity: { userId: 'test-user-id', agentId: 'agent-o' },
-        agentDatabase: agentDbWith({ agentId: 'agent-o', scope: 'global', scopeId: null, actions: ['manage:networks'] }),
-        database: guardReads(counter),
-        scopedThrows: true,
-        toolName: tool,
-        arguments: args,
-      });
-      expect(result.isError, `${tool} must be denied`).toBe(true);
-      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
-      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
-      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
-    }
-  });
-
-  it('shows discovery tools to a bound manage:opportunities agent and admits discover_opportunities to the seam', async () => {
+  // Direct discovery runs are not MCP capabilities. A capable opportunity agent
+  // still receives the retained persisted-opportunity action surface only.
+  it('omits retired discovery tools from a manage:opportunities agent tools/list', async () => {
     const names = await listToolNamesFor({
       identity: { userId: 'test-user-id', agentId: 'agent-o', networkScopeId: NETWORK_1 },
       agentDatabase: agentDbWith({ agentId: 'agent-o', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] }),
     });
-    expect(names).toContain('discover_opportunities');
-    expect(names).toContain('get_discovery_run');
-    expect(names).toContain('cancel_discovery_run');
-
-    const admitted = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-o', networkScopeId: NETWORK_1 },
-      agentDatabase: agentDbWith({ agentId: 'agent-o', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] }),
-      toolName: 'discover_opportunities',
-      arguments: { searchQuery: 'climate founders in berlin' },
-    });
-    expect(admitted.code).not.toBe('MCP_CAPABILITY_DENIED');
-    expect(admitted.scopedCreateArgs.length).toBe(1);
+    expect(names).toContain('update_opportunity');
+    expect(names).toContain('list_opportunities');
+    for (const removedTool of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run']) {
+      expect(names).not.toContain(removedTool);
+    }
   });
 
   // ── IND-593: opportunity-state capability gate (actor/lifecycle/scope + ──────

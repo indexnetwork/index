@@ -405,18 +405,6 @@
       "source": "./shared/interfaces/scraper.interface.js"
     },
     {
-      "name": "DiscoveryRunInput",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./shared/interfaces/discovery-run.interface.js"
-    },
-    {
-      "name": "DiscoveryRunRecord",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./shared/interfaces/discovery-run.interface.js"
-    },
-    {
       "name": "EnrichmentRunInput",
       "kind": "type",
       "stability": "stable",

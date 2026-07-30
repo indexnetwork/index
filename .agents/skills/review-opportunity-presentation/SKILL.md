@@ -1,11 +1,11 @@
 ---
 name: review-opportunity-presentation
-description: Review or change opportunity card/list/discovery/home/digest presentation safely. Use when code touches OpportunityPresenter, safe-presentation fallbacks, list/discover formatting, home feed cards, delivery cards, raw interpretation.reasoning/matchReason, or user-facing opportunity text. Prevents unsanitized evaluator reasoning from leaking while preserving each surface's fallback-versus-skip policy.
+description: Review or change persisted opportunity card/list/home/digest presentation safely. Use when code touches OpportunityPresenter, safe-presentation fallbacks, persisted-list formatting, home feed cards, delivery cards, raw interpretation.reasoning/matchReason, or user-facing opportunity text. Prevents unsanitized evaluator reasoning from leaking while preserving each surface's fallback-versus-skip policy.
 ---
 
 # Opportunity Presentation Safety
 
-Use this when editing opportunity presentation paths or reviewing PRs that affect opportunity cards, lists, discovery results, home feed sections, accepted-chat context, Telegram/digest copy, or delivery cards.
+Use this when editing opportunity presentation paths or reviewing PRs that affect persisted opportunity cards and lists, home feed sections, accepted-chat context, Telegram/digest copy, or delivery cards.
 
 ## Core rule
 
@@ -18,23 +18,21 @@ or use reasoning-derived fallback copy, but only through
 
 ## Surfaces to inspect
 
-- `packages/protocol/src/opportunity/opportunity.safe-presentation.ts`
+- `packages/protocol/src/opportunity/domain/opportunity.safe-presentation.ts`
   - the single sanitization primitive and each surface's `allowFallback` policy
-- `packages/protocol/src/opportunity/opportunity.tools.ts`
-  - `discover_opportunities` card building
-  - `list_opportunities` card building
-  - introduction-mode immediate cards
+- `packages/protocol/src/opportunity/application/opportunity.tools.ts`
+  - persisted `list_opportunities` card building
   - MCP prose via `buildOpportunityPresentation`
-- `packages/protocol/src/opportunity/opportunity.discover.ts`
-  - enrichment fallback paths where `homeCardPresentation` can be missing
+- `packages/protocol/src/opportunity/application/opportunity.enricher.ts`
+  - background-enrichment fallback paths where `homeCardPresentation` can be missing
 - `packages/protocol/src/opportunity/feed/feed.graph.ts`
-  - home feed `fallbackCard()` and card cache writes
-- `packages/protocol/src/opportunity/delivery-card.cache.ts`
-  - cached delivery cards
+  - persisted home-feed fallback cards and cache writes
+- `packages/protocol/src/opportunity/application/delivery-card.cache.ts`
+  - cached persisted delivery cards
 - `services/api/src/services/opportunity.service.ts`
-  - `getOpportunityWithPresentation()` and `getChatContext()`
+  - `getOpportunityWithPresentation()` and `getChatContext()` for persisted records
 - `services/api/src/services/opportunity-delivery.service.ts`
-  - notification / delivery rendering fallback
+  - background delivery notification rendering fallback
 
 ## Audit checklist
 
