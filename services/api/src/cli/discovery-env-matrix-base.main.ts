@@ -281,7 +281,7 @@ export async function verifyBaseFixtureIntegrity(
     db.select({ id: schema.premises.id }).from(schema.premises).where(inArray(schema.premises.userId, userIds)),
     db.select({ premiseId: schema.premiseNetworks.premiseId }).from(schema.premiseNetworks).where(inArray(schema.premiseNetworks.networkId, networkIds)),
     db.select({ id: schema.userContexts.id }).from(schema.userContexts).where(or(inArray(schema.userContexts.userId, userIds), inArray(schema.userContexts.networkId, networkIds))),
-    db.select({ sourceId: schema.hydeDocuments.sourceId, sourceText: schema.hydeDocuments.sourceText, embedding: schema.hydeDocuments.hydeEmbedding, sourceType: schema.hydeDocuments.sourceType }).from(schema.hydeDocuments).where(inArray(schema.hydeDocuments.sourceId, intentIds)),
+    db.select({ sourceId: schema.hydeDocuments.sourceId, sourceText: schema.hydeDocuments.sourceText, hydeText: schema.hydeDocuments.hydeText, embedding: schema.hydeDocuments.hydeEmbedding, sourceType: schema.hydeDocuments.sourceType, strategy: schema.hydeDocuments.strategy, targetCorpus: schema.hydeDocuments.targetCorpus }).from(schema.hydeDocuments).where(inArray(schema.hydeDocuments.sourceId, intentIds)),
     db.select({ id: schema.opportunities.id, actors: schema.opportunities.actors }).from(schema.opportunities),
   ]);
 
@@ -298,10 +298,8 @@ export async function verifyBaseFixtureIntegrity(
   if (malformedIntentVector) throw new Error(`Discovery environment matrix base integrity failed: intent ${malformedIntentVector.id} has an invalid embedding`);
 
   if (premises.length || premiseAssignments.length || contexts.length) throw new Error('Discovery environment matrix base integrity failed: unexpected fixture premise or context state');
-  if (hydeDocuments.length !== intentIds.length) {
-    throw new Error('Discovery environment matrix base integrity failed: unexpected fixture intent HyDE cardinality');
-  }
   const expectedIntentPayloads = new Map(payload.intents.map((intent) => [intent.id, intent.payload]));
+  const seenHydeKeys = new Set<string>();
   const seenHydeIntentIds = new Set<string>();
   for (const document of hydeDocuments) {
     const sourceId = document.sourceId;
@@ -309,12 +307,14 @@ export async function verifyBaseFixtureIntegrity(
       throw new Error('Discovery environment matrix base integrity failed: malformed fixture intent HyDE source ID');
     }
     const expectedPayload = expectedIntentPayloads.get(sourceId);
-    if (expectedPayload === undefined || seenHydeIntentIds.has(sourceId)) {
+    const key = `${sourceId}:${document.strategy}:${document.targetCorpus}`;
+    if (expectedPayload === undefined || seenHydeKeys.has(key)) {
       throw new Error(`Discovery environment matrix base integrity failed: unexpected fixture intent HyDE ${sourceId}`);
     }
-    if (document.sourceType !== 'intent' || document.sourceText !== expectedPayload || !isValidFixtureVector(document.embedding)) {
+    if (document.sourceType !== 'intent' || (document.sourceText !== null && document.sourceText !== expectedPayload) || !document.hydeText || !document.strategy || !document.targetCorpus || !isValidFixtureVector(document.embedding)) {
       throw new Error(`Discovery environment matrix base integrity failed: malformed fixture intent HyDE ${sourceId}`);
     }
+    seenHydeKeys.add(key);
     seenHydeIntentIds.add(sourceId);
   }
   const missingHydeIntentId = intentIds.find((intentId) => !seenHydeIntentIds.has(intentId));
@@ -448,7 +448,7 @@ export async function runBaseCommand(
   }
 }
 
-export async function main(): Promise<void> {
+export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
   const environment = assertBaseEnvironment(process.env);
   console.log(
     `Protected base target: confirmation=${process.env.DISCOVERY_ENV_MATRIX_BASE_CONFIRM} `
@@ -456,7 +456,7 @@ export async function main(): Promise<void> {
       + `path=${environment.databaseUrl.pathname} declaredBranch=${environment.declaredBranch}`,
   );
 
-  await runBaseCommand(process.argv.slice(2), {
+  await runBaseCommand(args, {
     createReadOnly: createReadOnlyProductionDependencies,
     loadCases: loadHistoricalMatrixCases,
     expectedMetadata: expectedBaseMetadata,

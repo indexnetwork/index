@@ -99,16 +99,13 @@ function mockReadOnlyDatabase(results: unknown[][]) {
   const state = { reads: 0, writes: 0 };
   const select = () => {
     const rows = results.shift() ?? [];
-    return {
-      from: () => ({
-        where: () => ({
-          then(resolve: (value: unknown[]) => void) {
-            state.reads += 1;
-            resolve(rows);
-          },
-        }),
-      }),
+    const query = {
+      then(resolve: (value: unknown[]) => void) {
+        state.reads += 1;
+        resolve(rows);
+      },
     };
+    return { from: () => Object.assign(query, { where: () => query }) };
   };
   return { db: { select } as unknown as DrizzleDB, state };
 }
@@ -121,7 +118,7 @@ function mockCurrentCommandDatabase(payload: ReturnType<typeof baseSeedPayload>,
     payload.intents.map((intent) => ({ intentId: intent.id, networkId: intent.networkId, relevancyScore: '1' })),
     payload.memberships.map((membership) => ({ userId: membership.userId, networkId: membership.networkId, permissions: ['member'], autoAssign: false })),
     [], [], [],
-    payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: Array(2000).fill(0.1) })),
+    payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', strategy: 'semantic', targetCorpus: 'intents', hydeText: 'synthetic', embedding: Array(2000).fill(0.1) })),
     [],
   ];
   const state = { reads: 0, writes: 0, closed: false };
@@ -318,7 +315,11 @@ describe('protected base lifecycle', () => {
       [],
       [],
       [],
-      payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', embedding: Array(2000).fill(0.1) })),
+      payload.intents.map((intent) => ({ sourceId: intent.id, sourceText: intent.payload, sourceType: 'intent', strategy: 'semantic', targetCorpus: 'intents', hydeText: 'synthetic', embedding: Array(2000).fill(0.1) })),
+      [],
+      [],
+      [],
+      [],
       [],
     ];
   }
@@ -329,7 +330,7 @@ describe('protected base lifecycle', () => {
     }));
 
     await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('invalid embedding');
-    expect(state.reads).toBe(9);
+    expect(state.reads).toBe(10);
     expect(state.writes).toBe(0);
   });
 
@@ -345,6 +346,24 @@ describe('protected base lifecycle', () => {
     const { db, state } = mockReadOnlyDatabase(rows);
 
     await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('fixture intent HyDE');
+    expect(state.writes).toBe(0);
+  });
+
+  it('accepts optional null fixture intent HyDE source text without writes', async () => {
+    const rows = structuralRows();
+    for (const document of rows[8] as Array<Record<string, unknown>>) document.sourceText = null;
+    const { db, state } = mockReadOnlyDatabase(rows);
+
+    await verifyBaseFixtureIntegrity(db, schema, payload);
+    expect(state.writes).toBe(0);
+  });
+
+  it('rejects a non-null fixture intent HyDE source-text mismatch without writes', async () => {
+    const rows = structuralRows();
+    (rows[8] as Array<Record<string, unknown>>)[0]!.sourceText = 'mismatch';
+    const { db, state } = mockReadOnlyDatabase(rows);
+
+    await expect(verifyBaseFixtureIntegrity(db, schema, payload)).rejects.toThrow('malformed fixture intent HyDE');
     expect(state.writes).toBe(0);
   });
 
