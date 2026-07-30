@@ -278,6 +278,11 @@ function formatReset(date: Date): string {
 	return hours > 0 ? `${hours}h${minutes.toString().padStart(2, "0")}m` : `${minutes}m`;
 }
 
+export function formatGoalFooterStatus(status: string | undefined): string | undefined {
+	const compact = status?.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+	return compact ? `🏁 ${compact}` : undefined;
+}
+
 /** Install the fully custom footer (replaces the built-in one). */
 function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 	ctx.ui.setFooter((tui, theme, footerData) => {
@@ -303,9 +308,12 @@ function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 				if (branch) placeParts.push(`🌿 ${dim(branch)}`);
 				const sessionPart = `💬 ${sessionName ? accent(sessionName) : dim("unnamed")}`;
 
-				// ── Line 2 left: work context — PR · Linear (always visible) ──
+				// ── Line 2 left: work context — PR · Linear · Goal (always visible) ──
 				const prPart = `🔀 ${active.pr !== undefined ? theme.bold(accent(`PR#${active.pr}`)) : dim("—")}`;
 				const issuePart = `🎯 ${active.issue ? theme.bold(accent(active.issue)) : dim("—")}`;
+				const goalPart = formatGoalFooterStatus(footerData.getExtensionStatuses().get("goal"));
+				const workContextParts = [prPart, issuePart];
+				if (goalPart) workContextParts.push(theme.bold(accent(goalPart)));
 
 				// ── Line 2 right: model — model · thinking · cost · context ──
 				let cost = 0;
@@ -355,7 +363,7 @@ function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 
 				const lines = [
 					composeLine(placeParts.join("  "), sessionPart, width),
-					composeLine(`${prPart}  ${issuePart}`, modelParts.join("  "), width),
+					composeLine(workContextParts.join("  "), modelParts.join("  "), width),
 				];
 				if (usageParts.length > 0) lines.push(truncateToWidth(usageParts.join("   "), width, "…"));
 				return lines;
