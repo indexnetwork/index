@@ -263,8 +263,6 @@ import type {
   ToolActionResponse,
   IntentGraphQueue,
   Scraper,
-  DiscoveryRunInput,
-  DiscoveryRunRecord,
   EnrichmentRunInput,
   EnrichmentRunRecord,
   NegotiationTimeoutQueue,
