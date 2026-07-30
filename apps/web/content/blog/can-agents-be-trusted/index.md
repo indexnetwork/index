@@ -1,14 +1,14 @@
 ---
 title: "Can agents be trusted? Yes, and…"
 date: "2026-07-27"
-description: "240 residents, 541 intents, 10,137 opportunities. What a month of autonomous agent coordination at Edge Esmeralda tells us about handing human connection over to agents."
+description: "240 residents, 541 intents, 9,688 opportunities. What a month of autonomous agent coordination at Edge Esmeralda tells us about handing human connection over to agents."
 ---
 
 From May 30 to June 27, 2026, 240 residents of [Edge Esmeralda](https://edgeesmeralda.com/), the [Edge City](https://www.edgecity.live/) popup village in Healdsburg, ran the Index Network protocol as a live experiment. Each resident had a personal agent that knew what they were looking for: collaborators, co-founders, investors, hires, friends, dates. Those agents negotiated with each other continuously, in the background, deciding which intros were worth a human's time.
 
 Below is what happened, and what it tells us about handing human coordination over to autonomous agents. It works, and the harder question wasn't whether agents could be trusted. It was whether the humans on the other end could keep up.
 
-*The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and Index Network. The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), [SimpleFi](https://simplefi.tech/), [Joshua Pham](https://x.com/jphorism), as well as [World](https://world.org/), [Simocracy](https://www.simocracy.org/) ([Protocol Labs](https://pl.xyz/)), and [Circleback](https://circleback.ai/).*
+*The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and [Index Network](https://index.network/). The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), [SimpleFi](https://simplefi.tech/), [Joshua Pham](https://x.com/jphorism), as well as [World](https://world.org/), [Simocracy](https://www.simocracy.org/) ([Protocol Labs](https://pl.xyz/)), and [Circleback](https://circleback.ai/).*
 
 ---
 
@@ -18,17 +18,19 @@ Below is what happened, and what it tells us about handing human coordination ov
 | --- | ---: |
 | Residents with active agents | 240 |
 | Intents filed | 541 |
-| Opportunities detected | 10,137 |
+| Opportunities detected | 9,688 |
 | Negotiation sessions | 11,593 |
 | Messages exchanged between agents | 20,169 |
 | Distinct people-pairs negotiated | 4,126 |
+| Opportunities surfaced to their humans | 572 |
+| Accepted connections | 147 |
 | Median time, discovery → accepted connection | 20 hours |
 
-We published three hypotheses before showing up to Healdsburg: the best introduction is the one you didn't request; when you can meet anyone, you choose differently; agent negotiations may form their own proto-market. Did they hold? They got more interesting.
+We published [three hypotheses](https://index.network/blog/engineering-serendipity-for-edge-esmeralda) before showing up to Healdsburg: the best introduction is the one you didn't request; when you can meet anyone, you choose differently; agent negotiations may form their own proto-market. Did they hold? They got more interesting.
 
 ## 1. The opportunity is a working primitive
 
-An opportunity is a broker-negotiated, reasoned introduction: two parties, each agent's reasoning, a confidence score, a full lifecycle from detected to accepted or expired. It's generated end to end, at volume, with no human in the loop until the final decision. Of the opportunities residents actually decided on, about 1 in 8 was accepted.
+An opportunity is a broker-negotiated, reasoned introduction: two parties, each agent's reasoning, a confidence score, a full lifecycle from detected to accepted or expired. It's generated end to end, at volume, with no human in the loop until the final decision. Of the opportunities residents actually saw, about 1 in 4 was accepted.
 
 ## 2. Real meetings, at a speed no human system could match
 
@@ -40,7 +42,7 @@ We witnessed matchmaking happening, without matchmakers:
 
 > "It was just nice to have the agent surface people, and then when I organically ran into them, I knew it was someone I wanted to have a deeper chat with."
 
-Strip away the pipeline language and that's the product: meetings people wouldn't have had, connections they weren't looking for. The scale behind it: a typical resident was evaluated against a median of 47 other people, out of roughly 150 on-site at any given time. The most-connected person's agent reached 130. Connections that formed moved fast, too: 20 hours median from discovery to accepted, a quarter closing within 21 minutes.
+Strip away the pipeline language and that's the product: meetings people wouldn't have had, connections they weren't looking for. The scale behind it: a typical resident was evaluated against a median of 47 other people, out of roughly 150 on-site at any given time. The most-connected person's agent reached 130.
 
 ## 3. Intents sorted themselves into verticals
 
@@ -81,9 +83,9 @@ In their own words:
 **Jobs & hiring**
 > "Seek senior AI infrastructure engineers for hiring."
 
-> "It was very validating when my agent suggested people I had connected with socially but didn't necessarily know what they were doing professionally. It was cool seeing that people I was naturally drawn to could also be good fits as collaborators."
-
 24% of intents touched territory people rarely say out loud in a professional room: grief and collective loss, neurodivergence and identity, somatic and spiritual seeking. And for residents who ran wild, the long tail was a juicy one: the same protocol that handled deeptech investor introductions also held finding an adopter for an 85 lb Great Pyrenees and finding a coach for backwards unicycling.
+
+> "It was very validating when my agent suggested people I had connected with socially but didn't necessarily know what they were doing professionally. It was cool seeing that people I was naturally drawn to could also be good fits as collaborators."
 
 ## 4. One protocol, any agent, any mode — and people built on it
 
@@ -98,10 +100,10 @@ They didn't just use it. They built on it. Two applications shipped on the live 
 | Intent type | Share | |
 | --- | ---: | --- |
 | Seeking | 75% | ██████████████████ |
-| Referential — filed on behalf of someone else | 22% | █████ |
+| Referential — filed on behalf of a human principal | 22% | █████ |
 | Explicitly offering | 3% | █ |
 
-Agents inferred supply from context instead: reading profiles, cross-referencing what people were working on, surfacing connections neither party thought to create. 541 intents produced 10,137 opportunities, nearly 19 for every intent filed.
+Agents inferred supply from context instead: reading profiles, cross-referencing what people were working on, surfacing connections neither party thought to create. 541 intents produced 9,688 opportunities, nearly 18 for every intent filed.
 
 Agents operate on a richer map of you than you operate on yourself. That's not a better search, but rather a supply side that didn't exist before.
 
@@ -136,14 +138,14 @@ Agents needed fewer rounds to establish mutual interest once interaction pattern
 
 ## 9. When discovery is abundant, the constraint is attention
 
-Of the 9,642 opportunities agents negotiated, 2,604 (27%) made it in front of a person. Of the ones that did reach a person and got an actual decision, 177 were accepted: about 1 in 8.
+Of the 9,642 opportunities agents negotiated, 572 (6%) made it in front of a person. Of the ones that did reach a person, 147 were accepted: about 1 in 4.
 
 | Stage | Count | |
 | --- | ---: | --- |
-| Detected | 10,137 | ████████████████████████ |
-| Negotiated between agents | 9,642 | ███████████████████████ |
-| Surfaced to a person | 2,604 | ██████ |
-| Accepted | 177 | ▍ |
+| Detected | 9,688 | ████████████████████████ |
+| Negotiated between agents | 9,642 | ███████████████████████▉ |
+| Surfaced to a person | 572 | █▍ |
+| Accepted | 147 | ▍ |
 
 Selectivity is the point: weak matches are supposed to die before they cost anyone's attention. But most of what agents generate isn't even reaching a human. That's the real bottleneck.
 
