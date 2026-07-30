@@ -543,7 +543,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
           count: 0,
           summary: "No opportunities yet",
           message:
-            "You have no opportunities yet. Use discover_opportunities to find connections.",
+            "You have no opportunities yet. Create or refine an approved signal with create_intent or update_intent; matches are created in the background. Use list_opportunities later to review persisted results.",
         });
       }
 
@@ -958,7 +958,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
           count: 0,
           summary: "No opportunities yet",
           message:
-            "You have no opportunities yet. Use discover_opportunities to find connections.",
+            "You have no opportunities yet. Create or refine an approved signal with create_intent or update_intent; matches are created in the background. Use list_opportunities later to review persisted results.",
         });
       }
 
