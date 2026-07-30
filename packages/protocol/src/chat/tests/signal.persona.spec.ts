@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it, mock } from "bun:test";
 
-import { ORCHESTRATOR_PERSONA, ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
+import { ORCHESTRATOR_PERSONA_ID } from "../chat.persona.js";
 import { SIGNAL_PERSONA, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
 import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalFeedback, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
@@ -209,12 +209,10 @@ describe("SIGNAL_PERSONA", () => {
     expect(SIGNAL_PERSONA_ID).not.toBe(ORCHESTRATOR_PERSONA_ID);
   });
 
-  it("disables only the discovery-coupled callback and retains proposal recovery", () => {
+  it("retains proposal recovery", () => {
     expect(SIGNAL_PERSONA.loopBehaviors).toEqual({
-      createIntentCallback: false,
       hallucinationRecovery: true,
     });
-    expect(ORCHESTRATOR_PERSONA.loopBehaviors.createIntentCallback).toBe(true);
   });
 
   it("uses the Signal-specific prompt builder", () => {

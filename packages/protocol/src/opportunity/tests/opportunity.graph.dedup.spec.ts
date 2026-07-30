@@ -228,7 +228,6 @@ const ownedIntentInput = {
 const continuationInput = {
   userId: USER_A,
   operationMode: 'continue_discovery' as const,
-  trigger: 'orchestrator' as const,
   searchQuery: 'co-founder',
   candidates: [{
     candidateUserId: USER_B,
@@ -617,7 +616,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     expect(updateCalledWith![1]).toBe('pending');
   });
 
-  test('taskless negotiating dedup reactivates and invokes negotiation on a fresh orchestrator run', async () => {
+  test('taskless negotiating dedup reactivates and invokes negotiation on a fresh run', async () => {
     const oldNegotiatingOpp = makeOpportunity({
       status: 'negotiating',
       createdAt: new Date(Date.now() - 15 * 60 * 1000),
@@ -649,13 +648,12 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     const result = await graph.invoke({
       userId: USER_A,
       operationMode: 'create' as const,
-      trigger: 'orchestrator' as const,
       searchQuery: 'co-founder',
       options: {},
     });
 
     expect(createCalled).toBe(false);
-    expect(updateCalledWith!).toEqual([OPP_ID, 'negotiating']);
+    expect(updateCalledWith!).toEqual([OPP_ID, 'pending']);
     expect(negotiationInputs).toHaveLength(1);
     expect(negotiationInputs[0].opportunityId).toBe(OPP_ID);
     expect(result.opportunities?.length).toBeGreaterThanOrEqual(1);

@@ -694,23 +694,19 @@ export class NegotiationGraphFactory {
 
         traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
 
-        // First turn must open the negotiation (unless continuing a prior
-        // conversation): v1 → "propose"; v2 initiator → "outreach". A v2 turn-0
-        // speaker holding the counterparty seat (tie-break inheritance) is left
-        // unforced — it is responding, not opening.
-        if (state.turnCount === 0 && !state.isContinuation) {
-          const openingAction = version === 'v2' ? 'outreach' : 'propose';
-          if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction) {
-            turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
-            turn.action = openingAction;
-          }
-        }
-
-        // IND-564: block a `withdraw` that comes before the initiator has opened
-        // (no in-task `outreach`) — this would retract a message never made and
-        // drop a spurious message into the shared thread. Exact ask_user resumes
-        // are exempt: the successor is the SAME logical negotiation resumed after
-        // the client answered, so post-consultation withdraw is legitimate.
+        // IND-564 / IND-611: the opening-withdraw guard runs BEFORE the turn-0
+        // opening force below. Order matters and used to be inverted: the force
+        // rewrote a turn-0 `withdraw` into `outreach` first, which (a) made this
+        // guard dead code for a v2 initiator on turn 0 and (b) sent an outreach
+        // whose surviving `reasoning` argued against the match to the
+        // counterparty. An honest turn-0 refusal is now allowed to stand and
+        // flows into the existing quiet `screened_out` path — no message is
+        // persisted, so the original guard's intent (never retract a message
+        // that was never made) is preserved rather than weakened.
+        //
+        // Exact ask_user resumes are exempt: the successor is the SAME logical
+        // negotiation resumed after the client answered, so post-consultation
+        // withdraw is legitimate.
         if (turn.action === 'withdraw' && !state.outreachOpened && !state.continuationExecution) {
           turnLog.info('negotiation_opening_withdraw_screened_out', {
             taskId: state.taskId,
@@ -721,6 +717,22 @@ export class NegotiationGraphFactory {
           });
           traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "screened_out: opening withdraw" });
           return { lastTurn: turn, firstTurnScreenedOut: true };
+        }
+
+        // First turn must open the negotiation (unless continuing a prior
+        // conversation): v1 → "propose"; v2 initiator → "outreach". A v2 turn-0
+        // speaker holding the counterparty seat (tie-break inheritance) is left
+        // unforced — it is responding, not opening.
+        //
+        // A legitimate turn-0 refusal never reaches here: the opening-withdraw
+        // guard above already returned. What remains are genuinely malformed
+        // openings (a turn-0 `counter`/`question`), which are still coerced.
+        if (state.turnCount === 0 && !state.isContinuation) {
+          const openingAction = version === 'v2' ? 'outreach' : 'propose';
+          if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction) {
+            turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
+            turn.action = openingAction;
+          }
         }
 
         // IND-508 deterministic admission is evaluated only after the opening
@@ -1103,7 +1115,17 @@ export class NegotiationGraphFactory {
       // IND-564: an opening-move `withdraw` blocked before any message was
       // persisted is the same quiet screen-out outcome (no in-task outreach to
       // retract), reached from the turn node rather than the screen node.
-      const screenedOut = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount) || state.firstTurnScreenedOut === true;
+      // Two DISTINCT routes reach the same quiet `screened_out` outcome, and
+      // they disagree about who authored the decision:
+      //  - the screen node blocked before any turn was drafted → the screen
+      //    decision is the reason;
+      //  - the acting agent refused on its opening turn (IND-611) → the
+      //    withdrawing TURN is the reason.
+      // They are collapsed into `screenedOut` for status/lifecycle purposes but
+      // must stay separate when attributing `outcome.reasoning` below.
+      const blockedByScreenNode = blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
+      const refusedAtOpeningTurn = state.firstTurnScreenedOut === true;
+      const screenedOut = blockedByScreenNode || refusedAtOpeningTurn;
       const atCap = !screenedOut && (state.maxTurns ?? 0) > 0 && state.turnCount >= state.maxTurns! && !isTerminalAction(lastTurn?.action);
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
@@ -1123,9 +1145,19 @@ export class NegotiationGraphFactory {
       const outcome: NegotiationOutcome = {
         hasOpportunity,
         agreedRoles,
-        reasoning: screenedOut
+        // IND-611: attribute the reasoning to whoever actually made the
+        // decision. Before the turn-0 refusal path existed, `screenedOut`
+        // implied the screen node, so preferring `screenDecision.reasoning`
+        // was always right. It is now wrong for an opening-turn refusal taken
+        // while the screen said `reach_out`: that record argues FOR the match,
+        // and surfacing it as the reason the agent did NOT reach out is exactly
+        // the dishonesty this work removes (IND-610 renders this string in the
+        // owner-only gate-decision card). The screen-node branch is unchanged.
+        reasoning: blockedByScreenNode
           ? (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? "")
-          : (lastTurn?.assessment.reasoning ?? ""),
+          : refusedAtOpeningTurn
+            ? (lastTurn?.assessment?.reasoning ?? state.screenDecision?.reasoning ?? "")
+            : (lastTurn?.assessment.reasoning ?? ""),
         turnCount: state.turnCount,
         ...(screenedOut
           ? { reason: "screened_out" as const }
@@ -1378,10 +1410,8 @@ export interface NegotiationResult {
 
 /**
  * Per-candidate resolution hook — fires as each negotiation settles, before
- * Promise.all aggregates. Used by the orchestrator branch to progressively
- * stream `opportunity_draft_ready` events as each candidate resolves, rather
- * than emitting all at once after the full fan-out completes. Awaited so the
- * caller can run async work (DB update, event emit) before the next settle.
+ * Promise.all aggregates. Awaited so the caller can run async work before the
+ * next settle.
  *
  * `turns` and `outcome` are passed through from the underlying negotiation
  * graph so consumers can build per-candidate decision-question inputs without
@@ -1412,7 +1442,6 @@ export async function negotiateCandidates(
     indexContextOverrides?: Map<string, string>;
     timeoutMs?: number;
     onCandidateResolved?: OnNegotiationResolved;
-    trigger?: "orchestrator" | "ambient";
     /**
      * Initiator seat for every candidate session in this fan-out (v2 stamp).
      * Passed through to the negotiation graph, which may still override it by
@@ -1433,7 +1462,6 @@ export async function negotiateCandidates(
     indexContextOverrides,
     timeoutMs,
     onCandidateResolved,
-    trigger,
     initiatorUserId,
     resumeFromTaskId,
     continuationSettlementId,
@@ -1460,7 +1488,6 @@ export async function negotiateCandidates(
           candidateUserId: candidate.userId,
           initiatorUserId: initiatorUserId ?? candidateSourceUser.id,
           ...(candidateName && { candidateName }),
-          trigger: trigger ?? "ambient",
           startedAt: start,
         });
       }
@@ -1553,8 +1580,7 @@ export async function negotiateCandidates(
             });
           } catch (hookErr) {
             // Hook failures must not sink the candidate result — the aggregate
-            // return is still useful, and the orchestrator branch logs its own
-            // failures inline.
+            // return remains useful to the caller.
             negotiateCandidatesLog.error("onCandidateResolved hook threw", {
               candidateUserId: candidate.userId,
               error: hookErr,

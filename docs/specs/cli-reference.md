@@ -257,15 +257,6 @@ With `--json`, structured advisory responses are printed unchanged.
 2. Calls the `update_opportunity` MCP tool via the Tool HTTP API with `{ opportunityId, status: "rejected" }`.
 3. Prints confirmation message.
 
-### `index opportunity discover <query>`
-
-1. Reads credentials. Exits with error if not logged in.
-2. Calls the `discover_opportunities` MCP tool via the Tool HTTP API with `{ searchQuery }`.
-3. Renders a table of discovered opportunities.
-
-Supports optional flags:
-- `--target <uid>` — Discover opportunities for a specific user (on behalf of)
-- `--introduce <userA> <userB>` — Discover an introduction opportunity between two users. The flag takes the first user ID; the second is a trailing positional argument.
 
 ---
 
@@ -419,7 +410,6 @@ Marks the user's onboarding as complete.
 32. `index opportunity show <id>` displays a detailed card with parties, roles, and reasoning.
 33. `index opportunity accept <id>` runs the uptake preflight; it accepts immediately when clear, otherwise prints preparatory questions and the explicit `--acknowledge-uptake` retry.
 34. `index opportunity reject <id>` sends rejected status and prints confirmation.
-35. `index opportunity discover <query>` discovers and displays opportunities.
 
 ### Network
 36. `index network list` displays non-personal networks.

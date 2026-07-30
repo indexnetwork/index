@@ -79,11 +79,11 @@ describe("ORCHESTRATOR_PERSONA — zero-behavior-change contract", () => {
     expect(ORCHESTRATOR_PERSONA_ID).toBe("orchestrator");
   });
 
-  it("keeps every orchestrator loop behavior enabled", () => {
+  it("keeps supported loop behavior enabled without the retired discovery callback", () => {
     expect(ORCHESTRATOR_PERSONA.loopBehaviors).toEqual({
-      createIntentCallback: true,
       hallucinationRecovery: true,
     });
+    expect(ORCHESTRATOR_PERSONA.loopBehaviors).not.toHaveProperty("createIntentCallback");
   });
 
   it("produces byte-identical system content across scope variants", () => {

@@ -405,18 +405,6 @@
       "source": "./shared/interfaces/scraper.interface.js"
     },
     {
-      "name": "DiscoveryRunInput",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./shared/interfaces/discovery-run.interface.js"
-    },
-    {
-      "name": "DiscoveryRunRecord",
-      "kind": "type",
-      "stability": "stable",
-      "source": "./shared/interfaces/discovery-run.interface.js"
-    },
-    {
       "name": "EnrichmentRunInput",
       "kind": "type",
       "stability": "stable",
@@ -1595,6 +1583,12 @@
     {
       "name": "FeedHealthInput",
       "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "isIntroducerDiscoveryEnabled",
+      "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },

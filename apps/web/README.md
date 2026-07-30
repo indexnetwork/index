@@ -2,7 +2,7 @@
 
 Single-page application for Index Network. Built with **Vite**, **React Router v7**, **React 19**, **Tailwind CSS 4**, and **Radix UI**.
 
-For project overview and full dev commands, see the [root README](../../README.md) and [CLAUDE.md](../../CLAUDE.md).
+For project overview and full dev commands, see the [root README](../../README.md) and [Development Reference](../../docs/guides/development-reference.md).
 
 ## Getting Started
 

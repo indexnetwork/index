@@ -160,9 +160,6 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
 
   // Opportunities and delivery.
   list_opportunities: { access: 'authenticated', reach: 'network' },
-  discover_opportunities: { access: 'permission', actions: ['manage:opportunities'], reach: 'network' },
-  get_discovery_run: { access: 'permission', actions: ['manage:opportunities'], reach: 'network' },
-  cancel_discovery_run: { access: 'permission', actions: ['manage:opportunities'], reach: 'network' },
   update_opportunity: { access: 'permission', actions: ['manage:opportunities'], reach: 'network' },
   confirm_opportunity_delivery: { access: 'delivery_only', reach: 'network' },
 

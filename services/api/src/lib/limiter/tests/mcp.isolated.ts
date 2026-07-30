@@ -8,8 +8,7 @@ describe('checkMcpRateLimit', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     s = new MemoryStorage();
-    process.env.MCP_LIMIT_DISCOVER_PER_MIN = '3';
-    process.env.MCP_LIMIT_TOOL_PER_MIN = '5';
+    process.env.MCP_LIMIT_TOOL_PER_MIN = '3';
     process.env.MCP_LIMIT_PRINCIPAL_PER_MIN = '1000';
     delete process.env.LIMITER_DISABLE;
   });
@@ -19,7 +18,7 @@ describe('checkMcpRateLimit', () => {
   });
 
   test('allows up to the per-tool limit, then blocks', async () => {
-    const input = { userId: 'u1', agentId: 'a1', toolName: 'discover_opportunities' };
+    const input = { userId: 'u1', agentId: 'a1', toolName: 'read_intents' };
     for (let i = 0; i < 3; i++) {
       const d = await checkMcpRateLimit(input, s);
       expect(d.allowed).toBe(true);
@@ -33,17 +32,17 @@ describe('checkMcpRateLimit', () => {
 
   test('different tools have independent buckets', async () => {
     const base = { userId: 'u1', agentId: 'a1' };
-    for (let i = 0; i < 3; i++) await checkMcpRateLimit({ ...base, toolName: 'discover_opportunities' }, s);
-    // discover is now exhausted, but read_intents has its own (5/min) bucket
-    const d = await checkMcpRateLimit({ ...base, toolName: 'read_intents' }, s);
+    for (let i = 0; i < 3; i++) await checkMcpRateLimit({ ...base, toolName: 'read_intents' }, s);
+    // read_intents is exhausted, but read_networks has an independent bucket.
+    const d = await checkMcpRateLimit({ ...base, toolName: 'read_networks' }, s);
     expect(d.allowed).toBe(true);
   });
 
   test('different principals have independent buckets', async () => {
-    for (let i = 0; i < 3; i++) await checkMcpRateLimit({ userId: 'u1', agentId: 'a1', toolName: 'discover_opportunities' }, s);
-    const otherUser = await checkMcpRateLimit({ userId: 'u2', agentId: 'a1', toolName: 'discover_opportunities' }, s);
+    for (let i = 0; i < 3; i++) await checkMcpRateLimit({ userId: 'u1', agentId: 'a1', toolName: 'read_intents' }, s);
+    const otherUser = await checkMcpRateLimit({ userId: 'u2', agentId: 'a1', toolName: 'read_intents' }, s);
     expect(otherUser.allowed).toBe(true);
-    const otherAgent = await checkMcpRateLimit({ userId: 'u1', agentId: 'a2', toolName: 'discover_opportunities' }, s);
+    const otherAgent = await checkMcpRateLimit({ userId: 'u1', agentId: 'a2', toolName: 'read_intents' }, s);
     expect(otherAgent.allowed).toBe(true);
   });
 
@@ -65,13 +64,13 @@ describe('checkMcpRateLimit', () => {
     const throwing = {
       async hit() { throw new Error('redis down'); },
     } as unknown as MemoryStorage;
-    const d = await checkMcpRateLimit({ userId: 'u1', agentId: 'a1', toolName: 'discover_opportunities' }, throwing);
+    const d = await checkMcpRateLimit({ userId: 'u1', agentId: 'a1', toolName: 'read_intents' }, throwing);
     expect(d.allowed).toBe(true);
   });
 
   test('respects LIMITER_DISABLE escape hatch', async () => {
     process.env.LIMITER_DISABLE = '1';
-    const input = { userId: 'u1', agentId: 'a1', toolName: 'discover_opportunities' };
+    const input = { userId: 'u1', agentId: 'a1', toolName: 'read_intents' };
     for (let i = 0; i < 10; i++) {
       const d = await checkMcpRateLimit(input, s);
       expect(d.allowed).toBe(true);

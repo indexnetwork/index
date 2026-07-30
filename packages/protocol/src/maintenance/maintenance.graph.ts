@@ -12,6 +12,7 @@ import { MaintenanceGraphState } from './maintenance.state.js';
 import { computeFeedHealth } from '../opportunity/feed/feed.health.js';
 import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, FEED_SOFT_TARGETS } from '../opportunity/opportunity.utils.js';
 import { shouldRunIntroducerDiscovery, runIntroducerDiscovery, type IntroducerDiscoveryDatabase, type IntroducerDiscoveryQueue } from '../opportunity/opportunity.introducer.js';
+import { isIntroducerDiscoveryEnabled } from '../opportunity/application/opportunity.introducer-feature.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('MaintenanceGraph');
@@ -182,6 +183,13 @@ export class MaintenanceGraphFactory {
     };
 
     const introducerDiscoveryNode = async (state: typeof MaintenanceGraphState.State) => {
+      if (!isIntroducerDiscoveryEnabled()) {
+        logger.info('Introducer discovery skipped — disabled by configuration', {
+          userId: state.userId,
+        });
+        return {};
+      }
+
       try {
         const connectorFlowTarget = FEED_SOFT_TARGETS.connectorFlow;
         if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {

@@ -97,7 +97,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 | `premise/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
-| `opportunity/opportunity.tools.ts` | `discover_opportunities`, `get_discovery_run`, `cancel_discovery_run`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
+| `opportunity/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
 | `contact/contact.tools.ts`³ | `import_contacts`, `list_contacts`, `add_contact`, `remove_contact`, `search_contacts` |
 | `integration/integration.tools.ts`³ | `import_gmail_contacts` |
 | `agent/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
@@ -227,7 +227,7 @@ sequenceDiagram
     participant CI as create_intent
     participant IC as IntentClarifier
     participant IG as Intent Graph
-    participant CO as discover_opportunities
+    participant CO as background_matcher
     participant OG as Opportunity Graph
     participant HG as HyDE Graph
 

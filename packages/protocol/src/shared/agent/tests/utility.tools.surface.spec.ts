@@ -98,6 +98,18 @@ describe("createUtilityTools surface profile", () => {
     }
   });
 
+  test("REST read_docs guides background matching without retired discovery", async () => {
+    const rest = capture();
+    createUtilityTools(rest.defineTool, stubDeps);
+    const contacts = await readDocs(rest.tools, "contacts");
+    const workflows = await readDocs(rest.tools, "workflows");
+    const opportunities = await readDocs(rest.tools, "opportunities");
+
+    expect(contacts + workflows + opportunities).not.toContain("discover_opportunities");
+    expect(contacts + workflows + opportunities).toContain("background matching");
+    expect(contacts + workflows + opportunities).toContain("list_opportunities");
+  });
+
   // Canonical MCP read_docs topic inventory (IND-602/603). These are the only
   // topics the canonical guidance source exposes on the MCP surface.
   const CANONICAL_READ_DOCS_TOPICS = [

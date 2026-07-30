@@ -1,10 +1,19 @@
-// Intents — Workbench shelf of saved searches. This is the app's hub:
-// brand promise, active signals, and the entry point for a new signal.
+// Intents, Workbench shelf of saved searches. This is the app's hub:
+// brand promise ("find your others"), active signals, and the entry point for
+// a new signal.
+
+/* How tall the signals shelf is allowed to get. Six rows, then it scrolls.
+   IntentRow's own height and the shelf's gap live here so the cap stays
+   correct if either changes; a hardcoded pixel maxHeight would quietly start
+   cutting a row in half. */
+const SHELF_ROW_H = 72;
+const SHELF_ROW_GAP = 8;
+const SHELF_VISIBLE_ROWS = 6;
 
 /* ---------- account shelf ---------- */
 
 // Your photo if you've set one, otherwise a solid accent tile with lowercase
-// initials — deliberately not the photo Avatar used on the radar, so "you"
+// initials, deliberately not the photo Avatar used on the radar, so "you"
 // reads differently from "them".
 function InitialsTile({ name, size = 46, photo }) {
   if (photo) {
@@ -35,7 +44,7 @@ function InitialsTile({ name, size = 46, photo }) {
   );
 }
 
-// The communities you belong to. Intentionally quiet — no border or shadow, so
+// The communities you belong to. Intentionally quiet, no border or shadow, so
 // it reads as a shelf item rather than competing with the account row below it.
 // The glyph occupies the same 34px block as the account tile and the label uses
 // the same size and weight, so the two rows line up even though their fills
@@ -69,10 +78,11 @@ function NetworksRow({ count, onClick }) {
   );
 }
 
-// The agent runtimes on this Mac. Same quiet shelf treatment as the networks
-// row above it: both are destinations, not settings. The glyph is a head with
-// an antenna, which reads as "an agent" at a glance. The chip it replaced read
-// as hardware, and nothing about a chip says something is acting for you.
+// The agents destination. Same quiet shelf treatment as the networks row above
+// it: both are destinations, not settings, so both get a plain glyph. Your
+// negotiator's picture belongs where the agent is speaking, not on a row whose
+// job is "take me to the agents screen", where next to the networks mark it
+// read as a stray photo in an icon column.
 function AgentsRow({ count, onClick }) {
   return (
     <button
@@ -84,20 +94,9 @@ function AgentsRow({ count, onClick }) {
       }}>
       <span style={{
         flex:"0 0 auto", width:34, height:34,
-        display:"flex", flexDirection:"column",
-        alignItems:"center", justifyContent:"center",
+        display:"grid", placeItems:"center",
       }}>
-        {/* antenna: tip, then stem */}
-        <span style={{ width:4, height:4, background:"#000" }}/>
-        <span style={{ width:2, height:3, background:"#000" }}/>
-        {/* head, with two eyes */}
-        <span style={{
-          width:22, height:15, border:"2px solid #000",
-          display:"flex", alignItems:"center", justifyContent:"center", gap:5,
-        }}>
-          <span style={{ width:3, height:3, background:"#000" }}/>
-          <span style={{ width:3, height:3, background:"#000" }}/>
-        </span>
+        <AgentGlyph size={26}/>
       </span>
       <span style={{
         flex:1, minWidth:0,
@@ -107,7 +106,7 @@ function AgentsRow({ count, onClick }) {
   );
 }
 
-// The account row. Click it for the account menu — closes on outside click or
+// The account row. Click it for the account menu, closes on outside click or
 // Escape, like a real menubar menu. Opens upward: it's the last thing in the
 // column, so there's headroom above and none below.
 function UserMenu({ me, onSelect }) {
@@ -119,27 +118,37 @@ function UserMenu({ me, onSelect }) {
     const onDown = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    // capture + preventDefault so this menu takes the Escape before the
+    // window-closing handler in primitives sees it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
   // "your network" moved out to its own shelf row above.
   const ITEMS = [
     { id: "profile",  label: "your profile" },
-    { id: "settings", label: "preferences" },
+    { id: "settings", label: "notifications" },
     { id: "history",  label: "negotiation history" },
     { id: "signout",  label: "sign out", danger: true },
   ];
 
   const pick = (item) => { setOpen(false); onSelect && onSelect(item.id); };
-  const rowHover = (on) => (e) => {
-    e.currentTarget.style.background = on ? "#000" : "transparent";
-    e.currentTarget.style.color = on ? "#FF8A00" : "#000";
+  // Destructive rows keep the app's warn treatment on hover, the same one the
+  // archive gadget uses: red stays red and the row washes pink. Inverting them
+  // to black-and-orange like the ordinary rows dropped the one colour that says
+  // this one is different, at the exact moment the pointer is on it.
+  const rowHover = (on, danger) => (e) => {
+    e.currentTarget.style.background = on ? (danger ? "#FFF3F3" : "#000") : "transparent";
+    e.currentTarget.style.color = danger ? "var(--ink-warn)" : (on ? "#FF8A00" : "#000");
   };
 
   return (
@@ -179,13 +188,14 @@ function UserMenu({ me, onSelect }) {
               key={item.id}
               role="menuitem"
               onClick={() => pick(item)}
-              onMouseEnter={rowHover(true)}
-              onMouseLeave={rowHover(false)}
+              onMouseEnter={rowHover(true, item.danger)}
+              onMouseLeave={rowHover(false, item.danger)}
               style={{
                 display:"block", width:"100%", textAlign:"left",
                 padding:"6px 12px", border:"none", background:"transparent",
                 fontFamily:"var(--mac-sans)", fontSize:12, cursor:"pointer",
                 color: item.danger ? "var(--ink-warn)" : "#000",
+                fontWeight: item.danger ? 600 : 400,
                 borderTop: item.danger ? "1px solid #000" : "none",
                 marginTop: item.danger ? 4 : 0,
               }}>{item.label}</button>
@@ -206,7 +216,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const joinedCount = (NETWORKS || []).filter(n => n.joined !== false).length;
   const agentCount  = (AGENTS || []).filter(a => a.state === "connected").length;
 
-  // A just-onboarded user has no signals yet — the hub opens empty.
+  // A just-onboarded user has no signals yet, the hub opens empty.
   const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
   useEffect(() => {
     setSignals(fresh ? [] : (env.data.INTENTS || []));
@@ -221,7 +231,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
 
   // Width the shelf's scrollbar takes when it appears, so the pinned
   // new-signal row below can line up with the rows inside. Measured rather
-  // than hardcoded to 16px — it's zero whenever the list fits.
+  // than hardcoded to 16px, it's zero whenever the list fits.
   const shelfRef = useRef(null);
   const [shelfGutter, setShelfGutter] = useState(0);
   useEffect(() => {
@@ -242,7 +252,7 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     if (id === "signout")  onSignOut && onSignOut();
   };
 
-  // Both take over the whole surface — they're screens, not sheets.
+  // Both take over the whole surface, they're screens, not sheets.
   if (settingsTab) {
     return <Settings initialTab={settingsTab} onClose={() => setSettingsTab(null)}/>;
   }
@@ -278,7 +288,9 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
         minWidth: 0,
         maxHeight: "calc(100vh - 112px)",
       }}>
-        <MacWindow title="index · your signals" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
+        {/* the shelf inside already says "your signals"; the title bar only has
+            to say which app the window belongs to */}
+        <MacWindow title="index" onClose={onBack} style={{ maxHeight: "calc(100vh - 112px)", minHeight: "min(560px, calc(100vh - 112px))" }}>
           <div style={{
             padding:"22px 28px 20px",
             display:"grid",
@@ -311,31 +323,23 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
                   }}>← back</button>
                 )}
                 <h1 style={{
-                  fontFamily:"var(--amiga-mono)", fontWeight:500,
+                  fontFamily:"var(--amiga-mono)", fontWeight:700,
                   fontSize:34, lineHeight:1.05, letterSpacing:-0.6,
                   margin:0, color:"#000",
                 }}>
-                  meet the person index is{" "}
-                  <span style={{
-                    background:"#FF8A00", color:"#000",
-                    padding:"0 6px", display:"inline-block",
-                    border:"1px solid #000",
-                    boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 2px 2px 0 rgba(0,0,0,0.22)",
-                    fontWeight:700,
-                  }}>already</span>{" "}
-                  looking for.
+                  find your others.
                 </h1>
                 <p style={{
                   marginTop:12, color:"#000",
                   fontSize:13, lineHeight:1.5, maxWidth:540,
                   fontFamily:"var(--mac-sans)",
                 }}>
-                  tell index what you're after. it works quietly in the
-                  background and tells you when there's an alignment.
+                  start a signal. your agent takes it to other agents. when both
+                  sides want it, you get the intro.
                 </p>
               </div>
 
-              {/* sidebar footer — sits on the pane's floor, not under the copy */}
+              {/* sidebar footer, sits on the pane's floor, not under the copy */}
               <div style={{ display:"grid", gap:9 }}>
                 <NetworksRow count={joinedCount} onClick={() => setShowNetworks(true)}/>
                 <AgentsRow count={agentCount} onClick={() => setShowAgents(true)}/>
@@ -350,25 +354,18 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
               flexDirection:"column",
             }}>
               <RuleLabel>your signals</RuleLabel>
+              <div style={{ height:8 }}/>
 
-              <p style={{
-                margin:"6px 0 14px",
-                fontFamily:"var(--mac-sans)",
-                fontSize:13,
-                lineHeight:1.5,
-                color:"var(--ink-2)",
-                maxWidth:430,
-              }}>
-                each signal stays active in the background. index keeps
-                looking until the right people surface, or you close it.
-              </p>
-
-              {/* sized to its content when the list is short (so the new-signal
-                  row sits right under the last one), shrinking and scrolling
-                  once there are too many to fit */}
+              {/* Sized to its content when the list is short (so the new-signal
+                  row sits right under the last one), and capped at six rows
+                  once it is long: past that the shelf reads as a backlog rather
+                  than the set of things you are running, and "start a new
+                  signal" drifts further down the screen. The rest scroll. */}
               <div ref={shelfRef} className="mac-scroll" style={{
                 flex:"0 1 auto", minHeight:0, overflowY:"auto",
-                display:"flex", flexDirection:"column", gap:8,
+                maxHeight: SHELF_VISIBLE_ROWS * SHELF_ROW_H
+                         + (SHELF_VISIBLE_ROWS - 1) * SHELF_ROW_GAP,
+                display:"flex", flexDirection:"column", gap: SHELF_ROW_GAP,
                 paddingRight: 6,
               }}>
                 {/* No empty state: the blurb above already says what a signal
@@ -387,13 +384,13 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
               </div>
 
               {/* Starting a signal is what this screen is for, so it sits
-                  outside the shelf — a long list scrolls behind it rather than
+                  outside the shelf, a long list scrolls behind it rather than
                   pushing it out of reach. The right padding matches the rows
                   above, which sit clear of the scrollbar when one is showing. */}
               <div style={{
                 flex:"0 0 auto", paddingTop:8, paddingRight: 6 + shelfGutter,
                 // flex, so the row stretches the way it did as a child of the
-                // shelf — a bare <button> shrinks to fit its label
+                // shelf, a bare <button> shrinks to fit its label
                 display:"flex", flexDirection:"column",
               }}>
                 <NewIntentRow onClick={onNew}/>
@@ -406,13 +403,44 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   );
 }
 
+/* A signal reads as what it is after, not as a sentence about wanting it. The
+   summary that comes back from the API is written as prose ("Receive feedback
+   on a launch video for an AI product from designers, founders, ..."), so the
+   shelf drops the opening verb, lowercases it, and cuts it at a word so no row
+   ends mid-word. This is a display fix. Titles that arrive already shaped, and
+   short enough to sit whole in a row, pass through untouched. */
+const TITLE_MAX = 45;
+const TITLE_LEAD = /^(receive|explore|find|discover|connect with|connect to|connect|meet|seeking|seek|looking for|look for|get)\s+/;
+
+function signalTitle(raw) {
+  const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ").replace(TITLE_LEAD, "");
+  if (!text) return "untitled signal";
+  if (text.length <= TITLE_MAX) return text;
+  const head = text.slice(0, TITLE_MAX + 1);
+  const lastSpace = head.lastIndexOf(" ");
+  const cut = lastSpace > 12 ? head.slice(0, lastSpace) : text.slice(0, TITLE_MAX);
+  return cut.replace(/[\s,;:.·/+-]+$/, "") + "…";
+}
+
+/* What the signal is doing, in its own words: scanning, mid-negotiation with
+   another agent, resolved, or ended. "running" said the process was alive
+   without saying what it was doing with the time. */
+function signalStatus(intent) {
+  if (intent.status === "archived") return "closed";
+  if (intent.status === "paused") return "paused";
+  if (intent.matches > 0) return "matched";
+  if ((intent.pipeline || {}).negotiating > 0) return "negotiating";
+  return "live";
+}
+
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  const isActive = intent.status === "active";
   const hasQ = intent.questions > 0;
-  // Display label: active signals read as "running" in the status line.
-  const statusLabel = isActive ? "running" : intent.status;
+  const statusLabel = signalStatus(intent);
+  // the blink is the signal working. only the states that are actually running
+  // get it, so a shelf of closed and matched rows stays still
+  const running = statusLabel === "live" || statusLabel === "negotiating";
 
   return (
     <button
@@ -422,10 +450,10 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
       style={{
         textAlign:"left",
         padding: "0 16px",
-        height: 72,
+        height: SHELF_ROW_H,
         // the shelf is a column flex container, so without this the rows
         // shrink to share whatever height is left instead of the shelf
-        // scrolling — squashing every signal and pushing the question count
+        // scrolling, squashing every signal and pushing the question count
         // out through the row's own border
         flex: "0 0 auto",
         boxSizing: "border-box",
@@ -446,47 +474,55 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
           color:"#000", fontWeight: 500, letterSpacing:-0.1,
           lineHeight: 1.2,
           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+        }} title={intent.title}>
+          {signalTitle(intent.title)}
+        </div>
+        <span style={{
+          display:"flex", alignItems:"center", gap:6,
+          fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
+          letterSpacing:1,
         }}>
-          {intent.title}
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-          {isActive && <LiveDot size={6}/>}
-          <span style={{
-            fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-2)",
-            letterSpacing:1, textTransform:"uppercase",
-          }}>{statusLabel}</span>
-        </div>
+          {running && <LiveDot size={6}/>}
+          {statusLabel}
+        </span>
       </div>
 
-      {/* questions — the hero */}
+      {/* questions, the hero */}
       <QCount n={intent.questions} muted={!hasQ}/>
     </button>
   );
 }
 
 /* ---------- Inbound-questions hero count ---------- */
+// A bare number left you to guess what it counted. These are questions holding
+// on your answer, so the badge says pending and the number keeps its weight.
 function QCount({ n, muted }) {
   if (muted) {
     return null;
   }
   return (
-    <span style={{
-      display:"flex", alignItems:"center", gap:8,
-      padding:"6px 12px",
-      border:"1px solid #000",
-      background:"#FF8A00",
-      boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
-      flex:"0 0 auto",
-    }}>
+    <span
+      title={`${n} question${n === 1 ? "" : "s"} waiting on you`}
+      style={{
+        display:"flex", alignItems:"baseline", justifyContent:"center", gap:4,
+        padding:"3px 8px",
+        border:"1px solid #000",
+        background:"#FF8A00",
+        boxShadow:"inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500",
+        flex:"0 0 auto",
+      }}>
       <span style={{
-        fontFamily:"var(--mac-sans)", fontSize:22, fontWeight:700,
-        lineHeight:1, color:"#000", letterSpacing:-0.5,
+        fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
+        lineHeight:1, color:"#000", letterSpacing:-0.3,
       }}>{n}</span>
+      <span style={{
+        fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1, color:"#000",
+      }}>pending</span>
     </span>
   );
 }
 
-/* ---------- "new intent" row — bottom of the shelf ---------- */
+/* ---------- "new intent" row: bottom of the shelf ---------- */
 function NewIntentRow({ onClick }) {
   const [down, setDown] = useState(false);
   return (
@@ -523,7 +559,7 @@ function NewIntentRow({ onClick }) {
         <div style={{
           fontFamily:"var(--mac-sans)", fontSize: 15, fontWeight: 700,
           letterSpacing:-0.2,
-        }}>start a new signal</div>
+        }}>new signal</div>
       </div>
     </button>
   );

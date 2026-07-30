@@ -1,13 +1,13 @@
-// Negotiation history — the wire log of everything your agent has negotiated
+// Negotiation history, the wire log of everything your agent has negotiated
 // on your behalf. Reached from the account menu on the hub.
 //
 // Two modes. "stream" is the default: every turn from every thread merged into
 // one chronological tail -f, so you see the agent juggling several
 // counterparties at once. "grouped" slides in a thread drawer on the left and
-// narrows the log to the selected thread — the master/detail view.
+// narrows the log to the selected thread, the master/detail view.
 //
 // Live data comes from GET /users/:id/negotiations (threads with counterparty,
-// outcome, and per-turn agent reasoning). No demo fallback — signed out the
+// outcome, and per-turn agent reasoning). No demo fallback, signed out the
 // wire is simply empty.
 
 // A thread's result bucket: won (opportunity), lost, or still open.
@@ -81,7 +81,7 @@ function NegoTurnLine({ th, turn, you, withTag, onTag }) {
   );
 }
 
-// Outcome as an event in the stream — the moment a thread closed.
+// Outcome as an event in the stream, the moment a thread closed.
 function NegoClosedLine({ th, withTag }) {
   const r = negoResult(th);
   const { g } = NEGO_RESULT_GLYPH[r];
@@ -223,7 +223,7 @@ function NegotiationHistory({ onClose }) {
               border:"1px dashed #000", padding:"18px 16px",
               fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
             }}>
-              nothing on the wire yet — your agent logs every negotiation here
+              nothing on the wire yet, your agent logs every negotiation here
               as it happens.
             </div>
           ) : events.map((ev, i) =>
@@ -232,7 +232,7 @@ function NegotiationHistory({ onClose }) {
               : <NegoTurnLine key={`t-${ev.th.id}-${i}`} th={ev.th} turn={ev.turn}
                   you={isYou(ev.turn)} withTag={mode === "stream"} onTag={openGrouped}/>
           )}
-          {/* live cursor — the wire stays open */}
+          {/* live cursor, the wire stays open */}
           <span style={{
             fontFamily:"var(--mac-mono)", fontSize:12, color:"#FF8A00",
             animation:"mac-blink 1s steps(2) infinite",

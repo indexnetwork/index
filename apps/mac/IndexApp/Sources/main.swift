@@ -36,48 +36,120 @@ struct StoredCredential: Codable {
     var apiUrl: String
 }
 
-/// Generic-password Keychain wrapper for the single CLI API credential.
-enum Keychain {
+// ---------------------------------------------------------------------------
+// ⚠️  DEVELOPMENT-GRADE CREDENTIAL STORAGE, DO NOT SHIP THIS AS-IS.
+//
+// The single CLI API key is written as plain JSON to
+//   ~/Library/Application Support/network.index.system6/credential.json
+// with 0600 on the file and 0700 on its directory.
+//
+// This replaced a login-Keychain generic-password item, and it is a deliberate
+// downgrade made for one reason: the dev build is signed ad-hoc, so its code
+// identity is its exact binary hash. Every rebuild looked like a different
+// application to the Keychain's ACL, which re-prompted for the login password
+// on every single launch. A file has no ACL and therefore no prompt.
+//
+// What that costs, stated plainly:
+//   · The key sits in cleartext on disk. Anything running as this user can read
+//     it, no per-application gate, no prompt, no audit.
+//   · It is not encrypted at rest beyond FileVault (which protects a powered-off
+//     disk, not a logged-in session).
+//   · It is swept up by Time Machine and any backup or sync tool pointed at
+//     Application Support, and by "copy my whole home directory" migrations.
+//   · POSIX permissions are the only barrier, and they do not survive being
+//     copied through an archive that drops modes.
+//
+// PROD CHECKLIST, every box below must be ticked before a build that touches
+// real user credentials ships:
+//
+//   [ ] Obtain a Developer ID Application certificate and sign with it. This is
+//       the actual fix for the prompt problem: a real identity gives a stable
+//       code requirement, so the Keychain ACL keeps matching across rebuilds.
+//       Ad-hoc signing was the root cause, not the Keychain.
+//   [ ] Restore Keychain storage, revert this type to the SecItem generic
+//       password it replaced (see git history for the exact query), keeping
+//       kSecAttrAccessibleAfterFirstUnlock.
+//   [ ] Prefer the data-protection keychain: kSecUseDataProtectionKeychain =
+//       true plus a keychain-access-group entitlement. Access is then governed
+//       by entitlement rather than by per-binary ACL, which removes the prompt
+//       class of bug entirely.
+//   [ ] Enable the hardened runtime and App Sandbox; notarize the bundle.
+//   [ ] Migrate on upgrade: read this file once, write it to the Keychain, then
+//       delete the file AND its parent directory. Shipping without this strands
+//       a cleartext key on every dev machine that ever ran this build.
+//   [ ] Confirm the key never reaches localStorage, a WKWebView data store, or
+//       a log line. It is injected into the page in memory only, keep it so.
+//   [ ] Give the minted credential a real TTL server-side and re-check that
+//       logout still revokes it (see revokeCredential).
+//
+// Tracked so this cannot be forgotten: see docs in apps/mac/README.md.
+// ---------------------------------------------------------------------------
+
+/// File-backed store for the single CLI API credential. Development-grade:
+/// read the block above before extending or shipping it.
+enum CredentialStore {
+    /// Reused as the Application Support subdirectory name.
     static let service = "network.index.system6"
-    static let account = "api-key"
+    static let fileName = "credential.json"
+
+    private static var directoryURL: URL? {
+        FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent(service, isDirectory: true)
+    }
+
+    private static var fileURL: URL? {
+        directoryURL?.appendingPathComponent(fileName, isDirectory: false)
+    }
 
     static func save(_ cred: StoredCredential) {
-        guard let data = try? JSONEncoder().encode(cred) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        guard let dir = directoryURL, let url = fileURL,
+              let data = try? JSONEncoder().encode(cred) else { return }
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        // An atomic write swaps in a fresh inode, so the mode has to be set
+        // afterwards, doing it before would apply to a file that no longer
+        // exists by the time anyone can read it.
+        guard (try? data.write(to: url, options: [.atomic])) != nil else { return }
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     static func load() -> StoredCredential? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var out: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data,
+        guard let url = fileURL,
+              let data = try? Data(contentsOf: url),
               let cred = try? JSONDecoder().decode(StoredCredential.self, from: data)
         else { return nil }
         return cred
     }
 
     static func delete() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
+        guard let url = fileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
+/// Which avatar the negotiator wears: `{seed}` for a generated face, or
+/// `{photo}` for an uploaded one. Purely cosmetic and purely local, so it lives
+/// in UserDefaults rather than going anywhere near the credential store.
+enum AgentFaceStore {
+    private static let key = "AGENT_FACE"
+
+    static func save(_ value: [String: Any]?) {
+        guard let value = value,
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let json = String(data: data, encoding: .utf8) else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
+        UserDefaults.standard.set(json, forKey: key)
+    }
+
+    /// The stored JSON, ready to interpolate into the injection script.
+    static func loadJSON() -> String {
+        UserDefaults.standard.string(forKey: key) ?? "null"
     }
 }
 
@@ -191,8 +263,8 @@ final class LoopbackAuthServer {
         }
 
         if let apiKey = q("api_key"), let keyId = q("key_id"), !apiKey.isEmpty, !keyId.isEmpty {
-            respond(conn, status: "200 OK", title: "index authorized",
-                    message: "You can close this window and return to index.")
+            respond(conn, status: "200 OK", title: "Authentication complete",
+                    message: "You may now close this window", ok: true)
             finish(.success((apiKey: apiKey, keyId: keyId)))
         } else {
             respond(conn, status: "400 Bad Request", title: "Authorization failed",
@@ -201,14 +273,52 @@ final class LoopbackAuthServer {
         }
     }
 
-    private func respond(_ conn: NWConnection, status: String, title: String, message: String) {
+    /// The web frontend's index-wordmark.svg, inlined so the page renders the
+    /// same header without depending on the web origin being reachable.
+    private static let wordmarkSVG = """
+    <svg viewBox="0 0 522 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M184.51 21.66C184.51 18.33 187.42 15.73 191.23 15.73C195.04 15.73 197.95 18.33 197.95 21.66C197.95 24.99 195.1 27.54 191.23 27.54C187.36 27.54 184.51 25 184.51 21.66Z" fill="white"/>
+    <path d="M0 0.72998H7.47V42.61H0V0.72998Z" fill="white"/>
+    <path d="M16.6301 0.72998H25.0701L44.3701 27.26H45.4001V0.72998H52.9301V42.61H44.4301L25.1901 16.08H24.1001V42.61H16.6301V0.72998Z" fill="white"/>
+    <path d="M99.91 21.67C99.91 33.63 90.74 42.61 78.54 42.61H62.03V0.72998H78.54C90.74 0.72998 99.91 9.70995 99.91 21.67ZM92.2 21.67C92.2 14.93 86.25 9.88998 78.3 9.88998H69.5V33.44H78.3C86.25 33.44 92.2 28.4 92.2 21.66V21.67Z" fill="white"/>
+    <path d="M137.61 33.45V42.62H107.08V0.73999H137.31V9.91H114.55V17.13H135.31V25.99H114.55V33.46H137.62L137.61 33.45Z" fill="white"/>
+    <path d="M167.53 21.7899L181.49 42.61H172.75L162.43 27.86H160.97L150.71 42.61H141.3L155.56 21.37L141.84 0.72998H150.58L160.66 15.36H162.06L172.14 0.72998H181.55L167.53 21.7899Z" fill="white"/>
+    <path d="M209.87 0.72998H218.31L237.61 27.26H238.64V0.72998H246.17V42.61H237.67L218.43 16.08H217.34V42.61H209.87V0.72998Z" fill="white"/>
+    <path d="M285.8 33.45V42.62H255.27V0.73999H285.5V9.91H262.74V17.13H283.5V25.99H262.74V33.46H285.81L285.8 33.45Z" fill="white"/>
+    <path d="M324.77 9.88998H311.48V42.61H304.01V9.88998H290.72V0.719971H324.77V9.88998Z" fill="white"/>
+    <path d="M328.96 0.72998H336.91L346.14 28.35H347.41L356.09 0.72998H362.71L371.45 28.35H372.79L381.89 0.72998H390.33L376.92 42.61H368.42L360.59 17.24H358.71L350.88 42.61H342.38L328.97 0.72998H328.96Z" fill="white"/>
+    <path d="M391.54 21.67C391.54 9.34998 401.07 0 413.7 0C426.33 0 435.86 9.34998 435.86 21.67C435.86 33.99 426.33 43.34 413.7 43.34C401.07 43.34 391.54 33.99 391.54 21.67ZM428.14 21.67C428.14 14.63 421.89 9.35004 413.69 9.35004C405.49 9.35004 399.24 14.63 399.24 21.67C399.24 28.71 405.49 33.99 413.69 33.99C421.89 33.99 428.14 28.71 428.14 21.67Z" fill="white"/>
+    <path d="M459.46 29.5H450.42V42.61H442.95V0.72998H462.13C470.57 0.72998 477 6.91996 477 15.12C477 21.31 473.36 26.35 467.9 28.47L477.55 42.61H468.45L459.47 29.5H459.46ZM450.42 20.33H461.95C466.44 20.33 469.23 18.27 469.23 15.11C469.23 11.95 466.44 9.88998 461.95 9.88998H450.42V20.33Z" fill="white"/>
+    <path d="M497.83 25.56L491.4 30.96V42.61H483.93V0.72998H491.4V17.67H492.92L509.07 0.72998H521.03L503.31 20.21L521.46 42.61H512.11L497.85 25.55L497.83 25.56Z" fill="white"/>
+    </svg>
+    """
+
+    /// Landing-styled response page: web frontend header (wordmark on the dark
+    /// green background) with a centered status, and a check on success.
+    private func respond(_ conn: NWConnection, status: String, title: String, message: String, ok: Bool = false) {
+        let check = ok ? """
+        <div class="check"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#0b1612" \
+        stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+        """ : ""
         let html = """
-        <!doctype html><html><head><meta charset="utf-8"><title>\(title) — index</title>
-        <style>body{font-family:-apple-system,system-ui,sans-serif;background:#FDFDFD;color:#111;\
-        display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}\
-        .c{text-align:center;max-width:400px;padding:2rem}h1{font-size:1.25rem;margin:0 0 .5rem}\
-        p{font-size:.875rem;color:#666}</style></head>\
-        <body><div class="c"><h1>\(title)</h1><p>\(message)</p></div></body></html>
+        <!doctype html><html><head><meta charset="utf-8"><title>\(title) · index</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Public+Sans:wght@300;400;500;600&display=swap">
+        <style>
+        body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:#14241f;color:#F4FBF6;\
+        font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+        .nav{display:flex;align-items:center;padding:22px 56px;border-bottom:1px solid rgba(244,251,246,0.22)}
+        .nav svg{height:14px;width:auto;display:block}
+        main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+        .c{text-align:center;max-width:420px}
+        .check{width:56px;height:56px;margin:0 auto 26px;border-radius:50%;background:#3FBF7F;\
+        display:flex;align-items:center;justify-content:center}
+        h1{font-size:20px;font-weight:600;margin:0 0 10px}
+        p{font-size:14px;font-weight:500;margin:0;color:rgba(244,251,246,0.78)}
+        </style></head>
+        <body><nav class="nav">\(Self.wordmarkSVG)</nav>
+        <main><div class="c">\(check)<h1>\(title)</h1><p>\(message)</p></div></main></body></html>
         """
         let body = Data(html.utf8)
         let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
@@ -218,6 +328,181 @@ final class LoopbackAuthServer {
     }
 
     enum AuthError: Error { case noPort, timedOut, badState, missingCredential }
+}
+
+// ---------------------------------------------------------------------------
+// Harness detection: which agent CLIs are installed on this Mac. Follows the
+// approach block/buzz uses — a static catalog of known commands, each looked
+// up across the login-shell PATH plus well-known install dirs that a GUI app
+// doesn't inherit (homebrew, version-manager shims, nvm's node bins).
+// ---------------------------------------------------------------------------
+enum HarnessDetector {
+    /// Known harnesses and the command that proves each one is installed.
+    static let catalog: [(id: String, label: String, command: String)] = [
+        ("hermes",   "Hermes",       "hermes"),
+        ("claude",   "Claude Code",  "claude"),
+        ("codex",    "Codex",        "codex"),
+        ("goose",    "Goose",        "goose"),
+        ("cursor",   "Cursor Agent", "cursor-agent"),
+        ("gemini",   "Gemini CLI",   "gemini"),
+        ("opencode", "OpenCode",     "opencode"),
+        ("kimi",     "Kimi Code",    "kimi"),
+        ("amp",      "Amp",          "amp"),
+        ("aider",    "Aider",        "aider"),
+    ]
+
+    /// PATH from a login shell, fetched once (first access happens off the
+    /// main thread). A GUI app's own PATH is the stripped launchd default,
+    /// so this is where user-installed CLIs actually live.
+    private static let loginShellPath: String? = {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-l", "-c", "echo $PATH"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = Pipe()
+        do { try p.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let out = String(data: data, encoding: .utf8)?
+            .split(separator: "\n").last
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        return (out?.isEmpty == false) ? out : nil
+    }()
+
+    private static func searchDirs() -> [String] {
+        let home = NSHomeDirectory()
+        var dirs = (loginShellPath ?? "").split(separator: ":").map(String.init)
+        dirs += [
+            "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
+            "\(home)/.local/bin", "\(home)/.volta/bin", "\(home)/.asdf/shims",
+            "\(home)/.local/share/mise/shims", "\(home)/.bun/bin",
+        ]
+        // nvm initializes in interactive shells only, so its node bins are
+        // invisible even to a login shell; probe every installed version.
+        let nvmNode = "\(home)/.nvm/versions/node"
+        if let versions = try? FileManager.default.contentsOfDirectory(atPath: nvmNode) {
+            dirs += versions.map { "\(nvmNode)/\($0)/bin" }
+        }
+        var seen = Set<String>()
+        return dirs.filter { seen.insert($0).inserted }
+    }
+
+    /// One pass over the catalog: [{id, label, command, path}] per hit.
+    static func detect() -> [[String: String]] {
+        let fm = FileManager.default
+        let dirs = searchDirs()
+        return catalog.compactMap { harness in
+            for dir in dirs {
+                let path = "\(dir)/\(harness.command)"
+                if fm.isExecutableFile(atPath: path) {
+                    return ["id": harness.id, "label": harness.label,
+                            "command": harness.command, "path": path]
+                }
+            }
+            return nil
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hermes plugin setup: point the local hermes runtime at Index by writing the
+// plugin's env into ~/.hermes/.env, then install/enable the
+// indexnetwork/hermes-plugin. Non-interactive: the hermes CLI only prompts
+// for env values that are missing, and --enable skips the enable prompt.
+// ---------------------------------------------------------------------------
+enum HermesSetup {
+    /// Replace-or-append KEY=value lines in ~/.hermes/.env.
+    private static func writeEnv(_ values: [(String, String)]) throws {
+        let dir = NSHomeDirectory() + "/.hermes"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = dir + "/.env"
+        var lines = (try? String(contentsOfFile: path, encoding: .utf8))?
+            .split(separator: "\n", omittingEmptySubsequences: true).map(String.init) ?? []
+        for (key, _) in values {
+            lines.removeAll { $0.hasPrefix("\(key)=") }
+        }
+        for (key, value) in values { lines.append("\(key)=\(value)") }
+        try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+    }
+
+    private static func runCommand(_ path: String, _ args: [String]) -> (Int32, String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        do { try p.run() } catch { return (-1, "\(error)") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    static func run(apiKey: String) -> [String: Any] {
+        guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
+            return ["ok": false, "error": "hermes binary not found on this mac"]
+        }
+        do {
+            try writeEnv([
+                ("INDEX_API_KEY", apiKey),
+                ("INDEX_API_URL", AppConfig.apiBaseURL),
+                ("INDEX_MCP_URL", AppConfig.trimTrailingSlash(AppConfig.apiURL) + "/mcp"),
+            ])
+        } catch {
+            return ["ok": false, "error": "could not write ~/.hermes/.env"]
+        }
+        let installed = FileManager.default.fileExists(
+            atPath: NSHomeDirectory() + "/.hermes/plugins/index-network")
+        let args = installed
+            ? ["plugins", "enable", "index-network"]
+            : ["plugins", "install", "indexnetwork/hermes-plugin", "--enable"]
+        let (status, output) = runCommand(hermes, args)
+        if status != 0 {
+            return ["ok": false, "error": "hermes \(args.joined(separator: " ")): \(String(output.suffix(300)))"]
+        }
+        restartGatewayIfRunning(hermes)
+        return ["ok": true]
+    }
+
+    /// Plugins only load at gateway startup: if a gateway is running, bounce
+    /// it so an install/remove takes effect now instead of at next launch.
+    /// Best-effort — a stopped gateway picks the change up whenever it starts.
+    private static func restartGatewayIfRunning(_ hermes: String) {
+        let (status, output) = runCommand(hermes, ["gateway", "status"])
+        guard status == 0, output.contains("PID") else { return }
+        _ = runCommand(hermes, ["gateway", "restart"])
+    }
+
+    /// Undo run(): uninstall the plugin and drop the Index credentials from
+    /// ~/.hermes/.env. The agent (and its keys) are removed server-side by the
+    /// caller; this only cleans the local runtime.
+    static func teardown() -> [String: Any] {
+        if FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.hermes/plugins/index-network") {
+            guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
+                return ["ok": false, "error": "hermes binary not found on this mac"]
+            }
+            let (status, output) = runCommand(hermes, ["plugins", "remove", "index-network"])
+            if status != 0 {
+                return ["ok": false, "error": "hermes plugins remove: \(String(output.suffix(300)))"]
+            }
+            removeEnv(["INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+            restartGatewayIfRunning(hermes)
+            return ["ok": true]
+        }
+        removeEnv(["INDEX_API_KEY", "INDEX_API_URL", "INDEX_MCP_URL"])
+        return ["ok": true]
+    }
+
+    /// Drop KEY=value lines from ~/.hermes/.env.
+    private static func removeEnv(_ keys: [String]) {
+        let path = NSHomeDirectory() + "/.hermes/.env"
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+            .filter { line in !keys.contains(where: { line.hasPrefix("\($0)=") }) }
+        try? (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    }
 }
 
 // Injected into the page: pressing "chrome" (desktop background, menu bar, or a
@@ -241,13 +526,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var authServer: LoopbackAuthServer?
 
     /// Smallest window the web layout renders correctly at. See the note where
-    /// it's applied — the screens clip below roughly 860x600.
-    static let minContentSize = NSSize(width: 900, height: 640)
+    /// it's applied, the screens clip below roughly 860x600. The width is held
+    /// higher than that: the radar column keeps a 600px floor so its funnel
+    /// strip stays on one line (mainview.jsx), and the signal column needs
+    /// breathing room beside it.
+    static let minContentSize = NSSize(width: 1080, height: 640)
 
     /// Fallback for the (unexpected) case of launching with no screen attached.
     static let fallbackContentSize = NSSize(width: 1280, height: 860)
 
-    /// First-run frame: the whole usable screen — everything the menu bar and
+    /// First-run frame: the whole usable screen, everything the menu bar and
     /// Dock aren't already using. The layout has plenty to do with the room
     /// (the mainview's three columns and the radar cards all get wider), and
     /// this is only the default: the frame autosave takes over the moment the
@@ -266,7 +554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let config = WKWebViewConfiguration()
-        // Allow blob: URLs created from a file:// document to be fetched back —
+        // Allow blob: URLs created from a file:// document to be fetched back 
         // the bundle loader reads its own blob assets, which a file origin
         // otherwise treats as cross-origin.
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
@@ -281,7 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             source: windowDragScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 
         // Native auth bridge: the page posts {action:"login"|"logout"} and reads
-        // window.INDEX_NATIVE (injected at document start from the Keychain).
+        // window.INDEX_NATIVE (injected at document start from CredentialStore).
         config.userContentController.add(self, name: "indexAuth")
         config.userContentController.addUserScript(WKUserScript(
             source: Self.nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -298,7 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         webView.wantsLayer = true
         if let layer = webView.layer {
             layer.cornerRadius = 10
-            // macOS windows use continuous (squircle) corners — a default
+            // macOS windows use continuous (squircle) corners, a default
             // circular corner radius doesn't trace the same path and looks
             // broken at the corners. Match the window's curve.
             if #available(macOS 10.15, *) {
@@ -318,8 +606,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             backing: .buffered,
             defer: false
         )
-        window.title = "index — Workbench 1.3"
-        // Float the traffic lights directly over the content — no title bar
+        window.title = "index, Workbench 1.3"
+        // Float the traffic lights directly over the content, no title bar
         // strip. The web content fills the full window height.
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -327,15 +615,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // Match the Amiga Workbench desktop blue so there's no white flash
         // before the React app paints.
         window.backgroundColor = NSColor(srgbRed: 0x00/255.0, green: 0x55/255.0, blue: 0xAA/255.0, alpha: 1.0)
-        // No center() — the default frame is already the usable screen, and
+        // No center(), the default frame is already the usable screen, and
         // centering a window that tall would push it up under the menu bar.
         // Setting the autosave name restores a saved frame over it when there
         // is one, which is what should happen after the first run.
         window.setFrameAutosaveName("IndexMainWindow")
         window.contentView = webView
         // The web layout has a real floor. Below roughly 860x600 the Workbench
-        // windows start cutting into their own content — the intents hero and
-        // account shelf, the onboarding pane, the radar cards — so resizing
+        // windows start cutting into their own content, the intents hero and
+        // account shelf, the onboarding pane, the radar cards, so resizing
         // past it produces a broken screen rather than a smaller one. Hold a
         // margin above that and refuse to shrink further. contentMinSize is
         // the one that matters (it's the web viewport); minSize keeps the
@@ -343,7 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.contentMinSize = Self.minContentSize
         window.minSize = Self.minContentSize
         // An autosaved frame from an earlier build can be smaller than the
-        // current minimum — AppKit restores it verbatim, so grow it back.
+        // current minimum, AppKit restores it verbatim, so grow it back.
         var restored = window.frame
         restored.size.width  = max(restored.size.width,  Self.minContentSize.width)
         restored.size.height = max(restored.size.height, Self.minContentSize.height)
@@ -372,7 +660,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func presentError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "index — Workbench 1.3"
+        alert.messageText = "index, Workbench 1.3"
         alert.informativeText = message
         alert.alertStyle = .critical
         alert.runModal()
@@ -401,7 +689,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     // <input type="file"> does nothing in a WKWebView unless the host puts up
-    // the panel itself — WebKit only asks, it can't present one on macOS.
+    // the panel itself, WebKit only asks, it can't present one on macOS.
     func webView(_ webView: WKWebView,
                  runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo,
@@ -421,9 +709,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         if message.name == "indexAuth" {
-            let action = (message.body as? [String: Any])?["action"] as? String
+            let body = message.body as? [String: Any]
+            let action = body?["action"] as? String
             if action == "login" { startLogin() }
             else if action == "logout" { logout() }
+            else if action == "detectHarnesses" { detectHarnesses() }
+            else if action == "setupHermes" {
+                if let key = body?["value"] as? String { setupHermes(apiKey: key) }
+            }
+            else if action == "teardownHermes" { teardownHermes() }
+            else if action == "setAgentFace" {
+                // The page is loaded from a file:// URL, where WebKit gives the
+                // document an opaque origin and localStorage is not persisted.
+                // UserDefaults is the store that actually survives a relaunch.
+                AgentFaceStore.save(body?["value"] as? [String: Any])
+            }
             return
         }
         guard message.name == "windowDrag" else { return }
@@ -443,18 +743,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    /// Scan for installed agent CLIs off the main thread, then hand the
+    /// result to the page via window.__indexHarnessesDetected.
+    private func detectHarnesses() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let found = HarnessDetector.detect()
+            let json = (try? JSONSerialization.data(withJSONObject: found))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            DispatchQueue.main.async {
+                self?.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHarnessesDetected === 'function') { window.__indexHarnessesDetected(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
+    /// Configure the local hermes runtime off the main thread, then hand the
+    /// result to the page via window.__indexHermesSetup.
+    private func setupHermes(apiKey: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = HermesSetup.run(apiKey: apiKey)
+            let json = (try? JSONSerialization.data(withJSONObject: result))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                self?.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
+    /// Uninstall the hermes plugin and scrub its env off the main thread,
+    /// then hand the result to the page via window.__indexHermesSetup.
+    private func teardownHermes() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = HermesSetup.teardown()
+            let json = (try? JSONSerialization.data(withJSONObject: result))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                self?.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
     // MARK: - Native auth bridge
 
-    /// document-start script exposing the current API base + stored key to the page.
+    /// document-start script exposing the current API base + stored key to the
+    /// page, plus the negotiator's saved avatar so it is already correct on the
+    /// first paint rather than flashing a different face and then settling.
     private static func nativeInjectionScript() -> String {
-        let cred = Keychain.load()
+        let cred = CredentialStore.load()
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
             "apiKey": cred?.key ?? NSNull(),
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        return "window.INDEX_NATIVE = \(json);"
+        return """
+        window.INDEX_NATIVE = \(json);
+        window.INDEX_NATIVE.agentFace = \(AgentFaceStore.loadJSON());
+        """
     }
 
     /// Begin the browser login flow: open /cli-auth with a one-time state and a
@@ -488,7 +838,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         authServer = nil
         switch result {
         case .success(let cred):
-            Keychain.save(StoredCredential(
+            CredentialStore.save(StoredCredential(
                 key: cred.apiKey, keyId: cred.keyId,
                 apiUrl: AppConfig.trimTrailingSlash(AppConfig.apiURL)))
             notifyAuthChanged(apiKey: cred.apiKey)
@@ -499,8 +849,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func logout() {
-        if let cred = Keychain.load() { revokeCredential(cred) }
-        Keychain.delete()
+        if let cred = CredentialStore.load() { revokeCredential(cred) }
+        CredentialStore.delete()
         notifyAuthChanged(apiKey: nil)
     }
 

@@ -3,177 +3,26 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it, test } from "bun:test";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
-import type { ResolvedToolContext, ToolDeps } from "../../shared/agent/tool.helpers.js";
+import type { ToolDeps } from "../../shared/agent/tool.helpers.js";
 import { buildMinimalOpportunityCard, createOpportunityTools } from "../opportunity.tools.js";
 import { deduplicateByPerson } from "../opportunity.utils.js";
 
-type CapturedDiscoverInput = {
-  indexScope: string[];
-};
+describe("opportunity tool registry", () => {
+  it("does not register retired direct discovery tools", () => {
+    const names: string[] = [];
+    const defineTool = (definition: { name: string }) => {
+      names.push(definition.name);
+      return definition;
+    };
 
-function captureDiscoverToolForScopeTest(
-  runDiscoverFromQuery?: (input: CapturedDiscoverInput) => Promise<unknown>,
-  indexGraph: { invoke: (input: unknown) => Promise<unknown> } = {
-    invoke: async () => ({ readResult: { memberOf: [] } }),
-  },
-) {
-  let captured: { handler: (input: { context: ResolvedToolContext; query: Record<string, unknown> }) => Promise<string> } | undefined;
-  const defineTool = (def: { name: string }) => {
-    if (def.name === "discover_opportunities") captured = def as never;
-    return def;
-  };
-  const deps = {
-    database: {} as never,
-    systemDb: {} as never,
-    userDb: {} as never,
-    cache: {} as never,
-    graphs: {
-      opportunity: { invoke: async () => ({}) },
-      index: indexGraph,
-      networkMembership: { invoke: async () => ({}) },
-    } as never,
-    ...(runDiscoverFromQuery
-      ? { opportunityDiscovery: { runDiscoverFromQuery: runDiscoverFromQuery as never } }
-      : {}),
-  } as unknown as ToolDeps;
-  createOpportunityTools(defineTool as never, deps);
-  if (!captured) throw new Error("discover_opportunities tool not registered");
-  return captured;
-}
+    createOpportunityTools(defineTool as never, {} as ToolDeps);
 
-function makeScopeTestContext(overrides?: Partial<ResolvedToolContext>): ResolvedToolContext {
-  return {
-    userId: "viewer-1",
-    userName: "Viewer",
-    userEmail: "viewer@example.com",
-    user: { id: "viewer-1", name: "Viewer", email: "viewer@example.com" } as never,
-    userProfile: null,
-    userNetworks: [
-      { networkId: "focused-net", networkTitle: "Focused", isPersonal: false, permissions: ["member"], memberPrompt: null, indexPrompt: null, autoAssign: true, joinedAt: new Date() },
-      { networkId: "personal-net", networkTitle: "Personal", isPersonal: true, permissions: ["owner"], memberPrompt: null, indexPrompt: null, autoAssign: true, joinedAt: new Date() },
-      { networkId: "other-net", networkTitle: "Other", isPersonal: false, permissions: ["member"], memberPrompt: null, indexPrompt: null, autoAssign: true, joinedAt: new Date() },
-    ],
-    indexScope: ["focused-net", "personal-net"],
-    networkId: "focused-net",
-    scopeType: "network",
-    scopeId: "focused-net",
-    isOnboarding: false,
-    hasName: true,
-    ...overrides,
-  } as ResolvedToolContext;
-}
-
-describe("discover_opportunities — scoped discovery reach", () => {
-  it("uses focused network only, excluding personal-index assignment reach", async () => {
-    let capturedInput: CapturedDiscoverInput | undefined;
-    const tool = captureDiscoverToolForScopeTest(async (input) => {
-      capturedInput = input;
-      return { found: false, message: "No matching opportunities found." };
-    });
-
-    const raw = await tool.handler({
-      context: makeScopeTestContext(),
-      query: { searchQuery: "AI collaborators" },
-    });
-    const result = JSON.parse(raw) as { success: boolean };
-
-    expect(result.success).toBe(true);
-    expect(capturedInput?.indexScope).toEqual(["focused-net"]);
-    expect(capturedInput?.indexScope).not.toContain("personal-net");
-    expect(capturedInput?.indexScope).not.toContain("other-net");
-  });
-
-  it("fails closed when the scope envelope points at a non-membership network", async () => {
-    let capturedInput: CapturedDiscoverInput | undefined;
-    const tool = captureDiscoverToolForScopeTest(async (input) => {
-      capturedInput = input;
-      return { found: false, message: "No matching opportunities found." };
-    });
-
-    const raw = await tool.handler({
-      context: makeScopeTestContext({ scopeId: "missing-net", networkId: "missing-net" }),
-      query: { searchQuery: "AI collaborators" },
-    });
-    const result = JSON.parse(raw) as { success: boolean };
-
-    expect(result.success).toBe(true);
-    expect(capturedInput?.indexScope).toEqual([]);
-  });
-});
-
-describe("discover_opportunities — unscoped discovery reach", () => {
-  const unscopedContext = () => makeScopeTestContext({
-    networkId: undefined,
-    scopeType: undefined,
-    scopeId: undefined,
-  });
-
-  it("resolves every membership returned by the index graph", async () => {
-    let capturedInput: CapturedDiscoverInput | undefined;
-    const tool = captureDiscoverToolForScopeTest(
-      async (input) => {
-        capturedInput = input;
-        return { found: false, message: "No matching opportunities found." };
-      },
-      {
-        invoke: async () => ({
-          readResult: {
-            memberOf: [
-              { networkId: "network-1" },
-              { networkId: "network-2" },
-              { networkId: "network-3" },
-            ],
-          },
-        }),
-      },
-    );
-
-    const raw = await tool.handler({
-      context: unscopedContext(),
-      query: { searchQuery: "AI collaborators" },
-    });
-    const result = JSON.parse(raw) as { success: boolean };
-
-    expect(result.success).toBe(true);
-    expect(capturedInput?.indexScope).toEqual(["network-1", "network-2", "network-3"]);
-  });
-
-  it("surfaces index-graph errors instead of treating them as no memberships", async () => {
-    let discoveryCalled = false;
-    const tool = captureDiscoverToolForScopeTest(
-      async () => {
-        discoveryCalled = true;
-        return { found: false };
-      },
-      { invoke: async () => ({ error: "Failed to fetch network information." }) },
-    );
-
-    const raw = await tool.handler({
-      context: unscopedContext(),
-      query: { searchQuery: "AI collaborators" },
-    });
-    const result = JSON.parse(raw) as { success: boolean; error?: string };
-
-    expect(result).toEqual({
-      success: false,
-      error: "Failed to fetch network information.",
-    });
-    expect(discoveryCalled).toBe(false);
-  });
-
-  it("keeps the join-a-network response for genuine zero-membership users", async () => {
-    const tool = captureDiscoverToolForScopeTest();
-
-    const raw = await tool.handler({
-      context: unscopedContext(),
-      query: { searchQuery: "AI collaborators" },
-    });
-    const result = JSON.parse(raw) as { success: boolean; data?: { message?: string } };
-
-    expect(result.success).toBe(true);
-    expect(result.data?.message).toBe(
-      "You need to join at least one network (community) to discover opportunities. Use read_networks to see available networks, or create one.",
-    );
+    expect(names).not.toContain("discover_opportunities");
+    expect(names).not.toContain("get_discovery_run");
+    expect(names).not.toContain("cancel_discovery_run");
+    expect(names).toContain("list_opportunities");
+    expect(names).toContain("update_opportunity");
+    expect(names).toContain("confirm_opportunity_delivery");
   });
 });
 
@@ -249,6 +98,29 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
     expect(card.mainText).toBe("A suggested connection.");
     expect(card.narratorChip.text).toBe("A potential connection worth exploring.");
     expect(card.mainText).not.toContain("attended");
+  });
+
+  it("uses a safe fallback for list cards when evaluator reasoning is unsafe", () => {
+    const rawUuid = "123e4567-e89b-12d3-a456-426614174000";
+    const unsafeOpportunity = {
+      ...mockOpportunity,
+      interpretation: {
+        reasoning: `Lucy attended a private event with ${rawUuid}.`,
+        confidence: 0.85,
+      },
+    } as unknown as Opportunity;
+
+    const card = buildMinimalOpportunityCard(
+      unsafeOpportunity,
+      "viewer-456",
+      "counterpart-789",
+      "Lucy Chen",
+      null,
+    );
+
+    expect(card.mainText).not.toContain("attended");
+    expect(card.mainText).not.toContain(rawUuid);
+    expect(card.mainText.length).toBeGreaterThan(0);
   });
 
   it("should return safe card when interpretation or reasoning is missing", () => {

@@ -503,7 +503,7 @@ describe("negotiation graph — questioner enqueue on stall", () => {
 });
 
 describe("negotiateCandidates — session wrapper events", () => {
-  it("emits negotiation_session_start and _end per candidate with trigger + ids", async () => {
+  it("emits negotiation_session_start and _end per candidate without a trigger", async () => {
     const fakeGraph = {
       invoke: async (input: { opportunityId?: string }) => ({
         conversationId: `conv-for-${input.opportunityId}`,
@@ -532,7 +532,6 @@ describe("negotiateCandidates — session wrapper events", () => {
           { networkId: "net-1", prompt: "" },
           {
             traceEmitter: (e: Record<string, unknown>) => events.push(e),
-            trigger: "orchestrator",
           },
         );
       },
@@ -543,7 +542,7 @@ describe("negotiateCandidates — session wrapper events", () => {
     expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
     expect(starts[0].opportunityId).toBe("opp-10");
-    expect(starts[0].trigger).toBe("orchestrator");
+    expect(starts[0]).not.toHaveProperty('trigger');
     expect(starts[0].sourceUserId).toBe("u-src");
     expect(starts[0].candidateUserId).toBe("u-1");
     expect(starts[0].candidateName).toBe("Bob");
@@ -570,7 +569,7 @@ describe("negotiateCandidates — session wrapper events", () => {
           { id: "u-src" } as never,
           [{ userId: "u-2", reasoning: "r", valencyRole: "peer", candidateUser: { id: "u-2" } as never }],
           { networkId: "net-1", prompt: "" },
-          { traceEmitter: (e: Record<string, unknown>) => events.push(e), trigger: "ambient" },
+          { traceEmitter: (e: Record<string, unknown>) => events.push(e) },
         );
       },
     );

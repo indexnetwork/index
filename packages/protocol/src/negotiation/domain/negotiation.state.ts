@@ -335,9 +335,8 @@ export const NegotiationGraphState = Annotation.Root({
     default: () => undefined,
   }),
   /**
-   * Park-window budget in milliseconds. Ambient callers pass `AMBIENT_PARK_WINDOW_MS`
-   * (5 minutes); orchestrator callers pass a shorter window. This annotation default
-   * is a safety net for any caller that omits the field — keep it aligned with
+   * Park-window budget in milliseconds. The annotation default is a safety net
+   * for any caller that omits the field — keep it aligned with
    * `AMBIENT_PARK_WINDOW_MS` in packages/protocol/src/negotiation/negotiation.tools.ts.
    * Inlined rather than imported to avoid a state↔tools cycle.
    */

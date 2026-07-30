@@ -4,18 +4,12 @@ This file provides guidance to coding agents working in this repository.
 
 ## Repository Guidance
 
-Read and follow the root [`CLAUDE.md`](./CLAUDE.md) in full. It is the canonical,
-shared repository guide and its project overview, commands, architecture,
-conventions, testing requirements, Git workflow, and safety constraints apply to
-all coding agents—not only Claude Code.
+- Read the [Development Reference](./docs/guides/development-reference.md) for project commands, architecture, conventions, testing, Git workflow, and operational safety.
+- Use `manage-pr` for pull-request review, acceptance, merge, or closeout. Apply the project-specific PR requirements in the Development Reference; do not use a separate PR-finishing skill.
+- More deeply nested `AGENTS.md` files, when present, add to or override these instructions for files in their directory tree.
 
-When interpreting that guide:
+## Testing and PR verification
 
-- Treat references to "Claude", "Claude Code", or a Claude session as references
-  to the coding agent or agent session currently doing the work, unless the
-  passage specifically concerns the Claude plugin under `packages/claude-plugin/`.
-- Keep `CLAUDE.md` and this file aligned when changing repository-wide agent
-  instructions. Put detailed shared guidance in `CLAUDE.md`; keep this file as the
-  agent-neutral entry point so the two guides do not drift.
-- More deeply nested `AGENTS.md` files, when present, add to or override these
-  instructions for files in their directory tree.
+- This repository overrides generic full-suite branch-finishing guidance: follow the Development Reference’s targeted-validation policy.
+- For each change, run affected tests plus applicable build, typecheck, static-inventory, lint, and generated-artifact checks; report exact evidence in the PR.
+- Run database-backed tests only when the changed behavior requires them and only after proving `DATABASE_URL` is dedicated and disposable and setting `TEST_DATABASE_SAFE=1`; never bypass the fail-closed guard.

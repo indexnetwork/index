@@ -73,11 +73,12 @@ export function parseCliAuthRequest(params: URLSearchParams): CliAuthRequest | n
 }
 
 /**
- * Preserve the exact validated protocol request through web login.
+ * Preserve the exact validated protocol request through web login — used as
+ * the Better Auth callbackURL for the inline sign-in form on /cli-auth.
  *
  * @param pathname - CLI auth page pathname.
  * @param request - Validated versioned CLI auth request.
- * @returns Same-origin relative return path for the login page.
+ * @returns Same-origin relative return path for the auth page.
  */
 export function buildCliAuthReturnPath(
   pathname: string,
@@ -90,44 +91,6 @@ export function buildCliAuthReturnPath(
     returnUrl.searchParams.set('state', request.state);
   }
   return `${returnUrl.pathname}${returnUrl.search}`;
-}
-
-/**
- * Validate the home-page return envelope before forwarding it to Better Auth.
- * Only the canonical same-origin `/cli-auth` v1/v2 request generated above is
- * accepted; external, malformed, duplicate, or extended query strings fail closed.
- *
- * @param value - Raw `cli_return` query value.
- * @param origin - Current web origin.
- * @returns Absolute callback URL safe to pass to Better Auth, or null.
- */
-export function validateCliAuthReturnUrl(
-  value: string | null,
-  origin: string,
-): string | null {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
-
-  try {
-    const returnUrl = new URL(value, origin);
-    if (
-      returnUrl.origin !== origin
-      || returnUrl.pathname !== '/cli-auth'
-      || returnUrl.hash
-      || returnUrl.username
-      || returnUrl.password
-    ) {
-      return null;
-    }
-
-    const request = parseCliAuthRequest(returnUrl.searchParams);
-    if (!request) return null;
-
-    const canonicalPath = buildCliAuthReturnPath('/cli-auth', request);
-    if (`${returnUrl.pathname}${returnUrl.search}` !== canonicalPath) return null;
-    return new URL(canonicalPath, origin).toString();
-  } catch {
-    return null;
-  }
 }
 
 /** Build the fixed-shape CLI credential request body. */

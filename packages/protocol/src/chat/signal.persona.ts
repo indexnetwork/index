@@ -404,7 +404,6 @@ export const SIGNAL_PERSONA: ChatPersonaConfig = {
   createTools: (deps, preResolvedContext) => createSignalTools(deps, preResolvedContext),
   loopBehaviors: {
     // Direct discovery is absent, so its create-intent retry callback must stay off.
-    createIntentCallback: false,
     // create_intent can legitimately return proposal cards; retain recovery/stripping.
     hallucinationRecovery: true,
   },

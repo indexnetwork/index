@@ -94,6 +94,7 @@ const envSchema = z.object({
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
+  INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
@@ -115,6 +116,7 @@ const envSchema = z.object({
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
+  NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
   NEGOTIATION_ASK_USER_ENABLED: optionalBoolean,
   NEGOTIATION_CONSULTATION_POLICY_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'on'])]).optional(),
   NEGOTIATION_ASK_USER_WINDOW_MS: optionalInt,

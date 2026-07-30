@@ -57,14 +57,14 @@ class APIClient {
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         let errorData;
-        
+
         try {
           errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
         } catch {
           // If JSON parsing fails, keep the default message
         }
-        
+
         throw new APIError(errorMessage, response.status, errorData);
       }
 
@@ -79,7 +79,7 @@ class APIClient {
       if (error instanceof APIError) {
         throw error;
       }
-      
+
       // Network or other errors
       throw new APIError(
         error instanceof Error ? error.message : 'Network error',
@@ -220,12 +220,12 @@ export const apiClient = new APIClient();
 // Hook for authenticated API calls (Better Auth cookie-based sessions)
 export function useAuthenticatedAPI() {
   const session = authClient.useSession();
-  
+
   // Use a ref to hold the current session, so the callback doesn't depend on session object reference.
   // This prevents unnecessary recreations when session refreshes but auth state doesn't change.
   const sessionRef = useRef(session.data?.session);
   sessionRef.current = session.data?.session;
-  
+
   // Only depend on whether we're authenticated (boolean), not the session object itself.
   // This keeps the callback stable across session refreshes.
   const isAuthenticated = !!session.data?.session;
@@ -285,4 +285,4 @@ export const api = {
   put: <T>(endpoint: string, data?: unknown) => apiClient.put<T>(endpoint, data),
   patch: <T>(endpoint: string, data?: unknown) => apiClient.patch<T>(endpoint, data),
   delete: <T>(endpoint: string) => apiClient.delete<T>(endpoint),
-}; 
+};

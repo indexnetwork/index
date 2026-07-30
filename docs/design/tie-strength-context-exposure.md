@@ -1273,7 +1273,7 @@ No read-gating test should be added in phases A–D because no read gate is appr
 - changing opportunity eligibility, terminal-state rules, or negotiation-finalizer behavior (including through `CONTACT_SIGNAL_CAPTURE_ENABLED`);
 - per-tie read filtering in phases A–D;
 - a pre-assignment confirmation gate in v1; or
-- updating `CLAUDE.md` to describe unimplemented behavior.
+- updating the Development Reference to describe unimplemented behavior.
 
 ## Open questions
 

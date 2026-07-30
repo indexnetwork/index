@@ -6,6 +6,7 @@ import type { NegotiationSeat, NegotiationProtocolVersion } from "../../shared/s
 import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../../shared/interfaces/database.interface.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "../domain/negotiation.memory.js";
 import { renderBargainingShiftSection } from "../domain/negotiation.deadlock.js";
+import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stanceQuerySatisfiedRule } from "../domain/negotiation.stance.contracts.js";
 import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "../negotiation.attribution.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 
@@ -18,7 +19,7 @@ const SYSTEM_PROMPT = `You are the Index Negotiator, an AI agent acting on behal
 Your user's role in this connection: {role}
 Network context: {networkContext}
 
-Your job: Evaluate whether this connection genuinely serves {userName}'s interests given their role. Argue their case honestly — acknowledge weaknesses, but advocate for genuine fit.
+Your job: Evaluate whether this connection genuinely serves {userName}'s interests given their role. {stanceFraming}
 
 Rules:
 {actionRules}
@@ -200,6 +201,11 @@ export class IndexNegotiator {
     // Deadlock→bargaining stance (IND-428): v2 only — defense in depth on top
     // of the graph-side gating, mirroring the canAskUser guard above.
     const bargainingActive = input.bargaining != null && version === "v2";
+    // Negotiator stance (IND-611). Resolved from the environment once per turn
+    // via the domain contract, exactly like `configuredScreenMode()`. Under the
+    // `advocate` default every stance fragment below is the legacy string, so
+    // the rendered prompt is byte-identical to the pre-IND-611 build.
+    const stance = configuredNegotiatorStance();
     const schema = turnSchemaFor(version, seat, isFinalTurn, {
       system: SystemNegotiationTurnSchema,
       final: FinalNegotiationTurnSchema,
@@ -211,7 +217,7 @@ export class IndexNegotiator {
     const networkContext = input.indexContext.prompt || "General discovery";
     const actionRules = (version === "v2"
       ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
-      : V1_ACTION_RULES) + (canAskUser ? ASK_USER_RULE : "");
+      : V1_ACTION_RULES) + stanceActionRules(stance) + (canAskUser ? ASK_USER_RULE : "");
     const finalTurnInstruction = input.isFinalTurn
       ? (version === "v2"
           ? (seat === "initiator"
@@ -230,11 +236,14 @@ export class IndexNegotiator {
 QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotiation. Before evaluating intents or profile overlap, first answer: does ${otherName} satisfy the search query "${input.discoveryQuery}"?
 - If the query is a role or identity term (e.g. "samurai", "investors", "designers"): check whether ${otherName} IS that thing based on their profile. Subject-matter adjacency does not count (drawing samurai ≠ being a samurai, raising funding ≠ being an investor).
 - If ${otherName} does NOT satisfy the query: REJECT the match. Background intents cannot rescue a query mismatch.
-- If ${otherName} DOES satisfy the query: PROPOSE or ACCEPT the connection and evaluate fit normally using intents and profile data.`
+${stanceQuerySatisfiedRule(stance, otherName, userName)}`
       : '';
 
     const systemPrompt = SYSTEM_PROMPT
       .replace("{actionRules}", actionRules)
+      // Stance framing is substituted BEFORE the global {userName} replace so
+      // its own {userName} placeholders resolve in the same pass.
+      .replace("{stanceFraming}", stanceJobFraming(stance))
       .replace(/{userName}/g, userName)
       .replace("{discoveryContext}", discoveryContext)
       .replace("{discoveryQueryContext}", discoveryQueryContext)
@@ -246,6 +255,7 @@ QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotia
         userName,
         canAskUser,
         consecutiveNonConvergent: input.bargaining?.consecutiveNonConvergent ?? 0,
+        stance,
       }))
       .replace("{negotiatorMemory}", renderNegotiatorMemorySection(input.memory ?? []));
 

@@ -1,3 +1,4 @@
+import { projectOwnerScreenDecision, readInitiatorUserId } from './negotiation-lifecycle.projection';
 import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityPendingBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
@@ -71,7 +72,7 @@ function isMatchProvenanceEntry(value: unknown): value is MatchProvenanceEntry {
     });
 }
 
-function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reason: string | null; turnCount: number | null } | null {
+function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reason: string | null; turnCount: number | null; reasoning: string | null } | null {
   if (!Array.isArray(parts)) return null;
   for (const part of parts) {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
@@ -88,6 +89,10 @@ function readNegotiationOutcome(parts: unknown): { hasOpportunity: boolean; reas
       hasOpportunity,
       reason: typeof data.reason === 'string' ? data.reason : null,
       turnCount: typeof data.turnCount === 'number' && Number.isFinite(data.turnCount) ? data.turnCount : null,
+      // IND-610: owner-only — never projected into the shared `outcome` field.
+      // Only ever reaches a caller through `projectScreenDecision`, which is
+      // itself gated on the viewer being the negotiation's initiator.
+      reasoning: typeof data.reasoning === 'string' ? data.reasoning : null,
     };
   }
   return null;
@@ -659,9 +664,7 @@ export class ConversationDatabaseAdapter {
       // A screened-out outreach gate is private to the client that initiated
       // it. Never project its lifecycle to the counterparty through the shared
       // A2A conversation.
-      const initiatorUserId = typeof metadata.initiatorUserId === 'string'
-        ? metadata.initiatorUserId
-        : metadata.sourceUserId;
+      const initiatorUserId = readInitiatorUserId(metadata);
       if (outcome?.reason === 'screened_out' && initiatorUserId !== viewerUserId) continue;
       negotiationByConv.set(row.conversationId, {
         taskId: row.taskId,
@@ -674,6 +677,13 @@ export class ConversationDatabaseAdapter {
         maxTurns,
         signalCount: readNegotiationSignalCount(metadata),
         outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
+        // IND-610: the owner-facing outreach-gate decision. The ownership
+        // check lives inside the projection and is re-applied there — it is
+        // not inherited from the `screened_out` skip above, which is a listing
+        // rule for this one query rather than a privacy guarantee any caller
+        // of the projection can rely on. Named-field projection only; the raw
+        // `tasks.metadata` blob is never returned.
+        screenDecision: projectOwnerScreenDecision(metadata, outcome, viewerUserId),
         updatedAt: row.updatedAt,
       });
     }
@@ -3520,7 +3530,7 @@ export class ConversationDatabaseAdapter {
   /**
    * Get message metadata (traceEvents, debugMeta) for a list of message IDs.
    */
-  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> {
+  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; discoveries: unknown; createdAt: Date }>> {
     if (messageIds.length === 0) return [];
     const rows = await db
       .select({ id: schema.messages.id, metadata: schema.messages.metadata, createdAt: schema.messages.createdAt })
@@ -3535,6 +3545,7 @@ export class ConversationDatabaseAdapter {
         traceEvents: meta.traceEvents ?? null,
         debugMeta: meta.debugMeta ?? null,
         streamingDrafts: meta.streamingDrafts ?? null,
+        discoveries: meta.discoveries ?? null,
         createdAt: r.createdAt,
       };
     });

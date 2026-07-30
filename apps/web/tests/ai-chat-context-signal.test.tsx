@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   apiClient: {
     stream: vi.fn(),
     post: vi.fn(),
+    get: vi.fn(),
   },
   refetchSessions: vi.fn(),
 }));
@@ -163,6 +164,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
   beforeEach(() => {
     mocks.apiClient.stream.mockReset();
     mocks.apiClient.post.mockReset();
+    mocks.apiClient.get.mockReset();
     mocks.refetchSessions.mockReset();
     mocks.apiClient.post.mockResolvedValue({});
   });
@@ -571,6 +573,15 @@ describe('AIChatContext Signal persona transport and ownership', () => {
   test('forwards blocking user_question events into live questions for guided surfaces', async () => {
     const stream = controlledStream({ sessionId: 'signal-session', persona: 'signal' });
     mocks.apiClient.stream.mockResolvedValueOnce(stream.response);
+    mocks.apiClient.get.mockResolvedValueOnce({
+      questions: [{
+        id: 'question-1',
+        detection: { sourceType: 'intent', sourceId: 'intent-1' },
+        actors: [],
+        payload: { title: 'Signal focus', prompt: 'What are you looking for?', options: [{ label: 'A collaborator', description: 'Someone to build with' }], multiSelect: false },
+        status: 'pending', answer: null, expiresAt: null, createdAt: '2026-01-01T00:00:00Z', conversationId: 'signal-session',
+      }],
+    });
 
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'web first' }));

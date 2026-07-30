@@ -5,6 +5,7 @@ import { useAuthContext } from "@/contexts/AuthContext";
 import { getAllPosts, type BlogPost } from "@/lib/blog";
 import Nav, { GithubStar, ensureLandingFonts } from "./Nav";
 import Footer from "./Footer";
+import { WaitlistForm } from "./WaitlistForm";
 import "./landing.css";
 
 type Step = {
@@ -493,7 +494,7 @@ function formatPostDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d
-    .toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" })
+    .toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit", timeZone: "UTC" })
     .toUpperCase();
 }
 
@@ -655,7 +656,7 @@ function SubscribeModal() {
       const res = await fetch(apiUrl("/api/subscribe"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "waitlist" }),
+        body: JSON.stringify({ email, type: "newsletter" }),
       });
       setStatus(res.ok ? "success" : "error");
     } catch {
@@ -743,15 +744,11 @@ function SubscribeModal() {
 
 function WaitlistModal() {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", whatYouDo: "", whoToMeet: "" });
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
-    "idle",
-  );
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const onOpen = () => {
-      setStatus("idle");
-      setForm({ name: "", email: "", whatYouDo: "", whoToMeet: "" });
+      setLoading(false);
       setOpen(true);
     };
     window.addEventListener("openWaitlistModal", onOpen);
@@ -761,35 +758,13 @@ function WaitlistModal() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && status !== "loading") setOpen(false);
+      if (e.key === "Escape" && !loading) setOpen(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, status]);
+  }, [open, loading]);
 
   if (!open) return null;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.email || !form.name) return;
-    setStatus("loading");
-    try {
-      const res = await fetch(apiUrl("/api/subscribe"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: form.email,
-          type: "waitlist",
-          name: form.name,
-          whatYouDo: form.whatYouDo,
-          whoToMeet: form.whoToMeet,
-        }),
-      });
-      setStatus(res.ok ? "success" : "error");
-    } catch {
-      setStatus("error");
-    }
-  };
 
   return (
     <div
@@ -797,7 +772,7 @@ function WaitlistModal() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="landing-waitlist-title"
-      onClick={() => status !== "loading" && setOpen(false)}
+      onClick={() => !loading && setOpen(false)}
     >
       <div className="landing-modal-backdrop" aria-hidden="true" />
       <div className="landing-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -805,20 +780,27 @@ function WaitlistModal() {
           type="button"
           className="landing-modal-close"
           onClick={() => setOpen(false)}
-          disabled={status === "loading"}
+          disabled={loading}
           aria-label="Close"
         >
           ×
         </button>
 
-        {status === "success" ? (
-          <div className="landing-modal-success">
-            <h3 id="landing-waitlist-title" className="landing-modal-title">
-              you&rsquo;re on the list
-            </h3>
-            <p className="landing-modal-lede">
-              Check your inbox for your welcome email.
-            </p>
+        <WaitlistForm
+          idPrefix="landing-waitlist"
+          onStatusChange={(s) => setLoading(s === "loading")}
+          header={
+            <>
+              <h3 id="landing-waitlist-title" className="landing-modal-title">
+                join the waitlist
+              </h3>
+              <p className="landing-modal-lede">
+                Leave your email — we&rsquo;ll let you know when
+                we&rsquo;re live and keep you posted on updates.
+              </p>
+            </>
+          }
+          successAction={
             <button
               type="button"
               className="landing-modal-submit"
@@ -826,96 +808,8 @@ function WaitlistModal() {
             >
               Close
             </button>
-          </div>
-        ) : (
-          <>
-            <h3 id="landing-waitlist-title" className="landing-modal-title">
-              join the waitlist
-            </h3>
-            <p className="landing-modal-lede">
-              Tell us a bit about yourself — we&rsquo;ll let you know when
-              we&rsquo;re live and keep you posted on updates.
-            </p>
-            <form onSubmit={submit} className="landing-modal-form">
-              <label htmlFor="landing-waitlist-name" className="landing-modal-label">
-                Name <span className="landing-modal-req">*</span>
-              </label>
-              <input
-                id="landing-waitlist-name"
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="landing-modal-input"
-                required
-                disabled={status === "loading"}
-                autoFocus
-              />
-
-              <label
-                htmlFor="landing-waitlist-email"
-                className="landing-modal-label"
-                style={{ marginTop: 10 }}
-              >
-                Email <span className="landing-modal-req">*</span>
-              </label>
-              <input
-                id="landing-waitlist-email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="landing-modal-input"
-                required
-                disabled={status === "loading"}
-              />
-
-              <label
-                htmlFor="landing-waitlist-whatYouDo"
-                className="landing-modal-label"
-                style={{ marginTop: 10 }}
-              >
-                What do you do?
-              </label>
-              <input
-                id="landing-waitlist-whatYouDo"
-                type="text"
-                value={form.whatYouDo}
-                onChange={(e) => setForm({ ...form, whatYouDo: e.target.value })}
-                className="landing-modal-input"
-                disabled={status === "loading"}
-              />
-
-              <label
-                htmlFor="landing-waitlist-whoToMeet"
-                className="landing-modal-label"
-                style={{ marginTop: 10 }}
-              >
-                Who do you want to meet?
-              </label>
-              <textarea
-                id="landing-waitlist-whoToMeet"
-                value={form.whoToMeet}
-                onChange={(e) => setForm({ ...form, whoToMeet: e.target.value })}
-                className="landing-modal-input"
-                style={{ resize: "vertical", minHeight: 80 }}
-                rows={3}
-                disabled={status === "loading"}
-              />
-
-              {status === "error" && (
-                <p className="landing-modal-error">
-                  Something went wrong. Please try again.
-                </p>
-              )}
-              <button
-                type="submit"
-                className="landing-modal-submit"
-                disabled={status === "loading"}
-              >
-                {status === "loading" ? "Submitting…" : "Join the waitlist"}
-              </button>
-            </form>
-          </>
-        )}
+          }
+        />
       </div>
     </div>
   );

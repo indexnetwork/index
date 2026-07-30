@@ -100,7 +100,7 @@ replace it implicitly with `origin/dev`.
 
 If the previous release PR was squash-merged into `main`, `dev` may still contain the same changes as individual commits. That makes `merge-base` look old and causes the next release PR to re-include already-shipped commits, often with conflicts. Follow the detection/rebuild steps in `../_shared/squash-release-reconciliation.md` before trusting `BASE..HEAD`. When repair is needed, that workflow outputs a repaired `BASE` and `HEAD`; use those exact values for the changelog **and** branch push below.
 
-After the release PR merges, `finish-pr` should reconcile `main` back into `dev` with a no-content merge so the next release starts from sane ancestry.
+After the release PR merges, `manage-pr` should reconcile `main` back into `dev` with a no-content merge so the next release starts from sane ancestry.
 
 Collect the required evidence from git log and git diff:
 

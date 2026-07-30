@@ -69,7 +69,6 @@ export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, Hy
 export type { IntegrationAdapter, IntegrationConnection, IntegrationSession, IntegrationSessionOptions, ToolActionResponse } from "./shared/interfaces/integration.interface.js";
 export type { IntentGraphQueue } from "./shared/interfaces/queue.interface.js";
 export type { Scraper } from "./shared/interfaces/scraper.interface.js";
-export type { DiscoveryRunInput, DiscoveryRunRecord } from "./shared/interfaces/discovery-run.interface.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./shared/interfaces/enrichment-run.interface.js";
 export type { NegotiationTimeoutQueue, AskUserExpiryPayload } from "./shared/interfaces/negotiation-events.interface.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./shared/interfaces/agent-dispatcher.interface.js";
@@ -239,6 +238,7 @@ export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors
 export { getPrimaryActionLabel } from "./capabilities/opportunities.facade.js";
 export { computeFeedHealth } from "./capabilities/opportunities.facade.js";
 export type { FeedHealthInput } from "./capabilities/opportunities.facade.js";
+export { isIntroducerDiscoveryEnabled } from "./capabilities/opportunities.facade.js";
 export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./capabilities/opportunities.facade.js";
 export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./capabilities/opportunities.facade.js";
 export { persistOpportunities } from "./capabilities/opportunities.facade.js";

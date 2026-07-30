@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import { apiClient } from "@/lib/api";
+import AuthForm from "@/components/AuthForm";
 import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, buildLegacyCliCallbackUrl, parseCliAuthRequest, type CliAuthRequest } from "@/lib/cli-auth";
 
 /**
@@ -18,7 +19,8 @@ import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthRe
  *   1. Fail closed on malformed/unknown protocol combinations
  *   2. If user has a session cookie, mint a version-tagged CLI API key
  *   3. Return the v1-compatible session_token name or the state-bound v2 fields
- *   4. If no session, preserve the exact validated request through login
+ *   4. If no session, show the sign-in form inline; Better Auth returns to
+ *      this exact validated request after login
  *
  * The v1 bridge must remain until released clients have aged out. Its
  * session_token value is deliberately an API-key secret, never a browser JWT.
@@ -27,11 +29,11 @@ function CliAuthPage() {
   const [request] = useState<CliAuthRequest | null>(() =>
     parseCliAuthRequest(new URLSearchParams(window.location.search))
   );
-  const [status, setStatus] = useState<"loading" | "error" | "redirecting">(
+  const [status, setStatus] = useState<"loading" | "login" | "error" | "redirecting">(
     request ? "loading" : "error",
   );
   const [error, setError] = useState<string | null>(
-    request ? null : "Invalid CLI callback. Use `index login` from the CLI.",
+    request ? null : "Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.",
   );
   const exchangeStartedRef = useRef(false);
 
@@ -47,13 +49,10 @@ function CliAuthPage() {
         const session = await authClient.getSession();
 
         if (!session.data?.session) {
-          // No session — redirect to home page to log in, then return here
-          // with the same callback and one-time state intact.
-          const returnPath = buildCliAuthReturnPath(
-            window.location.pathname,
-            authRequest,
-          );
-          window.location.href = `/?cli_return=${encodeURIComponent(returnPath)}`;
+          // No session — show the sign-in form inline. Redirect-based logins
+          // (Google, magic link) return to this exact callback+state request;
+          // non-redirecting ones re-run the exchange via onAuthenticated.
+          setStatus("login");
           return;
         }
 
@@ -65,7 +64,7 @@ function CliAuthPage() {
         );
         if (!credential.key || !credential.id || !credential.expiresAt) {
           setStatus("error");
-          setError("Failed to obtain CLI credentials. Please try logging in again.");
+          setError("Failed to obtain credentials. Please try signing in again.");
           return;
         }
 
@@ -80,7 +79,7 @@ function CliAuthPage() {
           );
       } catch {
         setStatus("error");
-        setError("Authentication failed. Please try `index login` again.");
+        setError("Authentication failed. Please try signing in again from the app.");
       }
     }
 
@@ -88,18 +87,26 @@ function CliAuthPage() {
   }, [request]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center max-w-sm px-6">
+    <div className="flex-1 flex items-center justify-center bg-white">
+      <div className="text-center max-w-sm w-full px-6">
+        {status === "login" && request && (
+          <div className="auth auth-light text-left">
+            <AuthForm
+              callbackURL={`${window.location.origin}${buildCliAuthReturnPath(window.location.pathname, request)}`}
+              onAuthenticated={() => window.location.reload()}
+            />
+          </div>
+        )}
         {status === "loading" && (
           <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Authorizing CLI</h1>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">Signing you in</h1>
             <p className="text-sm text-gray-500">Connecting to your account...</p>
           </>
         )}
         {status === "redirecting" && (
           <>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">CLI authorized</h1>
-            <p className="text-sm text-gray-500">Returning to terminal... You can close this window.</p>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">Signed in</h1>
+            <p className="text-sm text-gray-500">Returning to the app... You can close this window.</p>
           </>
         )}
         {status === "error" && (

@@ -1,40 +1,15 @@
 ---
 name: create-worktree
 description: >-
-  Create or reuse an isolated Index worktree and open its standalone visible
-  Herdr-managed Pi, Codex, or Kimi session. Use before standalone implementation
-  from the canonical root or when validating a standalone branch/worktree/workspace
-  identity. Do not use for roots or children owned by pi-herdr-orchestrator.
+  Create or reuse an isolated Index Git worktree for implementation. Use before
+  implementation from the canonical root or when validating a branch/worktree
+  identity.
 ---
 
-# Create a standalone worktree session
+# Create an isolated worktree
 
 Keep the canonical root on `dev` and read-only for source changes. This workflow is
-for a **standalone** implementation session only.
-
-If the installed orchestrator extension owns the request:
-
-- `orchestrator_start` creates the root worktree-backed workspace;
-- `orchestrator_delegate` creates child semantic branches, worktrees, and named tabs;
-- this skill must not pre-create, reopen, or relaunch either surface.
-
-Use `run-agent-orchestration` instead. Never recreate extension mechanics with Herdr
-CLI commands.
-
-## Herdr preflight
-
-Before standalone worktree work, verify the installed CLI, running server, and chosen
-agent integration:
-
-```bash
-command -v herdr
-herdr status server
-herdr integration status
-```
-
-If Herdr is unavailable, ask the user to launch/fix it. Do not silently fall back to a
-hidden implementation subagent. The legacy helper is used only when the user
-explicitly chooses that fallback.
+for implementation in an isolated Git worktree.
 
 ## Branch and folder policy
 
@@ -86,40 +61,10 @@ bun run worktree:setup "$FOLDER"
 
 Setup is mandatory: it installs dependencies and links root environment files.
 
-## Open the standalone Herdr surface without focus
+## Choose the execution environment
 
-Open the exact linked worktree as its own nested workspace:
-
-```bash
-herdr worktree open \
-  --path "$WORKTREE" \
-  --label "$FOLDER" \
-  --no-focus \
-  --json
-```
-
-Record `.result.workspace.workspace_id` and `.result.root_pane.pane_id`. The returned
-worktree metadata must report `is_linked_worktree: true` and the canonical `repo_root`.
-If absent, close that accidental surface and reopen through `herdr worktree open`.
-`already_open: true` means reuse after identity checks, not permission to skip them.
-
-Never:
-
-- use `herdr workspace create --cwd` for a repository checkout;
-- open the canonical root itself with `herdr worktree open`;
-- manually create a wave root or child tab for an extension-managed request;
-- start a second writer in an existing worktree.
-
-If the pane is an interactive shell with no agent, launch the chosen standalone
-harness through the exact pane ID without focusing it:
-
-```bash
-herdr pane send-text "$PANE_ID" "pi" # or codex/kimi when explicitly chosen
-herdr pane send-keys "$PANE_ID" enter
-```
-
-Do not use `herdr agent start` as the normal standalone launch path. All pane reads,
-text, and keys remain exact-ID-targeted and non-focusing.
+After the checkout is verified, the caller chooses its normal execution environment.
+Do not start a second writer in an existing worktree.
 
 ## Verify before mutation
 
@@ -145,8 +90,5 @@ Never disable signing repository-wide.
 
 ## See also
 
-- `run-worktree-session` — standalone handoff and implementation lifecycle, or child
-  execution after the extension has already created a worktree.
-- `run-agent-orchestration` — project policy adapter for extension-managed roots and
-  children.
-- `finish-pr` — explicit merge approval and post-merge verification.
+- `run-worktree-session` — implementation handoff and lifecycle.
+- `manage-pr` — PR readiness, explicit merge approval, and post-merge verification.

@@ -27,7 +27,6 @@
 
 // ── Flat domain files ─────────────────────────────────────────────────────────
 export * from "./opportunity.state.js";
-export * from "./opportunity.discovery.contracts.js";
 export * from "./opportunity.labels.js";
 export * from "./opportunity.utils.js";
 export * from "./opportunity.actor.js";
@@ -36,7 +35,6 @@ export * from "./opportunity.claim-safety.js";
 export * from "./opportunity.presentation.js";
 export * from "./opportunity.safe-presentation.js";
 export * from "./opportunity.presentation-cache.js";
-export * from "./opportunity.discovery-run-coalescing.js";
 export * from "./negotiation-summary.builder.js";
 export * from "./discovery-question.helper.js";
 

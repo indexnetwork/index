@@ -32,4 +32,4 @@ export function formatChatDayLabel(iso: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-} 
+}

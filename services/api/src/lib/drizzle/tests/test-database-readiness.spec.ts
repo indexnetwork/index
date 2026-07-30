@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 
-import { checkTestDatabaseReadiness, hasParentTestDatabaseReadiness, readOriginalProcessArgv, REQUIRED_TEST_DATABASE_COLUMNS, shouldRequireTestDatabase, validateTestDatabaseUrl } from '../test-database-readiness';
+import { checkTestDatabaseReadiness, hasParentTestDatabaseReadiness, readOriginalProcessArgv, REQUIRED_TEST_DATABASE_COLUMNS, REQUIRED_TEST_DATABASE_OBJECTS, shouldRequireTestDatabase, validateTestDatabaseUrl } from '../test-database-readiness';
 
 function makeClient(rows: ReadonlyArray<Record<string, unknown>> = [{ missing: [] }]) {
   return {
@@ -34,6 +34,10 @@ describe('test database readiness', () => {
         safeMarker: '0',
       }),
     ).rejects.toThrow('TEST_DATABASE_SAFE=1 is not set');
+  });
+
+  test('requires intent_proposals before database-backed fixtures run', () => {
+    expect(REQUIRED_TEST_DATABASE_OBJECTS).toContain('public.intent_proposals');
   });
 
   test('reports stale schema objects and closes the probe client', async () => {

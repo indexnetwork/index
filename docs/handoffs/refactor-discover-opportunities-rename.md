@@ -91,7 +91,7 @@ Mechanical find-and-replace across ~38 files. No logic, behavior, schema, or que
 - MCP `tools/list` exposes `discover_opportunities`; no `create_opportunities` remains
 - Regenerated SKILL.md files match updated templates
 
-**Version bumps (per CLAUDE.md finishing-a-branch):**
+**Version bumps (per Development Reference finishing-a-branch):**
 - services/api/package.json
 - packages/protocol/package.json
 - packages/cli/package.json

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import type { QuestionPoolSnapshot } from '@indexnetwork/protocol';
 
-import { isPoolMiningActivated, selectPoolForMining, shouldMineCurrentPool } from '../mining.shared';
+import { isPoolMiningActivated, selectPoolForMining, shouldEnqueuePoolQuestionForResolvedHistory, shouldMineCurrentPool } from '../mining.shared';
 
 function snapshot(fingerprint = 'fingerprint-v1', ids = ['1', '2', '3', '4', '5', '6', '7']): QuestionPoolSnapshot {
   return {
@@ -40,6 +40,13 @@ describe('pool discriminator mining scope', () => {
 
     expect(exactPool).toHaveBeenCalledWith('owner-1', 'intent-1');
     expect(broadRadar).not.toHaveBeenCalled();
+  });
+
+  it('rejects enqueue only when the resolved-axis comparison is unavailable', () => {
+    expect(shouldEnqueuePoolQuestionForResolvedHistory({
+      priorReferenceComparisonUnavailable: true,
+    })).toBe(false);
+    expect(shouldEnqueuePoolQuestionForResolvedHistory({})).toBe(true);
   });
 
   it.each([

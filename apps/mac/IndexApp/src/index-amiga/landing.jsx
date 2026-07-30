@@ -1,4 +1,4 @@
-// Landing — Mac System 6 "Welcome to index" window
+// Landing, Mac System 6 "Welcome to index" window
 
 function Landing({ onEnter }) {
   const { EVENT } = window.INDEX_DATA;
@@ -17,7 +17,7 @@ function Landing({ onEnter }) {
         display:"grid", gap:24,
         gridTemplateColumns:"1fr 1fr",
       }}>
-        {/* Left window — brand */}
+        {/* Left window, brand */}
         <MacWindow title="index" style={{ minHeight: 440 }}>
           <div style={{
             padding:"28px 32px 24px",
@@ -62,7 +62,7 @@ function Landing({ onEnter }) {
           </div>
         </MacWindow>
 
-        {/* Right window — the network card */}
+        {/* Right window, the network card */}
         <MacWindow title="index · the network" style={{ minHeight: 440 }}>
           <div style={{ padding:"24px 28px 24px", display:"flex", flexDirection:"column", gap:14 }}>
 
@@ -93,8 +93,8 @@ function Landing({ onEnter }) {
 
 function FieldPing() {
   const pool = [
-    "an agent in another network just asked about you.",
-    "an unknown agent flagged you as 'maybe relevant'.",
+    "someone's agent in another network just asked about you.",
+    "a stranger's agent flagged you as 'maybe relevant'.",
     "two unknowns are negotiating · subject withheld.",
     "88 agents online today · the network is warm.",
     "someone's agent is reading your last project.",
@@ -130,7 +130,7 @@ function FieldPing() {
           width:6, height:6, borderRadius:"50%", background:A.accent,
           border:"1px solid #000", display:"inline-block",
         }}/>
-        overhearing — live
+        overhearing, live
       </div>
       <div style={{
         display:"grid", gap:4, height:74, overflow:"hidden",

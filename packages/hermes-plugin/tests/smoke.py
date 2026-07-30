@@ -143,7 +143,11 @@ def main() -> None:
     assert tool_names == expected_tool_names, tool_names
     assert len(tool_names) == len(set(tool_names))
     assert "index_create_intent" in tool_names
-    assert "index_discover_opportunities" in tool_names
+    for removed in ("discover_opportunities", "get_discovery_run", "cancel_discovery_run"):
+        assert removed not in plugin.schemas.FORWARDED_MCP_TOOLS
+        assert f"index_{removed}" not in tool_names
+    assert "list_opportunities" in plugin.schemas.FORWARDED_MCP_TOOLS
+    assert "index_list_opportunities" in tool_names
     assert "index_read_docs" in tool_names
     assert [entry["schema"]["name"] for entry in ctx.tools] == tool_names
     handlers_by_name = {entry["name"]: entry["handler"] for entry in ctx.tools}
@@ -164,6 +168,8 @@ def main() -> None:
         if in_tools and line.startswith("  - "):
             manifest_tools.append(line.removeprefix("  - "))
     assert manifest_tools == tool_names
+    for removed in ("discover_opportunities", "get_discovery_run", "cancel_discovery_run"):
+        assert f"index_{removed}" not in manifest_tools
 
     for relative_path in DASHBOARD_FILES:
         assert (ROOT / relative_path).exists(), f"missing dashboard file: {relative_path}"

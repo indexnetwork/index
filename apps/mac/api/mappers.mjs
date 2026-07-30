@@ -104,20 +104,71 @@ export function mapPeopleFromHomeSections(sections = []) {
 export function mapPersonFromHomeCard(card, section = {}) {
   return {
     id: card.opportunityId || card.userId,
+    // kept separate from `id` (which is the opportunity) so the profile window
+    // can fetch this person's own intro and links
+    userId: card.userId || null,
     name: card.name || 'unknown',
     blurb: card.headline || card.mainText || '',
-    location: section.title || '',
+    // The card's full write-up: what the opportunity is and how these two
+    // fit. `blurb` keeps only the headline when there is one, so without
+    // this the long form was dropped everywhere but the card itself.
+    detail: card.mainText || '',
+    // A home card carries no location. This used to borrow the section heading,
+    // which is a presenter's shout ("GIVE FEEDBACK NOW", "OPPORTUNITIES") and
+    // read as a place under the person's name in chat. Left empty until a real
+    // location arrives; the profile window fetches one from GET /users/:id.
+    location: '',
     arrived: 0,
     distance: card.mutualIntentsLabel || '',
     mutuals: 0,
-    signals: compact([section.title, card.mutualIntentsLabel]),
+    signals: compact([card.mutualIntentsLabel]),
     overlap: compact([card.headline]),
-    score: null,
+    // the presenter card carries a 0-1 match score; it was being dropped
+    score: typeof card.score === 'number' ? card.score : null,
     status: mapOpportunityStatusToPrototype(card.status),
     pitchFromAgent: card.narratorChip?.text || card.mainText || '',
     introVia: card.narratorChip?.name || card.cta || '',
+    ...mapCounterpartProfile(card),
     source: card,
   };
+}
+
+/**
+ * The counterpart's own words about themselves: the intro they wrote in their
+ * profile settings, plus their links.
+ *
+ * Opportunity cards carry neither, so this yields empty fields there and the
+ * profile hides those sections. `GET /users/:id` does carry them, and the
+ * profile window fetches it, so this also accepts that payload's shape, where
+ * the intro is `intro` and socials are `{label, value}`.
+ * @param {Object} source
+ * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
+ */
+export function mapCounterpartProfile(source = {}) {
+  const profile = source.profile || source.counterpart || source;
+  return {
+    bio: profile.bio || profile.intro || '',
+    socials: mapSocials(profile.socials),
+  };
+}
+
+/**
+ * Normalize social links onto the {id, prefix, handle} shape the UI draws.
+ *
+ * The API stores them as `{label, value}` where value is usually a full URL,
+ * so the label becomes the platform and the value is used verbatim as the
+ * destination. Handle-only sources keep their prefix.
+ * @param {Array<Object>} socials
+ */
+export function mapSocials(socials) {
+  if (!Array.isArray(socials)) return [];
+  return socials
+    .map((entry) => {
+      const id = entry.id || entry.label || entry.platform || 'website';
+      const handle = entry.handle || entry.username || entry.value || '';
+      return { id: String(id).toLowerCase(), prefix: entry.prefix || '', handle };
+    })
+    .filter((entry) => entry.handle);
 }
 
 /**
@@ -127,8 +178,10 @@ export function mapPersonFromHomeCard(card, section = {}) {
 export function mapPeopleFromOpportunities(opportunities = []) {
   return opportunities.map((opportunity) => ({
     id: opportunity.id,
+    userId: opportunity.counterpartUserId || opportunity.counterpart?.id || null,
     name: opportunity.counterpartName || opportunity.presentation?.title || 'unknown',
     blurb: opportunity.interpretation?.summary || opportunity.presentation?.description || '',
+    detail: opportunity.presentation?.description || opportunity.interpretation?.summary || '',
     location: opportunity.index?.title || '',
     arrived: 0,
     distance: opportunity.updatedAt ? `updated ${relativeAge(opportunity.updatedAt)}` : '',
@@ -140,6 +193,7 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     pitchFromAgent: opportunity.interpretation?.reasoning || opportunity.presentation?.callToAction || '',
     introVia: opportunity.introducedBy?.name || '',
     hidden: opportunity.status === 'latent',
+    ...mapCounterpartProfile(opportunity),
     source: opportunity,
   }));
 }
@@ -206,6 +260,7 @@ export function mapOpportunityStatusToPrototype(status) {
   switch (status) {
     case 'accepted':
       return 'accepted';
+    case 'latent':
     case 'pending':
     case 'draft':
       return 'ready';
@@ -216,7 +271,6 @@ export function mapOpportunityStatusToPrototype(status) {
       return 'passed';
     case 'expired':
       return 'expired';
-    case 'latent':
     default:
       return 'considering';
   }

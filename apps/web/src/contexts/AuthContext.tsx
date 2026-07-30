@@ -1,11 +1,10 @@
-import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { authClient, clearJwtToken } from '@/lib/auth-client';
 import { APIError, useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 import AuthModal from '@/components/AuthModal';
-import { validateCliAuthReturnUrl } from '@/lib/cli-auth';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('AuthContext');
@@ -49,9 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [pendingCallbackURL, setPendingCallbackURL] = useState<string | undefined>(undefined);
-  const consumedCliReturnRef = useRef<string | null>(null);
   const navigate = useNavigate();
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const api = useAuthenticatedAPI();
   const authService = useAuthService();
 
@@ -145,22 +143,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authenticated, loginModalOpen]);
 
   useEffect(() => {
-    if (!ready || authenticated || pathname !== '/' || typeof window === 'undefined') return;
-
-    const params = new URLSearchParams(search);
-    if (params.getAll('cli_return').length !== 1) return;
-    const rawReturn = params.get('cli_return');
-    if (!rawReturn || consumedCliReturnRef.current === rawReturn) return;
-
-    // Consume once even when invalid so malformed input cannot create a render loop.
-    consumedCliReturnRef.current = rawReturn;
-    const callbackURL = validateCliAuthReturnUrl(rawReturn, window.location.origin);
-    // One-shot query consumption intentionally drives the existing modal state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (callbackURL) openLoginModal(callbackURL);
-  }, [authenticated, openLoginModal, pathname, ready, search]);
-
-  useEffect(() => {
     if (!ready) return;
 
     if (authenticated && userLoading) return;
@@ -169,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isHomePage = pathname === '/';
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
-      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/',
+      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/waitlist',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
     const isProtectedPage = pathname.startsWith('/i/');

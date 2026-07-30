@@ -16,7 +16,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c', '/l', '/index'];
-  const bareRoutes = ['/', '/i/new', '/onboarding', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages'];
+  const bareRoutes = ['/', '/i/new', '/onboarding', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
@@ -28,13 +28,13 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const isAppRoute = useMemo(() => {
     if (!isAuthenticated) return false;
-    return appRoutes.some(route => 
+    return appRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
   }, [pathname, isAuthenticated]);
 
   const isPublicRoute = useMemo(() => {
-    return publicRoutes.some(route => 
+    return publicRoutes.some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
   }, [pathname]);
@@ -48,6 +48,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     pathname?.startsWith('/blog/') ||
     pathname?.startsWith('/pages/'),
   [pathname, isAuthenticated]);
+
+  // CLI auth bridge: keep the logo header but no nav/CTA and no bottom border.
+  const isCliAuth = pathname?.startsWith('/cli-auth');
 
   const isMessagesView = useMemo(() =>
     pathname === '/chat' || pathname?.startsWith('/chat/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
@@ -116,7 +119,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               // Public layout without sidebar
               <>
                 {showHeader && (
-                  <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-gray-300 bg-white/95 backdrop-blur-md'}>
+                  <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 bg-white/95 backdrop-blur-md${isCliAuth ? '' : ' border-b border-gray-300'}`}>
                     <div className="max-w-7xl mx-auto px-4">
                       <Suspense
                         fallback={
@@ -135,7 +138,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                         }
                       >
                         <Header 
-                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
+                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/') && !isCliAuth}
+                          keepButtonSpace={isCliAuth}
                           forcePublicView={isLandingOrBlog}
                         />
                       </Suspense>

@@ -1,4 +1,4 @@
-// api.jsx — live backend bridge for the mac app.
+// api.jsx, live backend bridge for the mac app.
 //
 // Defines the single window.IndexApp façade the screens talk to. It builds an
 // IndexApi client from window.INDEX_NATIVE (injected by the Swift shell:
@@ -46,6 +46,43 @@ window.IndexApp = (function () {
   }
   function login() { return post("login"); }
   function logout() { return post("logout"); }
+
+  // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.
+  // Resolves with [{id,label,command,path}], or null when there is no native
+  // bridge (browser preview) so callers keep their demo data.
+  const harnessWaiters = [];
+  window.__indexHarnessesDetected = function (list) {
+    while (harnessWaiters.length) harnessWaiters.shift()(list || []);
+  };
+  function detectHarnesses() {
+    if (!hasBridge()) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      harnessWaiters.push(resolve);
+      post("detectHarnesses");
+    });
+  }
+
+  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
+  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
+  const hermesWaiters = [];
+  window.__indexHermesSetup = function (result) {
+    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
+  };
+  function setupHermes(apiKey) {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
+    });
+  }
+  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
+  function teardownHermes() {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      post("teardownHermes");
+    });
+  }
 
   // Swift calls window.__indexAuthChanged(apiKeyOrNull) after it updates
   // window.INDEX_NATIVE. Fan that out to any React subscribers.
@@ -194,7 +231,7 @@ window.IndexApp = (function () {
     return resolvedSession;
   }
 
-  // GET /conversations/stream — live inbox events. Returns an abort handle.
+  // GET /conversations/stream, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
     const controller = new AbortController();
     const headers = {};
@@ -251,13 +288,13 @@ window.IndexApp = (function () {
     return parseMcpResult(result);
   }
 
-  // create_intent has no plain REST POST — go through the MCP tool. autoApprove
+  // create_intent has no plain REST POST, go through the MCP tool. autoApprove
   // persists immediately (there is no proposal-card UI here).
   function createIntent(description, extra) {
     return mcpCall("create_intent", { description, autoApprove: true, ...(extra || {}) });
   }
 
-  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks — the
+  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
   // same format the web app and CLI confirm through POST /intents/confirm.
   function parseIntentProposals(text) {
     if (!text) return [];
@@ -300,6 +337,9 @@ window.IndexApp = (function () {
     loadSnapshot,
     login,
     logout,
+    detectHarnesses,
+    setupHermes,
+    teardownHermes,
     onAuthChanged,
     createIntent,
     parseIntentProposals,
@@ -309,5 +349,5 @@ window.IndexApp = (function () {
   };
 })();
 
-// Back-compat alias — some early screens referenced window.Api.
+// Back-compat alias, some early screens referenced window.Api.
 window.Api = window.IndexApp;

@@ -1,4 +1,4 @@
-// Networks — the communities you're in, and the ones you could join. Reached
+// Networks, the communities you're in, and the ones you could join. Reached
 // from the networks row on the hub's sidebar footer.
 
 // Deterministic 2x2 tile standing in for the generative avatar. Same name
@@ -21,7 +21,7 @@ function NetworkTile({ name, size = 36, photo }) {
   const PAL = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
   let h = 0;
   for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  // unsigned shift — a signed one goes negative on bit 31 and indexes off the end
+  // unsigned shift, a signed one goes negative on bit 31 and indexes off the end
   const cells = [0, 1, 2, 3].map(i => PAL[(h >>> (i * 3)) % PAL.length]);
   return (
     <span style={{
@@ -35,7 +35,7 @@ function NetworkTile({ name, size = 36, photo }) {
 }
 
 // The tile is generated from the name; this lets you replace it with an image.
-// Same picker as the profile photo — see PicturePicker in primitives.
+// Same picker as the profile photo, see PicturePicker in primitives.
 function NetworkPhoto({ name, photo, onPick, size = 42 }) {
   const [err, setErr] = useState("");
 
@@ -54,7 +54,7 @@ function NetworkPhoto({ name, photo, onPick, size = 42 }) {
   );
 }
 
-// Static status label — same quiet fill as QuietChip, but no hover and no
+// Static status label, same quiet fill as QuietChip, but no hover and no
 // pointer, because membership is a state you're in, not an action here.
 // Leaving lives on the network's own page.
 function QuietTag({ children }) {
@@ -67,7 +67,7 @@ function QuietTag({ children }) {
   );
 }
 
-// Raised gadget — bordered with a hard shadow, so it reads as pressable at a
+// Raised gadget, bordered with a hard shadow, so it reads as pressable at a
 // glance. Grey-on-grey chips read as disabled; this doesn't.
 function ActionButton({ children, onClick, title }) {
   const [hover, setHover] = useState(false);
@@ -88,7 +88,7 @@ function ActionButton({ children, onClick, title }) {
   );
 }
 
-// Quiet chip. Reads as secondary, but it IS a button — the hover invert is what
+// Quiet chip. Reads as secondary, but it IS a button, the hover invert is what
 // distinguishes it from a static label.
 function QuietChip({ children, onClick, title }) {
   const hover = (on) => (e) => {
@@ -110,7 +110,7 @@ function QuietChip({ children, onClick, title }) {
 }
 
 // One selectable option in the type/access groups. A filled accent square is
-// the selected mark — same accent MacSegmented uses — plus the pressed inset
+// the selected mark, same accent MacSegmented uses, plus the pressed inset
 // shadow, so selection reads without flooding a whole card in orange. No
 // leading icon: the square already carries the state, and a glyph beside it
 // was decoration (the lock rendered as a colour emoji, off-palette).
@@ -149,7 +149,7 @@ function ChoiceCard({ title, sub, selected, onClick }) {
 
 // Create-network sheet. Fields mirror the product spec: name, optional
 // description, type, access. "Experiment" (headless API signup) is
-// deliberately not offered here — existing networks may still carry it as a
+// deliberately not offered here, existing networks may still carry it as a
 // privacy value, but it isn't something you pick by hand.
 function CreateNetwork({ onCancel, onCreate }) {
   const [name, setName]     = useState("");
@@ -161,9 +161,15 @@ function CreateNetwork({ onCancel, onCreate }) {
   const canCreate = named.length > 0;
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // capture + preventDefault: this form is on top of the networks window, so
+    // Escape has to cancel the form rather than close the window under it
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onCancel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onCancel]);
 
   const submit = () => {
@@ -189,9 +195,9 @@ function CreateNetwork({ onCancel, onCreate }) {
           onClose={onCancel}
           style={{ height:"100%", minHeight:0 }}>
 
-          {/* header band — backs out to the list rather than reading as a
+          {/* header band, backs out to the list rather than reading as a
               separate screen. "← back" is the app-wide idiom (intents,
-              onboarding) — the destination is obvious, so naming it adds nothing */}
+              onboarding), the destination is obvious, so naming it adds nothing */}
           <div style={{ padding:"14px 24px 16px", borderBottom:"2px solid #000" }}>
             <button
               onClick={onCancel}
@@ -211,7 +217,7 @@ function CreateNetwork({ onCancel, onCreate }) {
             padding:"20px 24px 22px",
           }}>
 
-            {/* live preview — the tile is derived from the name, so it only
+            {/* live preview, the tile is derived from the name, so it only
                 becomes meaningful once something is typed */}
             <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
               <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
@@ -222,7 +228,7 @@ function CreateNetwork({ onCancel, onCreate }) {
               }}>{named || "network name"}</span>
             </div>
 
-            {/* one column at this width, like name/location on the profile —
+            {/* one column at this width, like name/location on the profile.
                 a full-860 name field is far more room than the value needs */}
             <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px" }}>
               <TextField
@@ -378,7 +384,7 @@ function Signal({ sig, netName, onRemove }) {
       </div>
 
       {/* Same gadget as pause/stop in the conversation pane. Removes it from
-          this network only — the signal keeps running everywhere else. */}
+          this network only, the signal keeps running everywhere else. */}
       <span
         title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
         style={{ flex:"0 0 auto" }}>
@@ -390,7 +396,7 @@ function Signal({ sig, netName, onRemove }) {
 
 function NetworkDetail({ net, onBack, onLeave }) {
   const [signals, setSignals] = useState(net.signals || []);
-  // Last removal, kept so it can be put back — removing is reversible by
+  // Last removal, kept so it can be put back, removing is reversible by
   // definition here, so the undo is the affordance that says "not deleted".
   const [undo, setUndo] = useState(null);
 
@@ -449,7 +455,7 @@ function NetworkDetail({ net, onBack, onLeave }) {
                 </div>
               </div>
 
-              {/* leaving is destructive, so it carries the red — but stays outline
+              {/* leaving is destructive, so it carries the red, but stays outline
                   only, since it isn't the thing you came here to do */}
               <button
                 onClick={() => onLeave && onLeave(net)}
@@ -571,7 +577,7 @@ function Networks({ onClose }) {
   if (openNet) {
     return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)} onLeave={leaveNetwork}/>;
   }
-  // Its own window, like the profile screen — not an overlay on this one.
+  // Its own window, like the profile screen, not an overlay on this one.
   if (creating) {
     return <CreateNetwork onCancel={() => setCreating(false)} onCreate={createNetwork}/>;
   }

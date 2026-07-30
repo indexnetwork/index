@@ -1,4 +1,4 @@
-// Settings — reached from the account chip on the hub. Three panes: what the
+// Settings, reached from the account chip on the hub. Three panes: what the
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
@@ -21,7 +21,7 @@ function FieldLabel({ children, required, right }) {
   );
 }
 
-// Sunken well — the inverse of a raised gadget, so inputs read as editable.
+// Sunken well, the inverse of a raised gadget, so inputs read as editable.
 const wellStyle = (disabled) => ({
   border:"1px solid #000",
   background: disabled ? "#EDEAE1" : "#fff",
@@ -54,31 +54,59 @@ function TextField({ label, required, value, onChange, disabled, placeholder, ri
 }
 
 // Prefix sits in its own raised cell so the editable part is unambiguous.
-function SocialField({ prefix, value, onChange }) {
+// The left cell is the platform's mark, and the field holds the username on its
+// own. The url prefix it replaced was both blank for API-sourced rows (which
+// carry no prefix) and redundant next to the logo: an X mark followed by
+// "x.com/seren" says the platform twice. The full address is rebuilt on save.
+// A row can be removed outright, which is the only way to take a link off a
+// profile.
+function SocialField({ social, value, onChange, onRemove }) {
+  const [hot, setHot] = useState(false);
+  const platform = socialPlatformOf(social);
+  const isWeb = platform === "website";
   return (
     <div style={{ display:"flex", border:"1px solid #000", background:"#fff" }}>
-      <span style={{
-        fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-        background:"#EDEAE1", padding:"8px 10px",
-        borderRight:"1px solid #000", whiteSpace:"nowrap",
-        display:"flex", alignItems:"center",
-      }}>{prefix}</span>
+      <span
+        title={platform}
+        style={{
+          background:"#EDEAE1", padding:"0 9px",
+          borderRight:"1px solid #000",
+          display:"flex", alignItems:"center", flex:"0 0 auto",
+        }}>
+        <SocialGlyph id={platform} size={15}/>
+      </span>
       <input
         value={value}
-        onChange={e => onChange && onChange(e.target.value)}
+        placeholder={isWeb ? "your-site.com" : "username"}
+        onChange={e => onChange && onChange(socialHandleOf({ ...social, handle: e.target.value }))}
         style={{ ...inputReset(false), padding:"8px 10px" }}
       />
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          onMouseEnter={() => setHot(true)}
+          onMouseLeave={() => setHot(false)}
+          title={`remove ${platform}`}
+          aria-label={`remove ${platform}`}
+          style={{
+            flex:"0 0 auto", width:30, cursor:"pointer",
+            borderLeft:"1px solid #000",
+            background: hot ? "var(--ink-warn)" : "#EDEAE1",
+            color: hot ? "#fff" : "var(--ink-2)",
+            fontFamily:"var(--mac-mono)", fontSize:13, lineHeight:1,
+          }}>×</button>
+      )}
     </div>
   );
 }
 
-function SectionRule({ children }) {
-  return <div style={{ marginTop:26 }}><RuleLabel>{children}</RuleLabel></div>;
+function SectionRule({ children, size }) {
+  return <div style={{ marginTop:26 }}><RuleLabel size={size}>{children}</RuleLabel></div>;
 }
 
 /* ---------- pane 1 · profile ---------- */
 
-// The picture is the control — see PicturePicker in primitives for the shared
+// The picture is the control, see PicturePicker in primitives for the shared
 // icon, interaction and file rules.
 function PhotoPicker({ me, name, photo, onPick }) {
   const [err, setErr] = useState("");
@@ -146,7 +174,7 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
           label="email" disabled
           value={form.email}
         />
-        {/* One column like name/email — a full-width field for "NYC, United
+        {/* One column like name/email, a full-width field for "NYC, United
             States" was far more room than the value ever needs. */}
         <TextField
           label="location"
@@ -187,21 +215,23 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
       }}>
         {form.socials.map((s, i) => (
           <SocialField
-            key={s.id}
-            prefix={s.prefix}
-            value={s.handle}
+            key={s.id || s.label || i}
+            social={s}
+            value={socialHandleOf(s)}
             onChange={v => set("socials", form.socials.map(
               (x, j) => j === i ? { ...x, handle: v } : x
             ))}
+            onRemove={() => set("socials", form.socials.filter((_, j) => j !== i))}
           />
         ))}
 
         {form.websites.map((w, i) => (
           <SocialField
             key={`w${i}`}
-            prefix="https://"
+            social={{ id:"website", prefix:"https://" }}
             value={w}
             onChange={v => set("websites", form.websites.map((x, j) => j === i ? v : x))}
+            onRemove={() => set("websites", form.websites.filter((_, j) => j !== i))}
           />
         ))}
 
@@ -219,42 +249,9 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
           }}>+ add website</button>
       </div>
 
-      {/* integrations + danger zone belong to settings, not first-run setup */}
+      {/* the danger zone belongs to settings, not first-run setup */}
       {!profileOnly && (
         <React.Fragment>
-          <SectionRule>integrations</SectionRule>
-
-          <div style={{ marginTop:12 }}>
-            <div style={{
-              border:"1px solid #000", background:"#fff", boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-              padding:"10px 12px",
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            }}>
-              <div style={{ display:"flex", alignItems:"center", gap:11, minWidth:0 }}>
-                <span style={{
-                  flex:"0 0 auto", width:26, height:26,
-                  border:"1px solid #000", background:"#EDEAE1",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:13,
-                }}>✉</span>
-                <div style={{ minWidth:0 }}>
-                  <div style={{
-                    fontFamily:"var(--mac-mono)", fontSize:12, fontWeight:600, color:"#000",
-                  }}>telegram</div>
-                  <div style={{
-                    marginTop:2, fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
-                  }}>receive notifications and updates via telegram</div>
-                </div>
-              </div>
-              <button style={{
-                flex:"0 0 auto",
-                fontFamily:"var(--mac-mono)", fontSize:12, padding:"6px 15px",
-                border:"1px solid #000", background:"#fff", color:"#000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-              }}>connect</button>
-            </div>
-          </div>
-
           <DangerZone/>
         </React.Fragment>
       )}
@@ -264,7 +261,7 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
 /* ---------- danger zone ---------- */
 
-// Collapsed by default — destructive actions shouldn't sit in the tab order of
+// Collapsed by default, destructive actions shouldn't sit in the tab order of
 // a form you opened to fix a typo.
 function DangerZone() {
   const [open, setOpen] = useState(false);
@@ -317,7 +314,7 @@ function DangerZone() {
 
 /* ---------- pane 2 · notifications ---------- */
 
-// Workbench checkbox — a raised square that fills when checked.
+// Workbench checkbox, a raised square that fills when checked.
 function Toggle({ on, onClick, title, blurb }) {
   return (
     <button
@@ -492,10 +489,10 @@ function ApiKeysPane() {
 
 /* ---------- shell ---------- */
 
-// onClose  — leave without committing. In settings that closes the pane; at
+// onClose , leave without committing. In settings that closes the pane; at
 //            first run there's nothing behind this screen, so the caller sends
 //            it back to sign-in. The titlebar gadget uses this too.
-// onDone   — the single committing path. Defaults to onClose so the ordinary
+// onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
 function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
   const { ME } = window.INDEX_DATA;
@@ -503,10 +500,15 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
-  // What the agent assembled — the baseline "reset" restores to.
+  // What the agent assembled, the baseline "reset" restores to.
+  // Socials are normalized on the way in so the fields hold a bare username
+  // whatever the source stored: the demo record keeps {id, prefix, handle},
+  // the API returns {label, value} with value as a whole URL.
   const assembled = useRef({
     name: ME.name, email: ME.email, location: ME.location,
-    intro: ME.intro, socials: ME.socials, websites: ME.websites,
+    intro: ME.intro,
+    socials: (ME.socials || []).map(normalizeSocial),
+    websites: ME.websites,
     photo: ME.photo || null,
   });
   const [form, setForm] = useState(assembled.current);
@@ -517,7 +519,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggle = (id) => setNotify(n => ({ ...n, [id]: !n[id] }));
 
-  // Edited relative to what was assembled — drives whether reset is offered.
+  // Edited relative to what was assembled, drives whether reset is offered.
   const dirty = JSON.stringify(form) !== JSON.stringify(assembled.current);
   const reset = () => setForm(assembled.current);
 
@@ -536,13 +538,20 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       notify,
     });
     if (live && client) {
+      // The fields hold a bare username, so the full address is rebuilt here.
+      // Extra websites go up as 'custom', the one label the schema's per-user
+      // uniqueness index deliberately exempts, so more than one can be stored.
+      const socials = (form.socials || [])
+        .filter((s) => s && String(s.handle || "").trim())
+        .map((s) => ({ label: s.id || "link", value: socialHrefOf(s) }));
+      const sites = (form.websites || [])
+        .filter((w) => String(w || "").trim())
+        .map((w) => ({ label: "custom", value: socialHrefOf({ id: "website", handle: w }) }));
       client.auth.updateProfile({
         name: form.name,
         intro: form.intro,
         location: form.location,
-        socials: (form.socials || [])
-          .filter((s) => s && s.handle && s.handle.trim())
-          .map((s) => ({ label: s.id || "link", value: s.handle.trim() })),
+        socials: [...socials, ...sites],
       }).catch(() => {});
     }
     (onDone || onClose)();
@@ -568,10 +577,10 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
-          {/* first-run shows only the profile — no notifications / api keys.
+          {/* first-run shows only the profile, no notifications / api keys.
               The titlebar already reads "index · getting started", so repeating
               "getting started" as a heading here was the same words twice; the
-              band carries the instruction instead — the one thing the titlebar
+              band carries the instruction instead, the one thing the titlebar
               can't say. */}
           {profileOnly ? (
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
@@ -613,12 +622,12 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             borderTop:"2px solid #000", padding:"11px 24px",
             display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10,
           }}>
-            {/* Three separate intents, three controls — "cancel" used to mean
+            {/* Three separate intents, three controls, "cancel" used to mean
                 both "undo my edits" and "get me out of here", which is why it
                 read as ambiguous next to a confirm button.
 
                 reset     restores the assembled values, stays on the screen
-                sign out  leaves without committing (first run only — there is
+                sign out  leaves without committing (first run only, there is
                           no app behind this screen to fall back to)
                 confirm   the only committing action */}
             {profileOnly && dirty && (

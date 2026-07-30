@@ -2,7 +2,7 @@
 // Use case: an always-on agent that meets the people you're looking for.
 
 const EVENT = {
-  // shape kept for back-compat with Landing/TopBar — semantics shifted to
+  // shape kept for back-compat with Landing/TopBar, semantics shifted to
   // "the network, always on", not a single event.
   name: "index",
   venue: "the network",
@@ -13,7 +13,7 @@ const EVENT = {
   arrived: 88,       // agents online right now
 };
 
-// Onboarding — agent-led. About the kind of person you want to meet.
+// Onboarding, agent-led. About the kind of person you want to meet.
 const ONBOARDING_STEPS = [
   {
     id: "intent",
@@ -61,12 +61,32 @@ const ONBOARDING_STEPS = [
   },
 ];
 
-// People — visible from the start. Locations are cities + frames now; distance
+// People, visible from the start. Locations are cities + frames now; distance
 // is recency of activity in the network.
+//
+// `blurb` is the one-line hook the radar card shows; `bio` is what they wrote
+// about themselves, shown on the profile. `socials` uses the same
+// {id, prefix, handle} shape as ME, so a person and you are described the
+// same way and the settings editor could write one.
 const PEOPLE = [
   {
     id: "maren", name: "maren k.",
     blurb: "ex-stripe infra. now building something around payouts for crews.",
+    bio: "six years on payments infra at stripe, most of it on the payouts side, "
+       + "the unglamorous half, where money actually has to arrive somewhere on a "
+       + "tuesday. left in march to build the thing i kept filing tickets about: "
+       + "getting paid out to crews of people who don't have a payroll department "
+       + "between them. film crews, construction, touring musicians, anyone who "
+       + "works as a group of ten for six weeks and then never again.\n\n"
+       + "currently three people and a spreadsheet that has become load-bearing. i'm "
+       + "good at the ledger side and slow at everything customer-facing, which i'm "
+       + "trying to fix by talking to more people than is comfortable. happy to "
+       + "compare notes with anyone who has left a large company recently. mostly "
+       + "i want to hear how long it took before it stopped feeling like a mistake.",
+    socials: [
+      { id: "x",      prefix: "x.com/",      handle: "marenkl" },
+      { id: "github", prefix: "github.com/", handle: "marenk" },
+    ],
     location: "sf · payments infra", arrived: -8, distance: "online · 12m ago", mutuals: 3,
     signals: ["payments", "small teams", "leaving big-co"],
     overlap: ["leaving a six-year job", "ml infra at small scale"],
@@ -77,16 +97,41 @@ const PEOPLE = [
   {
     id: "ren", name: "ren a.",
     blurb: "documentary editor, currently doing a piece on calm tech.",
+    bio: "i cut documentaries, mostly about people who changed their minds in public "
+       + "and had to live with it afterwards. eleven years in the edit, four of them "
+       + "freelance, which means i have opinions about pacing and none about gear.\n\n"
+       + "the current piece is about software that doesn't shout. i'm interviewing "
+       + "people who walked away from products they built, and what i keep looking for "
+       + "is someone who'll talk about the boring middle, the two years where it was "
+       + "fine and they stayed anyway, rather than the exit. it films light: me, a "
+       + "camera, and an afternoon. no crew, nothing on the record until you say so.",
+    socials: [
+      { id: "x",        prefix: "x.com/",           handle: "renacuts" },
+      { id: "website",  prefix: "",                 handle: "renata.film" },
+    ],
     location: "nyc · documentary", arrived: -22, distance: "active 3h ago", mutuals: 1,
     signals: ["calm tech", "long-form", "interviewing"],
     overlap: ["tired of saas"],
     score: 0.81, status: "ready",
-    pitchFromAgent: "wants to interview people who left noisy products. could be light or substantial — your call.",
+    pitchFromAgent: "wants to interview people who left noisy products. could be light or substantial. your call.",
     introVia: "open intro",
   },
   {
     id: "ilya", name: "ilya s.",
     blurb: "trains models on weekends, runs a tiny rationality reading group.",
+    bio: "infra by day, small models by night. the day job is the boring important "
+       + "kind: scheduling, storage, making other people's training runs not fall "
+       + "over, and the night one is mostly finetunes small enough to fit on a "
+       + "machine i own.\n\n"
+       + "i host a reading group of about nine people that has been going for two "
+       + "years and has never once stayed on topic. more interested in evaluation "
+       + "than capability: i think we're quite good at making these things bigger "
+       + "and quite bad at knowing whether they got better. slow to reply, but i do "
+       + "reply.",
+    socials: [
+      { id: "github",   prefix: "github.com/",       handle: "ilyas" },
+      { id: "telegram", prefix: "t.me/",             handle: "ilyasv" },
+    ],
     location: "sf · ml infra", arrived: -2, distance: "online now", mutuals: 0,
     signals: ["ml infra", "reading group", "quiet"],
     overlap: ["ml infra at small scale"],
@@ -97,6 +142,16 @@ const PEOPLE = [
   {
     id: "phoebe", name: "phoebe l.",
     blurb: "left her saas co. last month. learning to paint, allegedly.",
+    bio: "spent eight years building a company i no longer wanted to run and sold it "
+       + "in june to people who did. it was a good outcome and i'm still not sure i "
+       + "recommend the process.\n\n"
+       + "i'm deliberately not starting anything for a year, which everyone treats as "
+       + "a phase and i'm treating as a plan. in the meantime: oils, badly, twice a "
+       + "week at a studio in somerville. happy to talk to anyone in the same window. "
+       + "i'd rather compare notes on the after than be asked what the company did.",
+    socials: [
+      { id: "linkedin", prefix: "linkedin.com/in/", handle: "phoebel" },
+    ],
     location: "boston · post-saas", arrived: -34, distance: "active yesterday", mutuals: 2,
     signals: ["transition", "painting", "tired of saas"],
     overlap: ["tired of saas", "starting to paint again"],
@@ -107,6 +162,18 @@ const PEOPLE = [
   {
     id: "kai", name: "kai m.",
     blurb: "runs a co-op of three. looking for a technical partner who likes payments.",
+    bio: "we're a worker co-op of three in kreuzberg building tools for other co-ops: "
+       + "scheduling, invoicing, and the surprisingly hard problem of splitting "
+       + "money between people who are all equally in charge. four years old, "
+       + "profitable, no investors and no intention of getting any.\n\n"
+       + "i handle the commercial side and can no longer pretend i also handle the "
+       + "technical side. looking for a fourth member who finds payments genuinely "
+       + "interesting rather than merely tolerable. equal share, equal vote, berlin "
+       + "or willing to be here often.",
+    socials: [
+      { id: "x",       prefix: "x.com/",      handle: "kaimoser" },
+      { id: "website", prefix: "",            handle: "dreiwerk.coop" },
+    ],
     location: "berlin · co-op", arrived: -12, distance: "online · 1h ago", mutuals: 0,
     signals: ["co-founder", "payments", "crews"],
     overlap: [],
@@ -117,16 +184,39 @@ const PEOPLE = [
   {
     id: "ola", name: "ola b.",
     blurb: "running a half-marathon in june. translates portuguese poetry on the side.",
+    bio: "product work pays for the translation habit. i've been putting mid-century "
+       + "portuguese poets into english for about four years: slowly, badly at "
+       + "first, and with no publisher waiting at the end of it.\n\n"
+       + "i run along the tejo most mornings while thinking about line breaks, which "
+       + "is how the half-marathon in june happened: it started as thinking time and "
+       + "became a distance. i like people who have a second thing they're serious "
+       + "about and don't try to monetise it.",
+    socials: [
+      { id: "x",       prefix: "x.com/", handle: "olabq" },
+      { id: "website", prefix: "",       handle: "olabranco.pt" },
+    ],
     location: "lisbon · running", arrived: -45, distance: "quiet 2d", mutuals: 0,
     signals: ["running", "portuguese", "books"],
     overlap: ["learning portuguese"],
     score: 0.61, status: "warm",
-    pitchFromAgent: "soft match — running + portuguese. low stakes, easy intro.",
+    pitchFromAgent: "soft match: running + portuguese. low stakes, easy intro.",
     introVia: "open intro",
   },
   {
     id: "noor", name: "noor a.",
     blurb: "sound designer; finishing a debut ambient record.",
+    bio: "i design sound for film and gallery installations, mostly the kind of work "
+       + "where if you notice it, i've done it wrong. nine years of it, the last "
+       + "three freelance out of a small room in peckham.\n\n"
+       + "the record is the first thing with my own name on it and it has taken three "
+       + "years, which everyone assures me is normal. lately i'm interested in how "
+       + "software sounds when nobody is trying to get your attention: what a "
+       + "notification would be if it were designed to be ignorable. i'd happily "
+       + "talk to anyone thinking about that from the other side.",
+    socials: [
+      { id: "x",       prefix: "x.com/", handle: "nooramir" },
+      { id: "website", prefix: "",       handle: "noor.sound" },
+    ],
     location: "london · ambient", arrived: -27, distance: "active 5h ago", mutuals: 2,
     signals: ["music", "calm tech", "long-form"],
     overlap: ["tired of saas"],
@@ -137,6 +227,18 @@ const PEOPLE = [
   {
     id: "jules", name: "jules e.",
     blurb: "community manager at a small writer collective. organizes monthly hikes.",
+    bio: "i keep a collective of about sixty writers from falling apart, which is "
+       + "mostly logistics and occasionally diplomacy. six years of it now. the job "
+       + "is really just noticing who has gone quiet and asking why before they "
+       + "leave.\n\n"
+       + "the monthly hikes started as a way to get people off slack for a day and "
+       + "are now the only thing anyone reliably shows up to, which taught me "
+       + "something about online community that i'm still working out how to say "
+       + "properly. open to comparing notes with anyone holding a group together.",
+    socials: [
+      { id: "linkedin", prefix: "linkedin.com/in/", handle: "juleseze" },
+      { id: "telegram", prefix: "t.me/",            handle: "julese" },
+    ],
     location: "brooklyn · community", arrived: -18, distance: "online · 4m ago", mutuals: 4,
     signals: ["community", "writing", "outdoors"],
     overlap: [],
@@ -147,6 +249,18 @@ const PEOPLE = [
   {
     id: "vik", name: "vik k.",
     blurb: "researcher at an ai-policy nonprofit. recently moved from london.",
+    bio: "i write the reports that sit between the labs and the people drafting the "
+       + "rules, which means i'm trusted by neither and read carefully by both. five "
+       + "years at a nonprofit that survives on grants and stubbornness.\n\n"
+       + "most of the work is unglamorous translation: taking something a research "
+       + "team knows in their hands and putting it in a form a committee can act on "
+       + "without mangling it. moved from london in may and am still working out who "
+       + "is actually here. keen to meet people building the things i write about, "
+       + "not least so i stop getting them slightly wrong.",
+    socials: [
+      { id: "x",        prefix: "x.com/",           handle: "vikkhanna" },
+      { id: "linkedin", prefix: "linkedin.com/in/", handle: "vikkhanna" },
+    ],
     location: "london → nyc · policy", arrived: -6, distance: "online now", mutuals: 1,
     signals: ["ai policy", "research", "newly arrived"],
     overlap: ["ml infra at small scale"],
@@ -157,6 +271,18 @@ const PEOPLE = [
   {
     id: "mira", name: "mira j.",
     blurb: "chef, opening a 12-seat tasting menu spot this fall. funded it herself.",
+    bio: "twelve years in other people's kitchens, the last four running one. i saved "
+       + "through six of those years specifically so i would never have to sit across "
+       + "a table from someone explaining my own food back to me.\n\n"
+       + "the room opens in october: twelve seats, one menu, no investors. it is the "
+       + "smallest viable version of the thing and that's on purpose. i'd rather own "
+       + "all of something modest than a slice of something i've stopped recognising. "
+       + "always glad to talk to people who funded their own thing and lived with the "
+       + "consequences.",
+    socials: [
+      { id: "x",       prefix: "x.com/", handle: "mirajoseph" },
+      { id: "website", prefix: "",       handle: "twelveseats.co" },
+    ],
     location: "oakland · chef", arrived: -38, distance: "quiet 4d", mutuals: 0,
     signals: ["food", "small business", "self-funded"],
     overlap: ["leaving a six-year job"],
@@ -166,7 +292,7 @@ const PEOPLE = [
   },
 ];
 
-// Deep pool — agents the pipeline can pull in when it expands.
+// Deep pool, agents the pipeline can pull in when it expands.
 const POOL = [
   {
     id: "yael", name: "yael m.", hidden: true,
@@ -256,16 +382,16 @@ const POOL = [
   },
 ];
 
-// Background "field events" — the ambient ticker. Ongoing now, not event-night.
+// Background "field events", the ambient ticker. Ongoing now, not event-night.
 const FIELD_EVENTS = [
   { kind: "inspect",   text: "inspected 6 new joiners this week · 4 didn't match your edges." },
   { kind: "negotiate", text: "your agent ↔ ilya's agent · trading context." },
-  { kind: "passed",    text: "passed on an 'enterprise sales' cluster — off-limits." },
+  { kind: "passed",    text: "passed on an 'enterprise sales' cluster: off-limits." },
   { kind: "warm",      text: "phoebe's agent warmed up · she's open to an intro this week." },
   { kind: "inspect",   text: "scanning the infra cluster · 9 active candidates." },
   { kind: "negotiate", text: "kai's agent counter-proposed: 'after his next funding round.'" },
   { kind: "arrived",   text: "maren updated her bio · she's actively exploring." },
-  { kind: "passed",    text: "ola's agent declined — she's on a focus block this month." },
+  { kind: "passed",    text: "ola's agent declined: she's on a focus block this month." },
   { kind: "warm",      text: "ren's agent shared their interview brief." },
   { kind: "inspect",   text: "indexed 22 conversations across your saved threads." },
   { kind: "negotiate", text: "two agents you've never met are arguing about you." },
@@ -275,7 +401,7 @@ const FIELD_EVENTS = [
   { kind: "passed",    text: "an unknown agent tried to surface you · denied (off-limits)." },
 ];
 
-// Ambient agent observations — appear in the feed without expecting an answer.
+// Ambient agent observations, appear in the feed without expecting an answer.
 const AMBIENT_NOTES = [
   "i declined a recruiter intro on your behalf · they were off-limits.",
   "saved theo to your follow-up list for next week.",
@@ -294,7 +420,7 @@ const AMBIENT_NOTES = [
   "your agent is humming.",
 ];
 
-// Clarifying questions — proactively pushed into the left feed over time.
+// Clarifying questions, proactively pushed into the left feed over time.
 // source: "agent" | "individual" | "collective" | "room"
 // effect: "expanding" | "narrowing" | "focused" | "neutral"
 const CLARIFIERS = [
@@ -315,7 +441,7 @@ const CLARIFIERS = [
   {
     id: "q3", source: "room", effect: "narrowing",
     sourceMeta: { count: 47, of: "of your past conversations" },
-    text: "your top signals are clustering into two threads — ml/infra and payments + crews. lean into one, or hold both?",
+    text: "your top signals are clustering into two threads: ml/infra and payments + crews. lean into one, or hold both?",
     chips: ["lean ml/infra", "lean payments", "hold both"],
     triggersHint: "shapes which half of the radar expands.",
   },
@@ -331,7 +457,7 @@ const CLARIFIERS = [
     sourceMeta: { count: 12, of: "mentions in your circle this week" },
     text: "'co-founder' has come up 12 times in conversations adjacent to you. want me to widen the radar toward founders, or keep it tight?",
     chips: [
-      "yes — widen toward founders, i'm open to co-founder conversations",
+      "yes, widen toward founders, i'm open to co-founder conversations",
       "keep it tight, i'm not looking for a co-founder right now",
       "only surface them if the signal is genuinely strong",
     ],
@@ -384,7 +510,7 @@ const CLARIFIERS = [
     text: "phoebe asks: are you bringing recruiting energy, or actually here to share notes? she'll opt out if it's the former.",
     chips: [
       "honestly, i'm just here to share notes and learn",
-      "a bit of both — but i'll be upfront with her about it",
+      "a bit of both, but i'll be upfront with her about it",
       "tell her straight: i might be hiring down the line",
     ],
     triggersHint: "phoebe · gating the intro.",
@@ -392,7 +518,7 @@ const CLARIFIERS = [
   {
     id: "q13", source: "collective", effect: "expanding",
     sourceMeta: { count: 4, of: "agents flagging the same person" },
-    text: "four separate agents independently flagged the same person — sasha p. — none of us know why she scores high. dig in?",
+    text: "four separate agents independently flagged the same person (sasha p.) and none of us know why she scores high. dig in?",
     chips: ["surface her", "show me the reasoning", "skip"],
     triggersHint: "surface · adds sasha to discovered.",
   },
@@ -453,13 +579,13 @@ const CLARIFIERS = [
   {
     id: "q22", source: "room", effect: "focused",
     sourceMeta: { count: 1, of: "small group forming" },
-    text: "a quiet four-person reading group just formed inside your circle — no pitches, no recruiting. slip in, observe, or pass?",
+    text: "a quiet four-person reading group just formed inside your circle, no pitches, no recruiting. slip in, observe, or pass?",
     chips: ["slip in", "observe from nearby", "pass"],
     triggersHint: "slip in · pipeline focuses on the circle.",
   },
 ];
 
-// Existing intents — saved searches the user has running. Shown on the intents
+// Existing intents, saved searches the user has running. Shown on the intents
 // shelf between landing and onboarding. Each intent is an always-on search;
 // the user can resume one or open a fresh one.
 const INTENTS = [
@@ -480,9 +606,9 @@ const INTENTS = [
     inbound: [
       { from: "maren's agent", text: "are you open to someone non-technical on the commercial side, or strictly an engineer?" },
       { from: "kai's agent", text: "is this full co-founder, or would a long contract-to-found trial work first?" },
-      { from: "yael's agent", text: "how far along is the payments idea — pre-idea, prototype, or revenue?" },
+      { from: "yael's agent", text: "how far along is the payments idea: pre-idea, prototype, or revenue?" },
       { from: "an unknown agent", text: "would you relocate, or is this remote-first?" },
-      { from: "sasha's agent", text: "what does 'small teams' mean to you — under 5, under 20?" },
+      { from: "sasha's agent", text: "what does 'small teams' mean to you: under 5, under 20?" },
     ],
   },
   {
@@ -519,7 +645,7 @@ const INTENTS = [
     inConversations: 1,
     questions: 1,
     inbound: [
-      { from: "ola's agent", text: "european portuguese or brazilian — and how often do you want to practice?" },
+      { from: "ola's agent", text: "european portuguese or brazilian, and how often do you want to practice?" },
     ],
   },
   {
@@ -547,7 +673,7 @@ const ME = {
   handle: "@seren",
   role: "founder",
   status: "online",
-  // Settings — what the network sees, plus how the agent reaches you.
+  // Settings, what the network sees, plus how the agent reaches you.
   email: "seren@index.network",
   location: "NYC, United States",
   intro: "co-founder at Index Network, building a decentralized discovery "
