@@ -393,7 +393,6 @@ export interface NegotiationNode {
   negotiationConversationId: string;
   candidateUserId: string;
   candidateName?: string;
-  trigger: "orchestrator" | "ambient";
   startTimestamp: number;
   durationMs?: number;
   turns: NegotiationTurnRow[];
@@ -611,7 +610,6 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
           negotiationConversationId: event.negotiationConversationId ?? "",
           candidateUserId: event.candidateUserId ?? "",
           candidateName: event.candidateName,
-          trigger: event.trigger ?? "ambient",
           startTimestamp: event.timestamp,
           turns: [],
           isRunning: true,

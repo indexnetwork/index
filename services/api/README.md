@@ -44,4 +44,4 @@ tests are opt-in via `RUN_PAID_INTEGRATION_TESTS=1`,
 ## More
 
 - **[../../README.md](../../README.md)** — Project overview and getting started
-- **[../../CLAUDE.md](../../CLAUDE.md)** — Full development commands, architecture, and conventions
+- **[Development Reference](../../docs/guides/development-reference.md)** — Full development commands, architecture, and conventions

@@ -154,6 +154,66 @@
   margin: 8px 0 24px;
 }
 
+/* ------------------------------------------------------------
+   DATA TABLES — text-based ledgers on the landing palette
+------------------------------------------------------------ */
+.post-body .post-table {
+  margin: 10px 0 30px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.post-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  color: var(--cream-soft);
+}
+
+.post-body thead th {
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+  text-align: left;
+  white-space: nowrap;
+  padding: 0 18px 10px 0;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.post-body tbody td {
+  padding: 12px 18px 12px 0;
+  border-bottom: 1px dashed var(--rule);
+  vertical-align: baseline;
+}
+.post-body tbody tr:last-child td { border-bottom: 0; }
+.post-body tbody tr:hover td { color: var(--cream); }
+
+.post-body thead th:last-child,
+.post-body tbody td:last-child { padding-right: 0; }
+
+/* the row label carries the emphasis, the figures stay quiet */
+.post-body tbody td:first-child { color: var(--cream); }
+
+/* block-glyph cells are bar charts, drawn from the author's glyph count */
+.post-body td.cell-bar {
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 4px;
+}
+.post-body td.cell-bar .bar {
+  display: block;
+  height: 9px;
+  width: calc(var(--bar-units, 0) * 5px);
+  min-width: 2px;
+  background: var(--cream-soft);
+}
+.post-body tbody tr:hover td.cell-bar .bar { background: var(--cream); }
+
 .post-body .embed-audio,
 .post-body .embed-video,
 .post-body .embed-youtube {
@@ -181,4 +241,8 @@
 @media (max-width: 720px) {
   .post-frame { padding: 56px 22px 72px; }
   .post-title { font-size: 30px; }
+  .post-body table { font-size: 11.5px; }
+  .post-body thead th { padding-right: 14px; }
+  .post-body tbody td { padding-right: 14px; }
+  .post-body td.cell-bar .bar { width: calc(var(--bar-units, 0) * 4px); }
 }

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Navigate, useNavigate } from "react-router";
 
+import { FastSignalIntake } from "@/components/signals/FastSignalIntake";
 import { GuidedSignalIntake, type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -15,6 +16,7 @@ export default function NewSignalPage() {
   const { addNotification, error: showError } = useNotifications();
   const { startSignalSession, sendWebMessage, clearChat } = useAIChat();
   const signalAgentEnabled = features?.signalAgent === true;
+  const fastSignalIntakeEnabled = features?.fastSignalIntake === true;
 
   const sendKickoff = useCallback(async () => {
     let sendError: unknown;
@@ -86,13 +88,17 @@ export default function NewSignalPage() {
         <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Start a new signal</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">Make what you’re looking for legible.</h1>
 
-        <GuidedSignalIntake
-          prepareSession={startSignalSession}
-          sendKickoff={sendKickoff}
-          sendFollowup={sendFollowup}
-          onKickoffError={handleKickoffError}
-          onConfirmed={handleConfirmed}
-        />
+        {fastSignalIntakeEnabled ? (
+          <FastSignalIntake onConfirmed={handleConfirmed} />
+        ) : (
+          <GuidedSignalIntake
+            prepareSession={startSignalSession}
+            sendKickoff={sendKickoff}
+            sendFollowup={sendFollowup}
+            onKickoffError={handleKickoffError}
+            onConfirmed={handleConfirmed}
+          />
+        )}
       </main>
     </div>
   );

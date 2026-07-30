@@ -35,7 +35,7 @@ export const SUPPORTED_FILE_TYPES = {
     '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
     '.xml': ['application/xml', 'text/xml'] // XML supports both MIME types per RFC standards
   },
-  
+
   // Image formats (for avatars) - each extension maps to its valid MIME types
   IMAGES: {
     '.jpg': ['image/jpeg'],
@@ -94,19 +94,19 @@ export function formatFileSize(bytes: number): string {
  */
 export function getFileCategoryBadge(filename: string, mimetype?: string): string {
   const ext = getFileExtension(filename).toLowerCase();
-  
+
   if (ext === '.pdf') return 'PDF';
   if (['.doc', '.docx', '.rtf', '.odt'].includes(ext)) return 'DOC';
   if (['.xls', '.xlsx', '.csv'].includes(ext)) return 'SHEET';
   if (['.ppt', '.pptx', '.key'].includes(ext)) return 'SLIDE';
   if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.tiff', '.tif', '.heic'].includes(ext)) return 'IMG';
   if (['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.css', '.js', '.ts', '.py', '.xml'].includes(ext)) return 'TXT';
-  
+
   if (mimetype) {
     if (mimetype.includes('pdf')) return 'PDF';
     if (mimetype.startsWith('image/')) return 'IMG';
   }
-  
+
   return 'FILE';
 }
 

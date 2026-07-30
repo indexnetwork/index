@@ -29,6 +29,7 @@ src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
+src/services/tests/opportunity.service.maintenance.isolated.ts
 tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
@@ -38,12 +39,14 @@ tests/questioner.adapter.isolated.ts
 tests/frame-drift-execution-attempt.database.adapter.isolated.ts
 tests/accepted-opportunity.isolated.ts
 src/controllers/tests/intent.controller.isolated.ts
+src/controllers/tests/intent-intake.controller.isolated.ts
 src/adapters/tests/auth.adapter.isolated.ts
 src/adapters/tests/database.adapter.isolated.ts
 src/adapters/tests/chat-summary.database.adapter.isolated.ts
 src/adapters/tests/agent-activity.database.adapter.isolated.ts
 src/adapters/tests/intent-opportunity-counts.database.isolated.ts
 src/controllers/tests/chat.controller.isolated.ts
+src/controllers/tests/chat.metadata.controller.isolated.ts
 src/controllers/tests/invitation-gaps.controller.isolated.ts
 src/controllers/tests/invitation.controller.isolated.ts
 src/services/tests/opportunity-delivery.isolated.ts
@@ -57,6 +60,7 @@ src/controllers/tests/chat.reporter.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
 src/guards/tests/contacts.guard.isolated.ts
+src/guards/tests/fast-intake.guard.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts
@@ -100,7 +104,6 @@ src/lib/limiter/tests/index.isolated.ts
 src/lib/limiter/tests/guard.isolated.ts
 src/lib/limiter/tests/mcp.isolated.ts
 src/lib/limiter/tests/identifier.isolated.ts
-src/queues/tests/discovery-run.queue.deps.isolated.ts
 src/controllers/tests/question.visitmining.isolated.ts
 src/controllers/tests/agent-action.controller.isolated.ts
 src/services/tests/agent-action.service.isolated.ts
@@ -114,3 +117,8 @@ src/lib/mcp/tests/owner-approval.isolated.ts
 src/controllers/tests/opportunity.owner-approval.isolated.ts
 src/services/tests/intent.service.seed-index.isolated.ts
 src/cli/tests/discovery-env-matrix-base-indexer.isolated.ts
+src/services/tests/signal-intake.service.isolated.ts
+src/services/tests/signal-intake.writeback.isolated.ts
+src/services/tests/signal-intake.writeback-wiring.isolated.ts
+src/services/tests/signal-intake.confirm-seam.isolated.ts
+src/queues/tests/usercontext.intake-pack.isolated.ts

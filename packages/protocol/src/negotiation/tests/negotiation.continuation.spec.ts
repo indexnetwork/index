@@ -173,7 +173,6 @@ describe("Negotiation continuation telemetry", () => {
           { networkId: "net-1", prompt: "" },
           {
             traceEmitter: (e: Record<string, unknown>) => events.push(e),
-            trigger: "ambient",
           },
         );
       },

@@ -53,6 +53,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/about", () => import("@/app/about/page")),
       },
       {
+        path: "/waitlist",
+        lazy: lazyRoute("/waitlist", () => import("@/app/waitlist/page")),
+      },
+      {
         path: "/found-in-translation",
         lazy: lazyRoute("/found-in-translation", () => import("@/app/found-in-translation/page")),
       },

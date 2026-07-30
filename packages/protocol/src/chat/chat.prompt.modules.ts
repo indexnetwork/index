@@ -105,110 +105,6 @@ function hasIntroductionArgs(recentTools: IterationContext["recentTools"]): bool
 // MODULE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const discoveryModule: PromptModule = {
-  id: "discovery",
-  triggers: ["discover_opportunities", "update_opportunity", "list_opportunities"],
-  triggerFilter: (iterCtx) => !hasIntroductionArgs(iterCtx.recentTools),
-  content: () => `
-### 1. User wants to find connections or discover (default for connection-seeking)
-
-For open-ended connection-seeking ("find me a mentor", "who needs a React dev", "I want to meet people in AI", "looking for investors", "find me X"), run **discovery first**.
-
-**CRITICAL: DO NOT create an intent first. Discovery comes FIRST.**
-
-**Network scoping**: When the user says "in my network", "from my contacts", "people I know", "among my connections", or similar network-scoping language, pass the user's **personal network ID** as \`networkId\`. The personal network (\`isPersonal: true\` in preloaded memberships) contains the user's contacts — scoping discovery to it restricts results to people the user already knows. If no network-scoping language is used, do not pass a personal network ID — let discovery run across all networks as usual.
-
-- Call \`discover_opportunities(searchQuery=user's request)\` IMMEDIATELY (with networkId when scoped).
-- Do NOT call \`create_intent\` unless the user **explicitly** asks to "create", "save", "add", or "remember" an intent/signal.
-- Phrases like "looking for X", "find me X", "I want to meet X", "I need X" are discovery requests — NOT intent creation requests.
-- If the tool returns \`createIntentSuggested\` and \`suggestedIntentDescription\`, the system will create an intent and retry discovery automatically; use the final result (candidates or "no matches") for your reply.
-- If the tool returns \`suggestIntentCreationForVisibility: true\` and \`suggestedIntentDescription\`, after presenting the opportunity cards ask the user whether they'd also like to create a signal so others can find them (e.g. *"Would you also like to create a signal for this so others can find you?"*). If the user agrees, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block verbatim — this is the same proposal flow as explicit intent creation; the user approves or skips via the card. Ask only once per conversation; do not repeat the question on follow-up turns.
-- When the tool indicates all results are exhausted (no remaining candidates), do NOT offer to "show more". Instead suggest the user create a signal so others can find them. This uses the same \`create_intent\` flow as above.
-- If the user **explicitly** says they want to create/save an intent (e.g. "add a signal", "create an intent", "save that I'm looking for X", "remember this"), use pattern 2 instead.
-
-### 1a. User wants to connect with a specific mentioned person
-
-When the user mentions a specific person via @mention or name AND expresses interest in connecting, collaborating, or exploring overlap (e.g. "what can I do with @X", "connect me with @X", user says "yes" after you present shared context with someone):
-
-**This is a direct connection — NOT an introduction (introductions connect two OTHER people).**
-
-\`\`\`
-1. If not already done: read_user_contexts(userId=X) + read_network_memberships(userId=X)
-2. Find shared networks with the user (intersect with preloaded memberships)
-3. If no shared networks: tell the user you can't find a connection path
-4. discover_opportunities(targetUserId=X, searchQuery="<synthesized reason for connecting based on shared context>")
-5. Present the opportunity card
-\`\`\`
-
-**Do NOT call read_intents before discover_opportunities here.** The opportunity tool fetches intents internally for both discovery and direct connection modes. Only introduction mode (partyUserIds + entities) requires pre-gathered intents.
-
-The searchQuery should be a brief description of why they'd connect (e.g. "shared interest in design and technology, both in Kernel community"). This gives the evaluator context for scoring.
-
-### 7. Opportunities in chat
-
-- **discover_opportunities** — discovers new connections (discovery, introduction, or direct connection).
-- **list_opportunities** — lists existing draft and pending opportunities the user can act on.
-
-When the user asks to review, revise, check, or see their current opportunities, call \`list_opportunities\`. Only use \`discover_opportunities\` for discovery ("find me connections"), introductions, or direct connections.
-
-When either tool returns \`\`\`opportunity code blocks, include them verbatim in your reply so they render as cards.
-
-When \`discover_opportunities\` returns a \`questions\` array, do **not** rephrase or summarize them in your prose. The frontend renders them as an interactive decision card surface. You may write a single short line referencing that there are decision prompts below; otherwise, leave them alone.
-
-Draft or latent opportunities can be sent (update_opportunity with status='pending'). Status translation: draft/latent → "draft", pending → "sent", accepted → "connected"
-
-**CRITICAL: Only describe what the tool response confirms happened.** "pending" sends a notification — not a message or invite. "accepted" adds a contact — for ghost users, the invite email is sent only when the user opens a chat and messages them. Never claim you sent invites, connection requests, or messages on behalf of the user.
-
-### Discovery-first; intent as follow-up
-- For connection-seeking (find connections, discover, who's looking for X), use \`discover_opportunities(searchQuery=...)\` first. Do not lead with \`create_intent\` unless the user explicitly asks to create or save an intent.
-- When the tool returns \`createIntentSuggested\`, the system may create an intent and retry; respond from the final discovery result.
-- Visibility-signal follow-up: apply the Pattern 1 rule above (\`suggestIntentCreationForVisibility\` → ask once; on yes, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block).
-- When the tool response says "These are all the connections I found", suggest the user create a signal so others can discover them. Use the existing \`suggestIntentCreationForVisibility\` flow: call \`create_intent(description=suggestedIntentDescription)\` if the user agrees. Do not ask "Would you like to see more?" when there are no more candidates.
-- **Introducer exception**: Never suggest signal/intent creation when \`introTargetUserId\` was used. The search describes the other person's needs, not the signed-in user's — creating a signal from it would be meaningless.
-- Only call \`discover_opportunities\` for: (a) discovery ("find me connections"), (b) introductions between two other people, or (c) direct connection with a specific mentioned person (Pattern 1a).
-`,
-};
-
-const introductionModule: PromptModule = {
-  id: "introduction",
-  triggers: ["discover_opportunities"],
-  excludes: ["discovery"],
-  triggerFilter: (iterCtx) => hasIntroductionArgs(iterCtx.recentTools),
-  content: () => `
-### 6. Introduce two people
-
-**An introduction is always between exactly two people.** Do not call discover_opportunities for an introduction unless you have exactly two parties (two distinct people to introduce to each other). The entities array must have exactly two entities. The introducer (current user) must not be included in the entities array; entities must refer to two distinct other users.
-
-**You MUST gather all context before calling discover_opportunities. The tool does NOT fetch data internally.**
-
-\`\`\`
-1. read_network_memberships(userId=A) + read_network_memberships(userId=B)  → find shared networks
-2. If no shared networks: tell user they're not in any shared community
-3. read_user_contexts(userId=A) + read_user_contexts(userId=B)
-4. For each shared network: read_intents(networkId=X, userId=A) + read_intents(networkId=X, userId=B)
-5. Summarize to user: "Here's what I found about A and B..."
-6. discover_opportunities(partyUserIds=[A,B], entities=[{userId:A, profile:{...}, intents:[...], networkId:shared}, {userId:B, ...}], hint="user's reason")
-7. Present the draft introduction
-\`\`\`
-
-The entities array must include each party's userId, profile data, intents from shared networks, and the shared networkId. The hint is the user's stated reason (e.g. "both AI devs"). If the user asks to introduce only one person or to "introduce" themselves to someone, explain that introductions connect two other people and suggest they name two people to connect.
-
-### 6a. Discover who to introduce to someone
-
-**When the user asks "who should I introduce to @Person" or "find connections for @Person"** — they want YOU to discover good connections for that person, presented as introduction cards.
-
-\`\`\`
-1. Identify the person's userId from the @mention (call it mentionedUserId)
-2. discover_opportunities(introTargetUserId=mentionedUserId, searchQuery="<optional refinement>")
-3. Present the returned cards (they will be formatted as introduction cards automatically)
-\`\`\`
-
-This is different from Pattern 6 (where user names BOTH parties). Here the user names ONE person and asks you to find connections for them. Do NOT use Pattern 6 for this — Pattern 6 requires both parties to be known upfront. Do NOT ask the user for a second person. Do NOT use targetUserId or partyUserIds. The system will find connections automatically.
-
-**CRITICAL — no signal creation in introducer flows:** When \`introTargetUserId\` is used (Patterns 6 and 6a), the user is searching for connections on behalf of someone else — the search reflects the other person's needs, not the user's own. Do NOT suggest creating a signal or intent in this context. The search query describes what the *other person* needs (e.g. "biotech investors for Levi"), so creating a signal from it for the signed-in user would be wrong. Never offer signal/intent creation CTAs after introducer discovery — not for the other person (users can only create signals for themselves) and not for the signed-in user (the query doesn't represent their intent).
-`,
-};
-
 const intentCreationModule: PromptModule = {
   id: "intent-creation",
   triggers: ["create_intent"],
@@ -377,8 +273,6 @@ const mentionsModule: PromptModule = {
 
 /** All registered prompt modules. */
 export const PROMPT_MODULES: PromptModule[] = [
-  discoveryModule,
-  introductionModule,
   intentCreationModule,
   intentManagementModule,
   personLookupModule,

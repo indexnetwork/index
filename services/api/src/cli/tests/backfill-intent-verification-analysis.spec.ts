@@ -1,7 +1,9 @@
 import { describe, expect, it, mock } from 'bun:test';
+import { sql } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import path from 'path';
 
-import { classifyCandidate, parseArgs, runBackfill, runCli, validateVerifierOutput, type BackfillDeps, type Candidate } from '../backfill-intent-verification-analysis';
+import { classifyCandidate, createRuntimeDeps, parseArgs, runBackfill, runCli, validateVerifierOutput, type BackfillDeps, type Candidate } from '../backfill-intent-verification-analysis';
 
 const validOutput = {
   reasoning: 'A bounded request.',
@@ -24,7 +26,8 @@ function candidate(overrides: Partial<Candidate> = {}): Candidate {
     control: {
       userId: 'owner-1', payload: 'Find an Index Network collaborator in Istanbul.', summary: null,
       isIncognito: false, sourceId: 'proposal-1', sourceType: 'discovery_form', embedding: null,
-      createdAt: new Date('2026-01-01T00:00:00.000Z'), updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      // Exact Postgres text, including the microseconds a Date round-trip would drop.
+      createdAt: '2026-01-01 00:00:00.123456+00', updatedAt: '2026-01-01 00:00:00.123456+00',
       archivedAt: null, lastVisitedAt: null, firstDiscoverySucceededAt: null, status: 'ACTIVE',
     },
     ...overrides,
@@ -57,6 +60,35 @@ const dryRunOptions = {
   dryRun: true, limit: 25, confirmProduction: false, verifierModel: 'google/gemini-2.5-flash',
   inputCostPerMillion: 0.3, outputCostPerMillion: 2.5,
 };
+
+/**
+ * Renders the real write-path SQL through the production runtime seam. The
+ * recorder stands in for a database client so the canonical statement can be
+ * inspected without a connection, credentials, or a live schema.
+ */
+async function captureWritePathSql() {
+  const statements: unknown[] = [];
+  const record = { execute: async (query: unknown) => { statements.push(query); return [] as unknown[]; } };
+  const db = {
+    ...record,
+    transaction: async (run: (tx: typeof record) => Promise<unknown>) => run(record),
+  };
+  const deps = await createRuntimeDeps(
+    { dryRun: false },
+    undefined,
+    async () => ({ sql, db: db as never, getProfileContext: async () => ({}) }),
+  );
+  await deps.applyAnalysis(
+    candidate(),
+    {
+      semanticEntropy: 0.31, referentialAnchor: 'Index Network', intentMode: 'REFERENTIAL',
+      speechActType: 'DIRECTIVE', felicityAuthority: 78, felicitySincerity: 80, felicityClarity: 74,
+    },
+    { runId: 'run-1', partition: 'legacy_discovery_missing_analysis', payloadHash: 'p', contextHash: 'c', verifierOutput: validOutput },
+  );
+  const dialect = new PgDialect();
+  return statements.map((statement) => dialect.sqlToQuery(statement as never));
+}
 
 async function runFixture(name: string, databaseUrl = 'postgres://127.0.0.1:1/ind590_dry_run') {
   const fixture = path.resolve(import.meta.dir, 'fixtures', name);
@@ -136,6 +168,59 @@ describe('intent verification analysis maintenance workflow', () => {
     }, expect.objectContaining({ runId: 'run-1', partition: 'proposal_confirm_default_only' }));
     expect(deps.recordAttempt).not.toHaveBeenCalled();
     expect(deps.finishRun).toHaveBeenCalledWith('run-1', 'completed');
+  });
+
+  it('binds no Date parameter anywhere in the write path', async () => {
+    const queries = await captureWritePathSql();
+
+    // postgres.js rejects a Date bound as a raw parameter outright, so a single
+    // Date anywhere in this path turns every candidate into a recorded failure.
+    expect(queries.length).toBeGreaterThan(1);
+    for (const query of queries) {
+      expect(query.params.filter((param) => param instanceof Date)).toEqual([]);
+    }
+  });
+
+  it('casts enum-typed analysis columns so the canonical write is executable on the real schema', async () => {
+    const [{ sql: update }] = await captureWritePathSql();
+
+    // intents.intent_mode and intents.speech_act_type are Postgres enums; a bare
+    // text parameter is rejected outright with "column is of type intent_mode but
+    // expression is of type text", which the run loop can only record as failed.
+    expect(update).toMatch(/SET[\s\S]*intent_mode = \$\d+::intent_mode/);
+    expect(update).toMatch(/SET[\s\S]*speech_act_type = \$\d+::speech_act_type/);
+    // The unchanged-control guard compares the same two enum columns and needs
+    // the identical cast, or every write fails before a single row is examined.
+    expect(update).toMatch(/intent_mode IS NOT DISTINCT FROM \$\d+::intent_mode/);
+    expect(update).toMatch(/speech_act_type IS NOT DISTINCT FROM \$\d+::speech_act_type/);
+  });
+
+  it('compares timestamp controls as exact text so no bound parameter is a Date', async () => {
+    const [{ sql: update }] = await captureWritePathSql();
+
+    // The driver cannot bind a Date as a raw parameter, and a Date round-trip
+    // truncates Postgres microseconds to milliseconds — which would turn every
+    // write into a silent unchanged_control instead of a visible failure.
+    for (const column of ['created_at', 'updated_at', 'archived_at', 'last_visited_at', 'first_discovery_succeeded_at']) {
+      expect(update).toContain(`${column}::text IS NOT DISTINCT FROM $`);
+    }
+  });
+
+  it('selects timestamp controls as exact text rather than driver-parsed dates', async () => {
+    const statements: unknown[] = [];
+    const db = { execute: async (query: unknown) => { statements.push(query); return [] as unknown[]; } };
+    const deps = await createRuntimeDeps(
+      { dryRun: true },
+      undefined,
+      async () => ({ sql, db: db as never, getProfileContext: async () => ({}) }),
+    );
+    await deps.listCandidates(1);
+    const select = new PgDialect().sqlToQuery(statements[0] as never).sql;
+
+
+    for (const column of ['created_at', 'updated_at', 'archived_at', 'last_visited_at', 'first_discovery_succeeded_at']) {
+      expect(select).toContain(`${column}::text AS ${column}`);
+    }
   });
 
   it('skips invalid/non-actionable outputs rather than fabricating analysis', async () => {

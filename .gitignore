@@ -9,8 +9,6 @@
 .vscode/*
 !.vscode/index.code-workspace
 .cursor/
-.claude/settings.local.json
-.claude/worktrees
 .rules
 
 # ===================
@@ -45,8 +43,6 @@ txt/
 # ===================
 docs/superpowers/
 /skills/**/SKILL.md
-packages/protocol/.claude
-packages/protocol/CLAUDE.md
 # built mac app bundle — assemble.py + swiftc output, rebuilt by build.sh
 apps/mac/IndexApp/dist/
 

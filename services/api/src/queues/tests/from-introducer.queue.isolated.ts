@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, mock, afterAll } from 'bun:test';
+import { describe, expect, it, mock, afterAll, afterEach } from 'bun:test';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover_opportunities', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -31,6 +31,15 @@ import { FromIntroducerQueue, QUEUE_NAME, type FromIntroducerDatabase, type From
 const asDb = (db: unknown): FromIntroducerDatabase => db as FromIntroducerDatabase;
 
 const ACTIVE_INTENT = { id: 'intent-1', payload: 'Looking for a co-founder', summary: null, createdAt: new Date() };
+const originalIntroducerDiscoveryEnabled = process.env.INTRODUCER_DISCOVERY_ENABLED;
+
+afterEach(() => {
+  if (originalIntroducerDiscoveryEnabled === undefined) {
+    delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+  } else {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+  }
+});
 
 describe('FromIntroducerQueue', () => {
   describe('constructor and static', () => {
@@ -78,6 +87,7 @@ describe('FromIntroducerQueue', () => {
     });
 
     it('discover_opportunities: contact has no active intents, skips graph invocation', async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = 'true';
       const getActiveIntents = mock(async () => [] as Awaited<ReturnType<FromIntroducerDatabase['getActiveIntents']>>);
       const invokeOpportunityGraph = mock(async () => {});
       const db = { getActiveIntents };
@@ -88,6 +98,7 @@ describe('FromIntroducerQueue', () => {
     });
 
     it('discover_opportunities: calls invokeOpportunityGraph with onBehalfOfUserId = contactUserId', async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = 'true';
       const invokeOpportunityGraph = mock(async (_opts: FromIntroducerGraphInvokeOptions) => {});
       const db = { getActiveIntents: async () => [ACTIVE_INTENT] };
       const queue = new FromIntroducerQueue({ database: asDb(db), invokeOpportunityGraph });
@@ -109,6 +120,7 @@ describe('FromIntroducerQueue', () => {
     });
 
     it('discover_opportunities: uses networkIds[0] as networkId', async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = 'true';
       const invokeOpportunityGraph = mock(async () => {});
       const db = { getActiveIntents: async () => [ACTIVE_INTENT] };
       const queue = new FromIntroducerQueue({ database: asDb(db), invokeOpportunityGraph });
@@ -123,12 +135,28 @@ describe('FromIntroducerQueue', () => {
     });
 
     it('discover_opportunities: triggerIntentId is not set (undefined)', async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = 'true';
       const invokeOpportunityGraph = mock(async (_opts: FromIntroducerGraphInvokeOptions) => {});
       const db = { getActiveIntents: async () => [ACTIVE_INTENT] };
       const queue = new FromIntroducerQueue({ database: asDb(db), invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', { userId: 'u1', contactUserId: 'u2' });
       const callArg = (invokeOpportunityGraph.mock.calls as unknown as Array<[FromIntroducerGraphInvokeOptions]>)[0][0];
       expect('triggerIntentId' in callArg).toBe(false);
+    });
+
+    it('discover_opportunities: skips contact reads and graph invocation when disabled', async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = 'false';
+      const getActiveIntents = mock(async () => [ACTIVE_INTENT]);
+      const invokeOpportunityGraph = mock(async () => {});
+      const queue = new FromIntroducerQueue({
+        database: asDb({ getActiveIntents }),
+        invokeOpportunityGraph,
+      });
+
+      await queue.processJob('discover_opportunities', { userId: 'u1', contactUserId: 'u2' });
+
+      expect(getActiveIntents).not.toHaveBeenCalled();
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
     });
   });
 

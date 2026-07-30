@@ -16,7 +16,7 @@ export class EnrichmentController {
   @UseGuards(RateLimit('write'), AuthGuard)
   async sync(req: Request, user: AuthenticatedUser) {
     logger.verbose('Profile sync requested', { userId: user.id });
-    
+
     const result = await enrichmentService.syncProfile(user.id);
 
     return Response.json(result);

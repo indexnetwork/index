@@ -255,7 +255,7 @@ index/
 
 ### Development Commands
 
-For the full list of API service commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
+For the full list of API service commands (DB, workers, maintenance), see the [Development Reference](docs/guides/development-reference.md).
 
 ```bash
 cd services/api
@@ -290,8 +290,7 @@ We welcome contributions! Before submitting a Pull Request:
 git clone https://github.com/YOUR_USERNAME/index.git
 cd index
 
-# Create and set up a standalone worktree (delegated waves use
-# pi-herdr-orchestrator through the run-agent-orchestration skill instead)
+# Create and set up a standalone worktree
 git fetch origin dev
 git worktree add -b feat/your-feature .worktrees/feat-your-feature origin/dev
 bun run worktree:setup feat-your-feature

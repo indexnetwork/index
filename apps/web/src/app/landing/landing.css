@@ -1093,14 +1093,16 @@
   margin: 0;
   max-width: 48ch;
 }
-.landing .os .os-actions {
+.landing .os .os-actions,
+.landing .waitlist-actions {
   display: flex;
   align-items: center;
   gap: 22px;
   margin-top: 8px;
   flex-wrap: wrap;
 }
-.landing .os .os-actions .gh-star {
+.landing .os .os-actions .gh-star,
+.landing .waitlist-actions .gh-star {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1119,13 +1121,17 @@
   line-height: 1;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.landing .os .os-actions .gh-star:hover {
+.landing .os .os-actions .gh-star:hover,
+.landing .waitlist-actions .gh-star:hover {
   background: var(--cream);
   color: var(--ink);
 }
 .landing .os .os-actions .gh-star .gh-icon,
-.landing .os .os-actions .gh-star .gh-star-icon { display: block; }
-.landing .os .os-actions .gh-star .gh-count { color: inherit; }
+.landing .os .os-actions .gh-star .gh-star-icon,
+.landing .waitlist-actions .gh-star .gh-icon,
+.landing .waitlist-actions .gh-star .gh-star-icon { display: block; }
+.landing .os .os-actions .gh-star .gh-count,
+.landing .waitlist-actions .gh-star .gh-count { color: inherit; }
 .landing .os .os-meta {
   display: inline-flex;
   align-items: center;

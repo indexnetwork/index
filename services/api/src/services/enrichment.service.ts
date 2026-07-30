@@ -8,11 +8,11 @@ const logger = log.service.from("EnrichmentService");
 
 /**
  * EnrichmentService
- * 
+ *
  * Manages profile generation and synchronization.
  * Uses EnrichmentDatabaseAdapter for database operations.
  * Uses EnrichmentGraphFactory for graph-based profile generation.
- * 
+ *
  * RESPONSIBILITIES:
  * - Generate/sync user profiles through Enrichment Graph
  * - Coordinate profile and scraper operations
@@ -31,7 +31,7 @@ export class EnrichmentService {
   /**
    * Sync/generate a profile for a user.
    * Invokes the enrichment graph to create or update the user's profile.
-   * 
+   *
    * @param userId - The user ID
    * @returns Graph execution result with profile data, plus a flat `intro` field
    *   sourced from `users.intro` (the canonical identity bio home).

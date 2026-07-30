@@ -21,6 +21,7 @@ API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
     "mapPeopleFromHomeSections", "mapPersonFromHomeCard", "mapPeopleFromOpportunities",
+    "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
 ]
 
@@ -57,7 +58,7 @@ def build_index_api() -> str:
         code = (API_DIR / fname).read_text()
         if "</script" in code:
             raise SystemExit(f"refusing to inline {fname}: contains </script")
-        # Strip ES module syntax — the IIFE keeps everything in one closure scope.
+        # Strip ES module syntax, the IIFE keeps everything in one closure scope.
         code = re.sub(r'^export\s+', '', code, flags=re.MULTILINE)
         parts.append(code)
     assigns = ", ".join(f"{name}: {name}" for name in API_EXPORTS)
@@ -102,7 +103,7 @@ html, n_fonts = re.subn(
     html,
 )
 if not n_fonts:
-    raise SystemExit("no @font-face url() references found — did the CSS change?")
+    raise SystemExit("no @font-face url() references found, did the CSS change?")
 
 # Sanity: no remaining external src references into our local tree.
 leftover = re.findall(r'src="(index-amiga/[^"]+)"', html)

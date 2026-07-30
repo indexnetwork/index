@@ -92,4 +92,4 @@ live model fails loudly. CI runs it in the `eval-verify` job of
 Canonical docs: `packages/protocol/eval/README.md` (harness table, baseline contract,
 "Adding a new harness" checklist).
 
-See also: `verify-production-release` (pre-merge gates), `finish-pr` (CI checks before merge).
+See also: `verify-production-release` (pre-merge gates), `manage-pr` (CI checks before merge).

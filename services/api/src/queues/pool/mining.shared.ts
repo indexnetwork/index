@@ -6,7 +6,6 @@
  * pool_discovery question for the top eligible discriminator.
  *
  * Callers (fire-and-forget from every discovery completion path):
- *   - DiscoveryRunQueue   — async MCP discover_opportunities runs
  *   - FromIntentQueue     — web intent creation / edit / re-discovery
  *   - PoolVisitMiningQueue — debounced owner intent-page visits (IND-439;
  *     flag-gated re-mine of the existing pool, no discovery run)
@@ -55,7 +54,7 @@ export interface PoolMiningTrigger {
    * visit-triggered re-mine path (IND-439) — no discovery ran; the existing
    * pool is re-mined so an expired question's intent can mint a fresh one.
    */
-  source: 'discovery_run' | 'from_intent' | 'intent_visit';
+  source: 'from_intent' | 'intent_visit';
   userId: string;
   /** Triggering intent — required for questions; optional for shadow-only ad-hoc pools. */
   intentId?: string;
@@ -92,6 +91,13 @@ export function maybeMinePoolDiscriminators(trigger: PoolMiningTrigger): void {
  */
 export function isPoolMiningActivated(): boolean {
   return poolQuestionsMiningMode() === 'shadow' || poolQuestionsMode() === 'on';
+}
+
+/** Reject question admission only when durable resolved-axis comparison failed. */
+export function shouldEnqueuePoolQuestionForResolvedHistory(
+  shadow: { priorReferenceComparisonUnavailable?: boolean },
+): boolean {
+  return shadow.priorReferenceComparisonUnavailable !== true;
 }
 
 export async function minePoolDiscriminatorsOnCompletion(trigger: PoolMiningTrigger): Promise<void> {
@@ -249,10 +255,7 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
   let resolvedAxes: import('@indexnetwork/protocol').QuestionPoolDiscriminator[] = [];
   if (questionsEnabled && intentId && intentFingerprint) {
     try {
-      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId, {
-        currentIntentFingerprint: intentFingerprint,
-        currentIntentText: intentText,
-      });
+      resolvedAxes = await poolMiningQuestionerAdapter.listResolvedPoolAxes(userId, intentId);
     } catch {
       // Durable semantic references are fail-open enrichment for mining.
     }
@@ -298,6 +301,16 @@ async function minePoolDiscriminators(trigger: PoolMiningTrigger): Promise<void>
       evidenceRate: round(d.evidenceRate),
     })),
   });
+
+  if (!shouldEnqueuePoolQuestionForResolvedHistory(shadow)) {
+    logger.warn('pool question skipped: resolved-axis comparison unavailable', {
+      source: trigger.source,
+      runId: trigger.runId ?? null,
+      userId,
+      intentId,
+    });
+    return;
+  }
 
   // IND-418: turn the top eligible discriminator into a pool_discovery
   // question. QUESTIONER_ENABLED gates via questionerEnqueueIfEnabled;

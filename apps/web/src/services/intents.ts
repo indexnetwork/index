@@ -123,4 +123,4 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
       maxSuggestions
     });
   }
-}); 
+});

@@ -118,48 +118,6 @@ export interface OpportunityPersistenceOutcome {
 }
 
 /**
- * Which flow triggered this graph invocation. Determines initial persist status,
- * park-window timeout, streaming behavior, and whether AbortSignal is honored.
- *
- * - 'ambient' (default): queue-driven. Persists at the trigger default of
- *   `pending` unless `options.initialStatus` overrides (the queue worker
- *   passes `'latent'`, chat-bound ambient discovery passes `'draft'`). 5-min
- *   park window, no streaming, ignores abort.
- * - 'orchestrator': chat-driven. Persists at the trigger default of
- *   `negotiating` unless `options.initialStatus` overrides. 60s park window,
- *   streams `opportunity_draft_ready` events, honors abort.
- *
- * See {@link resolveInitialStatus} for the exact fallback used when
- * `options.initialStatus` is undefined.
- */
-export type OpportunityTrigger = 'ambient' | 'orchestrator';
-
-/**
- * Resolves the initial status for opportunities created in the persist node.
- *
- * Explicit `options.initialStatus` always wins (callers like the chat tool or
- * maintenance scripts override per-call). When the caller leaves it
- * undefined, the trigger drives the default:
- * - 'orchestrator' → 'negotiating' (chat-driven; negotiations run before the
- *   user sees a draft card).
- * - 'ambient' (or any other trigger) → 'pending' (long-standing default for
- *   queue- and intent-driven discovery).
- *
- * Lives here rather than in opportunity.graph.ts so unit tests can exercise
- * it without pulling in the full graph (and the evaluator's LLM requirements).
- *
- * @param trigger - The graph invocation's trigger
- * @param explicit - Caller-supplied initial status from options.initialStatus
- */
-export function resolveInitialStatus(
-  trigger: OpportunityTrigger,
-  explicit: OpportunityStatus | undefined,
-): OpportunityStatus {
-  if (explicit !== undefined) return explicit;
-  return trigger === 'orchestrator' ? 'negotiating' : 'pending';
-}
-
-/**
  * Options passed to the graph
  */
 export interface OpportunityGraphOptions {
@@ -243,39 +201,6 @@ export const OpportunityGraphState = Annotation.Root({
   options: Annotation<OpportunityGraphOptions>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
-  }),
-
-  /**
-   * Which flow triggered this graph invocation. See {@link OpportunityTrigger}
-   * for the exact branch behavior and {@link resolveInitialStatus} for the
-   * persist default when `options.initialStatus` is unset.
-   *
-   * - 'ambient' (default): queue-driven, persist default `pending`, 5-min
-   *   park window, no streaming, ignores abort.
-   * - 'orchestrator': chat-driven, persist default `negotiating`, 60s park
-   *   window, streams `opportunity_draft_ready` events, honors abort.
-   */
-  trigger: Annotation<OpportunityTrigger>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'ambient',
-  }),
-
-  /**
-   * Accepted opportunities the persist node discovered between the discoverer
-   * and a candidate actor (same pair, status='accepted'). The orchestrator
-   * branch populates this so the discover_opportunities tool (Task 7) can tell
-   * the LLM "these pairs are already connected, surface the existing chat
-   * rather than creating a new draft". Always empty for the ambient trigger.
-   *
-   * Left intentionally minimal — conversationId/URL resolution happens at
-   * Start Chat time (Task 8), not here.
-   */
-  dedupAlreadyAccepted: Annotation<Array<{
-    opportunityId: string;
-    counterpartyUserId: string;
-  }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
   }),
 
   /**
@@ -538,11 +463,8 @@ export const OpportunityGraphState = Annotation.Root({
   /**
    * Per-candidate negotiation records captured by `negotiateNode`. Populated
    * regardless of accept/reject so the question generator sees a complete
-   * picture. Populated for ALL triggers (ambient + orchestrator) since the
-   * negotiate node's `onCandidateResolved` hook is unconditional; only the
-   * orchestrator streaming side-effects (opportunity_draft_ready emission)
-   * are trigger-gated. Empty when the negotiate node was skipped (no
-   * opportunities to negotiate).
+   * picture. Empty when the negotiate node was skipped (no opportunities to
+   * negotiate).
    */
   discoveryNegotiations: Annotation<DiscoveryNegotiation[]>({
     reducer: (curr, next) => [...curr, ...(next || [])],

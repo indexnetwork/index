@@ -12,7 +12,6 @@ import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations, DebugMetaDiscoveryQuestions } from "./chat-streaming.types.js";
 import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
-import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { deduplicateQuestions } from "./chat.question-dedup.js";
@@ -90,8 +89,6 @@ export type StreamWriter = (data: unknown) => void;
  * - `graph_end`       — a LangGraph sub-graph completes
  * - `agent_start`     — an LLM agent begins inside a graph node
  * - `agent_end`       — an LLM agent completes
- * - `opportunity_draft_ready` — an orchestrator-triggered negotiation finalized
- *                       to `draft` and the card is ready to render inline
  */
 export type AgentStreamEvent =
   | { type: "iteration_start"; iteration: number }
@@ -116,29 +113,12 @@ export type AgentStreamEvent =
   | { type: "agent_start"; name: string }
   | { type: "agent_end"; name: string; durationMs: number; summary: string }
   | {
-      // Emitted from the orchestrator branch of OpportunityGraph.negotiateNode
-      // each time a per-candidate negotiation resolves to an accepted draft.
-      // Carries the opportunity row plus the counterparty's display basics so
-      // the frontend can append an inline card to the chat timeline without a
-      // second round-trip user lookup.
-      type: "opportunity_draft_ready";
-      opportunityId: string;
-      opportunity: Opportunity;
-      /** Viewer-centric summary derived from interpretation.reasoning via viewerCentricCardSummary. */
-      personalizedSummary?: string;
-      counterparty: {
-        userId: string;
-        name?: string;
-      };
-    }
-  | {
       type: "negotiation_session_start";
       opportunityId: string;
       negotiationConversationId: string;
       sourceUserId: string;
       candidateUserId: string;
       candidateName?: string;
-      trigger: "orchestrator" | "ambient";
       startedAt: number;
     }
   | {
@@ -524,14 +504,6 @@ export class ChatAgent {
           let resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
 
-          if (tc.name === "discover_opportunities" && this.persona.loopBehaviors.createIntentCallback) {
-            const newResult = await this.handleCreateIntentCallback(resultStr, tc.args);
-            if (newResult !== null) {
-              resultStr = newResult;
-              result = newResult;
-            }
-          }
-
           logger.debug("Tool response", { name: tc.name, result: resultStr });
           logger.verbose("Tool completed", {
             name: tc.name,
@@ -564,57 +536,6 @@ export class ChatAgent {
     return results;
   }
 
-  /**
-   * When discover_opportunities returned createIntentSuggested, call create_intent then discover_opportunities.
-   * Returns the new discover_opportunities result string or null if no callback / create_intent failed.
-   */
-  private async handleCreateIntentCallback(
-    resultStr: string,
-    originalArgs: Record<string, unknown>
-  ): Promise<string | null> {
-    let parsed: { success?: boolean; error?: string; data?: { createIntentSuggested?: boolean; suggestedIntentDescription?: string } };
-    try {
-      parsed = JSON.parse(resultStr) as typeof parsed;
-    } catch {
-      return null;
-    }
-    if (
-      !parsed?.data?.createIntentSuggested ||
-      typeof parsed.data.suggestedIntentDescription !== "string"
-    ) {
-      return null;
-    }
-    // Never auto-create intents during introducer flows — signals are personal
-    if ((originalArgs as { introTargetUserId?: string }).introTargetUserId) {
-      return null;
-    }
-    const createIntentTool = this.toolsByName.get("create_intent");
-    const discoverOpportunitiesTool = this.toolsByName.get("discover_opportunities");
-    if (!createIntentTool || !discoverOpportunitiesTool) return null;
-
-    logger.verbose("Create-intent signal: auto-calling create_intent then discover_opportunities");
-    const createIntentResult = await createIntentTool.invoke({
-      description: parsed.data.suggestedIntentDescription,
-      networkId: (originalArgs as { networkId?: string }).networkId,
-    });
-    const createIntentStr =
-      typeof createIntentResult === "string" ? createIntentResult : JSON.stringify(createIntentResult);
-    let createIntentParsed: { success?: boolean; error?: string };
-    try {
-      createIntentParsed = JSON.parse(createIntentStr) as { success?: boolean; error?: string };
-    } catch {
-      createIntentParsed = {};
-    }
-    if (createIntentParsed.success === false) {
-      logger.warn("Create-intent failed; not re-running discover_opportunities", {
-        error: createIntentParsed.error,
-      });
-      return null;
-    }
-
-    const newResult = await discoverOpportunitiesTool.invoke(originalArgs);
-    return typeof newResult === "string" ? newResult : JSON.stringify(newResult);
-  }
 
   /**
    * Check whether any tool call produced valid opportunity blocks.
@@ -626,7 +547,7 @@ export class ChatAgent {
   ): boolean {
     return toolsUsed.some(
       (t) =>
-        (t.name === "discover_opportunities" || t.name === "list_opportunities") &&
+        t.name === "list_opportunities" &&
         t.success &&
         !t.resultSummary?.startsWith("Found 0") &&
         !t.resultSummary?.startsWith("No matches") &&
@@ -660,15 +581,6 @@ export class ChatAgent {
       }
     }
 
-    // Check for hallucinated opportunity blocks
-    if (text.includes("```opportunity") && !ChatAgent.hasOpportunitySource(toolsUsed)) {
-      // Use the user's original message as the search query — NOT fields from the
-      // hallucinated JSON. The model fabricates person names and reasoning that have
-      // nothing to do with the user's actual request, leading to wrong results and
-      // the model re-calling the tool with the correct query (doubling negotiation cost).
-      const description = userMessage?.trim() || "find connections";
-      return { type: "opportunity", tool: "discover_opportunities", description };
-    }
 
     return null;
   }
@@ -762,13 +674,6 @@ export class ChatAgent {
   }> {
     let normalized = resultStr;
 
-    // Run create_intent callback for discover_opportunities results (orchestrator behavior)
-    if (toolName === "discover_opportunities" && this.persona.loopBehaviors.createIntentCallback) {
-      const callbackResult = await this.handleCreateIntentCallback(normalized, toolArgs);
-      if (callbackResult !== null) {
-        normalized = callbackResult;
-      }
-    }
 
     type StepData = Record<string, unknown>;
     type DebugStep = { step: string; detail?: string; data?: StepData };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, buildLegacyCliCallbackUrl, parseCliAuthRequest, validateCliAuthReturnUrl, validateCliAuthState, validateCliCallbackUrl } from '@/lib/cli-auth';
+import { buildCliApiKeyCallbackUrl, buildCliCredentialCreateBody, buildCliAuthReturnPath, buildLegacyCliCallbackUrl, parseCliAuthRequest, validateCliAuthState, validateCliCallbackUrl } from '@/lib/cli-auth';
 
 describe('validateCliCallbackUrl', () => {
   test('accepts only a port-bound loopback callback path', () => {
@@ -87,33 +87,6 @@ describe('CLI one-time state', () => {
     expect(v1Return.searchParams.has('state')).toBe(false);
     expect(v2Return.searchParams.get('version')).toBe('2');
     expect(v2Return.searchParams.get('state')).toBe('state_token-that-is-url-safe-1234567890');
-  });
-
-  test('validates only canonical same-origin v1 and v2 home returns', () => {
-    const origin = 'https://index.network';
-    const v1 = buildCliAuthReturnPath('/cli-auth', {
-      protocolVersion: 1,
-      callback: 'http://127.0.0.1:43123/callback',
-    });
-    const v2 = buildCliAuthReturnPath('/cli-auth', {
-      protocolVersion: 2,
-      callback: 'http://127.0.0.1:43123/callback',
-      state: 'state_token-that-is-url-safe-1234567890',
-    });
-
-    expect(validateCliAuthReturnUrl(v1, origin)).toBe(`${origin}${v1}`);
-    expect(validateCliAuthReturnUrl(v2, origin)).toBe(`${origin}${v2}`);
-  });
-
-  test.each([
-    'https://attacker.example/cli-auth?callback=http%3A%2F%2F127.0.0.1%3A43123%2Fcallback',
-    '//attacker.example/cli-auth?callback=http%3A%2F%2F127.0.0.1%3A43123%2Fcallback',
-    '/other?callback=http%3A%2F%2F127.0.0.1%3A43123%2Fcallback',
-    '/cli-auth?callback=http%3A%2F%2Fattacker.example%3A43123%2Fcallback',
-    '/cli-auth?callback=http%3A%2F%2F127.0.0.1%3A43123%2Fcallback&version=2',
-    '/cli-auth?callback=http%3A%2F%2F127.0.0.1%3A43123%2Fcallback&unexpected=1',
-  ])('rejects unsafe home return %s', (value) => {
-    expect(validateCliAuthReturnUrl(value, 'https://index.network')).toBeNull();
   });
 
   test('returns a v1 API-key secret under the legacy session_token field', () => {

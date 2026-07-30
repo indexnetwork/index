@@ -12,7 +12,7 @@ backfill, require user confirmation immediately before the write, and follow eve
 safety step below. The sequence was proven in the 2026-07-06 stalled-opportunities
 backfill (299 rows reclassified, zero surprises).
 
-## Topology (also in CLAUDE.md → Neon Database Topology)
+## Topology (also in the Development Reference → Neon Database Topology)
 
 | Thing | Value |
 |---|---|

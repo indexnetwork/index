@@ -10,7 +10,7 @@ import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import { IntentNetworkMembershipError } from '../../services/intent.service';
 import db from '../../lib/drizzle/drizzle';
 import { IntentEvents } from '../../events/intent.event';
-import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunities as opportunitiesTable, opportunityDiscoveryRuns as opportunityDiscoveryRunsTable } from '../../schemas/database.schema';
+import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunities as opportunitiesTable } from '../../schemas/database.schema';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 90_000);
@@ -256,7 +256,7 @@ describe("IntentDatabaseAdapter Integration", () => {
     });
     const freshComplete = await adapter.createIntent({
       userId: testUserId,
-      payload: 'Fresh intent with completed discovery',
+      payload: 'Fresh intent without background stamp',
       summary: 'Fresh completed intent',
     });
     const freshStamped = await adapter.createIntent({
@@ -275,23 +275,13 @@ describe("IntentDatabaseAdapter Integration", () => {
     await db.update(intentsTable).set({
       firstDiscoverySucceededAt: new Date(),
     }).where(eq(intentsTable.id, freshStamped.id));
-    const [run] = await db.insert(opportunityDiscoveryRunsTable).values({
-      userId: testUserId,
-      status: 'succeeded',
-      input: { intentId: freshComplete.id },
-      context: { userId: testUserId, userName: 'Test User', userEmail: testEmail },
-      completedAt: new Date(),
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-    }).returning({ id: opportunityDiscoveryRunsTable.id });
-
     try {
       const { rows } = await adapter.listIntents(testUserId, { page: 1, limit: 100, archived: false });
       expect(rows.find((row) => row.id === freshWarming.id)?.warming).toBe(true);
-      expect(rows.find((row) => row.id === freshComplete.id)?.warming).toBe(false);
+      expect(rows.find((row) => row.id === freshComplete.id)?.warming).toBe(true);
       expect(rows.find((row) => row.id === freshStamped.id)?.warming).toBe(false);
       expect(rows.find((row) => row.id === oldIntent.id)?.warming).toBe(false);
     } finally {
-      await db.delete(opportunityDiscoveryRunsTable).where(eq(opportunityDiscoveryRunsTable.id, run.id));
       for (const intent of [freshWarming, freshComplete, freshStamped, oldIntent]) {
         await db.delete(intentsTable).where(eq(intentsTable.id, intent.id));
       }

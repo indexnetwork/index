@@ -94,6 +94,7 @@ const envSchema = z.object({
   RUN_OPPORTUNITY_EVAL_IN_PARALLEL: optionalBoolean,
   HYDE_FRAME_CONSTRAINTS_ENABLED: optionalBoolean,
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
+  INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
   DISCOVERY_ALLOWED_TYPES: z.string().optional(),
   // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
@@ -117,6 +118,7 @@ const envSchema = z.object({
   REPORTER_BRIEFING_TTL_MS: optionalPositiveInt,
   CHAT_SESSION_GAP_MS: optionalPositiveInt,
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
+  FAST_SIGNAL_INTAKE: optionalBoolean,
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
@@ -157,6 +159,7 @@ const envSchema = z.object({
   LIMITER_AUTH_WRITE_PER_MIN: optionalInt,
   LIMITER_READ_PER_MIN: optionalInt,
   LIMITER_WRITE_PER_MIN: optionalInt,
+  LIMITER_INTAKE_SYNTHESIS_PER_MIN: optionalInt,
   MCP_HTTP_LIMIT_PER_MIN: optionalInt,
   LIMITER_IP_HEADERS: z.string().optional(),
   LIMITER_DISABLE: optionalOne,

@@ -17,6 +17,10 @@ vi.mock('@/lib/api', () => ({
   apiClient: { post: mocks.post },
 }));
 
+vi.mock('@/app/landing/Nav', () => ({
+  ensureLandingFonts: vi.fn(),
+}));
+
 const callback = 'http://127.0.0.1:43123/callback';
 const state = 'state_token-that-is-url-safe-1234567890';
 
@@ -89,23 +93,29 @@ describe('CLI auth page mixed-version bridge', () => {
 
     render(<CliAuthPage />);
 
-    expect(await screen.findByText('Invalid CLI callback. Use `index login` from the CLI.')).toBeTruthy();
+    expect(await screen.findByText('Invalid sign-in request. Start the sign-in from the Index app, or run `index login` from the CLI.')).toBeTruthy();
     expect(mocks.getSession).not.toHaveBeenCalled();
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
-  test('preserves the exact v2 request through the login return', async () => {
+  test('shows the inline sign-in form on the page when there is no session', async () => {
     mocks.getSession.mockResolvedValue({ data: { session: null } });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      providers: ['google'],
+      emailPassword: false,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
     setPage(`callback=${encodeURIComponent(callback)}&version=2&state=${state}`);
 
-    render(<CliAuthPage />);
+    try {
+      render(<CliAuthPage />);
 
-    await waitFor(() => expect(window.location.pathname).toBe('/'));
-    const returnPath = new URLSearchParams(window.location.search).get('cli_return');
-    const returnUrl = new URL(returnPath ?? '', 'http://localhost');
-    expect(returnUrl.pathname).toBe('/cli-auth');
-    expect(returnUrl.searchParams.get('callback')).toBe(callback);
-    expect(returnUrl.searchParams.get('version')).toBe('2');
-    expect(returnUrl.searchParams.get('state')).toBe(state);
+      expect(await screen.findByText('Sign in to the Index Network')).toBeTruthy();
+      // Stays on the exact validated request — no home-page redirect.
+      expect(window.location.pathname).toBe('/cli-auth');
+      expect(new URLSearchParams(window.location.search).get('state')).toBe(state);
+      expect(mocks.post).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

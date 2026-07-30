@@ -1,11 +1,11 @@
 ---
 name: verify-production-release
-description: "Pre-merge and post-merge safety checks for promoting a dev→main release in this monorepo, capturing two non-obvious ways a release can break or lose data: (1) a stale root bun.lock fails the prod build under --frozen-lockfile even though dev never caught it, and (2) a destructive Drizzle migration (e.g. DROP TABLE) silently loses prod data when the operational backfill never ran on prod. Use when cutting/merging a release PR to main, when a prod deploy build fails on 'lockfile is frozen', or before merging any PR carrying a DROP/destructive migration."
+description: "Pre-merge and post-merge safety checks for promoting a dev→main release in this monorepo, capturing non-obvious ways a release can break, lose data, or silently ship nothing: a stale root bun.lock failing the prod build under --frozen-lockfile, a destructive Drizzle migration losing prod data when the operational backfill never ran, dev→prod feature-flag drift leaving prod on older behavior, and removed queue workers orphaning jobs in prod Redis. Use when cutting/merging a release PR to main, when auditing a merge someone else performed, when a prod deploy build fails on 'lockfile is frozen', or before merging any PR carrying a DROP/destructive migration."
 ---
 
 # verify-production-release
 
-Two production-release foot-guns observed shipping the `user_profiles` removal epic. Current CI catches lockfile drift, but Railway watched-path behavior and destructive-migration data readiness still deserve explicit release checks. Use this when promoting `dev`→`main` (pairs with `finish-pr` for merge/verify and `open-release-pr` for cutting the PR).
+Two production-release foot-guns observed shipping the `user_profiles` removal epic. Current CI catches lockfile drift, but Railway watched-path behavior and destructive-migration data readiness still deserve explicit release checks. Use this when promoting `dev`→`main` (pairs with `manage-pr` for merge/verify and `open-release-pr` for cutting the PR).
 
 ## 1. Stale root `bun.lock` breaks the prod build (not dev)
 
@@ -37,9 +37,54 @@ A `DROP TABLE`/column migration is a blind schema op — it does **no** data bac
 
 **Gotchas:**
 - Migrations are sequential — you usually can't "skip" the destructive one mid-sequence, so pre-flight remediation beats splitting the release.
-- Auto-`db:migrate` on deploy means there's no window to backfill *after* the drop — do it before.
+- Auto-`db:migrate` on deploy means there's no window to backfill *after* the drop — do it before. On the `main` environment this is real: `RAILWAY_BUILD_COMMAND` ends with `cd backend && bun run db:migrate`, so migrations apply during the build. (Two `RAILWAY_*_PRE_DEPLOY_COMMAND` vars once claimed "migrations applied manually via neon mcp" and contradicted this; they were removed 2026-07-30. Do not reintroduce a note that disagrees with the build command.)
 - Successful MCP tool calls may not be logged by name; for "is the old thing still used?" prefer a **persisted** signal (a runs/operations table) over app-log greps.
 
+## 3. The release shipped, but prod still runs the old behavior
+
+A green deploy proves the *code* landed, not that the *feature* is on. Flags default
+off, and Railway variables are per-environment, so `main` keeps whatever it had.
+Audit drift explicitly — comparing the two services is a two-call check:
+
+```
+railway_list_variables({service_id:"protocol", environment_id:"<dev>"})
+railway_list_variables({service_id:"protocol", environment_id:"<main>"})
+```
+
+On 2026-07-30 this surfaced 26 flags set on dev and absent on prod — including
+`NEGOTIATION_PROTOCOL_VERSION` (prod was defaulting to v1), the whole
+`POOL_QUESTIONS_*` family, and the web agent surfaces. Prod had been running an
+older product for weeks with every release "successful".
+
+When mirroring dev→prod, two categories must **not** be copied blindly:
+- **Operational** values (`LOG_LEVEL=verbose`) — dev noise, prod cost.
+- **Disable switches**, where dev's value turns a prod feature *off*. `DISCOVERY_SOURCE_PREMISE_LIMIT=0`
+  is an explicit disable (`opportunity.graph.ts`), not a smaller limit; prod running unset
+  means the default is active.
+
+Set the rest in one `railway_set_variables` call (one redeploy), then confirm
+`SUCCESS` + health + a boot log line proving the flag took effect (e.g.
+`PoolQuestionPushQueue ... newClaimsEnabled=true`).
+
+## 4. A removed queue worker orphans jobs in prod Redis
+
+When a release deletes a queue's worker, producer, and bull-board panel (as #1301 did
+for `opportunity-discovery-run`), anything left in Redis becomes both unprocessable
+and invisible. Check before assuming it's harmless — via the Redis service's TCP proxy
+(`railway_list_tcp_proxies`), scan `bull:<queue>:*` and read `wait`/`active`/`delayed`/`failed`,
+with a live queue as a control. Guard any cleanup so it aborts if pending state exists.
+(That instance: 5 keys, one completed job from weeks earlier, zero stranded work.)
+
+## 5. "Shipped" ≠ "ran" for operational backfills
+
+A migration that creates audit tables for a backfill does not run the backfill. Empty
+`*_runs`/`*_attempts` tables are ambiguous: nobody ran it, **or** it cannot work. Distinguish
+by rehearsing on the Neon dev branch — see `debug-raw-sql-maintenance-writes`, where
+exactly that check exposed a write path that had never functioned since it shipped.
+
 ## See also
-- `finish-pr` — merge + post-merge deploy/Railway verification (run these checks as part of finishing a release PR).
+- `manage-pr` — merge + post-merge deploy/Railway verification (run these checks as part of finishing a release PR).
+- `manage-feature-flags` — the four flag surfaces and the ship-dark→flip order behind check 3.
+- `debug-raw-sql-maintenance-writes` — when a shipped backfill reports attempts but zero updates.
+- `backfill-production-data` — the prod write sequence for check 5.
 - `open-release-pr` — cut the dated `release/<date>` PR into `main`.

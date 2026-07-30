@@ -280,45 +280,11 @@ describe("ToolController Integration", () => {
 
     // ── Opportunity (CLI: discover modes) ────────────────────────
 
-    openRouterTest("discover_opportunities with searchQuery (CLI: opportunity discover)", async () => {
-      const { status, data } = await invokeTool("discover_opportunities", {
-        searchQuery: "AI engineer with privacy expertise",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 120_000);
-
-    openRouterTest("discover_opportunities with targetUserId + searchQuery (CLI: discover --target)", async () => {
-      const { status, data } = await invokeTool("discover_opportunities", {
-        targetUserId: testUserBId,
-        searchQuery: "collaborate on open-source tooling",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 120_000);
-
-    openRouterTest("discover_opportunities with partyUserIds + entities (CLI: discover --introduce)", async () => {
-      const { data } = await invokeTool("discover_opportunities", {
-        partyUserIds: [testUserId, testUserBId],
-        entities: [
-          {
-            userId: testUserId,
-            profile: { name: "User A", bio: "Engineer" },
-            intents: [{ intentId: "i1", payload: "Looking for collaborators" }],
-            networkId: "00000000-0000-0000-0000-000000000000",
-          },
-          {
-            userId: testUserBId,
-            profile: { name: "User B", bio: "Designer" },
-            intents: [{ intentId: "i2", payload: "Looking for engineers" }],
-            networkId: "00000000-0000-0000-0000-000000000000",
-          },
-        ],
-        hint: "both working on AI tools",
-      });
-      // May fail on permissions/membership/profile, but NOT schema validation
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 120_000);
+    test("POST /tools/discover_opportunities reports the retained not-found contract", async () => {
+      const { status, data } = await invokeTool("discover_opportunities", {});
+      expect(status).toBe(404);
+      expect(String(data.error)).toContain("not found");
+    }, 60_000);
 
     test("list_opportunities with empty query (CLI: opportunity list)", async () => {
       const { status, data } = await invokeTool("list_opportunities", {});

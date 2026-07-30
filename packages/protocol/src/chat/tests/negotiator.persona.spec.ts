@@ -57,11 +57,8 @@ describe("createNegotiatorPersona", () => {
     expect(persona.id).not.toBe(ORCHESTRATOR_PERSONA_ID);
   });
 
-  it("keeps the discovery-coupled loop behavior OFF and hallucination recovery ON (P4.5)", () => {
+  it("keeps hallucination recovery ON for unbacked proposal blocks (P4.5)", () => {
     const persona = createNegotiatorPersona(AGENT_OPTS);
-    // createIntentCallback only fires off discover_opportunities results —
-    // discovery is retired for this persona, so it must stay off.
-    expect(persona.loopBehaviors.createIntentCallback).toBe(false);
     // With create_intent in the toolset, ```intent_proposal blocks are
     // legitimate output — unbacked ones must be detected and stripped.
     expect(persona.loopBehaviors.hallucinationRecovery).toBe(true);

@@ -10,6 +10,7 @@ import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkExperimentController } from './controllers/network-experiment.controller';
 import { IntentController } from './controllers/intent.controller';
+import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
 import { ConnectLinkController } from './controllers/connect-link.controller';
 import { AuthController } from './controllers/auth.controller';
@@ -50,7 +51,6 @@ import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
 import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
 import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
-import { discoveryRunQueue } from './queues/opportunity/discovery-run.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
@@ -159,11 +159,6 @@ fromIntroducerQueue.setRuntimeDeps({
 fromEnrichmentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
-});
-discoveryRunQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-  stampNewbornOpportunities,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
@@ -438,7 +433,6 @@ intentQueue.startWorker();
 fromIntentQueue.startWorker();
 fromIntroducerQueue.startWorker();
 fromEnrichmentQueue.startWorker();
-discoveryRunQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
@@ -603,6 +597,7 @@ controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkExperimentController, new NetworkExperimentController());
 controllerInstances.set(IntentController, new IntentController());
+controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
 controllerInstances.set(ConnectLinkController, new ConnectLinkController());
@@ -941,7 +936,6 @@ const shutdown = async () => {
     fromIntentQueue.close(),
     fromIntroducerQueue.close(),
     fromEnrichmentQueue.close(),
-    discoveryRunQueue.close(),
     enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
     negotiationWatchdogQueue.close(),

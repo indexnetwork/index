@@ -17,7 +17,7 @@ function candidate(): Candidate {
     felicityAuthority: null, felicitySincerity: null, felicityClarity: null,
     control: {
       userId: 'fixture-owner', payload: 'fixture', summary: null, isIncognito: false, sourceId: null, sourceType: 'fixture', embedding: null,
-      createdAt: new Date(0), updatedAt: new Date(0), archivedAt: null, lastVisitedAt: null, firstDiscoverySucceededAt: null, status: 'ACTIVE',
+      createdAt: '1970-01-01 00:00:00+00', updatedAt: '1970-01-01 00:00:00+00', archivedAt: null, lastVisitedAt: null, firstDiscoverySucceededAt: null, status: 'ACTIVE',
     },
   };
 }
@@ -49,7 +49,9 @@ function productionRuntime(failure?: 'partitions' | 'candidate_listing'): Backfi
       if (statement.includes('ORDER BY i.created_at ASC, i.id ASC')) {
         // The joined tables both expose status and created_at, so PostgreSQL
         // rejects either unqualified projection before a report is available.
-        if (!statement.includes('i.status AS status') || !statement.includes('i.created_at AS created_at')) {
+        // created_at is additionally projected as exact text: the driver cannot
+        // bind a Date control, and a Date round-trip would drop microseconds.
+        if (!statement.includes('i.status AS status') || !statement.includes('i.created_at::text AS created_at')) {
           throw new Error('candidate projection is ambiguous');
         }
         if (failure === 'candidate_listing') throw new Error('fixture candidate-listing failure must not be emitted');
@@ -58,7 +60,7 @@ function productionRuntime(failure?: 'partitions' | 'candidate_listing'): Backfi
           source_type: 'discovery_form', proposal_confirmed: true, semantic_entropy: 1, referential_anchor: null,
           intent_mode: 'ATTRIBUTIVE', speech_act_type: null, felicity_authority: null, felicity_sincerity: null,
           felicity_clarity: null, summary: null, is_incognito: false, embedding: null,
-          created_at: new Date(0), updated_at: new Date(0), archived_at: null, last_visited_at: null,
+          created_at: '1970-01-01 00:00:00+00', updated_at: '1970-01-01 00:00:00+00', archived_at: null, last_visited_at: null,
           first_discovery_succeeded_at: null, status: 'ACTIVE',
         }];
       }

@@ -39,7 +39,7 @@ at *applying* known patterns but bad at *deciding* what is dead; let determinist
 ## Process
 
 ### 1. Understand intent
-Read in order: relevant `.rpiv/guidance/**/architecture.md` and `CLAUDE.md`, recent
+Read in order: relevant `.rpiv/guidance/**/architecture.md`, `AGENTS.md`, and the Development Reference, recent
 `git log` for the package, and the package's `package.json` (actual scope/deps). You are
 hunting the gap between stated intent and actual code. Code that exists but isn't
 mentioned anywhere is a removal candidate.

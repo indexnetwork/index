@@ -75,7 +75,7 @@ last_updated: 2026-06-24T08:08:39+0000
   - `packages/hermes-plugin/dashboard/dist/index.js:7-10`: "Live Python dashboard routes are deliberately deferred until route authentication is explicit for this plugin source"
   - `packages/hermes-plugin/dashboard/README.md:22-26`: "Live dashboard routes are deliberately deferred until Hermes exposes a documented route-auth mechanism"
   - `packages/hermes-plugin/README.md:211-213`: "This slice intentionally ships the dashboard as static-only. Python dashboard backend routes are deferred"
-  
+
   The smoke test enforces the static-only invariant:
   - `assert "api" not in dashboard_manifest` — explicitly asserts no API field
   - `assert not (ROOT / "dashboard" / "plugin_api.py").exists()` — explicitly asserts no API file

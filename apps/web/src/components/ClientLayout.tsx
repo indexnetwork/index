@@ -14,4 +14,4 @@ export default function ClientLayout({ children, hideFeedback }: ClientLayoutPro
       {!hideFeedback && <FeedbackWidget />}
     </>
   );
-} 
+}

@@ -60,7 +60,7 @@
       "Follow existing doc structure: YAML frontmatter (title, type, tags, created, updated) then markdown body.",
       "Use Index Network domain vocabulary — \"intents\" not \"requests\", \"indexes\" not \"communities\", \"opportunities\" not \"matches\".",
       "docs/design/ for architecture, docs/domain/ for business model, docs/specs/ for API/CLI contracts, docs/guides/ for setup.",
-      "Update CLAUDE.md when structural or architectural changes are introduced.",
+      "Update the Development Reference when structural or architectural changes are introduced.",
       "Keep docs concise and reference-oriented — no tutorials or prose-heavy explanations."
     ],
     "delivery": [

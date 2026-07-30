@@ -10,7 +10,44 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
 > itemized. From `2.0.0` onward, keep this file updated as part of every release
 > (bump `package.json` and the `[Unreleased]` section before promoting to `main`).
 
+## Release model
+
+Every push to `dev` publishes `<package.json version>-rc.<run>.<attempt>` under
+the npm `rc` tag; `latest` moves only when `main` is promoted, and only if that
+exact version is not already on npm. **Stable releases are therefore sparse and
+skip versions on purpose** — most versions only ever exist as an `rc`. `latest`
+went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped as
+prereleases between the two promotions. To track every change, read `rc`; to
+pin a supported release, use `latest`.
+
 ## [Unreleased]
+
+### Added
+- Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
+  precomputes a per-user intake brief plus round-1 question, and
+  `SignalIntakeOrchestrator` drives the funnel as a deterministic state machine
+  on flash instead of sequential pro turns, with synthesis speculated during a
+  deterministic community picker. New stable exports from the `signals` facade:
+  `SignalIntakePackGenerator`, `normalizeIntakePack`, `SignalIntakeOrchestrator`,
+  `answerLabel`, `FALLBACK_WHO_QUESTION`, `FALLBACK_BRING_QUESTION`, and the
+  `IntakePack` / `IntakePackInput` / `IntakePackQuestion` /
+  `IntakePackQuestionOption` / `IntakeAnswer` / `SynthesisInput` /
+  `SynthesisResult` types. Minor bump: additive surface only.
+
+### Fixed
+- `architecture:cycles` graphs runtime edges only (8.0.3). It counted `import
+  type` / `export type` edges, which TypeScript erases, so it reported a
+  7-module negotiation/questions cycle that no runtime can observe — penalizing
+  the capability-facade pattern of depending on a port *type* instead of an
+  implementation. Tooling only; no source or public-surface change. The full
+  `architecture:check` suite now passes and runs in CI.
+
+## [8.0.2] — 2026-07-30
+
+Promoted to npm `latest` on 2026-07-30, carrying the whole 7.6.0 → 8.0.2 line.
+Those intermediate versions were published as `-rc` prereleases from `dev`
+only, so `latest` moved 6.7.1 → 8.0.2 in one step; see **Release model**
+above. Entries below keep the version they were developed under.
 
 ### Added
 - Configurable negotiator stance `NEGOTIATOR_STANCE` (IND-611; 7.11.0), shipped
@@ -31,6 +68,13 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   `bun run eval:stance` measures decline rate on low-value versus high-value
   fixtures per stance.
 
+### Removed
+- **BREAKING:** `DiscoveryRunInput` and `DiscoveryRunRecord` (8.0.0). Background-only
+  opportunity matching (#1301) deleted `shared/interfaces/discovery-run.interface.ts`
+  along with the discovery-run queue, adapter, and coalescing domain, so the two
+  stable types are no longer part of the public surface. The major bump shipped
+  with that change; this entry and the regenerated export inventory record it.
+
 ### Fixed
 - Stop force-rewriting an opening-move refusal (IND-611 prerequisite; 7.11.0):
   `negotiation.graph.ts` ran the turn-0 opening force *before* the IND-564
@@ -41,6 +85,14 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   refusal stands and flows into the existing quiet `screened_out` outcome with
   no message persisted, while a genuinely malformed turn-0 opening (e.g.
   `counter`) is still coerced to the opening action.
+- Attribute `outcome.reasoning` to whoever actually decided (IND-611; 7.11.1):
+  `screened_out` now has two routes — the screen node, and an opening-turn
+  refusal. The finalize node preferred `screenDecision.reasoning` for both,
+  which is wrong on the new route when the gate returned `reach_out`: the
+  outcome would carry the screen's argument *for* the match as the reason the
+  agent did *not* reach out (and IND-610 renders that string in the owner-only
+  gate-decision card). An opening-turn refusal now reports the withdrawing
+  turn's own reasoning; a genuine screen-node block is unchanged.
 - Add canonical shared guidance source and unified MCP_INSTRUCTIONS/read_docs
   (IND-602/603; 7.10.0): The single normative `CANONICAL_GUIDANCE_SUMMARY`
   (1,555 chars, under the 4,500-char MCP context budget) covers Index Network
@@ -689,7 +741,16 @@ the matching/opportunity/premise eval harnesses, premise source tracking and
 cascade retraction, network-scoped agents, and the agent registry. Reconstructed
 from git history; not itemized.
 
-[Unreleased]: https://github.com/indexnetwork/protocol/compare/v4.3.0...HEAD
+<!--
+Release tags stopped being created when publishing moved to the automated
+subtree workflow: only v0.2.1 and v0.3.0 still exist in indexnetwork/protocol,
+so every `compare/vX.Y.Z` link below 404s. They are kept for historical intent.
+New entries link to the npm release instead, and [Unreleased] compares the
+branches that actually define it.
+-->
+
+[Unreleased]: https://github.com/indexnetwork/protocol/compare/main...dev
+[8.0.2]: https://www.npmjs.com/package/@indexnetwork/protocol/v/8.0.2
 [4.3.0]: https://github.com/indexnetwork/protocol/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/indexnetwork/protocol/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/indexnetwork/protocol/compare/v4.0.0...v4.1.0

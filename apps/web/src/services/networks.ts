@@ -395,5 +395,5 @@ export const indexesService = {
 export function useNetworkService() {
   const api = useAuthenticatedAPI();
   return useMemo(() => createIndexesService(api), [api]);
-} 
+}
 

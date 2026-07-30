@@ -11,10 +11,8 @@ import type { MinedDiscriminator, PoolCandidate, DiscriminatorShadowResult } fro
 
 const logger = protocolLogger("PoolDiscriminatorShadow");
 
-/** Max text/vector references compared for novelty. */
+/** Max ordinary current-intent/premise text references compared for novelty. */
 const MAX_REFERENCE_TEXTS = 24;
-const MAX_PRIOR_REFERENCE_TEXTS = 24;
-const MAX_REFERENCE_EMBEDDINGS = 24;
 
 /** Input for one shadow mining+scoring pass. */
 export interface DiscriminatorShadowInput {
@@ -67,18 +65,17 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
 
   const priorReferenceTexts = (input.priorReferenceTexts ?? [])
     .map((text) => text.trim())
-    .filter((text) => text.length > 0)
-    .slice(0, MAX_PRIOR_REFERENCE_TEXTS);
+    .filter((text) => text.length > 0);
   const priorReferenceEmbeddings = (input.priorReferenceEmbeddings ?? [])
-    .filter((embedding) => embedding.length > 0)
-    .slice(0, MAX_REFERENCE_EMBEDDINGS);
+    .filter((embedding) => embedding.length > 0);
 
+  const hasPriorReferenceHistory = priorReferenceTexts.length > 0 || priorReferenceEmbeddings.length > 0;
   let novelties: number[] = mined.map(() => 1);
   let discriminatorEmbeddings: number[][] | null = null;
+  let priorReferenceComparisonUnavailable = false;
   const shouldEmbed = input.retainEmbeddings
     || references.length > 0
-    || priorReferenceTexts.length > 0
-    || priorReferenceEmbeddings.length > 0;
+    || hasPriorReferenceHistory;
   if (shouldEmbed) {
     try {
       const texts = [
@@ -90,6 +87,11 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
       if (embeddings.length !== texts.length || embeddings.some((embedding) => !Array.isArray(embedding) || embedding.length === 0)) {
         throw new Error("Embedding provider returned an invalid batch");
       }
+      const comparisonEmbeddings = [...embeddings, ...priorReferenceEmbeddings];
+      const dimension = comparisonEmbeddings[0]?.length;
+      if (dimension !== undefined && comparisonEmbeddings.some((embedding) => embedding.length !== dimension)) {
+        throw new Error("Embedding comparison batch contains incompatible vector dimensions");
+      }
       discriminatorEmbeddings = embeddings.slice(0, mined.length);
       const referenceEmbeddings = [
         ...priorReferenceEmbeddings,
@@ -100,6 +102,7 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
       logger.warn("Novelty embedding failed; defaulting novelty to 1", {
         error: err instanceof Error ? err.message : String(err),
       });
+      priorReferenceComparisonUnavailable = hasPriorReferenceHistory;
     }
   }
 
@@ -117,5 +120,9 @@ export async function runPoolDiscriminatorShadow(input: DiscriminatorShadowInput
     })
     .sort((a, b) => b.voi - a.voi);
 
-  return { poolSize: candidates.length, discriminators };
+  return {
+    poolSize: candidates.length,
+    discriminators,
+    ...(priorReferenceComparisonUnavailable ? { priorReferenceComparisonUnavailable: true } : {}),
+  };
 }

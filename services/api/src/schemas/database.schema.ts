@@ -381,6 +381,48 @@ export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
   fixtureCorpusVersion: text('fixture_corpus_version').notNull(),
   seededAt: timestamp('seeded_at', { withTimezone: true }).notNull(),
 });
+/** Precomputed fast-intake artifact: one row per user. */
+export const signalIntakePacks = pgTable('signal_intake_packs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  brief: text('brief').notNull(),
+  question: jsonb('question').$type<{
+    title: string;
+    prompt: string;
+    options: Array<{ label: string; description: string }>;
+    multiSelect: boolean;
+  }>().notNull(),
+  premiseHash: text('premise_hash'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index('signal_intake_packs_user_id_idx').on(table.userId),
+}));
+
+export type SignalIntakePackRow = typeof signalIntakePacks.$inferSelect;
+export type NewSignalIntakePackRow = typeof signalIntakePacks.$inferInsert;
+
+export const signalIntakeRunStatusEnum = pgEnum('signal_intake_run_status', ['pending', 'ready', 'failed']);
+
+/** Single-flight record for speculative intake synthesis. */
+export const signalIntakeRuns = pgTable('signal_intake_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  answersHash: text('answers_hash').notNull(),
+  status: signalIntakeRunStatusEnum('status').notNull().default('pending'),
+  proposalId: text('proposal_id'),
+  /** "Looking for" card summary from the synthesis that settled this run. */
+  lookingFor: text('looking_for'),
+  /** "You bring" card summary from the synthesis that settled this run. */
+  youBring: text('you_bring'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userAnswersUniq: uniqueIndex('signal_intake_runs_user_answers_uniq').on(table.userId, table.answersHash),
+  userIdIdx: index('signal_intake_runs_user_id_idx').on(table.userId),
+  createdAtIdx: index('signal_intake_runs_created_at_idx').on(table.createdAt),
+}));
+
+export type SignalIntakeRunRow = typeof signalIntakeRuns.$inferSelect;
 
 export type HydeSourceType = 'intent' | 'query' | 'context';
 

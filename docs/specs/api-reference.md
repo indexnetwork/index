@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-04-08
+updated: 2026-07-30
 ---
 
 # Protocol API Reference
@@ -23,6 +23,7 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Integration](#integration)
 - [Intent](#intent)
 - [Link](#link)
+- [Fast Signal Intake](#fast-signal-intake)
 - [Opportunity](#opportunity)
 - [Network Opportunity](#network-opportunity)
 - [Enrichment](#enrichment)
@@ -191,7 +192,7 @@ Every MCP `tools/call` runs under the shared tool runtime. The runtime applies a
 | `bounded_slow` | 45 seconds | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
 | `async_candidate` | 50 seconds | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
 
-A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS` or `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`.
+A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS`.
 
 **Size limits:**
 
@@ -204,23 +205,6 @@ Invalid or non-positive numeric values are ignored and the default is used.
 **Cancellation:**
 
 Clients may cancel in-flight MCP calls with `notifications/cancelled`. HTTP request aborts exposed by the MCP SDK are treated the same way. The runtime propagates the abort signal into graph, LLM, scraper, and embedding paths where supported.
-
-**Async discovery runs:**
-
-For MCP callers, `discover_opportunities` does not execute the full discovery graph inside the initial `tools/call`. It returns quickly with:
-
-```json
-{
-  "success": true,
-  "data": {
-    "status": "queued",
-    "discoveryRunId": "...",
-    "message": "Discovery started. Call get_discovery_run ..."
-  }
-}
-```
-
-Clients poll `get_discovery_run({ discoveryRunId })` until `status` is `succeeded`, `failed`, or `cancelled`. When `succeeded`, `data.result` contains the normal discovery payload. Clients may call `cancel_discovery_run({ discoveryRunId })` to cancel a queued run or request cancellation of a running run. Non-MCP chat/web paths remain synchronous.
 
 **Runtime error envelope:**
 
@@ -1650,26 +1634,6 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
 }
 ```
 
-### POST /api/debug/intents/:id/discover
-
-Runs the opportunity discovery pipeline for a specific intent and returns the full graph trace. **WARNING**: This persists results (creates/reactivates opportunities).
-
-**Auth**: DebugGuard + AuthGuard
-
-**Path params**:
-- `id` — Intent ID
-
-**Response**:
-```json
-{
-  "exportedAt": "...",
-  "preflight": { ... },
-  "result": { ... }
-}
-```
-
-Returns `diagnosis` string instead of `result` if there are no candidates or graph execution fails.
-
 ### GET /api/debug/chat/:id
 
 Returns a debug-friendly view of a chat session, including messages and per-turn debug metadata (graph, iterations, tools).
@@ -2741,6 +2705,126 @@ Archive an intent.
 
 ---
 
+## Fast Signal Intake
+
+**Controller prefix**: `/intents/intake`
+
+Deterministic fast-intake funnel for `/i/new` (dark-shipped behind `FAST_SIGNAL_INTAKE=true`). Round 1 is served from a per-user pack generated offline (no model call); round 2 and synthesis are single structured `gemini-2.5-flash` calls; round 3 (where/community) is resolved entirely client-side and only travels as `whereText`/`networkId` on `/proposal`. Every route below is gated by `FastSignalIntakeEnabledGuard`, which runs **before** `AuthGuard` and throws when the flag is off, so a flag-off deployment returns `404 { "error": "Not found" }` even to unauthenticated callers (mirrors `ContactsEnabledGuard`). `/prepare` and `/revise` use the `intake_synthesis` rate-limit class (see **Rate Limiting** in the development reference) instead of `write`, since each call launches a background LLM synthesis plus a full intent-graph run and persists a durable proposal row.
+
+A shared `IntakePackQuestion` shape (`{ title, prompt, options: [{ label, description }], multiSelect }`) is returned for round-1 and round-2 questions. An answered round is `{ selectedOptions: string[], freeText?: string }`, and at least one of `selectedOptions`/`freeText` is required.
+
+**Shared error responses** (in addition to per-route errors below):
+- `404` — `{ "error": "run_not_found", "code": "run_not_found" }` when `runId` does not resolve to a run owned by the caller.
+- `422` — `{ "error": "verification_rejected", "code": "verification_rejected", "clarification": IntakePackQuestion }` when synthesis produced nothing specific enough to verify; the client renders `clarification` as a recovery round and retries.
+- `403` — `{ "error": "forbidden", "code": "network_membership_required", "networkId": "..." }` when the caller is not a member of the supplied `networkId`.
+- `400` — `{ "error": "Validation failed", "details": { ... } }` (flattened Zod error) for malformed bodies.
+- `500` — `{ "error": "Failed to process intake request" }` for unexpected failures.
+
+### POST /api/intents/intake/start
+
+Round 1: read the user's precomputed intake pack, or generate one synchronously on a cold miss (no request body).
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Response**:
+```json
+{ "question": { "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true } }
+```
+
+### POST /api/intents/intake/question
+
+Round 2: one structured call grounded by the pack brief and the round-1 answer.
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{ "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }
+```
+
+**Response**:
+```json
+{ "question": { "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true } }
+```
+
+### POST /api/intents/intake/prepare
+
+Claim a run and start speculative synthesis (round-2 synthesis plus the intent graph) without awaiting it, so it can overlap the client's round-3 community picker.
+
+**Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "round2Prompt": "string (optional, max 400)"
+}
+```
+
+**Response 202**:
+```json
+{ "runId": "<uuid>" }
+```
+
+### POST /api/intents/intake/proposal
+
+Resolve the proposal for a run: awaits the speculative synthesis started by `/prepare` when it is still in flight, reuses it when ready and unconstrained, or re-synthesizes when a `whereText` constraint is supplied or the prior speculation failed.
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "runId": "UUID (required)",
+  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "networkId": "UUID (optional)",
+  "whereText": "string (optional, max 280)"
+}
+```
+
+`networkId` is the community the user picked in round 3; it is re-verified server-side against the caller's actual membership (see `network_membership_required` above) and attached to the proposal row so `POST /api/intents/confirm` later rejects any mismatched `networkId`.
+
+**Response**:
+```json
+{
+  "proposalId": "...",
+  "description": "...",
+  "lookingFor": "...",
+  "youBring": "..."
+}
+```
+
+### POST /api/intents/intake/revise
+
+Replace the visible draft from user feedback: writes a brand-new proposal row (the prior one is left untouched) and re-attaches the run's already-picked `networkId`, if any.
+
+**Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "runId": "UUID (required)",
+  "feedback": "string (required, 1-600 chars)",
+  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "networkId": "UUID (optional)"
+}
+```
+
+**Response**:
+```json
+{
+  "proposalId": "...",
+  "description": "...",
+  "lookingFor": "...",
+  "youBring": "..."
+}
+```
+
+---
+
 ## Opportunity
 
 **Controller prefix**: `/opportunities`
@@ -2795,22 +2879,6 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 - `noCache` — Bypass home cache when `true` or `1` (optional)
 
 **Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
-
-### POST /api/opportunities/discover
-
-Discover opportunities via HyDE graph.
-
-**Auth**: AuthGuard
-
-**Request body** (Zod-validated):
-```json
-{
-  "query": "string (required, min 1 char)",
-  "limit": "number (optional, default: 5)"
-}
-```
-
-**Response**: JSON with discovered opportunities. Public card prose and `matchReason` are safety-normalized; network/event metadata alone is never presented as attendance, membership, residence, acquaintance, or shared presence.
 
 ### GET /api/opportunities/:id
 
@@ -3444,7 +3512,6 @@ Invoke a tool by name with a JSON query body.
 **Auth**: `AuthGuard`
 
 **Path params**:
-- `toolName` — Name of the tool to invoke (e.g. `read_intents`, `discover_opportunities`)
 
 **Request body**:
 ```json
@@ -3491,7 +3558,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network` | Network | Delete a network |
 | `create_network_membership` | Network | Add a member to a network |
 | `delete_network_membership` | Network | Remove a member from a network |
-| `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
 | `list_contacts` | Contact | List user's contacts |

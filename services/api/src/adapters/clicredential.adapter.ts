@@ -37,7 +37,12 @@ function parseCliMetadata(metadata: string | null): { client: 'cli'; protocolVer
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const record = parsed as Record<string, unknown>;
     const keys = Object.keys(record).sort();
-    if (keys.length !== 2 || keys[0] !== 'client' || keys[1] !== 'protocolVersion') return null;
+    // Exactly the shape create() mints. Keys minted before enrollmentCapable
+    // existed fail this check and simply age out at their 90-day expiry
+    // instead of being revocable at logout.
+    if (keys.length !== 3
+      || keys[0] !== 'client' || keys[1] !== 'enrollmentCapable' || keys[2] !== 'protocolVersion'
+      || record.enrollmentCapable !== true) return null;
     if (record.client !== 'cli' || (record.protocolVersion !== 1 && record.protocolVersion !== 2)) return null;
     return { client: 'cli', protocolVersion: record.protocolVersion };
   } catch {
@@ -75,7 +80,12 @@ export class CliCredentialAdapter implements CliCredentialStore {
     const hashedKey = await hashApiKey(key);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + CLI_CREDENTIAL_LIFETIME_MS);
-    const metadata = Object.freeze({ client: 'cli' as const, protocolVersion });
+    // enrollmentCapable admits this key to the MCP enrollment_key profile,
+    // whose ONLY tool is register_agent (mcp.authorization-policy). It does
+    // not weaken IND-384: the key still cannot mint successor credentials,
+    // manage agents, or touch any session-only surface — it can solely
+    // register an agent record, which stays visible/deletable on the web.
+    const metadata = Object.freeze({ client: 'cli' as const, protocolVersion, enrollmentCapable: true as const });
 
     const [row] = await db
       .insert(apikeys)
