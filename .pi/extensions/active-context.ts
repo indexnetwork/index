@@ -308,7 +308,7 @@ function installFooter(pi: ExtensionAPI, ctx: ExtensionContext): void {
 				if (branch) placeParts.push(`🌿 ${dim(branch)}`);
 				const sessionPart = `💬 ${sessionName ? accent(sessionName) : dim("unnamed")}`;
 
-				// ── Line 2 left: work context — PR · Linear · Goal (always visible) ──
+				// ── Line 2 left: work context — PR · Linear (always visible) · Goal (when status exists) ──
 				const prPart = `🔀 ${active.pr !== undefined ? theme.bold(accent(`PR#${active.pr}`)) : dim("—")}`;
 				const issuePart = `🎯 ${active.issue ? theme.bold(accent(active.issue)) : dim("—")}`;
 				const goalPart = formatGoalFooterStatus(footerData.getExtensionStatuses().get("goal"));
