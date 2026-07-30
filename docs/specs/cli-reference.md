@@ -258,11 +258,6 @@ With `--json`, structured advisory responses are printed unchanged.
 3. Prints confirmation message.
 
 
-1. Reads credentials. Exits with error if not logged in.
-3. Renders a table of discovered opportunities.
-
-Supports optional flags:
-
 ---
 
 ## Network

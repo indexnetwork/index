@@ -244,7 +244,7 @@ MCP tools are bounded by `ToolInvocationRuntime`:
 | `bounded_slow` | 45 s | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
 | `async_candidate` | 50 s | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
 
-Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, such as `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`. Tool outputs are capped by `MCP_TOOL_MAX_OUTPUT_BYTES` (default `1000000`) or `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES`; inbound MCP request bodies are capped by the backend with `MCP_MAX_REQUEST_BYTES` (default `1000000`). Runtime failures return JSON text envelopes with stable `code` values: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, or `TOOL_OUTPUT_TOO_LARGE`.
+Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`. Tool outputs are capped by `MCP_TOOL_MAX_OUTPUT_BYTES` (default `1000000`) or `MCP_TOOL_MAX_OUTPUT_<TOOL_NAME>_BYTES`; inbound MCP request bodies are capped by the backend with `MCP_MAX_REQUEST_BYTES` (default `1000000`). Runtime failures return JSON text envelopes with stable `code` values: `TOOL_TIMEOUT`, `TOOL_CANCELLED`, or `TOOL_OUTPUT_TOO_LARGE`.
 
 
 ### `MCP_INSTRUCTIONS`

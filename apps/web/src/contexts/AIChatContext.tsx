@@ -1441,6 +1441,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           content: string;
           createdAt: string;
           traceEvents?: TraceEvent[];
+          discoveries?: DiscoveryOpportunity[] | null;
           streamingDrafts?: StreamingDraft[] | null;
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
@@ -1479,6 +1480,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         timestamp: new Date(m.createdAt),
         isStreaming: false,
         traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
+        ...(Array.isArray(m.discoveries) && m.discoveries.length > 0
+          ? { discoveries: m.discoveries }
+          : {}),
         ...(Array.isArray(m.streamingDrafts) && m.streamingDrafts.length > 0
           ? { streamingDrafts: m.streamingDrafts }
           : {}),
@@ -1526,6 +1530,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           content: string;
           createdAt: string;
           traceEvents?: TraceEvent[];
+          discoveries?: DiscoveryOpportunity[] | null;
           streamingDrafts?: StreamingDraft[] | null;
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
@@ -1551,6 +1556,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         timestamp: new Date(message.createdAt),
         isStreaming: false,
         traceEvents: mergeDebugMetaIntoTraceEvents(message.traceEvents, message.debugMeta) ?? undefined,
+        ...(Array.isArray(message.discoveries) && message.discoveries.length > 0
+          ? { discoveries: message.discoveries }
+          : {}),
         ...(Array.isArray(message.streamingDrafts) && message.streamingDrafts.length > 0
           ? { streamingDrafts: message.streamingDrafts }
           : {}),

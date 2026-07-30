@@ -191,7 +191,7 @@ Every MCP `tools/call` runs under the shared tool runtime. The runtime applies a
 | `bounded_slow` | 45 seconds | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
 | `async_candidate` | 50 seconds | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
 
-A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS` or `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`.
+A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS`.
 
 **Size limits:**
 
@@ -204,20 +204,6 @@ Invalid or non-positive numeric values are ignored and the default is used.
 **Cancellation:**
 
 Clients may cancel in-flight MCP calls with `notifications/cancelled`. HTTP request aborts exposed by the MCP SDK are treated the same way. The runtime propagates the abort signal into graph, LLM, scraper, and embedding paths where supported.
-
-**Async discovery runs:**
-
-
-```json
-{
-  "success": true,
-  "data": {
-    "status": "queued",
-    "discoveryRunId": "...",
-  }
-}
-```
-
 
 **Runtime error envelope:**
 
