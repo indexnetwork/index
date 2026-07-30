@@ -7,6 +7,7 @@ import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
 import { HISTORICAL_MATRIX_CASES_PATH, parseBaseArgs, runBaseCommand, runBaseLifecycle, seedProtectedBase, verifyBaseFixtureIntegrity, verifyProtectedBase } from '../discovery-env-matrix-base.main';
+import { BaseRuntimeChildError, handoffBaseRuntime, runProtectedBaseBootstrap } from '../discovery-env-matrix-base';
 import { BASE_FIXTURE_CORPUS_VERSION, assertBaseEnvironment, baseSeedPayload, computeFixtureFingerprint, type BaseMetadata, verifyBaseContract } from '../discovery-env-matrix.shared';
 
 const SAFE_ENV: NodeJS.ProcessEnv = {
@@ -215,6 +216,84 @@ describe('discovery environment matrix base policy', () => {
     expect(() => verifyBaseContract({ ...expected, fixtureFingerprint: 'stale' }, expected)).toThrow('fixture fingerprint mismatch');
     expect(() => verifyBaseContract({ ...expected, fixtureCorpusVersion: 'old' }, expected)).toThrow('fixture corpus version mismatch');
     expect(() => verifyBaseContract(expected, expected)).not.toThrow();
+  });
+});
+
+describe('protected base bootstrap runtime handoff', () => {
+  const runtimeFixture = path.resolve(import.meta.dir, 'fixtures/discovery-env-matrix-base-runtime-handoff.fixture.ts');
+  const attestedManifest = JSON.stringify({
+    version: 1,
+    base: {
+      projectId: 'project-id', branchId: 'base-branch-id', endpointId: 'base-endpoint-id',
+      databaseName: 'protocol_eval', databaseUrl: 'postgres://base@ep-base.neon.tech/protocol_eval',
+    },
+    children: [],
+  });
+
+  it('runs the runtime in a fresh process with only the attested target and sanitized child environment', async () => {
+    const output = await handoffBaseRuntime({
+      args: ['--verify'],
+      databaseUrl: 'postgres://base@ep-base.neon.tech/protocol_eval',
+      runtimePath: runtimeFixture,
+      env: {
+        DATABASE_URL: 'postgres://untrusted@ep-other.neon.tech/protocol_eval',
+        NEON_API_KEY: 'must-not-reach-runtime',
+        DISCOVERY_ENV_MATRIX_CHILDREN: 'must-not-reach-runtime',
+      },
+    });
+    const runtime = JSON.parse(output) as {
+      pid: number; args: string[]; databaseUrl: string; neonApiKeyPresent: boolean; manifestPresent: boolean;
+    };
+
+    expect(runtime.pid).not.toBe(process.pid);
+    expect(runtime.args).toEqual(['--verify']);
+    expect(runtime.databaseUrl).toBe('postgres://base@ep-base.neon.tech/protocol_eval');
+    expect(runtime.neonApiKeyPresent).toBe(false);
+    expect(runtime.manifestPresent).toBe(false);
+  });
+
+  it('suppresses raw failed-child output while retaining its nonzero exit status', async () => {
+    const failure = await handoffBaseRuntime({
+      args: ['fail'], databaseUrl: 'postgres://base@ep-base.neon.tech/protocol_eval', runtimePath: runtimeFixture,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(BaseRuntimeChildError);
+    expect((failure as BaseRuntimeChildError).exitCode).toBe(23);
+    expect(String(failure)).not.toContain('should-not-leak');
+  });
+
+  it('attests and binds before it hands off to the child runtime', async () => {
+    const events: string[] = [];
+    const output = await runProtectedBaseBootstrap({
+      args: ['ignored', '--verify'],
+      env: {
+        DISCOVERY_ENV_MATRIX_CHILDREN: attestedManifest,
+        DATABASE_URL: 'postgres://operator@ep-base.neon.tech/protocol_eval',
+      },
+      attest: async () => { events.push('attested'); },
+      handoff: async (args, databaseUrl) => {
+        events.push(`handoff:${databaseUrl}`);
+        expect(args).toEqual(['--verify']);
+        return 'runtime output\n';
+      },
+    });
+
+    expect(output).toBe('runtime output\n');
+    expect(events).toEqual([
+      'attested',
+      'handoff:postgres://base@ep-base.neon.tech/protocol_eval',
+    ]);
+  });
+
+  it('does not hand off when attestation fails', async () => {
+    const handoff = mock(async () => 'must not run');
+    await expect(runProtectedBaseBootstrap({
+      args: [],
+      env: { DISCOVERY_ENV_MATRIX_CHILDREN: attestedManifest, DATABASE_URL: 'postgres://operator@ep-base.neon.tech/protocol_eval' },
+      attest: async () => { throw new Error('attestation rejected'); },
+      handoff,
+    })).rejects.toThrow('attestation rejected');
+    expect(handoff).not.toHaveBeenCalled();
   });
 });
 

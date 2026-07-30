@@ -29,8 +29,15 @@ describe('Neon matrix control-plane attestation', () => {
       const source = await readFile(path.resolve(import.meta.dir, '..', name), 'utf8');
       expect(source).not.toContain("from '@indexnetwork/protocol'");
       expect(source).not.toContain('error.message');
-      expect(source).toContain("await import('");
+      if (name === 'discovery-env-matrix-base.ts') {
+        expect(source).toContain('Bun.spawn');
+        expect(source).not.toContain("import('./discovery-env-matrix-base.main')");
+      } else {
+        expect(source).toContain("await import('");
+      }
     }
+    const baseRuntime = await readFile(path.resolve(import.meta.dir, '../discovery-env-matrix-base.runtime.ts'), 'utf8');
+    expect(baseRuntime).toContain("await import('./discovery-env-matrix-base.main')");
   });
   it('rejects a non-5432 target before a control-plane port can be created', () => {
     expect(() => parseAttestedManifest(JSON.stringify({ version: 1, base, children: [{ ...child, databaseUrl: 'postgresql://owner:secret@ep-child.neon.tech:6543/protocol_eval' }] }), [child.childKey])).toThrow('port must be exactly 5432');
