@@ -16,6 +16,8 @@ const publicRuntimeFiles = [
   'packages/protocol/src/README.md',
   'docs/specs/api-reference.md',
   'packages/cli/cli-output-reference.html',
+  'packages/protocol/src/opportunity/application/opportunity.graph.ts',
+  'docs/design/protocol-package-audit.html',
 ];
 
 describe('Release 1 background-only opportunity inventory', () => {

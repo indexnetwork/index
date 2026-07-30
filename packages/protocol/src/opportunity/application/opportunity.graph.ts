@@ -2903,7 +2903,7 @@ export class OpportunityGraphFactory {
             : null;
 
           // Orchestrator-only: collect already-accepted pairs so Task 7's
-          // discover_opportunities tool can tell the LLM "these pairs are
+          // background matching system can tell the LLM "these pairs are
           // already connected, surface the existing chat rather than
           // creating a new draft". Runs in parallel across unique
           // counterparties (a single evaluator pass can return multiple
@@ -3672,7 +3672,7 @@ export class OpportunityGraphFactory {
             return {
               readResult: {
                 count: 0,
-                message: 'You have no opportunities yet. Use discover_opportunities to search for connections.',
+                message: 'You have no opportunities yet. Create or refine an approved signal; matching runs in the background. Use list_opportunities later to review persisted results.',
                 opportunities: [],
               },
             };
