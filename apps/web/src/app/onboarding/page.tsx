@@ -3,6 +3,7 @@ import { ArrowUp, Loader2, Square } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
+import { FastSignalIntake } from "@/components/signals/FastSignalIntake";
 import { GuidedSignalIntake, type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { Button } from "@/components/ui/button";
@@ -157,7 +158,8 @@ function RestrictedProfilePhase() {
 
 function RestrictedSignalPhase({ userId, durableIntentId }: { userId: string; durableIntentId?: string }) {
   const navigate = useNavigate();
-  const { refetchUser } = useAuthContext();
+  const { refetchUser, features } = useAuthContext();
+  const fastSignalIntakeEnabled = features?.fastSignalIntake === true;
   const indexesService = useNetworks();
   const { refreshIndexes } = useNetworksState();
   const { error: showError } = useNotifications();
@@ -214,13 +216,17 @@ function RestrictedSignalPhase({ userId, durableIntentId }: { userId: string; du
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">
           Tell your agent what connection matters first.
         </h1>
-        <GuidedSignalIntake
-          prepareSession={prepareSession}
-          sendKickoff={sendKickoff}
-          sendFollowup={sendFollowup}
-          onConfirmed={handleConfirmed}
-          resumeIntentId={resumeIntentId}
-        />
+        {fastSignalIntakeEnabled ? (
+          <FastSignalIntake onConfirmed={handleConfirmed} />
+        ) : (
+          <GuidedSignalIntake
+            prepareSession={prepareSession}
+            sendKickoff={sendKickoff}
+            sendFollowup={sendFollowup}
+            onConfirmed={handleConfirmed}
+            resumeIntentId={resumeIntentId}
+          />
+        )}
       </main>
     </div>
   );
