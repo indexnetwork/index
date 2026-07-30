@@ -21,4 +21,11 @@ export {
   type IntakePackInput,
   type IntakePackQuestion,
   type IntakePackQuestionOption,
-} from "../signals/application/intake.pack.generator.js";
+  SignalIntakeOrchestrator,
+  answerLabel,
+  FALLBACK_WHO_QUESTION,
+  FALLBACK_BRING_QUESTION,
+  type IntakeAnswer,
+  type SynthesisInput,
+  type SynthesisResult,
+} from "../signals/application/intake.orchestrator.js";

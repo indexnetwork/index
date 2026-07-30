@@ -33,3 +33,14 @@ export {
   type IntakePackQuestion,
   type IntakePackQuestionOption,
 } from "./intake.pack.generator.js";
+
+// ── Fast-intake orchestrator ──────────────────────────────────────────────────
+export {
+  SignalIntakeOrchestrator,
+  answerLabel,
+  FALLBACK_WHO_QUESTION,
+  FALLBACK_BRING_QUESTION,
+  type IntakeAnswer,
+  type SynthesisInput,
+  type SynthesisResult,
+} from "./intake.orchestrator.js";

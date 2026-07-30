@@ -189,6 +189,17 @@ export type {
   IntakePackQuestion,
   IntakePackQuestionOption,
 } from "./capabilities/signals.facade.js";
+export {
+  SignalIntakeOrchestrator,
+  answerLabel,
+  FALLBACK_WHO_QUESTION,
+  FALLBACK_BRING_QUESTION,
+} from "./capabilities/signals.facade.js";
+export type {
+  IntakeAnswer,
+  SynthesisInput,
+  SynthesisResult,
+} from "./capabilities/signals.facade.js";
 export { LensInferrer } from "./capabilities/participant-context.facade.js";
 export { NegotiationInsightsGenerator } from "./capabilities/negotiation.facade.js";
 export type { NegotiationDigest } from "./capabilities/negotiation.facade.js";
