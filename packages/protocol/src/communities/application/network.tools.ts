@@ -478,7 +478,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       "(complementary matches) between members. The network's prompt guides what kinds of intents belong.\n\n" +
       "**When to use:** When the user wants to create a new community — e.g. a professional network, interest group, or project team.\n\n" +
       "**Returns:** The new network's networkId (UUID) and title. Use the networkId to add members (create_network_membership), " +
-      "link intents (create_intent_index), or run discovery (list_opportunities with networkId).",
+      "link intents (create_intent_index). Approved signals are matched in the background; use list_opportunities only to review persisted opportunities.",
     querySchema: z.object({
       title: z.string().describe("Display name of the network (e.g. 'AI Founders Berlin', 'Design Co-op'). Required."),
       prompt: z.string().optional().describe("Description of what this community is about. Used by the system to evaluate which intents belong in this network. Highly recommended for better auto-assignment."),
@@ -624,7 +624,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
     name: "delete_network_membership",
     description:
       "Removes a user from a network (community). After removal, the user's intents are unlinked from this network " +
-      "and they can no longer participate in opportunity discovery within it.\n\n" +
+      "and their approved signals are no longer eligible for background matching within it.\n\n" +
       "**Permissions:** Only the network owner can remove members. The owner themselves cannot be removed (delete the network instead).\n\n" +
       "**When to use:** When a network owner wants to remove a member from the community. " +
       "Use read_network_memberships(networkId) first to get the userId of the member to remove.\n\n" +

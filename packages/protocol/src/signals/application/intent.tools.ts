@@ -329,8 +329,8 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "and durably stores an owner-scoped proposal containing the exact normalized description, optional network scope, and complete verifier output before returning a proposal widget. The intent itself is NOT yet persisted — the user must approve the proposal first.\n\n" +
       "**Returns:** An intent_proposal code block that MUST be included verbatim in the response. The frontend renders it as an interactive " +
       "card the user can approve or skip. On approval, the intent is persisted, indexed, and discovery begins.\n\n" +
-      "**Next steps after approval:** The intent is automatically linked to relevant indexes. Call create_intent then wait for background matching; review existing results with list_opportunities to explicitly trigger discovery, " +
-      "or wait for background processing to find matches.\n\n" +
+      "**Next steps after approval:** The intent is automatically linked to relevant indexes and becomes eligible for background matching. " +
+      "Background processing creates opportunities when matches are found; use list_opportunities only to review persisted results.\n\n" +
       "**Specificity gate.** Before calling this tool, judge whether the description is concrete enough to be " +
       "useful for matching. If the user says \"find a job\", \"meet people\", or \"learn something\", that's too " +
       "vague — FIRST call read_user_contexts() + read_intents() to understand their context, THEN propose a " +
@@ -571,8 +571,8 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
   const updateIntent = defineTool({
     name: "update_intent",
     description:
-      "Updates an existing intent's description. After updating, the system re-processes the intent through inference and verification, " +
-      "re-evaluates its index assignments, and triggers fresh opportunity discovery with the new description.\n\n" +
+      "Updates an existing intent's description. After updating, the system re-processes it through inference and verification, " +
+      "re-evaluates its index assignments, and makes the approved signal eligible for background matching.\n\n" +
       "**When to use:** When the user wants to refine or change what they're looking for — e.g. narrowing scope, adding specificity, " +
       "or pivoting to a different need. Prefer updating over delete+create to preserve the intent's history and existing index links.\n\n" +
       "**Returns:** Updated `intentId` and `description`, plus a confirmation message. The intent's embeddings and index relevancy scores are recalculated automatically.",
@@ -723,7 +723,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
   const createIntentIndex = defineTool({
     name: "create_intent_index",
     description:
-      "Manually links an intent to a network (community), making it visible to other members and eligible for opportunity discovery within that index. " +
+      "Manually links an intent to a network (community), making the approved signal eligible for background matching within that index. " +
       "Normally intents are auto-assigned to relevant indexes on creation, but use this to explicitly add an intent to an additional index.\n\n" +
       "**When to use:** When the user wants to share an existing intent with a specific community they belong to, " +
       "or when auto-assignment missed a network the user considers relevant.\n\n" +
@@ -867,7 +867,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
     name: "delete_intent_index",
     description:
       "Removes the link between an intent and a network. The intent itself is NOT deleted — it just stops being visible in that community " +
-      "and no longer participates in opportunity discovery within that index. The intent may still be linked to other indexes.\n\n" +
+      "and is no longer eligible for background matching within that index. The intent may still be linked to other indexes.\n\n" +
       "**When to use:** When the user wants to withdraw an intent from a specific community without archiving it entirely. " +
       "Use read_intent_indexes first to verify the link exists.\n\n" +
       "**Returns:** Confirmation that the link was removed. To fully remove an intent, use delete_intent instead.",
@@ -926,8 +926,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "Text-searches the authenticated user's own active signals by description. Case-insensitive substring " +
       "match over the signal's payload and summary. Use when the user references a past signal they wrote " +
       '("find my signal about React mentorship") or wants to audit what they\'ve posted.\n\n' +
-      "For discovery of OTHER users' signals that match a query, use list_opportunities(searchQuery=...) " +
-      "instead — that runs semantic matching across the user's networks.\n\n" +
+      "Approved signals are matched in the background. Use list_opportunities only to review persisted opportunities after background matching has produced them.\n\n" +
       "**Returns:** `intents: [{ id, payload, summary, createdAt }]`, most recent first, up to `limit` (default 25).",
     querySchema: z.object({
       query: z.string().min(1).describe("Text to match against payload and summary (case-insensitive)."),

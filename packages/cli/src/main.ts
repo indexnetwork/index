@@ -130,8 +130,6 @@ function renderHelp(): void {
     "--name <name>",
     "--gmail",
     "--objective <text>",
-    "--target <uid>",
-    "--introduce <uid>",
     "--linkedin <url>",
     "--github <url>",
     "--twitter <url>",

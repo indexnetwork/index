@@ -37,7 +37,7 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
     name: 'import_contacts',
     description:
       "Bulk-imports contacts into the authenticated user's personal network (personal network). Contacts become members of the user's " +
-      "personal network with 'contact' permission, making them available for opportunity discovery.\n\n" +
+      "personal network with 'contact' permission, making their approved signals eligible for background matching.\n\n" +
       "**What happens:** Each contact is matched by email. If the email belongs to an existing user, they're linked directly. " +
       "If not, a 'ghost user' is created — a placeholder account enriched with public profile data (from LinkedIn, GitHub, etc.) " +
       "that participates in opportunity matching even before the person joins the platform.\n\n" +
@@ -78,9 +78,9 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
       "(via import_contacts, add_contact, or import_gmail_contacts) stored as members of their personal network.\n\n" +
       "**When to use:** To see who's in the user's network, find a contact's userId for other operations, " +
       "or check if a specific person is already a contact.\n\n" +
-      "**Returns:** Array of contacts, each with: userId (use with read_user_contexts or list_opportunities), " +
-      "name, email, avatar URL, and isGhost (true = no account yet, profile enriched from public data). " +
-      "Use the userId with read_user_contexts(userId) to get the full profile, or with list_opportunities to connect.",
+      "**Returns:** Array of contacts, each with userId (use with read_user_contexts), name, email, avatar URL, and isGhost " +
+      "(true = no account yet, profile enriched from public data). Use read_user_contexts(userId) to get the full profile. " +
+      "Approved signals are matched in the background; list_opportunities only reviews persisted results.",
     querySchema: z.object({
       limit: z.number().optional().describe('Maximum number of contacts to return. Omit to return all contacts. Use for large networks to paginate results.'),
     }),
@@ -116,10 +116,10 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
       "For bulk imports, use import_contacts instead.\n\n" +
       "**What happens:** Looks up the email. If an account exists, links that user as a contact. " +
       "If not, creates a ghost user (placeholder enriched with public profile data) and adds them. " +
-      "The contact can then appear in opportunity discovery within the user's personal network.\n\n" +
+      "Their approved signals can then become eligible for background matching within the user's personal network.\n\n" +
       "**When to use:** When the user wants to add a specific person (e.g. 'add john@example.com to my network').\n\n" +
       "**Returns:** Confirmation with the contact's userId and whether a new ghost user was created (isNewGhost). " +
-      "Use the userId with list_opportunities to find connection opportunities.",
+      "Background matching may create persisted opportunities from approved signals; list_opportunities only reviews those results.",
     querySchema: z.object({
       email: z.string().describe('Email address of the person to add. Used as unique identifier — if already a contact, the operation is idempotent.'),
       name: z.string().optional().describe('Full name of the contact. Optional — if omitted, the email prefix is used as name. Provide when known for better profile enrichment.'),
@@ -147,10 +147,10 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
     name: 'remove_contact',
     description:
       "Removes a contact from the authenticated user's personal network. The contact relationship is deleted — " +
-      "the person is no longer a member of the user's personal network and won't appear in personal-network-scoped discovery.\n\n" +
+      "the person is no longer a member of the user's personal network and their signals are no longer eligible for matching there.\n\n" +
       "**When to use:** When the user wants to remove someone from their network (e.g. 'remove John from my contacts').\n\n" +
       "**Note:** This only removes the contact relationship. If the contact is a real user (not a ghost), " +
-      "they still exist on the platform and may appear in shared network discovery.\n\n" +
+      "they still exist on the platform and their approved signals may remain eligible in shared networks.\n\n" +
       "**Returns:** Confirmation that the contact was removed.",
     querySchema: z.object({
       contactUserId: z.string().describe('The userId of the contact to remove. Get this from list_contacts results.'),
@@ -171,7 +171,7 @@ export function createContactTools(defineTool: DefineTool, deps: ContactToolDeps
     description:
       "Searches the authenticated user's personal network by name or email (case-insensitive substring). " +
       "Use when the user refers to a contact by partial name or email and you need their userId for another tool " +
-      "(e.g. read_user_contexts, list_opportunities).\n\n" +
+      "(e.g. read_user_contexts).\n\n" +
       "**When to use:** Before list_contacts when the network is large — returns only matching contacts, bounded by limit.\n\n" +
       "**Returns:** Array of matching contacts: userId, name, email, avatar, isGhost.",
     querySchema: z.object({
