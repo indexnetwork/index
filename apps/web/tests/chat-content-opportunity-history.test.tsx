@@ -7,7 +7,7 @@ const contextSource = readFileSync(resolve(root, 'src/contexts/AIChatContext.tsx
 const contentSource = readFileSync(resolve(root, 'src/components/ChatContent.tsx'), 'utf8');
 
 describe('historical opportunity-card compatibility', () => {
-  test('keeps stored opportunity-card deserialization and rendering without a new discovery producer', () => {
+  test('preserves stored legacy and draft card metadata for the existing renderers without a new producer', () => {
     // Old assistant messages retain both legacy discoveries and persisted draft-card metadata.
     expect(contextSource).toContain('discoveries?: DiscoveryOpportunity[]');
     expect(contextSource).toContain('streamingDrafts?: StreamingDraft[]');
