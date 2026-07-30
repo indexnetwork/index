@@ -1,24 +1,29 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { screen } from '@testing-library/react';
 
-const root = resolve(import.meta.dirname, '..');
-const contextSource = readFileSync(resolve(root, 'src/contexts/AIChatContext.tsx'), 'utf8');
-const contentSource = readFileSync(resolve(root, 'src/components/ChatContent.tsx'), 'utf8');
+import InlineDiscoveryCard from '@/components/chat/InlineDiscoveryCard';
+import OpportunityCard from '@/components/chat/OpportunityCardInChat';
+import { renderWithRouter } from '@/test/test-utils';
+
+vi.mock('@/components/InviteMessageModal', () => ({ default: () => null }));
 
 describe('historical opportunity-card compatibility', () => {
-  test('preserves stored legacy and draft card metadata for the existing renderers without a new producer', () => {
-    // Old assistant messages retain both legacy discoveries and persisted draft-card metadata.
-    expect(contextSource).toContain('discoveries?: DiscoveryOpportunity[]');
-    expect(contextSource).toContain('streamingDrafts?: StreamingDraft[]');
-    expect(contentSource).toContain('msg.discoveries');
-    expect(contentSource).toContain('<InlineDiscoveryCard');
-    expect(contentSource).toContain('msg.streamingDrafts');
-    expect(contentSource).toContain('<OpportunityCard');
+  test('renders hydrated legacy discoveries and persisted streaming drafts without requesting a new run', () => {
+    const request = vi.fn();
+    const storedMessage = {
+      discoveries: [{ candidateId: 'legacy-user', candidateName: 'Legacy Ada', candidateAvatar: null, score: 91, sourceDescription: 'Stored legacy opportunity' }],
+      streamingDrafts: [{ opportunityId: 'draft-1', opportunity: { id: 'draft-1', status: 'pending', interpretation: { reasoning: 'Stored draft opportunity' } }, counterparty: { userId: 'draft-user', name: 'Draft Grace' }, receivedAt: 0 }],
+    };
 
-    // New client turns no longer consume the retired direct-draft event or persist it.
-    expect(contextSource).not.toContain('case "opportunity_draft_ready"');
-    expect(contextSource).not.toContain('streamingDraftsBuffer');
-    expect(contextSource).not.toContain('discover_opportunities');
+    renderWithRouter(<>
+      {storedMessage.discoveries.map((discovery) => <InlineDiscoveryCard key={discovery.candidateId} discovery={discovery} />)}
+      {storedMessage.streamingDrafts.map((draft) => <OpportunityCard key={draft.opportunityId} card={{ opportunityId: draft.opportunityId, userId: draft.counterparty.userId, name: draft.counterparty.name, mainText: draft.opportunity.interpretation?.reasoning ?? '', status: draft.opportunity.status }} />)}
+    </>);
+
+    expect(screen.getByText('Legacy Ada')).toBeInTheDocument();
+    expect(screen.getByText('Stored legacy opportunity')).toBeInTheDocument();
+    expect(screen.getByText('Draft Grace')).toBeInTheDocument();
+    expect(screen.getByText('Stored draft opportunity')).toBeInTheDocument();
+    expect(request).not.toHaveBeenCalled();
   });
 });
