@@ -1059,6 +1059,42 @@
       "source": "./capabilities/signals.facade.js"
     },
     {
+      "name": "SignalIntakePackGenerator",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "normalizeIntakePack",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePack",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackQuestion",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackQuestionOption",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
       "name": "LensInferrer",
       "kind": "value",
       "stability": "stable",

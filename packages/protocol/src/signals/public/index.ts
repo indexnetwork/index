@@ -39,6 +39,12 @@ export {
   IntentIndexerOutputSchema,
   type IntentIndexerOutput,
   describeIntentUpdateFailure,
+  SignalIntakePackGenerator,
+  normalizeIntakePack,
+  type IntakePack,
+  type IntakePackInput,
+  type IntakePackQuestion,
+  type IntakePackQuestionOption,
 } from "../application/index.js";
 
 // ── Ports ─────────────────────────────────────────────────────────────────────

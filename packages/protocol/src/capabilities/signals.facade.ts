@@ -14,3 +14,11 @@ export { IntentIndexer } from "../signals/application/intent.indexer.js";
 export type { IntentIndexerOutput } from "../signals/application/intent.indexer.js";
 export { createIntentTools } from "../signals/application/intent.tools.js";
 export type { IntentToolDeps } from "./signals.tools.port.js";
+export {
+  SignalIntakePackGenerator,
+  normalizeIntakePack,
+  type IntakePack,
+  type IntakePackInput,
+  type IntakePackQuestion,
+  type IntakePackQuestionOption,
+} from "../signals/application/intake.pack.generator.js";

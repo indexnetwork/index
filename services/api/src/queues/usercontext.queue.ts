@@ -59,6 +59,10 @@ export interface UserContextQueueDeps {
   }) => Promise<{ id: string }>;
   /** Generate HyDE documents for a freshly upserted context. */
   generateContextHyde?: (params: { contextId: string; sourceText: string }) => Promise<void>;
+  /** Existing pack for the premiseHash short-circuit. */
+  getExistingIntakePack?: (userId: string) => Promise<{ premiseHash: string | null } | null>;
+  /** Regenerate and persist the user's fast-intake pack. */
+  regenerateIntakePack?: (userId: string, premiseHash: string) => Promise<void>;
 }
 
 /**
@@ -235,6 +239,23 @@ export class UserContextQueue {
           networkTitle: network.title,
         });
       });
+    }
+
+    // Fast-intake pack shares the premise-hash staleness key with the context rows.
+    // It is best-effort: a pack failure must not fail context regeneration, because
+    // `/intents/intake/start` regenerates synchronously on a cache miss anyway.
+    const getExistingIntakePack = this.deps?.getExistingIntakePack;
+    const regenerateIntakePack = this.deps?.regenerateIntakePack;
+    if (regenerateIntakePack) {
+      try {
+        const existingPack = getExistingIntakePack ? await getExistingIntakePack(userId) : null;
+        if (!existingPack || existingPack.premiseHash !== premiseHash) {
+          await regenerateIntakePack(userId, premiseHash);
+          this.logger.verbose('Regenerated signal intake pack', { userId });
+        }
+      } catch (err) {
+        this.logger.error('Failed to regenerate signal intake pack', { userId, error: err });
+      }
     }
 
     if (failures > 0) {

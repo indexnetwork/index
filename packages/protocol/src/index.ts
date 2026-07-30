@@ -182,6 +182,13 @@ export { SuggestionGenerator } from "./capabilities/participant-agents.facade.js
 export { generateInviteMessage } from "./capabilities/contacts.facade.js";
 export { IntentIndexer } from "./capabilities/signals.facade.js";
 export type { IntentIndexerOutput } from "./capabilities/signals.facade.js";
+export { SignalIntakePackGenerator, normalizeIntakePack } from "./capabilities/signals.facade.js";
+export type {
+  IntakePack,
+  IntakePackInput,
+  IntakePackQuestion,
+  IntakePackQuestionOption,
+} from "./capabilities/signals.facade.js";
 export { LensInferrer } from "./capabilities/participant-context.facade.js";
 export { NegotiationInsightsGenerator } from "./capabilities/negotiation.facade.js";
 export type { NegotiationDigest } from "./capabilities/negotiation.facade.js";

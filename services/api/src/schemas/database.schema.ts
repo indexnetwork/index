@@ -373,6 +373,26 @@ export const userContexts = pgTable('user_contexts', {
   networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
 }));
 
+/** Precomputed fast-intake artifact: one row per user. */
+export const signalIntakePacks = pgTable('signal_intake_packs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  brief: text('brief').notNull(),
+  question: jsonb('question').$type<{
+    title: string;
+    prompt: string;
+    options: Array<{ label: string; description: string }>;
+    multiSelect: boolean;
+  }>().notNull(),
+  premiseHash: text('premise_hash'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index('signal_intake_packs_user_id_idx').on(table.userId),
+}));
+
+export type SignalIntakePackRow = typeof signalIntakePacks.$inferSelect;
+export type NewSignalIntakePackRow = typeof signalIntakePacks.$inferInsert;
+
 export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {
