@@ -46,7 +46,7 @@ export async function handoffBaseRuntime(input: {
 }): Promise<string> {
   const { NEON_API_KEY: _neonApiKey, DISCOVERY_ENV_MATRIX_CHILDREN: _manifest, ...runtimeEnv } = input.env ?? process.env;
   const options: BaseRuntimeSpawnOptions = {
-    cmd: [process.execPath, '--no-env-file', input.runtimePath ?? RUNTIME_PATH, ...input.args],
+    cmd: [process.execPath, input.runtimePath ?? RUNTIME_PATH, ...input.args],
     env: { ...runtimeEnv, DATABASE_URL: input.databaseUrl },
     stdout: 'pipe',
     // Deliberately consume and discard child stderr: only this bootstrap prints failure classes.
