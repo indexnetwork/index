@@ -2778,22 +2778,6 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 
 **Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
 
-### POST /api/opportunities/discover
-
-Discover opportunities via HyDE graph.
-
-**Auth**: AuthGuard
-
-**Request body** (Zod-validated):
-```json
-{
-  "query": "string (required, min 1 char)",
-  "limit": "number (optional, default: 5)"
-}
-```
-
-**Response**: JSON with discovered opportunities. Public card prose and `matchReason` are safety-normalized; network/event metadata alone is never presented as attendance, membership, residence, acquaintance, or shared presence.
-
 ### GET /api/opportunities/:id
 
 Get one opportunity with presentation for the viewer. If the requested opportunity was expired because it was superseded by an enriched opportunity, the endpoint returns the newest visible replacement using the existing `detection.enrichedFrom` link.

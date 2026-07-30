@@ -10,6 +10,7 @@ const publicRuntimeFiles = [
   'services/api/src/controllers/mcp.controller.ts',
   'services/api/src/controllers/opportunity.controller.ts',
   'services/api/src/main.ts',
+  'services/api/src/controllers/debug.controller.ts',
 ];
 
 describe('Release 1 background-only opportunity inventory', () => {

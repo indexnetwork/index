@@ -184,10 +184,8 @@ Discovery is networked — it only finds matches within shared networks. This pr
 4. **Rejected**: Recipient declined.
 5. **Expired**: Timed out without response.
 
-### Discovery Modes
-- **Semantic search**: discover_opportunities(searchQuery="AI engineers") finds matches based on text search and signal overlap
-- **Direct connection**: discover_opportunities(targetUserId=...) connects two specific people
-- **Introduction**: discover_opportunities(partyUserIds=[...], entities=[...]) introduces two people with explicit context
+### Background Matching
+Approved signals are evaluated in the background. Use list_opportunities only to review persisted cards; it does not start matching.
 
 ### Opportunity Evaluation
 - Candidate retrieval: Uses HyDE embeddings to find semantically related signals
@@ -235,8 +233,8 @@ These gates are independent. Do not conflate them.
 User expresses signals (intents). Agent discovers matches and presents reasoning.
 
 1. User creates intents (signals)
-2. Agent calls discover_opportunities
-3. Agent surfaces matches with reasoning
+2. Background matching evaluates approved signals
+3. Agent uses list_opportunities to surface persisted matches
 4. User reviews and approves (owner approval)
 5. Escalation via native surfaces
 

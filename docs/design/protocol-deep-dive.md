@@ -556,7 +556,6 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 | `enrichment.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Enrichment Graph |
 | `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
 | `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Network Graph, Network Membership Graph |
-| `opportunity.tools.ts` | discover_opportunities, list_opportunities, update_opportunity | Opportunity Graph |
 | `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
 | `chat.tools.ts` | list_conversations, get_conversation | (direct `ChatSessionReader` calls) |
 | `utility.tools.ts` | scrape_url, confirm_action, cancel_action | (direct scraper call, pending action state) |
@@ -580,13 +579,10 @@ Tools that modify or delete data (update_intent, delete_intent, update_index, de
 
 ### Auto-discovery on intent creation
 
-When `create_intent` successfully creates an intent, it automatically triggers opportunity discovery by calling `discover_opportunities` with the new intent context. This ensures fresh intents immediately produce relevant matches.
 
-**MCP-only negotiate-phase budget.** When `discover_opportunities` is invoked from the MCP transport (external runtimes like OpenClaw, Claude Code, or a personal agent), the internal negotiate phase is wall-clock capped at 20 s (`OpportunityGraphOptions.negotiateTimeoutMs`). Candidates that finalize their assessment within the budget surface as draft opportunities; those still in negotiation remain in a `negotiating` state and the tool instructs the LLM to check `list_opportunities` in a moment. This is a temporary constraint removable when IND-274 (negotiation conversation continuation) ships and persistent bilateral state becomes feasible.
 
 **Per-turn negotiator timeout.** Independent of the phase budget, every `IndexNegotiator.invoke()` call wraps its underlying `model.invoke` in `AbortSignal.timeout(turnTimeoutMs)` (default 15 s, env-overridable via `NEGOTIATOR_TURN_TIMEOUT_MS`). When a single LLM round-trip exceeds the cap the call rejects with a `TimeoutError`; the graph's `turnNode` catch path and the `respond_to_negotiation` inline fallback both convert that rejection into a `reject`-shaped turn so one slow upstream tail can't monopolize the 20 s phase budget across 4 parallel candidates × up to 6 turns each. The resolver clamps to `(0, Number.MAX_SAFE_INTEGER]` — bad values fall back to the default.
 
-**MCP decision questions and elicitation.** When `QUESTIONER_ENABLED=true` and `QUESTIONER_DISCOVERY_ENABLED=true` and the MCP path has a session or runs from an agent, `discover_opportunities` may return up to 3 decision questions alongside its opportunities. The MCP server's post-result hook in `mcp.server.ts` does two things with them:
 
 1. Always appends a JSON content block to the tool result prefixed with `Decision questions (structured): {...}`. LLM-driven clients without elicitation support can parse this and resurface the questions in prose.
 2. If the client declared the `elicitation` capability, sequentially dispatches one `elicitation/create` per question (`dispatchElicitations` in `packages/protocol/src/mcp/elicitation.dispatcher.ts`). On `accept`, the flattened choice is posted as a user message into the user's most-recent index.network chat session via `ChatMessageWriter` (`packages/protocol/src/shared/interfaces/chat-message-writer.interface.ts`, implemented by `services/api/src/adapters/chat-message-writer.adapter.ts`). `decline` is a no-op; `cancel` breaks the loop; transport errors break the loop with a warn; write errors log and continue. Users with no chat session are logged as `chat_message_write_skipped_no_session` and the answer is dropped on this path — the JSON envelope only carries the questions, not accepted choices.
@@ -601,7 +597,6 @@ The protocol exposes every registered chat tool over the Model Context Protocol 
 
 The HTTP entrypoint for MCP is `services/api/src/controllers/mcp.controller.ts`, dispatched directly from `services/api/src/main.ts` before the decorated `/api/*` router. Because that bypasses controller guards, the controller applies a cheap HTTP-level limiter before expensive work: `checkMcpHttpRateLimit` uses the shared limiter storage and buckets by verified JWT user or client IP under the `mcp_http` class (`MCP_HTTP_LIMIT_PER_MIN`, default 240). Raw API keys are deliberately not bucket keys at this pre-auth layer, matching the normal `RateLimit` guard's credential-rotation defense. The HTTP limiter honors `LIMITER_DISABLE` and fails open on limiter storage/identity errors so Redis incidents do not take down MCP.
 
-MCP also keeps the deeper per-tool limiter: `checkMcpRateLimit` is injected as `ToolDeps.mcpRateLimiter` and runs in `packages/protocol/src/mcp/mcp.server.ts` after identity resolves but before tool DB work. It enforces per-tool and aggregate per-principal buckets, including the tighter `discover_opportunities` budget, so expensive tool cascades remain bounded even when the HTTP request rate is acceptable.
 
 Each accepted MCP HTTP request still gets a fresh `McpServer` and `WebStandardStreamableHTTPServerTransport`. This is intentional: the Streamable HTTP transport tracks response-routing state by JSON-RPC message id, and clients commonly reuse ids such as `2` across independent connections. Pooling a server or transport can route responses or client-capability state across callers, so the controller preserves per-request isolation. The request `finally` path closes both SDK lifecycle objects. Do not hand-write cached MCP/JSON-RPC responses for static-looking methods such as `initialize` or `tools/list`; the SDK owns response envelopes and capability negotiation.
 
@@ -662,7 +657,6 @@ The MCP HTTP controller rejects oversized inbound JSON-RPC bodies before they re
 
 Cancellation propagates through the same signal. MCP `notifications/cancelled`, client-side HTTP aborts exposed by the SDK, and runtime timeouts abort the active request context. Graph invocations, LangChain model calls, scraper calls, and embedding generation read that signal via the shared helpers so downstream work stops as close to the provider boundary as possible. Trace events emitted during a tool call are bridged to MCP `notifications/progress`, so capable clients can surface long-running graph/agent progress before either a result or cancellation.
 
-`discover_opportunities` is the first tool to use the async-run escape hatch on the MCP path. When MCP callers invoke it, the tool persists an `opportunity_discovery_runs` row, enqueues `opportunity-discovery-run`, and returns `{ status: "queued", discoveryRunId }` immediately. The worker runs the same discovery formatter out of band and stores the final JSON result on the run. MCP agents then call `get_discovery_run` until `status` is `succeeded`, `failed`, or `cancelled`; they can call `cancel_discovery_run` to remove a waiting job or request cancellation of a running one. Regular web/chat callers still use the synchronous path.
 
 Runtime error envelopes are JSON text payloads shaped as:
 
@@ -670,9 +664,7 @@ Runtime error envelopes are JSON text payloads shaped as:
 {
   "success": false,
   "code": "TOOL_TIMEOUT",
-  "error": "Tool discover_opportunities timed out after 50000ms.",
   "data": {
-    "tool": "discover_opportunities",
     "timeoutClass": "async_candidate",
     "timeoutMs": 50000,
     "maxOutputBytes": 1000000
