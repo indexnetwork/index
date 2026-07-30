@@ -135,17 +135,17 @@ describe("Negotiator chat persona (IND-402)", () => {
     const offRes = await authController.me(meReq(), mockUser());
     expect(offRes.status).toBe(200);
     const offData = (await offRes.json()) as {
-      features: { negotiatorChat: boolean; signalAgent: boolean };
+      features: { negotiatorChat: boolean; signalAgent: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
     };
-    expect(offData.features).toEqual({ negotiatorChat: false, signalAgent: false });
+    expect(offData.features).toEqual({ negotiatorChat: false, signalAgent: false, agentSurface: false, agentActions: false, fastSignalIntake: false });
 
     process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     process.env.WEB_SIGNAL_AGENT_ENABLED = 'true';
     const onRes = await authController.me(meReq(), mockUser());
     const onData = (await onRes.json()) as {
-      features: { negotiatorChat: boolean; signalAgent: boolean };
+      features: { negotiatorChat: boolean; signalAgent: boolean; agentSurface: boolean; agentActions: boolean; fastSignalIntake: boolean };
     };
-    expect(onData.features).toEqual({ negotiatorChat: true, signalAgent: true });
+    expect(onData.features).toEqual({ negotiatorChat: true, signalAgent: true, agentSurface: false, agentActions: false, fastSignalIntake: false });
     process.env.WEB_SIGNAL_AGENT_ENABLED = 'false';
   }, 60000);
 

@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-04-08
+updated: 2026-07-30
 ---
 
 # Protocol API Reference
@@ -23,6 +23,7 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Integration](#integration)
 - [Intent](#intent)
 - [Link](#link)
+- [Fast Signal Intake](#fast-signal-intake)
 - [Opportunity](#opportunity)
 - [Network Opportunity](#network-opportunity)
 - [Enrichment](#enrichment)
@@ -2700,6 +2701,126 @@ Archive an intent.
 **Response**:
 ```json
 { "success": true }
+```
+
+---
+
+## Fast Signal Intake
+
+**Controller prefix**: `/intents/intake`
+
+Deterministic fast-intake funnel for `/i/new` (dark-shipped behind `FAST_SIGNAL_INTAKE=true`). Round 1 is served from a per-user pack generated offline (no model call); round 2 and synthesis are single structured `gemini-2.5-flash` calls; round 3 (where/community) is resolved entirely client-side and only travels as `whereText`/`networkId` on `/proposal`. Every route below is gated by `FastSignalIntakeEnabledGuard`, which runs **before** `AuthGuard` and throws when the flag is off, so a flag-off deployment returns `404 { "error": "Not found" }` even to unauthenticated callers (mirrors `ContactsEnabledGuard`). `/prepare` and `/revise` use the `intake_synthesis` rate-limit class (see **Rate Limiting** in the development reference) instead of `write`, since each call launches a background LLM synthesis plus a full intent-graph run and persists a durable proposal row.
+
+A shared `IntakePackQuestion` shape (`{ title, prompt, options: [{ label, description }], multiSelect }`) is returned for round-1 and round-2 questions. An answered round is `{ selectedOptions: string[], freeText?: string }`, and at least one of `selectedOptions`/`freeText` is required.
+
+**Shared error responses** (in addition to per-route errors below):
+- `404` — `{ "error": "run_not_found", "code": "run_not_found" }` when `runId` does not resolve to a run owned by the caller.
+- `422` — `{ "error": "verification_rejected", "code": "verification_rejected", "clarification": IntakePackQuestion }` when synthesis produced nothing specific enough to verify; the client renders `clarification` as a recovery round and retries.
+- `403` — `{ "error": "forbidden", "code": "network_membership_required", "networkId": "..." }` when the caller is not a member of the supplied `networkId`.
+- `400` — `{ "error": "Validation failed", "details": { ... } }` (flattened Zod error) for malformed bodies.
+- `500` — `{ "error": "Failed to process intake request" }` for unexpected failures.
+
+### POST /api/intents/intake/start
+
+Round 1: read the user's precomputed intake pack, or generate one synchronously on a cold miss (no request body).
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Response**:
+```json
+{ "question": { "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true } }
+```
+
+### POST /api/intents/intake/question
+
+Round 2: one structured call grounded by the pack brief and the round-1 answer.
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{ "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }
+```
+
+**Response**:
+```json
+{ "question": { "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true } }
+```
+
+### POST /api/intents/intake/prepare
+
+Claim a run and start speculative synthesis (round-2 synthesis plus the intent graph) without awaiting it, so it can overlap the client's round-3 community picker.
+
+**Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "round2Prompt": "string (optional, max 400)"
+}
+```
+
+**Response 202**:
+```json
+{ "runId": "<uuid>" }
+```
+
+### POST /api/intents/intake/proposal
+
+Resolve the proposal for a run: awaits the speculative synthesis started by `/prepare` when it is still in flight, reuses it when ready and unconstrained, or re-synthesizes when a `whereText` constraint is supplied or the prior speculation failed.
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "runId": "UUID (required)",
+  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "networkId": "UUID (optional)",
+  "whereText": "string (optional, max 280)"
+}
+```
+
+`networkId` is the community the user picked in round 3; it is re-verified server-side against the caller's actual membership (see `network_membership_required` above) and attached to the proposal row so `POST /api/intents/confirm` later rejects any mismatched `networkId`.
+
+**Response**:
+```json
+{
+  "proposalId": "...",
+  "description": "...",
+  "lookingFor": "...",
+  "youBring": "..."
+}
+```
+
+### POST /api/intents/intake/revise
+
+Replace the visible draft from user feedback: writes a brand-new proposal row (the prior one is left untouched) and re-attaches the run's already-picked `networkId`, if any.
+
+**Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "runId": "UUID (required)",
+  "feedback": "string (required, 1-600 chars)",
+  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "networkId": "UUID (optional)"
+}
+```
+
+**Response**:
+```json
+{
+  "proposalId": "...",
+  "description": "...",
+  "lookingFor": "...",
+  "youBring": "..."
+}
 ```
 
 ---

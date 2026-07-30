@@ -39,6 +39,7 @@ tests/questioner.adapter.isolated.ts
 tests/frame-drift-execution-attempt.database.adapter.isolated.ts
 tests/accepted-opportunity.isolated.ts
 src/controllers/tests/intent.controller.isolated.ts
+src/controllers/tests/intent-intake.controller.isolated.ts
 src/adapters/tests/auth.adapter.isolated.ts
 src/adapters/tests/database.adapter.isolated.ts
 src/adapters/tests/chat-summary.database.adapter.isolated.ts
@@ -59,6 +60,7 @@ src/controllers/tests/chat.reporter.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
 src/guards/tests/contacts.guard.isolated.ts
+src/guards/tests/fast-intake.guard.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts
@@ -113,3 +115,8 @@ src/controllers/tests/conversation.negotiation-activity.isolated.ts
 src/adapters/tests/archive-legacy-negotiations.isolated.ts
 src/lib/mcp/tests/owner-approval.isolated.ts
 src/controllers/tests/opportunity.owner-approval.isolated.ts
+src/services/tests/signal-intake.service.isolated.ts
+src/services/tests/signal-intake.writeback.isolated.ts
+src/services/tests/signal-intake.writeback-wiring.isolated.ts
+src/services/tests/signal-intake.confirm-seam.isolated.ts
+src/queues/tests/usercontext.intake-pack.isolated.ts

@@ -23,3 +23,24 @@ export { IntentIndexer, IntentIndexerOutputSchema, type IntentIndexerOutput } fr
 
 // ── Tool factory (signals layer) ──────────────────────────────────────────────
 export { createIntentTools, describeIntentUpdateFailure } from "./intent.tools.js";
+
+// ── Fast-intake pack ──────────────────────────────────────────────────────────
+export {
+  SignalIntakePackGenerator,
+  normalizeIntakePack,
+  type IntakePack,
+  type IntakePackInput,
+  type IntakePackQuestion,
+  type IntakePackQuestionOption,
+} from "./intake.pack.generator.js";
+
+// ── Fast-intake orchestrator ──────────────────────────────────────────────────
+export {
+  SignalIntakeOrchestrator,
+  answerLabel,
+  FALLBACK_WHO_QUESTION,
+  FALLBACK_BRING_QUESTION,
+  type IntakeAnswer,
+  type SynthesisInput,
+  type SynthesisResult,
+} from "./intake.orchestrator.js";

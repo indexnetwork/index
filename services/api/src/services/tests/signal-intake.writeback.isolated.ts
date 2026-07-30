@@ -1,0 +1,97 @@
+import { describe, expect, it, mock } from 'bun:test';
+
+import { SignalIntakeService } from '../signal-intake.service';
+
+const question = {
+  title: 'Question 1',
+  prompt: 'Who do you want to meet?',
+  options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }],
+  multiSelect: false,
+};
+
+function makeDeps(recordAnsweredQuestion: unknown) {
+  return {
+    packStore: {
+      getPack: mock(async () => ({
+        userId: 'u1', brief: 'b', question, premiseHash: 'h', generatedAt: new Date(),
+      })),
+      upsertPack: mock(async () => undefined),
+    },
+    runStore: {
+      claimRun: mock(async () => ({
+        run: { id: 'run-1', userId: 'u1', answersHash: 'h', status: 'pending', proposalId: null, error: null, createdAt: new Date() },
+        claimed: false,
+      })),
+      markReady: mock(async () => undefined),
+      markFailed: mock(async () => undefined),
+      sweepStaleRuns: mock(async () => undefined),
+      getRunForOwner: mock(async () => null),
+    },
+    proposalStore: {
+      createProposals: mock(async () => undefined),
+      getProposalForOwner: mock(async () => null),
+    },
+    orchestrator: {
+      nextQuestion: mock(async () => question),
+      synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+    },
+    packGenerator: { generate: mock(async () => ({ brief: 'b', question })) },
+    getPremises: mock(async () => []),
+    getNetworkTitles: mock(async () => []),
+    getGlobalContext: mock(async () => null),
+    invokeIntentGraph: mock(async () => ({ verifiedIntents: [] })),
+    recordAnsweredQuestion,
+  };
+}
+
+const whoAnswer = { selectedOptions: ['A design partner'] };
+const bringAnswer = { selectedOptions: ['Engineering depth'] };
+
+describe('intake answer write-back', () => {
+  it('records the round-1 answer with stage "who"', async () => {
+    const recorder = mock(async () => undefined);
+    const service = new SignalIntakeService(makeDeps(recorder) as never);
+
+    await service.nextQuestion('u1', whoAnswer);
+
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder.mock.calls[0][0]).toMatchObject({
+      userId: 'u1', stage: 'who', prompt: 'Who do you want to meet?',
+      question: { title: question.title, options: question.options, multiSelect: question.multiSelect },
+    });
+  });
+
+  it('records the round-2 answer with stage "bring"', async () => {
+    const recorder = mock(async () => undefined);
+    const service = new SignalIntakeService(makeDeps(recorder) as never);
+
+    await service.prepare('u1', { whoAnswer, bringAnswer, round2Prompt: 'What would you bring?' });
+
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder.mock.calls[0][0]).toMatchObject({ stage: 'bring', prompt: 'What would you bring?' });
+    // The round-2 question is not in scope at this call site (it would
+    // require editing the forbidden `PrepareSchema`), so no `question` is
+    // forwarded and the recorder falls back to its documented proxy.
+    expect(recorder.mock.calls[0][0]).not.toHaveProperty('question');
+  });
+
+  it('does not await the recorder before responding', async () => {
+    let settled = false;
+    const recorder = mock(() => new Promise<void>((resolve) => setTimeout(() => {
+      settled = true;
+      resolve();
+    }, 50)));
+    const service = new SignalIntakeService(makeDeps(recorder) as never);
+
+    await service.prepare('u1', { whoAnswer, bringAnswer });
+
+    expect(settled).toBe(false);
+  });
+
+  it('never fails a request when the recorder rejects', async () => {
+    const recorder = mock(async () => { throw new Error('questions table down'); });
+    const service = new SignalIntakeService(makeDeps(recorder) as never);
+
+    await expect(service.prepare('u1', { whoAnswer, bringAnswer })).resolves.toMatchObject({ runId: 'run-1' });
+  });
+});

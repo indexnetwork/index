@@ -1047,6 +1047,90 @@
       "source": "./capabilities/signals.facade.js"
     },
     {
+      "name": "SignalIntakePackGenerator",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "normalizeIntakePack",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePack",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackQuestion",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackQuestionOption",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SignalIntakeOrchestrator",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "answerLabel",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FALLBACK_WHO_QUESTION",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FALLBACK_BRING_QUESTION",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakeAnswer",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SynthesisInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SynthesisResult",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "normalizeIntentDescription",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
       "name": "LensInferrer",
       "kind": "value",
       "stability": "stable",
