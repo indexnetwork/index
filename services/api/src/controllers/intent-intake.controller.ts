@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { FastSignalIntakeEnabledGuard } from '../guards/fast-intake.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
@@ -33,7 +34,15 @@ const ReviseSchema = z.object({
   bringAnswer: AnswerSchema,
 }).strict();
 
-/** Deterministic fast-intake funnel. Gated by FAST_SIGNAL_INTAKE. */
+/**
+ * Deterministic fast-intake funnel. Gated by FAST_SIGNAL_INTAKE.
+ *
+ * `FastSignalIntakeEnabledGuard` is the real gate: it runs before AuthGuard,
+ * so a flag-off deployment 404s unauthenticated probes too (mirrors
+ * ContactsEnabledGuard). The in-handler `isFastSignalIntakeEnabled()` checks
+ * below are defense-in-depth for direct/unit-test invocations that bypass
+ * the guard pipeline.
+ */
 @Controller('/intents/intake')
 export class IntentIntakeController {
   private readonly service: Pick<
@@ -50,7 +59,7 @@ export class IntentIntakeController {
 
   /** Round 1: pack lookup, or synchronous generation on a cold miss. */
   @Post('/start')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
   async start(_req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     try {
@@ -63,7 +72,7 @@ export class IntentIntakeController {
 
   /** Round 2: one structured call grounded by the brief and round-1 answer. */
   @Post('/question')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
   async question(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = QuestionSchema.safeParse(await req.json().catch(() => ({})));
@@ -78,7 +87,7 @@ export class IntentIntakeController {
 
   /** Start speculative synthesis and return immediately. */
   @Post('/prepare')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
   async prepare(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = PrepareSchema.safeParse(await req.json().catch(() => ({})));
@@ -93,7 +102,7 @@ export class IntentIntakeController {
 
   /** Resolve the speculative proposal, or redo it when the where-text changed it. */
   @Post('/proposal')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
   async proposal(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ProposalSchema.safeParse(await req.json().catch(() => ({})));
@@ -113,7 +122,7 @@ export class IntentIntakeController {
 
   /** Replace the visible draft from user feedback. */
   @Post('/revise')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
   async revise(req: Request, user: AuthenticatedUser) {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ReviseSchema.safeParse(await req.json().catch(() => ({})));

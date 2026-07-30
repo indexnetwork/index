@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
+import { AuthGuard } from '../../guards/auth.guard';
+import { FastSignalIntakeEnabledGuard } from '../../guards/fast-intake.guard';
+import { RouteRegistry } from '../../lib/router/router.decorators';
 import { IntentIntakeController } from '../intent-intake.controller';
 
 const user = { id: 'u1' } as never;
@@ -58,6 +61,17 @@ describe('IntentIntakeController flag gating', () => {
     ]);
 
     for (const response of responses) expect(response.status).toBe(404);
+  });
+
+  it('registers FastSignalIntakeEnabledGuard before AuthGuard on every route, so an unauthenticated request to a flag-off deployment 404s before AuthGuard ever runs', () => {
+    for (const method of ['start', 'question', 'prepare', 'proposal', 'revise'] as const) {
+      const guards = RouteRegistry.getGuards(IntentIntakeController, method);
+      const flagIndex = guards.indexOf(FastSignalIntakeEnabledGuard);
+      const authIndex = guards.indexOf(AuthGuard);
+      expect(flagIndex).toBeGreaterThanOrEqual(0);
+      expect(authIndex).toBeGreaterThanOrEqual(0);
+      expect(flagIndex).toBeLessThan(authIndex);
+    }
   });
 });
 
