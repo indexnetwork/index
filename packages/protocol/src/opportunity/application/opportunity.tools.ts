@@ -61,14 +61,14 @@ const logger = protocolLogger("ChatTools:Opportunity");
  *   flips the opp to accepted and opens the chat with the counterpart.
  * - `approve_introduction` — draft or latent opp where viewer is an unapproved
  *   introducer. Clicking flips approved=true and triggers negotiation. The
- *   `draft` case comes from `discover_opportunities` intro mode; the `latent`
+ *   `draft` case represents a pending introduction; the `latent`
  *   case comes from background-discovered connector-flow cards surfaced in
  *   `list_opportunities`. In both, status remains pre-send and the `/c/<code>`
  *   link is the only MCP path to approve.
  * - `outreach` — accepted opp where viewer is a non-introducer party.
  *   Clicking opens the existing chat (no state change).
  * - `send_direct` — draft or latent opp where viewer is a non-introducer
- *   party. Issued by `discover_opportunities` in direct (no-introducer)
+ *   party. Issued for a direct opportunity without an introducer
  *   mode: the match has already passed evaluation, the row exists in
  *   draft state, and the sender just needs to release it. Clicking flips
  *   the opp straight to accepted and opens the chat with a greeting —
@@ -168,7 +168,7 @@ export async function attachActionableLinks(
   // is actionable — every counterpart has a profile page worth linking to,
   // even on a fresh draft where there is no acceptUrl yet. Setting it before
   // the early-return below means cards from non-actionable combinations
-  // (e.g. draft + party in `discover_opportunities` direct mode) still carry
+  // (e.g. a draft party card) still carry
   // the profile link the agent needs to render. Without this, the agent gets
   // a name with no URL attached and tends to fabricate one.
   const profileUrl = buildProfileUrl(opts.counterpartUserId, opts.frontendUrl);
@@ -982,11 +982,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       "Updates an opportunity's status, advancing it through the connection lifecycle.\n\n" +
       "**Status transitions:**\n" +
       "- `pending`: Sends a draft opportunity to the other party. They'll be notified and can accept or reject. " +
-      "This is the primary action after discover_opportunities returns a draft.\n" +
+      "This is the primary action after a persisted draft is returned.\n" +
       "- `accepted`: Accept a received opportunity — opens a direct conversation between both parties. Returns a conversationId to surface to the user.\n" +
       "- `rejected`: Decline a received opportunity.\n" +
       "- `expired`: Mark as expired (typically done by the system after timeout).\n\n" +
-      "**When to use:** After discover_opportunities or list_opportunities returns opportunity cards. " +
+      "**When to use:** After list_opportunities returns persisted opportunity cards. " +
       "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool. " +
       "An accepted transition may first return a non-success uptake advisory with preparatory questions. Surface those questions, then retry with all returned question ids in acknowledgedUptakeQuestionIds; acknowledgement confirms presentation, not an answer.\n\n" +
       "**Owner approval (agents):** Agent-driven send/accept/reject transitions require an explicit owner-issued approval proof. " +
@@ -997,7 +997,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
     querySchema: z.object({
       opportunityId: z
         .string()
-        .describe("The UUID of the opportunity to update. Get from discover_opportunities or list_opportunities results."),
+        .describe("The UUID of the opportunity to update. Get from list_opportunities results."),
       status: z
         .enum(["pending", "accepted", "rejected", "expired"])
         .describe(
