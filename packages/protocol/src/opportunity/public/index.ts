@@ -12,7 +12,6 @@
 export {
   // state
   OpportunityGraphState,
-  resolveInitialStatus,
 } from "../domain/opportunity.state.js";
 export type {
   SourceProfileData,
@@ -23,7 +22,6 @@ export type {
   EvaluatedOpportunityActor,
   EvaluatedOpportunity,
   OpportunityPersistenceOutcome,
-  OpportunityTrigger,
   OpportunityGraphOptions,
 } from "../domain/opportunity.state.js";
 export {

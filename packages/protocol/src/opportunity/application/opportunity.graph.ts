@@ -16,7 +16,6 @@ import { StateGraph, START, END } from '@langchain/langgraph';
 import type { Id, NegotiationContinuationReceipt } from '../../shared/interfaces/database.interface.js';
 import type { DebugMetaAgent } from '../../capabilities/participant-agents.debug.facade.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type TargetNetwork, type CandidateMatch, type EvaluatedOpportunity, type EvaluatedOpportunityActor } from '../domain/opportunity.state.js';
-import { resolveInitialStatus } from '../domain/opportunity.state.js';
 import { OpportunityEvaluator, type CandidateProfile, type EvaluatedOpportunityWithActors, type EvaluatorEntity, type EvaluatorInput } from './opportunity.evaluator.js';
 import type { OpportunityGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import { IntentIndexer } from '../../capabilities/signals.indexing.facade.js';
@@ -2279,21 +2278,12 @@ export class OpportunityGraphFactory {
                 )).every(Boolean)
               : false)
           : false;
-        // Orchestrator (chat-driven a2h) fan-out uses a tight 60s park window —
-        // the user is watching the stream, so we cannot afford the 5-min ambient
-        // budget. Ambient keeps its heartbeat-aware long/short split.
-        const ORCHESTRATOR_PARK_WINDOW_MS = 60_000;
-        const isOrchestrator = state.trigger === 'orchestrator';
         const useLongTimeout = !isChatPath || hasExternalAgent;
-        const timeoutMs = isOrchestrator
-          ? ORCHESTRATOR_PARK_WINDOW_MS
-          : useLongTimeout ? AMBIENT_PARK_WINDOW_MS : 30_000;
+        const timeoutMs = useLongTimeout ? AMBIENT_PARK_WINDOW_MS : 30_000;
 
         logger.info('negotiateNode timeout decision', {
           discoveryUserId,
-          trigger: state.trigger,
           isChatPath,
-          isOrchestrator,
           hasDispatcher: !!this.agentDispatcher,
           hasExternalAgent,
           useLongTimeout,
@@ -2301,14 +2291,8 @@ export class OpportunityGraphFactory {
           candidateCount: candidates.length,
         });
 
-        // Per-candidate hook — always-on. Accumulates negotiation resolutions
-        // for discovery question generation. Additionally, for the orchestrator
-        // trigger: flips the opp from 'pending' to 'draft' and pushes an
-        // `opportunity_draft_ready` event so the frontend can render it
-        // inline as soon as it resolves, rather than waiting for the full
-        // fan-out. Abort (e.g. user closed the chat) suppresses both the
-        // status flip and the event — the in-flight negotiation finishes
-        // naturally but its card never reaches the user.
+        // Per-candidate hook accumulates negotiation resolutions for discovery
+        // question generation, preserving candidate-list order below.
         // Build a stable order index so that resolutions accumulated via the
         // per-candidate async hook can be re-sorted to candidate-list order
         // before being handed to buildQuestionPrompt. Without this the LLM
@@ -2319,7 +2303,7 @@ export class OpportunityGraphFactory {
         const resolutions: Array<NegotiationResolution & { __order: number }> = [];
         const resolvedOpportunityIds = new Set<string>();
 
-        const onCandidateResolved: OnNegotiationResolved = async ({ candidate, accepted, turns, outcome }) => {
+        const onCandidateResolved: OnNegotiationResolved = async ({ candidate, turns, outcome }) => {
           if (candidate.opportunityId) resolvedOpportunityIds.add(candidate.opportunityId);
           resolutions.push({
             __order: candidateOrderById.get(candidate.userId) ?? Number.MAX_SAFE_INTEGER,
@@ -2340,55 +2324,6 @@ export class OpportunityGraphFactory {
             await compensateTasklessNegotiatingOpportunity(candidate.opportunityId);
           }
 
-          if (state.trigger !== 'orchestrator') return;
-          // ─── orchestrator streaming body ───
-          const abortSignal = requestContext.getStore()?.abortSignal;
-          if (abortSignal?.aborted) return;
-          if (!accepted || !candidate.opportunityId) return;
-
-          // Only emit after a successful status flip — the frontend keys
-          // cards off `opportunity.status === 'draft'`, so emitting a row
-          // with its pre-flip status would render inconsistently. If the
-          // flip fails we log and drop the event; the negotiation result
-          // is still captured in acceptedResults for the final summary.
-          const updated = await this.database
-            .updateOpportunityStatus(candidate.opportunityId, 'draft')
-            .catch((err) => {
-              negotiateLog.warn('failed to flip opp to draft; suppressing draft-ready event', {
-                opportunityId: candidate.opportunityId,
-                error: err,
-              });
-              return null;
-            });
-          if (!updated || abortSignal?.aborted) return;
-
-          const counterpartName = candidate.candidateUser.profile?.name ?? '';
-          const viewerName = sourceUser.profile.name;
-          const rawReasoning = updated.interpretation?.reasoning ?? '';
-          const personalizedSummary = safeFallbackSummary(rawReasoning, {
-            counterpartName,
-            viewerName,
-            emptyText: 'A suggested connection.',
-          });
-
-          traceEmitter?.({
-            type: 'opportunity_draft_ready',
-            opportunityId: candidate.opportunityId,
-            opportunity: {
-              ...updated,
-              interpretation: {
-                ...updated.interpretation,
-                reasoning: personalizedSummary,
-              },
-            },
-            personalizedSummary,
-            counterparty: {
-              userId: candidate.candidateUser.id,
-              ...(candidate.candidateUser.profile?.name
-                ? { name: candidate.candidateUser.profile.name }
-                : {}),
-            },
-          });
         };
 
         const negotiationWork = negotiateCandidates(
@@ -2397,7 +2332,6 @@ export class OpportunityGraphFactory {
           { maxTurns, traceEmitter: traceEmitter ?? undefined,
             indexContextOverrides: indexContextMap,
             timeoutMs,
-            trigger: state.trigger === 'orchestrator' ? 'orchestrator' : 'ambient',
             // v2 initiator stamp: every fresh-discovery origin resolves to the
             // discovery user — querying user (chat/tool), intent owner
             // (from-intent), enriched user (from-enrichment/discovery-run), or
@@ -2817,10 +2751,9 @@ export class OpportunityGraphFactory {
       async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.persist", async () => {
         const startTime = Date.now();
-        const initialStatus = resolveInitialStatus(state.trigger, state.options.initialStatus);
+        const initialStatus = state.options.initialStatus ?? 'pending';
         persistLog.verbose('Starting persistence (dedup-v2)', {
           opportunitiesToCreate: state.evaluatedOpportunities.length,
-          trigger: state.trigger,
           initialStatus,
         });
 
@@ -2901,43 +2834,6 @@ export class OpportunityGraphFactory {
           const introducerUserForOnBehalf = state.onBehalfOfUserId
             ? await this.database.getUser(state.userId)
             : null;
-
-          // Orchestrator-only: collect already-accepted pairs so Task 7's
-          // background matching system can tell the LLM "these pairs are
-          // already connected, surface the existing chat rather than
-          // creating a new draft". Runs in parallel across unique
-          // counterparties (a single evaluator pass can return multiple
-          // opps per counterparty; we only hit the DB once per pair).
-          // Failures are swallowed — the per-pair query is best-effort.
-          const dedupAlreadyAccepted: Array<{ opportunityId: string; counterpartyUserId: string }> = [];
-          if (state.trigger === 'orchestrator') {
-            // Use the same viewer-resolution as evaluation/negotiate/persist
-            // on-behalf branches so an introducer-driven orchestrator run
-            // queries accepted opps between the *target* user and the
-            // counterparty, not between the introducer and the counterparty.
-            const dedupUserId = (state.onBehalfOfUserId ?? state.userId) as string;
-            const uniqueCounterparts = new Set<string>();
-            for (const evaluated of evaluatedToPersist) {
-              const candidateUserId = evaluated.actors.find(a => a.userId !== dedupUserId)?.userId;
-              if (candidateUserId) uniqueCounterparts.add(candidateUserId);
-            }
-            const lookups = await Promise.all(
-              [...uniqueCounterparts].map(async (counterpartyUserId) => {
-                const accepted = await this.database
-                  .findOpportunitiesByActors([dedupUserId, counterpartyUserId], { includeIntroducers: true, statuses: ['accepted'] })
-                  .catch((err: unknown) => {
-                    persistLog.warn('findOpportunitiesByActors (sibling-accept) failed', {
-                      userId: dedupUserId,
-                      counterpartyUserId,
-                      error: err,
-                    });
-                    return [] as Awaited<ReturnType<typeof this.database.findOpportunitiesByActors>>;
-                  });
-                return accepted.map((opp: { id: string }) => ({ opportunityId: opp.id, counterpartyUserId }));
-              }),
-            );
-            dedupAlreadyAccepted.push(...lookups.flat());
-          }
 
           for (const evaluated of evaluatedToPersist) {
             const indexIdForActors = state.networkId ?? evaluated.actors[0]?.networkId;
@@ -3592,16 +3488,14 @@ export class OpportunityGraphFactory {
           return {
             opportunities: allOpportunities,
             existingBetweenActors,
-            dedupAlreadyAccepted,
             persistenceOutcome,
             trace: [{
               node: "persist",
-              detail: `Created ${createdList.length}, reactivated ${reactivatedOpportunities.length}, ${existingBetweenActors.length} existing skipped, ${dedupAlreadyAccepted.length} already-accepted pair(s)`,
+              detail: `Created ${createdList.length}, reactivated ${reactivatedOpportunities.length}, ${existingBetweenActors.length} existing skipped`,
               data: {
                 created: createdList.length,
                 reactivated: reactivatedOpportunities.length,
                 existingSkipped: existingBetweenActors.length,
-                alreadyAccepted: dedupAlreadyAccepted.length,
                 totalOutput: allOpportunities.length,
                 persistenceOutcome,
                 durationMs: Date.now() - startTime,
@@ -3879,7 +3773,6 @@ export class OpportunityGraphFactory {
                 maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
                 indexContextOverrides,
                 timeoutMs: AMBIENT_PARK_WINDOW_MS,
-                trigger: 'ambient',
                 ...(execution ? {
                   resumeFromTaskId: execution.taskId,
                   continuationSettlementId: execution.settlementId,
