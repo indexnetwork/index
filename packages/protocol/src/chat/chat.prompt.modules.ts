@@ -1,6 +1,7 @@
 import type { BaseMessage, AIMessage } from "@langchain/core/messages";
 
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
+import { isIntroducerDiscoveryEnabled } from "../opportunity/application/opportunity.introducer-feature.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -109,7 +110,28 @@ const discoveryModule: PromptModule = {
   id: "discovery",
   triggers: ["discover_opportunities", "update_opportunity", "list_opportunities"],
   triggerFilter: (iterCtx) => !hasIntroductionArgs(iterCtx.recentTools),
-  content: () => `
+  content: () => {
+    const introducerDiscoveryEnabled = isIntroducerDiscoveryEnabled();
+    const directConnectionClassification = introducerDiscoveryEnabled
+      ? "**This is a direct connection — NOT an introduction (introductions connect two OTHER people).**"
+      : "**This is a direct connection.**";
+    const directConnectionIntentGuidance = introducerDiscoveryEnabled
+      ? "**Do NOT call read_intents before discover_opportunities here.** The opportunity tool fetches intents internally for both discovery and direct connection modes. Only introduction mode (partyUserIds + entities) requires pre-gathered intents."
+      : "**Do NOT call read_intents before discover_opportunities here.** The opportunity tool fetches intents internally for both discovery and direct connection modes.";
+    const discoveryToolDescription = introducerDiscoveryEnabled
+      ? "- **discover_opportunities** — discovers new connections (discovery, introduction, or direct connection)."
+      : "- **discover_opportunities** — discovers new connections (discovery or direct connection).";
+    const discoveryUsage = introducerDiscoveryEnabled
+      ? "When the user asks to review, revise, check, or see their current opportunities, call `list_opportunities`. Only use `discover_opportunities` for discovery (\"find me connections\"), introductions, or direct connections."
+      : "When the user asks to review, revise, check, or see their current opportunities, call `list_opportunities`. Only use `discover_opportunities` for discovery (\"find me connections\") or direct connections.";
+    const introducerException = introducerDiscoveryEnabled
+      ? "- **Introducer exception**: Never suggest signal/intent creation when `introTargetUserId` was used. The search describes the other person's needs, not the signed-in user's — creating a signal from it would be meaningless."
+      : "";
+    const discoveryCallCriteria = introducerDiscoveryEnabled
+      ? "- Only call `discover_opportunities` for: (a) discovery (\"find me connections\"), (b) introductions between two other people, or (c) direct connection with a specific mentioned person (Pattern 1a)."
+      : "- Only call `discover_opportunities` for: (a) discovery (\"find me connections\") or (b) direct connection with a specific mentioned person (Pattern 1a).";
+
+    return `
 ### 1. User wants to find connections or discover (default for connection-seeking)
 
 For open-ended connection-seeking ("find me a mentor", "who needs a React dev", "I want to meet people in AI", "looking for investors", "find me X"), run **discovery first**.
@@ -130,7 +152,7 @@ For open-ended connection-seeking ("find me a mentor", "who needs a React dev", 
 
 When the user mentions a specific person via @mention or name AND expresses interest in connecting, collaborating, or exploring overlap (e.g. "what can I do with @X", "connect me with @X", user says "yes" after you present shared context with someone):
 
-**This is a direct connection — NOT an introduction (introductions connect two OTHER people).**
+${directConnectionClassification}
 
 \`\`\`
 1. If not already done: read_user_contexts(userId=X) + read_network_memberships(userId=X)
@@ -140,16 +162,16 @@ When the user mentions a specific person via @mention or name AND expresses inte
 5. Present the opportunity card
 \`\`\`
 
-**Do NOT call read_intents before discover_opportunities here.** The opportunity tool fetches intents internally for both discovery and direct connection modes. Only introduction mode (partyUserIds + entities) requires pre-gathered intents.
+${directConnectionIntentGuidance}
 
 The searchQuery should be a brief description of why they'd connect (e.g. "shared interest in design and technology, both in Kernel community"). This gives the evaluator context for scoring.
 
 ### 7. Opportunities in chat
 
-- **discover_opportunities** — discovers new connections (discovery, introduction, or direct connection).
+${discoveryToolDescription}
 - **list_opportunities** — lists existing draft and pending opportunities the user can act on.
 
-When the user asks to review, revise, check, or see their current opportunities, call \`list_opportunities\`. Only use \`discover_opportunities\` for discovery ("find me connections"), introductions, or direct connections.
+${discoveryUsage}
 
 When either tool returns \`\`\`opportunity code blocks, include them verbatim in your reply so they render as cards.
 
@@ -164,16 +186,18 @@ Draft or latent opportunities can be sent (update_opportunity with status='pendi
 - When the tool returns \`createIntentSuggested\`, the system may create an intent and retry; respond from the final discovery result.
 - Visibility-signal follow-up: apply the Pattern 1 rule above (\`suggestIntentCreationForVisibility\` → ask once; on yes, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block).
 - When the tool response says "These are all the connections I found", suggest the user create a signal so others can discover them. Use the existing \`suggestIntentCreationForVisibility\` flow: call \`create_intent(description=suggestedIntentDescription)\` if the user agrees. Do not ask "Would you like to see more?" when there are no more candidates.
-- **Introducer exception**: Never suggest signal/intent creation when \`introTargetUserId\` was used. The search describes the other person's needs, not the signed-in user's — creating a signal from it would be meaningless.
-- Only call \`discover_opportunities\` for: (a) discovery ("find me connections"), (b) introductions between two other people, or (c) direct connection with a specific mentioned person (Pattern 1a).
-`,
+${introducerException}
+${discoveryCallCriteria}
+`;
+  },
 };
 
 const introductionModule: PromptModule = {
   id: "introduction",
   triggers: ["discover_opportunities"],
   excludes: ["discovery"],
-  triggerFilter: (iterCtx) => hasIntroductionArgs(iterCtx.recentTools),
+  triggerFilter: (iterCtx) =>
+    isIntroducerDiscoveryEnabled() && hasIntroductionArgs(iterCtx.recentTools),
   content: () => `
 ### 6. Introduce two people
 

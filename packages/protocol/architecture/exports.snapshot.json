@@ -1599,6 +1599,12 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "isIntroducerDiscoveryEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "selectContactsForDiscovery",
       "kind": "value",
       "stability": "stable",

@@ -4,7 +4,7 @@ import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { Id } from '../../types/common.types';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
+import { isIntroducerDiscoveryEnabled, type NegotiationGraphLike, type AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 
@@ -82,6 +82,14 @@ export class FromIntroducerQueue {
 
   private async handleDiscover(data: FromIntroducerJobData): Promise<void> {
     const { userId, contactUserId, networkIds } = data;
+    if (!isIntroducerDiscoveryEnabled()) {
+      this.logger.info('Introducer discovery skipped — disabled by configuration', {
+        userId: data.userId,
+        contactUserId: data.contactUserId,
+      });
+      return;
+    }
+
     // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
     const contactIntents = await this.database.getActiveIntents(contactUserId);

@@ -5,12 +5,26 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, test, expect } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { runDiscoverFromQuery } from "../opportunity.discover.js";
 import type { FormattedDiscoveryCandidate } from "../opportunity.discover.js";
 import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/database.interface.js";
 
+const originalIntroducerDiscoveryEnabled = process.env.INTRODUCER_DISCOVERY_ENABLED;
+
 describe("opportunity.discover", () => {
+  beforeEach(() => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = "true";
+  });
+
+  afterEach(() => {
+    if (originalIntroducerDiscoveryEnabled === undefined) {
+      delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+    } else {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+    }
+  });
+
   const mockDatabase: ChatGraphCompositeDatabase = {
     getProfile: async () => null,
     getUser: async () => null,
@@ -284,24 +298,42 @@ describe("opportunity.discover", () => {
       expect(result.opportunities![0].name).toBe("Yuki Tanaka");
     });
 
-    test("passes onBehalfOfUserId to graph invoke when provided", async () => {
-      let capturedInvokeArg: Record<string, unknown> = {};
-      const mockGraph = {
-        invoke: async (arg: Record<string, unknown>) => {
-          capturedInvokeArg = arg;
-          return { opportunities: [] };
-        },
-      };
+    test("returns the disabled result without invoking the graph for on-behalf discovery", async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = "false";
+      const invoke = mock(async () => ({ opportunities: [] }));
+
+      const result = await runDiscoverFromQuery({
+        opportunityGraph: { invoke } as never,
+        database: mockDatabase,
+        userId: "introducer-1",
+        onBehalfOfUserId: "target-1",
+        query: "find an investor",
+        indexScope: ["network-1"],
+      });
+
+      expect(result).toMatchObject({
+        found: false,
+        count: 0,
+        message: "Introducer discovery is currently disabled.",
+      });
+      expect(invoke).not.toHaveBeenCalled();
+    });
+
+    test("passes onBehalfOfUserId to graph invoke when enabled", async () => {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = "true";
+      const invoke = mock(async (arg: Record<string, unknown>) => ({ opportunities: [] }));
       await runDiscoverFromQuery({
-        opportunityGraph: mockGraph as any,
+        opportunityGraph: { invoke } as never,
         database: mockDatabase,
         userId: "introducer-user",
         query: "find a designer for my friend",
         indexScope: ["idx1"],
         onBehalfOfUserId: "target-user",
       });
-      expect(capturedInvokeArg.onBehalfOfUserId).toBe("target-user");
-      expect(capturedInvokeArg.userId).toBe("introducer-user");
+      expect(invoke).toHaveBeenCalledWith(expect.objectContaining({
+        onBehalfOfUserId: "target-user",
+        userId: "introducer-user",
+      }));
     });
 
     test("enriches introducer discovery cards with correct viewerRole, headline, and action label (minimalForChat)", async () => {
@@ -675,6 +707,18 @@ const introducerMockDatabase: ChatGraphCompositeDatabase = {
 } as unknown as ChatGraphCompositeDatabase;
 
 describe("introducer discovery cards - secondParty (Bug 1)", () => {
+  beforeEach(() => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = "true";
+  });
+
+  afterEach(() => {
+    if (originalIntroducerDiscoveryEnabled === undefined) {
+      delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+    } else {
+      process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+    }
+  });
+
   const introducerId = "introducer-user";
   const targetId = "target-user";
   const candidateId = "candidate-match";

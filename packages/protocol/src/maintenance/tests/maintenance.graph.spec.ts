@@ -2,12 +2,21 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect } from "bun:test";
+import { afterEach, describe, it, expect, mock } from "bun:test";
 import { MaintenanceGraphFactory } from "../maintenance.graph.js";
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
 const userId = '00000000-0000-4000-8000-000000000001';
+const originalIntroducerDiscoveryEnabled = process.env.INTRODUCER_DISCOVERY_ENABLED;
+
+afterEach(() => {
+  if (originalIntroducerDiscoveryEnabled === undefined) {
+    delete process.env.INTRODUCER_DISCOVERY_ENABLED;
+  } else {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = originalIntroducerDiscoveryEnabled;
+  }
+});
 
 function makeOpportunity(overrides: Partial<{
   id: string;
@@ -157,5 +166,56 @@ describe('MaintenanceGraphFactory', () => {
 
     expect(result.error).toBeDefined();
     expect(result.rediscoveryJobsEnqueued).toBe(0);
+  }, 15000);
+
+  it('skips introducer discovery before contact lookup when disabled', async () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = 'false';
+    const getPersonalIndexId = mock(async () => 'personal-1');
+    const getContactsWithIntentFreshness = mock(async () => [{
+      userId: 'contact-1', latestIntentAt: new Date().toISOString(), intentCount: 1,
+    }]);
+
+    const factory = new MaintenanceGraphFactory(
+      makeDatabase({ getPersonalIndexId, getContactsWithIntentFreshness }),
+      makeCache(),
+      makeQueue().queue,
+    );
+
+    await factory.createGraph().invoke({ userId });
+
+    expect(getPersonalIndexId).not.toHaveBeenCalled();
+    expect(getContactsWithIntentFreshness).not.toHaveBeenCalled();
+  }, 15000);
+
+  it('runs introducer discovery and enqueues a contact job when enabled', async () => {
+    process.env.INTRODUCER_DISCOVERY_ENABLED = 'true';
+    const getPersonalIndexId = mock(async () => 'personal-1');
+    const getContactsWithIntentFreshness = mock(async () => [{
+      userId: 'contact-1', latestIntentAt: new Date().toISOString(), intentCount: 1,
+    }]);
+    const addJob = mock(async () => undefined);
+
+    const factory = new MaintenanceGraphFactory(
+      makeDatabase({ getPersonalIndexId, getContactsWithIntentFreshness }),
+      makeCache(),
+      { addJob } as never,
+    );
+
+    await factory.createGraph().invoke({ userId });
+
+    expect(getPersonalIndexId).toHaveBeenCalled();
+    expect(getContactsWithIntentFreshness).toHaveBeenCalled();
+    expect(addJob).toHaveBeenCalledWith(
+      {
+        intentId: 'introducer:contact-1',
+        userId,
+        indexIds: ['personal-1'],
+        contactUserId: 'contact-1',
+      },
+      expect.objectContaining({
+        jobId: expect.stringMatching(new RegExp(`^introducer-discovery-${userId}-contact-1-\\d+$`)),
+        priority: 15,
+      }),
+    );
   }, 15000);
 });
