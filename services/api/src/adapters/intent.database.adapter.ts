@@ -614,17 +614,10 @@ export class IntentDatabaseAdapter {
     if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    // Only rows that are fresh AND not already stamped need the legacy
-    // discovery-run lookup (async MCP runs record success there instead).
-    const freshIntentIds = rows
-      .filter(r => r.createdAt > warmingCutoff && r.firstDiscoverySucceededAt == null)
-      .map(r => r.id);
-    const [networks, countResult, succeededDiscoveryIntentIds] = await Promise.all([
+    const [networks, countResult] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
-      this.succeededDiscoveryIntentIds(freshIntentIds),
     ]);
-    const succeededIds = new Set(succeededDiscoveryIntentIds);
     return {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
         ...r,
@@ -632,28 +625,12 @@ export class IntentDatabaseAdapter {
         pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
         warming: r.createdAt > warmingCutoff
-          && firstDiscoverySucceededAt == null
-          && !succeededIds.has(r.id),
+          && firstDiscoverySucceededAt == null,
       })),
       totalWaitingOpportunities: countResult.totalWaitingOpportunities,
     };
   }
 
-  /**
-   * Return intent IDs with a completed discovery run. The caller only passes
-   * fresh intents because rows older than the warming window are never warm.
-   */
-  private async succeededDiscoveryIntentIds(intentIds: string[]): Promise<string[]> {
-    if (intentIds.length === 0) return [];
-    const idList = sql.join(intentIds.map(id => sql`${id}`), sql`, `);
-    const rows = await db.execute(sql`
-      SELECT ${schema.opportunityDiscoveryRuns.input}->>'intentId' AS intent_id
-      FROM ${schema.opportunityDiscoveryRuns}
-      WHERE ${schema.opportunityDiscoveryRuns.status} = 'succeeded'
-        AND (${schema.opportunityDiscoveryRuns.input}->>'intentId') = ANY(ARRAY[${idList}]::text[])
-    `) as unknown as Array<{ intent_id: string | null }>;
-    return rows.flatMap(row => row.intent_id ? [row.intent_id] : []);
-  }
 
   /**
    * Group each intent's registered networks (excluding soft-deleted networks)

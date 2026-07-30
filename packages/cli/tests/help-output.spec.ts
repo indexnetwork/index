@@ -21,6 +21,9 @@ describe("main help output", () => {
   it("documents supported command forms and options", () => {
     const help = renderHelp();
 
+    expect(help).not.toContain("--target <uid>");
+    expect(help).not.toContain("--introduce <uid>");
+
     for (const expected of [
       "index login --token <token>",
       "index logout",
@@ -33,8 +36,6 @@ describe("main help output", () => {
       "--status <status>",
       "--since <date>",
       "--objective <text>",
-      "--target <uid>",
-      "--introduce <uid>",
       "--details <text>",
     ]) {
       expect(help).toContain(expected);

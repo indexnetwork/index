@@ -260,7 +260,6 @@ export const REPORTER_PERSONA: ChatPersonaConfig = {
   createTools: (deps, preResolvedContext) => createReporterTools(deps, preResolvedContext),
   resolveDeterministicResponse: (_ctx, iterCtx) => resolveReporterDeterministicResponse(iterCtx),
   loopBehaviors: {
-    createIntentCallback: false,
     hallucinationRecovery: false,
   },
 };

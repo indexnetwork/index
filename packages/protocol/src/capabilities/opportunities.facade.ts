@@ -73,6 +73,7 @@ export { computeFeedHealth } from "../opportunity/feed/feed.health.js";
 export type { FeedHealthInput } from "../opportunity/feed/feed.health.js";
 
 // ── Introducer / ambient discovery ───────────────────────────────────────────
+export { isIntroducerDiscoveryEnabled } from "../opportunity/application/opportunity.introducer-feature.js";
 export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "../opportunity/application/opportunity.introducer.js";
 export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "../opportunity/application/opportunity.introducer.js";
 

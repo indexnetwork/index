@@ -23,29 +23,12 @@ Install the following before cloning the repository.
 | **pgvector** extension | 0.5+ | 2000-dimensional vector similarity search |
 | **Redis** | 6+ | Job queues (BullMQ) and caching |
 | **Git** | 2.30+ | Version control, worktrees |
-| **Herdr** | current CLI | Visible worktree workspaces and Pi or Codex sessions |
 
 Install Bun (if not already installed):
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
-
-Install Herdr on macOS or Linux, then install and verify an agent integration. Pi and
-Codex are both supported; install the one you plan to launch:
-
-```bash
-curl -fsSL https://herdr.dev/install.sh | sh
-# Choose one:
-herdr integration install codex
-# herdr integration install pi
-herdr integration status
-```
-
-Before coordinator socket commands such as `herdr worktree open` are used, launch
-`herdr` once from the repository so its visible client/server session is running (or
-ensure an existing Herdr server/client is active). Verify the server when needed with
-`herdr status server`.
 
 Install the pgvector extension for PostgreSQL. The method varies by platform:
 
@@ -379,7 +362,7 @@ This shows all BullMQ job queues, their status, and lets you retry failed jobs o
 
 ## Git workflow
 
-### Worktrees and visible Herdr agent sessions
+### Worktrees
 
 All feature and fix work happens in Git worktrees, keeping the canonical working tree
 on `dev` and read-only for source changes. Worktrees use semantic slash branches such
@@ -393,25 +376,15 @@ path/branch match; otherwise create from `origin/dev` and run mandatory setup:
 git fetch origin dev
 git worktree add -b feat/my-feature .worktrees/feat-my-feature origin/dev
 bun run worktree:setup feat-my-feature
-herdr worktree open \
-  --path "$PWD/.worktrees/feat-my-feature" \
-  --label feat-my-feature \
-  --no-focus \
-  --json
 ```
 
-  For an existing unmounted branch, omit `-b`. Record the returned workspace and
-  pane IDs, verify linked-worktree metadata, and launch an agent only when that exact
-  worktree has no writer.
+For an existing unmounted branch, omit `-b`. Verify linked-worktree metadata and
+confirm that exact worktree has no writer before implementation.
 
-Before mutation, every visible agent verifies `pwd`, `git branch --show-current`, and
-`git status --short --branch`. Use one writer per worktree. Extension-managed
-children are named tabs inside the root workspace; standalone sessions have their own
-workspace. Reuse the same tracked child/session for fix rounds. Never poll, wait,
-create a watcher, infer success from `idle`/`done`, or treat a child report as proof;
-the root/coordinator independently verifies it. The legacy
-`bun run worktree:session` helper remains only an explicit fallback when Herdr is
-unavailable.
+Before mutation, verify `pwd`, `git branch --show-current`, and `git status --short
+--branch`. Use one writer per worktree. Reuse the same worktree for fix rounds. Never
+poll, wait, create a watcher, infer success from `idle`/`done`, or treat a child report
+as proof; the root/coordinator independently verifies it.
 
 ```bash
 # Start dev servers from the worktree

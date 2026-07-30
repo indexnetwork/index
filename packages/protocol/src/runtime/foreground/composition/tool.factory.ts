@@ -217,8 +217,6 @@ export async function createChatTools(
     stampNewbornOpportunities: deps.stampNewbornOpportunities,
     deliveryLedger: deps.deliveryLedger,
     ...(deps.opportunityOwnerApproval && { opportunityOwnerApproval: deps.opportunityOwnerApproval }),
-    discoveryRuns: deps.discoveryRuns,
-    discoveryRunQueue: deps.discoveryRunQueue,
     enrichmentRuns: deps.enrichmentRuns,
     enrichmentRunQueue: deps.enrichmentRunQueue,
     mintConnectToken: deps.mintConnectToken,

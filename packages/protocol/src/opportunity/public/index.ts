@@ -12,7 +12,6 @@
 export {
   // state
   OpportunityGraphState,
-  resolveInitialStatus,
 } from "../domain/opportunity.state.js";
 export type {
   SourceProfileData,
@@ -23,13 +22,8 @@ export type {
   EvaluatedOpportunityActor,
   EvaluatedOpportunity,
   OpportunityPersistenceOutcome,
-  OpportunityTrigger,
   OpportunityGraphOptions,
 } from "../domain/opportunity.state.js";
-export type {
-  DiscoverDebugStep,
-  DiscoveryResultContract,
-} from "../domain/opportunity.discovery.contracts.js";
 export {
   MINIMAL_MAIN_TEXT_MAX_CHARS,
   PRIMARY_ACTION_LABEL_INTRODUCER,
@@ -177,6 +171,7 @@ export { computeFeedHealth } from "../feed/feed.health.js";
 export type { FeedHealthInput } from "../feed/feed.health.js";
 
 // ── Application exports ───────────────────────────────────────────────────────
+export { isIntroducerDiscoveryEnabled } from "../application/opportunity.introducer-feature.js";
 export { OpportunityGraphFactory } from "../application/opportunity.graph.js";
 export type {
   StampNewbornOpportunitiesFn,

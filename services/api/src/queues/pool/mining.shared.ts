@@ -6,7 +6,6 @@
  * pool_discovery question for the top eligible discriminator.
  *
  * Callers (fire-and-forget from every discovery completion path):
- *   - DiscoveryRunQueue   — async MCP discover_opportunities runs
  *   - FromIntentQueue     — web intent creation / edit / re-discovery
  *   - PoolVisitMiningQueue — debounced owner intent-page visits (IND-439;
  *     flag-gated re-mine of the existing pool, no discovery run)
@@ -55,7 +54,7 @@ export interface PoolMiningTrigger {
    * visit-triggered re-mine path (IND-439) — no discovery ran; the existing
    * pool is re-mined so an expired question's intent can mint a fresh one.
    */
-  source: 'discovery_run' | 'from_intent' | 'intent_visit';
+  source: 'from_intent' | 'intent_visit';
   userId: string;
   /** Triggering intent — required for questions; optional for shadow-only ad-hoc pools. */
   intentId?: string;

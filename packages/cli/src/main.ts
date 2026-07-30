@@ -29,7 +29,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.12.0";
+const VERSION = "0.13.0";
 
 /** Unicode box-drawing (rounded), same style as Honcho CLI. */
 const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;
@@ -98,7 +98,6 @@ function renderHelp(): void {
     "index intent list",
     "index negotiation list",
     "index opportunity list",
-    "index opportunity discover",
   ];
   const formsLW = Math.max(...formsLefts.map((s) => s.length));
 
@@ -131,8 +130,6 @@ function renderHelp(): void {
     "--name <name>",
     "--gmail",
     "--objective <text>",
-    "--target <uid>",
-    "--introduce <uid>",
     "--linkedin <url>",
     "--github <url>",
     "--twitter <url>",
@@ -168,7 +165,6 @@ function renderHelp(): void {
     helpRowCmd(formsLW, "index intent list", "supports --archived and --limit"),
     helpRowCmd(formsLW, "index negotiation list", "supports --since and --limit"),
     helpRowCmd(formsLW, "index opportunity list", "supports --status and --limit"),
-    helpRowCmd(formsLW, "index opportunity discover", "supports --target and --introduce"),
   ]);
 
   panel("commands", [
@@ -178,7 +174,6 @@ function renderHelp(): void {
     helpRowCmd(cmdLW, "intent", "list · show · create · update · archive"),
     helpRowCont(cmdLW, "link · unlink · links"),
     helpRowCmd(cmdLW, "negotiation", "list · show"),
-    helpRowCmd(cmdLW, "opportunity", "list · show · accept · reject · discover"),
     "",
     helpRowCmd(cmdLW, "profile", "show · sync · search · create · update"),
     helpRowCmd(cmdLW, "conversation", "sessions · list · with · show · send · stream"),
@@ -204,8 +199,6 @@ function renderHelp(): void {
     helpRowDim(optLW, "--name <name>", "name for contact add"),
     helpRowDim(optLW, "--gmail", "import contacts from Gmail"),
     helpRowDim(optLW, "--objective <text>", "objective for scrape command"),
-    helpRowDim(optLW, "--target <uid>", "target user for opportunity discovery"),
-    helpRowDim(optLW, "--introduce <uid>", "source user for introduction discovery"),
     helpRowDim(optLW, "--linkedin <url>", "LinkedIn URL for profile create"),
     helpRowDim(optLW, "--github <url>", "GitHub URL for profile create"),
     helpRowDim(optLW, "--twitter <url>", "Twitter URL for profile create"),
@@ -416,8 +409,6 @@ async function main(): Promise<void> {
         limit: args.limit,
         json: args.json,
         positionals: args.positionals,
-        target: args.target,
-        introduce: args.introduce,
         acknowledgeUptake: args.acknowledgeUptake,
       });
       return;

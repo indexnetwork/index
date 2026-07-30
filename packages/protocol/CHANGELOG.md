@@ -31,6 +31,13 @@ See [STABILITY.md](./STABILITY.md) for the public-contract and tier definitions.
   `bun run eval:stance` measures decline rate on low-value versus high-value
   fixtures per stance.
 
+### Removed
+- **BREAKING:** `DiscoveryRunInput` and `DiscoveryRunRecord` (8.0.0). Background-only
+  opportunity matching (#1301) deleted `shared/interfaces/discovery-run.interface.ts`
+  along with the discovery-run queue, adapter, and coalescing domain, so the two
+  stable types are no longer part of the public surface. The major bump shipped
+  with that change; this entry and the regenerated export inventory record it.
+
 ### Fixed
 - Stop force-rewriting an opening-move refusal (IND-611 prerequisite; 7.11.0):
   `negotiation.graph.ts` ran the turn-0 opening force *before* the IND-564

@@ -191,7 +191,7 @@ Every MCP `tools/call` runs under the shared tool runtime. The runtime applies a
 | `bounded_slow` | 45 seconds | `MCP_TOOL_TIMEOUT_BOUNDED_SLOW_MS` |
 | `async_candidate` | 50 seconds | `MCP_TOOL_TIMEOUT_ASYNC_CANDIDATE_MS` |
 
-A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS` or `MCP_TOOL_TIMEOUT_DISCOVER_OPPORTUNITIES_MS`.
+A single tool can be overridden with `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`, where `<TOOL_NAME>` is uppercased and non-alphanumeric characters are replaced with `_`; for example, `MCP_TOOL_TIMEOUT_CREATE_INTENT_MS`.
 
 **Size limits:**
 
@@ -204,23 +204,6 @@ Invalid or non-positive numeric values are ignored and the default is used.
 **Cancellation:**
 
 Clients may cancel in-flight MCP calls with `notifications/cancelled`. HTTP request aborts exposed by the MCP SDK are treated the same way. The runtime propagates the abort signal into graph, LLM, scraper, and embedding paths where supported.
-
-**Async discovery runs:**
-
-For MCP callers, `discover_opportunities` does not execute the full discovery graph inside the initial `tools/call`. It returns quickly with:
-
-```json
-{
-  "success": true,
-  "data": {
-    "status": "queued",
-    "discoveryRunId": "...",
-    "message": "Discovery started. Call get_discovery_run ..."
-  }
-}
-```
-
-Clients poll `get_discovery_run({ discoveryRunId })` until `status` is `succeeded`, `failed`, or `cancelled`. When `succeeded`, `data.result` contains the normal discovery payload. Clients may call `cancel_discovery_run({ discoveryRunId })` to cancel a queued run or request cancellation of a running run. Non-MCP chat/web paths remain synchronous.
 
 **Runtime error envelope:**
 
@@ -1650,26 +1633,6 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
 }
 ```
 
-### POST /api/debug/intents/:id/discover
-
-Runs the opportunity discovery pipeline for a specific intent and returns the full graph trace. **WARNING**: This persists results (creates/reactivates opportunities).
-
-**Auth**: DebugGuard + AuthGuard
-
-**Path params**:
-- `id` — Intent ID
-
-**Response**:
-```json
-{
-  "exportedAt": "...",
-  "preflight": { ... },
-  "result": { ... }
-}
-```
-
-Returns `diagnosis` string instead of `result` if there are no candidates or graph execution fails.
-
 ### GET /api/debug/chat/:id
 
 Returns a debug-friendly view of a chat session, including messages and per-turn debug metadata (graph, iterations, tools).
@@ -2796,22 +2759,6 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 
 **Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
 
-### POST /api/opportunities/discover
-
-Discover opportunities via HyDE graph.
-
-**Auth**: AuthGuard
-
-**Request body** (Zod-validated):
-```json
-{
-  "query": "string (required, min 1 char)",
-  "limit": "number (optional, default: 5)"
-}
-```
-
-**Response**: JSON with discovered opportunities. Public card prose and `matchReason` are safety-normalized; network/event metadata alone is never presented as attendance, membership, residence, acquaintance, or shared presence.
-
 ### GET /api/opportunities/:id
 
 Get one opportunity with presentation for the viewer. If the requested opportunity was expired because it was superseded by an enriched opportunity, the endpoint returns the newest visible replacement using the existing `detection.enrichedFrom` link.
@@ -3444,7 +3391,6 @@ Invoke a tool by name with a JSON query body.
 **Auth**: `AuthGuard`
 
 **Path params**:
-- `toolName` — Name of the tool to invoke (e.g. `read_intents`, `discover_opportunities`)
 
 **Request body**:
 ```json
@@ -3491,7 +3437,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network` | Network | Delete a network |
 | `create_network_membership` | Network | Add a member to a network |
 | `delete_network_membership` | Network | Remove a member from a network |
-| `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
 | `list_contacts` | Contact | List user's contacts |

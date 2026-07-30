@@ -14,7 +14,6 @@ tools.py      # JSON-string-returning tool handlers
 The plugin provides these native Hermes tools:
 
 - `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY` with argument validation.
-- `index_<mcp_tool_name>` — generated pass-through wrappers for the rest of the Index MCP surface, including `index_read_docs`, `index_create_intent`, `index_read_networks`, `index_discover_opportunities`, `index_get_discovery_run`, `index_list_opportunities`, and `index_read_activity_summary`.
 - `index_agent_me` — calls `GET /api/agents/me` to return the authenticated personal Index agent for the configured key.
 - `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
 - `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
@@ -89,8 +88,6 @@ The plugin registers Hermes wrappers for each canonical Index MCP tool that does
 - `index_read_docs({"topic":"mcp_agent_guide"})`
 - `index_create_intent({"description":"...","autoApprove":true})`
 - `index_read_networks({})`
-- `index_discover_opportunities({"searchQuery":"..."})`
-- `index_get_discovery_run({"discoveryRunId":"..."})`
 - `index_list_opportunities({})`
 
 Wrapper names are formed by prefixing the MCP tool name with `index_`; arguments are passed through unchanged to the underlying MCP tool. Tool responses are decoded from the MCP envelope and returned as JSON strings to Hermes.

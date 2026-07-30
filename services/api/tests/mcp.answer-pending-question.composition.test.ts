@@ -2,8 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 const mcp = readFileSync(new URL('../src/controllers/mcp.controller.ts', import.meta.url), 'utf8');
-const factory = readFileSync(new URL('../../../packages/protocol/src/shared/agent/tool.factory.ts', import.meta.url), 'utf8');
-const tools = readFileSync(new URL('../../../packages/protocol/src/questioner/questioner.tools.ts', import.meta.url), 'utf8');
+const factory = readFileSync(new URL('../../../packages/protocol/src/runtime/foreground/composition/tool.factory.ts', import.meta.url), 'utf8');
+const tools = readFileSync(new URL('../../../packages/protocol/src/questions/application/question.tools.ts', import.meta.url), 'utf8');
 const direct = readFileSync(new URL('../src/services/tool.service.ts', import.meta.url), 'utf8');
 
 describe('MCP/direct answer_pending_question composition', () => {
@@ -16,10 +16,12 @@ describe('MCP/direct answer_pending_question composition', () => {
   });
 
   it('keeps authenticated principal and network-scope refusal ahead of the host bridge', () => {
-    expect(tools).toContain('focusedNetworkId(context)');
-    expect(tools.indexOf('focusedNetworkId(context)')).toBeLessThan(tools.indexOf('deps.answerPendingQuestion('));
-    expect(tools).toContain('deps.findPendingQuestions(context.userId');
-    expect(tools).toContain('deps.answerPendingQuestion(context.userId');
+    const answerHandler = tools.slice(tools.indexOf('const answerPendingQuestion = defineTool'));
+
+    expect(answerHandler).toContain('if (focusedNetworkId(context))');
+    expect(answerHandler.indexOf('if (focusedNetworkId(context))')).toBeLessThan(answerHandler.indexOf('await deps.answerPendingQuestion'));
+    expect(answerHandler).toContain('deps.findPendingQuestions(context.userId');
+    expect(answerHandler).toContain('deps.answerPendingQuestion(context.userId');
   });
 
   it('leaves no alternate direct-tool settlement bypass around the authoritative adapter', () => {

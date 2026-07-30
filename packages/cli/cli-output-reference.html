@@ -252,7 +252,6 @@ body {
 <span class="c-gray">│</span> <span class="bold c-cyan">index intent list</span>               supports --archived and --limit                <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">index negotiation list</span>          supports --since and --limit                   <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">index opportunity list</span>          supports --status and --limit                  <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="bold c-cyan">index opportunity discover</span>      supports --target and --introduce              <span class="c-gray">│</span>
 <span class="c-gray">╰────────────────────────────────────────────────────────╯</span>
 
 <span class="c-gray">╭─ commands ─────────────────────────────────────────────╮</span>
@@ -262,7 +261,7 @@ body {
 <span class="c-gray">│</span> <span class="bold c-cyan">intent</span>       list · show · create · update · archive                          <span class="c-gray">│</span>
 <span class="c-gray">│</span>              link · unlink · links                                              <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">negotiation</span>  list · show                                                      <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="bold c-cyan">opportunity</span>  list · show · accept · reject · discover                         <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">opportunity</span>  list · show · accept · reject                         <span class="c-gray">│</span>
 <span class="c-gray">│</span>                                                                                <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">profile</span>      show · sync · search · create · update                           <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="bold c-cyan">conversation</span> sessions · list · with · show · send · stream                   <span class="c-gray">│</span>
@@ -288,8 +287,6 @@ body {
 <span class="c-gray">│</span> <span class="c-gray">--name &lt;name&gt;       name for contact add</span>                                     <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--gmail             import contacts from Gmail</span>                               <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--objective &lt;text&gt;  objective for scrape command</span>                              <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="c-gray">--target &lt;uid&gt;      target user for opportunity discovery</span>                    <span class="c-gray">│</span>
-<span class="c-gray">│</span> <span class="c-gray">--introduce &lt;uid&gt;   source user for introduction discovery</span>                   <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--linkedin &lt;url&gt;    LinkedIn URL for profile create</span>                          <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--github &lt;url&gt;      GitHub URL for profile create</span>                            <span class="c-gray">│</span>
 <span class="c-gray">│</span> <span class="c-gray">--twitter &lt;url&gt;     Twitter URL for profile create</span>                           <span class="c-gray">│</span>
@@ -724,21 +721,6 @@ body {
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity discover "AI agent infra"</span></div>
-      <div class="terminal-body"><span class="c-cyan">Discovering opportunities...</span>
-<span class="c-green bold">+</span> Discovery complete.
-  <span class="c-gray">Found 2 potential opportunities based on your query.</span></div>
-    </div>
-
-    <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity discover --introduce &lt;a&gt; &lt;b&gt;</span></div>
-      <div class="terminal-body"><span class="c-cyan">Gathering data for introduction...</span>
-  <span class="c-gray">Found shared network: f47ac10b</span>
-  <span class="c-gray">Profiles and intents gathered. Creating introduction...</span>
-<span class="c-green bold">+</span> Introduction created.</div>
-    </div>
-
-    <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity list   (empty)</span></div>
       <div class="terminal-body">
 <span class="bold">Opportunities</span>
@@ -1103,7 +1085,6 @@ This domain is for use in illustrative examples in documents...
 <span class="c-red"><span class="bold">error</span>: Missing signal ID. Usage: index intent show &lt;id&gt;</span>
 <span class="c-red"><span class="bold">error</span>: Usage: index profile update &lt;action&gt; [--details &lt;text&gt;]</span>
 <span class="c-red"><span class="bold">error</span>: Negotiation not found: abc123</span>
-<span class="c-red"><span class="bold">error</span>: No shared networks found between these users.</span>
 <span class="c-red"><span class="bold">error</span>: `--json` requires an explicit conversation subcommand.</span></div>
     </div>
 
@@ -1122,8 +1103,6 @@ This domain is for use in illustrative examples in documents...
 <span class="c-green bold">+</span> Signal unlinked from network.
 <span class="c-green bold">+</span> Opportunity accepted.
 <span class="c-green bold">+</span> Opportunity rejected.
-<span class="c-green bold">+</span> Discovery complete.
-<span class="c-green bold">+</span> Introduction created.
 <span class="c-green bold">+</span> Message sent (e5f6a7b8-c9d0-1234-ef01-56789abcdef0)
 <span class="c-green bold">+</span> Network created: New Network
 <span class="c-green bold">+</span> Network updated.
@@ -1147,8 +1126,6 @@ This domain is for use in illustrative examples in documents...
 <span class="c-cyan">Updating profile...</span>
 <span class="c-cyan">Processing signal...</span>
 <span class="c-cyan">Updating signal...</span>
-<span class="c-cyan">Discovering opportunities...</span>
-<span class="c-cyan">Gathering data for introduction...</span>
 <span class="c-cyan">Scraping https://example.com...</span>
 <span class="c-cyan">Syncing context...</span>
 <span class="c-cyan">Completing onboarding...</span>
@@ -1160,8 +1137,7 @@ This domain is for use in illustrative examples in documents...
 <span class="c-gray">Goodbye!</span>
 <span class="c-gray">Session: a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>
 <span class="c-gray">Press Ctrl+C to stop.</span>
-<span class="c-gray">Found shared network: f47ac10b</span>
-<span class="c-gray">Profiles and intents gathered. Creating introduction...</span></div>
+</div>
     </div>
 
     <div class="terminal">

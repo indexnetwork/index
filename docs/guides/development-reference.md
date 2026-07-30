@@ -98,6 +98,8 @@ git push <indexnetwork-remote> main
 
 The following paths are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/edge-city/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
+**Mirrored packages must declare exact dependency versions.** A subtree repo receives only its own prefix, so it has no lockfile — the root `bun.lock` is not part of the split, and the mirrors' own `bun install --frozen-lockfile` has nothing to freeze. Any range therefore resolves to the newest match on npm, and the mirror builds and publishes versions this monorepo never built. That is how a floating `^2.0.0-alpha.2` let `@modelcontextprotocol/server` 2.0.0-beta.5/2.0.0 break every `indexnetwork/protocol` publish for nine runs while the monorepo stayed green. Pin `dependencies` and `devDependencies` of every mirrored package exactly (peer ranges are the consumer's resolution and stay ranged), and upgrade by changing the pin plus `bun.lock` together. `bun run check:subtree-parity` enforces this and runs in the `lint` workflow.
+
 #### packages/protocol/ → indexnetwork/protocol
 
 The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
@@ -185,7 +187,6 @@ bun install                                # Install dependencies for all worksp
 bun run dev                                # Interactive: select root or a worktree to run dev
 bun run worktree:list                       # List worktrees and their setup status
 bun run worktree:setup <name>               # Install node_modules & symlink .env files into a worktree
-herdr worktree open --path <path> --label <name> --no-focus --json # Open a non-focusing visible worktree workspace
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run skills:validate                      # Validate every project-local Pi and Codex skill
@@ -298,7 +299,6 @@ Networks and members have `prompt` fields used by LLM agents to evaluate intent 
 
 ### Relevancy Scoring
 
-`IntentIndexer` agent scores intent-network fit as `relevancyScore` (0.0-1.0) in `intent_networks`. Used during opportunity discovery to break ties across shared networks. Networks without prompts default to 1.0.
 
 ### Queue-Based Processing
 
@@ -336,7 +336,6 @@ Events in `src/events/`: `IntentEvents.onCreated/onPaused/onResumed/onArchived`;
 
 All agents are first-class database entities backed by `agents`, `agent_transports`, and `agent_permissions`. System agents (`Index Chat Orchestrator`, `Index Negotiator`) are seeded with well-known UUIDs and receive default permissions during onboarding. MCP auth resolves to `userId + agentId` pairs when API keys include `metadata.agentId`. API-key principal resolution is centralized in `src/lib/apikey/principal.ts` (`resolveApiKeyUserId`), shared by the MCP auth resolver (`mcp.controller.ts`) and `AuthGuard` so the same key cannot resolve to different users across codepaths: it prefers a verified session, then `userId`, then `referenceId`, and rejects (fails closed) any key whose two principal columns are both set but disagree. `AuthGuard` accepts JWT or API key everywhere except **session-only endpoints** (`SessionOnlyGuard` in `auth.guard.ts`): `DELETE /auth/account` and the `/agents` management writes (create/update/delete agent, tokens, permissions, transports) reject API keys with 403 (`SessionRequiredError`), so a leaked agent key cannot delete the account or mint successor credentials that survive rotation; the agent-poller endpoints (negotiations pickup/respond, test messages, opportunity pickup/delivery) intentionally stay API-key reachable. Telegram-surfaced MCP requests additionally verify that the request's `x-index-telegram-username`/`-handle` matches the authenticated user's stored telegram handle and isn't owned by another user (`findTelegramHandleOwners` normalizes stored `@h` / `t.me` URL variants to the bare handle), rejecting on mismatch. Personal agents connect by polling `/agents/:id/negotiations/pickup` with an API key; each poll bumps `agents.last_seen_at`. The dispatcher consults that heartbeat: if no personal agent is fresh (seen within 90 s), the system negotiator runs inline; otherwise the turn is parked in `tasks.state='waiting_for_agent'` with a bounded park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 min by default) that carries over from the `waiting_for_agent` timer to the `claimed` timer rather than stacking.
 
-**Network-scoped agents.** Agents can be bound to a single network via `agent_permissions.scope='network', scopeId=<networkId>`. The `agent-scope.guard.ts` resolves a request's agent scope (null for global agents, the bound `scopeId` otherwise) and `assertAgentNetworkScope(req, networkId)` is wired into network/intent/opportunity controllers — write paths assert, list paths filter via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`. The MCP layer promotes `networkScopeId` into the canonical `{ scopeType: 'network', scopeId }` envelope; tools derive concrete allowed networks from that envelope plus memberships, and the request-scoped `systemDb` is built from the same derived set. **Discovery honors the scope too:** the opportunity tool derives focused discovery networks from the scope envelope (focused network only, not the personal-index write reach) before invoking the graph, so `discover_opportunities` stays within the bound network. Ambient discovery threads the bound network through the intent HyDE handler into the from-intent queue (`networkIds: [networkScopeId]`), so background matching never reaches networks outside the agent's scope. Every trigger-intent job recomputes its authoritative search set as `intent_networks assignments ∩ active owner memberships ∩ optional explicit caller/agent scope`; empty intersections fail closed and all surviving assigned networks are forwarded. Scoped intent/premise/context searches require an active candidate membership on the exact returned network (permission-agnostic so personal-network contacts remain valid), and the graph rechecks both participants before evaluation, then uses transaction-held active-membership plus active-owned-intent assignment locks for final creation/reactivation so member removal, pause/archive, or unassignment cannot race persistence. Owned-intent persistence is also trigger-aware: 30-day/lifecycle reuse and enrichment are same-trigger-only (`detection.triggeredBy`, with owner actor-intent fallback), while a normalized participant-pair + trigger advisory lock performs the final duplicate recheck and a shared pair-global negotiation claim prevents concurrent active tasks across different trigger rows. That claim verifies the exact persisted pre-negotiation status plus `updatedAt` under the opportunity and pair locks, then atomically promotes only the winner to `negotiating` while inserting its task; stale, losing, and rolled-back claims retain their prior opportunity state. Create-time discovery is enqueued only by the post-assignment HyDE worker, never directly from `IntentEvents.onCreated`. Intent Radar also requires the viewer-owned intent's current assigned/member scope and active participant anchors. **Opportunity reads are gated too:** whenever a network is specified — either a scoped key's clamped `networkId` or a user explicitly filtering to a community — `getOpportunitiesForUser(userId, { networkId })` returns an opportunity only when *every* participant (distinct actor user) is anchored on that network, not just the requesting user. Otherwise a cross-network opportunity leaked the out-of-network counterpart's user/profile/intent through the card. An unscoped read (no `networkId`) is unaffected — nothing is filtered when neither the key nor the request specifies a network. Event/community metadata is never evidence of attendance, membership, residence, acquaintance, or shared presence: evaluator/presenter prompts prohibit those inferences, evaluator output is rejected deterministically when it makes them, user-facing fallbacks and raw list reasoning strip them, and presentation caches use versioned keys so unsafe legacy copy is not served. Used by experiment-network CSV import (`networkInvitationService.invite`): each imported user receives a network-scoped agent + API key by email — possession of the inbox verifies receipt of that scoped credential, not unrestricted index.network web access; no `users.experimentNetworkId` column is needed.
 
 ### Trace Event Instrumentation
 
@@ -362,7 +361,6 @@ The protocol applies per-route-class limits via the `RateLimit(class)` guard fro
 
 Buckets are keyed per identifier: verified JWT user (signature-checked) or client IP for everything else. Unverified credentials (raw API keys, session cookies) deliberately do NOT get their own buckets — that would let a client rotate values per request to evade IP throttling. Apply via `@UseGuards(RateLimit('read'), AuthGuard)` — `RateLimit` must be FIRST so it short-circuits before any DB work. Agent-poller endpoints (`POST /agents/:id/negotiations/pickup`, `GET /agents/:id/opportunities/pending`, `GET /agents/:id/opportunities/accepted`) intentionally omit the guard. Storage is Redis (shared across Bun instances) when either `REDIS_URL` or `REDIS_HOST` is set; otherwise the limiter uses an in-memory fallback (single-process, dev only — not multi-instance safe). Set `LIMITER_DISABLE=1` to disable as an incident escape hatch.
 
-**MCP transport throttle.** The `/mcp` endpoint is dispatched in `main.ts` before the `/api/*` branch, so it bypasses the normal controller `RateLimit` guards. It therefore has two limiter layers. First, `checkMcpHttpRateLimit` (`src/lib/limiter/mcp.ts`) runs in `mcp.controller.ts` before the request body is drained and before a per-request MCP server/transport is allocated; it keys a cheap `mcp_http` bucket by verified JWT user or client IP (never raw API keys), defaults to `MCP_HTTP_LIMIT_PER_MIN=240`, shares Redis/in-memory limiter storage, honors `LIMITER_DISABLE`, and fails open on limiter storage/identity errors so Redis incidents do not take down MCP. Second, `checkMcpRateLimit` is injected into the protocol MCP server as the `mcpRateLimiter` hook on `ToolDeps` and invoked in `mcp.server.ts` after identity resolves but before any DB work. It keys two buckets per `(userId, agentId)` principal — a per-tool bucket (`MCP_LIMIT_TOOL_PER_MIN`, default 120; `discover_opportunities` is far tighter at `MCP_LIMIT_DISCOVER_PER_MIN`, default 10) and an aggregate backstop (`MCP_LIMIT_PRINCIPAL_PER_MIN`, default 300). The MCP controller still creates a fresh `McpServer` and `WebStandardStreamableHTTPServerTransport` per HTTP request to avoid JSON-RPC response-routing leaks between clients that reuse message IDs; both SDK objects are closed after the response, and static tool registration metadata/schema conversion is cached in `mcp.server.ts` so high-churn clients do not rebuild every tool schema on every request. Do not cache raw MCP/JSON-RPC responses (`initialize`, `tools/list`, or `tools/call`) or pool SDK server/transport objects; the SDK owns envelopes, message IDs, and client-capability state. Complementing this, `discover_opportunities` **coalesces in-flight MCP discovery runs**: a repeat call with an equivalent request returns the existing queued/running run (`coalesced: true`) via `discoveryRuns.listActive()` instead of spawning a duplicate, so re-firing discovery instead of polling `get_discovery_run` no longer multiplies expensive graph runs.
 
 See `docs/superpowers/specs/2026-05-21-protocol-rate-limiting-design.md` for the full design.
 
@@ -482,18 +480,14 @@ read-only for source mutations. Worktrees live in `.worktrees/` (gitignored). Br
 use semantic `<type>/<description>` names and the only valid folder is the dashed form
 `<type>-<description>`; never accept a separate folder name.
 
-Before visible worktree execution, follow the Herdr setup in
-`docs/guides/getting-started.md`; its server and the required agent integration must be
-available. Then follow `create-worktree` and `run-worktree-session` to create/reuse one
-semantic branch, run `bun run worktree:setup <dashed-folder>`, and open the exact
-linked worktree with `herdr worktree open --no-focus --json`.
+Follow `create-worktree` and `run-worktree-session` to create or reuse one semantic
+branch and run mandatory setup with `bun run worktree:setup <dashed-folder>`.
 
-Keep one writer per worktree, reuse the same execution plane for review
-and PR-closeout fixes, and independently verify every completion claim. Never wait,
-poll, sleep, create watcher processes/panes, infer merge approval, or treat
-`idle`/`done` as success. Escalate only genuine product/architecture ambiguity,
-destructive actions, external infrastructure mutation, credentials/secrets, or merge
-approval.
+Keep one writer per worktree, reuse the same worktree for review and PR-closeout fixes,
+and independently verify every completion claim. Never wait, poll, sleep, create
+watcher processes, infer merge approval, or treat `idle`/`done` as success. Escalate
+only genuine product/architecture ambiguity, destructive actions, external
+infrastructure mutation, credentials/secrets, or merge approval.
 
 ### Git remote-state reconciliation
 
@@ -505,11 +499,8 @@ with `git pull --ff-only origin <base>`. Do not continue from stale remote refs.
 dirty checkout prevents the fast-forward, preserve its work and report the pending
 reconciliation rather than merging or resetting over it.
 
-Parallel implementation uses separate semantic branches, Git worktrees, visible Herdr
-execution planes, and agent sessions, with one writer per worktree and one Herdr
-workspace per worktree. Reuse the same visible session for review and PR-closeout fix loops. The
-legacy `bun run worktree:session` helper remains a fallback when Herdr is unavailable,
-not the default workflow.
+Parallel implementation uses separate semantic branches and Git worktrees, with one
+writer per worktree. Reuse the same worktree for review and PR-closeout fix loops.
 
 ### Conventional Commits
 
@@ -543,14 +534,14 @@ Use `gh` CLI to create PRs into `origin/dev`. Description as changelog: New Feat
    - For a squash-merged `dev`→`main` release, after main-branch checks pass, follow [squash-release reconciliation](../../.agents/skills/_shared/squash-release-reconciliation.md): prove the `main` and `dev` trees match and the merge simulation is clean, then have the root coordinator create and push the sanctioned no-content merge from `main` back into `dev` and wait for its `dev` workflows. Stop rather than force it when either check fails.
 5. If the canonical `dev` checkout is clean, synchronize it only with `git pull --ff-only origin dev`; otherwise preserve its work and report pending reconciliation.
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
-7. Clean up only after merge and preservation checks. Close the worktree's Herdr workspace first, then remove its Git worktree and branch from another checkout.
+7. Clean up only after merge and preservation checks. Remove the Git worktree and branch from another checkout.
 
 ## Superpowers Workflow
 
-### Implementation in Visible Herdr Worktrees
+### Implementation in Git Worktrees
 
-Execute implementation and fix plans in visible Herdr-managed sessions for isolated
-Git worktrees, following `create-worktree` and `run-worktree-session`.
+Execute implementation and fix plans in isolated Git worktrees, following
+`create-worktree` and `run-worktree-session`.
 Keep `dev` stable, never use hidden implementation subagents, and preserve one writer
 per checkout.
 

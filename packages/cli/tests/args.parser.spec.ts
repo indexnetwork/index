@@ -233,26 +233,14 @@ describe("parseArgs", () => {
       expect(result.targetId).toBe("opp-123");
     });
 
-    it("parses opportunity discover with query", () => {
-      const result = parseArgs(["opportunity", "discover", "AI", "engineers"]);
-      expect(result.command).toBe("opportunity");
-      expect(result.subcommand).toBe("discover");
-      expect(result.positionals).toContain("AI");
-      expect(result.positionals).toContain("engineers");
-    });
+    it("rejects retired opportunity discover while retaining list", () => {
+      const retired = parseArgs(["opportunity", "discover", "AI", "engineers"]);
+      expect(retired.command).toBe("unknown");
+      expect(retired.unknown).toContain("discover");
 
-    it("parses opportunity discover --target", () => {
-      const result = parseArgs(["opportunity", "discover", "--target", "user-123", "query"]);
-      expect(result.command).toBe("opportunity");
-      expect(result.subcommand).toBe("discover");
-      expect(result.target).toBe("user-123");
-    });
-
-    it("parses opportunity discover --introduce", () => {
-      const result = parseArgs(["opportunity", "discover", "--introduce", "user-1", "user-2"]);
-      expect(result.command).toBe("opportunity");
-      expect(result.subcommand).toBe("discover");
-      expect(result.introduce).toBe("user-1");
+      const retained = parseArgs(["opportunity", "list"]);
+      expect(retained.command).toBe("opportunity");
+      expect(retained.subcommand).toBe("list");
     });
   });
 

@@ -330,6 +330,7 @@ describe('FromIntentQueue', () => {
       expect(getPoolAnswerContext).toHaveBeenCalledWith('u1', 'i1');
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({
         searchQuery: 'Build a SaaS\n\nUser-stated matching preferences:\n- Builders vs advisors: Builders',
+        options: { initialStatus: 'latent' },
       }));
       expect(narratePoolRerun).toHaveBeenCalledWith({
         userId: 'u1',
