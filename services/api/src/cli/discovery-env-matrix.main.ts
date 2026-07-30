@@ -23,7 +23,9 @@ const HARNESS = 'discovery-env-matrix';
 // Candidate policy now scores final evaluator outcomes, with raw retrieval retained separately.
 const HARNESS_VERSION = '2';
 const ATTEMPT_TIMEOUT_MS = 180_000;
-export const DEFAULT_CHILD_TIMEOUT_MS = 20 * 60_000;
+// A child owns five sequential slots. Each may exhaust three 180s attempts plus
+// 1s/2s retry backoff (45m15s total), so leave bounded startup/cleanup headroom.
+export const DEFAULT_CHILD_TIMEOUT_MS = 50 * 60_000;
 const CHILD_TERMINATION_GRACE_MS = 5_000;
 
 /** Provider/DB errors may contain credentials or response bodies; never persist or log them. */

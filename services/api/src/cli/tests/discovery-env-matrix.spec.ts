@@ -281,8 +281,8 @@ describe('discovery environment matrix runtime seams', () => {
     expect(artifact.payload.cases[0]).toMatchObject({ runs: 0, passes: 0, passRate: 0, scoredRunIds: [] });
   });
 
-  it('validates a positive child timeout with a strict 20-minute default', () => {
-    expect(parseMatrixChildTimeoutMs({})).toBe(20 * 60_000);
+  it('defaults the child watchdog beyond every bounded slot retry budget', () => {
+    expect(parseMatrixChildTimeoutMs({})).toBe(50 * 60_000);
     expect(parseMatrixChildTimeoutMs({ DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS: '1234' })).toBe(1234);
     for (const value of ['0', '-1', '1.5', 'NaN', ' 1', '1e3']) {
       expect(() => parseMatrixChildTimeoutMs({ DISCOVERY_ENV_MATRIX_CHILD_TIMEOUT_MS: value })).toThrow('positive integer');
