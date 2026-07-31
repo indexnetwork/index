@@ -32,6 +32,25 @@ describe("RunSpecSchema", () => {
     expect(RunSpecSchema.safeParse({ kind: "eval", harness: "premise", profile: "default", flags: { tier: 4 } }).success).toBe(false);
   });
 
+  it("rejects a selection value that would read as a flag", () => {
+    // The value becomes its own argv element, so "--update-baseline" would reach the
+    // harness's parser looking exactly like the destructive flag this API never renders.
+    for (const flags of [{ case: "--update-baseline" }, { rule: "-f" }, { case: "-" }]) {
+      const result = RunSpecSchema.safeParse({ kind: "eval", harness: "matching", profile: "default", flags });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it("accepts an ordinary selection value", () => {
+    const result = RunSpecSchema.safeParse({
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: { case: "location/known-city" },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("rejects a non-positive run count", () => {
     expect(RunSpecSchema.safeParse({ kind: "eval", harness: "matching", profile: "default", flags: { runs: 0 } }).success).toBe(false);
   });

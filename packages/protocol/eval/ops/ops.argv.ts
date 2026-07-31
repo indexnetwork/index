@@ -4,11 +4,23 @@ import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
 import type { EvalRunSpec, RunFlags } from "./ops.types.js";
 
+/**
+ * A selection-flag value becomes its own argv element, so a value like
+ * "--update-baseline" would arrive at the harness's parser looking exactly like a
+ * flag. No shell is involved and no harness is known to mis-parse it, but this
+ * schema is the trust boundary: a value that can be read as a flag never crosses it.
+ */
+const SelectionValueSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((value) => !value.startsWith("-"), { message: "must not begin with \"-\"" });
+
 const RunFlagsSchema = z
   .object({
     runs: z.number().int().min(1).max(25).optional(),
-    case: z.string().min(1).max(200).optional(),
-    rule: z.string().min(1).max(200).optional(),
+    case: SelectionValueSchema.optional(),
+    rule: SelectionValueSchema.optional(),
     tier: z.number().int().min(1).max(4).optional(),
     noJudge: z.boolean().optional(),
     alpha: z.number().gt(0).lt(1).optional(),

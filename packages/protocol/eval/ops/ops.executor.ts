@@ -81,6 +81,11 @@ export class LocalProcessRunExecutor implements RunExecutor {
         // a database and then abandoning the seed that would refill it.
         if (entry.cancelled) break;
         if (plan.length > 1) await logFile.write(`\n[eval-ops] ${step.label}: ${step.argv.join(" ")}\n`);
+        // Re-checked after that await: a cancel landing inside it sets `cancelled`
+        // while `entry.proc` is still null, so its kill is a no-op. Without this the
+        // step would spawn and run to completion — and if it were the flush, the
+        // operator's cancel would leave the database flushed and unseeded.
+        if (entry.cancelled) break;
         const proc = Bun.spawn({
           cmd: [...step.argv],
           cwd: step.cwd,

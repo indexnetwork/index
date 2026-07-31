@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
+import { createReadStream } from "node:fs";
 import { appendFile, mkdtemp, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -127,6 +128,44 @@ describe("LocalProcessRunExecutor", () => {
     expect(finished.status).toBe("execution-error");
     expect(finished.exitCode).toBe(1);
     expect(await Bun.file(store.logPath(record.id)).text()).not.toContain("seeded");
+  });
+
+  it("does not spawn a step when the cancel lands during that step's label write", async () => {
+    // The window this closes: cancel() arriving between the loop's check and the
+    // spawn sets `cancelled` while entry.proc is still null, so its kill hits
+    // nothing. If the step were the flush, the operator's cancel would leave the
+    // test database flushed and unseeded. A FIFO nobody is draining holds the
+    // label write open for exactly that window, with no timing guesswork.
+    const fifo = path.join(dir, "log.fifo");
+    expect(Bun.spawnSync(["mkfifo", fifo]).exitCode).toBe(0);
+    const marker = path.join(dir, "step-ran");
+    const fifoStore: RunStore = { ...delegateTo(store), logPath: () => fifo };
+    const fifoExecutor = new LocalProcessRunExecutor({ store: fifoStore, cwd: dir });
+    const record = await createRecord([]);
+    const steps: ExecutionStep[] = [
+      {
+        // Larger than the pipe buffer, so the write cannot complete until the test reads.
+        label: "x".repeat(1_000_000),
+        argv: ["bun", "-e", `await Bun.write(${JSON.stringify(marker)}, "ran")`],
+        cwd: dir,
+        env: {},
+      },
+      { label: "second", argv: ["bun", FAKE, "--emit", "second"], cwd: dir, env: {} },
+    ];
+
+    const started = fifoExecutor.start(record, steps);
+    // Opening the read end releases the executor's open(fifo, "w"); a paused stream
+    // reads nothing, so the label write blocks with the run already registered.
+    const reader = createReadStream(fifo);
+    await Bun.sleep(50);
+
+    const cancelled = fifoExecutor.cancel(record.id);
+    reader.resume();
+
+    expect((await started).status).toBe("cancelled");
+    expect((await cancelled).status).toBe("cancelled");
+    expect(await Bun.file(marker).exists()).toBe(false);
+    reader.destroy();
   });
 
   it("refuses a run with no command to execute", async () => {

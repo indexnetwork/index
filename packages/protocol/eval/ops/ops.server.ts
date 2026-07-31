@@ -5,6 +5,12 @@
  * NAMES; it never sends argv, environment, shell strings or connection strings,
  * and a request carrying any of those fails validation instead of being ignored.
  * Nothing that leaves here contains a credential.
+ *
+ * There is no authentication: any process on this machine may drive this server.
+ * That is an operator-trust decision about LOCAL processes, and it is not the same
+ * thing as being drivable by any web page the operator happens to have open, so
+ * state-changing requests are refused unless they are same-origin (see
+ * `crossOriginRefusal`) and carry a JSON content type.
  */
 import path from "node:path";
 
@@ -39,6 +45,12 @@ export interface OpsContext {
   inspector?: FixtureInspector;
 }
 
+/** Origins a browser may legitimately be running the ops UI on: loopback only. */
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** Fetch metadata values that mean "this was not initiated by another site". */
+const SAME_ORIGIN_FETCH_SITES = new Set(["same-origin", "none"]);
+
 /** How often the SSE stream re-reads a run record, in milliseconds. */
 const STATUS_POLL_MS = 250;
 /** SSE comment interval, so an idle stream survives proxy and server idle timeouts. */
@@ -60,6 +72,8 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
   const state: ServerState = { resetInFlight: false };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    const refusal = crossOriginRefusal(request);
+    if (refusal !== null) return refusal;
     try {
       const response = await route(context, state, request, url);
       return response ?? json({ error: `Unknown route: ${request.method} ${url.pathname}` }, 404);
@@ -68,6 +82,55 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
       return json({ error: scrubCredentials(messageOf(error)) }, 500);
     }
   };
+}
+
+/**
+ * Refuses a state-changing request that another site initiated.
+ *
+ * The attack this closes needs no credentials and no reply: a page on any origin
+ * the operator has open can `fetch("http://127.0.0.1:4321/api/runs", { method:
+ * "POST", mode: "no-cors", ... })`. The browser hides the response, but the side
+ * effect — a real eval run spending real tokens, or a database flush — has already
+ * happened. No CORS response header is added anywhere in this server, so a reply
+ * still cannot be read cross-origin; this is about the write, not the read.
+ *
+ * Accepted:
+ *  - an `Origin` on a loopback host at any port. Task 12 serves the UI from Vite
+ *    on 127.0.0.1:5174 and proxies /api here; the proxy forwards the browser's
+ *    own `Origin: http://127.0.0.1:5174` verbatim, and a direct visit to this
+ *    server sends `Origin: http://127.0.0.1:4321`. Both are loopback.
+ *  - no `Origin` at all: curl, and any proxy hop that drops it. A request with no
+ *    `Origin` was not initiated by a page, so it is not the drive-by this closes.
+ *  - `Sec-Fetch-Site: same-origin` or `none`, which say the same thing.
+ *
+ * Refused: any other `Origin` — including the opaque `Origin: null` a sandboxed
+ * frame or a file:// page sends — and, when no `Origin` is present, a
+ * `Sec-Fetch-Site` that names another site.
+ */
+function crossOriginRefusal(request: Request): Response | null {
+  if (request.method === "GET" || request.method === "HEAD") return null;
+  const origin = request.headers.get("origin");
+  if (origin !== null) {
+    if (isLoopbackOrigin(origin)) return null;
+    return json({ error: `Refusing a ${request.method} from origin ${origin}: this server only accepts local requests.` }, 403);
+  }
+  const site = request.headers.get("sec-fetch-site");
+  if (site !== null && !SAME_ORIGIN_FETCH_SITES.has(site.toLowerCase())) {
+    return json({ error: `Refusing a ${request.method} initiated by another site (Sec-Fetch-Site: ${site}).` }, 403);
+  }
+  return null;
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    // "null" is what a sandboxed frame or a file:// page sends, and it is not parseable.
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  return LOOPBACK_HOSTNAMES.has(parsed.hostname);
 }
 
 /** Returns null when nothing matched, so the caller can answer 404 in one place. */
@@ -107,13 +170,13 @@ async function readArtifact(context: OpsContext, id: string): Promise<Response> 
   try {
     decodeArtifactId(id);
   } catch (error) {
-    return json({ error: messageOf(error) }, 400);
+    return json({ error: scrubCredentials(messageOf(error)) }, 400);
   }
   try {
     return json(await context.artifacts.read(id));
   } catch (error) {
     const status = (error as { code?: string }).code === "ENOENT" ? 404 : 422;
-    return json({ error: `Artifact ${id} could not be read: ${messageOf(error)}` }, status);
+    return json({ error: scrubCredentials(`Artifact ${id} could not be read: ${messageOf(error)}`) }, status);
   }
 }
 
@@ -127,7 +190,7 @@ async function compare(context: OpsContext, url: URL): Promise<Response> {
     try {
       decodeArtifactId(id);
     } catch (error) {
-      return json({ error: messageOf(error) }, 400);
+      return json({ error: scrubCredentials(messageOf(error)) }, 400);
     }
   }
   try {
@@ -138,7 +201,7 @@ async function compare(context: OpsContext, url: URL): Promise<Response> {
     return json(compareArtifacts(reference, subject));
   } catch (error) {
     const status = (error as { code?: string }).code === "ENOENT" ? 404 : 422;
-    return json({ error: `Artifacts could not be compared: ${messageOf(error)}` }, status);
+    return json({ error: scrubCredentials(`Artifacts could not be compared: ${messageOf(error)}`) }, status);
   }
 }
 
@@ -151,7 +214,7 @@ const RESET_IN_FLIGHT = "A test-database reset is in flight; a run launched now 
 async function launchRun(context: OpsContext, state: ServerState, request: Request): Promise<Response> {
   if (state.resetInFlight) return json({ error: RESET_IN_FLIGHT }, 409);
   const body = await readJson(request);
-  if (!body.ok) return json({ error: body.error }, 400);
+  if (!body.ok) return json({ error: body.error }, body.status);
 
   // RunSpecSchema is .strict(), so a request carrying `env`, `argv` or any other
   // unknown key fails here rather than being silently ignored.
@@ -379,7 +442,7 @@ async function resetFixture(context: OpsContext, state: ServerState, request: Re
 
 async function prepareAndLaunchReset(context: OpsContext, state: ServerState, request: Request): Promise<Response> {
   const body = await readJson(request);
-  if (!body.ok) return json({ error: body.error }, 400);
+  if (!body.ok) return json({ error: body.error }, body.status);
   const parsed = ResetRequestSchema.safeParse(body.value);
   if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
 
@@ -441,7 +504,10 @@ async function prepareAndLaunchReset(context: OpsContext, state: ServerState, re
     })
     .finally(() => {
       state.resetInFlight = false;
-    });
+    })
+    // The handler above can itself reject (the store write can fail), and an
+    // unhandled rejection terminates the process under Bun's default.
+    .catch(() => {});
 
   return json(record, 202);
 }
@@ -552,11 +618,29 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-async function readJson(request: Request): Promise<{ ok: true; value: unknown } | { ok: false; error: string }> {
+/**
+ * Reads a JSON request body, requiring the client to have said it is JSON.
+ *
+ * `no-cors` is limited to three content types, none of them application/json, so
+ * demanding one is a second, independent barrier against a drive-by POST: a page
+ * on another origin cannot produce this header at all without a preflight, which
+ * this server never answers.
+ */
+async function readJson(
+  request: Request,
+): Promise<{ ok: true; value: unknown } | { ok: false; error: string; status: number }> {
+  const contentType = (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (contentType !== "application/json") {
+    return {
+      ok: false,
+      error: `Expected a Content-Type of application/json, received ${contentType === "" ? "none" : contentType}`,
+      status: 415,
+    };
+  }
   try {
     return { ok: true, value: await request.json() };
   } catch {
-    return { ok: false, error: "Request body is not valid JSON" };
+    return { ok: false, error: "Request body is not valid JSON", status: 400 };
   }
 }
 

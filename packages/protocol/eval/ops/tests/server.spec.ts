@@ -96,8 +96,16 @@ afterEach(async () => {
 });
 
 const get = (url: string) => handler(new Request(`http://localhost${url}`));
-const post = (url: string, body: unknown) =>
-  handler(new Request(`http://localhost${url}`, { method: "POST", body: JSON.stringify(body) }));
+const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+  handler(
+    new Request(`http://localhost${url}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    }),
+  );
+
+const RUN_BODY = { kind: "eval", harness: "matching", profile: "default", flags: {} };
 
 describe("ops API", () => {
   it("lists harnesses from the registry", async () => {
@@ -222,8 +230,28 @@ describe("POST /api/runs", () => {
   });
 
   it("rejects a body that is not JSON", async () => {
-    const response = await handler(new Request("http://localhost/api/runs", { method: "POST", body: "not json" }));
+    const response = await handler(
+      new Request("http://localhost/api/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      }),
+    );
     expect(response.status).toBe(400);
+  });
+
+  it("rejects a selection flag whose value would read as another flag", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: { case: "--update-baseline" },
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/flags\.case/);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
   });
 
   it("lists the launched runs with any corrupt records", async () => {
@@ -233,6 +261,89 @@ describe("POST /api/runs", () => {
     const body = await (await get("/api/runs")).json();
     expect(body.runs).toHaveLength(1);
     expect(body.issues).toEqual([]);
+  });
+});
+
+describe("cross-origin requests", () => {
+  // A page on any origin the operator has open can POST here with mode:"no-cors";
+  // it cannot read the reply, but the run it launches spends real tokens.
+  it("refuses a run launched by another origin", async () => {
+    const response = await post("/api/runs", RUN_BODY, { Origin: "https://evil.example" });
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toMatch(/evil\.example/);
+    // No CORS header is granted either, so the refusal itself stays unreadable.
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect((await store.list()).records).toHaveLength(0);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("refuses a fixture reset launched by another origin", async () => {
+    await writeFile(path.join(root, ".env.test"), `DATABASE_URL=${DATABASE_URL}\n`);
+
+    const response = await post(
+      "/api/fixture/reset",
+      { confirmDatabaseName: "neondb", personas: 1 },
+      { Origin: "https://evil.example" },
+    );
+
+    expect(response.status).toBe(403);
+    expect(executor.starts).toHaveLength(0);
+    // The refusal must not leave the reset slot claimed.
+    expect((await post("/api/fixture/reset", { confirmDatabaseName: "neondb", personas: 1 })).status).toBe(202);
+  });
+
+  it("refuses a cancellation and an opaque sandboxed origin", async () => {
+    expect((await post("/api/runs/anything/cancel", {}, { Origin: "https://evil.example" })).status).toBe(403);
+    // A sandboxed frame or a file:// page sends the opaque origin "null".
+    expect((await post("/api/runs", RUN_BODY, { Origin: "null" })).status).toBe(403);
+    expect(executor.cancels).toHaveLength(0);
+  });
+
+  it("accepts the Vite dev server's loopback origin that Task 12 proxies from", async () => {
+    const proxied = await post("/api/runs", RUN_BODY, {
+      Origin: "http://127.0.0.1:5174",
+      "Sec-Fetch-Site": "same-origin",
+    });
+
+    expect(proxied.status).toBe(202);
+    expect((await post("/api/runs", RUN_BODY, { Origin: "http://localhost:4321" })).status).toBe(202);
+    // curl and the proxy's own server-to-server hop carry neither header.
+    expect((await post("/api/runs", RUN_BODY)).status).toBe(202);
+    await context.queue.drain();
+  });
+
+  it("refuses a request with no Origin that fetch metadata says another site initiated", async () => {
+    const response = await post("/api/runs", RUN_BODY, { "Sec-Fetch-Site": "cross-site" });
+
+    expect(response.status).toBe(403);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("reads no body without a JSON content type", async () => {
+    // The three content types a no-cors POST may set are all refused here.
+    const response = await handler(
+      new Request("http://localhost/api/runs", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify(RUN_BODY),
+      }),
+    );
+
+    expect(response.status).toBe(415);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("leaves reads reachable: a GET is not a state change", async () => {
+    const response = await handler(
+      new Request("http://localhost/api/harnesses", { headers: { Origin: "https://evil.example" } }),
+    );
+    // Nothing here mutates, and without a CORS header the body stays unreadable.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 
