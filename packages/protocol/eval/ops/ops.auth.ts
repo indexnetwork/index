@@ -51,6 +51,19 @@ export const ALLOWED_EMAIL_DOMAIN = "index.network";
 const MAX_EMAIL_AT_SIGNS = 1;
 
 /**
+ * The only characters a domain we will compare may contain (letters, digits,
+ * hyphen, dot). Anything else is an address we cannot read unambiguously —
+ * same doctrine as {@link MAX_EMAIL_AT_SIGNS}. In particular this stops
+ * `toLowerCase()`, which is a *Unicode* operation, folding U+212A KELVIN SIGN
+ * into ASCII `k`: without this guard `a@index.networ\u212A` lowercases to
+ * `index.network` and a domain that is not ours passes the load-bearing rule.
+ * U+212A is the only non-ASCII code point in the whole Unicode range whose
+ * `toLowerCase()` yields an ASCII character appearing in `index.network`, but
+ * the guard is written as an allowlist so the next such folding cannot appear.
+ */
+const DOMAIN_CHARACTERS = /^[A-Za-z0-9.-]+$/;
+
+/**
  * The one-time state accepted by the bridge page.
  *
  * Pinned to `CLI_STATE_PATTERN` in apps/web/src/lib/cli-auth.ts: a state outside
@@ -62,6 +75,28 @@ const BRIDGE_STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
 /** How long a minted sign-in state stays usable. One browser round-trip, no more. */
 export const STATE_TTL_MS = 5 * 60_000;
+
+/**
+ * How many sign-in states may be outstanding at once.
+ *
+ * `POST /api/auth/login` is public, and this module's own threat model names a
+ * process running as another user on the same machine. Without a cap that
+ * process can mint states faster than the TTL retires them, and every one of
+ * them makes `prune()` and the constant-time scan in `consume()` slower for the
+ * real operator's callback.
+ *
+ * The cap **evicts the oldest** rather than refusing to mint. Refusing would
+ * hand the attacker a deterministic lockout — {@link MAX_PENDING_STATES}
+ * requests and the operator cannot start a sign-in at all for the whole TTL.
+ * Evicting keeps the operator's newest attempt alive and the store bounded; the
+ * attacker can still evict a state the operator has already been handed, but
+ * that costs a full cap's worth of requests inside one round-trip and only ever
+ * fails a sign-in closed, which the operator retries.
+ *
+ * One human at one browser needs one. Sixty-four is slack for retries and
+ * abandoned tabs, not a queue depth to tune.
+ */
+export const MAX_PENDING_STATES = 64;
 
 /** An identity as resolved from the API, reduced to what the policy needs. */
 export interface ResolvedIdentity {
@@ -78,7 +113,12 @@ export interface AllowedIdentity {
 
 /**
  * The verdict of the domain policy. The refusal carries a reason so the callback
- * page can say why; the reason names the address, never the credential.
+ * page can say why.
+ *
+ * A reason names the address and never the credential — but the address is
+ * user-controlled text, so a reason is **not** safe to render verbatim. It must
+ * be escaped before it reaches the callback refusal page, which is served under
+ * the operator's own loopback origin. Task A2 owns that escaping.
  */
 export type IdentityVerdict =
   | { allowed: true; identity: AllowedIdentity }
@@ -95,7 +135,7 @@ export type IdentityVerdict =
  *
  * Everything unrecognised fails closed: no identity, no address, a non-string
  * address, an address with no domain part, an address we cannot parse
- * unambiguously (see {@link MAX_EMAIL_AT_SIGNS}).
+ * unambiguously (see {@link MAX_EMAIL_AT_SIGNS} and {@link DOMAIN_CHARACTERS}).
  *
  * The order of the refusals is deliberate. The domain comparison runs first, so
  * an address at someone else's domain is refused on the plainest possible
@@ -108,7 +148,9 @@ export function assessIdentity(identity: ResolvedIdentity | null | undefined): I
     return { allowed: false, reason: "No Index account could be resolved for this sign-in." };
   }
 
-  const email = typeof identity.email === "string" ? identity.email : "";
+  // Trimmed before anything reads it: surrounding whitespace is not part of the
+  // address, and an untrimmed one would be stored and echoed back into the UI.
+  const email = typeof identity.email === "string" ? identity.email.trim() : "";
   const domain = emailDomain(email);
   if (domain === null) {
     return { allowed: false, reason: "This Index account has no usable email address." };
@@ -122,17 +164,23 @@ export function assessIdentity(identity: ResolvedIdentity | null | undefined): I
   if (identity.emailVerified !== true) {
     return { allowed: false, reason: `${email} is not verified.` };
   }
-  return { allowed: true, identity: { email, name: identity.name } };
+  // `name` is coerced rather than trusted: ResolvedIdentity is the contract for
+  // any injected resolver, and A2 serialises this identity toward the browser.
+  return { allowed: true, identity: { email, name: typeof identity.name === "string" ? identity.name : "" } };
 }
 
 /**
  * The domain of an address: everything after the last `@`, lowercased.
- * Null when there is no `@`, nothing before it, or nothing after it.
+ * Null when there is no `@`, nothing before it, nothing after it, or the domain
+ * contains a character outside {@link DOMAIN_CHARACTERS}.
  */
 function emailDomain(email: string): string | null {
   const at = email.lastIndexOf("@");
   if (at <= 0 || at === email.length - 1) return null;
-  return email.slice(at + 1).toLowerCase();
+  const domain = email.slice(at + 1);
+  // Checked before lowercasing, because lowercasing is what does the damage.
+  if (!DOMAIN_CHARACTERS.test(domain)) return null;
+  return domain.toLowerCase();
 }
 
 /** How many `@` the address contains. */
@@ -158,10 +206,12 @@ export class OneTimeStateStore {
   /** state -> the instant it stops being usable. */
   private readonly pending = new Map<string, number>();
   private readonly ttlMs: number;
+  private readonly maxPending: number;
   private readonly now: () => number;
 
-  constructor(options: { ttlMs?: number; now?: () => number } = {}) {
+  constructor(options: { ttlMs?: number; maxPending?: number; now?: () => number } = {}) {
     this.ttlMs = options.ttlMs ?? STATE_TTL_MS;
+    this.maxPending = Math.max(1, options.maxPending ?? MAX_PENDING_STATES);
     this.now = options.now ?? Date.now;
   }
 
@@ -169,6 +219,14 @@ export class OneTimeStateStore {
   mint(): string {
     const now = this.now();
     this.prune(now);
+    // Every state carries the same TTL, so insertion order is expiry order and
+    // the first key of the Map is the oldest. See MAX_PENDING_STATES for why
+    // this evicts rather than refuses.
+    while (this.pending.size >= this.maxPending) {
+      const oldest = this.pending.keys().next();
+      if (oldest.done === true) break;
+      this.pending.delete(oldest.value);
+    }
     const state = randomBytes(32).toString("base64url");
     this.pending.set(state, now + this.ttlMs);
     return state;
@@ -219,9 +277,12 @@ export interface BridgeUrlOptions {
  * or fragment — so the callback is assembled here rather than taken from a
  * caller, and only the port varies.
  *
- * A bad port or a malformed state throws instead of producing a link that would
- * be rejected on arrival, where the operator would see nothing but a blank
- * bridge page.
+ * A bad port, a malformed state or a web app base that does not yield exactly
+ * `<origin>/cli-auth` throws instead of producing a link that would be rejected
+ * on arrival, where the operator would see nothing but a blank bridge page. A
+ * base carrying its own path or query would silently move the bridge page
+ * somewhere it is not served from, so the assembled URL is checked rather than
+ * assumed.
  */
 export function buildBridgeUrl(options: BridgeUrlOptions): string {
   const { callbackPort, state } = options;
@@ -232,7 +293,19 @@ export function buildBridgeUrl(options: BridgeUrlOptions): string {
     return raise("Refusing to build a sign-in URL: the one-time state is not in the form the bridge accepts.");
   }
 
-  const url = new URL(`${options.webAppUrl.replace(/\/$/, "")}/cli-auth`);
+  let url: URL;
+  try {
+    url = new URL(`${options.webAppUrl.replace(/\/$/, "")}/cli-auth`);
+  } catch {
+    return raise(`Refusing to build a sign-in URL: ${options.webAppUrl} is not a usable web app URL.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return raise(`Refusing to build a sign-in URL: the web app URL ${options.webAppUrl} is not http(s).`);
+  }
+  if (url.pathname !== "/cli-auth" || url.search !== "" || url.hash !== "") {
+    return raise(`Refusing to build a sign-in URL: the web app URL ${options.webAppUrl} does not resolve to /cli-auth.`);
+  }
+
   url.searchParams.set("callback", `http://127.0.0.1:${callbackPort}/callback`);
   url.searchParams.set("version", "2");
   url.searchParams.set("state", state);

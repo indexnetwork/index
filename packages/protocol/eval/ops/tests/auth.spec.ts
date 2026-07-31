@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll } from "bun:test";
 import path from "node:path";
 
-import { ALLOWED_EMAIL_DOMAIN, ApiIdentityResolver, assessIdentity, buildBridgeUrl, OneTimeStateStore, OpsSessionStore, type ResolvedIdentity } from "../ops.auth.js";
+import { ALLOWED_EMAIL_DOMAIN, ApiIdentityResolver, assessIdentity, buildBridgeUrl, MAX_PENDING_STATES, OneTimeStateStore, OpsSessionStore, type ResolvedIdentity } from "../ops.auth.js";
 
 /**
  * The bridge page's own validator, loaded from the file that actually runs in
@@ -16,6 +16,7 @@ import { ALLOWED_EMAIL_DOMAIN, ApiIdentityResolver, assessIdentity, buildBridgeU
 const CLI_AUTH_PATH = path.join(import.meta.dir, "../../../../../apps/web/src/lib/cli-auth.ts");
 
 interface CliAuthModule {
+  validateCliAuthState(value: string | null): string | null;
   validateCliCallbackUrl(value: string | null): string | null;
   parseCliAuthRequest(params: URLSearchParams): { protocolVersion: 1; callback: string } | { protocolVersion: 2; callback: string; state: string } | null;
 }
@@ -60,6 +61,38 @@ describe("assessIdentity", () => {
 
   it("refuses a subdomain of the allowed domain", () => {
     expect(assessIdentity(identity({ email: "a@sub.index.network" })).allowed).toBe(false);
+  });
+
+  // The Unicode hole. `toLowerCase()` is a *Unicode* operation, so without the
+  // DOMAIN_CHARACTERS guard U+212A KELVIN SIGN folds to ASCII `k` and
+  // `index.networ<KELVIN>` — a domain that is not ours — passes the rule. The
+  // code points are written as escapes on purpose: spelled literally they look
+  // like typos and someone will "fix" them.
+  it("refuses a domain that only lowercases into the allowed domain", () => {
+    for (const email of [
+      "a@index.networ\u212A", // U+212A KELVIN SIGN -> toLowerCase() gives ASCII "k"
+      "a@\uFF49ndex.network", // U+FF49 FULLWIDTH LATIN SMALL LETTER I
+      "a@index\u3002network", // U+3002 IDEOGRAPHIC FULL STOP
+    ]) {
+      const verdict = assessIdentity(identity({ email }));
+      expect({ email: JSON.stringify(email), allowed: verdict.allowed }).toEqual({ email: JSON.stringify(email), allowed: false });
+    }
+  });
+
+  it("trims the address rather than storing and echoing the whitespace", () => {
+    const verdict = assessIdentity(identity({ email: "  a@index.network " }));
+    expect(verdict.allowed).toBe(true);
+    if (!verdict.allowed) throw new Error("unreachable");
+    expect(verdict.identity.email).toBe("a@index.network");
+  });
+
+  // ResolvedIdentity is the contract for any injected resolver, and A2
+  // serialises the allowed identity toward the browser.
+  it("coerces a non-string name to a string", () => {
+    const verdict = assessIdentity(identity({ name: undefined as unknown as string }));
+    expect(verdict.allowed).toBe(true);
+    if (!verdict.allowed) throw new Error("unreachable");
+    expect(verdict.identity.name).toBe("");
   });
 
   // Refused by the last-@ rule: the domain here is evil.com, whatever the local part says.
@@ -107,9 +140,11 @@ describe("assessIdentity", () => {
 // ---------------------------------------------------------------------------
 
 describe("OneTimeStateStore", () => {
+  // Asserted through the bridge's own validator, not a copy of its pattern: a
+  // hand-written regex here would still pass if the bridge tightened its own.
   it("mints a state the bridge's own validator accepts", () => {
     const state = new OneTimeStateStore().mint();
-    expect(state).toMatch(/^[A-Za-z0-9_-]{32,128}$/);
+    expect(cliAuth.validateCliAuthState(state)).toBe(state);
   });
 
   it("mints a distinct state every time", () => {
@@ -152,6 +187,25 @@ describe("OneTimeStateStore", () => {
     expect(store.consume(state)).toBe(true);
   });
 
+  // POST /api/auth/login is public and a process running as another user on the
+  // same machine can hammer it; unbounded pending states would slow every
+  // consume() the real operator makes. The newest mint always survives.
+  it("caps the outstanding states, evicting the oldest", () => {
+    const store = new OneTimeStateStore({ maxPending: 4 });
+    const states = [store.mint(), store.mint(), store.mint(), store.mint()];
+    const newest = store.mint();
+    expect(store.consume(states[0])).toBe(false);
+    expect(store.consume(newest)).toBe(true);
+    expect(store.consume(states[3])).toBe(true);
+  });
+
+  it("caps at MAX_PENDING_STATES by default", () => {
+    const store = new OneTimeStateStore();
+    const first = store.mint();
+    for (let i = 0; i < MAX_PENDING_STATES; i += 1) store.mint();
+    expect(store.consume(first)).toBe(false);
+  });
+
   it("keeps concurrent states independent", () => {
     const store = new OneTimeStateStore();
     const first = store.mint();
@@ -166,7 +220,11 @@ describe("OneTimeStateStore", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildBridgeUrl", () => {
-  const state = "s".repeat(43);
+  // A genuinely minted state, not a synthetic "sss…": a placeholder satisfies
+  // almost any tightening of the bridge's pattern, so it would not catch the
+  // one regression this pin exists for — the bridge rejecting base64url's
+  // `-` and `_`.
+  const state = new OneTimeStateStore().mint();
 
   it("builds the exact URL the bridge page expects", () => {
     const url = buildBridgeUrl({ webAppUrl: "http://localhost:3000", callbackPort: 4321, state });
@@ -199,6 +257,21 @@ describe("buildBridgeUrl", () => {
   it("refuses a state the bridge validator would reject", () => {
     for (const bad of ["", "short", "has spaces in it and is long enough!!!!!!!", "x".repeat(129)]) {
       expect(() => buildBridgeUrl({ webAppUrl: "http://localhost:3000", callbackPort: 4321, state: bad })).toThrow(/state/i);
+      expect(cliAuth.validateCliAuthState(bad)).toBeNull();
+    }
+  });
+
+  // A base with its own path or query silently yields a URL whose pathname is
+  // not /cli-auth, and garbage would throw a raw TypeError from the URL parser.
+  it("refuses a web app URL that does not resolve to /cli-auth", () => {
+    for (const webAppUrl of ["", "not a url", "http://localhost:3000/app", "http://localhost:3000?next=/x", "http://localhost:3000#frag"]) {
+      expect(() => buildBridgeUrl({ webAppUrl, callbackPort: 4321, state })).toThrow(/sign-in URL/i);
+    }
+  });
+
+  it("refuses a web app URL that is not http(s)", () => {
+    for (const webAppUrl of ["file:///tmp", "javascript:alert(1)//", "ftp://example.com"]) {
+      expect(() => buildBridgeUrl({ webAppUrl, callbackPort: 4321, state })).toThrow(/sign-in URL/i);
     }
   });
 });
