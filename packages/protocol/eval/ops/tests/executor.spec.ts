@@ -3,7 +3,7 @@ import { appendFile, mkdtemp, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { LocalProcessRunExecutor, tailLog } from "../ops.executor.js";
+import { LocalProcessRunExecutor, tailLog, type ExecutionStep } from "../ops.executor.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord, RunSpec } from "../ops.types.js";
 
@@ -89,6 +89,49 @@ describe("LocalProcessRunExecutor", () => {
     const record = await createRecord(["bun", FAKE, "--exit", "0"]);
 
     expect((await executor.start(record)).artifactPath).toBeNull();
+  });
+
+  it("runs an explicit step sequence in order, in each step's own directory and environment", async () => {
+    const record = await createRecord([]);
+    const steps: ExecutionStep[] = [
+      { label: "flush", argv: ["bun", FAKE, "--emit", "flushed"], cwd: dir, env: { STEP_MARKER: "one" } },
+      {
+        label: "seed",
+        argv: ["bun", "-e", "console.log(`seeded ${process.env.STEP_MARKER} in ${process.cwd()}`)"],
+        cwd: dir,
+        env: { STEP_MARKER: "two" },
+      },
+    ];
+
+    const finished = await executor.start(record, steps);
+
+    expect(finished.status).toBe("passed");
+    const log = await Bun.file(store.logPath(record.id)).text();
+    expect(log.indexOf("flushed")).toBeLessThan(log.indexOf("seeded"));
+    expect(log).toContain("seeded two in");
+    // The labels are in the log so a multi-step run reads back as a pipeline.
+    expect(log).toContain("[eval-ops] flush:");
+  });
+
+  it("stops a step sequence at the first failure and reports execution-error", async () => {
+    const record = await createRecord([]);
+    const steps: ExecutionStep[] = [
+      { label: "flush", argv: ["bun", FAKE, "--emit", "flushed", "--exit", "1"], cwd: dir, env: {} },
+      { label: "seed", argv: ["bun", FAKE, "--emit", "seeded"], cwd: dir, env: {} },
+    ];
+
+    const finished = await executor.start(record, steps);
+
+    // The harness exit-code contract does not apply to a pipeline of CLIs: a failed
+    // flush is an execution error, not a "regression".
+    expect(finished.status).toBe("execution-error");
+    expect(finished.exitCode).toBe(1);
+    expect(await Bun.file(store.logPath(record.id)).text()).not.toContain("seeded");
+  });
+
+  it("refuses a run with no command to execute", async () => {
+    const record = await createRecord([]);
+    await expect(executor.start(record)).rejects.toThrow(/no command/i);
   });
 
   it("does not relabel a run that already exited as cancelled", async () => {

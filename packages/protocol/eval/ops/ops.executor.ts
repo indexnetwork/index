@@ -1,10 +1,27 @@
 import { open } from "node:fs/promises";
 
 import { statusFromExitCode, type RunStore } from "./ops.store.js";
-import type { RunRecord } from "./ops.types.js";
+import type { RunRecord, RunStatus } from "./ops.types.js";
+
+/** One command of a run. A harness run is the one-step case. */
+export interface ExecutionStep {
+  /** Written to the log ahead of the command, so a multi-step run reads back. */
+  label: string;
+  argv: readonly string[];
+  /** Absolute working directory for the child. */
+  cwd: string;
+  /** Environment merged over the parent process environment. */
+  env: Record<string, string>;
+}
 
 export interface RunExecutor {
-  start(record: RunRecord): Promise<RunRecord>;
+  /**
+   * Runs `steps` in order, stopping at the first non-zero exit, or the record's
+   * own argv when `steps` is omitted. Callers that need a different working
+   * directory or extra environment — the guarded fixture reset is the only one —
+   * pass steps, so there is exactly one spawn, log and status-mapping path.
+   */
+  start(record: RunRecord, steps?: readonly ExecutionStep[]): Promise<RunRecord>;
   cancel(id: string): Promise<RunRecord>;
 }
 
@@ -15,7 +32,8 @@ export interface LocalProcessRunExecutorOptions {
 }
 
 interface LiveRun {
-  proc: Bun.Subprocess;
+  /** Null before the first step is spawned and between steps. */
+  proc: Bun.Subprocess | null;
   cancelled: boolean;
   /** Resolves with the terminal record `start()` persists, so `cancel()` never returns a stale read. */
   settled: Promise<RunRecord>;
@@ -36,7 +54,13 @@ export class LocalProcessRunExecutor implements RunExecutor {
     this.cwd = options.cwd;
   }
 
-  async start(record: RunRecord): Promise<RunRecord> {
+  async start(record: RunRecord, steps?: readonly ExecutionStep[]): Promise<RunRecord> {
+    const plan: readonly ExecutionStep[] = steps ?? [
+      { label: record.spec.kind, argv: record.argv, cwd: this.cwd, env: record.env },
+    ];
+    if (plan.length === 0 || plan.some((step) => step.argv.length === 0)) {
+      throw new Error(`Run ${record.id} has no command to execute`);
+    }
     const logFile = await open(this.store.logPath(record.id), "w");
     let settle!: (value: RunRecord) => void;
     let fail!: (reason: unknown) => void;
@@ -47,24 +71,37 @@ export class LocalProcessRunExecutor implements RunExecutor {
     // start() is the caller that reports failures; cancel() may never await this promise.
     settled.catch(() => {});
     try {
-      const proc = Bun.spawn({
-        cmd: record.argv,
-        cwd: this.cwd,
-        env: { ...process.env, ...record.env },
-        stdout: logFile.fd,
-        stderr: logFile.fd,
-        stdin: "ignore",
-      });
-      const entry: LiveRun = { proc, cancelled: false, settled };
+      const entry: LiveRun = { proc: null, cancelled: false, settled };
       this.live.set(record.id, entry);
-      await this.store.update(record.id, {
-        status: "running",
-        pid: proc.pid,
-        startedAt: new Date().toISOString(),
-      });
 
-      const exitCode = await proc.exited;
-      const status = entry.cancelled ? "cancelled" : statusFromExitCode(exitCode);
+      let exitCode = 0;
+      let index = 0;
+      for (const step of plan) {
+        // A cancel that lands between steps stops the pipeline instead of flushing
+        // a database and then abandoning the seed that would refill it.
+        if (entry.cancelled) break;
+        if (plan.length > 1) await logFile.write(`\n[eval-ops] ${step.label}: ${step.argv.join(" ")}\n`);
+        const proc = Bun.spawn({
+          cmd: [...step.argv],
+          cwd: step.cwd,
+          env: { ...process.env, ...step.env },
+          stdout: logFile.fd,
+          stderr: logFile.fd,
+          stdin: "ignore",
+        });
+        entry.proc = proc;
+        await this.store.update(
+          record.id,
+          index === 0
+            ? { status: "running", pid: proc.pid, startedAt: new Date().toISOString() }
+            : { pid: proc.pid },
+        );
+        exitCode = await proc.exited;
+        entry.proc = null;
+        index += 1;
+        if (exitCode !== 0) break;
+      }
+      const status = entry.cancelled ? "cancelled" : terminalStatus(plan, exitCode);
       // The store owns the eval-root convention; the executor never re-derives it from cwd.
       const artifactPath = (await Bun.file(this.store.reportPath(record.id)).exists())
         ? this.store.artifactPathFor(record.id)
@@ -96,14 +133,26 @@ export class LocalProcessRunExecutor implements RunExecutor {
     }
     // The child may already be gone while start() is still writing the terminal record:
     // flagging it here would relabel a normal completion as cancelled.
-    if (entry.proc.exitCode === null && entry.proc.signalCode === null) {
+    if (entry.proc === null || (entry.proc.exitCode === null && entry.proc.signalCode === null)) {
       entry.cancelled = true;
       // Harnesses install graceful SIGINT cancellation; SIGKILL would strand partial state.
-      entry.proc.kill("SIGINT");
+      entry.proc?.kill("SIGINT");
     }
     // Wait for the terminal update so the caller sees the effect of the cancel, not a stale read.
     return await entry.settled;
   }
+}
+
+/**
+ * Maps a finished plan onto a run status.
+ *
+ * The numbered exit-code contract belongs to the harnesses, so it is applied only
+ * to the single-command case. A pipeline of audited CLIs reports nothing finer
+ * than success or failure, and calling a failed flush a "regression" would be a lie.
+ */
+function terminalStatus(plan: readonly ExecutionStep[], exitCode: number): RunStatus {
+  if (plan.length === 1) return statusFromExitCode(exitCode);
+  return exitCode === 0 ? "passed" : "execution-error";
 }
 
 /**

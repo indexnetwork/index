@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
-import type { RunFlags, RunSpec } from "./ops.types.js";
+import type { EvalRunSpec, RunFlags } from "./ops.types.js";
 
 const RunFlagsSchema = z
   .object({
@@ -18,8 +18,10 @@ const RunFlagsSchema = z
   .strict();
 
 /**
- * The only shape the API accepts. Destructive flags are not expressible here and
- * are absent from HARNESS_REGISTRY, so no request can produce them.
+ * The only shape the API accepts from a client. Destructive flags are not
+ * expressible here and are absent from HARNESS_REGISTRY, so no request can
+ * produce them, and the fixture-reset variant of RunSpec is deliberately not
+ * parseable here: a reset can only be created by the guarded fixture route.
  */
 export const RunSpecSchema = z
   .object({
@@ -30,7 +32,7 @@ export const RunSpecSchema = z
   })
   .strict()
   .superRefine((spec, context) => {
-    const supported = new Set(HARNESS_REGISTRY[spec.harness as RunSpec["harness"]].flags.map((f) => f.name));
+    const supported = new Set(HARNESS_REGISTRY[spec.harness as EvalRunSpec["harness"]].flags.map((f) => f.name));
     for (const name of Object.keys(spec.flags) as (keyof RunFlags)[]) {
       if (!supported.has(name)) {
         context.addIssue({
@@ -40,7 +42,7 @@ export const RunSpecSchema = z
         });
       }
     }
-  }) as unknown as z.ZodType<RunSpec>;
+  }) as unknown as z.ZodType<EvalRunSpec>;
 
 export interface RenderedRun {
   argv: string[];
@@ -66,7 +68,7 @@ const SELECTION_FLAGS: readonly (keyof RunFlags)[] = ["case", "rule", "tier"];
  * experimental run exists to measure. The profile can override this pin by
  * explicitly setting OPENROUTER_FALLBACK_MODEL in its env block.
  */
-export function renderRun(spec: RunSpec, resolved: ResolvedProfile, reportPath: string): RenderedRun {
+export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPath: string): RenderedRun {
   if (resolved.profile.name !== spec.profile) {
     throw new Error(`Resolved profile "${resolved.profile.name}" does not match the requested profile "${spec.profile}"`);
   }

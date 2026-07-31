@@ -5,6 +5,7 @@
  * services/api. The target always comes from the server's own .env.test, never
  * from a request.
  */
+import { SQL } from "bun";
 
 /**
  * Mirrors REAL_DATA_DATABASE_NAMES in
@@ -145,6 +146,75 @@ export function assessFixtureTarget(databaseUrl: string | undefined): FixtureGua
     allowed: true,
     target: { databaseName, host: parsed.host, redactedUrl: redactDatabaseUrl(databaseUrl) },
   };
+}
+
+/**
+ * Strips anything that could carry a credential out of a message.
+ *
+ * Driver errors quote the connection string they failed on, and those messages
+ * are shown to operators and written to logs, so every message that leaves this
+ * layer passes through here.
+ */
+export function scrubCredentials(message: string): string {
+  return message
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1")
+    .replace(/\b(password|pgpassword)=[^\s&"']+/gi, "$1=");
+}
+
+export interface FixtureCounts {
+  /** Personas present, identified by the seed's email prefix. */
+  personas: number;
+  personaEmails: string[];
+  /** Row counts for the tables a reset rewrites. */
+  tables: Record<string, number>;
+}
+
+/** Read-only view of what is currently in the fixture database. */
+export interface FixtureInspector {
+  /** Counts only. This interface has no write capability by construction. */
+  count(databaseUrl: string): Promise<FixtureCounts>;
+}
+
+/**
+ * Live counts through Bun's built-in postgres client.
+ *
+ * Bun.SQL is a runtime built-in, so the provider-free eval package gains no
+ * dependency. Every statement here is a SELECT with no interpolated identifiers:
+ * the only client-influenced value is the persona prefix, which is a bound
+ * parameter. Nothing in this class can mutate the database.
+ */
+export class BunSqlFixtureInspector implements FixtureInspector {
+  private readonly connectionTimeoutSeconds: number;
+
+  constructor(options: { connectionTimeoutSeconds?: number } = {}) {
+    this.connectionTimeoutSeconds = options.connectionTimeoutSeconds ?? 5;
+  }
+
+  async count(databaseUrl: string): Promise<FixtureCounts> {
+    const sql = new SQL(databaseUrl, {
+      max: 1,
+      connectionTimeout: this.connectionTimeoutSeconds,
+      idleTimeout: this.connectionTimeoutSeconds,
+    });
+    try {
+      const personas = (await sql`
+        select email from users where email like ${`${FIXTURE_PERSONA_EMAIL_PREFIX}%`} order by email
+      `) as { email: string }[];
+      const tables: Record<string, number> = {
+        users: rowCount(await sql`select count(*)::int as count from users`),
+        intents: rowCount(await sql`select count(*)::int as count from intents`),
+        opportunities: rowCount(await sql`select count(*)::int as count from opportunities`),
+      };
+      return { personas: personas.length, personaEmails: personas.map((row) => row.email), tables };
+    } finally {
+      await sql.close({ timeout: 1 });
+    }
+  }
+}
+
+function rowCount(rows: unknown): number {
+  const value = (rows as { count?: unknown }[])[0]?.count;
+  return typeof value === "number" ? value : Number(value ?? 0);
 }
 
 export interface ResetStep {

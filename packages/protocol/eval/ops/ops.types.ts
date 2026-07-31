@@ -73,13 +73,29 @@ export interface RunFlags {
   strictEvidence?: boolean;
 }
 
-export interface RunSpec {
+export interface EvalRunSpec {
   kind: "eval";
   harness: OpsHarness;
   /** Name of a committed profile. Never a set of raw overrides. */
   profile: string;
   flags: RunFlags;
 }
+
+/**
+ * A guarded test-database reset. It is a run like any other so it streams live,
+ * is logged and appears in run history. Only the database NAME is recorded: a
+ * connection string never enters a record.
+ */
+export interface FixtureResetSpec {
+  kind: "fixture-reset";
+  personas: number;
+  /** Always true: migrations are applied on every reset. Drift is never probed. */
+  migrate: boolean;
+  /** The database the operator confirmed by name. */
+  databaseName: string;
+}
+
+export type RunSpec = EvalRunSpec | FixtureResetSpec;
 
 export type RunStatus =
   | "queued"
@@ -92,11 +108,24 @@ export type RunStatus =
   | "interrupted"
   | "crashed";
 
+/** One spawned command of a multi-step run, recorded for auditability. */
+export interface RunStepRecord {
+  label: string;
+  argv: string[];
+  /** Working directory, relative to the repository root. */
+  cwd: string;
+}
+
 export interface RunRecord {
   id: string;
   spec: RunSpec;
-  /** The exact argv that was or will be spawned, recorded for auditability. */
+  /**
+   * The exact argv that was or will be spawned, recorded for auditability.
+   * Empty for a multi-step run, which records `steps` instead.
+   */
   argv: string[];
+  /** The command sequence of a multi-step run. Absent for a single-command run. */
+  steps?: RunStepRecord[];
   /** Injected environment. Never contains credentials. */
   env: Record<string, string>;
   profileFingerprint: string;

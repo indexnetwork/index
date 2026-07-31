@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { FsRunStore, statusFromExitCode } from "../ops.store.js";
-import type { RunSpec } from "../ops.types.js";
+import type { EvalRunSpec } from "../ops.types.js";
 
-const SPEC: RunSpec = { kind: "eval", harness: "matching", profile: "default", flags: { runs: 1 } };
+const SPEC: EvalRunSpec = { kind: "eval", harness: "matching", profile: "default", flags: { runs: 1 } };
 
 let dir: string;
 
@@ -44,7 +44,7 @@ describe("FsRunStore", () => {
 
     const reloaded = await new FsRunStore({ evalDir: dir }).get(created.id);
     expect(reloaded?.id).toBe(created.id);
-    expect(reloaded?.spec.harness).toBe("matching");
+    expect(reloaded?.spec).toMatchObject({ kind: "eval", harness: "matching" });
   });
 
   it("lists newest first", async () => {

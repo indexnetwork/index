@@ -63,7 +63,10 @@ function fail(message: string): never {
 // ---------------------------------------------------------------------------
 // 1. Inventory check: eval/* directories must match the manifest exactly.
 // ---------------------------------------------------------------------------
+// Dot-directories are runtime state, not suites: eval/.ops-runs is created by the
+// ops server the first time a run is launched, and must not fail the inventory.
 const discovered = readdirSync(EVAL_DIR)
+  .filter((entry) => !entry.startsWith("."))
   .filter((entry) => statSync(join(EVAL_DIR, entry)).isDirectory())
   .sort();
 

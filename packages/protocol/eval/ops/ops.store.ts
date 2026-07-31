@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import type { IndexIssue, RunRecord, RunSpec, RunStatus } from "./ops.types.js";
+import type { IndexIssue, RunRecord, RunSpec, RunStatus, RunStepRecord } from "./ops.types.js";
 
 /** Maps the documented harness exit-code contract onto a run status. */
 export function statusFromExitCode(code: number): RunStatus {
@@ -30,9 +30,16 @@ const TERMINAL: ReadonlySet<RunStatus> = new Set<RunStatus>([
   "crashed",
 ]);
 
+/** True once a run can no longer change: the UI and the SSE stream both stop here. */
+export function isTerminalStatus(status: RunStatus): boolean {
+  return TERMINAL.has(status);
+}
+
 export interface CreateRunInput {
   spec: RunSpec;
   argv: string[];
+  /** The command sequence of a multi-step run. Omitted for a single-command run. */
+  steps?: RunStepRecord[];
   env: Record<string, string>;
   profileFingerprint: string;
   experimental: boolean;
@@ -94,6 +101,7 @@ export class FsRunStore implements RunStore {
       id,
       spec: input.spec,
       argv: input.argv,
+      ...(input.steps === undefined ? {} : { steps: input.steps }),
       env: input.env,
       profileFingerprint: input.profileFingerprint,
       experimental: input.experimental,
