@@ -36,6 +36,7 @@ const SUITES = [
   "hyde",
   "matching",
   "opportunity",
+  "ops",
   "premise",
   "profile",
   "shared",
