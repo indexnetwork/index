@@ -82,8 +82,38 @@ export function Launch() {
   const handleFlagChange = (name: HarnessFlag['name'], value: string | number | boolean | undefined) => {
     setState((prev) => {
       const flags: RunFlags = { ...prev.flags };
-      if (value === undefined) delete flags[name];
-      else Object.assign(flags, { [name]: value });
+      if (value === undefined) {
+        delete flags[name];
+      } else {
+        // Discriminated assignment preserves the key/value type relation that a
+        // computed-key Object.assign would defeat.
+        switch (name) {
+          case 'runs':
+            flags.runs = value as number;
+            break;
+          case 'tier':
+            flags.tier = value as number;
+            break;
+          case 'alpha':
+            flags.alpha = value as number;
+            break;
+          case 'attemptTimeoutMs':
+            flags.attemptTimeoutMs = value as number;
+            break;
+          case 'case':
+            flags.case = value as string;
+            break;
+          case 'rule':
+            flags.rule = value as string;
+            break;
+          case 'noJudge':
+            flags.noJudge = value as boolean;
+            break;
+          case 'strictEvidence':
+            flags.strictEvidence = value as boolean;
+            break;
+        }
+      }
       return { ...prev, flags, awaitingConfirmation: false, launchError: null };
     });
   };

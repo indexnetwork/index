@@ -128,17 +128,23 @@ describe('Compare', () => {
 
   it('clears a subject the new reference cannot be compared against', async () => {
     stub({ comparable: false, findings: [] });
-    render(
-      <MemoryRouter initialEntries={['/?reference=a&subject=b']}>
-        <Compare />
-      </MemoryRouter>,
-    );
+    const router = createMemoryRouter([{ path: '/', element: <Compare /> }], {
+      initialEntries: ['/?reference=a&subject=b'],
+    });
+    render(<RouterProvider router={router} />);
 
     const reference = (await screen.findByLabelText('Reference')) as HTMLSelectElement;
     await waitFor(() => expect(reference.value).toBe('a'));
 
     await userEvent.selectOptions(reference, 'c');
 
-    expect((screen.getByLabelText('Subject') as HTMLSelectElement).value).toBe('');
+    // Assert the search params were actually cleared, not just that the select
+    // value is empty (which it would be anyway since option 'b' no longer exists
+    // after filtering to the 'premise' harness).
+    await waitFor(() => {
+      const params = new URLSearchParams(router.state.location.search);
+      expect(params.get('reference')).toBe('c');
+      expect(params.get('subject')).toBeNull();
+    });
   });
 });
