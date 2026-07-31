@@ -16,7 +16,36 @@
  * this copy — pattern and name normalisation — to the original so it cannot
  * drift silently.
  */
-const REAL_DATA_DATABASE_NAMES = /^(.*_)?(prod|production)$/i;
+export const REAL_DATA_DATABASE_NAMES = /^(.*_)?(prod|production)$/i;
+
+/**
+ * Connection-string query parameters that can send the session somewhere other
+ * than the database named in the URL path, so the guard's verdict would describe
+ * a different target than the one that gets truncated.
+ *
+ * postgres@3.4.9 collects every search parameter (src/index.js:437), copies each
+ * one that is not a driver default into `options.connection`
+ * (src/index.js:485-488), and then builds the startup packet as
+ * `Object.assign({ user, database, client_encoding }, options.connection)`
+ * (src/connection.js:996-1005) — so a `database` parameter OVERWRITES the
+ * path-derived database, and any other parameter is sent to the backend as a
+ * startup setting. `search_path` and `options` (`-c search_path=…`) redirect
+ * which schema's tables the audited CLIs then rewrite; `user`/`username` change
+ * the role the session runs as; `db`/`dbname` are the aliases every other
+ * consumer of this URL (libpq, psql) reads the database name from.
+ *
+ * These are refused outright rather than interpreted: honouring them would mean
+ * re-implementing the driver's precedence rules inside a safety check.
+ */
+const REDIRECTING_QUERY_PARAMETERS = new Set([
+  "database",
+  "db",
+  "dbname",
+  "user",
+  "username",
+  "options",
+  "search_path",
+]);
 
 export const FIXTURE_PERSONA_EMAIL_PREFIX = "seed-tester-";
 export const MAX_PERSONAS = 50;
@@ -41,6 +70,11 @@ export function redactDatabaseUrl(url: string): string {
     }
     parsed.username = "";
     parsed.password = "";
+    // The query string is dropped whole: "?password=…" is a documented libpq
+    // parameter, and this value is displayed to operators and written to logs.
+    // An allowlist would have to be re-audited every time a driver adds a
+    // parameter, so nothing survives instead.
+    parsed.search = "";
     return parsed.toString();
   } catch {
     return "(unrecognised connection string)";
@@ -86,6 +120,18 @@ export function assessFixtureTarget(databaseUrl: string | undefined): FixtureGua
   }
   if (databaseName === "") {
     return { allowed: false, reason: "DATABASE_URL does not name a database." };
+  }
+  // Names only: parameter values may themselves be credentials.
+  const redirecting = [...parsed.searchParams.keys()]
+    .filter((key) => REDIRECTING_QUERY_PARAMETERS.has(key.toLowerCase()));
+  if (redirecting.length > 0) {
+    return {
+      allowed: false,
+      reason:
+        `Refusing a DATABASE_URL carrying the query parameter(s) ${redirecting.join(", ")}: `
+        + "these override the database, role or schema the driver actually connects to, so the "
+        + "database named in the URL path is not the one that would be truncated. Remove them from .env.test.",
+    };
   }
   if (REAL_DATA_DATABASE_NAMES.test(databaseName)) {
     return {

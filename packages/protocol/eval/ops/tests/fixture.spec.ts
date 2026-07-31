@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { assessFixtureTarget, buildResetPipeline, FIXTURE_PERSONA_EMAIL_PREFIX, MAX_PERSONAS, redactDatabaseUrl } from "../ops.fixture.js";
+import { assessFixtureTarget, buildResetPipeline, FIXTURE_PERSONA_EMAIL_PREFIX, MAX_PERSONAS, REAL_DATA_DATABASE_NAMES, redactDatabaseUrl } from "../ops.fixture.js";
 
 /** The audited guard this module mirrors; see the "guard parity" describe block. */
 const READINESS_SOURCE_PATH = path.resolve(
@@ -63,6 +63,46 @@ describe("assessFixtureTarget", () => {
     expect(guard.target.redactedUrl).not.toContain("p@");
   });
 
+  it("refuses a query parameter that redirects the connection away from the named database", () => {
+    // postgres@3.4.9 copies every search param that is not a driver default into
+    // options.connection (src/index.js:485-488) and Object.assigns it OVER
+    // { user, database, client_encoding } when building the startup packet
+    // (src/connection.js:996-1005). So the path says "neondb" while the session
+    // opens on protocol_prod, and TRUNCATE ... CASCADE lands on real data.
+    const guard = assessFixtureTarget("postgres://u:p@host/neondb?database=protocol_prod");
+    expect(guard.allowed).toBe(false);
+    if (guard.allowed) throw new Error("unreachable");
+    expect(guard.reason).toMatch(/database/i);
+  });
+
+  for (const parameter of ["database", "db", "dbname", "user", "username", "options", "search_path"]) {
+    it(`refuses the redirect-capable "${parameter}" query parameter`, () => {
+      const guard = assessFixtureTarget(`postgres://u:p@host/neondb?${parameter}=whatever`);
+      expect(guard.allowed).toBe(false);
+      if (guard.allowed) throw new Error("unreachable");
+      expect(guard.reason).toContain(parameter);
+    });
+  }
+
+  it("refuses a redirect-capable parameter whatever its case", () => {
+    expect(assessFixtureTarget("postgres://u:p@host/neondb?DataBase=protocol_prod").allowed).toBe(false);
+  });
+
+  it("never echoes a refused parameter's value", () => {
+    const guard = assessFixtureTarget("postgres://u:p@host/neondb?options=-c%20search_path%3Dhunter2");
+    if (guard.allowed) throw new Error("unreachable");
+    expect(guard.reason).not.toContain("hunter2");
+  });
+
+  it("still allows the transport parameters a Neon connection string carries", () => {
+    const guard = assessFixtureTarget(
+      "postgres://u:p@ep-example.neon.tech/neondb?sslmode=require&channel_binding=require",
+    );
+    expect(guard.allowed).toBe(true);
+    if (!guard.allowed) throw new Error("unreachable");
+    expect(guard.target.databaseName).toBe("neondb");
+  });
+
   it("never leaks credentials in a refusal reason", () => {
     const guard = assessFixtureTarget("postgres://neon_owner:hunter2@host/protocol_prod");
     if (guard.allowed) throw new Error("unreachable");
@@ -81,6 +121,13 @@ describe("redactDatabaseUrl", () => {
   it("keeps the host and database name", () => {
     expect(redactDatabaseUrl("postgresql://user:secret@ep-example.neon.tech/neondb"))
       .toBe("postgresql://ep-example.neon.tech/neondb");
+  });
+
+  it("strips the query string rather than passing credentials through it", () => {
+    const redacted = redactDatabaseUrl("postgres://u:p@host/neondb?password=hunter2&options=-c%20x");
+    expect(redacted).not.toContain("hunter2");
+    expect(redacted).not.toContain("?");
+    expect(redacted).toBe("postgres://host/neondb");
   });
 
   it("never echoes a connection string it cannot redact", () => {
@@ -118,6 +165,20 @@ describe("guard parity with services/api", () => {
       const guard = assessFixtureTarget(`postgres://u:p@host/${name}`);
       expect({ name, refused: !guard.allowed }).toEqual({ name, refused: upstream.test(name) });
     }
+  });
+
+  it("pins the local pattern to the upstream literal, so upstream cannot widen it unnoticed", async () => {
+    // The behavioural table below only proves agreement on the names it lists.
+    // If upstream WIDENS its pattern (adds "live", or a "_real" suffix) every
+    // listed name still agrees and this copy silently becomes MORE permissive
+    // than the guard it mirrors — the direction that ends in a wiped database.
+    const source = await readFile(READINESS_SOURCE_PATH, "utf8");
+    const match = source.match(/const REAL_DATA_DATABASE_NAMES = \/(.+)\/([a-z]*);/);
+    if (!match) throw new Error(`REAL_DATA_DATABASE_NAMES not found in ${READINESS_SOURCE_PATH}`);
+    const upstream = new RegExp(match[1], match[2]);
+
+    expect({ source: upstream.source, flags: upstream.flags })
+      .toEqual({ source: REAL_DATA_DATABASE_NAMES.source, flags: REAL_DATA_DATABASE_NAMES.flags });
   });
 
   it("normalises the database name the same way readDatabaseName does", async () => {
