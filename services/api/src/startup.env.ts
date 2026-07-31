@@ -25,12 +25,15 @@ const isDeployment =
   runtimeEnvironment === 'production' ||
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
 
-// EVAL_MODEL_OVERRIDES is an eval-only hook. The protocol ignores it in
-// production, but a value present in a production environment means someone
-// believes it is doing something. Fail loudly rather than ignore it silently.
-if (runtimeEnvironment === 'production' && process.env.EVAL_MODEL_OVERRIDES) {
+// EVAL_MODEL_OVERRIDES is an eval-only hook. Gated on `isDeployment`, not on
+// NODE_ENV alone: a deployment may not set NODE_ENV (railway.toml runs the
+// `start` script, which does not), and in that case the protocol's own
+// NODE_ENV=production guard goes inert and the override would actually be
+// honoured. A value present in a deployed environment means someone believes
+// it is doing something. Fail loudly rather than ignore it silently.
+if (isDeployment && process.env.EVAL_MODEL_OVERRIDES) {
   throw new Error(
-    'EVAL_MODEL_OVERRIDES must not be set in production. It is an eval-only model override, ignored by the protocol in production; remove it from the deployment environment.',
+    'EVAL_MODEL_OVERRIDES must not be set in a deployed environment. It is an eval-only model override; remove it from the deployment environment.',
   );
 }
 

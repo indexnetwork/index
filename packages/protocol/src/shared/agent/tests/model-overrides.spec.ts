@@ -1,6 +1,9 @@
+// Stub API key so createModel() doesn't throw in tests (no network call is made).
+process.env.OPENROUTER_API_KEY ??= "test-key-unused";
+
 import { afterEach, describe, expect, it } from "bun:test";
 
-import { getModelName } from "../model.config.js";
+import { createModel, getModelName } from "../model.config.js";
 
 const ORIGINAL_OVERRIDES = process.env.EVAL_MODEL_OVERRIDES;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
@@ -8,7 +11,8 @@ const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 afterEach(() => {
   if (ORIGINAL_OVERRIDES === undefined) delete process.env.EVAL_MODEL_OVERRIDES;
   else process.env.EVAL_MODEL_OVERRIDES = ORIGINAL_OVERRIDES;
-  process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
 describe("EVAL_MODEL_OVERRIDES", () => {
@@ -42,5 +46,33 @@ describe("EVAL_MODEL_OVERRIDES", () => {
   it("throws when a value is not a non-empty string", () => {
     process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ opportunityEvaluator: "" });
     expect(() => getModelName("opportunityEvaluator")).toThrow(/EVAL_MODEL_OVERRIDES/);
+  });
+
+  it.each(["[]", '["anthropic/claude-sonnet-4"]', '"5"', "5"])(
+    "throws when the payload is not a JSON object (%p)",
+    (value) => {
+      process.env.EVAL_MODEL_OVERRIDES = value as string;
+      expect(() => getModelName("opportunityEvaluator")).toThrow(/must be a JSON object/);
+    },
+  );
+
+  it("trims the override value so a padded model id is not sent verbatim", () => {
+    process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ chat: "  openai/gpt-4o  " });
+    expect(getModelName("chat")).toBe("openai/gpt-4o");
+  });
+
+  it("overrides only the model id, leaving the agent's other settings intact", () => {
+    // hydeValidator is a non-default agent: temperature 0.0, maxTokens 2048.
+    delete process.env.EVAL_MODEL_OVERRIDES;
+    const base = createModel("hydeValidator");
+    expect(base.model).toBe("google/gemini-2.5-flash");
+    expect(base.temperature).toBe(0.0);
+    expect(base.maxTokens).toBe(2048);
+
+    process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ hydeValidator: "x/y" });
+    const overridden = createModel("hydeValidator");
+    expect(overridden.model).toBe("x/y");
+    expect(overridden.temperature).toBe(0.0);
+    expect(overridden.maxTokens).toBe(2048);
   });
 });

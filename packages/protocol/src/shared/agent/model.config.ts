@@ -67,7 +67,9 @@ function readModelOverrides(agentKeys: readonly string[]): Record<string, string
     if (typeof model !== "string" || model.trim() === "") {
       throw new Error(`EVAL_MODEL_OVERRIDES value for "${agent}" must be a non-empty model id string`);
     }
-    overrides[agent] = model;
+    // Store trimmed: surrounding whitespace in the JSON value would otherwise be
+    // sent verbatim to OpenRouter as part of the model id.
+    overrides[agent] = model.trim();
   }
   return overrides;
 }
