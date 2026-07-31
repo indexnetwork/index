@@ -278,14 +278,24 @@ function refusalPage(reason: string, status: number): Response {
   });
 }
 
-/** Escapes the five characters that can break out of HTML text or an attribute. */
+/** The five characters that can break out of HTML text or an attribute value. */
+const HTML_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+});
+
+/**
+ * Escapes the five characters that can break out of HTML text or an attribute.
+ *
+ * A single regex pass rather than chained `replaceAll`: this suite's tsconfig
+ * targets below ES2021, where `replaceAll` does not exist, and chained replaces
+ * would also rewrite the ampersands the earlier steps introduced.
+ */
 function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+  return value.replace(/[&<>"']/g, (character) => HTML_ESCAPES[character]);
 }
 
 /** Reads one cookie out of the request's Cookie header. */

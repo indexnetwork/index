@@ -920,6 +920,19 @@ describe("authentication", () => {
       expect(text).toContain("&lt;img");
     });
 
+    it("escapes each character once, without re-escaping its own ampersands", async () => {
+      // A chained replace that escaped < before & would turn < into &amp;lt;,
+      // rendering the escape itself. One pass cannot get the order wrong. The
+      // address is the only interpolated value, so this is the whole sink.
+      identities.identity = { email: `a&b<c>"d'e@evil.example`, emailVerified: true, name: "x" };
+      const state = states.mint();
+
+      const text = await (await callback(`state=${state}&api_key=k`)).text();
+
+      expect(text).toContain("a&amp;b&lt;c&gt;&quot;d&#39;e@evil.example");
+      expect(text).not.toContain("&amp;lt;");
+    });
+
     it("answers 502 when the identity service cannot be reached", async () => {
       // "The API is down" is not "you are not allowed in", and must not read as it.
       identities.failure = new Error("connect ECONNREFUSED 127.0.0.1:3001");
