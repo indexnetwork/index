@@ -2,6 +2,9 @@ import { createBrowserRouter } from 'react-router';
 import { Overview } from './routes/Overview';
 import { Harness } from './routes/Harness';
 import { Run } from './routes/Run';
+import { Launch } from './routes/Launch';
+import { Profiles } from './routes/Profiles';
+import { Compare } from './routes/Compare';
 
 export const router = createBrowserRouter([
   {
@@ -15,5 +18,17 @@ export const router = createBrowserRouter([
   {
     path: '/r/:runId',
     element: <Run />,
+  },
+  {
+    path: '/launch',
+    element: <Launch />,
+  },
+  {
+    path: '/profiles',
+    element: <Profiles />,
+  },
+  {
+    path: '/compare',
+    element: <Compare />,
   },
 ]);

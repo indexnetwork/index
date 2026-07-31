@@ -144,17 +144,37 @@ export interface ProfileDescriptor {
   fingerprint: string;
 }
 
-export interface CompareResult {
-  /** null when the artifacts are not comparable (different harness, corpus, etc.) */
-  compatible: boolean;
-  reason?: string;
-  /** Present only when compatible is true */
-  referencePassRate?: number;
-  subjectPassRate?: number;
-  delta?: number;
-  regressions?: string[];
-  improvements?: string[];
+export interface Regression {
+  id: string;
+  kind: 'case' | 'rule';
+  before: number;
+  after: number;
+  /** One-sided posterior-predictive p-value for the current pass count or lower under the baseline. */
+  pValue: number;
 }
+
+export interface BaselineDiff {
+  regressions: Regression[];
+  skippedCaseIds: string[];
+  addedCaseIds: string[];
+  removedCaseIds: string[];
+  unscoredCaseIds: string[];
+}
+
+export interface ComparabilityFinding {
+  dimension: 'harness' | 'corpusFingerprint' | 'configFingerprint' | 'selection';
+  reference: string;
+  subject: string;
+}
+
+export type CompareResult =
+  | { comparable: false; findings: ComparabilityFinding[] }
+  | {
+      comparable: true;
+      regressions: BaselineDiff;
+      improvements: BaselineDiff;
+      aggregate: { reference: number; subject: number; delta: number };
+    };
 
 /** Fetch helper that throws an Error containing the server's error field on non-2xx. */
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
