@@ -126,10 +126,15 @@ bun run dev:eval-ops                        # UI on 127.0.0.1:5174 (from repo ro
 bun run build:eval-ops                      # Build the UI
 ```
 
-Both bind loopback and there is no authentication: this is an operator-trust
-decision about local processes. State-changing requests must be same-origin and
-carry a JSON content type, and every request must be addressed to a loopback
-host, so another site the operator has open cannot drive or read it. The app is
+Both bind loopback, and every route but the two that make signing in possible
+requires a session belonging to a verified `@index.network` Index account
+(sign-in reuses the CLI browser-auth bridge). That is defence in depth, not
+permission to expose it: state-changing requests must be same-origin and carry a
+JSON content type, and every request must be addressed to a loopback host, so
+another site the operator has open cannot drive or read it — those guards, not
+the authentication, are what keep the site local. `WEB_APP_URL` and `API_URL`
+are one pair (mint and verify); the ops server refuses to start on a mismatched
+or half-configured pair. The app is
 deliberately excluded from the root `build` script and from Railway. CI gates it
 through the `eval-ops` job in `.github/workflows/lint.yml` (typecheck, test,
 lint) — the root `build` does not cover it.

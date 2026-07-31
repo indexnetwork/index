@@ -6,9 +6,11 @@ artifacts, and drives a guarded test-database fixture reset.
 
 This directory is the whole server. The browser app is a thin client over the JSON + SSE
 API in [`ops.server.ts`](./ops.server.ts); every decision that matters — what may run,
-under which configuration, against which database — is made here. **There is no
-authentication**: any process on this machine can spend real tokens and flush the test
-database (see [§ There is no authentication](#there-is-no-authentication) below).
+under which configuration, against which database — is made here, including **who is
+allowed to ask**: every route but two requires a session belonging to a verified
+`@index.network` Index account. That is defence in depth on top of the loopback guards,
+not a replacement for them — the site is still loopback-only and still not safe to expose
+(see [§ Who may use this server](#who-may-use-this-server) below).
 
 Everything in this directory is provider-free and covered by `bun run eval:verify`
 (`suite: ops`).
@@ -285,8 +287,15 @@ perform the `.env.test` cross-check that `resolveResetTarget` does, so an operat
 
 `createOpsHandler(context)` returns a plain `(Request) => Promise<Response>`.
 
+Every route below requires a session except the two marked **public**; `GET /callback` is
+handled ahead of the gate because it is the request that establishes one.
+
 | Method | Route | Purpose |
 | :----- | :---- | :------ |
+| `GET` | `/api/auth/status` | **public.** `{ authenticated: false }` or `{ authenticated: true, email, name }`. |
+| `POST` | `/api/auth/login` | **public.** `{ url }` — the sign-in bridge link, carrying a one-time state. |
+| `GET` | `/callback` | **public, pre-gate.** The bridge lands here: validates the state, resolves the identity, applies the domain policy, then redirects to the UI or renders a refusal page. |
+| `POST` | `/api/auth/logout` | Clears the session and expires the cookie. |
 | `GET` | `/api/harnesses` | `HARNESS_REGISTRY` values. |
 | `GET` | `/api/profiles` | Committed profiles. |
 | `GET` | `/api/artifacts` | `{ refs, issues }` — the artifact index, with unreadable files surfaced rather than dropped. |
@@ -325,17 +334,47 @@ perform the `.env.test` cross-check that `resolveResetTarget` does, so an operat
   `scrubCredentials`.
 - Artifact ids are decoded and rejected if they normalise outside `eval/`.
 
-### There is no authentication
+### Who may use this server
 
-Any process on this machine can drive this server: launch runs that spend real money and
-flush the test database. That is an explicit operator-trust decision about **local**
-processes.
+Four independent guards stand in front of every request, and they **compose** rather than
+substitute for one another: the loopback bind, the `Host` check, the `Origin` allowlist,
+and identity. Removing any one of them is not offset by the others.
 
-`ops.serve.ts` binds `127.0.0.1` unless `EVAL_OPS_BIND` is set. **`EVAL_OPS_BIND` is the
-hook where authentication must land before any non-local deployment — it must not be
-changed until that exists.** Note that setting it alone is no longer sufficient anyway:
-the loopback `Origin` allowlist fails closed, so a browser on another host would have every
-write refused.
+**Identity.** Every route except `GET /api/auth/status` and `POST /api/auth/login`
+(`PUBLIC_ROUTES` in `ops.server.ts`) requires a session, and a session exists only for an
+Index account whose email is **verified** and whose domain is exactly `index.network`.
+The gate sits ahead of dispatch, so a route added later is gated by default and an unknown
+path is refused with 401 rather than a 404 that would confirm what exists. The policy is
+re-evaluated on **every** request, so narrowing it refuses live sessions too; 401 ("nobody
+is signed in") and 403 ("signed in, not permitted") are deliberately distinguishable.
+
+There is no cookie to forward — the ops UI is on `127.0.0.1` and the API on
+`localhost:3001`, and a Better Auth session cookie is host-scoped — so sign-in reuses the
+CLI browser-auth bridge: `POST /api/auth/login` mints a one-time state and returns
+`<WEB_APP_URL>/cli-auth?callback=http://127.0.0.1:<port>/callback&version=2&state=…`, the
+bridge mints a revocable API key against the operator's existing browser session, and
+`GET /callback` consumes the state, exchanges the key for an identity, applies the domain
+policy and **discards the key**. The key is never stored in a session, never logged, never
+returned to the browser and never rendered.
+
+`WEB_APP_URL` and `API_URL` are one pair: the first mints the key, the second verifies it.
+A key minted by one deployment is meaningless to another, so the server **refuses to
+start** on a half-configured or mismatched pair rather than failing every sign-in later
+with an unhelpful "No Index account could be resolved".
+
+**It is still not safe to expose.** What keeps this site local is the guards, not the
+authentication. `ops.serve.ts` binds `127.0.0.1` unless `EVAL_OPS_BIND` is set: **do not
+change it.** Setting it alone would not help anyway — the loopback `Origin` allowlist and
+the `Host` check both fail closed, so a browser on another host would have every write
+refused and every read refused with it.
+
+**The session cookie is visible to every port on `127.0.0.1`.** Cookies are not
+port-scoped, so any *other* local HTTP service the operator's browser visits on loopback
+receives `eval_ops_session` too. `HttpOnly` keeps it out of JavaScript's reach and the
+`Host` guard means a foreign host cannot replay it against this server, so the practical
+exposure is low — but it is a real property of running several services on loopback, and
+it is one more reason the ops session is worth no more than the local trust boundary it
+sits inside.
 
 ## Running it
 

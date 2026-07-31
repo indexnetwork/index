@@ -377,10 +377,14 @@ bun run dev:eval-ops
 that file's `DATABASE_URL` as the fixture target.
 
 Only the four scorecard harnesses (`matching`, `profile`, `premise`, `opportunity`) are
-supported. It **binds loopback and has no authentication** — any local process can drive
-it, and it can launch runs that spend real money and flush the test database. Do not change
-`EVAL_OPS_BIND` until authentication exists. The app is deliberately excluded from the
-production build and from Railway.
+supported. It **binds loopback and requires a verified `@index.network` Index account** —
+signing in opens the same browser-auth bridge the CLI uses, and every route but the two
+that make signing in possible needs that session. The authentication is defence in depth,
+not permission to expose the site: the loopback bind, the `Host` check and the `Origin`
+allowlist are what keep it local, so do not change `EVAL_OPS_BIND`. `WEB_APP_URL` and
+`API_URL` must name the same environment — the first mints the sign-in key and the second
+verifies it, and the server refuses to start on a mismatched pair. The app is deliberately
+excluded from the production build and from Railway.
 
 See [`packages/protocol/eval/ops/README.md`](../../packages/protocol/eval/ops/README.md)
 for the security model and [`apps/eval-ops/README.md`](../../apps/eval-ops/README.md) for
