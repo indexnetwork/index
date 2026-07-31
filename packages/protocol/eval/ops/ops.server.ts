@@ -597,6 +597,13 @@ export async function createDefaultOpsContext(options: { repoRoot: string }): Pr
     );
   }
 
+  // A previous server may have died with runs in flight; their records would
+  // otherwise claim to be running forever.
+  const interrupted = await store.reconcile();
+  if (interrupted.length > 0) {
+    console.log(`[eval-ops] marked ${interrupted.length} orphaned run(s) as interrupted`);
+  }
+
   return {
     evalDir,
     protocolDir,

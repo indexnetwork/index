@@ -13,13 +13,6 @@ import { createDefaultOpsContext, createOpsHandler } from "./ops.server.js";
 const repoRoot = path.resolve(import.meta.dir, "../../../..");
 const context = await createDefaultOpsContext({ repoRoot });
 
-// A previous server may have died with runs in flight; their records would
-// otherwise claim to be running forever.
-const interrupted = await context.store.reconcile();
-if (interrupted.length > 0) {
-  console.log(`[eval-ops] marked ${interrupted.length} orphaned run(s) as interrupted`);
-}
-
 const server = Bun.serve({
   hostname: process.env.EVAL_OPS_BIND ?? "127.0.0.1",
   port: Number(process.env.EVAL_OPS_PORT ?? 4321),
