@@ -18,11 +18,13 @@ equivalent env) — harnesses call real models.
 | `profile`     | `bun run eval:profile`     | `EnrichmentGenerator.invoke` (incl. the PII-redaction guarantee)              |
 | `opportunity` | `bun run eval:opportunity` | `OpportunityPresenter.present` (the user-facing card: headline/summary/greeting) |
 | `clarification` | `bun run eval:clarification` | `IntentClarifier` QUD underspecification taxonomy (exact-match corpus)     |
+| `discovery-retrieval` | `bun run eval:discovery-retrieval` | paired real HyDE/embedding retrieval over frozen premise vs user-context profile corpora |
 
 Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
-[`opportunity`](./opportunity/README.md) · [`clarification`](./clarification/README.md).
+[`opportunity`](./opportunity/README.md) · [`clarification`](./clarification/README.md) ·
+[`discovery-retrieval`](./discovery-retrieval/README.md).
 
 ## Public artifact viewer
 

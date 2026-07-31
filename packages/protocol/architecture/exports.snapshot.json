@@ -1383,6 +1383,48 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
+      "name": "discoveryAllowedTypes",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryIntentMatchingEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryProfileMatchingEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryProfileSource",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "resetDiscoveryEnvWarningsForTests",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DiscoveryMatchType",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DiscoveryProfileSource",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
       "name": "poolQuestionsVisitTrigger",
       "kind": "value",
       "stability": "stable",

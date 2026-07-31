@@ -1731,6 +1731,26 @@ export interface Database {
   }>>;
 
   /**
+   * Cosine similarity search against user_context embeddings, scoped to shared networks.
+   * Matches only per-network context rows (the global networkId-null row is never a
+   * candidate), excluding the discovering user. Optional — lightweight-mode
+   * context-to-context discovery no-ops when the adapter omits it.
+   */
+  searchUserContextsBySimilarity?(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }): Promise<Array<{
+    contextId: string;
+    userId: string;
+    networkId: string;
+    text: string;
+    similarity: number;
+  }>>;
+
+  /**
    * Batched version of premise similarity search. Executes one bounded DB call
    * for all selected source premises instead of one query per source premise.
    * Optional for older/test adapters; OpportunityGraph falls back to the
@@ -2382,6 +2402,8 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
+  // Context-to-context discovery in OpportunityGraph
+  | 'searchUserContextsBySimilarity'
 > & Pick<
   NegotiationQueries,
   // Orphan heal in OpportunityGraph persist node
@@ -2439,6 +2461,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
+  // Context-to-context discovery
+  | 'searchUserContextsBySimilarity'
   // HyDE documents for context-to-intent HyDE search
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)

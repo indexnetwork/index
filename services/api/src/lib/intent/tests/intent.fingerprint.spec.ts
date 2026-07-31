@@ -57,6 +57,19 @@ describe('intent fingerprint', () => {
     expect(canApplyExpectedIntentUpdate(active, fingerprint)).toBe(false);
   });
 
+  it('enforces an owner-only expectation even without a fingerprint', () => {
+    const intent = {
+      payload: 'Find collaborators',
+      summary: null,
+      userId: 'owner-1',
+      status: 'PAUSED',
+      archivedAt: new Date(),
+    };
+
+    expect(canApplyExpectedIntentUpdate(intent, undefined, 'owner-1')).toBe(true);
+    expect(canApplyExpectedIntentUpdate(intent, undefined, 'owner-2')).toBe(false);
+  });
+
   it('preserves lifecycle-agnostic ordinary updates when no expectation is supplied', () => {
     expect(canApplyExpectedIntentUpdate({
       payload: 'Find collaborators',

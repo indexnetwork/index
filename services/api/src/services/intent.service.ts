@@ -8,6 +8,7 @@ import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { IntentEvents } from '../events/intent.event';
 import { intentProposalAnalysisSchema } from '../lib/intent/intent-proposal';
+import { indexExistingIntentForSeed as indexSeedIntent } from '../lib/intent/seed-indexer';
 
 const logger = log.service.from("IntentService");
 
@@ -77,6 +78,7 @@ export class IntentService {
   private proposalAdapter: IntentProposalDatabaseAdapter;
   private embedder: EmbedderAdapter;
   private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+  private seedIndexQueue: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
   private questionerEnqueue?: QuestionerEnqueueFn;
   private emitProposalCreated: (intentId: string, userId: string) => void;
 
@@ -88,6 +90,7 @@ export class IntentService {
     proposalAdapter?: IntentProposalDatabaseAdapter;
     embedder?: EmbedderAdapter;
     proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
+    seedIndexQueue?: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
     questionerEnqueue?: QuestionerEnqueueFn;
     emitProposalCreated?: (intentId: string, userId: string) => void;
   }) {
@@ -96,6 +99,7 @@ export class IntentService {
     this.db = this.adapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
     this.proposalQueue = deps?.proposalQueue ?? intentQueue;
+    this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
     this.questionerEnqueue = deps?.questionerEnqueue ?? questionerEnqueueIfEnabled();
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue, this.questionerEnqueue);
@@ -486,6 +490,22 @@ export class IntentService {
   /** Reject a pending durable proposal owned by the authenticated user. */
   async rejectProposal(userId: string, proposalId: string): Promise<boolean> {
     return this.proposalAdapter.rejectProposal(proposalId, userId);
+  }
+
+  /**
+   * Index an already-persisted seed intent through the normal embedding and HyDE path.
+   * Unlike creation-time seed helpers, this preserves a caller-owned deterministic ID.
+   */
+  async indexExistingIntentForSeed(intentId: string, userId: string, description: string): Promise<void> {
+    logger.verbose('Indexing existing seed intent', { intentId, userId });
+    await indexSeedIntent({
+      generateEmbedding: (text) => this.embedder.generate(text),
+      updateIntent: (id, data) => this.adapter.updateIntent(id, data),
+      runHyde: ({ intentId: id, userId: ownerId }) => this.seedIndexQueue.runGenerateHydeSync(
+        { intentId: id, userId: ownerId },
+        { skipOpportunity: true },
+      ),
+    }, { intentId, userId, description });
   }
 
   /**

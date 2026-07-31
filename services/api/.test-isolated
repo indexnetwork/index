@@ -115,6 +115,8 @@ src/controllers/tests/conversation.negotiation-activity.isolated.ts
 src/adapters/tests/archive-legacy-negotiations.isolated.ts
 src/lib/mcp/tests/owner-approval.isolated.ts
 src/controllers/tests/opportunity.owner-approval.isolated.ts
+src/services/tests/intent.service.seed-index.isolated.ts
+src/cli/tests/discovery-env-matrix-base-indexer.isolated.ts
 src/services/tests/signal-intake.service.isolated.ts
 src/services/tests/signal-intake.writeback.isolated.ts
 src/services/tests/signal-intake.writeback-wiring.isolated.ts
