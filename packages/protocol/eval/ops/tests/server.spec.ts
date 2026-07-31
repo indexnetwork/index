@@ -7,8 +7,9 @@ import { FsArtifactSource } from "../ops.artifacts.js";
 import { OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
+import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveIdentityEndpoints, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 
@@ -110,6 +111,7 @@ async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
       identities,
       webAppUrl: "https://index.network",
       callbackPort: 4321,
+      uiUrl: "http://127.0.0.1:5174",
     },
     ...overrides,
   };
@@ -795,6 +797,34 @@ describe("authentication", () => {
       ]);
     });
 
+    it("claims every route it serves, so an embedder cannot answer one itself", () => {
+      // apps/eval-ops/server.ts mounts this handler behind a static file server and
+      // has to decide, per request, which one answers. It used to ask
+      // `startsWith("/api/")`, which is false for /callback — so the SPA answered
+      // the sign-in bridge with index.html and left the minted API key in the
+      // browser's history for a sign-in that could never complete. The forwarding
+      // rule is now isOpsServerPath, and this pins it against the inventory above:
+      // a route added outside /api/ fails here rather than falling through.
+      for (const route of API_ROUTES) {
+        expect(isOpsServerPath(route.path.split("?")[0])).toBe(true);
+      }
+      expect(isOpsServerPath(OPS_CALLBACK_PATH)).toBe(true);
+      // And it claims nothing the SPA owns.
+      for (const spa of ["/", "/index.html", "/assets/app.js", "/launch", "/r/some-id"]) {
+        expect(isOpsServerPath(spa)).toBe(false);
+      }
+    });
+
+    it("answers /callback at the one path the bridge accepts", async () => {
+      // validateCliCallbackUrl in apps/web/src/lib/cli-auth.ts requires exactly
+      // this pathname, so the constant the forwarding rule shares is the same one
+      // the handler dispatches on.
+      const state = states.mint();
+      const response = await handler(new Request(`http://localhost${OPS_CALLBACK_PATH}?state=${state}&api_key=k`));
+
+      expect(response.status).toBe(302);
+    });
+
     it("gates the unknown-route 404 as well, so probing needs a session", async () => {
       // A 404 that answers anonymously would still confirm which routes exist.
       expect((await anonymous("GET", "/api/nope")).status).toBe(401);
@@ -839,13 +869,15 @@ describe("authentication", () => {
   describe("GET /callback", () => {
     const callback = (query: string) => handler(new Request(`http://localhost/callback?${query}`));
 
-    it("establishes a session and redirects to the app", async () => {
+    it("establishes a session and redirects to the configured UI", async () => {
       const state = states.mint();
 
       const response = await callback(`state=${state}&api_key=k`);
 
       expect(response.status).toBe(302);
-      expect(response.headers.get("location")).toBe("/");
+      // Not a bare "/": in the documented two-process flow this API serves no UI,
+      // so "/" is its own 404 and the operator has to navigate back by hand.
+      expect(response.headers.get("location")).toBe("http://127.0.0.1:5174");
       const cookie = response.headers.get("set-cookie") ?? "";
       expect(cookie).toMatch(/HttpOnly/i);
       expect(cookie).toMatch(/SameSite=Lax/i);
@@ -1020,12 +1052,67 @@ describe("authentication", () => {
   });
 });
 
+describe("resolveIdentityEndpoints", () => {
+  // The bridge mints the API key and the resolver verifies it, so the two are one
+  // pair. A mismatched pair does not fail at startup: it fails at the end of a
+  // browser round-trip as "No Index account could be resolved for this sign-in",
+  // which reads like a permissions problem and is not one. Pure, so this needs no
+  // server, socket or environment mutation.
+  it("defaults both endpoints to the same environment", () => {
+    const resolved = resolveIdentityEndpoints({});
+
+    // Both local. The old defaults paired a production bridge with a local API.
+    expect(resolved).toEqual({ webAppUrl: "http://localhost:3000", apiUrl: "http://localhost:3001" });
+  });
+
+  it("refuses a half-configured pair rather than silently defaulting the other half", () => {
+    // This is exactly how the production-bridge/local-resolver trap was reachable.
+    expect(() => resolveIdentityEndpoints({ WEB_APP_URL: "https://index.network" })).toThrow(/API_URL/);
+    expect(() => resolveIdentityEndpoints({ API_URL: "https://protocol.dev.index.network" })).toThrow(/WEB_APP_URL/);
+  });
+
+  it("refuses a local bridge with a remote resolver, and the reverse", () => {
+    expect(() =>
+      resolveIdentityEndpoints({ WEB_APP_URL: "https://index.network", API_URL: "http://localhost:3001" }),
+    ).toThrow(/not the same environment/);
+    expect(() =>
+      resolveIdentityEndpoints({ WEB_APP_URL: "http://localhost:3000", API_URL: "https://protocol.dev.index.network" }),
+    ).toThrow(/not the same environment/);
+  });
+
+  it("accepts a coherent pair, local or remote", () => {
+    expect(resolveIdentityEndpoints({ WEB_APP_URL: "http://localhost:3000", API_URL: "http://127.0.0.1:3001" }))
+      .toEqual({ webAppUrl: "http://localhost:3000", apiUrl: "http://127.0.0.1:3001" });
+    // The pair .env.test sets, which is what `eval:web` actually runs with.
+    expect(resolveIdentityEndpoints({ WEB_APP_URL: "https://dev.index.network", API_URL: "https://protocol.dev.index.network" }))
+      .toEqual({ webAppUrl: "https://dev.index.network", apiUrl: "https://protocol.dev.index.network" });
+  });
+
+  it("reads an empty value as unset, not as an empty origin", () => {
+    expect(resolveIdentityEndpoints({ WEB_APP_URL: "  ", API_URL: "" })).toEqual({
+      webAppUrl: "http://localhost:3000",
+      apiUrl: "http://localhost:3001",
+    });
+  });
+
+  it("refuses a value that is not a URL at all", () => {
+    expect(() => resolveIdentityEndpoints({ WEB_APP_URL: "index.network", API_URL: "http://localhost:3001" }))
+      .toThrow(/not a usable URL/);
+  });
+});
+
 describe("createDefaultOpsContext", () => {
-  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "EVAL_OPS_PORT"] as const;
+  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "EVAL_OPS_PORT", "EVAL_OPS_UI_URL"] as const;
   const original: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    for (const key of ENV_KEYS) original[key] = process.env[key];
+    // Saved and then cleared: these tests assert what the *defaults* wire, so an
+    // ambient API_URL or WEB_APP_URL in the shell that runs them would otherwise
+    // decide the answer — and a half-set ambient pair now refuses to start.
+    for (const key of ENV_KEYS) {
+      original[key] = process.env[key];
+      delete process.env[key];
+    }
   });
 
   afterEach(() => {
@@ -1040,7 +1127,9 @@ describe("createDefaultOpsContext", () => {
     // it. If they ever disagree the bridge delivers the credential to a port
     // nothing is listening on, and sign-in fails with no visible cause.
     process.env.EVAL_OPS_PORT = "4399";
+    // Set as a pair: a half-configured environment now refuses to start.
     process.env.WEB_APP_URL = "https://index.network";
+    process.env.API_URL = "https://protocol.index.network";
 
     const built = await createDefaultOpsContext({ repoRoot: root });
     const response = await createOpsHandler(built)(
@@ -1062,5 +1151,42 @@ describe("createDefaultOpsContext", () => {
     // An anonymous read is refused by the context the real entrypoint uses.
     const response = await createOpsHandler(built)(new Request("http://localhost/api/runs"));
     expect(response.status).toBe(401);
+  });
+
+  it("sends a completed sign-in to the UI, not to a route this server does not serve", async () => {
+    // The standalone API serves no UI: a bare "/" here is its own 404.
+    const built = await createDefaultOpsContext({ repoRoot: root });
+
+    expect(built.auth?.uiUrl).toBe("http://127.0.0.1:5174");
+  });
+
+  it("lets an embedder that serves the UI itself say so", async () => {
+    // apps/eval-ops/server.ts serves the SPA on the same origin as the API.
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/" });
+
+    expect(built.auth?.uiUrl).toBe("/");
+  });
+
+  it("lets the environment override the redirect target", async () => {
+    process.env.EVAL_OPS_UI_URL = "http://127.0.0.1:6000";
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/" });
+
+    expect(built.auth?.uiUrl).toBe("http://127.0.0.1:6000");
+  });
+
+  it("refuses to send a completed sign-in off loopback", async () => {
+    // Configuration, never a request parameter — but a sign-in that hands the
+    // browser to another origin is a mistake worth refusing loudly.
+    process.env.EVAL_OPS_UI_URL = "https://evil.example";
+
+    await expect(createDefaultOpsContext({ repoRoot: root })).rejects.toThrow(/loopback/);
+  });
+
+  it("refuses to start on a half-configured identity pair", async () => {
+    process.env.WEB_APP_URL = "https://index.network";
+    delete process.env.API_URL;
+
+    await expect(createDefaultOpsContext({ repoRoot: root })).rejects.toThrow(/API_URL/);
   });
 });

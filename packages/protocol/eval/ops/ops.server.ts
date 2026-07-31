@@ -33,6 +33,7 @@ import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, OneTimeStateStore,
 import { compareArtifacts } from "./ops.compare.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
+import { OPS_CALLBACK_PATH } from "./ops.paths.js";
 import { loadProfiles, resolveProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
@@ -68,6 +69,16 @@ export interface OpsAuthContext {
   webAppUrl: string;
   /** The port this server's /callback is reachable on. */
   callbackPort: number;
+  /**
+   * Where a completed sign-in sends the browser.
+   *
+   * Configuration, never a request parameter, so this cannot become an open
+   * redirect. It is not always `/`: in the documented two-process dev flow the
+   * callback is answered by this API on :4321, which serves no UI at all, so a
+   * bare `/` lands the operator on `{"error":"Unknown route: GET /"}`. See
+   * `resolveUiUrl`.
+   */
+  uiUrl: string;
 }
 
 /** Origins a browser may legitimately be running the ops UI on: loopback only. */
@@ -139,7 +150,7 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
     try {
       // Ahead of the gate: this is the request that establishes a session, so it
       // cannot require one. It is still behind both loopback guards above.
-      if (url.pathname === "/callback" && request.method === "GET") {
+      if (url.pathname === OPS_CALLBACK_PATH && request.method === "GET") {
         return await completeSignIn(context, url);
       }
 
@@ -187,8 +198,11 @@ function authRefusal(context: OpsContext, request: Request, url: URL): Response 
   if (identity === null) {
     return json({ error: "Sign in with your Index account to use the eval ops site.", authenticated: false }, 401);
   }
-  // Re-checked on every request rather than trusted from sign-in time: the policy
-  // is the authority, and a session established before it is not a licence.
+  // The *domain* rule is re-checked on every request rather than trusted from
+  // sign-in time, so narrowing the allowed domain refuses live sessions too.
+  // Verification is not re-checked: a session only exists past a verified check
+  // at /callback, and the credential that could re-ask the API was discarded
+  // there. `emailVerified: true` below states that, rather than proving it.
   const verdict = assessIdentity({ email: identity.email, emailVerified: true, name: identity.name });
   if (!verdict.allowed) {
     return json({ error: verdict.reason, authenticated: true, permitted: false }, 403);
@@ -247,7 +261,7 @@ async function completeSignIn(context: OpsContext, url: URL): Promise<Response> 
   return new Response(null, {
     status: 302,
     headers: {
-      Location: "/",
+      Location: auth.uiUrl,
       "Set-Cookie": `${SESSION_COOKIE}=${session}; ${SESSION_COOKIE_ATTRIBUTES}`,
     },
   });
@@ -881,20 +895,141 @@ async function readEnvValue(file: string, key: string): Promise<string | null> {
 // Default wiring
 // ---------------------------------------------------------------------------
 
-/** Where the API that resolves an identity lives, when the environment does not say. */
+/**
+ * Where the API that resolves an identity lives, when the environment does not say.
+ *
+ * Paired with {@link DEFAULT_WEB_APP_URL} on purpose: see {@link resolveIdentityEndpoints}.
+ */
 const DEFAULT_API_URL = "http://localhost:3001";
-/** Where the web app serving the /cli-auth bridge lives, when the environment does not say. */
-const DEFAULT_WEB_APP_URL = "https://index.network";
+/**
+ * Where the web app serving the /cli-auth bridge lives, when the environment does not say.
+ *
+ * The local web dev server, matching {@link DEFAULT_API_URL}'s local API. It was
+ * `https://index.network`, which paired a *production* bridge with a *local*
+ * resolver: the bridge minted a production API key and the local API could not
+ * verify it, so sign-in refused with "No Index account could be resolved" and
+ * nothing said why. Both defaults now name the same environment.
+ */
+const DEFAULT_WEB_APP_URL = "http://localhost:3000";
 /** The port this server listens on, when the environment does not say. Mirrors ops.serve.ts. */
 const DEFAULT_PORT = 4321;
+/**
+ * Where a completed sign-in sends the browser, when the environment does not say.
+ *
+ * The Vite dev server from the documented two-process flow, which is the UI in
+ * that mode — this API serves no UI. The single-process entrypoint
+ * (apps/eval-ops/server.ts) serves both from one origin and passes `uiUrl: "/"`.
+ */
+const DEFAULT_UI_URL = "http://127.0.0.1:5174";
+
+/** Hosts a sign-in may return the browser to, and the only ones this server may name. */
+const LOOPBACK_UI_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/**
+ * Reads an environment variable, treating an empty or whitespace-only value as unset.
+ *
+ * `WEB_APP_URL=` in a dotenv file is an operator saying nothing, not an operator
+ * naming the empty origin, and `??` alone would take it literally.
+ */
+function readEnv(env: Record<string, string | undefined>, key: string): string | undefined {
+  const value = env[key];
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * The bridge and the resolver, checked to be the same environment before the server starts.
+ *
+ * These two are one pair: `WEB_APP_URL` mints the API key and `API_URL` verifies
+ * it. A key minted by one deployment is meaningless to another, so a mismatched
+ * pair does not fail at startup — it fails at the end of a browser round-trip,
+ * as "No Index account could be resolved for this sign-in", which reads like a
+ * permissions problem and is not one. Failing loudly here costs the operator one
+ * clear message instead of a debugging session.
+ *
+ * Two ways a pair is refused:
+ *  - exactly one of the two is set. The other silently keeps its default, which
+ *    is how the production-bridge/local-resolver trap was reachable at all.
+ *  - one names a loopback host and the other does not, so they cannot be the
+ *    same deployment.
+ *
+ * Exported for tests: it is pure, so the pairing rule needs no server, socket or
+ * environment mutation to pin.
+ */
+export function resolveIdentityEndpoints(env: Record<string, string | undefined>): { webAppUrl: string; apiUrl: string } {
+  const webAppUrl = readEnv(env, "WEB_APP_URL");
+  const apiUrl = readEnv(env, "API_URL");
+
+  if (webAppUrl === undefined && apiUrl === undefined) {
+    return { webAppUrl: DEFAULT_WEB_APP_URL, apiUrl: DEFAULT_API_URL };
+  }
+  if (webAppUrl === undefined || apiUrl === undefined) {
+    const named = webAppUrl === undefined ? "API_URL" : "WEB_APP_URL";
+    const missing = webAppUrl === undefined ? "WEB_APP_URL" : "API_URL";
+    throw new Error(
+      `Refusing to start: ${named} is set but ${missing} is not. The eval ops sign-in mints an API key at `
+      + `WEB_APP_URL and verifies it at API_URL, so a key minted by one deployment is not verifiable by `
+      + `another. Set both to the same environment, or neither (which defaults to ${DEFAULT_WEB_APP_URL} `
+      + `and ${DEFAULT_API_URL}).`,
+    );
+  }
+  if (isLoopbackUrl(webAppUrl, "WEB_APP_URL") !== isLoopbackUrl(apiUrl, "API_URL")) {
+    throw new Error(
+      `Refusing to start: WEB_APP_URL (${webAppUrl}) and API_URL (${apiUrl}) are not the same environment — one is `
+      + `local and the other is not. The eval ops sign-in mints an API key at WEB_APP_URL and verifies it at `
+      + `API_URL, so a mismatched pair refuses every sign-in with "No Index account could be resolved".`,
+    );
+  }
+  return { webAppUrl, apiUrl };
+}
+
+/** True when a configured URL names a loopback host. Throws on a URL that is not one. */
+function isLoopbackUrl(value: string, name: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Refusing to start: ${name} (${value}) is not a usable URL.`);
+  }
+  return LOOPBACK_UI_HOSTNAMES.has(parsed.hostname.replace(/^\[|\]$/g, ""));
+}
+
+/**
+ * Where a completed sign-in returns the browser.
+ *
+ * `EVAL_OPS_UI_URL` overrides, then the embedder's own answer (the single-process
+ * entrypoint serves the UI itself and says `/`), then {@link DEFAULT_UI_URL}.
+ *
+ * Restricted to a same-origin path or a loopback origin. This value is never
+ * taken from a request, so it is not an open-redirect sink today; the check is
+ * here so it cannot become one by configuration, and because a sign-in that
+ * hands the browser to a non-local origin is a mistake worth refusing loudly.
+ */
+function resolveUiUrl(env: Record<string, string | undefined>, fallback: string | undefined): string {
+  const value = readEnv(env, "EVAL_OPS_UI_URL") ?? fallback ?? DEFAULT_UI_URL;
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  if (!isLoopbackUrl(value, "EVAL_OPS_UI_URL")) {
+    throw new Error(
+      `Refusing to start: EVAL_OPS_UI_URL (${value}) is not a loopback origin or a same-origin path. `
+      + `The eval ops site is loopback-only, so a sign-in must not hand the browser anywhere else.`,
+    );
+  }
+  return value;
+}
 
 /** Builds the context the standalone server runs on: everything rooted at the repository. */
-export async function createDefaultOpsContext(options: { repoRoot: string }): Promise<OpsContext> {
+export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl?: string }): Promise<OpsContext> {
   const protocolDir = path.join(options.repoRoot, "packages/protocol");
   const evalDir = path.join(protocolDir, "eval");
   const store = new FsRunStore({ evalDir });
   const executor = new LocalProcessRunExecutor({ store, cwd: protocolDir });
   const databaseUrl = process.env.DATABASE_URL;
+
+  // Ahead of any I/O: a misconfigured identity pair must stop the server, not
+  // surface as a refused sign-in five minutes later.
+  const endpoints = resolveIdentityEndpoints(process.env);
+  const uiUrl = resolveUiUrl(process.env, options.uiUrl);
 
   // Reported, not fatal: fixture control is only one page, and the reset route
   // fails closed on the same divergence. A silent mismatch is what must not happen.
@@ -930,8 +1065,9 @@ export async function createDefaultOpsContext(options: { repoRoot: string }): Pr
       // The bridge mints a real API key against the operator's own browser
       // session, so this resolver is the only part of the server that talks to
       // the API at all.
-      identities: new ApiIdentityResolver({ apiUrl: process.env.API_URL ?? DEFAULT_API_URL }),
-      webAppUrl: process.env.WEB_APP_URL ?? DEFAULT_WEB_APP_URL,
+      identities: new ApiIdentityResolver({ apiUrl: endpoints.apiUrl }),
+      webAppUrl: endpoints.webAppUrl,
+      uiUrl,
       // Must match the port Bun.serve actually binds, or the bridge would send the
       // credential to a port nothing is listening on. ops.serve.ts reads the same
       // variable and the same default.
