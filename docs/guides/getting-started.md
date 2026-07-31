@@ -280,7 +280,15 @@ cp .env.example .env.test
 
 Change the copied file's `NODE_ENV=development` to `NODE_ENV=test` (or remove
 the declaration), set `DATABASE_URL` to the disposable database, and opt in
-explicitly with `TEST_DATABASE_SAFE=1`. Test entry points capture test mode
+explicitly with `TEST_DATABASE_SAFE=1`.
+
+This is enforced, not just advised: readiness refuses any `DATABASE_URL` whose
+database is named `*prod` or `*production`. Every Neon branch in this project —
+production, dev and local-dev alike — exposes a `protocol_prod` database holding
+a copy of real user data, so that name marks real data on *any* branch, not just
+the production one. Each branch also carries an empty `neondb` alongside it; that
+is the database to point tests at. There is deliberately no override flag, since
+one would reintroduce the footgun the check exists to remove. Test entry points capture test mode
 before dotenv loads and reject conflicting `NODE_ENV` values, so
 `db:migrate:test` cannot bypass the safety marker. Then provision the schema:
 

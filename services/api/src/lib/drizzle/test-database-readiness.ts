@@ -92,11 +92,34 @@ export interface TestDatabaseReadinessOptions {
 
 
 /**
+ * Database names that mark a database as carrying real user data.
+ *
+ * `TEST_DATABASE_SAFE=1` alone is a weak barrier: it says the operator believes
+ * the target is disposable, but nothing checks that belief. In this project every
+ * Neon branch — production, dev and local-dev alike — exposes a `protocol_prod`
+ * database holding a copy of real user data, alongside an empty `neondb`. So the
+ * database *name*, not the branch, is what distinguishes real data from a
+ * disposable target.
+ */
+const REAL_DATA_DATABASE_NAMES = /^(.*_)?(prod|production)$/i;
+
+/**
+ * Extracts the database name from a PostgreSQL URL path.
+ *
+ * @param parsed - Parsed connection URL.
+ * @returns The database name, or an empty string when the path carries none.
+ */
+function readDatabaseName(parsed: URL): string {
+  return decodeURIComponent(parsed.pathname.replace(/^\//, '')).trim();
+}
+
+/**
  * Validates the test database URL without exposing credentials in diagnostics.
  *
  * @param value - Candidate PostgreSQL URL.
  * @returns The validated URL.
- * @throws When the URL is missing, malformed, or uses a non-PostgreSQL scheme.
+ * @throws When the URL is missing, malformed, uses a non-PostgreSQL scheme, or
+ *   names a database that carries real user data.
  */
 export function validateTestDatabaseUrl(value: string | undefined): string {
   if (!value?.trim()) {
@@ -105,13 +128,27 @@ export function validateTestDatabaseUrl(value: string | undefined): string {
     );
   }
 
+  let databaseName: string;
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
       throw new Error('invalid protocol');
     }
+    databaseName = readDatabaseName(parsed);
   } catch {
     throw new Error('[test-db] DATABASE_URL must be a valid postgres:// or postgresql:// URL.');
+  }
+
+  // Deliberately fails closed with no override: an escape hatch here would
+  // reintroduce exactly the footgun this check exists to remove. Point the suite
+  // at a disposable database instead of teaching it to ignore the warning.
+  if (REAL_DATA_DATABASE_NAMES.test(databaseName)) {
+    throw new Error(
+      `[test-db] Refusing to run tests against a database that carries real data ("${databaseName}"). `
+      + 'Database-backed tests truncate and rewrite tables. Point DATABASE_URL in the repository-root '
+      + '.env.test at a disposable database — for example the empty "neondb" on a Neon dev branch with '
+      + 'migrations applied (cd services/api && bun run db:migrate) — never a *_prod/*_production database.',
+    );
   }
 
   return value;
