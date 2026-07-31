@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import type { RunRecord, RunSpec, RunStatus } from "./ops.types.js";
+import type { IndexIssue, RunRecord, RunSpec, RunStatus } from "./ops.types.js";
 
 /** Maps the documented harness exit-code contract onto a run status. */
 export function statusFromExitCode(code: number): RunStatus {
@@ -39,11 +39,16 @@ export interface CreateRunInput {
   workload: number;
 }
 
+export interface ListResult {
+  records: RunRecord[];
+  issues: IndexIssue[];
+}
+
 export interface RunStore {
   create(input: CreateRunInput): Promise<RunRecord>;
   update(id: string, patch: Partial<RunRecord>): Promise<RunRecord>;
   get(id: string): Promise<RunRecord | null>;
-  list(): Promise<RunRecord[]>;
+  list(): Promise<ListResult>;
   /** Absolute path of the run's stdout log. */
   logPath(id: string): string;
   /** Absolute path the harness should write its report to. */
@@ -106,19 +111,30 @@ export class FsRunStore implements RunStore {
     return (await file.json()) as RunRecord;
   }
 
-  async list(): Promise<RunRecord[]> {
+  async list(): Promise<ListResult> {
     let entries: string[];
     try {
       entries = (await readdir(this.rootDir, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
     } catch {
-      return [];
+      return { records: [], issues: [] };
     }
     const records: RunRecord[] = [];
+    const issues: IndexIssue[] = [];
     for (const id of entries) {
-      const record = await this.get(id);
-      if (record !== null) records.push(record);
+      try {
+        const record = await this.get(id);
+        if (record !== null) records.push(record);
+      } catch (error) {
+        issues.push({
+          path: `${id}/meta.json`,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
-    return records.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+    return {
+      records: records.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)),
+      issues,
+    };
   }
 
   logPath(id: string): string {
@@ -131,7 +147,8 @@ export class FsRunStore implements RunStore {
 
   async reconcile(): Promise<RunRecord[]> {
     const changed: RunRecord[] = [];
-    for (const record of await this.list()) {
+    const { records } = await this.list();
+    for (const record of records) {
       // Terminal statuses are already final.
       if (TERMINAL.has(record.status)) continue;
       // A running record with a live process is still valid.
