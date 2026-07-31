@@ -386,9 +386,10 @@ export const signalIntakePacks = pgTable('signal_intake_packs', {
   }>().notNull(),
   premiseHash: text('premise_hash'),
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  userIdIdx: index('signal_intake_packs_user_id_idx').on(table.userId),
-}));
+});
+// No explicit user_id index: `.unique()` on user_id already creates
+// `signal_intake_packs_user_id_unique`, a btree on exactly that column, which
+// serves every lookup (getPack) and the upsert's ON CONFLICT target.
 
 export type SignalIntakePackRow = typeof signalIntakePacks.$inferSelect;
 export type NewSignalIntakePackRow = typeof signalIntakePacks.$inferInsert;
