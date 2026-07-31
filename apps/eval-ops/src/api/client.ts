@@ -224,19 +224,44 @@ export const api = {
  * Subscribes to a run's SSE stream. Returns an unsubscribe function.
  *
  * The server's SSE stream replays the log from byte 0 and then follows, emitting
- * both log and status events.
+ * both log and status events. The server JSON-encodes all event data, so both log
+ * chunks and status records require parsing.
+ *
+ * EventSource will auto-reconnect on network failures. Each reconnect replays from
+ * byte 0, so consumers may see duplicate log lines. The stream ends when the run
+ * reaches a terminal status.
  */
 export function subscribeToRun(
   id: string,
-  handlers: { onLog: (chunk: string) => void; onStatus: (status: RunRecord) => void },
+  handlers: {
+    onLog: (chunk: string) => void;
+    onStatus: (status: RunRecord) => void;
+    onError: (event: Event) => void;
+  },
 ): () => void {
   const source = new EventSource(`/api/runs/${id}/stream`);
-  source.addEventListener('log', (event) =>
-    handlers.onLog((event as MessageEvent<string>).data),
-  );
-  source.addEventListener('status', (event) => {
-    const record = JSON.parse((event as MessageEvent<string>).data);
-    handlers.onStatus(record);
+
+  source.addEventListener('log', (event) => {
+    try {
+      const chunk = JSON.parse((event as MessageEvent<string>).data);
+      handlers.onLog(chunk);
+    } catch {
+      // Malformed frame: ignore to keep the stream alive
+    }
   });
+
+  source.addEventListener('status', (event) => {
+    try {
+      const record = JSON.parse((event as MessageEvent<string>).data);
+      handlers.onStatus(record);
+    } catch {
+      // Malformed frame: ignore to keep the stream alive
+    }
+  });
+
+  source.addEventListener('error', (event) => {
+    handlers.onError(event);
+  });
+
   return () => source.close();
 }
