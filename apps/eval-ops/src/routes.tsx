@@ -1,8 +1,14 @@
 import { createBrowserRouter } from 'react-router';
+import { Overview } from './routes/Overview';
+import { Harness } from './routes/Harness';
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <div className="p-4">Welcome to eval ops</div>,
+    element: <Overview />,
+  },
+  {
+    path: '/h/:harness',
+    element: <Harness />,
   },
 ]);
