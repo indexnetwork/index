@@ -1,0 +1,6 @@
+{
+  "name": "default",
+  "description": "Committed defaults: no model or environment overrides.",
+  "models": {},
+  "env": {}
+}
