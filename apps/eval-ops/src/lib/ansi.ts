@@ -32,6 +32,27 @@ const SGR_CLASS: Record<number, string> = {
 // eslint-disable-next-line no-control-regex -- intentionally parsing ANSI escape sequences
 const ESCAPE = /\u001b\[([0-9;]*)([A-Za-z])/g;
 
+/**
+ * Strip any raw escape characters and malformed sequences from text to prevent leakage.
+ *
+ * This handles malformed sequences (unterminated, bare ESC, incomplete SGR)
+ * that fall outside the regex match, which is the NORMAL streaming case when
+ * a chunk boundary splits a sequence.
+ *
+ * Strips:
+ * - \u001b[... (incomplete CSI sequences, common when streaming chunks split mid-sequence)
+ * - \u001b alone (bare escape)
+ */
+function stripEscapes(text: string): string {
+  return (
+    text
+      // eslint-disable-next-line no-control-regex -- intentionally stripping escape sequences
+      .replace(/\u001b\[[^\u001b]*/g, '') // Strip CSI start + any following non-escape chars (incomplete sequences)
+      // eslint-disable-next-line no-control-regex -- intentionally stripping escape sequences
+      .replace(/\u001b/g, '')
+  ); // Strip any remaining bare escapes
+}
+
 export function parseAnsi(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];
   let className = '';
@@ -39,9 +60,12 @@ export function parseAnsi(input: string): AnsiSegment[] {
 
   const push = (text: string): void => {
     if (text.length === 0) return;
+    // Strip any raw escape characters that leaked through (malformed sequences)
+    const safe = stripEscapes(text);
+    if (safe.length === 0) return;
     const last = segments[segments.length - 1];
-    if (last !== undefined && last.className === className) last.text += text;
-    else segments.push({ text, className });
+    if (last !== undefined && last.className === className) last.text += safe;
+    else segments.push({ text: safe, className });
   };
 
   for (const match of input.matchAll(ESCAPE)) {

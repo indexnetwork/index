@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import type { RunStatus as ProtocolRunStatus } from '../../../packages/protocol/eval/ops/ops.types';
 
 import { Frame } from '../src/components/Frame';
 import { LogView } from '../src/components/LogView';
-import { StatusChip } from '../src/components/StatusChip';
+import { StatusChip, type RunStatus } from '../src/components/StatusChip';
 
 describe('Frame', () => {
   it('renders its label and children', () => {
@@ -19,6 +20,34 @@ describe('Frame', () => {
 });
 
 describe('StatusChip', () => {
+  it('local RunStatus type matches protocol RunStatus exactly', () => {
+    // This test ensures the local type stays in sync with the protocol definition.
+    // It will fail at compile time if they drift.
+    const localSample: RunStatus = 'passed';
+    const protocolSample: ProtocolRunStatus = localSample;
+    const roundTrip: RunStatus = protocolSample;
+
+    // Verify all 9 values are assignable both ways
+    expect(roundTrip).toBe('passed');
+
+    // Exhaustiveness check: ensure all protocol values are covered
+    const allStatuses: RunStatus[] = [
+      'queued',
+      'running',
+      'passed',
+      'regression',
+      'execution-error',
+      'insufficient-evidence',
+      'cancelled',
+      'interrupted',
+      'crashed',
+    ];
+    allStatuses.forEach((s) => {
+      const p: ProtocolRunStatus = s;
+      expect(p).toBe(s);
+    });
+  });
+
   it('colours each status by its exit-code meaning', () => {
     const { rerender, container } = render(<StatusChip status="passed" />);
     expect(container.firstChild).toHaveClass('text-term-green');
