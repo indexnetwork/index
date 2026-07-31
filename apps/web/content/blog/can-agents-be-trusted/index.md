@@ -6,7 +6,7 @@ description: "240 residents, 541 intents, 9,688 opportunities. What a month of a
 
 From May 30 to June 27, 2026, 240 residents of [Edge Esmeralda](https://edgeesmeralda.com/), the [Edge City](https://www.edgecity.live/) popup village in Healdsburg, ran the Index Network protocol as a live experiment. Each resident had a personal agent that knew what they were looking for: collaborators, co-founders, investors, hires, friends, dates. Those agents negotiated with each other continuously, in the background, deciding which intros were worth a human's time.
 
-Below is what happened, and what it tells us about handing human coordination over to autonomous agents. It works, and the harder question wasn't whether agents could be trusted. It was whether the humans on the other end could keep up.
+Below is what happened, and what it tells us about handing human coordination over to autonomous agents. We found that the harder question wasn't whether agents could be trusted, but whether the humans on the other end could keep up.
 
 *The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and [Index Network](https://index.network/). The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), [SimpleFi](https://simplefi.tech/), [Joshua Pham](https://x.com/jphorism), as well as [World](https://world.org/), [Simocracy](https://www.simocracy.org/) ([Protocol Labs](https://pl.xyz/)), and [Circleback](https://circleback.ai/).*
 
@@ -30,7 +30,7 @@ We published [three hypotheses](https://index.network/blog/engineering-serendipi
 
 ## 1. The opportunity is a working primitive
 
-An opportunity is a broker-negotiated, reasoned introduction: two parties, each agent's reasoning, a confidence score, a full lifecycle from detected to accepted or expired. It's generated end to end, at volume, with no human in the loop until the final decision. Of the opportunities residents actually saw, about 1 in 4 was accepted.
+An opportunity is a broker-negotiated, reasoned introduction: two parties, each agent's reasoning, a full lifecycle from detected to accepted or expired. It's generated end to end, at volume, with no human in the loop until the final decision. Of the opportunities residents actually saw, about 1 in 4 was accepted.
 
 ## 2. Real meetings, at a speed no human system could match
 
@@ -87,11 +87,13 @@ In their own words:
 
 > "It was very validating when my agent suggested people I had connected with socially but didn't necessarily know what they were doing professionally. It was cool seeing that people I was naturally drawn to could also be good fits as collaborators."
 
-## 4. One protocol, any agent, any mode — and people built on it
+## 4. One protocol, any agent, any mode—and people built on it
 
 Residents connected through [Hermes](https://hermes-agent.nousresearch.com/) or whatever agent they already used: [OpenClaw](https://openclaw.ai/), self-hosted clients, [Claude Code](https://claude.com/claude-code), running on a range of foundation models. Index was the only integration point; agents found each other's humans by speaking the protocol.
 
-They didn't just use it. They built on it. Two applications shipped on the live network during the event: a location-based matcher for restaurants and conferences, and a just-in-time tool for arranging in-person meetings.
+![Waffle chart of clients: Hermes 172 residents, Claude Code 41, OpenClaw 27, of 240 total. Below it, the model mix across 410,000 requests and 21.3 billion tokens: Gemini 3.5 Flash 78%, Claude Opus 4.7 8%, Gemini previews 6%, GPT-5.5 3%, other 5%.](clients-and-models.svg)
+
+They didn't just use it; they also built on it. Two applications shipped on the live network during the event: a location-based matcher for restaurants and conferences, and a just-in-time tool for arranging in-person meetings.
 
 ## 5. Agents surface supply nobody declares
 
@@ -111,7 +113,9 @@ Agents operate on a richer map of you than you operate on yourself. That's not a
 
 Agents didn't just say yes. Watching the transcripts, the counter-offers are where the real work happens, nearly twice as long as an accept, because pushing back means arguing a case.
 
-Some of that pushing back was agents catching their counterparts overclaiming: 15% of counters exist specifically to demand evidence for a claim a person's own declared intents didn't support. And when agents said no, they said no for real reasons — 57% of rejections cite a fundamental mismatch of goals, not scheduling or geography. *"This would require significant reinterpretation of both parties' stated intents,"* read one rejection. The agent declined to force a match rather than pad the numbers.
+Some of that pushing back was agents catching their counterparts overclaiming: 15% of counters exist specifically to demand evidence for a claim a person's own declared intents didn't support. And when agents said no, they said no for real reasons.
+
+57% of rejections cite a fundamental mismatch of goals, not scheduling or geography. For example: *"This would require significant reinterpretation of both parties' stated intents."* The agent declined to force a match rather than pad the numbers.
 
 ## 7. The proto-market forms through negotiation skills
 
@@ -127,14 +131,9 @@ Instead of a platform computing the "best" matches, thousands of bilateral agent
 
 ## 8. Negotiations got cheaper with scale
 
-Negotiations got dramatically more efficient as the month went on — the opposite outcome, in a good way, to what happens when humans network by hand as more strangers join the system.
+Negotiations got dramatically more efficient as the month went on. (The opposite outcome—in a good way—than if humans were to network by hand as more strangers joined the system.)
 
-| Average turns per session | Turns | |
-| --- | ---: | --- |
-| Pre-village | 2.8 | ██████████████ |
-| Post-village | 1.5 | ████████ |
-
-Agents needed fewer rounds to establish mutual interest once interaction patterns stabilized across the population. 53% of sessions resolved in a single exchange; only 4% ran to the six-turn cap. Most of that resolution happened in threads, not one-shots. 64% of sessions were continuations, agents reopening an earlier negotiation as new context arrived.
+Average turns per session fell from 2.8 pre-village to 1.5 post-village, as agents needed fewer rounds to establish mutual interest once interaction patterns stabilized across the population. 53% of sessions resolved in a single exchange; only 4% ran to the six-turn cap. Most of that resolution happened in threads, not one-shots. 64% of sessions were continuations, agents reopening an earlier negotiation as new context arrived.
 
 ## 9. When discovery is abundant, the constraint is attention
 
@@ -157,7 +156,7 @@ The agent worked on people who weren't paying attention to it, not only the ones
 
 ## 10. Chat apps are not the right surface for opportunities
 
-Opportunities arrived as notifications in Telegram that scrolled out of view. Residents asked for a dedicated application — a persistent surface to review and act on matches, which is also what would clear the latent backlog.
+Opportunities arrived as notifications in Telegram that scrolled out of view. Residents asked for a dedicated application—a persistent surface to review and act on matches, which is also what would clear the latent backlog.
 
 ---
 
@@ -165,7 +164,7 @@ Opportunities arrived as notifications in Telegram that scrolled out of view. Re
 
 **The magical interface.** Discovery is no longer the bottleneck. Agents already generate more opportunities than a chat stream can carry, while notifications disappear almost instantly. We're building a persistent home where opportunities can be reviewed, revisited, and acted on. It might even feel magical.
 
-**Hermes goes self-service.** We're packaging what we built and battle-tested — agent skills, negotiation logic, the Hermes integration — into something any network can install and run independently. The [Hermes plugin](https://github.com/indexnetwork/hermes-plugin) is the first piece of that, already public.
+**Hermes goes self-service.** We're packaging what we built and battle-tested — agent skills, negotiation logic, the Hermes integration — into something any network can install and run independently.
 
 **From village to city.** Our next deployment expands from a temporary village to permanent communities of founders, builders, and investors.
 
