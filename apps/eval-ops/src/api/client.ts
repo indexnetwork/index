@@ -146,6 +146,7 @@ export interface FixtureStatusAllowed {
   target: FixtureTarget;
   maxPersonas: number;
   appliesMigrationsOnReset: boolean;
+  seedApiKeysPath: string;
   personaCount: number | null;
   personaEmails: string[] | null;
   tables: Record<string, number> | null;

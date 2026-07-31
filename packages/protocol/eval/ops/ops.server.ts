@@ -388,6 +388,9 @@ async function fixtureStatus(context: OpsContext): Promise<Response> {
     maxPersonas: MAX_PERSONAS,
     // Named for what it is: every reset applies migrations. Drift is never probed.
     appliesMigrationsOnReset: true,
+    // Repo-relative path where db:seed writes API keys. This is a location, not content:
+    // the fixture screen shows an operator where to find keys after resetting.
+    seedApiKeysPath: ".seed-api-keys.json",
   };
   if (context.inspector === undefined) {
     return json({

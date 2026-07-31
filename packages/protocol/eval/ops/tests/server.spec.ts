@@ -186,6 +186,15 @@ describe("ops API", () => {
     expect(JSON.stringify(body)).not.toContain(":p@");
   });
 
+  it("exposes the seed API keys path as a repo-relative location without credentials", async () => {
+    const body = await (await get("/api/fixture")).json();
+    expect(body.allowed).toBe(true);
+    expect(body.seedApiKeysPath).toBe(".seed-api-keys.json");
+    // The path is a location, not content: no key material should be returned.
+    expect(JSON.stringify(body)).not.toContain("apiKey");
+    expect(JSON.stringify(body)).not.toContain("API_KEY");
+  });
+
   it("returns 404 for an unknown route", async () => {
     expect((await get("/api/nope")).status).toBe(404);
   });

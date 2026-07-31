@@ -141,7 +141,7 @@ export function Fixture() {
     );
   }
 
-  const { target, maxPersonas, appliesMigrationsOnReset, personaCount, personaEmails, tables, countsError } =
+  const { target, maxPersonas, appliesMigrationsOnReset, seedApiKeysPath, personaCount, personaEmails, tables, countsError } =
     state.status;
 
   const confirmMatches =
@@ -216,6 +216,23 @@ export function Fixture() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+
+          <div className="border-t border-term-rule pt-4">
+            <h3 className="text-term-dim mb-2">Seed Output</h3>
+            <div className="space-y-1 ml-4">
+              <div className="flex gap-4">
+                <span className="text-term-dim w-32">API keys file:</span>
+                <span className="font-mono text-sm">{seedApiKeysPath}</span>
+              </div>
+              <div className="mt-2">
+                <Frame label="">
+                  <p className="text-term-dim text-sm">
+                    The seed step (db:seed) writes persona API keys to this file in the repository root.
+                  </p>
+                </Frame>
+              </div>
             </div>
           </div>
 
