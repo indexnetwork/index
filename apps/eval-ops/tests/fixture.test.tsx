@@ -1,9 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
 
 import { Fixture } from '../src/routes/Fixture';
+import { scrubCredentials } from '../src/lib/scrub';
 
 const ALLOWED = {
   allowed: true,
@@ -195,3 +198,45 @@ describe('Fixture', () => {
   });
 });
 
+
+describe('scrubCredentials parity with the server', () => {
+  /**
+   * Fixture.tsx keeps its own copy of the server's scrubber as defence in depth:
+   * it must strip credentials even if the server's scrubbing is bypassed. Two
+   * copies of a security regex silently diverge, so pin them together — the same
+   * technique fixture.spec.ts uses upstream for REAL_DATA_DATABASE_NAMES.
+   *
+   * The server module is read as source rather than imported: ops.fixture.ts
+   * imports bun:SQL, which cannot load in a browser test environment. Comparing
+   * the regex literals is what actually matters here.
+   */
+  it('uses replacement rules identical to the ops core implementation', async () => {
+    const source = await readFile(
+      resolve(__dirname, '../../../packages/protocol/eval/ops/ops.fixture.ts'),
+      'utf8',
+    );
+
+    const serverBody = source.match(
+      /export function scrubCredentials\(message: string\): string \{([\s\S]*?)\n\}/,
+    );
+    expect(serverBody, 'scrubCredentials not found in ops.fixture.ts').not.toBeNull();
+
+    // Compare the .replace(...) chain verbatim, normalising only quote style and
+    // whitespace. Anything else differing is real divergence.
+    const normalise = (body: string) =>
+      body
+        .replace(/"/g, "'")
+        .replace(/\s+/g, '')
+        .replace(/message|text/g, 'INPUT');
+
+    expect(normalise(scrubCredentials.toString())).toContain(
+      normalise(serverBody![1]).replace(/^return/, '').replace(/;$/, ''),
+    );
+  });
+
+  it('actually removes the credential (the pin is not vacuous)', () => {
+    expect(scrubCredentials('postgresql://user:secret@host/db')).not.toContain('secret');
+    expect(scrubCredentials('password=topsecret')).not.toContain('topsecret');
+    expect(scrubCredentials('postgresql://user:secret@host/db')).toContain('host/db');
+  });
+});

@@ -5,134 +5,97 @@
  * anti-CSRF barrier, and the server answers 415 without it.
  */
 
-/** Local type aliases from packages/protocol/eval/ops/ops.types.ts */
-export type OpsHarness = 'matching' | 'profile' | 'premise' | 'opportunity';
+/**
+ * Wire types re-exported straight from the ops core.
+ *
+ * `ops.types.ts` is a zero-dependency pure-interface module, so `import type` is
+ * fully erased at build time and nothing from the protocol enters the browser
+ * bundle. Importing rather than re-declaring is deliberate: hand-maintained
+ * mirrors of these interfaces drifted three separate times during this build,
+ * and nothing in CI could catch it because a copy always typechecks against
+ * itself. There is now exactly one definition and the compiler enforces it.
+ */
+export type {
+  ArtifactRef,
+  EvalRunSpec,
+  FixtureResetSpec,
+  HarnessDescriptor,
+  HarnessFlag,
+  HarnessFlagName,
+  IndexIssue,
+  IndexResult,
+  OpsHarness,
+  RunFlags,
+  RunRecord,
+  RunSpec,
+  RunStatus,
+  RunStepRecord,
+} from '../../../../packages/protocol/eval/ops/ops.types';
 
-export type RunStatus =
-  | 'queued'
-  | 'running'
-  | 'passed'
-  | 'regression'
-  | 'execution-error'
-  | 'insufficient-evidence'
-  | 'cancelled'
-  | 'interrupted'
-  | 'crashed';
-
-export type HarnessFlagName =
-  | 'runs'
-  | 'case'
-  | 'rule'
-  | 'tier'
-  | 'noJudge'
-  | 'alpha'
-  | 'attemptTimeoutMs'
-  | 'strictEvidence';
-
-/** Mirrors HarnessFlag in packages/protocol/eval/ops/ops.types.ts. */
-export interface HarnessFlag {
-  name: HarnessFlagName;
-  /** The literal CLI flag, e.g. "--runs". */
-  cli: string;
-  kind: 'number' | 'string' | 'boolean';
-  /** Numeric bounds mirroring the server's RunFlagsSchema. Absent for non-numeric flags. */
-  min?: number;
-  max?: number;
-  step?: number;
-}
-
-export interface HarnessDescriptor {
-  harness: OpsHarness;
-  script: string;
-  flags: readonly HarnessFlag[];
-  defaultRuns: number;
-  caseCount: number;
-}
-
-export interface ArtifactRef {
-  id: string;
-  harness: OpsHarness;
-  kind: 'baseline' | 'run';
-  path: string;
-  schemaVersion?: number;
-  createdAt: string;
-  models: string[];
-  runs: number;
-  selection?: { fullCorpus: boolean; filters: Record<string, string> };
-  git?: { revision: string; dirty: boolean | null };
-  corpusFingerprint?: string;
-  configFingerprint?: string;
-  aggregatePassRate: number;
-  caseCount: number;
-  complete?: boolean | null;
-  sizeBytes?: number;
-  mtimeMs?: number;
-}
-
-export interface IndexIssue {
-  path: string;
-  message: string;
-}
-
-export interface IndexResult {
-  refs: ArtifactRef[];
-  issues: IndexIssue[];
-}
-
-export interface RunFlags {
-  runs?: number;
-  case?: string;
-  rule?: string;
-  tier?: number;
-  noJudge?: boolean;
-  alpha?: number;
-  attemptTimeoutMs?: number;
-  strictEvidence?: boolean;
-}
-
-export interface EvalRunSpec {
-  kind: 'eval';
-  harness: OpsHarness;
-  profile: string;
-  flags: RunFlags;
-}
-
-export interface FixtureResetSpec {
-  kind: 'fixture-reset';
-  personas: number;
-  migrate: boolean;
-  databaseName: string;
-}
-
-export type RunSpec = EvalRunSpec | FixtureResetSpec;
-
-export interface RunStepRecord {
-  label: string;
-  argv: string[];
-  cwd: string;
-}
-
-export interface RunRecord {
-  id: string;
-  spec: RunSpec;
-  argv: string[];
-  steps?: RunStepRecord[];
-  env: Record<string, string>;
-  profileFingerprint: string;
-  experimental: boolean;
-  status: RunStatus;
-  createdAt: string;
-  startedAt: string | null;
-  endedAt: string | null;
-  exitCode: number | null;
-  pid: number | null;
-  artifactPath: string | null;
-  workload: number;
-}
+import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
 
 export interface RunsResult {
   runs: RunRecord[];
   issues: IndexIssue[];
+}
+
+/** One scored case within an artifact's payload. */
+export interface ArtifactCase {
+  caseId: string;
+  rule: string;
+  runs: number;
+  passes: number;
+  passRate: number;
+  flaky: boolean;
+}
+
+/**
+ * The parts of a stored eval artifact this app renders. The envelope carries more
+ * (see packages/protocol/eval/shared/artifact.ts); these are the fields the
+ * scorecard and provenance views read.
+ */
+export interface Artifact {
+  artifactType: string;
+  schemaVersion: number;
+  harness: OpsHarness;
+  harnessVersion: string;
+  createdAt: string;
+  models: string[];
+  runs: number;
+  selection: { fullCorpus: boolean; filters: Record<string, string> };
+  corpusFingerprint: string;
+  configFingerprint: string;
+  git: { revision: string; dirty: boolean | null };
+  payload: {
+    cases: ArtifactCase[];
+    aggregatePassRate: number;
+  };
+}
+
+const TERMINAL_STATUSES: readonly RunStatus[] = [
+  'passed',
+  'regression',
+  'execution-error',
+  'insufficient-evidence',
+  'cancelled',
+  'interrupted',
+  'crashed',
+];
+
+/** True once a run can produce no further output. Mirrors the server's TERMINAL set. */
+export function isTerminalStatus(status: RunStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
+/**
+ * Encodes a path relative to eval/ as an artifact id.
+ *
+ * Must stay byte-identical to encodeArtifactId in
+ * packages/protocol/eval/ops/ops.artifacts.ts — an id produced here is resolved
+ * there. Pinned by a parity test in tests/client.test.ts.
+ */
+export function encodeArtifactId(relPath: string): string {
+  return btoa(relPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
 export interface FixtureTarget {
@@ -236,7 +199,7 @@ export const api = {
     return fetchJson('/api/artifacts');
   },
 
-  async artifact(id: string): Promise<unknown> {
+  async artifact(id: string): Promise<Artifact> {
     return fetchJson(`/api/artifacts/${id}`);
   },
 

@@ -5,21 +5,7 @@ import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { LogView } from '../components/LogView';
 import { CaseTable } from '../components/CaseTable';
-import { api, subscribeToRun, type CompareResult, type RunRecord, type RunStatus } from '../api/client';
-
-interface Artifact {
-  payload: {
-    cases: Array<{
-      caseId: string;
-      rule: string;
-      runs: number;
-      passes: number;
-      passRate: number;
-      flaky: boolean;
-    }>;
-    aggregatePassRate: number;
-  };
-}
+import { api, encodeArtifactId, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type RunRecord } from '../api/client';
 
 interface RunState {
   run: RunRecord | null;
@@ -27,21 +13,10 @@ interface RunState {
   artifact: Artifact | null;
   baseline: Artifact | null;
   comparison: CompareResult | null;
+  comparisonError: string | null;
   error: string | null;
-}
-
-const TERMINAL_STATUSES: RunStatus[] = [
-  'passed',
-  'regression',
-  'execution-error',
-  'insufficient-evidence',
-  'cancelled',
-  'interrupted',
-  'crashed',
-];
-
-function isTerminal(status: RunStatus): boolean {
-  return TERMINAL_STATUSES.includes(status);
+  /** Set when the stream fails before any status frame arrives. */
+  streamError: string | null;
 }
 
 export function Run() {
@@ -67,13 +42,17 @@ function RunDetail({ runId }: { runId: string }) {
     artifact: null,
     baseline: null,
     comparison: null,
+    comparisonError: null,
     error: null,
+    streamError: null,
   });
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     let logAccumulator = '';
     let mounted = true;
+    let sawStatus = false;
+    let closed = false;
 
     const unsubscribe = subscribeToRun(runId, {
       onLog: (chunk: string) => {
@@ -83,16 +62,43 @@ function RunDetail({ runId }: { runId: string }) {
       },
       onStatus: (record: RunRecord) => {
         if (!mounted) return;
-        setState((prev) => ({ ...prev, run: record }));
+        sawStatus = true;
+        setState((prev) => ({ ...prev, run: record, streamError: null }));
 
         // Fetch artifact and comparison when the run finishes
-        if (isTerminal(record.status) && record.artifactPath !== null) {
+        if (isTerminalStatus(record.status) && record.artifactPath !== null) {
           void fetchArtifactAndComparison(record);
+        }
+
+        // The server closes the stream once a run is terminal. A browser
+        // EventSource treats a closed stream as an error and reconnects every
+        // ~3s forever, and each reconnect replays the whole log from byte 0.
+        // Nothing further can arrive, so stop listening.
+        if (isTerminalStatus(record.status)) {
+          closed = true;
+          unsubscribe();
         }
       },
       onError: (_event: Event) => {
-        // EventSource auto-reconnects. On reconnect, the server replays from byte 0.
-        // Reset the accumulator so we don't duplicate the log.
+        if (!mounted || closed) return;
+
+        // A stream that errors before ever delivering a status frame is not a
+        // transient reconnect: the run id does not resolve (the server 404s an
+        // unknown id). Say so, rather than showing "Loading..." forever.
+        if (!sawStatus) {
+          closed = true;
+          unsubscribe();
+          setState((prev) => ({
+            ...prev,
+            streamError:
+              `No run with id "${runId}" is available to stream. `
+              + 'It may have been removed, or this may be an artifact id rather than a run id.',
+          }));
+          return;
+        }
+
+        // Mid-stream failure: EventSource reconnects and the server replays from
+        // byte 0, so reset the accumulator to avoid rendering the log twice.
         logAccumulator = '';
         setState((prev) => ({ ...prev, log: '' }));
       },
@@ -102,10 +108,7 @@ function RunDetail({ runId }: { runId: string }) {
       const { artifactPath, spec } = record;
       if (!artifactPath || spec.kind !== 'eval') return;
 
-      const artifactId = btoa(artifactPath)
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '');
+      const artifactId = encodeArtifactId(artifactPath);
 
       try {
         const artifact = (await api.artifact(artifactId)) as Artifact;
@@ -134,8 +137,17 @@ function RunDetail({ runId }: { runId: string }) {
               }
             }
           } catch (error) {
-            // Comparison failure is not fatal - just don't show the diff
-            console.warn('Failed to fetch comparison:', error);
+            // A comparison failure is not fatal: the run and its scorecard are
+            // still worth showing. Surface it in the UI rather than logging it,
+            // so a missing baseline diff is never silently indistinguishable
+            // from "there was nothing to compare".
+            if (mounted) {
+              setState((prev) => ({
+                ...prev,
+                comparisonError:
+                  error instanceof Error ? error.message : String(error),
+              }));
+            }
           }
         }
       } catch (error) {
@@ -174,6 +186,19 @@ function RunDetail({ runId }: { runId: string }) {
       <div className="p-4">
         <Frame label="error">
           <p className="text-term-red">{state.error}</p>
+        </Frame>
+      </div>
+    );
+  }
+
+  if (state.run === null && state.streamError !== null) {
+    return (
+      <div className="p-4 space-y-4">
+        <Link to="/" className="text-term-blue hover:underline">
+          ← overview
+        </Link>
+        <Frame label="error">
+          <p className="text-term-red">{state.streamError}</p>
         </Frame>
       </div>
     );
@@ -373,6 +398,14 @@ function RunDetail({ runId }: { runId: string }) {
               </div>
             </div>
           )}
+        </Frame>
+      )}
+
+      {state.comparisonError !== null && !run.experimental && (
+        <Frame label="baseline diff">
+          <p className="text-term-yellow">
+            Could not load the baseline comparison: {state.comparisonError}
+          </p>
         </Frame>
       )}
 

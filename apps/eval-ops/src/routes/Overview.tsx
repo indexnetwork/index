@@ -173,9 +173,9 @@ function RecentRuns({ runs }: { runs: RunRecord[] }) {
       {runs.map((run) => (
         <div key={run.id} className="flex gap-4">
           <StatusChip status={run.status} />
-          <span className="w-24">
+          <Link to={`/r/${run.id}`} className="w-24 text-term-blue hover:underline">
             {run.spec.kind === 'eval' ? run.spec.harness : 'fixture-reset'}
-          </span>
+          </Link>
           <span className="text-term-dim">
             {run.spec.kind === 'eval' ? run.spec.profile : `${run.spec.personas} personas`}
           </span>

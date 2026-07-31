@@ -1,19 +1,11 @@
-/**
- * Local type alias for RunStatus from packages/protocol/eval/ops/ops.types.ts.
- *
- * Pinned by test to fail if protocol changes. Apps do not import protocol directly.
- */
-export type RunStatus =
-  | 'queued'
-  | 'running'
-  | 'passed'
-  | 'regression'
-  | 'execution-error'
-  | 'insufficient-evidence'
-  | 'cancelled'
-  | 'interrupted'
-  | 'crashed';
+import type { RunStatus } from '../api/client';
 
+export type { RunStatus };
+
+/**
+ * Every status must map to a colour, so this record is exhaustive by type: adding
+ * a status to the protocol breaks this file until it is given a presentation.
+ */
 const STATUS: Record<RunStatus, { className: string; label: string }> = {
   passed: { className: 'text-term-green', label: '● passed' },
   regression: { className: 'text-term-red', label: '● regression' },

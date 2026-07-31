@@ -3,6 +3,7 @@ import { Shell } from './components/Shell';
 import { Overview } from './routes/Overview';
 import { Harness } from './routes/Harness';
 import { Run } from './routes/Run';
+import { ArtifactView } from './routes/ArtifactView';
 import { Launch } from './routes/Launch';
 import { Profiles } from './routes/Profiles';
 import { Compare } from './routes/Compare';
@@ -23,6 +24,12 @@ export const router = createBrowserRouter([
       {
         path: '/r/:runId',
         element: <Run />,
+      },
+      {
+        // Artifacts are addressed separately from runs: a committed baseline or a
+        // CLI-produced report has no run record to stream.
+        path: '/a/:artifactId',
+        element: <ArtifactView />,
       },
       {
         path: '/launch',

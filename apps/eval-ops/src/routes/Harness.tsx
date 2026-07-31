@@ -93,7 +93,7 @@ function ArtifactList({ artifacts }: { artifacts: ArtifactRef[] }) {
       {artifacts.map((artifact) => (
         <div key={artifact.id} className="flex gap-4">
           <Link
-            to={`/r/${artifact.id}`}
+            to={`/a/${artifact.id}`}
             className="text-term-blue hover:underline flex-1"
           >
             {artifact.path}

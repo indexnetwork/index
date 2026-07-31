@@ -23,6 +23,14 @@ const RUN: RunRecord = {
 };
 
 class MockEventSource {
+  /**
+   * Tracks close() so a test can prove the page stops listening. A real browser
+   * EventSource reconnects roughly every 3s after the server closes the stream,
+   * and the server replays the log from byte 0 each time, so failing to close is
+   * an infinite re-render loop rather than a cosmetic leak.
+   */
+  closed = false;
+
   private listeners: Map<string, Set<(event: MessageEvent | Event) => void>> = new Map();
 
   addEventListener(event: string, handler: (event: MessageEvent | Event) => void) {
@@ -32,7 +40,9 @@ class MockEventSource {
     this.listeners.get(event)!.add(handler);
   }
 
-  close() {}
+  close() {
+    this.closed = true;
+  }
 
   // Test helper to trigger events
   _emit(event: string, data: unknown) {
@@ -42,6 +52,14 @@ class MockEventSource {
         data: JSON.stringify(data),
       });
       handlers.forEach((handler) => handler(messageEvent));
+    }
+  }
+
+  /** Fires a bare error event, as EventSource does when a stream closes or fails. */
+  _emitError() {
+    const handlers = this.listeners.get('error');
+    if (handlers) {
+      handlers.forEach((handler) => handler(new Event('error')));
     }
   }
 }
@@ -146,5 +164,63 @@ describe('Run', () => {
     // Should only show the new chunk, not the accumulated old ones
     const logView = await screen.findByText(/after reconnect/);
     expect(logView.textContent).not.toContain('first chunk');
+  });
+
+  it('stops listening once the run reaches a terminal status', async () => {
+    const passedRun: RunRecord = {
+      ...RUN,
+      status: 'passed',
+      exitCode: 0,
+      endedAt: '2026-07-30T10:00:10.000Z',
+    };
+    renderRun(passedRun);
+    await screen.findByText(/● passed/);
+
+    // The server closes the stream after a terminal status. Left open, the
+    // browser reconnects every ~3s and replays the whole log forever.
+    expect(mockEventSource.closed).toBe(true);
+  });
+
+  it('keeps listening while a run is still in flight', async () => {
+    renderRun(RUN);
+    await screen.findByText(/● running/);
+
+    expect(mockEventSource.closed).toBe(false);
+  });
+
+  it('does not clear the log when the stream closes after a terminal status', async () => {
+    const passedRun: RunRecord = {
+      ...RUN,
+      status: 'passed',
+      exitCode: 0,
+      endedAt: '2026-07-30T10:00:10.000Z',
+    };
+    renderRun(passedRun);
+    await screen.findByText(/● passed/);
+
+    mockEventSource._emit('log', 'harness output');
+    await screen.findByText(/harness output/);
+
+    // A close-induced error must not wipe the log an operator is reading.
+    mockEventSource._emitError();
+
+    expect(screen.getByText(/harness output/)).toBeInTheDocument();
+  });
+
+  it('reports an unresolvable run id instead of loading forever', async () => {
+    render(
+      <RouterProvider
+        router={createMemoryRouter([{ path: '/r/:runId', element: <Run /> }], {
+          initialEntries: ['/r/not-a-run'],
+        })}
+      />,
+    );
+
+    // No status frame ever arrives: the server 404s an unknown id, so
+    // EventSource reports an error straight away.
+    mockEventSource._emitError();
+
+    expect(await screen.findByText(/No run with id/)).toBeInTheDocument();
+    expect(screen.queryByText(/Loading/)).toBeNull();
   });
 });

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 
 export interface FrameProps {
-  label: string;
+  /** Omit for an unlabelled frame; an empty <h2> would be announced as a blank heading. */
+  label?: string;
   children: ReactNode;
 }
 
@@ -15,7 +16,9 @@ export interface FrameProps {
 export function Frame({ label, children }: FrameProps) {
   return (
     <section className="relative border border-term-rule bg-term-panel px-[2ch] pt-[1lh] pb-[1lh]">
-      <h2 className="absolute -top-[0.6lh] left-[2ch] bg-term-panel px-[1ch] text-term-dim">{label}</h2>
+      {label !== undefined && label !== '' && (
+        <h2 className="absolute -top-[0.6lh] left-[2ch] bg-term-panel px-[1ch] text-term-dim">{label}</h2>
+      )}
       {children}
     </section>
   );

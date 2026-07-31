@@ -3,17 +3,7 @@ import { Link, useNavigate } from 'react-router';
 
 import { Frame } from '../components/Frame';
 import { api, type FixtureStatus } from '../api/client';
-
-/**
- * Client-side defense-in-depth: removes credentials from any string that might contain them.
- * The server already scrubs credentials, but this ensures they never reach the DOM even if
- * the server's scrubbing somehow fails or is bypassed.
- */
-function scrubCredentials(text: string): string {
-  return text
-    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, '$1')
-    .replace(/\b(password|pgpassword)=[^\s&"']+/gi, '$1=');
-}
+import { scrubCredentials } from '../lib/scrub';
 
 interface FixtureState {
   status: FixtureStatus | null;
@@ -227,7 +217,7 @@ export function Fixture() {
                 <span className="font-mono text-sm">{seedApiKeysPath}</span>
               </div>
               <div className="mt-2">
-                <Frame label="">
+                <Frame>
                   <p className="text-term-dim text-sm">
                     The seed step (db:seed) writes persona API keys to this file.
                   </p>
@@ -244,7 +234,7 @@ export function Fixture() {
                 <span>{appliesMigrationsOnReset ? 'applied on every reset' : 'not applied'}</span>
               </div>
               <div className="mt-2">
-                <Frame label="">
+                <Frame>
                   <p className="text-term-dim text-sm">
                     <span className="text-term-yellow">Note:</span> Seeding enqueues enrichment and HyDE
                     indexing jobs through Redis. A fully indexed fixture also requires the API workers
@@ -254,7 +244,7 @@ export function Fixture() {
                 </Frame>
               </div>
               <div className="mt-2">
-                <Frame label="">
+                <Frame>
                   <p className="text-term-dim text-sm">
                     <span className="text-term-yellow">Guard caveat:</span> This page reports that the
                     target is allowed based on DATABASE_URL. The reset operation performs an additional
@@ -278,7 +268,7 @@ export function Fixture() {
             </div>
           ) : (
             <div className="border-t border-term-rule pt-4 space-y-3">
-              <Frame label="">
+              <Frame>
                 <p className="text-term-red font-bold mb-2">⚠ Destructive Operation</p>
                 <p className="text-term-dim text-sm">
                   This will flush all data from {target.databaseName}, apply migrations, and reseed
