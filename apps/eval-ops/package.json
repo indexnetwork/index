@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5174",
-    "build": "vite build",
+    "build": "bun run typecheck && vite build",
     "start": "bun server.ts",
     "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
     "test": "bun --bun vitest run"
   },
   "dependencies": {

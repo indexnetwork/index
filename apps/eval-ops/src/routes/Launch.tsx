@@ -2,23 +2,19 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import { Frame } from '../components/Frame';
-import { api, type HarnessDescriptor, type EvalRunSpec, type RunFlags } from '../api/client';
-
-interface ConfigProfile {
-  name: string;
-  description: string;
-  models: Record<string, string>;
-  env: Record<string, string>;
-}
+import { api, type EvalRunSpec, type HarnessDescriptor, type HarnessFlag, type ProfileDescriptor, type RunFlags } from '../api/client';
 
 interface LaunchState {
   harnesses: HarnessDescriptor[];
-  profiles: ConfigProfile[];
+  profiles: ProfileDescriptor[];
   selectedHarness: HarnessDescriptor | null;
   selectedProfile: string;
   flags: RunFlags;
   awaitingConfirmation: boolean;
+  /** A failure loading the registry or the profiles: nothing can be launched. */
   error: string | null;
+  /** A rejected launch. Rendered inline so the entered flags survive. */
+  launchError: string | null;
 }
 
 export function Launch() {
@@ -31,6 +27,7 @@ export function Launch() {
     flags: {},
     awaitingConfirmation: false,
     error: null,
+    launchError: null,
   });
 
   useEffect(() => {
@@ -43,7 +40,7 @@ export function Launch() {
           setState((prev) => ({
             ...prev,
             harnesses: harnesses.harnesses,
-            profiles: profiles.profiles as ConfigProfile[],
+            profiles: profiles.profiles,
             selectedHarness: firstHarness,
           }));
         }
@@ -69,6 +66,7 @@ export function Launch() {
       selectedHarness: descriptor,
       flags: {},
       awaitingConfirmation: false,
+      launchError: null,
     }));
   };
 
@@ -77,15 +75,17 @@ export function Launch() {
       ...prev,
       selectedProfile: profile,
       awaitingConfirmation: false,
+      launchError: null,
     }));
   };
 
-  const handleFlagChange = (name: keyof RunFlags, value: unknown) => {
-    setState((prev) => ({
-      ...prev,
-      flags: { ...prev.flags, [name]: value },
-      awaitingConfirmation: false,
-    }));
+  const handleFlagChange = (name: HarnessFlag['name'], value: string | number | boolean | undefined) => {
+    setState((prev) => {
+      const flags: RunFlags = { ...prev.flags };
+      if (value === undefined) delete flags[name];
+      else Object.assign(flags, { [name]: value });
+      return { ...prev, flags, awaitingConfirmation: false, launchError: null };
+    });
   };
 
   const isFullCorpus = (): boolean => {
@@ -93,14 +93,18 @@ export function Launch() {
     return !selectionFlags.some((name) => state.flags[name] !== undefined);
   };
 
-  const computeWorkload = (): number => {
-    if (state.selectedHarness === null) return 0;
-    const runs = state.flags.runs ?? state.selectedHarness.defaultRuns;
-    const cases = isFullCorpus() ? state.selectedHarness.caseCount : 1;
-    return cases * runs;
-  };
+  /**
+   * A selection value beginning with "-" would arrive at the harness's parser
+   * looking like a flag. The server rejects it (SelectionValueSchema); the form
+   * says so and refuses to submit rather than silently discarding the keystroke.
+   */
+  const invalidSelectionFlags = (Object.entries(state.flags) as [string, unknown][])
+    .filter(([, value]) => typeof value === 'string' && value.startsWith('-'))
+    .map(([name]) => state.selectedHarness?.flags.find((flag) => flag.name === name)?.cli ?? `--${name}`);
 
   const handleRun = () => {
+    if (invalidSelectionFlags.length > 0) return;
+
     if (isFullCorpus() && !state.awaitingConfirmation) {
       setState((prev) => ({ ...prev, awaitingConfirmation: true }));
       return;
@@ -124,9 +128,10 @@ export function Launch() {
         navigate(`/r/${record.id}`);
       })
       .catch((error) => {
+        // The form stays mounted: every entered flag survives a rejected launch.
         setState((prev) => ({
           ...prev,
-          error: error instanceof Error ? error.message : String(error),
+          launchError: error instanceof Error ? error.message : String(error),
           awaitingConfirmation: false,
         }));
       });
@@ -157,7 +162,12 @@ export function Launch() {
   }
 
   const isExperimental = state.selectedProfile !== 'default';
-  const workload = computeWorkload();
+  const fullCorpus = isFullCorpus();
+  const runs = state.flags.runs ?? state.selectedHarness?.defaultRuns ?? 0;
+  // The same first factor renderRun uses: a narrowed selection runs exactly one case.
+  const cases = state.selectedHarness === null ? 0 : fullCorpus ? state.selectedHarness.caseCount : 1;
+  const workload = cases * runs;
+  const launchBlocked = invalidSelectionFlags.length > 0;
 
   return (
     <div className="p-4">
@@ -207,12 +217,12 @@ export function Launch() {
           {state.selectedHarness !== null && (
             <div className="space-y-3">
               <h3 className="text-term-cyan">Flags</h3>
-              {state.selectedHarness.flags.map((flag: { name: string; cli: string; kind: string }) => (
+              {state.selectedHarness.flags.map((flag) => (
                 <FlagInput
                   key={flag.name}
                   flag={flag}
-                  value={state.flags[flag.name as keyof RunFlags]}
-                  onChange={(value) => handleFlagChange(flag.name as keyof RunFlags, value)}
+                  value={state.flags[flag.name]}
+                  onChange={(value) => handleFlagChange(flag.name, value)}
                 />
               ))}
             </div>
@@ -221,9 +231,21 @@ export function Launch() {
           <div className="border-t border-term-rule pt-4 mt-4">
             <p className="mb-2">
               <span className="text-term-dim">Workload: </span>
-              {state.selectedHarness?.caseCount ?? 0} cases × {state.flags.runs ?? state.selectedHarness?.defaultRuns ?? 0}{' '}
-              runs = {workload}
+              {cases} {cases === 1 ? 'case' : 'cases'}
+              {fullCorpus ? '' : ' (filtered)'} × {runs} runs = {workload}
             </p>
+
+            {launchBlocked && (
+              <p className="mb-2 text-term-red">
+                Fix {invalidSelectionFlags.join(', ')} before running.
+              </p>
+            )}
+
+            {state.launchError !== null && (
+              <p role="alert" className="mb-2 text-term-red">
+                Launch refused: {state.launchError}
+              </p>
+            )}
 
             {state.awaitingConfirmation ? (
               <div className="space-y-2">
@@ -233,7 +255,8 @@ export function Launch() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleRun}
-                    className="px-[2ch] py-[0.5lh] bg-term-green text-term-bg font-bold"
+                    disabled={launchBlocked}
+                    className="px-[2ch] py-[0.5lh] bg-term-green text-term-bg font-bold disabled:opacity-50"
                   >
                     Confirm and Run
                   </button>
@@ -248,7 +271,8 @@ export function Launch() {
             ) : (
               <button
                 onClick={handleRun}
-                className="px-[2ch] py-[0.5lh] bg-term-cyan text-term-bg font-bold"
+                disabled={launchBlocked}
+                className="px-[2ch] py-[0.5lh] bg-term-cyan text-term-bg font-bold disabled:opacity-50"
               >
                 Run
               </button>
@@ -265,9 +289,9 @@ function FlagInput({
   value,
   onChange,
 }: {
-  flag: { name: string; cli: string; kind: string };
-  value: unknown;
-  onChange: (value: unknown) => void;
+  flag: HarnessFlag;
+  value: string | number | boolean | undefined;
+  onChange: (value: string | number | boolean | undefined) => void;
 }) {
   if (flag.kind === 'boolean') {
     return (
@@ -299,13 +323,16 @@ function FlagInput({
             const num = e.target.value === '' ? undefined : Number(e.target.value);
             onChange(num);
           }}
-          min={1}
+          min={flag.min}
+          max={flag.max}
+          step={flag.step}
         />
       </div>
     );
   }
 
   // string kind
+  const invalid = typeof value === 'string' && value.startsWith('-');
   return (
     <div>
       <label htmlFor={flag.name} className="block mb-1">
@@ -316,16 +343,13 @@ function FlagInput({
         id={flag.name}
         className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
         value={typeof value === 'string' ? value : ''}
-        onChange={(e) => {
-          const val = e.target.value === '' ? undefined : e.target.value;
-          if (val !== undefined && val.startsWith('-')) {
-            return; // Reject values starting with '-' silently
-          }
-          onChange(val);
-        }}
+        aria-invalid={invalid}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
       />
-      {typeof value === 'string' && value.startsWith('-') && (
-        <p className="mt-1 text-term-red text-sm">Selection flag values may not begin with &apos;-&apos;</p>
+      {invalid && (
+        <p className="mt-1 text-term-red text-sm">
+          {flag.cli} values may not begin with &apos;-&apos;
+        </p>
       )}
     </div>
   );

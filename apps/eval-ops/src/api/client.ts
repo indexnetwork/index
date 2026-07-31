@@ -19,10 +19,32 @@ export type RunStatus =
   | 'interrupted'
   | 'crashed';
 
+export type HarnessFlagName =
+  | 'runs'
+  | 'case'
+  | 'rule'
+  | 'tier'
+  | 'noJudge'
+  | 'alpha'
+  | 'attemptTimeoutMs'
+  | 'strictEvidence';
+
+/** Mirrors HarnessFlag in packages/protocol/eval/ops/ops.types.ts. */
+export interface HarnessFlag {
+  name: HarnessFlagName;
+  /** The literal CLI flag, e.g. "--runs". */
+  cli: string;
+  kind: 'number' | 'string' | 'boolean';
+  /** Numeric bounds mirroring the server's RunFlagsSchema. Absent for non-numeric flags. */
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
 export interface HarnessDescriptor {
   harness: OpsHarness;
   script: string;
-  flags: readonly unknown[];
+  flags: readonly HarnessFlag[];
   defaultRuns: number;
   caseCount: number;
 }
@@ -136,12 +158,16 @@ export interface FixtureStatusRefused {
 
 export type FixtureStatus = FixtureStatusAllowed | FixtureStatusRefused;
 
+/**
+ * Exactly what GET /api/profiles serves: the committed ConfigProfile from
+ * packages/protocol/eval/ops/ops.profiles.ts. The fingerprint lives on
+ * ResolvedProfile, which that route does not return, so it is deliberately absent.
+ */
 export interface ProfileDescriptor {
   name: string;
-  models: string[];
-  temperature?: number;
-  maxOutputTokens?: number;
-  fingerprint: string;
+  description: string;
+  models: Record<string, string>;
+  env: Record<string, string>;
 }
 
 export interface Regression {
@@ -236,7 +262,9 @@ export const api = {
   },
 
   async compare(reference: string, subject: string): Promise<CompareResult> {
-    return fetchJson(`/api/compare?reference=${reference}&subject=${subject}`);
+    return fetchJson(
+      `/api/compare?reference=${encodeURIComponent(reference)}&subject=${encodeURIComponent(subject)}`,
+    );
   },
 };
 

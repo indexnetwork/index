@@ -3,8 +3,9 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { Run } from '../src/routes/Run';
+import type { RunRecord } from '../src/api/client';
 
-const RUN = {
+const RUN: RunRecord = {
   id: 'run-1',
   status: 'running',
   spec: { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 3 } },
@@ -68,7 +69,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderRun(runData: typeof RUN) {
+function renderRun(runData: RunRecord) {
   const router = createMemoryRouter(
     [
       {
@@ -92,7 +93,7 @@ describe('Run', () => {
   });
 
   it('marks an experimental run and explains why it is not diffed', async () => {
-    const expRun = {
+    const expRun: RunRecord = {
       ...RUN,
       experimental: true,
       spec: { kind: 'eval', harness: 'matching', profile: 'claude-evaluator', flags: {} },
@@ -103,14 +104,14 @@ describe('Run', () => {
   });
 
   it('shows the exit code and status for a finished run', async () => {
-    const finishedRun = { ...RUN, status: 'regression', exitCode: 1, endedAt: '2026-07-30T10:00:10.000Z' };
+    const finishedRun: RunRecord = { ...RUN, status: 'regression', exitCode: 1, endedAt: '2026-07-30T10:00:10.000Z' };
     renderRun(finishedRun);
     expect(await screen.findByText(/regression/)).toBeInTheDocument();
     expect(await screen.findByText(/exit 1/)).toBeInTheDocument();
   });
 
   it('offers cancel only while running', async () => {
-    const passedRun = { ...RUN, status: 'passed', exitCode: 0, endedAt: '2026-07-30T10:00:10.000Z' };
+    const passedRun: RunRecord = { ...RUN, status: 'passed', exitCode: 0, endedAt: '2026-07-30T10:00:10.000Z' };
     renderRun(passedRun);
     await screen.findByText(/● passed/);
     expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull();

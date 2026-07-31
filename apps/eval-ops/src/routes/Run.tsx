@@ -5,7 +5,7 @@ import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { LogView } from '../components/LogView';
 import { CaseTable } from '../components/CaseTable';
-import { api, subscribeToRun, type RunRecord, type RunStatus } from '../api/client';
+import { api, subscribeToRun, type CompareResult, type RunRecord, type RunStatus } from '../api/client';
 
 interface Artifact {
   payload: {
@@ -21,41 +21,12 @@ interface Artifact {
   };
 }
 
-interface ComparabilityFinding {
-  dimension: 'harness' | 'corpusFingerprint' | 'configFingerprint' | 'selection';
-  reference: string;
-  subject: string;
-}
-
-interface BaselineDiff {
-  regressions: Array<{
-    id: string;
-    kind: 'case' | 'rule';
-    before: number;
-    after: number;
-    pValue: number;
-  }>;
-  skippedCaseIds: string[];
-  addedCaseIds: string[];
-  removedCaseIds: string[];
-  unscoredCaseIds: string[];
-}
-
-type CompareOutcome =
-  | { comparable: false; findings: ComparabilityFinding[] }
-  | {
-      comparable: true;
-      regressions: BaselineDiff;
-      improvements: BaselineDiff;
-      aggregate: { reference: number; subject: number; delta: number };
-    };
-
 interface RunState {
   run: RunRecord | null;
   log: string;
   artifact: Artifact | null;
   baseline: Artifact | null;
-  comparison: CompareOutcome | null;
+  comparison: CompareResult | null;
   error: string | null;
 }
 
@@ -75,7 +46,7 @@ function isTerminal(status: RunStatus): boolean {
 
 export function Run() {
   const { runId } = useParams<{ runId: string }>();
-  
+
   if (!runId) {
     return (
       <div className="p-4">
@@ -85,6 +56,11 @@ export function Run() {
       </div>
     );
   }
+
+  return <RunDetail runId={runId} />;
+}
+
+function RunDetail({ runId }: { runId: string }) {
   const [state, setState] = useState<RunState>({
     run: null,
     log: '',
@@ -123,12 +99,16 @@ export function Run() {
     });
 
     async function fetchArtifactAndComparison(record: RunRecord) {
-      if (!record.artifactPath || record.spec.kind !== 'eval') return;
+      const { artifactPath, spec } = record;
+      if (!artifactPath || spec.kind !== 'eval') return;
+
+      const artifactId = btoa(artifactPath)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
 
       try {
-        const artifact = (await api.artifact(
-          btoa(record.artifactPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
-        )) as Artifact;
+        const artifact = (await api.artifact(artifactId)) as Artifact;
 
         if (!mounted) return;
         setState((prev) => ({ ...prev, artifact }));
@@ -138,12 +118,12 @@ export function Run() {
           try {
             const artifacts = await api.artifacts();
             const baseline = artifacts.refs
-              .filter((ref) => ref.harness === record.spec.harness && ref.kind === 'baseline')
+              .filter((ref) => ref.harness === spec.harness && ref.kind === 'baseline')
               .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
             if (baseline && mounted) {
               const baselineArtifact = (await api.artifact(baseline.id)) as Artifact;
-              const comparison = (await api.compare(baseline.id, btoa(record.artifactPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''))) as CompareOutcome;
+              const comparison = await api.compare(baseline.id, artifactId);
 
               if (mounted) {
                 setState((prev) => ({

@@ -3,17 +3,10 @@ import { Link } from 'react-router';
 
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
-import { api, type RunRecord } from '../api/client';
-
-interface ConfigProfile {
-  name: string;
-  description: string;
-  models: Record<string, string>;
-  env: Record<string, string>;
-}
+import { api, type ProfileDescriptor, type RunRecord } from '../api/client';
 
 interface ProfilesState {
-  profiles: ConfigProfile[];
+  profiles: ProfileDescriptor[];
   runs: RunRecord[];
   error: string | null;
 }
@@ -32,7 +25,7 @@ export function Profiles() {
       .then(([profiles, runs]) => {
         if (mounted) {
           setState({
-            profiles: profiles.profiles as ConfigProfile[],
+            profiles: profiles.profiles,
             runs: runs.runs,
             error: null,
           });

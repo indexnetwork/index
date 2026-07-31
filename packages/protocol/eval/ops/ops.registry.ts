@@ -3,16 +3,17 @@ import type { HarnessDescriptor, HarnessFlag, OpsHarness } from "./ops.types.js"
 export const OPS_HARNESSES = ["matching", "profile", "premise", "opportunity"] as const satisfies readonly OpsHarness[];
 
 const COMMON_FLAGS: readonly HarnessFlag[] = Object.freeze([
-  { name: "runs", cli: "--runs", kind: "number" },
+  { name: "runs", cli: "--runs", kind: "number", min: 1, max: 25, step: 1 },
   { name: "case", cli: "--case", kind: "string" },
   { name: "rule", cli: "--rule", kind: "string" },
   { name: "noJudge", cli: "--no-judge", kind: "boolean" },
-  { name: "alpha", cli: "--alpha", kind: "number" },
-  { name: "attemptTimeoutMs", cli: "--attempt-timeout-ms", kind: "number" },
+  // alpha is gt(0).lt(1) on the server; 0.001..0.999 is the inclusive equivalent at step resolution.
+  { name: "alpha", cli: "--alpha", kind: "number", min: 0.001, max: 0.999, step: 0.001 },
+  { name: "attemptTimeoutMs", cli: "--attempt-timeout-ms", kind: "number", min: 1_000, max: 600_000, step: 1 },
   { name: "strictEvidence", cli: "--strict-evidence", kind: "boolean" },
 ]);
 
-const TIER_FLAG: HarnessFlag = { name: "tier", cli: "--tier", kind: "number" };
+const TIER_FLAG: HarnessFlag = { name: "tier", cli: "--tier", kind: "number", min: 1, max: 4, step: 1 };
 
 function descriptor(harness: OpsHarness, caseCount: number, extra: readonly HarnessFlag[] = []): HarnessDescriptor {
   return Object.freeze({

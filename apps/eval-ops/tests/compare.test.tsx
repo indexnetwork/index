@@ -1,6 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 
 import { Compare } from '../src/routes/Compare';
 
@@ -24,18 +25,35 @@ const REFS = {
       models: ['anthropic/claude-sonnet-4'],
       path: 'y',
     },
+    {
+      id: 'c',
+      harness: 'premise',
+      kind: 'run',
+      createdAt: '2026-07-31T11:00:00.000Z',
+      aggregatePassRate: 0.8,
+      models: ['google/gemini-2.5-flash'],
+      path: 'z',
+    },
   ],
   issues: [],
 };
 
 function stub(compare: unknown) {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  const fetchMock = vi.fn(async (url: string) => {
     if (String(url).includes('/api/compare')) return new Response(JSON.stringify(compare));
     return new Response(JSON.stringify(REFS));
-  }));
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function compareCalls(fetchMock: ReturnType<typeof stub>): string[] {
+  return fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/api/compare'));
 }
 
 beforeEach(() => vi.unstubAllGlobals());
+
+afterEach(() => cleanup());
 
 describe('Compare', () => {
   it('explains a refusal instead of showing a delta', async () => {
@@ -82,5 +100,45 @@ describe('Compare', () => {
     expect(await screen.findByText(/case-x/)).toBeInTheDocument();
     expect(await screen.findByText(/case-y/)).toBeInTheDocument();
     expect(await screen.findByText(/one-sided/i)).toBeInTheDocument();
+  });
+
+  it('follows browser back to the previously compared pair', async () => {
+    const fetchMock = stub({ comparable: false, findings: [] });
+    const router = createMemoryRouter([{ path: '/', element: <Compare /> }], {
+      initialEntries: ['/?reference=a&subject=b', '/?reference=b&subject=a'],
+      initialIndex: 1,
+    });
+    render(<RouterProvider router={router} />);
+
+    const reference = (await screen.findByLabelText('Reference')) as HTMLSelectElement;
+    await waitFor(() => expect(reference.value).toBe('b'));
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('Reference') as HTMLSelectElement).value).toBe('a'),
+    );
+    expect((screen.getByLabelText('Subject') as HTMLSelectElement).value).toBe('b');
+    await waitFor(() =>
+      expect(compareCalls(fetchMock).at(-1)).toContain('reference=a&subject=b'),
+    );
+  });
+
+  it('clears a subject the new reference cannot be compared against', async () => {
+    stub({ comparable: false, findings: [] });
+    render(
+      <MemoryRouter initialEntries={['/?reference=a&subject=b']}>
+        <Compare />
+      </MemoryRouter>,
+    );
+
+    const reference = (await screen.findByLabelText('Reference')) as HTMLSelectElement;
+    await waitFor(() => expect(reference.value).toBe('a'));
+
+    await userEvent.selectOptions(reference, 'c');
+
+    expect((screen.getByLabelText('Subject') as HTMLSelectElement).value).toBe('');
   });
 });

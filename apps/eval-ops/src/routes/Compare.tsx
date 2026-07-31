@@ -6,8 +6,6 @@ import { api, type CompareResult, type ArtifactRef } from '../api/client';
 
 interface CompareState {
   artifacts: ArtifactRef[];
-  referenceId: string | null;
-  subjectId: string | null;
   result: CompareResult | null;
   loading: boolean;
   error: string | null;
@@ -15,10 +13,12 @@ interface CompareState {
 
 export function Compare() {
   const [searchParams, setSearchParams] = useSearchParams();
+  // The URL is the only home of the selection, so back/forward moves the selects
+  // and the comparison together instead of leaving them disagreeing with the URL.
+  const referenceId = searchParams.get('reference');
+  const subjectId = searchParams.get('subject');
   const [state, setState] = useState<CompareState>({
     artifacts: [],
-    referenceId: searchParams.get('reference'),
-    subjectId: searchParams.get('subject'),
     result: null,
     loading: false,
     error: null,
@@ -49,7 +49,7 @@ export function Compare() {
 
   // Fetch comparison when both IDs are selected
   useEffect(() => {
-    if (!state.referenceId || !state.subjectId) {
+    if (!referenceId || !subjectId) {
       setState((prev) => ({ ...prev, result: null }));
       return;
     }
@@ -58,7 +58,7 @@ export function Compare() {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     api
-      .compare(state.referenceId, state.subjectId)
+      .compare(referenceId, subjectId)
       .then((result) => {
         if (mounted) {
           setState((prev) => ({ ...prev, result, loading: false }));
@@ -77,18 +77,23 @@ export function Compare() {
     return () => {
       mounted = false;
     };
-  }, [state.referenceId, state.subjectId]);
+  }, [referenceId, subjectId]);
 
   const handleReferenceChange = (id: string) => {
-    setState((prev) => ({ ...prev, referenceId: id || null }));
     const params = new URLSearchParams(searchParams);
     if (id) params.set('reference', id);
     else params.delete('reference');
+
+    // A subject from another harness can never be compared, so drop it rather
+    // than let the operator submit a pair that can only be refused.
+    const nextHarness = state.artifacts.find((a) => a.id === id)?.harness;
+    const subjectHarness = state.artifacts.find((a) => a.id === subjectId)?.harness;
+    if (subjectHarness !== undefined && subjectHarness !== nextHarness) params.delete('subject');
+
     setSearchParams(params);
   };
 
   const handleSubjectChange = (id: string) => {
-    setState((prev) => ({ ...prev, subjectId: id || null }));
     const params = new URLSearchParams(searchParams);
     if (id) params.set('subject', id);
     else params.delete('subject');
@@ -96,7 +101,7 @@ export function Compare() {
   };
 
   // Get the harness of the selected reference to filter subjects
-  const referenceHarness = state.artifacts.find((a) => a.id === state.referenceId)?.harness;
+  const referenceHarness = state.artifacts.find((a) => a.id === referenceId)?.harness;
 
   // Filter artifacts to only those matching the reference harness
   const subjectArtifacts = referenceHarness
@@ -115,7 +120,7 @@ export function Compare() {
             </label>
             <select
               id="reference"
-              value={state.referenceId || ''}
+              value={referenceId || ''}
               onChange={(e) => handleReferenceChange(e.target.value)}
               className="w-full bg-term-panel border border-term-rule text-term-fg p-[1ch]"
             >
@@ -135,7 +140,7 @@ export function Compare() {
             </label>
             <select
               id="subject"
-              value={state.subjectId || ''}
+              value={subjectId || ''}
               onChange={(e) => handleSubjectChange(e.target.value)}
               className="w-full bg-term-panel border border-term-rule text-term-fg p-[1ch]"
               disabled={!referenceHarness}

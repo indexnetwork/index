@@ -16,6 +16,15 @@ export interface HarnessFlag {
   /** The literal CLI flag, e.g. "--runs". */
   cli: string;
   kind: "number" | "string" | "boolean";
+  /**
+   * Numeric bounds mirroring RunFlagsSchema in ops.argv.ts, so a form built from
+   * this registry cannot mark a server-valid value invalid (or vice versa).
+   * Exclusive server bounds are expressed as the nearest representable value at
+   * `step` resolution, because HTML min/max are inclusive.
+   */
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
 export interface HarnessDescriptor {
