@@ -6,7 +6,9 @@ artifacts, and drives a guarded test-database fixture reset.
 
 This directory is the whole server. The browser app is a thin client over the JSON + SSE
 API in [`ops.server.ts`](./ops.server.ts); every decision that matters — what may run,
-under which configuration, against which database — is made here.
+under which configuration, against which database — is made here. **There is no
+authentication**: any process on this machine can spend real tokens and flush the test
+database (see [§ There is no authentication](#there-is-no-authentication) below).
 
 Everything in this directory is provider-free and covered by `bun run eval:verify`
 (`suite: ops`).
@@ -90,7 +92,9 @@ overrides and a small set of protocol feature flags:
 
 - The client sends a profile **name**. It can never send overrides, argv or environment.
 - `models` keys are `ModelAgent` keys from `src/shared/agent/model.config.ts`, applied to
-  the child through `EVAL_MODEL_OVERRIDES`.
+  the child through `EVAL_MODEL_OVERRIDES`. Validation happens at run time: a profile
+  naming an unknown agent loads and lists fine, but throws when the harness child reads
+  the override.
 - `env` keys must appear in `PROFILE_ENV_ALLOWLIST` ([`ops.profiles.ts`](./ops.profiles.ts)) —
   protocol feature flags only. Credentials, connection strings and `NODE_ENV` are
   deliberately absent, so a profile can never repoint a run at another database or
@@ -209,13 +213,14 @@ Refusals, in order:
 1. **`DATABASE_URL` missing or not a `postgres://`/`postgresql://` URL** → refused. Name
    parsing decodes percent-escapes exactly as the driver does, so `protocol_%70rod` is
    recognised as `protocol_prod`.
-2. **Redirect-capable query parameters** → refused outright. `database`, `db`, `dbname`,
-   `user`, `username`, `options`, `search_path`. These are copied into the driver's startup
-   packet and can send the session to a *different database, role or schema* than the one
-   named in the URL path — so the guard's verdict would describe a different target than
-   the one that actually gets truncated. They are refused rather than interpreted, because
-   honouring them would mean re-implementing the driver's precedence rules inside a safety
-   check.
+2. **Redirect-capable query parameters** → a fixed denylist is refused outright:
+   `database`, `db`, `dbname`, `user`, `username`, `options`, `search_path`. (Other
+   connection parameters — `sslmode`, `role`, `session_authorization` — are **not**
+   refused.) The denied parameters are copied into the driver's startup packet and can
+   send the session to a *different database, role or schema* than the one named in the
+   URL path — so the guard's verdict would describe a different target than the one that
+   actually gets truncated. They are refused rather than interpreted, because honouring
+   them would mean re-implementing the driver's precedence rules inside a safety check.
 3. **`*_prod` / `*_production` names** (`/^(.*_)?(prod|production)$/i`) → refused. **There
    is deliberately no override flag.** The database *name*, not the branch, is what
    distinguishes real data here: every Neon branch in this project exposes a
