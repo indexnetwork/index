@@ -80,3 +80,34 @@ export interface RunSpec {
   profile: string;
   flags: RunFlags;
 }
+
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "passed"
+  | "regression"
+  | "execution-error"
+  | "insufficient-evidence"
+  | "cancelled"
+  | "interrupted"
+  | "crashed";
+
+export interface RunRecord {
+  id: string;
+  spec: RunSpec;
+  /** The exact argv that was or will be spawned, recorded for auditability. */
+  argv: string[];
+  /** Injected environment. Never contains credentials. */
+  env: Record<string, string>;
+  profileFingerprint: string;
+  experimental: boolean;
+  status: RunStatus;
+  createdAt: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  exitCode: number | null;
+  pid: number | null;
+  /** Path to the run report, relative to eval/, once the harness has written one. */
+  artifactPath: string | null;
+  workload: number;
+}
