@@ -10,7 +10,10 @@
  * That is an operator-trust decision about LOCAL processes, and it is not the same
  * thing as being drivable by any web page the operator happens to have open, so
  * state-changing requests are refused unless they are same-origin (see
- * `crossOriginRefusal`) and carry a JSON content type.
+ * `crossOriginRefusal`) and carry a JSON content type. Every request, read
+ * included, must also arrive addressed to a loopback host (see
+ * `foreignHostRefusal`), which is what keeps a rebound DNS name from reading
+ * artifacts, run records, logs and fixture metadata.
  */
 import path from "node:path";
 
@@ -72,6 +75,8 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
   const state: ServerState = { resetInFlight: false };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    const rebinding = foreignHostRefusal(request);
+    if (rebinding !== null) return rebinding;
     const refusal = crossOriginRefusal(request);
     if (refusal !== null) return refusal;
     try {
@@ -119,6 +124,42 @@ function crossOriginRefusal(request: Request): Response | null {
     return json({ error: `Refusing a ${request.method} initiated by another site (Sec-Fetch-Site: ${site}).` }, 403);
   }
   return null;
+}
+
+/**
+ * Refuses any request whose `Host` names something other than a loopback host.
+ *
+ * This closes DNS rebinding, which the Origin guard above cannot: an attacker
+ * points a hostname they control at 127.0.0.1, so a page served from it is
+ * genuinely same-origin to the browser. `Origin` and `Sec-Fetch-Site` then both
+ * say "same-origin", and no CORS header is needed to read the reply. Only `Host`
+ * still carries the attacker's domain.
+ *
+ * Unlike the Origin guard this applies to reads too — reads are the point of
+ * rebinding. What is otherwise reachable: artifact bodies, run records including
+ * argv, the full harness log over SSE, and the fixture route's database name,
+ * host, persona emails and table counts. No credential is exposed (redaction
+ * holds regardless), but that is infrastructure metadata worth keeping local.
+ *
+ * A request with no `Host` is accepted: it was not steered here by a resolved
+ * name, so rebinding does not apply.
+ */
+function foreignHostRefusal(request: Request): Response | null {
+  const host = request.headers.get("host");
+  if (host === null) return null;
+  if (isLoopbackHost(host)) return null;
+  return json(
+    { error: `Refusing a request for host ${host}: this server only answers on loopback (${[...LOOPBACK_HOSTNAMES].join(", ")}).` },
+    403,
+  );
+}
+
+/** Strips an optional port and compares against the loopback allowlist. */
+function isLoopbackHost(host: string): boolean {
+  const value = host.trim().toLowerCase();
+  // Bracketed IPv6 keeps its brackets, which is how LOOPBACK_HOSTNAMES stores ::1.
+  const hostname = value.startsWith("[") ? value.slice(0, value.indexOf("]") + 1) : value.split(":")[0];
+  return LOOPBACK_HOSTNAMES.has(hostname);
 }
 
 function isLoopbackOrigin(origin: string): boolean {

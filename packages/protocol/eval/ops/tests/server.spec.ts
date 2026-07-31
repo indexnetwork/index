@@ -358,9 +358,64 @@ describe("cross-origin requests", () => {
     const response = await handler(
       new Request("http://localhost/api/harnesses", { headers: { Origin: "https://evil.example" } }),
     );
-    // Nothing here mutates, and without a CORS header the body stays unreadable.
+    // Nothing here mutates, and without a CORS header the body stays unreadable
+    // — provided the request actually reached this server as a loopback host,
+    // which the Host guard below is what enforces.
     expect(response.status).toBe(200);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+});
+
+describe("Host header guard", () => {
+  // Closes DNS rebinding: a page served from a hostname that resolves to 127.0.0.1
+  // is same-origin to the browser, so the Origin allowlist above accepts it and no
+  // CORS header is needed to read the reply. Only the Host header still names the
+  // attacker's domain, so it is the one value worth checking — and unlike the
+  // Origin guard it must apply to reads, which are what rebinding exists to steal.
+  const withHost = (host: string, path = "/api/harnesses") =>
+    handler(new Request(`http://localhost${path}`, { headers: { Host: host } }));
+
+  it("refuses a GET whose Host names a foreign domain", async () => {
+    const response = await withHost("evil.example.com");
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toMatch(/host/i);
+  });
+
+  it("refuses foreign-Host reads on every data route, not just one", async () => {
+    for (const path of ["/api/artifacts", "/api/runs", "/api/fixture", "/api/profiles"]) {
+      const response = await withHost("evil.example.com", path);
+      expect(response.status).toBe(403);
+    }
+  });
+
+  it("accepts every loopback host, with and without a port", async () => {
+    for (const host of ["127.0.0.1:4321", "127.0.0.1", "localhost:4321", "localhost", "[::1]:4321", "[::1]"]) {
+      const response = await withHost(host);
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it("accepts a request with no Host header", async () => {
+    // curl over an explicit socket, and any hop that drops it. A request with no
+    // Host was not steered here by a resolved name, so rebinding does not apply.
+    const response = await handler(new Request("http://localhost/api/harnesses"));
+
+    expect(response.status).toBe(200);
+  });
+
+  it("still refuses a foreign Host on a state-changing request", async () => {
+    const response = await handler(
+      new Request("http://localhost/api/runs", {
+        method: "POST",
+        headers: { Host: "evil.example.com", "Content-Type": "application/json", Origin: "http://127.0.0.1:5174" },
+        body: JSON.stringify(RUN_BODY),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
   });
 });
 
