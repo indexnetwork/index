@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { subscribeToRun } from '../src/api/client';
+import { subscribeToRun, encodeArtifactId } from '../src/api/client';
 
 describe('subscribeToRun', () => {
   let mockSource: {
@@ -130,5 +130,32 @@ describe('subscribeToRun', () => {
 
     unsubscribe();
     expect(mockSource.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('encodeArtifactId', () => {
+  // Parity test: ensures client encoder stays byte-identical to the protocol's
+  // Buffer.from(relPath, "utf8").toString("base64url") implementation.
+  // Expected values computed from packages/protocol/eval/ops/ops.artifacts.ts
+  // using Node's Buffer API (the source of truth).
+  //
+  // Note: btoa() throws DOMException for non-ASCII (code points > U+00FF).
+  // All current artifact paths are ASCII-only, but this is a latent divergence:
+  // the protocol UTF-8-encodes before base64, while btoa latin-1-encodes U+0080-U+00FF
+  // and throws above that range.
+
+  it('produces byte-identical output to the protocol encoder for baseline paths', () => {
+    const baselinePath = 'matching/baselines/matching.baseline.json';
+    expect(encodeArtifactId(baselinePath)).toBe('bWF0Y2hpbmcvYmFzZWxpbmVzL21hdGNoaW5nLmJhc2VsaW5lLmpzb24');
+  });
+
+  it('produces byte-identical output to the protocol encoder for run report paths', () => {
+    const runReportPath = '.ops-runs/20250131-145623-abc123/report.json';
+    expect(encodeArtifactId(runReportPath)).toBe('Lm9wcy1ydW5zLzIwMjUwMTMxLTE0NTYyMy1hYmMxMjMvcmVwb3J0Lmpzb24');
+  });
+
+  it('produces byte-identical output to the protocol encoder for CLI run paths', () => {
+    const cliRunPath = 'matching/runs/matching.run-20250131-145623.json';
+    expect(encodeArtifactId(cliRunPath)).toBe('bWF0Y2hpbmcvcnVucy9tYXRjaGluZy5ydW4tMjAyNTAxMzEtMTQ1NjIzLmpzb24');
   });
 });
