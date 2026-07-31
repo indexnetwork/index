@@ -20,6 +20,21 @@ const ALLOWED = {
   countsError: null,
 };
 
+const ALLOWED_WITH_CREDENTIALS = {
+  allowed: true,
+  target: {
+    databaseName: 'neondb',
+    host: 'ep-example.neon.tech',
+    redactedUrl: 'postgresql://user:secretpass@ep-example.neon.tech/neondb',
+  },
+  maxPersonas: 50,
+  appliesMigrationsOnReset: true,
+  personaCount: 50,
+  personaEmails: ['seed-tester-1@example.com'],
+  tables: { users: 53, intents: 120, opportunities: 340 },
+  countsError: 'Database error: connection failed to postgres://admin:topsecret@host/db',
+};
+
 const REFUSED = {
   allowed: false,
   reason:
@@ -77,14 +92,16 @@ describe('Fixture', () => {
   });
 
   it('never displays credentials', async () => {
-    stub(ALLOWED);
+    stub(ALLOWED_WITH_CREDENTIALS);
     const { container } = render(
       <BrowserRouter>
         <Fixture />
       </BrowserRouter>,
     );
     await screen.findByRole('heading', { name: /Target Database/ });
-    expect(container.textContent).not.toMatch(/:\/\/[^/]*:[^@]*@/);
+    // The fixture deliberately contains credentials in both redactedUrl and countsError
+    expect(container.textContent).not.toContain('secretpass');
+    expect(container.textContent).not.toContain('topsecret');
   });
 
   it('requires the exact database name before resetting', async () => {
@@ -127,5 +144,39 @@ describe('Fixture', () => {
     );
     await screen.findByRole('heading', { name: /Target Database/ });
     expect(container.textContent).toMatch(/enqueue.*indexing/i);
+  });
+
+  it('renders reset errors inline without destroying the status display', async () => {
+    stub(ALLOWED);
+    // Modify stub to return 409 on reset
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith('/api/fixture/reset')) {
+          return new Response(
+            JSON.stringify({ error: 'Refusing to reset: run queue is not empty' }),
+            { status: 409 },
+          );
+        }
+        return new Response(JSON.stringify(ALLOWED));
+      }),
+    );
+
+    render(
+      <BrowserRouter>
+        <Fixture />
+      </BrowserRouter>,
+    );
+    await screen.findByRole('heading', { name: /Target Database/ });
+
+    // Arm the reset
+    await userEvent.click(screen.getByRole('button', { name: /^reset$/i }));
+    await userEvent.type(screen.getByLabelText(/type the database name/i), 'neondb');
+    await userEvent.click(screen.getByRole('button', { name: /confirm reset/i }));
+
+    // Error should appear inline, status should still be visible
+    expect(await screen.findByText(/run queue is not empty/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Target Database/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/neondb/i).length).toBeGreaterThan(0);
   });
 });

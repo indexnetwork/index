@@ -4,12 +4,24 @@ import { Link, useNavigate } from 'react-router';
 import { Frame } from '../components/Frame';
 import { api, type FixtureStatus } from '../api/client';
 
+/**
+ * Client-side defense-in-depth: removes credentials from any string that might contain them.
+ * The server already scrubs credentials, but this ensures they never reach the DOM even if
+ * the server's scrubbing somehow fails or is bypassed.
+ */
+function scrubCredentials(text: string): string {
+  return text
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, '$1')
+    .replace(/\b(password|pgpassword)=[^\s&"']+/gi, '$1=');
+}
+
 interface FixtureState {
   status: FixtureStatus | null;
-  error: string | null;
+  loadError: string | null;
+  resetError: string | null;
   armed: boolean;
   confirmInput: string;
-  personas: number;
+  personasInput: string;
   resetting: boolean;
 }
 
@@ -17,10 +29,11 @@ export function Fixture() {
   const navigate = useNavigate();
   const [state, setState] = useState<FixtureState>({
     status: null,
-    error: null,
+    loadError: null,
+    resetError: null,
     armed: false,
     confirmInput: '',
-    personas: 50,
+    personasInput: '',
     resetting: false,
   });
 
@@ -31,13 +44,18 @@ export function Fixture() {
       try {
         const status = await api.fixture();
         if (mounted) {
-          setState((prev) => ({ ...prev, status, error: null }));
+          setState((prev) => ({
+            ...prev,
+            status,
+            loadError: null,
+            personasInput: String(status.allowed ? status.maxPersonas : 50),
+          }));
         }
       } catch (error) {
         if (mounted) {
           setState((prev) => ({
             ...prev,
-            error: error instanceof Error ? error.message : String(error),
+            loadError: error instanceof Error ? error.message : String(error),
           }));
         }
       }
@@ -52,12 +70,23 @@ export function Fixture() {
 
   async function handleReset() {
     if (!state.status || !state.status.allowed) return;
+    if (state.confirmInput !== state.status.target.databaseName) return;
 
-    setState((prev) => ({ ...prev, resetting: true, error: null }));
+    const { maxPersonas } = state.status;
+    const personas = parseInt(state.personasInput, 10);
+    if (isNaN(personas) || personas < 0 || personas > maxPersonas) {
+      setState((prev) => ({
+        ...prev,
+        resetError: `Personas must be a number between 0 and ${maxPersonas}`,
+      }));
+      return;
+    }
+
+    setState((prev) => ({ ...prev, resetting: true, resetError: null }));
     try {
       const run = await api.reset({
         confirmDatabaseName: state.confirmInput,
-        personas: state.personas,
+        personas,
       });
       // Navigate to the run detail page to show the live log
       navigate(`/r/${run.id}`);
@@ -65,16 +94,16 @@ export function Fixture() {
       setState((prev) => ({
         ...prev,
         resetting: false,
-        error: error instanceof Error ? error.message : String(error),
+        resetError: error instanceof Error ? error.message : String(error),
       }));
     }
   }
 
-  if (state.error !== null) {
+  if (state.loadError !== null) {
     return (
       <div className="p-4">
         <Frame label="error">
-          <p className="text-term-red">{state.error}</p>
+          <p className="text-term-red">{state.loadError}</p>
         </Frame>
       </div>
     );
@@ -104,8 +133,7 @@ export function Fixture() {
               <p className="text-term-dim">{state.status.reason}</p>
             </div>
             <p className="text-term-dim text-sm">
-              Fixture control is unavailable until DATABASE_URL in .env.test points to a
-              dedicated disposable database with migrations applied.
+              Fixture control is unavailable until this server's DATABASE_URL names a dedicated disposable database.
             </p>
           </div>
         </Frame>
@@ -116,7 +144,8 @@ export function Fixture() {
   const { target, maxPersonas, appliesMigrationsOnReset, personaCount, personaEmails, tables, countsError } =
     state.status;
 
-  const confirmMatches = state.confirmInput === target.databaseName;
+  const confirmMatches =
+    state.confirmInput.length > 0 && state.confirmInput === target.databaseName;
 
   return (
     <div className="p-4 space-y-4">
@@ -142,7 +171,7 @@ export function Fixture() {
               {target.redactedUrl && (
                 <div className="flex gap-4">
                   <span className="text-term-dim w-32">url:</span>
-                  <span className="font-mono text-sm">{target.redactedUrl}</span>
+                  <span className="font-mono text-sm">{scrubCredentials(target.redactedUrl)}</span>
                 </div>
               )}
             </div>
@@ -153,14 +182,14 @@ export function Fixture() {
             <div className="space-y-1 ml-4">
               {countsError !== null ? (
                 <div className="flex gap-4">
-                  <span className="text-term-yellow">{countsError}</span>
+                  <span className="text-term-yellow">{scrubCredentials(countsError)}</span>
                 </div>
               ) : (
                 <>
                   <div className="flex gap-4">
                     <span className="text-term-dim w-32">personas:</span>
                     <span>
-                      {personaCount ?? 0} of {maxPersonas}
+                      {personaCount === null ? 'unknown' : personaCount} of {maxPersonas}
                     </span>
                   </div>
                   {personaEmails && personaEmails.length > 0 && (
@@ -197,21 +226,26 @@ export function Fixture() {
                 <span className="text-term-dim w-32">migrations:</span>
                 <span>{appliesMigrationsOnReset ? 'applied on every reset' : 'not applied'}</span>
               </div>
-              <div className="mt-2 p-3 bg-term-bg border border-term-rule">
-                <p className="text-term-dim text-sm">
-                  <span className="text-term-yellow">Note:</span> Seeding enqueues enrichment and HyDE
-                  indexing jobs through Redis. A fully indexed fixture also requires the API workers
-                  and provider credentials to be running; this page reports what was enqueued, not what
-                  has been indexed.
-                </p>
+              <div className="mt-2">
+                <Frame label="">
+                  <p className="text-term-dim text-sm">
+                    <span className="text-term-yellow">Note:</span> Seeding enqueues enrichment and HyDE
+                    indexing jobs through Redis. A fully indexed fixture also requires the API workers
+                    and provider credentials to be running; this page reports what was enqueued, not what
+                    has been indexed.
+                  </p>
+                </Frame>
               </div>
-              <div className="mt-2 p-3 bg-term-bg border border-term-rule">
-                <p className="text-term-dim text-sm">
-                  <span className="text-term-yellow">Guard caveat:</span> This page reports that the
-                  target is allowed based on DATABASE_URL. The reset operation performs an additional
-                  check that .env.test and DATABASE_URL agree (the migrate step reads .env.test
-                  directly). A divergence will refuse the reset with a 409.
-                </p>
+              <div className="mt-2">
+                <Frame label="">
+                  <p className="text-term-dim text-sm">
+                    <span className="text-term-yellow">Guard caveat:</span> This page reports that the
+                    target is allowed based on DATABASE_URL. The reset operation performs an additional
+                    check that .env.test and DATABASE_URL agree (the migrate step reads .env.test
+                    directly). A divergence will refuse the reset with a 409. A reset is also refused while
+                    any run is queued or running.
+                  </p>
+                </Frame>
               </div>
             </div>
           </div>
@@ -227,13 +261,19 @@ export function Fixture() {
             </div>
           ) : (
             <div className="border-t border-term-rule pt-4 space-y-3">
-              <div className="p-3 bg-term-bg border border-term-rule">
+              <Frame label="">
                 <p className="text-term-red font-bold mb-2">⚠ Destructive Operation</p>
                 <p className="text-term-dim text-sm">
                   This will flush all data from {target.databaseName}, apply migrations, and reseed
                   with test personas. This operation cannot be undone.
                 </p>
-              </div>
+              </Frame>
+
+              {state.resetError && (
+                <Frame label="error">
+                  <p className="text-term-red">{state.resetError}</p>
+                </Frame>
+              )}
 
               <div>
                 <label htmlFor="persona-count" className="block text-term-dim mb-1">
@@ -241,17 +281,11 @@ export function Fixture() {
                 </label>
                 <input
                   id="persona-count"
-                  type="number"
-                  min="0"
-                  max={maxPersonas}
-                  value={state.personas}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value, 10);
-                    if (!isNaN(value) && value >= 0 && value <= maxPersonas) {
-                      setState((prev) => ({ ...prev, personas: value }));
-                    }
-                  }}
+                  type="text"
+                  value={state.personasInput}
+                  onChange={(e) => setState((prev) => ({ ...prev, personasInput: e.target.value }))}
                   className="px-2 py-1 bg-term-bg border border-term-rule font-mono w-24"
+                  placeholder={String(maxPersonas)}
                 />
               </div>
 
@@ -279,7 +313,7 @@ export function Fixture() {
                 </button>
                 <button
                   onClick={() =>
-                    setState((prev) => ({ ...prev, armed: false, confirmInput: '', error: null }))
+                    setState((prev) => ({ ...prev, armed: false, confirmInput: '', resetError: null }))
                   }
                   disabled={state.resetting}
                   className="px-4 py-2 bg-term-panel border border-term-rule hover:bg-term-bg disabled:opacity-50"
