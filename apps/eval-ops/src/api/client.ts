@@ -187,6 +187,18 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  async authStatus(): Promise<{ authenticated: boolean; email?: string; name?: string }> {
+    return fetchJson('/api/auth/status');
+  },
+
+  async login(): Promise<{ url: string }> {
+    return postJson('/api/auth/login', {});
+  },
+
+  async logout(): Promise<void> {
+    await postJson('/api/auth/logout', {});
+  },
+
   async harnesses(): Promise<{ harnesses: HarnessDescriptor[] }> {
     return fetchJson('/api/harnesses');
   },
