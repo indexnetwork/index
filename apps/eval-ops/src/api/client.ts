@@ -167,11 +167,59 @@ export type CompareResult =
       aggregate: { reference: number; subject: number; delta: number };
     };
 
+/**
+ * The two ways the server can tell this app that its session does not admit it.
+ *
+ * `GET /api/auth/status` is public and only ever answers `authenticated` true or
+ * false, so it cannot report the domain refusal at all. The 403 in the HTTP
+ * contract is produced in exactly one place — the server's auth gate, on a route
+ * that requires a session — so a gated API call is the only surface where a
+ * browser observes it. A sign-in the domain policy refuses never gets that far:
+ * it is refused at /callback, which renders the server's own refusal page and
+ * establishes no session, so this app is never loaded for that identity.
+ *
+ * The status code alone is not the signal. The same server answers 403 for a
+ * cross-origin write, for a foreign `Host`, and for a fixture reset against a
+ * database that is not disposable; showing "your account is not permitted" for
+ * any of those would be a lie. The discriminator is the `permitted: false` field,
+ * which only the auth gate sets.
+ */
+export type AuthRefusal = 'unauthenticated' | 'not-permitted';
+
+const authRefusalListeners = new Set<(refusal: AuthRefusal) => void>();
+
+/**
+ * Subscribes to session refusals seen by any API call. Returns an unsubscribe.
+ *
+ * This exists so the shell can stop rendering the dashboard the moment a call
+ * comes back refused, rather than leaving every route to render its own 401 as
+ * an ordinary error message.
+ */
+export function onAuthRefusal(listener: (refusal: AuthRefusal) => void): () => void {
+  authRefusalListeners.add(listener);
+  return () => {
+    authRefusalListeners.delete(listener);
+  };
+}
+
+/** Returns the refusal a failed response reports, or null when it reports something else. */
+function classifyAuthRefusal(status: number, body: unknown): AuthRefusal | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const frame = body as { authenticated?: unknown; permitted?: unknown };
+  if (status === 401 && frame.authenticated === false) return 'unauthenticated';
+  if (status === 403 && frame.authenticated === true && frame.permitted === false) return 'not-permitted';
+  return null;
+}
+
 /** Fetch helper that throws an Error containing the server's error field on non-2xx. */
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
+    const refusal = classifyAuthRefusal(response.status, body);
+    if (refusal !== null) {
+      for (const listener of authRefusalListeners) listener(refusal);
+    }
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
   return response.json();

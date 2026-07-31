@@ -29,7 +29,10 @@ export function SignIn() {
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="w-full max-w-md p-4">
-        <Frame label="index eval ops">
+        {/* Labelled "sign in", not "index eval ops": the shell header already
+            carries the site title, and two copies of it would read as a heading
+            duplicated by mistake. */}
+        <Frame label="sign in">
           <div className="flex flex-col gap-4 py-4">
             <p className="text-term-fg">
               Sign in with your Index account to access the eval ops dashboard.

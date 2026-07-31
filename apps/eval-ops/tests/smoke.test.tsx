@@ -10,6 +10,11 @@ beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
+      // The shell gates its children on this answer, so the dashboard only mounts
+      // when the operator is signed in.
+      if (String(url).endsWith('/api/auth/status')) {
+        return new Response(JSON.stringify({ authenticated: true, email: 'ops@index.network', name: 'Ops' }));
+      }
       if (String(url).endsWith('/api/harnesses')) {
         return new Response(JSON.stringify({ harnesses: [] }));
       }
