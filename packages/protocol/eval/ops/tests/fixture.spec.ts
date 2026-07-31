@@ -209,7 +209,9 @@ describe("buildResetPipeline", () => {
     expect(steps[1].argv).toContain("--personas=50");
   });
 
-  it("inserts the migrate step only when drift was detected", () => {
+  it("inserts the migrate step when migrate is requested", () => {
+    // The server always passes migrate: true (drizzle-kit migrate is idempotent);
+    // drift is never probed, so nothing here detects anything.
     const steps = buildResetPipeline({ personas: 10, migrate: true });
     expect(steps.map((s) => s.label)).toEqual(["flush", "migrate", "seed"]);
   });
