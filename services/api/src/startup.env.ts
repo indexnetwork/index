@@ -24,6 +24,16 @@ const isTest = runtimeEnvironment === 'test';
 const isDeployment =
   runtimeEnvironment === 'production' ||
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
+
+// EVAL_MODEL_OVERRIDES is an eval-only hook. The protocol ignores it in
+// production, but a value present in a production environment means someone
+// believes it is doing something. Fail loudly rather than ignore it silently.
+if (runtimeEnvironment === 'production' && process.env.EVAL_MODEL_OVERRIDES) {
+  throw new Error(
+    'EVAL_MODEL_OVERRIDES must not be set in production. It is an eval-only model override, ignored by the protocol in production; remove it from the deployment environment.',
+  );
+}
+
 const requiredUnlessTest = isTest ? z.string().optional() : z.string().trim().min(1);
 const requiredInProduction = isTest || runtimeEnvironment !== 'production' ? z.string().optional() : z.string().trim().min(1);
 const optionalUrl = z.union([z.literal(''), z.string().url()]).optional();
@@ -60,6 +70,9 @@ const envSchema = z.object({
   EMBEDDING_DIMENSIONS: optionalInt,
   SMARTEST_VERIFIER_MODEL: z.string().optional(),
   SMARTEST_GENERATOR_MODEL: z.string().optional(),
+  // Eval-only per-agent model overrides (JSON). Ignored by the protocol in
+  // production, and rejected outright above when NODE_ENV=production.
+  EVAL_MODEL_OVERRIDES: z.string().optional(),
 
   // 4. Redis
   REDIS_URL: z.string().optional(),

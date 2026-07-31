@@ -31,7 +31,49 @@ export interface ModelConfig {
   chatReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 }
 
-function getModelConfig(config?: ModelConfig) {
+/**
+ * Eval-only per-agent model overrides, e.g.
+ * `EVAL_MODEL_OVERRIDES={"opportunityEvaluator":"anthropic/claude-sonnet-4"}`.
+ *
+ * Read on every call (no caching) to match the surrounding env convention, and
+ * ignored entirely in production so a deployed process can never be repointed at
+ * another model by an environment variable. A malformed value or an unknown agent
+ * key throws: a typo must not silently produce a run that measured the default.
+ */
+function readModelOverrides(agentKeys: readonly string[]): Record<string, string> {
+  if (process.env.NODE_ENV === "production") return {};
+  const raw = process.env.EVAL_MODEL_OVERRIDES?.trim();
+  if (!raw) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    // `new Error(msg, { cause })` needs lib ES2022; this package targets ES2020,
+    // so the cause is attached after construction (same pattern as elsewhere in src).
+    const wrapped = new Error(`EVAL_MODEL_OVERRIDES is not valid JSON: ${raw}`) as Error & { cause?: unknown };
+    wrapped.cause = err;
+    throw wrapped;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("EVAL_MODEL_OVERRIDES must be a JSON object of agent -> model id");
+  }
+
+  const overrides: Record<string, string> = {};
+  for (const [agent, model] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!agentKeys.includes(agent)) {
+      throw new Error(`EVAL_MODEL_OVERRIDES names an unknown agent "${agent}". Known agents: ${agentKeys.join(", ")}`);
+    }
+    if (typeof model !== "string" || model.trim() === "") {
+      throw new Error(`EVAL_MODEL_OVERRIDES value for "${agent}" must be a non-empty model id string`);
+    }
+    overrides[agent] = model;
+  }
+  return overrides;
+}
+
+/** Per-agent model settings before any eval-only override is applied. */
+function getBaseModelConfig(config?: ModelConfig) {
   return {
     intentInferrer:       { model: "google/gemini-2.5-flash" },
     intentIndexer:        { model: "google/gemini-2.5-flash" },
@@ -76,8 +118,27 @@ function getModelConfig(config?: ModelConfig) {
   } as const;
 }
 
+/**
+ * Per-agent model settings, with `EVAL_MODEL_OVERRIDES` applied when present.
+ * Only the model id is overridable: temperature, token limits and reasoning
+ * effort stay fixed so an eval measures a model swap and nothing else.
+ */
+function getModelConfig(config?: ModelConfig): ReturnType<typeof getBaseModelConfig> {
+  const base = getBaseModelConfig(config);
+  const overrides = readModelOverrides(Object.keys(base));
+  if (Object.keys(overrides).length === 0) return base;
+
+  const merged = Object.fromEntries(
+    Object.entries(base).map(([agent, settings]) => {
+      const model = overrides[agent];
+      return [agent, model ? { ...settings, model } : settings];
+    }),
+  );
+  return merged as ReturnType<typeof getBaseModelConfig>;
+}
+
 /** Key identifying one of the per-agent model configurations. */
-export type ModelAgent = keyof ReturnType<typeof getModelConfig>;
+export type ModelAgent = keyof ReturnType<typeof getBaseModelConfig>;
 
 /**
  * Returns the model name string for the given agent key.
