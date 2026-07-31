@@ -30,7 +30,7 @@ describe("statusFromExitCode", () => {
 
 describe("FsRunStore", () => {
   it("creates a queued record readable after a fresh instance", async () => {
-    const store = new FsRunStore({ rootDir: dir });
+    const store = new FsRunStore({ evalDir: dir });
     const created = await store.create({
       spec: SPEC,
       argv: ["bun", "run", "eval:matching"],
@@ -42,13 +42,13 @@ describe("FsRunStore", () => {
 
     expect(created.status).toBe("queued");
 
-    const reloaded = await new FsRunStore({ rootDir: dir }).get(created.id);
+    const reloaded = await new FsRunStore({ evalDir: dir }).get(created.id);
     expect(reloaded?.id).toBe(created.id);
     expect(reloaded?.spec.harness).toBe("matching");
   });
 
   it("lists newest first", async () => {
-    const store = new FsRunStore({ rootDir: dir });
+    const store = new FsRunStore({ evalDir: dir });
     const first = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
     await Bun.sleep(2);
     const second = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
@@ -59,19 +59,19 @@ describe("FsRunStore", () => {
   });
 
   it("reconciles a running record whose process is gone", async () => {
-    const store = new FsRunStore({ rootDir: dir });
+    const store = new FsRunStore({ evalDir: dir });
     const created = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
     // pid 0 is never a live child process here.
     await store.update(created.id, { status: "running", pid: 0, startedAt: new Date().toISOString() });
 
-    const reconciled = await new FsRunStore({ rootDir: dir }).reconcile();
+    const reconciled = await new FsRunStore({ evalDir: dir }).reconcile();
 
     expect(reconciled.map((r) => r.id)).toEqual([created.id]);
     expect((await store.get(created.id))?.status).toBe("interrupted");
   });
 
   it("leaves finished records untouched during reconciliation", async () => {
-    const store = new FsRunStore({ rootDir: dir });
+    const store = new FsRunStore({ evalDir: dir });
     const created = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
     await store.update(created.id, { status: "passed", exitCode: 0 });
 
@@ -81,7 +81,7 @@ describe("FsRunStore", () => {
 
   it("leaves a running record with a live process alone during reconciliation", async () => {
     const LIVE_PID = 99999;
-    const store = new FsRunStore({ rootDir: dir, isProcessAlive: (pid) => pid === LIVE_PID });
+    const store = new FsRunStore({ evalDir: dir, isProcessAlive: (pid) => pid === LIVE_PID });
     const created = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
     await store.update(created.id, { status: "running", pid: LIVE_PID, startedAt: new Date().toISOString() });
 
@@ -93,14 +93,33 @@ describe("FsRunStore", () => {
     expect(persisted?.pid).toBe(LIVE_PID);
   });
 
+  it("reports the report path relative to eval/, the way artifact ids are addressed", async () => {
+    const store = new FsRunStore({ evalDir: dir });
+    const created = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
+
+    expect(store.artifactPathFor(created.id)).toBe(path.join(".ops-runs", created.id, "report.json"));
+  });
+
+  it("refuses a run directory outside the eval directory", () => {
+    expect(() => new FsRunStore({ evalDir: dir, opsRunsDir: path.join(dir, "..", ".ops-runs") })).toThrow(
+      /escapes the eval directory/,
+    );
+  });
+
+  it("refuses to address a run id that escapes the eval directory", () => {
+    const store = new FsRunStore({ evalDir: dir });
+
+    expect(() => store.artifactPathFor("../../etc")).toThrow(/outside the eval directory/);
+  });
+
   it("surfaces corrupt meta.json as an issue without crashing list", async () => {
-    const store = new FsRunStore({ rootDir: dir });
+    const store = new FsRunStore({ evalDir: dir });
     const healthy = await store.create({ spec: SPEC, argv: [], env: {}, profileFingerprint: "f", experimental: false, workload: 1 });
 
     // Create a directory with a corrupt meta.json
     const corruptId = "corrupt-run-id";
-    await mkdir(path.join(dir, corruptId), { recursive: true });
-    await Bun.write(path.join(dir, corruptId, "meta.json"), "{ incomplete json");
+    await mkdir(path.join(dir, ".ops-runs", corruptId), { recursive: true });
+    await Bun.write(path.join(dir, ".ops-runs", corruptId, "meta.json"), "{ incomplete json");
 
     const { records, issues } = await store.list();
 

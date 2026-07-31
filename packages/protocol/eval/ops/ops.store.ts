@@ -53,24 +53,38 @@ export interface RunStore {
   logPath(id: string): string;
   /** Absolute path the harness should write its report to. */
   reportPath(id: string): string;
+  /**
+   * The run's report path expressed the way artifact ids are: relative to eval/.
+   * Owning this here keeps the eval-root convention in one place instead of
+   * letting callers re-derive it from a cwd.
+   * @throws when the run id would resolve outside the eval directory.
+   */
+  artifactPathFor(id: string): string;
   /** Marks orphaned `running` records as interrupted. Returns the records it changed. */
   reconcile(): Promise<RunRecord[]>;
 }
 
 export interface FsRunStoreOptions {
-  /** Absolute path to the .ops-runs directory. */
-  rootDir: string;
+  /** Absolute path to packages/protocol/eval. Artifact paths are recorded relative to it. */
+  evalDir: string;
+  /** Absolute path to the launched-run directory. Defaults to <evalDir>/.ops-runs, and must live inside evalDir. */
+  opsRunsDir?: string;
   /** Injectable liveness probe, so tests need no real child process. */
   isProcessAlive?: (pid: number) => boolean;
 }
 
 /** Filesystem-backed run records: one directory per run, durable across restarts. */
 export class FsRunStore implements RunStore {
+  private readonly evalDir: string;
   private readonly rootDir: string;
   private readonly isProcessAlive: (pid: number) => boolean;
 
   constructor(options: FsRunStoreOptions) {
-    this.rootDir = options.rootDir;
+    this.evalDir = options.evalDir;
+    this.rootDir = options.opsRunsDir ?? path.join(options.evalDir, ".ops-runs");
+    // Reports are addressed relative to eval/, so a run root outside it could never
+    // produce a usable artifact path. Fail at construction rather than at run time.
+    assertInsideEvalDir(this.evalDir, this.rootDir, `Ops run directory escapes the eval directory: ${this.rootDir}`);
     this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
   }
 
@@ -145,6 +159,11 @@ export class FsRunStore implements RunStore {
     return path.join(this.dir(id), "report.json");
   }
 
+  artifactPathFor(id: string): string {
+    const reportPath = this.reportPath(id);
+    return assertInsideEvalDir(this.evalDir, reportPath, `Run id resolves outside the eval directory: ${id}`);
+  }
+
   async reconcile(): Promise<RunRecord[]> {
     const changed: RunRecord[] = [];
     const { records } = await this.list();
@@ -166,6 +185,13 @@ export class FsRunStore implements RunStore {
   private async write(record: RunRecord): Promise<void> {
     await Bun.write(path.join(this.dir(record.id), "meta.json"), `${JSON.stringify(record, null, 2)}\n`);
   }
+}
+
+/** Returns the eval-relative path, or throws when `target` is not inside `evalDir`. */
+function assertInsideEvalDir(evalDir: string, target: string, message: string): string {
+  const relative = path.relative(evalDir, target);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(message);
+  return relative;
 }
 
 function defaultIsProcessAlive(pid: number): boolean {
