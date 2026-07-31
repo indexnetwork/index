@@ -6,14 +6,22 @@
  * and a request carrying any of those fails validation instead of being ignored.
  * Nothing that leaves here contains a credential.
  *
- * There is no authentication: any process on this machine may drive this server.
- * That is an operator-trust decision about LOCAL processes, and it is not the same
- * thing as being drivable by any web page the operator happens to have open, so
- * state-changing requests are refused unless they are same-origin (see
- * `crossOriginRefusal`) and carry a JSON content type. Every request, read
- * included, must also arrive addressed to a loopback host (see
- * `foreignHostRefusal`), which is what keeps a rebound DNS name from reading
- * artifacts, run records, logs and fixture metadata.
+ * Four independent guards stand in front of every request, and they compose
+ * rather than substitute for one another:
+ *
+ *  1. `foreignHostRefusal` — every request, read included, must be addressed to a
+ *     loopback host. This is what stops a rebound DNS name reading artifacts,
+ *     run records, logs and fixture metadata.
+ *  2. `crossOriginRefusal` — a state-changing request must be same-origin, so a
+ *     page the operator happens to have open cannot drive a run or a flush.
+ *  3. A JSON content type on writes, which `no-cors` cannot produce.
+ *  4. `authRefusal` — the caller must hold a session belonging to a verified
+ *     member of the allowed domain (see ops.auth.ts).
+ *
+ * Authentication is the newest of the four and the weakest place to lean: it is
+ * defence in depth on top of the loopback guards, not a licence to relax them.
+ * A signed-in browser is still refused a cross-origin write, and a foreign Host
+ * is still refused before the session is even looked at.
  */
 import path from "node:path";
 
@@ -21,6 +29,7 @@ import { z } from "zod";
 
 import { renderRun, RunSpecSchema } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
+import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
@@ -46,10 +55,58 @@ export interface OpsContext {
   databaseUrl: string | undefined;
   /** Read-only live counts. Absent when no database client is configured. */
   inspector?: FixtureInspector;
+  /** Identity. Absent only in tests that predate the gate; see `authRefusal`. */
+  auth?: OpsAuthContext;
+}
+
+/** Everything the auth gate needs. All of it is injectable, so tests need no API. */
+export interface OpsAuthContext {
+  states: OneTimeStateStore;
+  sessions: OpsSessionStore;
+  identities: IdentityResolver;
+  /** Base URL of the web app serving /cli-auth. */
+  webAppUrl: string;
+  /** The port this server's /callback is reachable on. */
+  callbackPort: number;
 }
 
 /** Origins a browser may legitimately be running the ops UI on: loopback only. */
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * The only routes reachable without a session, and the reason each one must be.
+ *
+ * This is an allowlist because the gate is default-deny: `authRefusal` refuses
+ * everything not named here, including unknown paths, so a route added to
+ * `route()` without a thought about access is gated rather than exposed. Adding
+ * an entry here is the deliberate act of publishing something.
+ *
+ *  - `GET /api/auth/status` — the UI asks "am I signed in?" before it has a
+ *    session; gating it would make the question unanswerable.
+ *  - `POST /api/auth/login` — mints the sign-in link, so requiring a session to
+ *    call it would be circular.
+ *
+ * `/callback` is deliberately absent: it is not under /api/ and is handled ahead
+ * of the gate, because it is the request that *establishes* a session.
+ */
+export const PUBLIC_ROUTES: ReadonlyArray<{ method: string; path: string }> = Object.freeze([
+  Object.freeze({ method: "GET", path: "/api/auth/status" }),
+  Object.freeze({ method: "POST", path: "/api/auth/login" }),
+]);
+
+/** Name of the ops session cookie. */
+const SESSION_COOKIE = "eval_ops_session";
+
+/**
+ * The session cookie's attributes.
+ *
+ * `Secure` is deliberately absent. The ops site is served over plain http on
+ * loopback, and a Secure cookie would be dropped by the browser — sign-in would
+ * appear to succeed and then silently never take effect. `SameSite=Lax` keeps the
+ * cookie off cross-site writes, which is the same boundary `crossOriginRefusal`
+ * enforces server-side.
+ */
+const SESSION_COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Lax; Path=/";
 
 /** Fetch metadata values that mean "this was not initiated by another site". */
 const SAME_ORIGIN_FETCH_SITES = new Set(["same-origin", "none"]);
@@ -80,6 +137,18 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
     const refusal = crossOriginRefusal(request);
     if (refusal !== null) return refusal;
     try {
+      // Ahead of the gate: this is the request that establishes a session, so it
+      // cannot require one. It is still behind both loopback guards above.
+      if (url.pathname === "/callback" && request.method === "GET") {
+        return await completeSignIn(context, url);
+      }
+
+      // Default-deny. Everything from here on either sits on PUBLIC_ROUTES or
+      // carries a session, including unknown paths — so a route added below
+      // without a decision about access is gated, not published.
+      const denied = authRefusal(context, request, url);
+      if (denied !== null) return denied;
+
       const response = await route(context, state, request, url);
       return response ?? json({ error: `Unknown route: ${request.method} ${url.pathname}` }, 404);
     } catch (error) {
@@ -87,6 +156,149 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
       return json({ error: scrubCredentials(messageOf(error)) }, 500);
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+/**
+ * Refuses a request that carries no session, unless its route is public.
+ *
+ * 401 and 403 are kept distinct because the UI must tell two different stories:
+ * 401 means "nobody is signed in, offer the sign-in button", while 403 means "an
+ * Index account is signed in but it is not permitted here", which no amount of
+ * retrying fixes. Collapsing them would leave an outsider clicking sign-in forever.
+ *
+ * Returns null when the request may proceed.
+ */
+function authRefusal(context: OpsContext, request: Request, url: URL): Response | null {
+  const auth = context.auth;
+  // A context with no auth wiring is a programming error, not an open door: the
+  // server refuses everything rather than serving unauthenticated.
+  if (auth === undefined) {
+    return json({ error: "This server has no identity configured, so nothing can be authorised." }, 500);
+  }
+  if (PUBLIC_ROUTES.some((entry) => entry.method === request.method && entry.path === url.pathname)) {
+    return null;
+  }
+
+  const identity = auth.sessions.lookup(readCookie(request, SESSION_COOKIE));
+  if (identity === null) {
+    return json({ error: "Sign in with your Index account to use the eval ops site.", authenticated: false }, 401);
+  }
+  // Re-checked on every request rather than trusted from sign-in time: the policy
+  // is the authority, and a session established before it is not a licence.
+  const verdict = assessIdentity({ email: identity.email, emailVerified: true, name: identity.name });
+  if (!verdict.allowed) {
+    return json({ error: verdict.reason, authenticated: true, permitted: false }, 403);
+  }
+  return null;
+}
+
+/** The signed-in identity, or null. Only meaningful after `authRefusal` has passed. */
+function sessionIdentity(context: OpsContext, request: Request): AllowedIdentity | null {
+  return context.auth?.sessions.lookup(readCookie(request, SESSION_COOKIE)) ?? null;
+}
+
+/**
+ * Completes the bridge round-trip: state in, session out.
+ *
+ * The order is deliberate and every step fails closed. The state is consumed
+ * first, so a callback this server did not start is refused before the credential
+ * in it is read at all. The credential is then exchanged for an identity and
+ * dropped — it is a broad API key for a real account, and it is never stored in a
+ * session, logged, or written into a page.
+ */
+async function completeSignIn(context: OpsContext, url: URL): Promise<Response> {
+  const auth = context.auth;
+  if (auth === undefined) return refusalPage("This server has no identity configured.", 500);
+
+  // Consuming is the validation: unknown, expired and replayed states all fail here.
+  if (!auth.states.consume(url.searchParams.get("state"))) {
+    return refusalPage(
+      "This sign-in link is no longer valid. It may have already been used, or it may have expired. Start the sign-in again from the eval ops site.",
+      403,
+    );
+  }
+
+  // The bridge sends the key as `api_key` (v2) or `session_token` (the v1 name,
+  // which is also an API-key secret rather than a browser token).
+  const credential = url.searchParams.get("api_key") ?? url.searchParams.get("session_token");
+  if (credential === null || credential === "") {
+    return refusalPage("The sign-in did not deliver a credential. Start the sign-in again from the eval ops site.", 403);
+  }
+
+  let resolved;
+  try {
+    resolved = await auth.identities.resolve(credential);
+  } catch (error) {
+    // "The API is down" is not "you are not allowed in", and must not read as it.
+    return refusalPage(
+      `The Index API could not be reached to verify this sign-in: ${scrubCredentials(messageOf(error))}`,
+      502,
+    );
+  }
+
+  const verdict = assessIdentity(resolved);
+  if (!verdict.allowed) return refusalPage(verdict.reason, 403);
+
+  const session = auth.sessions.establish(verdict.identity);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: "/",
+      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${SESSION_COOKIE_ATTRIBUTES}`,
+    },
+  });
+}
+
+/**
+ * The page a refused sign-in lands on.
+ *
+ * The reason interpolates the address the API returned, which is user-controlled
+ * text arriving through a redirect and rendered under the operator's own loopback
+ * origin — an injection sink unless it is escaped. `escapeHtml` is applied to the
+ * reason and nothing else is interpolated, so the page has no other sink.
+ */
+function refusalPage(reason: string, status: number): Response {
+  const body = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Sign-in refused</title></head>
+<body style="font-family: ui-monospace, monospace; background: #0b0d0e; color: #c8ccc8; padding: 2rem;">
+<h1 style="color: #ff6b64;">Sign-in refused</h1>
+<p>${escapeHtml(reason)}</p>
+<p><a href="/" style="color: #56c8d8;">Return to the eval ops site</a></p>
+</body>
+</html>
+`;
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+/** Escapes the five characters that can break out of HTML text or an attribute. */
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/** Reads one cookie out of the request's Cookie header. */
+function readCookie(request: Request, name: string): string | null {
+  const header = request.headers.get("cookie");
+  if (header === null) return null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    return part.slice(separator + 1).trim();
+  }
+  return null;
 }
 
 /**
@@ -181,6 +393,7 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
   const [, resource, ...rest] = segments;
 
   if (request.method === "GET") {
+    if (resource === "auth" && rest.length === 1 && rest[0] === "status") return authStatus(context, request);
     if (resource === "harnesses" && rest.length === 0) return json({ harnesses: Object.values(HARNESS_REGISTRY) });
     if (resource === "profiles" && rest.length === 0) return json({ profiles: await loadProfiles(context.profilesDir) });
     if (resource === "artifacts" && rest.length === 0) return json(await context.artifacts.list());
@@ -195,12 +408,50 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
   }
 
   if (request.method === "POST") {
+    if (resource === "auth" && rest.length === 1 && rest[0] === "login") return beginSignIn(context);
+    if (resource === "auth" && rest.length === 1 && rest[0] === "logout") return endSession(context, request);
     if (resource === "runs" && rest.length === 0) return await launchRun(context, state, request);
     if (resource === "runs" && rest.length === 2 && rest[1] === "cancel") return await cancelRun(context, rest[0]);
     if (resource === "fixture" && rest.length === 1 && rest[0] === "reset") return await resetFixture(context, state, request);
   }
 
   return null;
+}
+
+/** Who is signed in, if anyone. The one route the UI may ask before it has a session. */
+function authStatus(context: OpsContext, request: Request): Response {
+  const identity = sessionIdentity(context, request);
+  if (identity === null) return json({ authenticated: false });
+  return json({ authenticated: true, email: identity.email, name: identity.name });
+}
+
+/**
+ * Starts a sign-in: mints a one-time state and returns the bridge link.
+ *
+ * Everything in the link comes from this server's own configuration; nothing in
+ * it is taken from the request, so a caller cannot steer the callback elsewhere.
+ */
+function beginSignIn(context: OpsContext): Response {
+  const auth = context.auth;
+  if (auth === undefined) return json({ error: "This server has no identity configured." }, 500);
+  const url = buildBridgeUrl({
+    webAppUrl: auth.webAppUrl,
+    callbackPort: auth.callbackPort,
+    state: auth.states.mint(),
+  });
+  return json({ url });
+}
+
+/** Ends the session and expires the cookie, so the browser stops presenting it. */
+function endSession(context: OpsContext, request: Request): Response {
+  context.auth?.sessions.clear(readCookie(request, SESSION_COOKIE));
+  return new Response(JSON.stringify({ authenticated: false }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Set-Cookie": `${SESSION_COOKIE}=; ${SESSION_COOKIE_ATTRIBUTES}; Max-Age=0`,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -620,6 +871,13 @@ async function readEnvValue(file: string, key: string): Promise<string | null> {
 // Default wiring
 // ---------------------------------------------------------------------------
 
+/** Where the API that resolves an identity lives, when the environment does not say. */
+const DEFAULT_API_URL = "http://localhost:3001";
+/** Where the web app serving the /cli-auth bridge lives, when the environment does not say. */
+const DEFAULT_WEB_APP_URL = "https://index.network";
+/** The port this server listens on, when the environment does not say. Mirrors ops.serve.ts. */
+const DEFAULT_PORT = 4321;
+
 /** Builds the context the standalone server runs on: everything rooted at the repository. */
 export async function createDefaultOpsContext(options: { repoRoot: string }): Promise<OpsContext> {
   const protocolDir = path.join(options.repoRoot, "packages/protocol");
@@ -656,6 +914,19 @@ export async function createDefaultOpsContext(options: { repoRoot: string }): Pr
     queue: new RunQueue({ executor, store }),
     databaseUrl,
     inspector: new BunSqlFixtureInspector(),
+    auth: {
+      states: new OneTimeStateStore(),
+      sessions: new OpsSessionStore(),
+      // The bridge mints a real API key against the operator's own browser
+      // session, so this resolver is the only part of the server that talks to
+      // the API at all.
+      identities: new ApiIdentityResolver({ apiUrl: process.env.API_URL ?? DEFAULT_API_URL }),
+      webAppUrl: process.env.WEB_APP_URL ?? DEFAULT_WEB_APP_URL,
+      // Must match the port Bun.serve actually binds, or the bridge would send the
+      // credential to a port nothing is listening on. ops.serve.ts reads the same
+      // variable and the same default.
+      callbackPort: Number(process.env.EVAL_OPS_PORT ?? DEFAULT_PORT),
+    },
   };
 }
 

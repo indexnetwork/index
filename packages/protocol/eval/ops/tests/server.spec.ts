@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { FsArtifactSource } from "../ops.artifacts.js";
+import { OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { RunQueue } from "../ops.queue.js";
-import { createOpsHandler, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 
@@ -50,11 +51,30 @@ const COUNTS: FixtureCounts = {
   tables: { users: 2, intents: 5, opportunities: 7 },
 };
 
+/** Hands back whatever identity a test set, without an API, a socket or a key. */
+class StubIdentityResolver implements IdentityResolver {
+  /** Credentials this resolver was handed, so a test can prove one was discarded. */
+  readonly seen: string[] = [];
+  identity: ResolvedIdentity | null = { email: "operator@index.network", emailVerified: true, name: "Operator" };
+  failure: Error | null = null;
+
+  async resolve(apiKey: string): Promise<ResolvedIdentity | null> {
+    this.seen.push(apiKey);
+    if (this.failure !== null) throw this.failure;
+    return this.identity;
+  }
+}
+
 let root: string;
 let store: FsRunStore;
 let executor: FakeExecutor;
 let context: OpsContext;
 let handler: (request: Request) => Promise<Response>;
+let states: OneTimeStateStore;
+let sessions: OpsSessionStore;
+let identities: StubIdentityResolver;
+/** A `Cookie` header for a signed-in operator, refreshed by `signIn()`. */
+let sessionCookie: Record<string, string>;
 
 async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
   const evalDir = path.join(root, "eval");
@@ -70,6 +90,9 @@ async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
   );
   store = new FsRunStore({ evalDir });
   executor = new FakeExecutor(store);
+  states = new OneTimeStateStore();
+  sessions = new OpsSessionStore();
+  identities = new StubIdentityResolver();
   context = {
     evalDir,
     protocolDir: root,
@@ -81,9 +104,39 @@ async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
     queue: new RunQueue({ executor, store }),
     databaseUrl: DATABASE_URL,
     inspector: { count: async () => COUNTS },
+    auth: {
+      states,
+      sessions,
+      identities,
+      webAppUrl: "https://index.network",
+      callbackPort: 4321,
+    },
     ...overrides,
   };
   handler = createOpsHandler(context);
+  sessionCookie = {};
+  await signIn();
+}
+
+/**
+ * Drives a full bridge round-trip and leaves `sessionCookie` holding the session.
+ *
+ * Called by `build()` rather than only once, because a test that rebuilds the
+ * context gets fresh stores — a cookie minted against the old ones would no
+ * longer resolve, and every assertion after it would fail on a 401 instead of
+ * the behaviour it meant to check.
+ */
+async function signIn(): Promise<void> {
+  const state = states.mint();
+  const response = await handler(
+    new Request(`http://localhost/callback?state=${state}&api_key=test-credential`),
+  );
+  const cookie = response.headers.get("set-cookie");
+  if (cookie === null) throw new Error(`sign-in did not set a session cookie (status ${response.status})`);
+  sessionCookie = { Cookie: cookie.split(";")[0] };
+  // The sign-in above exchanged one credential; a test asserting "the credential
+  // was never looked at" must not see this one.
+  identities.seen.length = 0;
 }
 
 beforeEach(async () => {
@@ -95,12 +148,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const get = (url: string) => handler(new Request(`http://localhost${url}`));
+// Every existing test drives the server as a signed-in operator: authentication
+// is a new gate in front of behaviour those tests already pinned, so they carry
+// the session and keep asserting the behaviour rather than the gate. The gate
+// itself is pinned by `describe("authentication")` below.
+const get = (url: string, headers: Record<string, string> = {}) =>
+  handler(new Request(`http://localhost${url}`, { headers: { ...sessionCookie, ...headers } }));
 const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
   handler(
     new Request(`http://localhost${url}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
+      headers: { "Content-Type": "application/json", ...sessionCookie, ...headers },
       body: JSON.stringify(body),
     }),
   );
@@ -250,7 +308,7 @@ describe("POST /api/runs", () => {
     const response = await handler(
       new Request("http://localhost/api/runs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...sessionCookie },
         body: "not json",
       }),
     );
@@ -344,7 +402,7 @@ describe("cross-origin requests", () => {
     const response = await handler(
       new Request("http://localhost/api/runs", {
         method: "POST",
-        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        headers: { "Content-Type": "text/plain;charset=UTF-8", ...sessionCookie },
         body: JSON.stringify(RUN_BODY),
       }),
     );
@@ -356,7 +414,7 @@ describe("cross-origin requests", () => {
 
   it("leaves reads reachable: a GET is not a state change", async () => {
     const response = await handler(
-      new Request("http://localhost/api/harnesses", { headers: { Origin: "https://evil.example" } }),
+      new Request("http://localhost/api/harnesses", { headers: { Origin: "https://evil.example", ...sessionCookie } }),
     );
     // Nothing here mutates, and without a CORS header the body stays unreadable
     // — provided the request actually reached this server as a loopback host,
@@ -372,8 +430,10 @@ describe("Host header guard", () => {
   // CORS header is needed to read the reply. Only the Host header still names the
   // attacker's domain, so it is the one value worth checking — and unlike the
   // Origin guard it must apply to reads, which are what rebinding exists to steal.
+  // Carries the session so the acceptance cases below reach the route rather than
+  // the auth gate; the refusal cases are unaffected, since Host is checked first.
   const withHost = (host: string, path = "/api/harnesses") =>
-    handler(new Request(`http://localhost${path}`, { headers: { Host: host } }));
+    handler(new Request(`http://localhost${path}`, { headers: { Host: host, ...sessionCookie } }));
 
   it("refuses a GET whose Host names a foreign domain", async () => {
     const response = await withHost("evil.example.com");
@@ -399,7 +459,7 @@ describe("Host header guard", () => {
   it("accepts a request with no Host header", async () => {
     // curl over an explicit socket, and any hop that drops it. A request with no
     // Host was not steered here by a resolved name, so rebinding does not apply.
-    const response = await handler(new Request("http://localhost/api/harnesses"));
+    const response = await handler(new Request("http://localhost/api/harnesses", { headers: { ...sessionCookie } }));
 
     expect(response.status).toBe(200);
   });
@@ -665,5 +725,329 @@ describe("POST /api/fixture/reset", () => {
     expect((await response.json()).error).toMatch(/reset/i);
     release();
     await Bun.sleep(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+/**
+ * Every `/api/*` route this server answers, as (method, path) pairs.
+ *
+ * Hand-maintained on purpose: the point of the inventory test below is that
+ * adding a route to ops.server.ts without deciding whether it is public fails
+ * here, and a list derived from the router itself could not detect that.
+ */
+const API_ROUTES: ReadonlyArray<{ method: "GET" | "POST"; path: string }> = [
+  { method: "GET", path: "/api/auth/status" },
+  { method: "POST", path: "/api/auth/login" },
+  { method: "POST", path: "/api/auth/logout" },
+  { method: "GET", path: "/api/harnesses" },
+  { method: "GET", path: "/api/profiles" },
+  { method: "GET", path: "/api/artifacts" },
+  { method: "GET", path: "/api/artifacts/some-id" },
+  { method: "GET", path: "/api/compare?reference=a&subject=b" },
+  { method: "GET", path: "/api/runs" },
+  { method: "GET", path: "/api/runs/some-id/stream" },
+  { method: "GET", path: "/api/fixture" },
+  { method: "POST", path: "/api/runs" },
+  { method: "POST", path: "/api/runs/some-id/cancel" },
+  { method: "POST", path: "/api/fixture/reset" },
+];
+
+describe("authentication", () => {
+  /** Sends a request with no session at all. */
+  const anonymous = (method: "GET" | "POST", url: string) =>
+    handler(
+      new Request(`http://localhost${url}`, {
+        method,
+        headers: method === "POST" ? { "Content-Type": "application/json" } : {},
+        body: method === "POST" ? "{}" : undefined,
+      }),
+    );
+
+  describe("the gate covers every route", () => {
+    // The whole failure mode of this task is a route that forgets the gate. This
+    // enumerates the server's surface and asserts each entry is either on the
+    // public allowlist or refuses an anonymous caller — so a new route added
+    // without a decision about access fails here rather than shipping unguarded.
+    for (const route of API_ROUTES) {
+      const isPublic = PUBLIC_ROUTES.some(
+        (entry) => entry.method === route.method && route.path.split("?")[0] === entry.path,
+      );
+
+      it(`${route.method} ${route.path} is ${isPublic ? "public by decision" : "session-gated"}`, async () => {
+        const response = await anonymous(route.method, route.path);
+
+        if (isPublic) {
+          expect(response.status).not.toBe(401);
+        } else {
+          expect(response.status).toBe(401);
+        }
+      });
+    }
+
+    it("pins the public allowlist, so widening it is a deliberate edit", () => {
+      expect([...PUBLIC_ROUTES].map((entry) => `${entry.method} ${entry.path}`).sort()).toEqual([
+        "GET /api/auth/status",
+        "POST /api/auth/login",
+      ]);
+    });
+
+    it("gates the unknown-route 404 as well, so probing needs a session", async () => {
+      // A 404 that answers anonymously would still confirm which routes exist.
+      expect((await anonymous("GET", "/api/nope")).status).toBe(401);
+      expect((await get("/api/nope")).status).toBe(404);
+    });
+  });
+
+  describe("GET /api/auth/status", () => {
+    it("reports an anonymous caller without a session", async () => {
+      const response = await anonymous("GET", "/api/auth/status");
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ authenticated: false });
+    });
+
+    it("reports the signed-in identity", async () => {
+      const body = await (await get("/api/auth/status")).json();
+
+      expect(body).toEqual({ authenticated: true, email: "operator@index.network", name: "Operator" });
+    });
+  });
+
+  describe("POST /api/auth/login", () => {
+    it("returns a bridge URL carrying a fresh one-time state", async () => {
+      const body = await (await anonymous("POST", "/api/auth/login")).json();
+      const url = new URL(body.url);
+
+      expect(url.origin + url.pathname).toBe("https://index.network/cli-auth");
+      expect(url.searchParams.get("callback")).toBe("http://127.0.0.1:4321/callback");
+      expect(url.searchParams.get("version")).toBe("2");
+      expect(url.searchParams.get("state")).toMatch(/^[A-Za-z0-9_-]{32,128}$/);
+    });
+
+    it("mints a distinct state per call", async () => {
+      const first = new URL((await (await anonymous("POST", "/api/auth/login")).json()).url);
+      const second = new URL((await (await anonymous("POST", "/api/auth/login")).json()).url);
+
+      expect(first.searchParams.get("state")).not.toBe(second.searchParams.get("state"));
+    });
+  });
+
+  describe("GET /callback", () => {
+    const callback = (query: string) => handler(new Request(`http://localhost/callback?${query}`));
+
+    it("establishes a session and redirects to the app", async () => {
+      const state = states.mint();
+
+      const response = await callback(`state=${state}&api_key=k`);
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe("/");
+      const cookie = response.headers.get("set-cookie") ?? "";
+      expect(cookie).toMatch(/HttpOnly/i);
+      expect(cookie).toMatch(/SameSite=Lax/i);
+      expect(cookie).toMatch(/Path=\//);
+      // Loopback is plain http: a Secure cookie would be dropped by the browser
+      // and sign-in would fail silently.
+      expect(cookie).not.toMatch(/Secure/i);
+    });
+
+    it("refuses a state this server never minted", async () => {
+      const response = await callback("state=not-a-real-state&api_key=k");
+
+      expect(response.status).toBe(403);
+      // The credential must not even be looked at once the state fails.
+      expect(identities.seen).toHaveLength(0);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("refuses a replayed state, so a copied callback URL cannot sign in twice", async () => {
+      const state = states.mint();
+      expect((await callback(`state=${state}&api_key=k`)).status).toBe(302);
+
+      const replay = await callback(`state=${state}&api_key=k`);
+
+      expect(replay.status).toBe(403);
+      expect(replay.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("refuses a callback with no credential", async () => {
+      const state = states.mint();
+
+      const response = await callback(`state=${state}`);
+
+      expect(response.status).toBe(403);
+      expect(identities.seen).toHaveLength(0);
+    });
+
+    it("refuses an identity outside the allowed domain and discards the credential", async () => {
+      identities.identity = { email: "someone@evil.example", emailVerified: true, name: "Outsider" };
+      const state = states.mint();
+
+      const response = await callback(`state=${state}&api_key=radioactive`);
+      const text = await response.text();
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      // Exchanged once, then dropped: never echoed to the browser.
+      expect(identities.seen).toEqual(["radioactive"]);
+      expect(text).not.toContain("radioactive");
+    });
+
+    it("refuses an unverified address", async () => {
+      identities.identity = { email: "operator@index.network", emailVerified: false, name: "Operator" };
+      const state = states.mint();
+
+      expect((await callback(`state=${state}&api_key=k`)).status).toBe(403);
+    });
+
+    it("escapes the refusal reason rather than rendering the address as markup", async () => {
+      // The address is user-controlled and the reason interpolates it verbatim,
+      // so the callback page is an injection sink unless it escapes.
+      identities.identity = {
+        email: "<img src=x onerror=alert(1)>@evil.example",
+        emailVerified: true,
+        name: "x",
+      };
+      const state = states.mint();
+
+      const text = await (await callback(`state=${state}&api_key=k`)).text();
+
+      expect(text).not.toContain("<img src=x");
+      expect(text).toContain("&lt;img");
+    });
+
+    it("answers 502 when the identity service cannot be reached", async () => {
+      // "The API is down" is not "you are not allowed in", and must not read as it.
+      identities.failure = new Error("connect ECONNREFUSED 127.0.0.1:3001");
+      const state = states.mint();
+
+      const response = await callback(`state=${state}&api_key=k`);
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("refuses a callback addressed to a foreign host", async () => {
+      // The bridge redirect lands in a browser, so the rebinding guard must cover
+      // this route too — it is not under /api/.
+      const state = states.mint();
+
+      const response = await handler(
+        new Request(`http://localhost/callback?state=${state}&api_key=k`, {
+          headers: { Host: "evil.example.com" },
+        }),
+      );
+
+      expect(response.status).toBe(403);
+      expect(identities.seen).toHaveLength(0);
+    });
+  });
+
+  describe("POST /api/auth/logout", () => {
+    it("clears the session and requires one to call", async () => {
+      expect((await anonymous("POST", "/api/auth/logout")).status).toBe(401);
+
+      const response = await post("/api/auth/logout", {});
+
+      expect(response.status).toBe(200);
+      expect((await (await get("/api/auth/status")).json()).authenticated).toBe(false);
+      // The gate closes again immediately.
+      expect((await get("/api/runs")).status).toBe(401);
+    });
+  });
+
+  describe("401 and 403 are distinguishable", () => {
+    it("answers 401 with no session and 403 for a session the policy later refuses", async () => {
+      expect((await anonymous("GET", "/api/runs")).status).toBe(401);
+
+      // A session established for an identity the policy no longer admits: the
+      // UI must be able to tell "sign in" from "your account is not permitted".
+      const stale = sessions.establish({ email: "someone@evil.example", name: "Outsider" });
+      const response = await handler(
+        new Request("http://localhost/api/runs", { headers: { Cookie: `eval_ops_session=${stale}` } }),
+      );
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe("the existing loopback guards still apply", () => {
+    it("refuses a foreign Host before it considers the session", async () => {
+      const response = await handler(
+        new Request("http://localhost/api/runs", { headers: { Host: "evil.example.com", ...sessionCookie } }),
+      );
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toMatch(/evil\.example\.com/);
+    });
+
+    it("refuses a cross-origin write from a signed-in browser", async () => {
+      // A session does not license a drive-by: both guards still have to pass.
+      const response = await post("/api/runs", RUN_BODY, { Origin: "https://evil.example" });
+
+      expect(response.status).toBe(403);
+      expect((await store.list()).records).toHaveLength(0);
+    });
+
+    it("still requires a JSON content type on a signed-in write", async () => {
+      const response = await handler(
+        new Request("http://localhost/api/runs", {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8", ...sessionCookie },
+          body: JSON.stringify(RUN_BODY),
+        }),
+      );
+
+      expect(response.status).toBe(415);
+    });
+  });
+});
+
+describe("createDefaultOpsContext", () => {
+  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "EVAL_OPS_PORT"] as const;
+  const original: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of ENV_KEYS) original[key] = process.env[key];
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (original[key] === undefined) delete process.env[key];
+      else process.env[key] = original[key];
+    }
+  });
+
+  it("builds a callback on the port the server actually binds", async () => {
+    // ops.serve.ts binds EVAL_OPS_PORT and this builds the bridge callback from
+    // it. If they ever disagree the bridge delivers the credential to a port
+    // nothing is listening on, and sign-in fails with no visible cause.
+    process.env.EVAL_OPS_PORT = "4399";
+    process.env.WEB_APP_URL = "https://index.network";
+
+    const built = await createDefaultOpsContext({ repoRoot: root });
+    const response = await createOpsHandler(built)(
+      new Request("http://localhost/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }),
+    );
+    const url = new URL((await response.json()).url);
+
+    expect(url.searchParams.get("callback")).toBe("http://127.0.0.1:4399/callback");
+  });
+
+  it("wires identity, so the default server is never unauthenticated", async () => {
+    const built = await createDefaultOpsContext({ repoRoot: root });
+
+    expect(built.auth).toBeDefined();
+    // An anonymous read is refused by the context the real entrypoint uses.
+    const response = await createOpsHandler(built)(new Request("http://localhost/api/runs"));
+    expect(response.status).toBe(401);
   });
 });
