@@ -61,3 +61,22 @@ export interface IndexResult {
   refs: ArtifactRef[];
   issues: IndexIssue[];
 }
+
+export interface RunFlags {
+  runs?: number;
+  case?: string;
+  rule?: string;
+  tier?: number;
+  noJudge?: boolean;
+  alpha?: number;
+  attemptTimeoutMs?: number;
+  strictEvidence?: boolean;
+}
+
+export interface RunSpec {
+  kind: "eval";
+  harness: OpsHarness;
+  /** Name of a committed profile. Never a set of raw overrides. */
+  profile: string;
+  flags: RunFlags;
+}
