@@ -6,6 +6,7 @@ import { Run } from './routes/Run';
 import { Launch } from './routes/Launch';
 import { Profiles } from './routes/Profiles';
 import { Compare } from './routes/Compare';
+import { Fixture } from './routes/Fixture';
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
       {
         path: '/compare',
         element: <Compare />,
+      },
+      {
+        path: '/fixture',
+        element: <Fixture />,
       },
     ],
   },

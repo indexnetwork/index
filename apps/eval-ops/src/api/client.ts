@@ -137,6 +137,7 @@ export interface RunsResult {
 
 export interface FixtureTarget {
   databaseName: string;
+  host: string;
   redactedUrl?: string;
 }
 
@@ -146,7 +147,7 @@ export interface FixtureStatusAllowed {
   maxPersonas: number;
   appliesMigrationsOnReset: boolean;
   personaCount: number | null;
-  personaEmails: number | null;
+  personaEmails: string[] | null;
   tables: Record<string, number> | null;
   countsError: string | null;
 }

@@ -5,6 +5,7 @@ const LINKS: ReadonlyArray<{ to: string; label: string }> = [
   { to: '/launch', label: 'launch' },
   { to: '/compare', label: 'compare' },
   { to: '/profiles', label: 'profiles' },
+  { to: '/fixture', label: 'fixture' },
 ];
 
 /**
