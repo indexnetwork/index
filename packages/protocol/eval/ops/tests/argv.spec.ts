@@ -123,8 +123,50 @@ describe("renderRun", () => {
   });
 
   it("does not pin OPENROUTER_FALLBACK_MODEL for the default profile", () => {
+    // Deliberately absent rather than "": for this variable unset means "use the
+    // default cross-vendor fallback" while "" means "fallbacks disabled", so
+    // writing "" here would silently disable a resilience feature. See the
+    // neutralisation test below for why EVAL_MODEL_OVERRIDES is handled differently.
     const rendered = renderRun({ kind: "eval", harness: "matching", profile: "default", flags: {} }, DEFAULT, REPORT);
     expect(rendered.env.OPENROUTER_FALLBACK_MODEL).toBeUndefined();
+  });
+
+  it("neutralises an inherited EVAL_MODEL_OVERRIDES for a default-profile run", () => {
+    // The executor spawns with { ...process.env, ...record.env }. An operator who
+    // put EVAL_MODEL_OVERRIDES in .env.test (documented in .env.example) puts it in
+    // the ops server's own environment, and `bun --env-file` does NOT override an
+    // inherited variable — so without an explicit empty value the child would run
+    // overridden models while the record claims env {} and experimental false.
+    const rendered = renderRun({ kind: "eval", harness: "matching", profile: "default", flags: {} }, DEFAULT, REPORT);
+
+    expect(rendered.env.EVAL_MODEL_OVERRIDES).toBe("");
+  });
+
+  it("still sets EVAL_MODEL_OVERRIDES for an experimental profile", () => {
+    const rendered = renderRun(
+      { kind: "eval", harness: "matching", profile: "claude-evaluator", flags: {} },
+      EXPERIMENT,
+      REPORT,
+    );
+
+    expect(JSON.parse(rendered.env.EVAL_MODEL_OVERRIDES)).toEqual({
+      opportunityEvaluator: "anthropic/claude-sonnet-4",
+    });
+  });
+
+  it("renders the same env for a default-profile run regardless of ambient state", () => {
+    // Determinism is the actual property being protected: the rendered env must be
+    // a function of the profile alone, never of what happens to be in process.env.
+    const first = renderRun({ kind: "eval", harness: "matching", profile: "default", flags: {} }, DEFAULT, REPORT);
+    const previous = process.env.EVAL_MODEL_OVERRIDES;
+    process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ opportunityEvaluator: "anthropic/claude-sonnet-4" });
+    try {
+      const second = renderRun({ kind: "eval", harness: "matching", profile: "default", flags: {} }, DEFAULT, REPORT);
+      expect(second.env).toEqual(first.env);
+    } finally {
+      if (previous === undefined) delete process.env.EVAL_MODEL_OVERRIDES;
+      else process.env.EVAL_MODEL_OVERRIDES = previous;
+    }
   });
 
   it("does not override OPENROUTER_FALLBACK_MODEL if already present in resolved env", () => {

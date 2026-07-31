@@ -79,6 +79,11 @@ const SELECTION_FLAGS: readonly (keyof RunFlags)[] = ["case", "rule", "tier"];
  * onto a different model mid-run — which would corrupt the comparison the
  * experimental run exists to measure. The profile can override this pin by
  * explicitly setting OPENROUTER_FALLBACK_MODEL in its env block.
+ *
+ * The returned env is a function of the profile alone, never of the ops server's
+ * own environment: the executor spawns with { ...process.env, ...env }, so any
+ * value not written here is inherited verbatim and `bun --env-file` in the
+ * harness script cannot undo it.
  */
 export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPath: string): RenderedRun {
   if (resolved.profile.name !== spec.profile) {
@@ -101,12 +106,30 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   if (resolved.experimental) argv.push("--no-save");
 
   const env = { ...resolved.env };
-  
+
+  // Always write EVAL_MODEL_OVERRIDES, empty when the profile declares no models.
+  // An operator may legitimately have it in .env.test (it is documented in
+  // .env.example) and `eval:web` loads that file into the ops server, so an
+  // unwritten key would be inherited by the child: a default-profile run would
+  // silently use overridden models while being recorded and displayed as
+  // experimental: false with env {} — false provenance on a run the harness
+  // auto-saves into eval/<harness>/runs/. readModelOverrides trims and treats
+  // an empty value as "no overrides", so "" fully neutralises an inherited one.
+  if (!("EVAL_MODEL_OVERRIDES" in env)) {
+    env.EVAL_MODEL_OVERRIDES = "";
+  }
+
   // Pin OPENROUTER_FALLBACK_MODEL=none when the profile overrides models, unless
   // the profile explicitly set it. Reason: for an experimental run that exists
   // precisely to measure a specific model, a silent fallback means the artifact
   // could record results produced by a DIFFERENT model than the one under test —
   // which would corrupt the comparison the whole feature exists to support.
+  //
+  // Deliberately NOT neutralised with "" for the default profile the way
+  // EVAL_MODEL_OVERRIDES is: getFallbackModelName treats unset as "use the
+  // default cross-vendor fallback" but "" as "fallbacks disabled", so writing ""
+  // would change default-profile behaviour rather than preserve it. An inherited
+  // value therefore still applies here, matching a plain CLI run.
   if (Object.keys(resolved.profile.models).length > 0 && !("OPENROUTER_FALLBACK_MODEL" in env)) {
     env.OPENROUTER_FALLBACK_MODEL = "none";
   }
