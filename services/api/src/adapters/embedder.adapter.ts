@@ -29,15 +29,29 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   limit?: number;
   minScore?: number;
+  /**
+   * Discovery corpus gating, composed by the caller (defaults preserve legacy behavior).
+   * Omitted fields default to: intents true, profile true, profileCorpus 'premise'.
+   */
+  corpusGating?: {
+    /** Search the intents corpus. */
+    intents?: boolean;
+    /** Search the active profile corpus. */
+    profile?: boolean;
+    /** Which corpus backs 'profiles' lens hints and profile searches. */
+    profileCorpus?: 'premise' | 'user_context';
+  };
 }
 
 export interface HydeCandidate {
-  type: 'intent' | 'premise';
+  type: 'intent' | 'premise' | 'user_context';
   id: string;
   userId: string;
   score: number;
   matchedVia: string;
   networkId: string;
+  /** Candidate document text (populated for user_context matches; used as candidatePayload). */
+  text?: string;
   matchedLenses?: string[];
 }
 
@@ -52,6 +66,35 @@ export type VectorStoreOption<T> = {
   candidates?: (T & { embedding?: number[] | null })[];
   minScore?: number;
 };
+
+/** Which corpora a HyDE lens search should hit, given caller-composed gating. */
+export function planHydeCorpusSearches(
+  le: LensEmbedding,
+  gating?: HydeSearchOptions['corpusGating'],
+): {
+  intents: boolean;
+  premises: boolean;
+  userContexts: boolean;
+  preferred: 'intents' | 'premises' | 'user_contexts';
+} {
+  const intents = gating?.intents ?? true;
+  const profile = gating?.profile ?? true;
+  const profileCorpus = gating?.profileCorpus ?? 'premise';
+  const premises = profile && profileCorpus === 'premise';
+  const userContexts = profile && profileCorpus === 'user_context';
+  const preferred =
+    le.corpus === 'intents' && intents
+      ? 'intents'
+      : userContexts
+        ? 'user_contexts'
+        : 'premises';
+  return {
+    intents,
+    premises,
+    userContexts,
+    preferred,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Adapter implementation
@@ -188,30 +231,24 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    // Search both corpora (intents, premises) for each lens.
-    // The corpus hint from the lens inferrer is used only for limit allocation:
-    // the preferred corpus gets the full limitPerStrategy while others get half.
-    // 'profiles' hints are remapped to 'premises' (premises decompose profile content).
+    // Corpus selection honors the caller-composed `corpusGating` option, composed
+    // by the discovery graph from DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE.
+    // 'profiles' hints remap to the active profile corpus: premises (default) or
+    // user_contexts (lightweight mode).
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
-
-      const preferred = le.corpus === 'profiles' ? 'premises' : le.corpus;
+      const plan = planHydeCorpusSearches(le, options.corpusGating);
       return [
-        this.searchIntentsForHyde(
-          le.embedding,
-          filter,
-          preferred === 'intents' ? limitPerStrategy : halfLimit,
-          minScore,
-          le.lens
-        ),
-        this.searchPremisesForHyde(
-          le.embedding,
-          filter,
-          preferred === 'premises' ? limitPerStrategy : halfLimit,
-          minScore,
-          le.lens
-        ),
+        plan.intents
+          ? this.searchIntentsForHyde(le.embedding, filter, plan.preferred === 'intents' ? limitPerStrategy : halfLimit, minScore, le.lens)
+          : Promise.resolve([]),
+        plan.premises
+          ? this.searchPremisesForHyde(le.embedding, filter, plan.preferred === 'premises' ? limitPerStrategy : halfLimit, minScore, le.lens)
+          : Promise.resolve([]),
+        plan.userContexts
+          ? this.searchContextsForHyde(le.embedding, filter, plan.preferred === 'user_contexts' ? limitPerStrategy : halfLimit, minScore, le.lens)
+          : Promise.resolve([]),
       ];
     });
 
@@ -325,6 +362,57 @@ export class EmbedderAdapter {
       score: r.similarity,
       matchedVia: lens,
       networkId: r.networkId,
+    }));
+  }
+
+  private async searchContextsForHyde(
+    embedding: number[],
+    filter: { indexScope: string[]; excludeUserId?: string },
+    limit: number,
+    minScore: number,
+    lens: string
+  ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { userContexts } = schema;
+
+    const conditions = [
+      inArray(userContexts.networkId, filter.indexScope),
+      ...(filter.excludeUserId ? [ne(userContexts.userId, filter.excludeUserId)] : []),
+      isNull(schema.users.deletedAt),
+      isNull(schema.networkMembers.deletedAt),
+      isNull(schema.networks.deletedAt),
+      isNotNull(userContexts.embedding),
+      sql`1 - (${userContexts.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+    ];
+
+    const results = await db
+      .select({
+        id: userContexts.id,
+        userId: userContexts.userId,
+        text: userContexts.text,
+        similarity: sql<number>`1 - (${userContexts.embedding} <=> ${vectorStr}::vector)`,
+        networkId: userContexts.networkId,
+      })
+      .from(userContexts)
+      .innerJoin(schema.networkMembers, and(
+        eq(schema.networkMembers.userId, userContexts.userId),
+        eq(schema.networkMembers.networkId, userContexts.networkId),
+      ))
+      .innerJoin(schema.networks, eq(schema.networks.id, userContexts.networkId))
+      .innerJoin(schema.users, eq(userContexts.userId, schema.users.id))
+      .where(and(...conditions))
+      .orderBy(sql`${userContexts.embedding} <=> ${vectorStr}::vector`)
+      .limit(limit);
+
+    return results.map((r) => ({
+      type: 'user_context' as const,
+      id: r.id,
+      userId: r.userId,
+      score: r.similarity,
+      matchedVia: lens,
+      networkId: r.networkId!,
+      text: r.text,
     }));
   }
 

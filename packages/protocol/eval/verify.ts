@@ -31,6 +31,8 @@ import { join } from "node:path";
 const SUITES = [
   "canary",
   "clarification",
+  "discovery-env-matrix",
+  "discovery-retrieval",
   "hyde",
   "matching",
   "opportunity",

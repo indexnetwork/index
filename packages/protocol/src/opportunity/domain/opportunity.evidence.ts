@@ -4,12 +4,13 @@ export interface EvidenceCandidateInput {
   networkId: string;
   similarity: number;
   lens: string;
-  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent';
+  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent' | 'context-similarity';
   matchedStrategies?: string[];
   sourcePremiseId?: string;
   candidatePremiseId?: string;
   candidateIntentId?: string;
   sourceContextId?: string;
+  candidateContextId?: string;
   candidatePayload?: string;
   candidateSummary?: string;
 }
@@ -27,6 +28,7 @@ export function buildCandidateEvidence(candidate: EvidenceCandidateInput): Oppor
     candidatePremiseId: candidate.candidatePremiseId,
     candidateIntentId: candidate.candidateIntentId,
     sourceContextId: candidate.sourceContextId,
+    candidateContextId: candidate.candidateContextId,
     payload: candidate.candidatePayload,
     summary: candidate.candidateSummary,
     assertionText: candidate.candidatePremiseId ? candidate.candidatePayload : undefined,
@@ -47,6 +49,7 @@ export function mergeOpportunityEvidence(...groups: Array<OpportunityEvidence[] 
       evidence.candidatePremiseId ?? '',
       evidence.candidateIntentId ?? '',
       evidence.sourceContextId ?? '',
+      evidence.candidateContextId ?? '',
       evidence.lens ?? '',
     ].join('|');
     const existing = byKey.get(key);
@@ -70,6 +73,7 @@ export function renderOpportunityEvidenceForPrompt(evidence: OpportunityEvidence
       item.candidatePremiseId ? `candidatePremise=${item.candidatePremiseId}` : undefined,
       item.candidateIntentId ? `candidateIntent=${item.candidateIntentId}` : undefined,
       item.sourceContextId ? `sourceContext=${item.sourceContextId}` : undefined,
+      item.candidateContextId ? `candidateContext=${item.candidateContextId}` : undefined,
       item.matchedStrategies?.length ? `strategies=${item.matchedStrategies.join(',')}` : undefined,
     ].filter(Boolean).join(', ');
     const text = item.summary ?? item.payload ?? item.assertionText ?? '';
@@ -78,17 +82,21 @@ export function renderOpportunityEvidenceForPrompt(evidence: OpportunityEvidence
     // (text should be populated by Fix A; this fallback fires if the DB fetch
     //  failed or the adapter omitted getPremise).
     const domainCaution =
-      item.kind === 'query_premise' && !text
+      (item.kind === 'query_premise' && !text)
         ? ' [premise text unavailable — do NOT infer domain match from RAG score alone; verify domain alignment from profile]'
-        : '';
+        : (item.kind === 'query_context' && !text)
+          ? ' [context text unavailable — do NOT infer domain match from RAG score alone; verify domain alignment from profile]'
+          : '';
     return `    - ${item.kind} on ${item.networkId} via ${item.lens ?? 'unknown'} score=${item.score?.toFixed(3) ?? '—'}${refs ? ` (${refs})` : ''}${text ? `: ${text}` : ''}${domainCaution}`;
   }).join('\n');
 }
 
 function resolveEvidenceKind(candidate: EvidenceCandidateInput): OpportunityEvidence['kind'] {
   if (candidate.discoverySource === 'premise-similarity') return 'premise_similarity';
+  if (candidate.discoverySource === 'context-similarity') return 'context_similarity';
   if (candidate.discoverySource === 'context-to-intent') return 'context_to_intent';
   if (candidate.candidatePremiseId) return 'query_premise';
+  if (candidate.candidateContextId) return 'query_context';
   if (candidate.candidateIntentId) return 'query_intent';
   return 'profile';
 }

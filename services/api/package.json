@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.68.2",
+  "version": "0.69.1",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -33,6 +33,10 @@
     "maintenance:backfill-intent-verification-analysis": "bun ./src/cli/backfill-intent-verification-analysis.ts",
     "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
+    "eval:discovery-retrieval-smoke": "bun ./src/cli/discovery-retrieval-smoke.ts",
+    "eval:discovery-env-matrix-base": "bun ./src/cli/discovery-env-matrix-base.ts",
+    "eval:discovery-env-matrix-base:verify": "bun ./src/cli/discovery-env-matrix-base.ts --verify",
+    "eval:discovery-env-matrix": "bun --env-file=../../.env.test ./src/cli/discovery-env-matrix.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
   },
