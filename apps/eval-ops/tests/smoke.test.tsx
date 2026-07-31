@@ -43,7 +43,7 @@ describe('App', () => {
     expect(screen.getByText(/index eval ops/i)).toBeInTheDocument();
   });
 
-  it('links to every route an operator needs', () => {
+  it('links to every route an operator needs', async () => {
     render(<App />);
     const expected: ReadonlyArray<[string, string]> = [
       ['overview', '/'],
@@ -51,8 +51,10 @@ describe('App', () => {
       ['compare', '/compare'],
       ['profiles', '/profiles'],
     ];
+    // The nav mounts with the dashboard, once the stubbed status answer arrives:
+    // a link to a route the operator cannot open yet is not an offer worth making.
     for (const [name, href] of expected) {
-      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
+      expect(await screen.findByRole('link', { name })).toHaveAttribute('href', href);
     }
   });
 });

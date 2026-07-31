@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { subscribeToRun, encodeArtifactId } from '../src/api/client';
+import { onAuthRefusal, subscribeToRun, encodeArtifactId } from '../src/api/client';
 
 describe('subscribeToRun', () => {
   let mockSource: {
@@ -20,6 +20,13 @@ describe('subscribeToRun', () => {
     };
 
     vi.stubGlobal('EventSource', EventSourceMock);
+    // The stream now asks who is signed in when it fails, so every test in this
+    // suite needs an answer: an unstubbed fetch would reach the network and print
+    // a connection error over an otherwise clean run.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ authenticated: true, email: 'ops@index.network' }))),
+    );
   });
 
   afterEach(() => {
@@ -118,6 +125,66 @@ describe('subscribeToRun', () => {
 
     expect(onError).toHaveBeenCalledOnce();
     expect(onError).toHaveBeenCalledWith(fakeErrorEvent);
+  });
+
+  /**
+   * The stream is gated like every other route, but EventSource surfaces no
+   * status code: a 401 arrives as the same bare `error` event as a dropped
+   * connection. It never passes through `fetchJson`, so without this the shell's
+   * refusal channel never fires, the run page blames the run id, and EventSource
+   * reconnects against the 401 every few seconds forever.
+   */
+  describe('a stream that fails before any status frame', () => {
+    const errorListener = () =>
+      mockSource.addEventListener.mock.calls.find(([event]) => event === 'error')?.[1];
+    const statusListener = () =>
+      mockSource.addEventListener.mock.calls.find(([event]) => event === 'status')?.[1];
+
+    it('publishes an auth refusal when the session has lapsed', async () => {
+      const fetchMock = vi.fn(async (url: string) => {
+        expect(url).toBe('/api/auth/status');
+        return new Response(JSON.stringify({ authenticated: false }));
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const refusals: string[] = [];
+      const unsubscribe = onAuthRefusal((refusal) => refusals.push(refusal));
+
+      subscribeToRun('run-123', { onLog: vi.fn(), onStatus: vi.fn(), onError: vi.fn() });
+      errorListener()?.(new Event('error'));
+      await vi.waitFor(() => expect(refusals).toEqual(['unauthenticated']));
+
+      // The probe is the public status route, and it is asked exactly once.
+      expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(['/api/auth/status']);
+      unsubscribe();
+    });
+
+    it('says nothing when the operator is still signed in', async () => {
+      const refusals: string[] = [];
+      const unsubscribe = onAuthRefusal((refusal) => refusals.push(refusal));
+
+      subscribeToRun('run-123', { onLog: vi.fn(), onStatus: vi.fn(), onError: vi.fn() });
+      errorListener()?.(new Event('error'));
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+
+      // A live session with a broken stream is a stream problem. Demoting the
+      // shell here would throw the operator out of a session that works.
+      expect(refusals).toEqual([]);
+      unsubscribe();
+    });
+
+    it('does not probe once a status frame has arrived', async () => {
+      const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ authenticated: false })));
+      vi.stubGlobal('fetch', fetchMock);
+
+      subscribeToRun('run-123', { onLog: vi.fn(), onStatus: vi.fn(), onError: vi.fn() });
+      statusListener()?.({ data: JSON.stringify({ id: 'run-123', status: 'running' }) } as MessageEvent<string>);
+      // A mid-stream drop is an ordinary reconnect, and each retry fires another
+      // error event: probing on every one would be a request loop of its own.
+      errorListener()?.(new Event('error'));
+      errorListener()?.(new Event('error'));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   it('returns an unsubscribe function that closes the EventSource', () => {

@@ -202,6 +202,11 @@ export function onAuthRefusal(listener: (refusal: AuthRefusal) => void): () => v
   };
 }
 
+/** Publishes a refusal to every subscriber. */
+function notifyAuthRefusal(refusal: AuthRefusal): void {
+  for (const listener of authRefusalListeners) listener(refusal);
+}
+
 /** Returns the refusal a failed response reports, or null when it reports something else. */
 function classifyAuthRefusal(status: number, body: unknown): AuthRefusal | null {
   if (typeof body !== 'object' || body === null) return null;
@@ -217,9 +222,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
     const refusal = classifyAuthRefusal(response.status, body);
-    if (refusal !== null) {
-      for (const listener of authRefusalListeners) listener(refusal);
-    }
+    if (refusal !== null) notifyAuthRefusal(refusal);
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
   return response.json();
@@ -303,6 +306,14 @@ export const api = {
  * EventSource will auto-reconnect on network failures. Each reconnect replays from
  * byte 0, so consumers may see duplicate log lines. The stream ends when the run
  * reaches a terminal status.
+ *
+ * The stream is gated like every other route, but `EventSource` exposes no status
+ * code — a 401 arrives as the same bare `error` event as a dropped connection, so
+ * it never reaches `fetchJson` and never reaches `onAuthRefusal`. A stream that
+ * fails before any status frame is therefore checked against the public status
+ * route: when nobody is signed in, the refusal is published here so the shell
+ * demotes, instead of the run page reporting "no run with that id" for what is an
+ * expired session and EventSource reconnecting against a 401 forever.
  */
 export function subscribeToRun(
   id: string,
@@ -313,6 +324,8 @@ export function subscribeToRun(
   },
 ): () => void {
   const source = new EventSource(`/api/runs/${id}/stream`);
+  let sawStatus = false;
+  let probed = false;
 
   source.addEventListener('log', (event) => {
     try {
@@ -326,6 +339,7 @@ export function subscribeToRun(
   source.addEventListener('status', (event) => {
     try {
       const record = JSON.parse((event as MessageEvent<string>).data);
+      sawStatus = true;
       handlers.onStatus(record);
     } catch {
       // Malformed frame: ignore to keep the stream alive
@@ -333,8 +347,31 @@ export function subscribeToRun(
   });
 
   source.addEventListener('error', (event) => {
+    // Once only, and only before a status frame: a mid-stream reconnect is an
+    // ordinary drop, and probing on every retry would be a request loop of its own.
+    if (!sawStatus && !probed) {
+      probed = true;
+      void publishRefusalIfSignedOut();
+    }
     handlers.onError(event);
   });
 
   return () => source.close();
+}
+
+/**
+ * Asks the public status route who is signed in, and publishes the refusal the
+ * SSE stream could not report.
+ *
+ * Silent on anything else. A status call that fails or answers `authenticated:
+ * true` says the stream failed for some other reason, and claiming a refusal
+ * there would throw the operator out of a working session.
+ */
+async function publishRefusalIfSignedOut(): Promise<void> {
+  try {
+    const status = await api.authStatus();
+    if (!status.authenticated) notifyAuthRefusal('unauthenticated');
+  } catch {
+    // Unanswerable is not refused: leave the stream's own error reporting alone.
+  }
 }

@@ -35,6 +35,9 @@ type Access =
  * every state so the browser's own back and forward keep working, but `<Outlet />`
  * — and with it every route's data fetching — mounts only once the server has
  * said this browser holds a session it admits.
+ *
+ * The nav is part of what mounts only then: a link that changes the URL and still
+ * shows the sign-in prompt offers the operator a choice that does not exist.
  */
 export function Shell() {
   const [access, setAccess] = useState<Access>({ kind: 'unknown' });
@@ -89,13 +92,15 @@ export function Shell() {
       <header className="border-b border-[var(--color-term-rule)] px-4 py-2 flex items-baseline gap-4 justify-between">
         <div className="flex items-baseline gap-4">
           <h1 className="text-sm">index eval ops</h1>
-          <nav className="flex gap-4 text-sm">
-            {LINKS.map((link) => (
-              <Link key={link.to} to={link.to} className="text-term-blue hover:underline">
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+          {access.kind === 'signed-in' && (
+            <nav className="flex gap-4 text-sm">
+              {LINKS.map((link) => (
+                <Link key={link.to} to={link.to} className="text-term-blue hover:underline">
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
         {access.kind === 'signed-in' && (
           <div className="flex items-baseline gap-4 text-sm">

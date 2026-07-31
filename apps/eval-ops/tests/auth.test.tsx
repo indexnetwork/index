@@ -7,8 +7,31 @@ import { SignIn } from '../src/routes/SignIn';
 import { NotPermitted } from '../src/routes/NotPermitted';
 import { Shell } from '../src/components/Shell';
 
+/**
+ * The real `window.location`, saved while a test is standing in for it.
+ *
+ * happy-dom's `location` is not assignable, so the navigation test below replaces
+ * the whole property. Vitest runs every file in a worker against one `window`, so
+ * leaving the stub in place would hand a later test — anything driving
+ * react-router's history, for instance — a plain object with no `assign`, no
+ * `reload` and no origin.
+ */
+let realLocation: PropertyDescriptor | undefined;
+
+/** Replaces `window.location` with a recording stub, remembering the real one. */
+function stubLocation(): void {
+  realLocation = Object.getOwnPropertyDescriptor(window, 'location');
+  delete (window as unknown as { location?: unknown }).location;
+  (window as unknown as { location: { href: string } }).location = { href: '' };
+}
+
 afterEach(() => {
   cleanup();
+  if (realLocation !== undefined) {
+    delete (window as unknown as { location?: unknown }).location;
+    Object.defineProperty(window, 'location', realLocation);
+    realLocation = undefined;
+  }
 });
 
 describe('SignIn', () => {
@@ -33,9 +56,7 @@ describe('SignIn', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    // Mock window.location.href assignment
-    delete (window as unknown as { location?: unknown }).location;
-    (window as unknown as { location: { href: string } }).location = { href: '' };
+    stubLocation();
 
     render(
       <BrowserRouter>
@@ -114,6 +135,29 @@ describe('NotPermitted', () => {
 });
 
 describe('Shell with auth', () => {
+  it('offers no nav links while signed out', async () => {
+    // A link that changes the URL and still renders the sign-in prompt offers a
+    // choice that does not exist.
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/api/auth/status')) {
+        return new Response(JSON.stringify({ authenticated: false }));
+      }
+      return new Response('{}');
+    }) as unknown as typeof fetch;
+
+    render(
+      <BrowserRouter>
+        <Shell />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /sign in with index/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: 'overview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'fixture' })).not.toBeInTheDocument();
+  });
+
   it('shows user email when authenticated', async () => {
     globalThis.fetch = vi.fn(async (url: string) => {
       if (String(url).endsWith('/api/auth/status')) {
