@@ -94,6 +94,46 @@ git push <indexnetwork-remote> main
 
 > **Subtree:** `packages/protocol/` mirrors `indexnetwork/protocol`. Edit via this monorepo; see `### Subtrees` for sync commands.
 
+### Protocol Evals
+
+The eval harnesses live in `packages/protocol/eval/`. Each suite is gated by the
+`SUITES` manifest in `eval/verify.ts`; a new suite needs its own `tsconfig.json`
+and `tests/` directory, and its tests must be provider-free because `eval:verify`
+strips provider credentials from the child processes it spawns.
+
+```bash
+cd packages/protocol
+
+bun run eval:verify                         # Typecheck + test every eval suite (provider-free)
+bun run eval:matching -- --list-cases       # List a harness's corpus without calling a model
+bun run eval:matching -- --runs 3           # Run a harness (costs tokens)
+```
+
+Harness exit codes: `0` pass, `1` regression, `2` execution error, `3`
+insufficient evidence.
+
+### Eval Ops Site
+
+A local-first web console over the eval artifacts: browse baselines and runs,
+launch the four scorecard harnesses (`matching`, `profile`, `premise`,
+`opportunity`) with live streaming output, compare runs A/B, and control the
+seeded test database. The headless core is `packages/protocol/eval/ops/` (the
+`ops` eval suite); the UI is the `apps/eval-ops/` workspace.
+
+```bash
+cd packages/protocol && bun run eval:web    # Ops API on 127.0.0.1:4321
+bun run dev:eval-ops                        # UI on 127.0.0.1:5174 (from repo root)
+bun run build:eval-ops                      # Build the UI
+```
+
+Both bind loopback and there is no authentication: this is an operator-trust
+decision about local processes. State-changing requests must be same-origin and
+carry a JSON content type, and every request must be addressed to a loopback
+host, so another site the operator has open cannot drive or read it. The app is
+deliberately excluded from the root `build` script and from Railway. CI gates it
+through the `eval-ops` job in `.github/workflows/lint.yml` (typecheck, test,
+lint) — the root `build` does not cover it.
+
 ### Subtrees
 
 The following paths are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/edge-city/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
@@ -191,6 +231,8 @@ bun run worktree:dev <name>                 # Run all dev servers from a worktre
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run skills:validate                      # Validate every project-local Pi and Codex skill
 bun run test:scripts                         # Run focused deterministic script tests
+bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (see ### Eval Ops Site)
+bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
 
@@ -210,6 +252,7 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 index/
 ├── apps/
 │   ├── web/             # Vite + React Router v7 SPA with React 19
+│   ├── eval-ops/        # Local-first eval ops console (Vite + React 19) — not deployed
 │   └── mac/             # Native Apple client subtree → indexnetwork/mac-client
 ├── services/
 │   └── api/             # Backend API & Agent Engine (Bun, TypeScript)
