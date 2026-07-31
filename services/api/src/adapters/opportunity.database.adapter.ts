@@ -1746,6 +1746,76 @@ export class OpportunityDatabaseAdapter {
   }
 
   /**
+   * Cosine similarity search against user_context embeddings, scoped to shared networks.
+   * Matches only per-network context rows (the global networkId-null row is never a
+   * candidate), excluding the discovering user. Optional — lightweight-mode
+   * context-to-context discovery no-ops when the adapter omits it.
+   * @param params - Search parameters including embedding vector, network scope, and exclusions
+   * @returns Matching user contexts ranked by cosine similarity
+   */
+  async searchUserContextsBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }) {
+    return traceAppOperation(
+      {
+        name: 'vector search user contexts by similarity',
+        op: 'db.vector_search',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'vector_search',
+          'search.strategy': 'context-similarity',
+          'search.index_scope_count': params.networkIds.length,
+          'search.limit': params.limit,
+        },
+      },
+      async () => {
+    const { embedding, networkIds, excludeUserId, limit, minScore } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+
+    const rows = await db.execute<{
+      contextId: string;
+      userId: string;
+      networkId: string;
+      text: string;
+      similarity: number;
+    }>(sql`
+      SELECT
+        uc.id AS "contextId",
+        uc.user_id AS "userId",
+        uc.network_id AS "networkId",
+        uc.text AS "text",
+        1 - (uc.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.userContexts} uc
+      JOIN ${schema.networkMembers} nm
+        ON nm.user_id = uc.user_id AND nm.network_id = uc.network_id
+      JOIN ${schema.networks} n ON n.id = uc.network_id
+      WHERE uc.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
+        AND uc.user_id != ${excludeUserId}
+        AND nm.deleted_at IS NULL
+        AND n.deleted_at IS NULL
+        AND uc.embedding IS NOT NULL
+        ${minScore !== undefined ? sql`AND 1 - (uc.embedding <=> ${vectorStr}::vector) >= ${minScore}` : sql``}
+      ORDER BY uc.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+
+    return rows as Array<{
+      contextId: string;
+      userId: string;
+      networkId: string;
+      text: string;
+      similarity: number;
+    }>;
+      },
+    );
+  }
+
+  /**
    * Batched cosine similarity search against premise embeddings, scoped to shared networks.
    * Uses a VALUES CTE plus LATERAL nearest-neighbor searches so OpportunityGraph
    * emits one DB span and one DB round-trip for all selected source premises.

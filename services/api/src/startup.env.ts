@@ -96,6 +96,10 @@ const envSchema = z.object({
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
+  DISCOVERY_ALLOWED_TYPES: z.string().optional(),
+  // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
+  // a typo must never disable discovery, so startup validation stays permissive.
+  DISCOVERY_PROFILE_SOURCE: z.string().optional(),
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
   QUESTIONER_UPTAKE_ENABLED: optionalBoolean,

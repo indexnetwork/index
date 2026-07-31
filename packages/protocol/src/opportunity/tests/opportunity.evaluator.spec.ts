@@ -12,7 +12,9 @@ describe('OpportunityEvaluator', () => {
   describe('invokeEntityBundle', () => {
     it('returns no opportunities when entity-bundle model returns empty (e.g. already know each other)', async () => {
       const mockEntityBundleModel = {
-        invoke: async () => ({ opportunities: [] }),
+        invoke: async () => ({
+          verdicts: [{ candidateId: 'user-b', accepted: false, score: 0, reasoning: 'They already know each other.', actors: [] }],
+        }),
       } as unknown as Runnable;
       const evaluatorWithMock = new OpportunityEvaluator({
         entityBundleModel: mockEntityBundleModel,
@@ -21,7 +23,7 @@ describe('OpportunityEvaluator', () => {
         discovererId: 'discoverer-1',
         entities: [
           {
-            userId: 'user-a',
+            userId: 'discoverer-1',
             profile: {
               name: 'Alice',
               bio: 'Co-founder at Acme Corp.',
@@ -49,7 +51,9 @@ describe('OpportunityEvaluator', () => {
       const mockEntityBundleModel = {
         invoke: async (messages: unknown[]) => {
           capturedMessages = messages;
-          return { opportunities: [] };
+          return {
+            verdicts: [{ candidateId: 'user-2', accepted: false, score: 0, reasoning: 'Same-side match.', actors: [] }],
+          };
         },
       } as unknown as Runnable;
 
@@ -91,8 +95,9 @@ describe('OpportunityEvaluator', () => {
     it('rejects unsupported presence claims before score filtering and returnAll', async () => {
       const mockEntityBundleModel = {
         invoke: async () => ({
-          opportunities: [
+          verdicts: [
             {
+              candidateId: 'user-2', accepted: true,
               reasoning: 'The source and candidate attended the same event.',
               score: 99,
               actors: [
@@ -101,11 +106,12 @@ describe('OpportunityEvaluator', () => {
               ],
             },
             {
+              candidateId: 'user-3', accepted: true,
               reasoning: 'The candidate builds privacy tools that match the source goal.',
               score: 40,
               actors: [
                 { userId: 'user-1', role: 'patient', intentId: null },
-                { userId: 'user-2', role: 'agent', intentId: null },
+                { userId: 'user-3', role: 'agent', intentId: null },
               ],
             },
           ],
@@ -119,6 +125,7 @@ describe('OpportunityEvaluator', () => {
         entities: [
           { userId: 'user-1', profile: { name: 'Alice' }, networkId: 'event-1' },
           { userId: 'user-2', profile: { name: 'Bob' }, networkId: 'event-1' },
+          { userId: 'user-3', profile: { name: 'Cara' }, networkId: 'event-1' },
         ],
       };
 
@@ -133,6 +140,185 @@ describe('OpportunityEvaluator', () => {
         minScore: 70,
       });
       expect(scoreFiltered).toHaveLength(0);
+    });
+
+    it('retries once then fails closed when a batch omits a candidate verdict', async () => {
+      let calls = 0;
+      const mockEntityBundleModel = {
+        invoke: async () => {
+          calls++;
+          return {
+            verdicts: [
+              {
+                candidateId: 'user-2',
+                accepted: true,
+                score: 90,
+                reasoning: 'The candidate can help the source.',
+                actors: [
+                  { userId: 'user-1', role: 'patient', intentId: null },
+                  { userId: 'user-2', role: 'agent', intentId: null },
+                ],
+              },
+            ],
+          };
+        },
+      } as unknown as Runnable;
+      const evaluatorWithMock = new OpportunityEvaluator({ entityBundleModel: mockEntityBundleModel });
+      const input: EvaluatorInput = {
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-3', profile: {}, networkId: 'idx-1' },
+        ],
+      };
+
+      await expect(evaluatorWithMock.invokeEntityBundle(input, { minScore: 50 })).rejects.toThrow('evaluator-incomplete');
+      expect(calls).toBe(2);
+    });
+
+    it('does not silently accept a legacy partial opportunities list', async () => {
+      let calls = 0;
+      const evaluatorWithMock = new OpportunityEvaluator({
+        entityBundleModel: { invoke: async () => { calls++; return { opportunities: [] }; } } as unknown as Runnable,
+      });
+      await expect(evaluatorWithMock.invokeEntityBundle({
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+        ],
+      })).rejects.toThrow('evaluator-incomplete');
+      expect(calls).toBe(2);
+    });
+
+    it('keeps an accepted score-50 verdict and excludes its rejected sibling', async () => {
+      const evaluatorWithMock = new OpportunityEvaluator({
+        entityBundleModel: {
+          invoke: async () => ({
+            verdicts: [
+              { candidateId: 'user-2', accepted: true, score: 50, reasoning: 'A valid threshold match.', actors: [{ userId: 'user-1', role: 'patient', intentId: null }, { userId: 'user-2', role: 'agent', intentId: null }] },
+              { candidateId: 'user-3', accepted: false, score: 0, reasoning: 'No match.', actors: [] },
+            ],
+          }),
+        } as unknown as Runnable,
+      });
+      const result = await evaluatorWithMock.invokeEntityBundle({
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-3', profile: {}, networkId: 'idx-1' },
+        ],
+      }, { minScore: 50 });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.score).toBe(50);
+      expect(result[0]?.actors.map((actor) => actor.userId)).toContain('user-2');
+    });
+
+    it('fails closed when an accepted verdict binds actors to a different candidate', async () => {
+      let calls = 0;
+      const evaluatorWithMock = new OpportunityEvaluator({
+        entityBundleModel: {
+          invoke: async () => {
+            calls++;
+            return {
+              verdicts: [
+                { candidateId: 'user-2', accepted: false, score: 0, reasoning: 'No match.', actors: [] },
+                { candidateId: 'user-3', accepted: true, score: 90, reasoning: 'Misbound match.', actors: [{ userId: 'user-1', role: 'patient', intentId: null }, { userId: 'user-2', role: 'agent', intentId: null }] },
+              ],
+            };
+          },
+        } as unknown as Runnable,
+      });
+
+      await expect(evaluatorWithMock.invokeEntityBundle({
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-3', profile: {}, networkId: 'idx-1' },
+        ],
+      })).rejects.toThrow('evaluator-incomplete');
+      expect(calls).toBe(2);
+    });
+
+    it('retries one invalid response then returns a complete valid batch', async () => {
+      let calls = 0;
+      const evaluatorWithMock = new OpportunityEvaluator({
+        entityBundleModel: {
+          invoke: async () => {
+            calls++;
+            return calls === 1
+              ? { verdicts: [{ candidateId: 'user-2', accepted: false, score: 0, reasoning: 'Missing candidate.', actors: [] }] }
+              : { verdicts: [
+                { candidateId: 'user-2', accepted: false, score: 0, reasoning: 'No match.', actors: [] },
+                { candidateId: 'user-3', accepted: true, score: 75, reasoning: 'Valid match.', actors: [{ userId: 'user-1', role: 'patient', intentId: null }, { userId: 'user-3', role: 'agent', intentId: null }] },
+              ] };
+          },
+        } as unknown as Runnable,
+      });
+
+      const result = await evaluatorWithMock.invokeEntityBundle({
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-3', profile: {}, networkId: 'idx-1' },
+        ],
+      }, { minScore: 50 });
+      expect(calls).toBe(2);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.actors.map((actor) => actor.userId)).toEqual(['user-1', 'user-3']);
+    });
+
+    it('rethrows transport failures without retrying', async () => {
+      let calls = 0;
+      const evaluatorWithMock = new OpportunityEvaluator({
+        entityBundleModel: {
+          invoke: async () => {
+            calls++;
+            throw new Error('transport unavailable');
+          },
+        } as unknown as Runnable,
+      });
+
+      await expect(evaluatorWithMock.invokeEntityBundle({
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+          { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+        ],
+      })).rejects.toThrow('transport unavailable');
+      expect(calls).toBe(1);
+    });
+
+    it('retries once then fails closed for duplicate and unknown candidate verdicts', async () => {
+      for (const verdicts of [
+        [
+          { candidateId: 'user-2', accepted: false, score: 0, reasoning: 'No match.', actors: [] },
+          { candidateId: 'user-2', accepted: false, score: 0, reasoning: 'Duplicate.', actors: [] },
+        ],
+        [
+          { candidateId: 'user-2', accepted: false, score: 0, reasoning: 'No match.', actors: [] },
+          { candidateId: 'unknown', accepted: false, score: 0, reasoning: 'Unknown.', actors: [] },
+        ],
+      ]) {
+        let calls = 0;
+        const evaluatorWithMock = new OpportunityEvaluator({
+          entityBundleModel: { invoke: async () => { calls++; return { verdicts }; } } as unknown as Runnable,
+        });
+        await expect(evaluatorWithMock.invokeEntityBundle({
+          discovererId: 'user-1',
+          entities: [
+            { userId: 'user-1', profile: {}, networkId: 'idx-1' },
+            { userId: 'user-2', profile: {}, networkId: 'idx-1' },
+            { userId: 'user-3', profile: {}, networkId: 'idx-1' },
+          ],
+        })).rejects.toThrow('evaluator-incomplete');
+        expect(calls).toBe(2);
+      }
     });
 
     it.skip('returns no opportunity when entities clearly already know each other (e.g. co-founders) [integration: live LLM]', async () => {

@@ -39,7 +39,7 @@ export type OpportunityEvaluatorLike = {
     reasoning: string;
     valencyRole: 'Agent' | 'Patient' | 'Peer';
   }>>;
-  invokeEntityBundle?: (input: EvaluatorInput, options: { minScore?: number }) => Promise<Array<{
+  invokeEntityBundle?: (input: EvaluatorInput, options: { minScore?: number; returnAll?: boolean; signal?: AbortSignal }) => Promise<Array<{
     reasoning: string;
     score: number;
     actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
@@ -57,8 +57,10 @@ import { protocolLogger, withCallLogging } from '../../shared/observability/prot
 import { timed } from '../../shared/observability/performance.js';
 import { renderNetworkContext } from '../../shared/network/metadata.renderer.js';
 import { requestContext } from "../../shared/observability/request-context.js";
+import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { OpportunityEvidence } from '../../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from '../domain/opportunity.evidence.js';
+import { discoveryIntentMatchingEnabled, discoveryProfileMatchingEnabled, discoveryProfileSource } from '../discovery.env.js';
 import { normalizeOpportunityActorIntent, resolveOpportunityActorIntent } from '../domain/opportunity.actor.js';
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle, type QueueOpportunityNotificationFn } from './opportunity.lifecycle.js';
 import { stampEligibleNewbornOpportunities, type StampNewbornOpportunitiesFn } from './opportunity.newborn-stamping.js';
@@ -88,6 +90,15 @@ const deleteLog = protocolLogger('OpportunityGraph:Delete');
 const sendLog = protocolLogger('OpportunityGraph:Send');
 const negotiateExistingLog = protocolLogger('OpportunityGraph:NegotiateExisting');
 const routingLog = protocolLogger('OpportunityGraph:Routing');
+
+/**
+ * Error text can include provider response bodies, URLs, and credentials. Keep
+ * observability useful by retaining only a conservative error class at this
+ * boundary; detailed errors are intentionally not emitted from graph traces.
+ */
+export function safeOpportunityGraphError(_error: unknown): string {
+  return 'OpportunityEvaluationError: [redacted]';
+}
 
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -166,7 +177,7 @@ function buildEvaluatorEvidenceKey(candidate: CandidateMatch): string {
   return [
     candidate.candidateUserId,
     candidate.networkId,
-    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.sourceContextId ?? 'profile',
+    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.candidateContextId ?? candidate.sourceContextId ?? 'profile',
   ].join(':');
 }
 
@@ -310,7 +321,7 @@ export class OpportunityGraphFactory {
           return result;
         } catch (err) {
           const durationMs = Date.now() - nodeStart;
-          const errMsg = err instanceof Error ? err.message : String(err);
+          const errMsg = safeOpportunityGraphError(err);
           traceEmitter?.({ type: "agent_end", name: traceName, durationMs, summary: `error: ${errMsg}` });
           throw err;
         }
@@ -369,8 +380,14 @@ export class OpportunityGraphFactory {
             // DISCOVERY_SOURCE_PREMISE_LIMIT. Loading all premises here caused
             // BACKEND-5: thousands of parallel vector searches for premise-rich users.
             const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
-            const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
-            const rawContexts = contextToIntentEnabled && typeof this.database.getUserContexts === 'function'
+            const profileEnabled = discoveryProfileMatchingEnabled();
+            // Context-backed discovery is exclusively the user_context profile-source
+            // strategy. Premise mode must not load contexts or emit context-to-intent
+            // evidence merely because intent matching is also enabled.
+            const userContextProfileEnabled = profileEnabled && discoveryProfileSource() === 'user_context';
+            const contextToIntentEnabled = userContextProfileEnabled && process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
+            const contextToContextEnabled = userContextProfileEnabled;
+            const rawContexts = (contextToIntentEnabled || contextToContextEnabled) && typeof this.database.getUserContexts === 'function'
               ? await this.database.getUserContexts(discoveryUserId)
               : [];
             const sourceContexts = rawContexts
@@ -853,6 +870,18 @@ export class OpportunityGraphFactory {
           // Similarity threshold for recall (0.30 = 30% similarity)
           const minScore = 0.3;
 
+          // Discovery match-type gating (DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE).
+          // Result filtering below is defense-in-depth: corpusGating already scopes the
+          // embedder's corpus searches, but adapters may still return other types.
+          const intentResultsEnabled = discoveryIntentMatchingEnabled();
+          const premiseResultsEnabled = discoveryProfileMatchingEnabled() && discoveryProfileSource() === 'premise';
+          const contextResultsEnabled = discoveryProfileMatchingEnabled() && discoveryProfileSource() === 'user_context';
+          const corpusGating = {
+            intents: discoveryIntentMatchingEnabled(),
+            profile: discoveryProfileMatchingEnabled(),
+            profileCorpus: discoveryProfileSource(),
+          } as const;
+
           if (state.discoverySource === 'context') {
             // Context discovery: HyDE (when search query exists) + premise-to-premise.
             if (state.searchQuery?.trim()) {
@@ -918,27 +947,32 @@ export class OpportunityGraphFactory {
                 },
               });
 
-              const [premiseCands, contextCands] = await Promise.all([
+              const [premiseCands, contextCands, contextSimCands] = await Promise.all([
                 runPremiseDiscovery(),
                 runContextToIntentDiscovery(),
+                runContextToContextDiscovery(),
               ]);
-              const withPremisesAndContext = mergeStrategyCandidates(queryCandidates, premiseCands, contextCands);
+              const withPremisesAndContext = mergeStrategyCandidates(queryCandidates, premiseCands, contextCands, contextSimCands);
               if (premiseCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `premise-to-premise → ${premiseCands.length} candidate(s)` });
               }
               if (contextCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `context-to-intent → ${contextCands.length} candidate(s)` });
               }
+              if (contextSimCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `context-to-context → ${contextSimCands.length} candidate(s)` });
+              }
               return { candidates: filterByTarget(withPremisesAndContext), trace: traceEntries };
             }
 
             // No search query — premise-to-premise + context-to-intent discovery
-            const [premiseCands, contextCands] = await Promise.all([
+            const [premiseCands, contextCands, contextSimCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
+              runContextToContextDiscovery(),
             ]);
-            if (premiseCands.length > 0 || contextCands.length > 0) {
-              const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            if (premiseCands.length > 0 || contextCands.length > 0 || contextSimCands.length > 0) {
+              const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
               if (premiseCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `premise-to-premise → ${premiseCands.length} candidate(s)` });
@@ -946,9 +980,12 @@ export class OpportunityGraphFactory {
               if (contextCands.length > 0) {
                 traceEntries.push({ node: "strategy", detail: `context-to-intent → ${contextCands.length} candidate(s)` });
               }
+              if (contextSimCands.length > 0) {
+                traceEntries.push({ node: "strategy", detail: `context-to-context → ${contextSimCands.length} candidate(s)` });
+              }
               traceEntries.push({
                 node: "discovery",
-                detail: `${[premiseCands.length > 0 && 'premise-to-premise', contextCands.length > 0 && 'context-to-intent'].filter(Boolean).length} strategies → ${premiseCands.length + contextCands.length} raw, ${merged.length} after dedup`,
+                detail: `${[premiseCands.length > 0 && 'premise-to-premise', contextCands.length > 0 && 'context-to-intent', contextSimCands.length > 0 && 'context-to-context'].filter(Boolean).length} strategies → ${premiseCands.length + contextCands.length + contextSimCands.length} raw, ${merged.length} after dedup`,
               });
               return { candidates: filterByTarget(merged), trace: traceEntries };
             }
@@ -999,8 +1036,9 @@ export class OpportunityGraphFactory {
                   limitPerStrategy,
                   limit: perIndexLimit,
                   minScore,
+                  corpusGating,
                 });
-                for (const r of results.filter((x) => x.type === 'intent')) {
+                if (intentResultsEnabled) for (const r of results.filter((x) => x.type === 'intent')) {
                   all.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.id as Id<'intents'>,
@@ -1012,7 +1050,7 @@ export class OpportunityGraphFactory {
                     discoverySource: 'query' as const,
                   }));
                 }
-                for (const r of results.filter((x) => x.type === 'premise')) {
+                if (premiseResultsEnabled) for (const r of results.filter((x) => x.type === 'premise')) {
                   all.push(withCandidateEvidence({
                     candidateUserId: r.userId as Id<'users'>,
                     candidatePremiseId: r.id as Id<'premises'>,
@@ -1020,6 +1058,18 @@ export class OpportunityGraphFactory {
                     similarity: r.score,
                     lens: r.matchedVia,
                     candidatePayload: '',
+                    candidateSummary: undefined,
+                    discoverySource: 'query' as const,
+                  }));
+                }
+                if (contextResultsEnabled) for (const r of results.filter((x) => x.type === 'user_context')) {
+                  all.push(withCandidateEvidence({
+                    candidateUserId: r.userId as Id<'users'>,
+                    candidateContextId: r.id,
+                    networkId: targetIndex.networkId,
+                    similarity: r.score,
+                    lens: r.matchedVia,
+                    candidatePayload: r.text ?? '',
                     candidateSummary: undefined,
                     discoverySource: 'query' as const,
                   }));
@@ -1032,12 +1082,17 @@ export class OpportunityGraphFactory {
               total: all.length,
               fromIntent: intentCount,
               fromPremise: premiseCount,
+              fromContext: all.filter((c) => c.candidateContextId).length,
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
               // Dedup by candidateUserId + entity (intent or premise), NOT by indexId.
               // Including indexId caused the same user to appear once per index they belong to.
-              const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
+              const entityKey = c.candidateIntentId
+                ? `intent:${c.candidateIntentId}`
+                : c.candidatePremiseId
+                  ? `premise:${c.candidatePremiseId}`
+                  : `context:${c.candidateContextId}`;
               const key = `${c.candidateUserId}:${entityKey}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
@@ -1054,6 +1109,11 @@ export class OpportunityGraphFactory {
           async function runPremiseDiscovery(): Promise<CandidateMatch[]> {
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];
+
+            if (!discoveryProfileMatchingEnabled() || discoveryProfileSource() === 'user_context') {
+              discoveryLog.verbose('runPremiseDiscovery disabled by DISCOVERY_ALLOWED_TYPES/DISCOVERY_PROFILE_SOURCE');
+              return [];
+            }
 
             const sourceLimit = getSourcePremiseDiscoveryLimit();
             if (sourceLimit === 0) {
@@ -1141,6 +1201,7 @@ export class OpportunityGraphFactory {
             if (!state.sourceContexts?.length) return [];
             const contextToIntentEnabled = process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
             if (!contextToIntentEnabled) return [];
+            if (!discoveryProfileMatchingEnabled() || discoveryProfileSource() !== 'user_context' || !discoveryIntentMatchingEnabled()) return [];
 
             const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
             if (targetNetworkIds.length === 0) return [];
@@ -1176,6 +1237,7 @@ export class OpportunityGraphFactory {
                   limitPerStrategy: limitPerStrategy,
                   limit: 20,
                   minScore,
+                  corpusGating,
                 });
                 for (const r of results.filter(r => r.type === 'intent')) {
                   contextCandidates.push(withCandidateEvidence({
@@ -1231,6 +1293,60 @@ export class OpportunityGraphFactory {
           }
 
           /**
+           * Context-to-context discovery (lightweight profile mode only).
+           * Raw network-scoped context embeddings → candidate user_contexts.
+           * No HyDE: both sides are the same document type (synthesized
+           * 3–6 sentence paragraphs), so direct paragraph similarity is correct
+           * (same rationale as raw premise-to-premise).
+           */
+          async function runContextToContextDiscovery(): Promise<CandidateMatch[]> {
+            if (!contextResultsEnabled) return [];
+            if (!state.sourceContexts?.length) return [];
+            if (typeof self.database.searchUserContextsBySimilarity !== 'function') return [];
+
+            const targetNetworkIds = state.targetNetworks.map(t => t.networkId);
+            if (targetNetworkIds.length === 0) return [];
+
+            const contextCandidates: CandidateMatch[] = [];
+            for (const ctx of state.sourceContexts.filter(c => targetNetworkIds.includes(c.networkId))) {
+              const results = await self.database.searchUserContextsBySimilarity({
+                embedding: ctx.embedding,
+                networkIds: [ctx.networkId],
+                excludeUserId: discoveryUserId,
+                limit: 20,
+                minScore,
+              });
+              for (const r of results) {
+                contextCandidates.push(withCandidateEvidence({
+                  candidateUserId: r.userId as Id<'users'>,
+                  candidateContextId: r.contextId,
+                  sourceContextId: ctx.contextId,
+                  networkId: r.networkId as Id<'networks'>,
+                  similarity: typeof r.similarity === 'number' ? r.similarity : parseFloat(String(r.similarity)),
+                  lens: 'context_match',
+                  candidatePayload: r.text ?? '',
+                  discoverySource: 'context-similarity' as const,
+                }));
+              }
+            }
+
+            // Dedup by userId + contextId + networkId (mirror premise dedup)
+            const byKey = new Map<string, CandidateMatch>();
+            for (const c of contextCandidates) {
+              const key = `${c.candidateUserId}:${c.candidateContextId ?? 'none'}:${c.networkId}`;
+              if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+                byKey.set(key, c);
+              }
+            }
+            const deduped = Array.from(byKey.values());
+            discoveryLog.verbose('runContextToContextDiscovery complete', {
+              rawCount: contextCandidates.length,
+              dedupedCount: deduped.length,
+            });
+            return deduped;
+          }
+
+          /**
            * Merge candidates from multiple strategies. Deduplicates by userId + networkId + entityId,
            * keeps the highest similarity, tracks which strategies found each candidate,
            * and applies a multi-strategy boost (+0.05 per additional strategy, boost capped at 0.15,
@@ -1240,7 +1356,7 @@ export class OpportunityGraphFactory {
             const merged = new Map<string, CandidateMatch & { _strategies: Set<string> }>();
             for (const group of groups) {
               for (const c of group) {
-                const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? 'none';
+                const entityId = c.candidateIntentId ?? c.candidatePremiseId ?? c.candidateContextId ?? 'none';
                 const key = `${c.candidateUserId}:${c.networkId}:${entityId}`;
                 const existing = merged.get(key);
                 if (!existing) {
@@ -1274,15 +1390,16 @@ export class OpportunityGraphFactory {
           const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
           if (!searchText) {
             discoveryLog.warn('No search text available for intent path');
-            const [premiseCands, contextCands] = await Promise.all([
+            const [premiseCands, contextCands, contextSimCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
+              runContextToContextDiscovery(),
             ]);
-            const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
             if (merged.length > 0) {
               return {
                 candidates: filterByTarget(merged),
-                trace: [{ node: "discovery", detail: `No search text; premise → ${premiseCands.length}, context → ${contextCands.length}, merged → ${merged.length} candidate(s)` }],
+                trace: [{ node: "discovery", detail: `No search text; premise → ${premiseCands.length}, context → ${contextCands.length}, context-sim → ${contextSimCands.length}, merged → ${merged.length} candidate(s)` }],
               };
             }
             return { candidates: [] };
@@ -1302,16 +1419,17 @@ export class OpportunityGraphFactory {
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
           if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-            const [premiseCands, contextCands] = await Promise.all([
+            const [premiseCands, contextCands, contextSimCands] = await Promise.all([
               runPremiseDiscovery(),
               runContextToIntentDiscovery(),
+              runContextToContextDiscovery(),
             ]);
-            const merged = mergeStrategyCandidates(premiseCands, contextCands);
+            const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
             if (merged.length > 0) {
               return {
                 hydeEmbeddings: {} as Record<string, number[]>,
                 candidates: filterByTarget(merged),
-                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise → ${premiseCands.length}, context → ${contextCands.length}, merged → ${merged.length} candidate(s)` }],
+                trace: [{ node: "discovery", detail: `No HyDE embeddings; premise → ${premiseCands.length}, context → ${contextCands.length}, context-sim → ${contextSimCands.length}, merged → ${merged.length} candidate(s)` }],
               };
             }
             return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
@@ -1333,8 +1451,9 @@ export class OpportunityGraphFactory {
                 limitPerStrategy,
                 limit: perIndexLimit,
                 minScore,
+                corpusGating,
               });
-              for (const result of results.filter((r) => r.type === 'intent')) {
+              if (intentResultsEnabled) for (const result of results.filter((r) => r.type === 'intent')) {
                 allCandidates.push(withCandidateEvidence({
                   candidateUserId: result.userId as Id<'users'>,
                   candidateIntentId: result.id as Id<'intents'>,
@@ -1346,7 +1465,7 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 }));
               }
-              for (const result of results.filter((r) => r.type === 'premise')) {
+              if (premiseResultsEnabled) for (const result of results.filter((r) => r.type === 'premise')) {
                 allCandidates.push(withCandidateEvidence({
                   candidateUserId: result.userId as Id<'users'>,
                   candidatePremiseId: result.id as Id<'premises'>,
@@ -1358,11 +1477,27 @@ export class OpportunityGraphFactory {
                   discoverySource: 'query' as const,
                 }));
               }
+              if (contextResultsEnabled) for (const result of results.filter((r) => r.type === 'user_context')) {
+                allCandidates.push(withCandidateEvidence({
+                  candidateUserId: result.userId as Id<'users'>,
+                  candidateContextId: result.id,
+                  networkId: targetIndex.networkId,
+                  similarity: result.score,
+                  lens: result.matchedVia,
+                  candidatePayload: result.text ?? '',
+                  candidateSummary: undefined,
+                  discoverySource: 'query' as const,
+                }));
+              }
             })
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const entityKey = c.candidateIntentId ? `intent:${c.candidateIntentId}` : `premise:${c.candidatePremiseId}`;
+            const entityKey = c.candidateIntentId
+              ? `intent:${c.candidateIntentId}`
+              : c.candidatePremiseId
+                ? `premise:${c.candidatePremiseId}`
+                : `context:${c.candidateContextId}`;
             const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
             if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);
@@ -1450,15 +1585,16 @@ export class OpportunityGraphFactory {
             });
           }
 
-          const [premiseCands, contextCands] = await Promise.all([
+          const [premiseCands, contextCands, contextSimCands] = await Promise.all([
             runPremiseDiscovery(),
             runContextToIntentDiscovery(),
+            runContextToContextDiscovery(),
           ]);
-          const allStrategies = mergeStrategyCandidates(candidates, premiseCands, contextCands);
-          if (premiseCands.length > 0 || contextCands.length > 0) {
+          const allStrategies = mergeStrategyCandidates(candidates, premiseCands, contextCands, contextSimCands);
+          if (premiseCands.length > 0 || contextCands.length > 0 || contextSimCands.length > 0) {
             traceEntries.push({
               node: "discovery",
-              detail: `+ Premise → ${premiseCands.length}, Context → ${contextCands.length}, merged to ${allStrategies.length} candidate(s)`,
+              detail: `+ Premise → ${premiseCands.length}, Context → ${contextCands.length}, Context-sim → ${contextSimCands.length}, merged to ${allStrategies.length} candidate(s)`,
             });
           }
           return {
@@ -1605,7 +1741,7 @@ export class OpportunityGraphFactory {
             }
           } catch (err) {
             evaluationLog.warn('IND-567 rejection cool-down: lookup failed, skipping penalty', {
-              error: err instanceof Error ? err.message : String(err),
+              error: safeOpportunityGraphError(err),
             });
           }
         }
@@ -1678,11 +1814,22 @@ export class OpportunityGraphFactory {
               const profile = await this.database.getProfile(c.candidateUserId);
               let intentPayload = c.candidatePayload;
               let intentSummary = c.candidateSummary;
+              let evidence = c.evidence;
               if (c.candidateIntentId != null && (!intentPayload || intentPayload === '')) {
                 const intent = await this.database.getIntent(c.candidateIntentId);
                 if (intent) {
                   intentPayload = intent.payload;
                   intentSummary = intent.summary ?? undefined;
+                }
+              }
+              if (c.candidatePremiseId != null && (!intentPayload || intentPayload === '')) {
+                const premise = await this.database.getPremise(c.candidatePremiseId);
+                if (premise) {
+                  intentPayload = premise.assertion.text;
+                  intentSummary = premise.assertion.summary;
+                  evidence = (c.evidence ?? []).map((item) => item.candidatePremiseId === c.candidatePremiseId
+                    ? { ...item, payload: premise.assertion.text, summary: premise.assertion.summary, assertionText: premise.assertion.text }
+                    : item);
                 }
               }
               const evidenceKey = buildEvaluatorEvidenceKey(c);
@@ -1702,7 +1849,7 @@ export class OpportunityGraphFactory {
                 evidenceKey,
                 ragScore: c.similarity * 100,
                 matchedVia: c.lens,
-                evidence: c.evidence,
+                evidence,
               };
             })
           );
@@ -1734,6 +1881,7 @@ export class OpportunityGraphFactory {
 
           // Lower default threshold to 50 for better recall
           const minScore = state.options.minScore ?? 50;
+          const evaluatorSignalConfig = getAbortSignalConfig();
 
           const evaluator = typeof (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle === 'function'
             ? (evaluatorAgent as OpportunityEvaluator)
@@ -1764,7 +1912,7 @@ export class OpportunityGraphFactory {
                 const _traceEmitter = requestContext.getStore()?.traceEmitter;
                 _traceEmitter?.({ type: "agent_start", name: "opportunity-evaluator" });
                 const _candidateName = candidateEntity.profile?.name ?? "Unknown";
-                return evaluator.invokeEntityBundle(input, { minScore, returnAll: true })
+                return evaluator.invokeEntityBundle(input, { minScore, returnAll: true, ...evaluatorSignalConfig })
                   .then((res) => {
                     const _evalDuration = Date.now() - _evalStart;
                     agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
@@ -1775,12 +1923,12 @@ export class OpportunityGraphFactory {
                   })
                   .catch((err) => {
                     const _evalDuration = Date.now() - _evalStart;
-                    const _errMsg = err instanceof Error ? err.message : String(err);
+                    const _errMsg = safeOpportunityGraphError(err);
                     agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
                     _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `${_candidateName}: error — ${_errMsg}` });
                     evaluationLog.warn('Parallel eval failed for candidate', {
                       candidateUserId: candidateEntity.userId,
-                      error: err,
+                      error: _errMsg,
                     });
                     parallelErrors.push({
                       candidateUserId: candidateEntity.userId,
@@ -1828,13 +1976,13 @@ export class OpportunityGraphFactory {
             _traceEmitterSerial?.({ type: "agent_start", name: "opportunity-evaluator" });
             let opportunitiesWithActors: EvaluatedOpportunityWithActors[];
             try {
-              opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true });
+              opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true, ...evaluatorSignalConfig });
               const _evalDuration = Date.now() - _evalStart;
               agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
               _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `Evaluated ${candidateEntities.length} candidate(s)` });
             } catch (serialErr) {
               const _evalDuration = Date.now() - _evalStart;
-              const _errMsg = serialErr instanceof Error ? serialErr.message : String(serialErr);
+              const _errMsg = safeOpportunityGraphError(serialErr);
               agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
               _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `error — ${_errMsg}` });
               throw serialErr; // Re-throw for the outer catch to handle
@@ -2019,8 +2167,8 @@ export class OpportunityGraphFactory {
             agentTimings: agentTimingsAccum,
           };
         } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          evaluationLog.error('Failed', { error });
+          const errMsg = safeOpportunityGraphError(error);
+          evaluationLog.error('Failed', { error: errMsg });
           return {
             evaluatedOpportunities: [],
             error: 'Failed to evaluate candidates.',
@@ -2681,7 +2829,7 @@ export class OpportunityGraphFactory {
           _evalStart = Date.now();
           _traceEmitterIntro?.({ type: "agent_start", name: "intro-evaluator" });
           _introEvalStarted = true;
-          const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0 });
+          const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0, ...getAbortSignalConfig() });
           const _introDuration = Date.now() - _evalStart;
           agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introDuration });
           _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introDuration, summary: "Evaluated introduction" });
