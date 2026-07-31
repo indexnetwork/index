@@ -229,7 +229,7 @@ export function Fixture() {
               <div className="mt-2">
                 <Frame label="">
                   <p className="text-term-dim text-sm">
-                    The seed step (db:seed) writes persona API keys to this file in the repository root.
+                    The seed step (db:seed) writes persona API keys to this file.
                   </p>
                 </Frame>
               </div>

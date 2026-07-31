@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { FsArtifactSource } from "../ops.artifacts.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
-import type { FixtureCounts, FixtureInspector } from "../ops.fixture.js";
+import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { RunQueue } from "../ops.queue.js";
 import { createOpsHandler, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
@@ -189,10 +189,18 @@ describe("ops API", () => {
   it("exposes the seed API keys path as a repo-relative location without credentials", async () => {
     const body = await (await get("/api/fixture")).json();
     expect(body.allowed).toBe(true);
-    expect(body.seedApiKeysPath).toBe(".seed-api-keys.json");
+    expect(body.seedApiKeysPath).toBe("services/api/.seed-api-keys.json");
     // The path is a location, not content: no key material should be returned.
     expect(JSON.stringify(body)).not.toContain("apiKey");
     expect(JSON.stringify(body)).not.toContain("API_KEY");
+  });
+
+  it("derives the seed API keys path from the seed step's cwd so the two cannot drift", async () => {
+    const body = await (await get("/api/fixture")).json();
+    expect(body.allowed).toBe(true);
+    // The reported path MUST match where db:seed actually writes the file,
+    // which is process.cwd() + ".seed-api-keys.json" with cwd set to SEED_STEP_CWD.
+    expect(body.seedApiKeysPath).toBe(path.join(SEED_STEP_CWD, ".seed-api-keys.json"));
   });
 
   it("returns 404 for an unknown route", async () => {

@@ -14,7 +14,7 @@ const ALLOWED = {
   },
   maxPersonas: 50,
   appliesMigrationsOnReset: true,
-  seedApiKeysPath: '.seed-api-keys.json',
+  seedApiKeysPath: 'services/api/.seed-api-keys.json',
   personaCount: 50,
   personaEmails: ['seed-tester-1@example.com'],
   tables: { users: 53, intents: 120, opportunities: 340 },
@@ -30,7 +30,7 @@ const ALLOWED_WITH_CREDENTIALS = {
   },
   maxPersonas: 50,
   appliesMigrationsOnReset: true,
-  seedApiKeysPath: '.seed-api-keys.json',
+  seedApiKeysPath: 'services/api/.seed-api-keys.json',
   personaCount: 50,
   personaEmails: ['seed-tester-1@example.com'],
   tables: { users: 53, intents: 120, opportunities: 340 },
@@ -190,7 +190,7 @@ describe('Fixture', () => {
       </BrowserRouter>,
     );
     await screen.findByRole('heading', { name: /Target Database/ });
-    expect(await screen.findByText('.seed-api-keys.json')).toBeInTheDocument();
+    expect(await screen.findByText('services/api/.seed-api-keys.json')).toBeInTheDocument();
     expect(screen.getByText(/db:seed.*writes/i)).toBeInTheDocument();
   });
 });

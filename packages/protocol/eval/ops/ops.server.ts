@@ -20,7 +20,7 @@ import { renderRun, RunSpecSchema } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
 import { compareArtifacts } from "./ops.compare.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
-import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
+import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { loadProfiles, resolveProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
@@ -390,7 +390,8 @@ async function fixtureStatus(context: OpsContext): Promise<Response> {
     appliesMigrationsOnReset: true,
     // Repo-relative path where db:seed writes API keys. This is a location, not content:
     // the fixture screen shows an operator where to find keys after resetting.
-    seedApiKeysPath: ".seed-api-keys.json",
+    // Derived from the seed step's cwd so the two cannot drift.
+    seedApiKeysPath: path.join(SEED_STEP_CWD, ".seed-api-keys.json"),
   };
   if (context.inspector === undefined) {
     return json({

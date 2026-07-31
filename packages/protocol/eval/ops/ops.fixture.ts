@@ -20,6 +20,13 @@ import { SQL } from "bun";
 export const REAL_DATA_DATABASE_NAMES = /^(.*_)?(prod|production)$/i;
 
 /**
+ * Working directory where the seed step runs, resolved against the repository root.
+ * Exported so the fixture-status endpoint can report the seed-output path from the
+ * same source of truth the reset pipeline uses.
+ */
+export const SEED_STEP_CWD = "services/api";
+
+/**
  * Connection-string query parameters that can send the session somewhere other
  * than the database named in the URL path, so the guard's verdict would describe
  * a different target than the one that gets truncated.
@@ -220,7 +227,7 @@ function rowCount(rows: unknown): number {
 export interface ResetStep {
   label: "flush" | "migrate" | "seed";
   argv: string[];
-  cwd: "services/api";
+  cwd: typeof SEED_STEP_CWD;
 }
 
 /** The reset pipeline: existing audited CLIs, in order, every destructive step confirmed. */
@@ -229,18 +236,18 @@ export function buildResetPipeline(options: { personas: number; migrate: boolean
     throw new Error(`persona count must be an integer in 0..${MAX_PERSONAS}`);
   }
   const steps: ResetStep[] = [
-    { label: "flush", argv: ["bun", "run", "db:flush", "--", "--confirm", "--silent"], cwd: "services/api" },
+    { label: "flush", argv: ["bun", "run", "db:flush", "--", "--confirm", "--silent"], cwd: SEED_STEP_CWD },
   ];
   if (options.migrate) {
     // No --confirm: this step runs `drizzle-kit migrate`, which accepts no such
     // flag. Its safety comes from services/api/drizzle.config.ts, which loads
     // the repository-root .env.test and refuses to run without TEST_DATABASE_SAFE=1.
-    steps.push({ label: "migrate", argv: ["bun", "run", "db:migrate:test"], cwd: "services/api" });
+    steps.push({ label: "migrate", argv: ["bun", "run", "db:migrate:test"], cwd: SEED_STEP_CWD });
   }
   steps.push({
     label: "seed",
     argv: ["bun", "run", "db:seed", "--", "--confirm", `--personas=${options.personas}`],
-    cwd: "services/api",
+    cwd: SEED_STEP_CWD,
   });
   return steps;
 }
