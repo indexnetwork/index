@@ -979,7 +979,7 @@ async function runParent(): Promise<void> {
       execution,
     };
     const gateFn: MatrixControlCalibratedGateFn = (gateSlots) => (evaluateControlCalibratedGate as MatrixControlCalibratedGateFn)(gateSlots, { expectedSlotsPerRow: selection.canary ? 1 : MATRIX_REPETITIONS * selection.cases.length });
-  const flow = await runEvalEvidenceFlow({
+    const flow = await runEvalEvidenceFlow({
       evidencePolicy: selection.canary ? 'normal' : 'strict',
       execution: summary,
       noComparison: emptyGovernedComparison(),
