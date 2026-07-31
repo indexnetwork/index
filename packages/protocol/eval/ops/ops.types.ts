@@ -27,3 +27,37 @@ export interface HarnessDescriptor {
   /** Corpus size, used to show workload (cases x runs) before launching. */
   caseCount: number;
 }
+
+export interface ArtifactRef {
+  /** base64url of the path relative to eval/. Stable and addressable without a database. */
+  id: string;
+  harness: OpsHarness;
+  kind: "baseline" | "run";
+  /** Path relative to eval/. */
+  path: string;
+  schemaVersion: number;
+  createdAt: string;
+  models: string[];
+  runs: number;
+  selection: { fullCorpus: boolean; filters: Record<string, string> };
+  git: { revision: string; dirty: boolean | null };
+  corpusFingerprint: string;
+  configFingerprint: string;
+  aggregatePassRate: number;
+  caseCount: number;
+  /** True only for v2 artifacts that recorded complete execution evidence. */
+  complete: boolean | null;
+  sizeBytes: number;
+  mtimeMs: number;
+}
+
+export interface IndexIssue {
+  /** Path relative to eval/. */
+  path: string;
+  message: string;
+}
+
+export interface IndexResult {
+  refs: ArtifactRef[];
+  issues: IndexIssue[];
+}
