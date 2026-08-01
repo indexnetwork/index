@@ -167,11 +167,62 @@ export type CompareResult =
       aggregate: { reference: number; subject: number; delta: number };
     };
 
+/**
+ * The two ways the server can tell this app that its session does not admit it.
+ *
+ * `GET /api/auth/status` is public and only ever answers `authenticated` true or
+ * false, so it cannot report the domain refusal at all. The 403 in the HTTP
+ * contract is produced in exactly one place — the server's auth gate, on a route
+ * that requires a session — so a gated API call is the only surface where a
+ * browser observes it. A sign-in the domain policy refuses never gets that far:
+ * it is refused at /callback, which renders the server's own refusal page and
+ * establishes no session, so this app is never loaded for that identity.
+ *
+ * The status code alone is not the signal. The same server answers 403 for a
+ * cross-origin write, for a foreign `Host`, and for a fixture reset against a
+ * database that is not disposable; showing "your account is not permitted" for
+ * any of those would be a lie. The discriminator is the `permitted: false` field,
+ * which only the auth gate sets.
+ */
+export type AuthRefusal = 'unauthenticated' | 'not-permitted';
+
+const authRefusalListeners = new Set<(refusal: AuthRefusal) => void>();
+
+/**
+ * Subscribes to session refusals seen by any API call. Returns an unsubscribe.
+ *
+ * This exists so the shell can stop rendering the dashboard the moment a call
+ * comes back refused, rather than leaving every route to render its own 401 as
+ * an ordinary error message.
+ */
+export function onAuthRefusal(listener: (refusal: AuthRefusal) => void): () => void {
+  authRefusalListeners.add(listener);
+  return () => {
+    authRefusalListeners.delete(listener);
+  };
+}
+
+/** Publishes a refusal to every subscriber. */
+function notifyAuthRefusal(refusal: AuthRefusal): void {
+  for (const listener of authRefusalListeners) listener(refusal);
+}
+
+/** Returns the refusal a failed response reports, or null when it reports something else. */
+function classifyAuthRefusal(status: number, body: unknown): AuthRefusal | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const frame = body as { authenticated?: unknown; permitted?: unknown };
+  if (status === 401 && frame.authenticated === false) return 'unauthenticated';
+  if (status === 403 && frame.authenticated === true && frame.permitted === false) return 'not-permitted';
+  return null;
+}
+
 /** Fetch helper that throws an Error containing the server's error field on non-2xx. */
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
+    const refusal = classifyAuthRefusal(response.status, body);
+    if (refusal !== null) notifyAuthRefusal(refusal);
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
   return response.json();
@@ -187,6 +238,18 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  async authStatus(): Promise<{ authenticated: boolean; email?: string; name?: string }> {
+    return fetchJson('/api/auth/status');
+  },
+
+  async login(): Promise<{ url: string }> {
+    return postJson('/api/auth/login', {});
+  },
+
+  async logout(): Promise<void> {
+    await postJson('/api/auth/logout', {});
+  },
+
   async harnesses(): Promise<{ harnesses: HarnessDescriptor[] }> {
     return fetchJson('/api/harnesses');
   },
@@ -243,6 +306,14 @@ export const api = {
  * EventSource will auto-reconnect on network failures. Each reconnect replays from
  * byte 0, so consumers may see duplicate log lines. The stream ends when the run
  * reaches a terminal status.
+ *
+ * The stream is gated like every other route, but `EventSource` exposes no status
+ * code — a 401 arrives as the same bare `error` event as a dropped connection, so
+ * it never reaches `fetchJson` and never reaches `onAuthRefusal`. A stream that
+ * fails before any status frame is therefore checked against the public status
+ * route: when nobody is signed in, the refusal is published here so the shell
+ * demotes, instead of the run page reporting "no run with that id" for what is an
+ * expired session and EventSource reconnecting against a 401 forever.
  */
 export function subscribeToRun(
   id: string,
@@ -253,6 +324,8 @@ export function subscribeToRun(
   },
 ): () => void {
   const source = new EventSource(`/api/runs/${id}/stream`);
+  let sawStatus = false;
+  let probed = false;
 
   source.addEventListener('log', (event) => {
     try {
@@ -266,6 +339,7 @@ export function subscribeToRun(
   source.addEventListener('status', (event) => {
     try {
       const record = JSON.parse((event as MessageEvent<string>).data);
+      sawStatus = true;
       handlers.onStatus(record);
     } catch {
       // Malformed frame: ignore to keep the stream alive
@@ -273,8 +347,31 @@ export function subscribeToRun(
   });
 
   source.addEventListener('error', (event) => {
+    // Once only, and only before a status frame: a mid-stream reconnect is an
+    // ordinary drop, and probing on every retry would be a request loop of its own.
+    if (!sawStatus && !probed) {
+      probed = true;
+      void publishRefusalIfSignedOut();
+    }
     handlers.onError(event);
   });
 
   return () => source.close();
+}
+
+/**
+ * Asks the public status route who is signed in, and publishes the refusal the
+ * SSE stream could not report.
+ *
+ * Silent on anything else. A status call that fails or answers `authenticated:
+ * true` says the stream failed for some other reason, and claiming a refusal
+ * there would throw the operator out of a working session.
+ */
+async function publishRefusalIfSignedOut(): Promise<void> {
+  try {
+    const status = await api.authStatus();
+    if (!status.authenticated) notifyAuthRefusal('unauthenticated');
+  } catch {
+    // Unanswerable is not refused: leave the stream's own error reporting alone.
+  }
 }

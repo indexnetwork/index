@@ -107,7 +107,10 @@ it is forced to `--no-save` (so it can never become `--rolling-baseline` fuel in
 `eval/<harness>/runs/` for everyone else) and is never diffed against the committed
 baseline.
 
-The API binds loopback and **has no authentication**. See
+The API binds loopback **and** requires a verified `@index.network` Index identity on every
+route but the two that make signing in possible — defence in depth, not a licence to expose
+it: the loopback bind, the `Host` check and the `Origin` allowlist are what keep it local,
+and it is still not safe to expose. See
 [`eval/ops/README.md`](./ops/README.md) for the full security model, the profile contract,
 the exit-code→status map, the comparability refusal, and the fixture guard.
 
