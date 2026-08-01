@@ -431,3 +431,25 @@ sign-in bridge's callback URL is built from. See
 cd packages/protocol && bun run eval:verify   # includes `suite: ops` (typecheck + tests)
 cd packages/protocol && bun test eval/ops/tests
 ```
+
+## Deploying this service
+
+The ops server has its own Railway config at `apps/eval-ops/railway.toml`, and the
+service must be pointed at that path.
+
+This is not optional tidiness. A Railway service with no config of its own inherits
+the repository-root `railway.toml`, which is the **API's** configuration — including:
+
+```toml
+preDeployCommand = "cd services/api && bun run db:migrate"
+healthcheckPath  = "/health"
+```
+
+Inheriting that made the eval ops service run `drizzle-kit migrate` on every deploy.
+It failed only because the service had no `DATABASE_URL`; had one been configured it
+would have migrated that database from this service. The dev environment's
+`DATABASE_URL` names `protocol_prod`.
+
+The config also deliberately sets **no** `healthcheckPath`. Every route here sits
+behind the `Host` allowlist, so a probe arriving with an internal hostname is refused
+with 403 and would fail an otherwise healthy container.
