@@ -362,11 +362,21 @@ A key minted by one deployment is meaningless to another, so the server **refuse
 start** on a half-configured or mismatched pair rather than failing every sign-in later
 with an unhelpful "No Index account could be resolved".
 
-**It is still not safe to expose.** What keeps this site local is the guards, not the
-authentication. `ops.serve.ts` binds `127.0.0.1` unless `EVAL_OPS_BIND` is set: **do not
-change it.** Setting it alone would not help anyway — the loopback `Origin` allowlist and
-the `Host` check both fail closed, so a browser on another host would have every write
-refused and every read refused with it.
+**What keeps this site local is the guards, not the authentication.** Both entrypoints bind
+`127.0.0.1` unless `EVAL_OPS_BIND` is set, and setting it alone changes nothing reachable:
+the `Host` and `Origin` allowlists still fail closed, so a browser on another host has
+every write refused and every read refused with it.
+
+Those allowlists are extended — by exactly one entry — only when `EVAL_OPS_PUBLIC_ORIGIN`
+names the deployed origin, e.g. `https://eval.index.network`. Unset means loopback only,
+which is the local posture and the default. The value is validated at startup as one
+absolute `https:` origin with no path, query, fragment or credentials, and the server
+**refuses to start** on anything else rather than falling back to something permissive.
+There is no wildcard and no flag that switches a guard off: a subdomain of the configured
+origin, the same name over `http:`, and every other host are all still refused. Exposing
+the site therefore takes three deliberate acts (bind, public origin, a route to the port),
+and leaves the `@index.network` identity gate as the only thing in front of a tool that
+spends tokens and can flush a database.
 
 **The session cookie is visible to every port on `127.0.0.1`.** Cookies are not
 port-scoped, so any *other* local HTTP service the operator's browser visits on loopback
@@ -384,7 +394,12 @@ bun run dev:eval-ops                        # UI on 127.0.0.1:5174 (from the rep
 ```
 
 `eval:web` runs with `--env-file=../../.env.test`, so the fixture target is the test
-database. `EVAL_OPS_PORT` changes the port. See
+database. `EVAL_OPS_PORT` changes the port. That file also sets `PORT=3001` for the API
+service, which is why `ops.serve.ts` ignores `PORT` — honouring it would move the ops API
+onto the API's port. The deployed single-process entrypoint
+(`apps/eval-ops/server.ts`) is the one a platform starts, and it *does* honour the `PORT`
+that platform injects; both resolve it through `resolveBindPort`, which is also what the
+sign-in bridge's callback URL is built from. See
 [`apps/eval-ops/README.md`](../../../../apps/eval-ops/README.md) for the browser app.
 
 ## Tests

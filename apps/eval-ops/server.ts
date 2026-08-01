@@ -9,17 +9,33 @@
  * the browser to `/`; the two-process dev flow serves the UI elsewhere, which is
  * why the target is configuration rather than a constant. `createSiteFetch` owns
  * the forwarding rule, so `/callback` cannot be answered with index.html.
+ *
+ * This is the entrypoint a platform starts, so it honours the `PORT` that
+ * platform injects — unlike the local API entrypoint (ops.serve.ts), which is
+ * started with `.env.test` loaded and would otherwise take the API service's
+ * `PORT=3001`. The port is resolved once and handed to both `Bun.serve` and
+ * `createDefaultOpsContext`, because the bridge callback URL must name the port
+ * this process actually bound.
+ *
+ * Reaching it from a browser needs more than a wider bind: EVAL_OPS_PUBLIC_ORIGIN
+ * must also name the deployed origin, or the Host and Origin allowlists refuse
+ * every request.
  */
 import path from 'node:path';
 
-import { createDefaultOpsContext, createOpsHandler } from '../../packages/protocol/eval/ops/ops.server.js';
+import { createDefaultOpsContext, createOpsHandler, resolveBindHostname, resolveBindPort } from '../../packages/protocol/eval/ops/ops.server.js';
 import { createSiteFetch } from './site';
 
 const repoRoot = path.resolve(import.meta.dir, '../..');
-const api = createOpsHandler(await createDefaultOpsContext({ repoRoot, uiUrl: '/' }));
+const port = resolveBindPort({ env: process.env, honourPlatformPort: true });
+const api = createOpsHandler(await createDefaultOpsContext({ repoRoot, uiUrl: '/', port }));
 
-Bun.serve({
-  hostname: process.env.EVAL_OPS_BIND ?? '127.0.0.1',
-  port: Number(process.env.EVAL_OPS_PORT ?? 4321),
+const server = Bun.serve({
+  hostname: resolveBindHostname(process.env),
+  port,
   fetch: createSiteFetch({ api, distDir: path.join(import.meta.dir, 'dist') }),
 });
+
+console.log(
+  `[eval-ops] listening on http://${server.hostname}:${server.port} (single-process site; honours the platform's PORT)`,
+);

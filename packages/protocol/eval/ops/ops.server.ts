@@ -10,10 +10,12 @@
  * rather than substitute for one another:
  *
  *  1. `foreignHostRefusal` — every request, read included, must be addressed to a
- *     loopback host. This is what stops a rebound DNS name reading artifacts,
+ *     loopback host, or to the one origin `EVAL_OPS_PUBLIC_ORIGIN` names when the
+ *     server is deployed. This is what stops a rebound DNS name reading artifacts,
  *     run records, logs and fixture metadata.
- *  2. `crossOriginRefusal` — a state-changing request must be same-origin, so a
- *     page the operator happens to have open cannot drive a run or a flush.
+ *  2. `crossOriginRefusal` — a state-changing request must come from an allowed
+ *     origin, so a page the operator happens to have open cannot drive a run or a
+ *     flush.
  *  3. A JSON content type on writes, which `no-cors` cannot produce.
  *  4. `authRefusal` — the caller must hold a session belonging to a verified
  *     member of the allowed domain (see ops.auth.ts).
@@ -56,6 +58,15 @@ export interface OpsContext {
   databaseUrl: string | undefined;
   /** Read-only live counts. Absent when no database client is configured. */
   inspector?: FixtureInspector;
+  /**
+   * The one non-loopback origin this server also answers on, when it is deployed.
+   *
+   * Absent means loopback only, which is the local posture and the default. It is
+   * never a wildcard and never a way to switch a guard off: see
+   * {@link resolvePublicOrigin}, which validates it and refuses to start on
+   * anything else.
+   */
+  publicOrigin?: PublicOrigin;
   /** Identity. Absent only in tests that predate the gate; see `authRefusal`. */
   auth?: OpsAuthContext;
 }
@@ -81,8 +92,22 @@ export interface OpsAuthContext {
   uiUrl: string;
 }
 
-/** Origins a browser may legitimately be running the ops UI on: loopback only. */
+/** Origins a browser may legitimately be running the ops UI on, before deployment. */
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * The single deployed origin the guards below also accept.
+ *
+ * Both fields are derived from one validated value, so the `Host` check and the
+ * `Origin` check cannot drift apart: `origin` is what an `Origin` header must
+ * equal, `host` is what a `Host` header must equal (including a non-default port).
+ */
+export interface PublicOrigin {
+  /** The normalised origin, e.g. `https://eval.index.network`. Never a wildcard. */
+  origin: string;
+  /** Its host, including a non-default port. */
+  host: string;
+}
 
 /**
  * The only routes reachable without a session, and the reason each one must be.
@@ -109,15 +134,46 @@ export const PUBLIC_ROUTES: ReadonlyArray<{ method: string; path: string }> = Ob
 const SESSION_COOKIE = "eval_ops_session";
 
 /**
- * The session cookie's attributes.
+ * The session cookie's attributes, minus `Secure`.
  *
- * `Secure` is deliberately absent. The ops site is served over plain http on
- * loopback, and a Secure cookie would be dropped by the browser — sign-in would
- * appear to succeed and then silently never take effect. `SameSite=Lax` keeps the
- * cookie off cross-site writes, which is the same boundary `crossOriginRefusal`
- * enforces server-side.
+ * `SameSite=Lax` keeps the cookie off cross-site writes, which is the same
+ * boundary `crossOriginRefusal` enforces server-side.
  */
 const SESSION_COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Lax; Path=/";
+
+/**
+ * The cookie's attributes for one request.
+ *
+ * `Secure` follows the request rather than a hand-set flag, because both mistakes
+ * are silent. On loopback the site is plain http, and a Secure cookie would be
+ * dropped by the browser: sign-in would appear to succeed and never take effect.
+ * Over HTTPS an insecure session cookie is a real exposure, and nothing in the
+ * browser would say so.
+ */
+function sessionCookieAttributes(secure: boolean): string {
+  return secure ? `${SESSION_COOKIE_ATTRIBUTES}; Secure` : SESSION_COOKIE_ATTRIBUTES;
+}
+
+/**
+ * True when the browser reached this server over HTTPS.
+ *
+ * Two signals, both of them things this server can vouch for. The request URL's
+ * own scheme is one. The other is the configured public origin: it is validated
+ * to be `https:` and nothing else, so a request addressed to that host was served
+ * over HTTPS even though a TLS-terminating proxy — Railway's edge, for one —
+ * forwards it onward as plain http.
+ *
+ * `X-Forwarded-Proto` is deliberately not consulted. It is a header any client
+ * can set, including a page on the operator's own machine, and trusting it would
+ * let that page get the loopback session cookie dropped.
+ */
+function isSecureRequest(context: OpsContext, request: Request, url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  const publicOrigin = context.publicOrigin;
+  if (publicOrigin === undefined) return false;
+  const host = request.headers.get("host");
+  return host !== null && host.trim().toLowerCase() === publicOrigin.host;
+}
 
 /** Fetch metadata values that mean "this was not initiated by another site". */
 const SAME_ORIGIN_FETCH_SITES = new Set(["same-origin", "none"]);
@@ -143,15 +199,15 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
   const state: ServerState = { resetInFlight: false };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
-    const rebinding = foreignHostRefusal(request);
+    const rebinding = foreignHostRefusal(context, request);
     if (rebinding !== null) return rebinding;
-    const refusal = crossOriginRefusal(request);
+    const refusal = crossOriginRefusal(context, request);
     if (refusal !== null) return refusal;
     try {
       // Ahead of the gate: this is the request that establishes a session, so it
-      // cannot require one. It is still behind both loopback guards above.
+      // cannot require one. It is still behind both host/origin guards above.
       if (url.pathname === OPS_CALLBACK_PATH && request.method === "GET") {
-        return await completeSignIn(context, url);
+        return await completeSignIn(context, request, url);
       }
 
       // Default-deny. Everything from here on either sits on PUBLIC_ROUTES or
@@ -224,7 +280,7 @@ function sessionIdentity(context: OpsContext, request: Request): AllowedIdentity
  * dropped — it is a broad API key for a real account, and it is never stored in a
  * session, logged, or written into a page.
  */
-async function completeSignIn(context: OpsContext, url: URL): Promise<Response> {
+async function completeSignIn(context: OpsContext, request: Request, url: URL): Promise<Response> {
   const auth = context.auth;
   if (auth === undefined) return refusalPage("This server has no identity configured.", 500);
 
@@ -262,7 +318,7 @@ async function completeSignIn(context: OpsContext, url: URL): Promise<Response> 
     status: 302,
     headers: {
       Location: auth.uiUrl,
-      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${SESSION_COOKIE_ATTRIBUTES}`,
+      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${sessionCookieAttributes(isSecureRequest(context, request, url))}`,
     },
   });
 }
@@ -340,6 +396,9 @@ function readCookie(request: Request, name: string): string | null {
  *    on 127.0.0.1:5174 and proxies /api here; the proxy forwards the browser's
  *    own `Origin: http://127.0.0.1:5174` verbatim, and a direct visit to this
  *    server sends `Origin: http://127.0.0.1:4321`. Both are loopback.
+ *  - the one origin `EVAL_OPS_PUBLIC_ORIGIN` names, when the server is deployed.
+ *    Exactly that origin: a different scheme, a different port and a subdomain of
+ *    it are all different origins and all refused.
  *  - no `Origin` at all: curl, and any proxy hop that drops it. A request with no
  *    `Origin` was not initiated by a page, so it is not the drive-by this closes.
  *  - `Sec-Fetch-Site: same-origin` or `none`, which say the same thing.
@@ -348,12 +407,19 @@ function readCookie(request: Request, name: string): string | null {
  * frame or a file:// page sends — and, when no `Origin` is present, a
  * `Sec-Fetch-Site` that names another site.
  */
-function crossOriginRefusal(request: Request): Response | null {
+function crossOriginRefusal(context: OpsContext, request: Request): Response | null {
   if (request.method === "GET" || request.method === "HEAD") return null;
   const origin = request.headers.get("origin");
   if (origin !== null) {
-    if (isLoopbackOrigin(origin)) return null;
-    return json({ error: `Refusing a ${request.method} from origin ${origin}: this server only accepts local requests.` }, 403);
+    if (isAllowedOrigin(origin, context.publicOrigin)) return null;
+    return json(
+      {
+        error:
+          `Refusing a ${request.method} from origin ${origin}: this server only accepts requests from `
+          + `${describeAllowedOrigins(context.publicOrigin)}.`,
+      },
+      403,
+    );
   }
   const site = request.headers.get("sec-fetch-site");
   if (site !== null && !SAME_ORIGIN_FETCH_SITES.has(site.toLowerCase())) {
@@ -379,15 +445,26 @@ function crossOriginRefusal(request: Request): Response | null {
  *
  * A request with no `Host` is accepted: it was not steered here by a resolved
  * name, so rebinding does not apply.
+ *
+ * A deployed server also answers on the one host `EVAL_OPS_PUBLIC_ORIGIN` names.
+ * That is a second entry in the allowlist, not a hole in it: every other host,
+ * including a subdomain of the configured one, is still refused.
  */
-function foreignHostRefusal(request: Request): Response | null {
+function foreignHostRefusal(context: OpsContext, request: Request): Response | null {
   const host = request.headers.get("host");
   if (host === null) return null;
-  if (isLoopbackHost(host)) return null;
+  if (isAllowedHost(host, context.publicOrigin)) return null;
   return json(
-    { error: `Refusing a request for host ${host}: this server only answers on loopback (${[...LOOPBACK_HOSTNAMES].join(", ")}).` },
+    { error: `Refusing a request for host ${host}: this server only answers on ${describeAllowedHosts(context.publicOrigin)}.` },
     403,
   );
+}
+
+/** Loopback, plus the configured public host when there is one. */
+function isAllowedHost(host: string, publicOrigin: PublicOrigin | undefined): boolean {
+  const value = host.trim().toLowerCase();
+  if (publicOrigin !== undefined && value === publicOrigin.host) return true;
+  return isLoopbackHost(value);
 }
 
 /** Strips an optional port and compares against the loopback allowlist. */
@@ -396,6 +473,21 @@ function isLoopbackHost(host: string): boolean {
   // Bracketed IPv6 keeps its brackets, which is how LOOPBACK_HOSTNAMES stores ::1.
   const hostname = value.startsWith("[") ? value.slice(0, value.indexOf("]") + 1) : value.split(":")[0];
   return LOOPBACK_HOSTNAMES.has(hostname);
+}
+
+/** Loopback at any port, plus the configured public origin exactly. */
+function isAllowedOrigin(origin: string, publicOrigin: PublicOrigin | undefined): boolean {
+  if (isLoopbackOrigin(origin)) return true;
+  if (publicOrigin === undefined) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  // URL.origin normalises scheme and host case and drops a default port, so this
+  // is an origin comparison rather than a string comparison of two spellings.
+  return parsed.origin === publicOrigin.origin;
 }
 
 function isLoopbackOrigin(origin: string): boolean {
@@ -408,6 +500,16 @@ function isLoopbackOrigin(origin: string): boolean {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   return LOOPBACK_HOSTNAMES.has(parsed.hostname);
+}
+
+/** The refusal message names what is allowed, so a misrouted deploy says what to fix. */
+function describeAllowedHosts(publicOrigin: PublicOrigin | undefined): string {
+  const loopback = `loopback (${[...LOOPBACK_HOSTNAMES].join(", ")})`;
+  return publicOrigin === undefined ? loopback : `${loopback} and ${publicOrigin.host}`;
+}
+
+function describeAllowedOrigins(publicOrigin: PublicOrigin | undefined): string {
+  return publicOrigin === undefined ? "loopback origins" : `loopback origins and ${publicOrigin.origin}`;
 }
 
 /** Returns null when nothing matched, so the caller can answer 404 in one place. */
@@ -433,7 +535,7 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
 
   if (request.method === "POST") {
     if (resource === "auth" && rest.length === 1 && rest[0] === "login") return beginSignIn(context);
-    if (resource === "auth" && rest.length === 1 && rest[0] === "logout") return endSession(context, request);
+    if (resource === "auth" && rest.length === 1 && rest[0] === "logout") return endSession(context, request, url);
     if (resource === "runs" && rest.length === 0) return await launchRun(context, state, request);
     if (resource === "runs" && rest.length === 2 && rest[1] === "cancel") return await cancelRun(context, rest[0]);
     if (resource === "fixture" && rest.length === 1 && rest[0] === "reset") return await resetFixture(context, state, request);
@@ -467,13 +569,15 @@ function beginSignIn(context: OpsContext): Response {
 }
 
 /** Ends the session and expires the cookie, so the browser stops presenting it. */
-function endSession(context: OpsContext, request: Request): Response {
+function endSession(context: OpsContext, request: Request, url: URL): Response {
   context.auth?.sessions.clear(readCookie(request, SESSION_COOKIE));
   return new Response(JSON.stringify({ authenticated: false }), {
     status: 200,
     headers: {
       "Content-Type": "application/json",
-      "Set-Cookie": `${SESSION_COOKIE}=; ${SESSION_COOKIE_ATTRIBUTES}; Max-Age=0`,
+      // Expired with the attributes it was set with, so the browser overwrites the
+      // cookie it holds rather than being handed a second, differently scoped one.
+      "Set-Cookie": `${SESSION_COOKIE}=; ${sessionCookieAttributes(isSecureRequest(context, request, url))}; Max-Age=0`,
     },
   });
 }
@@ -911,8 +1015,10 @@ const DEFAULT_API_URL = "http://localhost:3001";
  * nothing said why. Both defaults now name the same environment.
  */
 const DEFAULT_WEB_APP_URL = "http://localhost:3000";
-/** The port this server listens on, when the environment does not say. Mirrors ops.serve.ts. */
+/** The port this server listens on, when the environment does not say. */
 const DEFAULT_PORT = 4321;
+/** The address this server binds, when the environment does not say. Loopback, deliberately. */
+const DEFAULT_BIND = "127.0.0.1";
 /**
  * Where a completed sign-in sends the browser, when the environment does not say.
  *
@@ -1018,18 +1124,135 @@ function resolveUiUrl(env: Record<string, string | undefined>, fallback: string 
   return value;
 }
 
+/**
+ * The port an entrypoint binds, and the bridge callback must therefore advertise.
+ *
+ * `EVAL_OPS_PORT` always wins: it names *this* server and nothing else. What it
+ * falls back to depends on which entrypoint is asking, which is why the posture
+ * is a parameter rather than an ambient guess:
+ *
+ *  - `apps/eval-ops/server.ts` is the deployed single-process site. The platform
+ *    (Railway) chooses the port and injects `PORT`; ignoring it would leave the
+ *    service listening where nothing routes, and its health check failing.
+ *  - `ops.serve.ts` is the local dev API, started by `bun run eval:web` with
+ *    `--env-file=../../.env.test` — and that file sets `PORT=3001` for the *API
+ *    service*. Honouring `PORT` there would silently move the ops API onto the
+ *    API's port and break the documented two-process flow on every machine.
+ *
+ * Do not collapse the two call sites back into one unconditional rule. That
+ * `PORT=3001` line is the reason this parameter exists.
+ */
+export interface BindPortOptions {
+  env: Record<string, string | undefined>;
+  /** True only for the entrypoint the platform starts and injects `PORT` into. */
+  honourPlatformPort: boolean;
+}
+
+export function resolveBindPort(options: BindPortOptions): number {
+  const explicit = readEnv(options.env, "EVAL_OPS_PORT");
+  if (explicit !== undefined) return parsePort(explicit, "EVAL_OPS_PORT");
+  if (options.honourPlatformPort) {
+    const platform = readEnv(options.env, "PORT");
+    if (platform !== undefined) return parsePort(platform, "PORT");
+  }
+  return DEFAULT_PORT;
+}
+
+/** Refuses a port that is not one, rather than letting Number() bind something arbitrary. */
+function parsePort(value: string, name: string): number {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `Refusing to start: ${name} (${value}) is not a usable TCP port. Set it to an integer between 1 and `
+      + `65535, or leave it unset to use ${DEFAULT_PORT}.`,
+    );
+  }
+  return port;
+}
+
+/**
+ * The address an entrypoint binds. Loopback unless `EVAL_OPS_BIND` says otherwise.
+ *
+ * Widening the bind stays one deliberate, explicit act, and it is not implied by
+ * anything else: a deployed port does not move it, and it is not what makes the
+ * site reachable — the `Host` and `Origin` allowlists still have to name the
+ * origin as well (see {@link resolvePublicOrigin}).
+ */
+export function resolveBindHostname(env: Record<string, string | undefined>): string {
+  return readEnv(env, "EVAL_OPS_BIND") ?? DEFAULT_BIND;
+}
+
+/** Hostnames a public origin may name: letters, digits and hyphens, dot-separated. */
+const PUBLIC_HOSTNAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+
+/**
+ * The one deployed origin the `Host` and `Origin` allowlists are extended to.
+ *
+ * Unset means loopback only — the local posture, unchanged. There is deliberately
+ * no wildcard and no way to switch a guard off: the value is one absolute origin
+ * or the server does not start.
+ *
+ * Validated rather than trusted, because every way of getting this wrong is
+ * silent at startup and expensive later. `http:` would let a session cookie ride
+ * a plaintext hop and would also make {@link isSecureRequest} wrong. A path,
+ * query or fragment means the operator supplied a URL where an origin was asked
+ * for, and the string comparison against a browser's `Origin` header would then
+ * never match — every request 403ing with no stated cause. A hostname outside
+ * LDH is either a wildcard attempt or a typo.
+ */
+export function resolvePublicOrigin(env: Record<string, string | undefined>): PublicOrigin | undefined {
+  const value = readEnv(env, "EVAL_OPS_PUBLIC_ORIGIN");
+  if (value === undefined) return undefined;
+
+  const refuse = (reason: string): never => {
+    throw new Error(
+      `Refusing to start: EVAL_OPS_PUBLIC_ORIGIN (${value}) ${reason}. It must be exactly one absolute https `
+      + `origin with no path, query or fragment, such as https://eval.index.network — or be unset, which keeps `
+      + `this server loopback-only.`,
+    );
+  };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return refuse("is not a usable URL");
+  }
+  if (parsed.protocol !== "https:") return refuse(`names ${parsed.protocol.replace(":", "")}, not https`);
+  if (parsed.username !== "" || parsed.password !== "") return refuse("carries credentials");
+  if (parsed.search !== "") return refuse("carries a query string");
+  if (parsed.hash !== "") return refuse("carries a fragment");
+  if (parsed.pathname !== "" && parsed.pathname !== "/") return refuse(`names a path (${parsed.pathname})`);
+  if (!PUBLIC_HOSTNAME_PATTERN.test(parsed.hostname)) return refuse(`does not name a usable host (${parsed.hostname})`);
+
+  return { origin: parsed.origin, host: parsed.host };
+}
+
 /** Builds the context the standalone server runs on: everything rooted at the repository. */
-export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl?: string }): Promise<OpsContext> {
+export async function createDefaultOpsContext(options: {
+  repoRoot: string;
+  uiUrl?: string;
+  /**
+   * The port the entrypoint bound, from {@link resolveBindPort}.
+   *
+   * Passed in rather than re-read here: the bridge callback must name the port
+   * the server is actually listening on, and two independent reads of the
+   * environment are how those drift.
+   */
+  port: number;
+}): Promise<OpsContext> {
   const protocolDir = path.join(options.repoRoot, "packages/protocol");
   const evalDir = path.join(protocolDir, "eval");
   const store = new FsRunStore({ evalDir });
   const executor = new LocalProcessRunExecutor({ store, cwd: protocolDir });
   const databaseUrl = process.env.DATABASE_URL;
 
-  // Ahead of any I/O: a misconfigured identity pair must stop the server, not
-  // surface as a refused sign-in five minutes later.
+  // Ahead of any I/O: a misconfigured identity pair, or a malformed public
+  // origin, must stop the server rather than surface as a refused sign-in or a
+  // site that 403s every request five minutes later.
   const endpoints = resolveIdentityEndpoints(process.env);
   const uiUrl = resolveUiUrl(process.env, options.uiUrl);
+  const publicOrigin = resolvePublicOrigin(process.env);
 
   // Reported, not fatal: fixture control is only one page, and the reset route
   // fails closed on the same divergence. A silent mismatch is what must not happen.
@@ -1059,6 +1282,7 @@ export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl
     queue: new RunQueue({ executor, store }),
     databaseUrl,
     inspector: new BunSqlFixtureInspector(),
+    publicOrigin,
     auth: {
       states: new OneTimeStateStore(),
       sessions: new OpsSessionStore(),
@@ -1068,10 +1292,10 @@ export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl
       identities: new ApiIdentityResolver({ apiUrl: endpoints.apiUrl }),
       webAppUrl: endpoints.webAppUrl,
       uiUrl,
-      // Must match the port Bun.serve actually binds, or the bridge would send the
-      // credential to a port nothing is listening on. ops.serve.ts reads the same
-      // variable and the same default.
-      callbackPort: Number(process.env.EVAL_OPS_PORT ?? DEFAULT_PORT),
+      // The port the entrypoint bound, handed to Bun.serve and to this from one
+      // resolution — or the bridge would send the credential to a port nothing is
+      // listening on.
+      callbackPort: options.port,
     },
   };
 }

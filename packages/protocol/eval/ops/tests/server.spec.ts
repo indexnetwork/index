@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -9,7 +9,7 @@ import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveIdentityEndpoints, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 
@@ -478,6 +478,169 @@ describe("Host header guard", () => {
     expect(response.status).toBe(403);
     await context.queue.drain();
     expect(executor.starts).toHaveLength(0);
+  });
+});
+
+describe("the configured public origin", () => {
+  // Deploying the site puts it on a real domain, where the loopback allowlists
+  // above would refuse every request. They are therefore extended to exactly one
+  // configured origin — never a wildcard, never a way to switch a guard off —
+  // and an unset variable still means "loopback only", which is the whole of the
+  // local posture. Every acceptance below is paired with a refusal, so a guard
+  // that stopped checking would fail here rather than pass vacuously.
+  const PUBLIC_ORIGIN = resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" });
+
+  const deployed = (path: string, headers: Record<string, string> = {}) =>
+    handler(new Request(`https://eval.index.network${path}`, { headers: { Host: "eval.index.network", ...sessionCookie, ...headers } }));
+
+  const deployedPost = (path: string, headers: Record<string, string> = {}) =>
+    handler(
+      new Request(`https://eval.index.network${path}`, {
+        method: "POST",
+        headers: {
+          Host: "eval.index.network",
+          "Content-Type": "application/json",
+          Origin: "https://eval.index.network",
+          ...sessionCookie,
+          ...headers,
+        },
+        body: JSON.stringify(RUN_BODY),
+      }),
+    );
+
+  describe("with no public origin configured", () => {
+    it("still refuses the deployed host and origin, so the default is loopback-only", async () => {
+      expect(context.publicOrigin).toBeUndefined();
+
+      expect((await deployed("/api/harnesses")).status).toBe(403);
+      expect((await deployedPost("/api/runs")).status).toBe(403);
+      await context.queue.drain();
+      expect(executor.starts).toHaveLength(0);
+    });
+  });
+
+  describe("with a public origin configured", () => {
+    beforeEach(async () => {
+      await build({ publicOrigin: PUBLIC_ORIGIN });
+    });
+
+    it("answers a read addressed to the configured host", async () => {
+      const response = await deployed("/api/harnesses");
+
+      expect(response.status).toBe(200);
+    });
+
+    it("accepts a write from the configured origin", async () => {
+      const response = await deployedPost("/api/runs");
+
+      expect(response.status).toBe(202);
+      await context.queue.drain();
+    });
+
+    it("still refuses every other host — the allowlist is one entry, not a wildcard", async () => {
+      for (const host of ["evil.example.com", "eval.index.network.evil.com", "sub.eval.index.network", "index.network"]) {
+        const response = await handler(
+          new Request("https://eval.index.network/api/harnesses", { headers: { Host: host, ...sessionCookie } }),
+        );
+        expect(response.status).toBe(403);
+      }
+    });
+
+    it("still refuses every other origin on a write", async () => {
+      for (const origin of [
+        "https://evil.example",
+        "https://eval.index.network.evil.com",
+        "https://sub.eval.index.network",
+        // The same name over plain http is a different origin, and not this one.
+        "http://eval.index.network",
+        "null",
+      ]) {
+        const response = await deployedPost("/api/runs", { Origin: origin });
+        expect(response.status).toBe(403);
+      }
+      await context.queue.drain();
+      expect(executor.starts).toHaveLength(0);
+    });
+
+    it("leaves loopback exactly as it was, so local development is unchanged", async () => {
+      for (const host of ["127.0.0.1:4321", "localhost", "[::1]:4321"]) {
+        expect((await get("/api/harnesses", { Host: host })).status).toBe(200);
+      }
+      expect((await post("/api/runs", RUN_BODY, { Origin: "http://127.0.0.1:5174" })).status).toBe(202);
+      await context.queue.drain();
+    });
+  });
+});
+
+describe("the session cookie's Secure attribute", () => {
+  // Loopback is plain http, so a Secure cookie is dropped by the browser and
+  // sign-in fails silently; over HTTPS an insecure session cookie is a real
+  // exposure. The attribute therefore follows the request, not a hand-set flag.
+  const PUBLIC_ORIGIN = resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" });
+
+  const signInAt = (url: string, headers: Record<string, string> = {}) =>
+    handler(new Request(`${url}/callback?state=${states.mint()}&api_key=k`, { headers }));
+
+  it("omits Secure on loopback, where a Secure cookie would never be sent", async () => {
+    const response = await signInAt("http://localhost");
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+  });
+
+  it("sets Secure on a sign-in served over HTTPS", async () => {
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+
+    const response = await signInAt("https://eval.index.network", { Host: "eval.index.network" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+  });
+
+  it("sets Secure behind a TLS-terminating proxy, which forwards plain http", async () => {
+    // Railway terminates TLS at its edge and speaks http to the container, so the
+    // request URL says http even though the browser is on https. The configured
+    // public origin is validated to be https, so a request addressed to it was
+    // served over https — that, not a spoofable x-forwarded-proto, is the signal.
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+
+    const response = await signInAt("http://eval.index.network", { Host: "eval.index.network" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+  });
+
+  it("does not trust x-forwarded-proto on a loopback request", async () => {
+    // Any local page can send this header; it must not be able to make the
+    // operator's own sign-in fail by getting the cookie dropped.
+    const response = await signInAt("http://localhost", { "X-Forwarded-Proto": "https" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+  });
+
+  it("expires the cookie with the same attributes it was set with", async () => {
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+
+    const loopback = await post("/api/auth/logout", {});
+    expect(loopback.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+    const deployed = await handler(
+      new Request("https://eval.index.network/api/auth/logout", {
+        method: "POST",
+        headers: {
+          Host: "eval.index.network",
+          "Content-Type": "application/json",
+          Origin: "https://eval.index.network",
+          ...sessionCookie,
+        },
+        body: "{}",
+      }),
+    );
+    expect(deployed.status).toBe(200);
+    expect(deployed.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+    expect(deployed.headers.get("set-cookie") ?? "").toMatch(/Max-Age=0/);
   });
 });
 
@@ -1101,8 +1264,124 @@ describe("resolveIdentityEndpoints", () => {
   });
 });
 
+describe("resolveBindPort", () => {
+  // Two entrypoints, two postures, one rule. ops.serve.ts is the local dev API,
+  // started by `bun run eval:web` with --env-file=../../.env.test — and that file
+  // sets PORT=3001 for the *API service*. Honouring PORT there would silently move
+  // the ops API onto the API's port and break the documented two-process flow for
+  // every developer. apps/eval-ops/server.ts is what the platform starts, and the
+  // platform injects PORT.
+  it("defaults to 4321 in both postures", () => {
+    expect(resolveBindPort({ env: {}, honourPlatformPort: false })).toBe(4321);
+    expect(resolveBindPort({ env: {}, honourPlatformPort: true })).toBe(4321);
+  });
+
+  it("honours the platform's PORT in the deployed posture", () => {
+    expect(resolveBindPort({ env: { PORT: "8080" }, honourPlatformPort: true })).toBe(8080);
+  });
+
+  it("ignores PORT in the local posture, because .env.test sets it to the API's port", () => {
+    expect(resolveBindPort({ env: { PORT: "3001" }, honourPlatformPort: false })).toBe(4321);
+  });
+
+  it("lets EVAL_OPS_PORT win over the platform's PORT", () => {
+    expect(resolveBindPort({ env: { PORT: "8080", EVAL_OPS_PORT: "4399" }, honourPlatformPort: true })).toBe(4399);
+    expect(resolveBindPort({ env: { EVAL_OPS_PORT: "4399" }, honourPlatformPort: false })).toBe(4399);
+  });
+
+  it("reads an empty value as unset", () => {
+    expect(resolveBindPort({ env: { PORT: "", EVAL_OPS_PORT: "  " }, honourPlatformPort: true })).toBe(4321);
+  });
+
+  it("refuses a value that is not a usable TCP port, rather than binding something arbitrary", () => {
+    expect(() => resolveBindPort({ env: { EVAL_OPS_PORT: "http" }, honourPlatformPort: false })).toThrow(/EVAL_OPS_PORT/);
+    expect(() => resolveBindPort({ env: { EVAL_OPS_PORT: "4321.5" }, honourPlatformPort: false })).toThrow(/usable TCP port/);
+    expect(() => resolveBindPort({ env: { PORT: "70000" }, honourPlatformPort: true })).toThrow(/PORT/);
+    expect(() => resolveBindPort({ env: { PORT: "0" }, honourPlatformPort: true })).toThrow(/usable TCP port/);
+  });
+});
+
+describe("resolveBindHostname", () => {
+  it("binds loopback unless the environment deliberately says otherwise", () => {
+    expect(resolveBindHostname({})).toBe("127.0.0.1");
+    // A platform PORT does not imply a wider bind: widening stays one explicit act.
+    expect(resolveBindHostname({ PORT: "8080" })).toBe("127.0.0.1");
+    expect(resolveBindHostname({ EVAL_OPS_BIND: "  " })).toBe("127.0.0.1");
+  });
+
+  it("binds exactly what EVAL_OPS_BIND names", () => {
+    expect(resolveBindHostname({ EVAL_OPS_BIND: "0.0.0.0" })).toBe("0.0.0.0");
+  });
+});
+
+describe("resolvePublicOrigin", () => {
+  it("means loopback-only when it is unset", () => {
+    expect(resolvePublicOrigin({})).toBeUndefined();
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "  " })).toBeUndefined();
+  });
+
+  it("accepts one absolute https origin and normalises it", () => {
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" }))
+      .toEqual({ origin: "https://eval.index.network", host: "eval.index.network" });
+    // A trailing slash names no path, and the host is compared case-insensitively.
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://EVAL.index.network/" }))
+      .toEqual({ origin: "https://eval.index.network", host: "eval.index.network" });
+    // A non-default port is part of the host a Host header must equal.
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network:8443" }))
+      .toEqual({ origin: "https://eval.index.network:8443", host: "eval.index.network:8443" });
+  });
+
+  it("refuses anything that is not exactly one https origin, loudly", () => {
+    const refused: Array<[string, RegExp]> = [
+      ["eval.index.network", /not a usable URL/],
+      ["http://eval.index.network", /https/],
+      ["https://*.index.network", /host/i],
+      ["https://*", /host/i],
+      ["*", /not a usable URL/],
+      ["https://eval.index.network/ops", /path/i],
+      ["https://eval.index.network/?a=b", /query/i],
+      ["https://eval.index.network/#f", /fragment/i],
+      ["https://user:pass@eval.index.network", /credential/i],
+      ["https://a.example https://b.example", /./],
+    ];
+    for (const [value, message] of refused) {
+      expect(() => resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: value })).toThrow(message);
+    }
+  });
+
+  it("names the variable in every refusal, so a bad deploy says what to fix", () => {
+    expect(() => resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "http://eval.index.network" }))
+      .toThrow(/EVAL_OPS_PUBLIC_ORIGIN/);
+  });
+});
+
+describe("the entrypoints resolve one port and use it twice", () => {
+  // The bridge callback URL must name the port the server actually bound. It used
+  // to be re-read from the environment inside createDefaultOpsContext, which is
+  // exactly how an advertised callback drifts from the real listener; the port is
+  // now resolved once per entrypoint and passed to both. This pins that shape,
+  // and the posture each entrypoint declares.
+  const ENTRYPOINTS: Array<{ file: string; honoursPlatformPort: boolean }> = [
+    { file: path.join(import.meta.dir, "../ops.serve.ts"), honoursPlatformPort: false },
+    { file: path.join(import.meta.dir, "../../../../../apps/eval-ops/server.ts"), honoursPlatformPort: true },
+  ];
+
+  for (const entrypoint of ENTRYPOINTS) {
+    it(`${path.basename(path.dirname(entrypoint.file))}/${path.basename(entrypoint.file)} resolves the port once and declares its posture`, async () => {
+      const source = await readFile(entrypoint.file, "utf8");
+
+      expect(source.match(/resolveBindPort\(/g)).toHaveLength(1);
+      expect(source).toContain(`honourPlatformPort: ${entrypoint.honoursPlatformPort}`);
+      // The same resolved value reaches the listener and the bridge callback.
+      expect(source).toMatch(/createDefaultOpsContext\(\{[^}]*\bport\b[^}]*\}\)/);
+      expect(source).toMatch(/Bun\.serve\(\{[^{]*\bport,/);
+      expect(source).toMatch(/hostname: resolveBindHostname\(/);
+    });
+  }
+});
+
 describe("createDefaultOpsContext", () => {
-  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "EVAL_OPS_PORT", "EVAL_OPS_UI_URL"] as const;
+  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "PORT", "EVAL_OPS_PORT", "EVAL_OPS_UI_URL", "EVAL_OPS_PUBLIC_ORIGIN"] as const;
   const original: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -1122,16 +1401,19 @@ describe("createDefaultOpsContext", () => {
     }
   });
 
-  it("builds a callback on the port the server actually binds", async () => {
-    // ops.serve.ts binds EVAL_OPS_PORT and this builds the bridge callback from
-    // it. If they ever disagree the bridge delivers the credential to a port
-    // nothing is listening on, and sign-in fails with no visible cause.
+  it("advertises the bridge callback on the port it was told the server bound", async () => {
+    // The port is resolved once by the entrypoint and passed in, rather than
+    // re-read from the environment here. If the two ever disagree the bridge
+    // delivers the credential to a port nothing is listening on, and sign-in
+    // fails with no visible cause — so this drives the same resolution the local
+    // entrypoint performs and asserts the advertised callback matches it.
     process.env.EVAL_OPS_PORT = "4399";
     // Set as a pair: a half-configured environment now refuses to start.
     process.env.WEB_APP_URL = "https://index.network";
     process.env.API_URL = "https://protocol.index.network";
+    const port = resolveBindPort({ env: process.env, honourPlatformPort: false });
 
-    const built = await createDefaultOpsContext({ repoRoot: root });
+    const built = await createDefaultOpsContext({ repoRoot: root, port });
     const response = await createOpsHandler(built)(
       new Request("http://localhost/api/auth/login", {
         method: "POST",
@@ -1141,11 +1423,21 @@ describe("createDefaultOpsContext", () => {
     );
     const url = new URL((await response.json()).url);
 
-    expect(url.searchParams.get("callback")).toBe("http://127.0.0.1:4399/callback");
+    expect(port).toBe(4399);
+    expect(url.searchParams.get("callback")).toBe(`http://127.0.0.1:${port}/callback`);
+  });
+
+  it("advertises the platform's port when the deployed entrypoint resolves one", async () => {
+    process.env.PORT = "8080";
+    const port = resolveBindPort({ env: process.env, honourPlatformPort: true });
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port });
+
+    expect(built.auth?.callbackPort).toBe(8080);
   });
 
   it("wires identity, so the default server is never unauthenticated", async () => {
-    const built = await createDefaultOpsContext({ repoRoot: root });
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
 
     expect(built.auth).toBeDefined();
     // An anonymous read is refused by the context the real entrypoint uses.
@@ -1155,14 +1447,14 @@ describe("createDefaultOpsContext", () => {
 
   it("sends a completed sign-in to the UI, not to a route this server does not serve", async () => {
     // The standalone API serves no UI: a bare "/" here is its own 404.
-    const built = await createDefaultOpsContext({ repoRoot: root });
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
 
     expect(built.auth?.uiUrl).toBe("http://127.0.0.1:5174");
   });
 
   it("lets an embedder that serves the UI itself say so", async () => {
     // apps/eval-ops/server.ts serves the SPA on the same origin as the API.
-    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/" });
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
 
     expect(built.auth?.uiUrl).toBe("/");
   });
@@ -1170,7 +1462,7 @@ describe("createDefaultOpsContext", () => {
   it("lets the environment override the redirect target", async () => {
     process.env.EVAL_OPS_UI_URL = "http://127.0.0.1:6000";
 
-    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/" });
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
 
     expect(built.auth?.uiUrl).toBe("http://127.0.0.1:6000");
   });
@@ -1180,13 +1472,39 @@ describe("createDefaultOpsContext", () => {
     // browser to another origin is a mistake worth refusing loudly.
     process.env.EVAL_OPS_UI_URL = "https://evil.example";
 
-    await expect(createDefaultOpsContext({ repoRoot: root })).rejects.toThrow(/loopback/);
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/loopback/);
   });
 
   it("refuses to start on a half-configured identity pair", async () => {
     process.env.WEB_APP_URL = "https://index.network";
     delete process.env.API_URL;
 
-    await expect(createDefaultOpsContext({ repoRoot: root })).rejects.toThrow(/API_URL/);
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/API_URL/);
+  });
+
+  it("stays loopback-only when no public origin is configured", async () => {
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
+
+    expect(built.publicOrigin).toBeUndefined();
+  });
+
+  it("carries the configured public origin into the guards", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "https://eval.index.network";
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
+
+    expect(built.publicOrigin).toEqual({ origin: "https://eval.index.network", host: "eval.index.network" });
+  });
+
+  it("refuses to start on a malformed public origin rather than falling back to permissive", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "https://eval.index.network/ops?x=1";
+
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/EVAL_OPS_PUBLIC_ORIGIN/);
+  });
+
+  it("refuses a wildcard public origin outright", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "*";
+
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/EVAL_OPS_PUBLIC_ORIGIN/);
   });
 });
