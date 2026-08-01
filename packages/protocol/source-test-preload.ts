@@ -8,11 +8,16 @@
  * boundary requires. Specs that assert a behavior use their own module mock
  * and therefore retain control of their semantic fixture.
  *
- * The direct model.config contract spec is intentionally left unmocked.
+ * The direct model.config contract specs are intentionally left unmocked —
+ * they assert model.config's own behaviour, so replacing it with the structural
+ * double would make them assert the double instead of the contract.
  */
 import { mock } from "bun:test";
 
-const modelConfigSpec = "/shared/agent/tests/model.config.spec.ts";
+const modelConfigSpecs = [
+  "/shared/agent/tests/model.config.spec.ts",
+  "/shared/agent/tests/model-overrides.spec.ts",
+];
 const localModelMockSpecs = [
   "/chat/tests/chat.agent.persona.spec.ts",
   "/chat/tests/chat.agent.spec.ts",
@@ -29,7 +34,7 @@ const localModelMockSpecs = [
   "/premise/tests/premise.analyzer.spec.ts",
 ];
 const runsSpec = (spec: string) => process.argv.some((arg) => arg.endsWith(spec));
-const runsModelConfigSpec = runsSpec(modelConfigSpec);
+const runsModelConfigSpec = modelConfigSpecs.some(runsSpec);
 const runsLocalModelMockSpec = localModelMockSpecs.some(runsSpec);
 
 // Bun merges the package bunfig preload with an explicit config's preload.
