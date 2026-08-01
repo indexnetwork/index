@@ -35,6 +35,14 @@ export interface HarnessDescriptor {
   defaultRuns: number;
   /** Corpus size, used to show workload (cases x runs) before launching. */
   caseCount: number;
+  /**
+   * The question this harness answers, phrased for a reader who did not write it.
+   * Shown wherever the site names the harness, so the four names are never the
+   * only explanation on the page.
+   */
+  question: string;
+  /** One sentence on what is actually scored, shown under `question` for context. */
+  detail: string;
 }
 
 export interface ArtifactRef {

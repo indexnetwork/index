@@ -219,6 +219,11 @@ export function Launch() {
                 </option>
               ))}
             </select>
+            {state.selectedHarness !== null && (
+              <p className="text-term-dim mt-1">
+                {state.selectedHarness.question} {state.selectedHarness.detail}
+              </p>
+            )}
           </div>
 
           <div>

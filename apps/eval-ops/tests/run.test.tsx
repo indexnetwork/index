@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { Run } from '../src/routes/Run';
@@ -21,6 +21,8 @@ const RUN: RunRecord = {
   endedAt: null,
   pid: 12345,
 };
+
+const HEADER = 'Running 2 case(s) × 1 run(s) against google/gemini-2.5-flash…\n';
 
 class MockEventSource {
   /**
@@ -222,5 +224,38 @@ describe('Run', () => {
 
     expect(await screen.findByText(/No run with id/)).toBeInTheDocument();
     expect(screen.queryByText(/Loading/)).toBeNull();
+  });
+  it('renders structured progress from real harness output, raw log behind a toggle', async () => {
+    renderRun(RUN);
+    await screen.findByText(/run-1/);
+
+    // The real format: case start, a multi-line debug dump on the same logical
+    // line, and the score alone on its own line afterwards.
+    mockEventSource._emit('log', HEADER);
+    mockEventSource._emit('log', '  is_a/identity-basic … [OpportunityEvaluator:invokeEntityBundle] Done {\n  total: 1,\n}\n');
+    mockEventSource._emit('log', '1/1\n');
+    mockEventSource._emit('log', '  location/known-mismatch … [OpportunityEvaluator:invokeEntityBundle] Done {\n');
+
+    // The progress frame leads: position, tally, the finished row, and the
+    // in-flight case called out instead of a silent ellipsis.
+    expect(await screen.findByText('1/2 cases')).toBeInTheDocument();
+    expect(screen.getByText(/● running location\/known-mismatch/)).toBeInTheDocument();
+    expect(screen.getByText('✓')).toBeInTheDocument();
+    expect(screen.getByText('passed')).toBeInTheDocument();
+
+    // The raw debug dump is one click away, not the primary view.
+    expect(screen.queryByText(/total: 1,/)).toBeNull();
+    fireEvent.click(screen.getByText('show raw output'));
+    expect(await screen.findByText(/total: 1,/)).toBeInTheDocument();
+  });
+
+  it('keeps the plain log frame for output that is not a harness run', async () => {
+    renderRun(RUN);
+    await screen.findByText(/run-1/);
+
+    mockEventSource._emit('log', 'Usage: eval:matching [flags]\n');
+
+    expect(await screen.findByText(/Usage: eval:matching/)).toBeInTheDocument();
+    expect(screen.queryByText('show raw output')).toBeNull();
   });
 });
