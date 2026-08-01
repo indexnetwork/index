@@ -33,6 +33,13 @@ const api = createOpsHandler(await createDefaultOpsContext({ repoRoot, uiUrl: '/
 const server = Bun.serve({
   hostname: resolveBindHostname(process.env),
   port,
+  // The run-log SSE stream is quiet between log writes and sends its own comment
+  // heartbeat every HEARTBEAT_MS (15s, ops.server.ts). Bun's default request idle
+  // timeout is 10s, so without this a run that produces no output for ten seconds
+  // — which is every run while a model is thinking — has its stream closed before
+  // the first heartbeat can hold it open. Matches ops.serve.ts, which is the same
+  // handler and needs the same allowance.
+  idleTimeout: 255,
   fetch: createSiteFetch({ api, distDir: path.join(import.meta.dir, 'dist') }),
 });
 

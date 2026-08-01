@@ -1673,6 +1673,11 @@ describe("the entrypoints resolve one port and use it twice", () => {
       expect(source).toMatch(/createDefaultOpsContext\(\{[^}]*\bport\b[^}]*\}\)/);
       expect(source).toMatch(/Bun\.serve\(\{[^{]*\bport,/);
       expect(source).toMatch(/hostname: resolveBindHostname\(/);
+      // Both entrypoints mount the same SSE stream, whose heartbeat is 15s. Bun's
+      // default request idle timeout is 10s, so an entrypoint that omits this
+      // closes a quiet run-log stream before the first heartbeat can hold it
+      // open — which the deployed entrypoint did.
+      expect(source).toMatch(/idleTimeout: 255/);
     });
   }
 });
