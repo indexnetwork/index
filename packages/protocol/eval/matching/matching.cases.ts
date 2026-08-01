@@ -8,7 +8,7 @@ const NETWORK = "idx-commons";
 
 // Shared source used by the ported identity cases (mirrors evaluator-identity-query.spec.ts).
 const creativeTechSource: EvaluatorEntity = {
-  userId: "src-yanki",
+  userId: "src-creative-tech",
   profile: {
     name: "(source user)",
     bio: "Professional with a focus on creative technology and game development.",
@@ -32,7 +32,7 @@ export const CASES: MatchingCase[] = [
     domains: ["arts"],
     description: "'samurai' identity query must reject a character-design artist (subject-matter ≠ identity).",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -60,7 +60,7 @@ export const CASES: MatchingCase[] = [
     domains: ["funding", "technology"],
     description: "'investors' identity query must reject an engineer who raised funding (raising ≠ investing).",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -89,7 +89,7 @@ export const CASES: MatchingCase[] = [
     domains: ["funding", "technology"],
     description: "'investors' identity query must accept an actual angel investor.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -118,7 +118,7 @@ export const CASES: MatchingCase[] = [
     domains: ["arts"],
     description: "Explicit 'samurai' query must override the source's 'visual artists' background intent.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -154,7 +154,7 @@ export const CASES: MatchingCase[] = [
     domains: ["arts"],
     description: "Minimal pair: when the explicit query asks for a samurai character illustrator, the same visual artist should be accepted.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -183,7 +183,7 @@ export const CASES: MatchingCase[] = [
     domains: ["funding", "technology"],
     description: "Explicit 'investors' query must reject a founder/engineer who has raised money but does not invest.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -212,7 +212,7 @@ export const CASES: MatchingCase[] = [
     domains: ["funding", "technology"],
     description: "Minimal pair: when the explicit query asks for founders raising seed, the funded founder should be accepted.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -241,7 +241,7 @@ export const CASES: MatchingCase[] = [
     domains: ["location", "technology"],
     description: "Explicit London query must reject a Berlin candidate even when their technical profile matches the background intent.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -269,7 +269,7 @@ export const CASES: MatchingCase[] = [
     domains: ["arts"],
     description: "When the explicit query is vague, the source's background visual-artist intent may fill in the blanks.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -432,7 +432,7 @@ export const CASES: MatchingCase[] = [
     domains: ["location", "technology"],
     description: "Query asks for SF; a New York candidate with otherwise strong fit is penalized (≤40).",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
@@ -460,7 +460,7 @@ export const CASES: MatchingCase[] = [
     domains: ["location", "technology"],
     description: "Minimal pair: same candidate with UNKNOWN location must not be penalized for location.",
     input: {
-      discovererId: "src-yanki",
+      discovererId: "src-creative-tech",
       entities: [
         creativeTechSource,
         {
