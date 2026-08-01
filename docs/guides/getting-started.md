@@ -486,7 +486,9 @@ The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in the root `
 TRUSTED_ORIGINS=http://localhost:3000
 ```
 
-Restart the API service after changing this value.
+Restart the API service after changing this value. The origin must be listed
+exactly (scheme, host and port) — an unlisted browser origin receives no CORS
+grant at all, which also surfaces as a CORS error in the browser console.
 
 ### pgvector extension missing
 
