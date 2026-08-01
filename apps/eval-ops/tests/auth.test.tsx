@@ -19,10 +19,12 @@ import { Shell } from '../src/components/Shell';
 let realLocation: PropertyDescriptor | undefined;
 
 /** Replaces `window.location` with a recording stub, remembering the real one. */
-function stubLocation(): void {
+function stubLocation(): { reload: ReturnType<typeof vi.fn> } {
   realLocation = Object.getOwnPropertyDescriptor(window, 'location');
   delete (window as unknown as { location?: unknown }).location;
-  (window as unknown as { location: { href: string } }).location = { href: '' };
+  const reload = vi.fn();
+  (window as unknown as { location: { href: string; reload: () => void } }).location = { href: '', reload };
+  return { reload };
 }
 
 afterEach(() => {
@@ -50,7 +52,7 @@ describe('SignIn', () => {
     const user = userEvent.setup();
     const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url).endsWith('/api/auth/login') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ url: 'https://index.network/cli-auth?callback=http://127.0.0.1:4321/callback&version=2&state=abc' }));
+        return new Response(JSON.stringify({ kind: 'bridge', url: 'https://index.network/cli-auth?callback=http://127.0.0.1:4321/callback&version=2&state=abc' }));
       }
       return new Response('{}');
     });
@@ -79,6 +81,24 @@ describe('SignIn', () => {
     });
   });
 
+  it('never navigates to a bridge URL when the server does not offer one', async () => {
+    // The discriminator is what stops the deployed posture being read as a bridge
+    // with a missing field, which would navigate to `undefined`.
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(TOKEN_START))));
+    vi.stubGlobal('open', vi.fn());
+    stubLocation();
+
+    render(
+      <BrowserRouter>
+        <SignIn />
+      </BrowserRouter>
+    );
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(window.location.href).toBe(''));
+  });
+
   it('never renders server-supplied strings as HTML', () => {
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
     const { container } = render(
@@ -89,6 +109,173 @@ describe('SignIn', () => {
 
     // React escapes by default, so any attempt to render HTML would appear as text
     expect(container.innerHTML).not.toContain('dangerouslySetInnerHTML');
+  });
+});
+
+/**
+ * The deployed sign-in.
+ *
+ * The bridge cannot complete off loopback, so the server answers `POST
+ * /api/auth/login` with `kind: "token"` and this screen fetches a better-auth JWT
+ * from the API against the browser's own session, then posts it to the ops
+ * server, which resolves it server-side. The token is a bearer credential: it
+ * lives in a local const for the length of one exchange and never reaches React
+ * state, the DOM, the URL or a log.
+ */
+const TOKEN_START = {
+  kind: 'token',
+  apiUrl: 'https://protocol.dev.index.network',
+  webAppUrl: 'https://index.network',
+} as const;
+
+const JWT = 'eyJhbGciOiJFZERTQSJ9.eyJpZCI6InUxIn0.c2lnbmF0dXJl';
+
+describe('SignIn on a deployed host', () => {
+  /**
+   * Answers the three requests the deployed flow makes.
+   *
+   * @param hasIndexSession - whether `${apiUrl}/api/auth/token` finds a session.
+   */
+  function stubDeployedFetch(hasIndexSession: boolean) {
+    return vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/auth/login')) return new Response(JSON.stringify(TOKEN_START));
+      if (href === `${TOKEN_START.apiUrl}/api/auth/token`) {
+        return hasIndexSession
+          ? new Response(JSON.stringify({ token: JWT }))
+          : new Response(JSON.stringify({ message: 'Unauthorized', code: 'UNAUTHORIZED' }), { status: 401 });
+      }
+      if (href.endsWith('/api/auth/session') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ authenticated: true, email: 'a@index.network', name: 'Ada' }));
+      }
+      return new Response('{}');
+    });
+  }
+
+  it('exchanges the API token for an ops session and reloads', async () => {
+    const user = userEvent.setup();
+    const mockFetch = stubDeployedFetch(true);
+    vi.stubGlobal('fetch', mockFetch);
+    const { reload } = stubLocation();
+
+    render(
+      <BrowserRouter>
+        <SignIn />
+      </BrowserRouter>
+    );
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(reload).toHaveBeenCalled());
+
+    // The token is fetched with the browser's own API cookie, which is the only
+    // reason this works cross-site (the API sets SameSite=None; Secure).
+    expect(mockFetch).toHaveBeenCalledWith(
+      `${TOKEN_START.apiUrl}/api/auth/token`,
+      expect.objectContaining({ credentials: 'include' })
+    );
+    // And it is handed to the ops server, which resolves it — the browser never
+    // asserts an identity.
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/auth/session',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ token: JWT }) })
+    );
+  });
+
+  it('keeps the token out of the page, the URL and the session it establishes', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', stubDeployedFetch(true));
+    stubLocation();
+
+    const { container } = render(
+      <BrowserRouter>
+        <SignIn />
+      </BrowserRouter>
+    );
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(window.location.href).toBe(''));
+    expect(container.innerHTML).not.toContain(JWT);
+    expect(document.body.innerHTML).not.toContain(JWT);
+  });
+
+  it('sends the operator to Index to sign in, in a tab that leaves this one in place', async () => {
+    // The dead end to avoid: navigating away means the operator signs in and has
+    // no way back. This tab keeps its place and offers to continue.
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', stubDeployedFetch(false));
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    stubLocation();
+
+    render(
+      <BrowserRouter>
+        <SignIn />
+      </BrowserRouter>
+    );
+    await user.click(screen.getByRole('button', { name: /sign in with index/i }));
+
+    await waitFor(() => expect(open).toHaveBeenCalledWith(TOKEN_START.webAppUrl, '_blank', 'noopener,noreferrer'));
+    expect(window.location.href).toBe('');
+    expect(await screen.findByRole('button', { name: /continue/i })).toBeInTheDocument();
+  });
+
+  it('completes once the operator has signed in to Index in the other tab', async () => {
+    const user = userEvent.setup();
+    let hasIndexSession = false;
+    const mockFetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/auth/login')) return new Response(JSON.stringify(TOKEN_START));
+      if (href === `${TOKEN_START.apiUrl}/api/auth/token`) {
+        return hasIndexSession
+          ? new Response(JSON.stringify({ token: JWT }))
+          : new Response('{}', { status: 401 });
+      }
+      if (href.endsWith('/api/auth/session') && init?.method === 'POST') return new Response('{}');
+      return new Response('{}');
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    vi.stubGlobal('open', vi.fn());
+    const { reload } = stubLocation();
+
+    render(
+      <BrowserRouter>
+        <SignIn />
+      </BrowserRouter>
+    );
+    await user.click(screen.getByRole('button', { name: /sign in with index/i }));
+    const continueButton = await screen.findByRole('button', { name: /continue/i });
+
+    hasIndexSession = true;
+    await user.click(continueButton);
+
+    await waitFor(() => expect(reload).toHaveBeenCalled());
+  });
+
+  it('reports a refused sign-in instead of reloading into the same prompt', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/auth/login')) return new Response(JSON.stringify(TOKEN_START));
+      if (href === `${TOKEN_START.apiUrl}/api/auth/token`) return new Response(JSON.stringify({ token: JWT }));
+      if (href.endsWith('/api/auth/session') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({ error: 'someone@evil.example is not an @index.network address.', authenticated: true, permitted: false }),
+          { status: 403 }
+        );
+      }
+      return new Response('{}');
+    }));
+    const { reload } = stubLocation();
+
+    render(
+      <BrowserRouter>
+        <SignIn />
+      </BrowserRouter>
+    );
+    await user.click(screen.getByRole('button', { name: /sign in with index/i }));
+
+    expect(await screen.findByText(/not an @index\.network address/i)).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
   });
 });
 

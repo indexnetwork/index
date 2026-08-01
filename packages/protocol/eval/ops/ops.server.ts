@@ -31,7 +31,7 @@ import { z } from "zod";
 
 import { renderRun, RunSpecSchema } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
-import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
+import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
@@ -73,13 +73,18 @@ export interface OpsContext {
 
 /** Everything the auth gate needs. All of it is injectable, so tests need no API. */
 export interface OpsAuthContext {
-  states: OneTimeStateStore;
   sessions: OpsSessionStore;
+  /**
+   * The one seam that turns a credential into an identity.
+   *
+   * Which implementation is here is decided together with {@link signIn}, by
+   * {@link resolveSignInMode}: the bridge mints API keys and the token exchange
+   * carries JWTs, and a resolver paired with the wrong door refuses every
+   * sign-in.
+   */
   identities: IdentityResolver;
-  /** Base URL of the web app serving /cli-auth. */
-  webAppUrl: string;
-  /** The port this server's /callback is reachable on. */
-  callbackPort: number;
+  /** How a browser is expected to prove who it is. */
+  signIn: SignInPosture;
   /**
    * Where a completed sign-in sends the browser.
    *
@@ -91,6 +96,43 @@ export interface OpsAuthContext {
    */
   uiUrl: string;
 }
+
+/**
+ * The two doors a browser can sign in through, and everything each one needs.
+ *
+ * A discriminated union rather than a bag of optional fields, because the two
+ * are genuinely different exchanges and only one of them can be open at a time.
+ * The bridge holds the one-time state store; the token exchange does not have
+ * one at all, so a deployed server cannot answer a bridge callback even by
+ * accident.
+ *
+ *  - `bridge` is the local posture, unchanged: `<WEB_APP_URL>/cli-auth` mints a
+ *    revocable API key against the operator's existing browser session and
+ *    redirects it to `http://127.0.0.1:<port>/callback`.
+ *  - `token` is the deployed posture. The bridge is unusable there —
+ *    `validateCliCallbackUrl` in apps/web/src/lib/cli-auth.ts accepts only
+ *    `http:` on loopback, deliberately, and that rule is shared with the released
+ *    CLI — so the browser fetches a better-auth JWT from `${apiUrl}/api/auth/token`
+ *    against its own API session and posts it to `POST /api/auth/session`, which
+ *    resolves it server-side.
+ */
+export type SignInPosture =
+  | {
+      kind: "bridge";
+      /** One-time states, so a callback this server did not start is refused. */
+      states: OneTimeStateStore;
+      /** Base URL of the web app serving /cli-auth. */
+      webAppUrl: string;
+      /** The port this server's /callback is reachable on. */
+      callbackPort: number;
+    }
+  | {
+      kind: "token";
+      /** Base URL of the API that issues and verifies the token. */
+      apiUrl: string;
+      /** Where the operator signs in to Index when the API says it has no session. */
+      webAppUrl: string;
+    };
 
 /** Origins a browser may legitimately be running the ops UI on, before deployment. */
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -121,6 +163,12 @@ export interface PublicOrigin {
  *    session; gating it would make the question unanswerable.
  *  - `POST /api/auth/login` — mints the sign-in link, so requiring a session to
  *    call it would be circular.
+ *  - `POST /api/auth/session` — the deployed posture's equivalent of `/callback`:
+ *    it is the request that *establishes* a session by submitting a better-auth
+ *    token, so it cannot require one. The same circularity, and the same
+ *    deliberate exemption. It is not a hole in the gate: the Host, Origin and
+ *    JSON content-type guards all still run in front of it, and it grants nothing
+ *    except a session for an identity `assessIdentity` admits.
  *
  * `/callback` is deliberately absent: it is not under /api/ and is handled ahead
  * of the gate, because it is the request that *establishes* a session.
@@ -128,6 +176,7 @@ export interface PublicOrigin {
 export const PUBLIC_ROUTES: ReadonlyArray<{ method: string; path: string }> = Object.freeze([
   Object.freeze({ method: "GET", path: "/api/auth/status" }),
   Object.freeze({ method: "POST", path: "/api/auth/login" }),
+  Object.freeze({ method: "POST", path: "/api/auth/session" }),
 ]);
 
 /** Name of the ops session cookie. */
@@ -257,8 +306,9 @@ function authRefusal(context: OpsContext, request: Request, url: URL): Response 
   // The *domain* rule is re-checked on every request rather than trusted from
   // sign-in time, so narrowing the allowed domain refuses live sessions too.
   // Verification is not re-checked: a session only exists past a verified check
-  // at /callback, and the credential that could re-ask the API was discarded
-  // there. `emailVerified: true` below states that, rather than proving it.
+  // at the sign-in that established it (/callback, or POST /api/auth/session),
+  // and the credential that could re-ask the API was discarded there.
+  // `emailVerified: true` below states that, rather than proving it.
   const verdict = assessIdentity({ email: identity.email, emailVerified: true, name: identity.name });
   if (!verdict.allowed) {
     return json({ error: verdict.reason, authenticated: true, permitted: false }, 403);
@@ -283,9 +333,20 @@ function sessionIdentity(context: OpsContext, request: Request): AllowedIdentity
 async function completeSignIn(context: OpsContext, request: Request, url: URL): Promise<Response> {
   const auth = context.auth;
   if (auth === undefined) return refusalPage("This server has no identity configured.", 500);
+  // A deployed server mints no states, so it can validate no callback. Refusing
+  // is the only honest answer: the bridge could not have sent this browser here
+  // (its own validator accepts loopback callbacks only), so anything arriving is
+  // hand-made.
+  if (auth.signIn.kind !== "bridge") {
+    return refusalPage(
+      "This server does not sign in through the local bridge. Start the sign-in again from the eval ops site.",
+      403,
+    );
+  }
+  const { states } = auth.signIn;
 
   // Consuming is the validation: unknown, expired and replayed states all fail here.
-  if (!auth.states.consume(url.searchParams.get("state"))) {
+  if (!states.consume(url.searchParams.get("state"))) {
     return refusalPage(
       "This sign-in link is no longer valid. It may have already been used, or it may have expired. Start the sign-in again from the eval ops site.",
       403,
@@ -535,6 +596,7 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
 
   if (request.method === "POST") {
     if (resource === "auth" && rest.length === 1 && rest[0] === "login") return beginSignIn(context);
+    if (resource === "auth" && rest.length === 1 && rest[0] === "session") return await establishTokenSession(context, request, url);
     if (resource === "auth" && rest.length === 1 && rest[0] === "logout") return endSession(context, request, url);
     if (resource === "runs" && rest.length === 0) return await launchRun(context, state, request);
     if (resource === "runs" && rest.length === 2 && rest[1] === "cancel") return await cancelRun(context, rest[0]);
@@ -552,20 +614,122 @@ function authStatus(context: OpsContext, request: Request): Response {
 }
 
 /**
- * Starts a sign-in: mints a one-time state and returns the bridge link.
+ * Starts a sign-in, and says which of the two exchanges this server runs.
  *
- * Everything in the link comes from this server's own configuration; nothing in
- * it is taken from the request, so a caller cannot steer the callback elsewhere.
+ * A discriminated reply, not an optional field: the two postures return
+ * genuinely different things, and a `url` that is sometimes absent would leave
+ * the browser guessing.
+ *
+ *  - `bridge` — the local posture. Everything in the link comes from this
+ *    server's own configuration; nothing in it is taken from the request, so a
+ *    caller cannot steer the callback elsewhere.
+ *  - `token` — the deployed posture. Names the API to fetch a better-auth token
+ *    from and the web app to sign in at, and *nothing else*. Both are public DNS
+ *    names the browser already talks to, one of them being where its own session
+ *    cookie lives. This is deliberately not a route that reports server
+ *    configuration in general.
  */
 function beginSignIn(context: OpsContext): Response {
   const auth = context.auth;
   if (auth === undefined) return json({ error: "This server has no identity configured." }, 500);
+  const posture = auth.signIn;
+  if (posture.kind === "token") {
+    return json({ kind: "token", apiUrl: posture.apiUrl, webAppUrl: posture.webAppUrl });
+  }
   const url = buildBridgeUrl({
-    webAppUrl: auth.webAppUrl,
-    callbackPort: auth.callbackPort,
-    state: auth.states.mint(),
+    webAppUrl: posture.webAppUrl,
+    callbackPort: posture.callbackPort,
+    state: posture.states.mint(),
   });
-  return json({ url });
+  return json({ kind: "bridge", url });
+}
+
+/** The one field `POST /api/auth/session` accepts. Strict: no client-asserted identity. */
+const TokenSubmissionSchema = z.object({ token: z.string().min(1) }).strict();
+
+/**
+ * Completes the deployed sign-in: a better-auth token in, a session cookie out.
+ *
+ * The browser obtained the token from `${API_URL}/api/auth/token` against its
+ * own API session — that works cross-site because the API's cookie is
+ * `SameSite=None; Secure` — and posts it here. **This server resolves it**, by
+ * presenting it to `${API_URL}/api/auth/me`, where the API verifies the
+ * signature against its own JWKS. Nothing in the request is believed: the body
+ * carries a credential, never an identity, and the schema is `.strict()` so a
+ * body that tries to carry one is refused rather than ignored.
+ *
+ * The `/api/auth/me` hop is required rather than an optimisation. The `jwt`
+ * plugin's `definePayload` returns `{ id, email, name }` and no `emailVerified`,
+ * and {@link assessIdentity} demands verification — so a verified address can
+ * only ever be read from the user record, never inferred from possession of a
+ * token.
+ *
+ * The token is a bearer credential and is treated as one: it is exchanged once
+ * and dropped. It is never stored in a session, never logged, and never written
+ * into a response — including the 502 below, whose message is scrubbed of it in
+ * case a transport error quoted the request it failed to make.
+ *
+ * 401 and 403 stay distinct here for the same reason as in {@link authRefusal}:
+ * "the API does not accept this token" is a sign-in the operator can retry, and
+ * "this account is not permitted" is not.
+ */
+async function establishTokenSession(context: OpsContext, request: Request, url: URL): Promise<Response> {
+  const auth = context.auth;
+  if (auth === undefined) return json({ error: "This server has no identity configured." }, 500);
+  if (auth.signIn.kind !== "token") {
+    return json(
+      { error: "This server signs in through the local bridge; start the sign-in at POST /api/auth/login." },
+      403,
+    );
+  }
+
+  const body = await readJson(request);
+  if (!body.ok) return json({ error: body.error }, body.status);
+  const parsed = TokenSubmissionSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const token = parsed.data.token;
+
+  let resolved;
+  try {
+    resolved = await auth.identities.resolve(token);
+  } catch (error) {
+    // "The API is down" is not "you are not allowed in", and must not read as it.
+    return json(
+      { error: `The Index API could not be reached to verify this sign-in: ${redact(scrubCredentials(messageOf(error)), token)}` },
+      502,
+    );
+  }
+
+  if (resolved === null) {
+    return json(
+      { error: "The Index API did not accept this sign-in. Sign in to Index again and retry.", authenticated: false },
+      401,
+    );
+  }
+
+  const verdict = assessIdentity(resolved);
+  if (!verdict.allowed) return json({ error: verdict.reason, authenticated: true, permitted: false }, 403);
+
+  const session = auth.sessions.establish(verdict.identity);
+  return new Response(JSON.stringify({ authenticated: true, email: verdict.identity.email, name: verdict.identity.name }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${sessionCookieAttributes(isSecureRequest(context, request, url))}`,
+    },
+  });
+}
+
+/**
+ * Removes a credential from a message that may have quoted it.
+ *
+ * `scrubCredentials` knows about connection strings, not bearer tokens, and the
+ * message here comes from whatever threw inside `fetch`. This is belt-and-braces
+ * on top of never interpolating the token ourselves: the one thing that must not
+ * happen is the credential travelling back to the browser in an error.
+ */
+function redact(message: string, credential: string): string {
+  return credential === "" ? message : message.split(credential).join("[redacted]");
 }
 
 /** Ends the session and expires the cookie, so the browser stops presenting it. */
@@ -1228,6 +1392,30 @@ export function resolvePublicOrigin(env: Record<string, string | undefined>): Pu
   return { origin: parsed.origin, host: parsed.host };
 }
 
+/**
+ * Which of the two sign-in exchanges this server runs.
+ *
+ * One rule, exported and pure, so the choice is a thing a test can state rather
+ * than a guess buried in the wiring. The condition is `EVAL_OPS_PUBLIC_ORIGIN`,
+ * because that variable *is* the deployed posture — it is what extends the Host
+ * and Origin allowlists past loopback — and it is exactly the circumstance in
+ * which the bridge cannot work: `validateCliCallbackUrl` accepts only `http:` on
+ * 127.0.0.1/[::1], so a browser on a deployed origin can never be redirected
+ * back with a credential.
+ *
+ * Nothing else decides it. A wider `EVAL_OPS_BIND` or a platform `PORT` does not
+ * make the callback unreachable, and inferring the posture from either would
+ * change how sign-in works on a developer's machine.
+ *
+ * A malformed value throws here exactly as it does in the guards, rather than
+ * falling back to the bridge — that fallback would be a deployed server
+ * advertising a loopback callback, which is the failure this posture exists to
+ * remove.
+ */
+export function resolveSignInMode(env: Record<string, string | undefined>): "bridge" | "token" {
+  return resolvePublicOrigin(env) === undefined ? "bridge" : "token";
+}
+
 /** Builds the context the standalone server runs on: everything rooted at the repository. */
 export async function createDefaultOpsContext(options: {
   repoRoot: string;
@@ -1253,6 +1441,7 @@ export async function createDefaultOpsContext(options: {
   const endpoints = resolveIdentityEndpoints(process.env);
   const uiUrl = resolveUiUrl(process.env, options.uiUrl);
   const publicOrigin = resolvePublicOrigin(process.env);
+  const signInMode = resolveSignInMode(process.env);
 
   // Reported, not fatal: fixture control is only one page, and the reset route
   // fails closed on the same divergence. A silent mismatch is what must not happen.
@@ -1283,20 +1472,37 @@ export async function createDefaultOpsContext(options: {
     databaseUrl,
     inspector: new BunSqlFixtureInspector(),
     publicOrigin,
-    auth: {
-      states: new OneTimeStateStore(),
-      sessions: new OpsSessionStore(),
-      // The bridge mints a real API key against the operator's own browser
-      // session, so this resolver is the only part of the server that talks to
-      // the API at all.
-      identities: new ApiIdentityResolver({ apiUrl: endpoints.apiUrl }),
-      webAppUrl: endpoints.webAppUrl,
-      uiUrl,
-      // The port the entrypoint bound, handed to Bun.serve and to this from one
-      // resolution — or the bridge would send the credential to a port nothing is
-      // listening on.
-      callbackPort: options.port,
-    },
+    // One decision picks both the door and the resolver behind it, in a single
+    // expression, because they are the same decision: the bridge delivers an API
+    // key and the token exchange delivers a JWT, and a resolver paired with the
+    // wrong door refuses every sign-in with a message about permissions.
+    auth: signInMode === "token"
+      ? {
+          sessions: new OpsSessionStore(),
+          // Resolved server-side against the API's own /api/auth/me, which is
+          // where a verified address can be read at all — the token does not
+          // carry one.
+          identities: new JwtIdentityResolver({ apiUrl: endpoints.apiUrl }),
+          uiUrl,
+          signIn: { kind: "token", apiUrl: endpoints.apiUrl, webAppUrl: endpoints.webAppUrl },
+        }
+      : {
+          sessions: new OpsSessionStore(),
+          // The bridge mints a real API key against the operator's own browser
+          // session, so this resolver is the only part of the server that talks to
+          // the API at all.
+          identities: new ApiIdentityResolver({ apiUrl: endpoints.apiUrl }),
+          uiUrl,
+          signIn: {
+            kind: "bridge",
+            states: new OneTimeStateStore(),
+            webAppUrl: endpoints.webAppUrl,
+            // The port the entrypoint bound, handed to Bun.serve and to this from
+            // one resolution — or the bridge would send the credential to a port
+            // nothing is listening on.
+            callbackPort: options.port,
+          },
+        },
   };
 }
 

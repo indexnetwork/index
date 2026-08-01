@@ -237,13 +237,52 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   });
 }
 
+/**
+ * How this server expects a browser to prove who it is, as `POST /api/auth/login`
+ * reports it.
+ *
+ * A discriminated union because the two postures are genuinely different
+ * exchanges, not one exchange with optional fields:
+ *
+ *  - `bridge` — the local posture. Navigate to `url`: `<WEB_APP_URL>/cli-auth`
+ *    mints a revocable API key against the operator's existing Index session and
+ *    redirects it to the ops server's loopback `/callback`.
+ *  - `token` — the deployed posture. The bridge cannot complete off loopback
+ *    (`validateCliCallbackUrl` in apps/web accepts only `http:` on 127.0.0.1),
+ *    so fetch a better-auth JWT from `${apiUrl}/api/auth/token` with the
+ *    browser's own API cookie and post it to `POST /api/auth/session`, which
+ *    resolves it server-side. `webAppUrl` is where the operator signs in to Index
+ *    when the API says it has no session for them.
+ *
+ * The server sends exactly these fields. It is not a route that reports server
+ * configuration in general, and it must not become one.
+ */
+export type SignInStart =
+  | { kind: 'bridge'; url: string }
+  | { kind: 'token'; apiUrl: string; webAppUrl: string };
+
 export const api = {
   async authStatus(): Promise<{ authenticated: boolean; email?: string; name?: string }> {
     return fetchJson('/api/auth/status');
   },
 
-  async login(): Promise<{ url: string }> {
+  async login(): Promise<SignInStart> {
     return postJson('/api/auth/login', {});
+  },
+
+  /**
+   * Submits a better-auth token and, if the server resolves it to a permitted
+   * identity, receives the ops session cookie.
+   *
+   * The token is a bearer credential and this is its only use: it is passed in,
+   * sent once, and never stored, rendered or logged. The server answers 401 when
+   * the API rejects the token and 403 with `permitted: false` when the identity
+   * behind it is not admitted — `fetchJson` publishes both through
+   * `onAuthRefusal`, so the shell reacts the same way it does to any other
+   * refusal.
+   */
+  async submitToken(token: string): Promise<{ authenticated: boolean; email?: string; name?: string }> {
+    return postJson('/api/auth/session', { token });
   },
 
   async logout(): Promise<void> {

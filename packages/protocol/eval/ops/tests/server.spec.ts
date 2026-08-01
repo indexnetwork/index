@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { FsArtifactSource } from "../ops.artifacts.js";
-import { OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
+import { ApiIdentityResolver, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 
@@ -59,12 +59,21 @@ class StubIdentityResolver implements IdentityResolver {
   identity: ResolvedIdentity | null = { email: "operator@index.network", emailVerified: true, name: "Operator" };
   failure: Error | null = null;
 
-  async resolve(apiKey: string): Promise<ResolvedIdentity | null> {
-    this.seen.push(apiKey);
+  async resolve(credential: string): Promise<ResolvedIdentity | null> {
+    this.seen.push(credential);
     if (this.failure !== null) throw this.failure;
     return this.identity;
   }
 }
+
+/**
+ * A syntactically plausible better-auth JWT for the deployed sign-in tests.
+ *
+ * The stub resolver never inspects it; it exists so a test can assert the exact
+ * string the browser submitted was handed to the resolver once and then never
+ * appears anywhere else.
+ */
+const JWT = "eyJhbGciOiJFZERTQSJ9.eyJpZCI6InUxIn0.c2lnbmF0dXJl";
 
 let root: string;
 let store: FsRunStore;
@@ -77,7 +86,7 @@ let identities: StubIdentityResolver;
 /** A `Cookie` header for a signed-in operator, refreshed by `signIn()`. */
 let sessionCookie: Record<string, string>;
 
-async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
+async function build(overrides: Partial<OpsContext> = {}, auth: Partial<OpsAuthContext> = {}): Promise<void> {
   const evalDir = path.join(root, "eval");
   const profilesDir = path.join(evalDir, "ops/profiles");
   await mkdir(profilesDir, { recursive: true });
@@ -106,18 +115,20 @@ async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
     databaseUrl: DATABASE_URL,
     inspector: { count: async () => COUNTS },
     auth: {
-      states,
       sessions,
       identities,
-      webAppUrl: "https://index.network",
-      callbackPort: 4321,
       uiUrl: "http://127.0.0.1:5174",
+      signIn: { kind: "bridge", states, webAppUrl: "https://index.network", callbackPort: 4321 },
+      ...auth,
     },
     ...overrides,
   };
   handler = createOpsHandler(context);
   sessionCookie = {};
-  await signIn();
+  // Signed in through whichever door this posture actually opens: the tests past
+  // this point assert behaviour behind the gate, not the gate itself.
+  if (context.auth?.signIn.kind === "token") await signInWithToken();
+  else await signIn();
 }
 
 /**
@@ -138,6 +149,21 @@ async function signIn(): Promise<void> {
   sessionCookie = { Cookie: cookie.split(";")[0] };
   // The sign-in above exchanged one credential; a test asserting "the credential
   // was never looked at" must not see this one.
+  identities.seen.length = 0;
+}
+
+/** The deployed equivalent: submit a token, receive the same session cookie. */
+async function signInWithToken(): Promise<void> {
+  const response = await handler(
+    new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: JWT }),
+    }),
+  );
+  const cookie = response.headers.get("set-cookie");
+  if (cookie === null) throw new Error(`sign-in did not set a session cookie (status ${response.status})`);
+  sessionCookie = { Cookie: cookie.split(";")[0] };
   identities.seen.length = 0;
 }
 
@@ -907,6 +933,7 @@ describe("POST /api/fixture/reset", () => {
 const API_ROUTES: ReadonlyArray<{ method: "GET" | "POST"; path: string }> = [
   { method: "GET", path: "/api/auth/status" },
   { method: "POST", path: "/api/auth/login" },
+  { method: "POST", path: "/api/auth/session" },
   { method: "POST", path: "/api/auth/logout" },
   { method: "GET", path: "/api/harnesses" },
   { method: "GET", path: "/api/profiles" },
@@ -957,6 +984,7 @@ describe("authentication", () => {
       expect([...PUBLIC_ROUTES].map((entry) => `${entry.method} ${entry.path}`).sort()).toEqual([
         "GET /api/auth/status",
         "POST /api/auth/login",
+        "POST /api/auth/session",
       ]);
     });
 
@@ -1015,6 +1043,9 @@ describe("authentication", () => {
       const body = await (await anonymous("POST", "/api/auth/login")).json();
       const url = new URL(body.url);
 
+      // The discriminator is what keeps the two postures from being told apart by
+      // guessing which optional field is present.
+      expect(body.kind).toBe("bridge");
       expect(url.origin + url.pathname).toBe("https://index.network/cli-auth");
       expect(url.searchParams.get("callback")).toBe("http://127.0.0.1:4321/callback");
       expect(url.searchParams.get("version")).toBe("2");
@@ -1026,6 +1057,23 @@ describe("authentication", () => {
       const second = new URL((await (await anonymous("POST", "/api/auth/login")).json()).url);
 
       expect(first.searchParams.get("state")).not.toBe(second.searchParams.get("state"));
+    });
+
+    it("names no API or web app URL in the local posture, so nothing new is disclosed", async () => {
+      const body = await (await anonymous("POST", "/api/auth/login")).json();
+
+      expect(Object.keys(body).sort()).toEqual(["kind", "url"]);
+    });
+  });
+
+  describe("POST /api/auth/session in the local posture", () => {
+    it("refuses outright, so a token cannot be submitted to a bridge server", async () => {
+      const response = await anonymous("POST", "/api/auth/session");
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toMatch(/bridge/i);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(identities.seen).toHaveLength(0);
     });
   });
 
@@ -1212,6 +1260,255 @@ describe("authentication", () => {
 
       expect(response.status).toBe(415);
     });
+  });
+});
+
+/**
+ * The deployed sign-in: a better-auth JWT, resolved server-side.
+ *
+ * On a real host the bridge is unusable — `validateCliCallbackUrl` in
+ * apps/web/src/lib/cli-auth.ts accepts only `http:` on loopback, by design, and
+ * that rule is shared with the released CLI. So the browser fetches a token from
+ * the API against its own session and posts it here; this server presents it to
+ * `/api/auth/me` and applies the *same* `assessIdentity` policy to what comes
+ * back. Nothing is client-asserted: the browser supplies a token, never an
+ * identity.
+ */
+describe("deployed sign-in with a better-auth token", () => {
+  const TOKEN_POSTURE = {
+    kind: "token",
+    apiUrl: "https://protocol.dev.index.network",
+    webAppUrl: "https://index.network",
+  } as const;
+  const PUBLIC_ORIGIN = resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" });
+
+  beforeEach(async () => {
+    await build({ publicOrigin: PUBLIC_ORIGIN }, { signIn: TOKEN_POSTURE });
+  });
+
+  /** Submits a token exactly as the browser does, with no session of its own. */
+  const submit = (body: unknown, headers: Record<string, string> = {}) =>
+    handler(
+      new Request("http://localhost/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  describe("POST /api/auth/login", () => {
+    it("tells the browser where to get a token and where to sign in", async () => {
+      const response = await handler(
+        new Request("http://localhost/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }),
+      );
+      const body = await response.json();
+
+      expect(body.kind).toBe("token");
+      // Exactly two fields, both of them public DNS names the browser already
+      // talks to. This is not a "dump the server's configuration" route.
+      expect(Object.keys(body).sort()).toEqual(["apiUrl", "kind", "webAppUrl"]);
+      expect(body.apiUrl).toBe("https://protocol.dev.index.network");
+      expect(body.webAppUrl).toBe("https://index.network");
+      // No loopback bridge callback: it could never complete from here.
+      expect(JSON.stringify(body)).not.toContain("/cli-auth");
+      expect(JSON.stringify(body)).not.toContain("127.0.0.1");
+    });
+  });
+
+  describe("POST /api/auth/session", () => {
+    it("establishes a session for a token that resolves to an allowed identity", async () => {
+      const response = await submit({ token: JWT });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ authenticated: true, email: "operator@index.network", name: "Operator" });
+      // Resolved server-side, exactly once.
+      expect(identities.seen).toEqual([JWT]);
+
+      const cookie = response.headers.get("set-cookie") ?? "";
+      expect(cookie).toMatch(/^eval_ops_session=/);
+      expect(cookie).toMatch(/HttpOnly/i);
+      expect(cookie).toMatch(/SameSite=Lax/i);
+      // And the session it establishes actually opens the gate.
+      const gated = await handler(
+        new Request("http://localhost/api/runs", { headers: { Cookie: cookie.split(";")[0] } }),
+      );
+      expect(gated.status).toBe(200);
+    });
+
+    it("never returns, stores or echoes the token", async () => {
+      const response = await submit({ token: JWT });
+      const cookie = response.headers.get("set-cookie") ?? "";
+
+      expect(await response.text()).not.toContain(JWT);
+      expect(cookie).not.toContain(JWT);
+      // The session holds an identity and nothing else, so no later response can
+      // carry the credential back out.
+      const status = await handler(
+        new Request("http://localhost/api/auth/status", { headers: { Cookie: cookie.split(";")[0] } }),
+      );
+      expect(await status.text()).not.toContain(JWT);
+    });
+
+    it("refuses an identity outside the allowed domain and discards the credential", async () => {
+      identities.identity = { email: "someone@evil.example", emailVerified: true, name: "Outsider" };
+
+      const response = await submit({ token: JWT });
+      const text = await response.text();
+
+      expect(response.status).toBe(403);
+      // The UI has to tell "sign in" from "your account is not permitted".
+      expect(JSON.parse(text)).toMatchObject({ authenticated: true, permitted: false });
+      expect(response.headers.get("set-cookie")).toBeNull();
+      // Exchanged once, then dropped: never echoed to the browser.
+      expect(identities.seen).toEqual([JWT]);
+      expect(text).not.toContain(JWT);
+    });
+
+    it("refuses an unverified address, which is the whole reason for the /me hop", async () => {
+      // The jwt plugin's definePayload returns { id, email, name } and no
+      // emailVerified, so verification can only come from the user record.
+      identities.identity = { email: "operator@index.network", emailVerified: false, name: "Operator" };
+
+      const response = await submit({ token: JWT });
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toMatch(/not verified/i);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("answers 401 for a token the API rejects, so the UI offers sign-in again", async () => {
+      identities.identity = null;
+
+      const response = await submit({ token: JWT });
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({ authenticated: false });
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("answers 502 when the API cannot be reached, without echoing the token", async () => {
+      // "The API is down" is not "you are not allowed in" — and a transport error
+      // that happened to quote the request must still not carry the credential out.
+      identities.failure = new Error(`fetch failed for Bearer ${JWT}`);
+
+      const response = await submit({ token: JWT });
+      const text = await response.text();
+
+      expect(response.status).toBe(502);
+      expect(text).not.toContain(JWT);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("refuses a body that is not exactly one token", async () => {
+      for (const body of [{}, { token: "" }, { token: 42 }, { token: JWT, email: "a@index.network" }]) {
+        const response = await submit(body);
+        expect({ body, status: response.status }).toEqual({ body, status: 400 });
+      }
+      // In particular the browser cannot assert who it is.
+      expect(identities.seen).toHaveLength(0);
+    });
+
+    it("is gated exactly like every other write", async () => {
+      // Content type: `no-cors` cannot produce application/json.
+      const untyped = await handler(
+        new Request("http://localhost/api/auth/session", {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          body: JSON.stringify({ token: JWT }),
+        }),
+      );
+      expect(untyped.status).toBe(415);
+
+      // Origin: a page on another origin cannot drive a sign-in here.
+      const foreignOrigin = await submit({ token: JWT }, { Origin: "https://evil.example" });
+      expect(foreignOrigin.status).toBe(403);
+
+      // Host: the rebinding guard runs first, on this route too.
+      const foreignHost = await submit({ token: JWT }, { Host: "evil.example.com" });
+      expect(foreignHost.status).toBe(403);
+
+      // None of the three ever looked at the credential.
+      expect(identities.seen).toHaveLength(0);
+    });
+
+    it("sets a Secure cookie when the browser reached the deployed origin", async () => {
+      const response = await handler(
+        new Request("https://eval.index.network/api/auth/session", {
+          method: "POST",
+          headers: {
+            Host: "eval.index.network",
+            Origin: "https://eval.index.network",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: JWT }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("set-cookie") ?? "").toMatch(/Secure/i);
+    });
+  });
+
+  describe("GET /callback", () => {
+    it("refuses the bridge callback on the posture, not on a state it happens not to hold", async () => {
+      // A deployed server mints no states at all, so the refusal has to come from
+      // "this server does not run that exchange" rather than from an empty store
+      // — which would look identical today and stop being a refusal the moment
+      // anything else minted one.
+      const response = await handler(new Request("http://localhost/callback?state=anything&api_key=k"));
+      const text = await response.text();
+
+      expect(response.status).toBe(403);
+      expect(text).toMatch(/does not sign in through the local bridge/i);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(identities.seen).toHaveLength(0);
+    });
+  });
+
+  describe("401 and 403 stay distinguishable", () => {
+    it("answers 401 with no session and 403 for a session the policy refuses", async () => {
+      const anonymous = await handler(new Request("http://localhost/api/runs"));
+      expect(anonymous.status).toBe(401);
+
+      const stale = sessions.establish({ email: "someone@evil.example", name: "Outsider" });
+      const refused = await handler(
+        new Request("http://localhost/api/runs", { headers: { Cookie: `eval_ops_session=${stale}` } }),
+      );
+      expect(refused.status).toBe(403);
+    });
+  });
+});
+
+describe("resolveSignInMode", () => {
+  // The deployed posture is already named by EVAL_OPS_PUBLIC_ORIGIN, and it is
+  // exactly the condition under which the loopback bridge cannot complete. One
+  // rule, exported and pure, rather than an implicit guess inside the wiring.
+  it("chooses the local bridge when no public origin is configured", () => {
+    expect(resolveSignInMode({})).toBe("bridge");
+    expect(resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "" })).toBe("bridge");
+    expect(resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "   " })).toBe("bridge");
+  });
+
+  it("chooses the token exchange once the server answers on a deployed origin", () => {
+    expect(resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" })).toBe("token");
+  });
+
+  it("refuses a malformed public origin rather than quietly falling back to the bridge", () => {
+    // Falling back would produce a deployed server advertising a loopback
+    // callback — the exact failure this posture exists to remove.
+    expect(() => resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "http://eval.index.network" })).toThrow(
+      /EVAL_OPS_PUBLIC_ORIGIN/,
+    );
+  });
+
+  it("is not decided by a wider bind or a platform port", () => {
+    // Neither of those makes the bridge callback unreachable; only a deployed
+    // origin does.
+    expect(resolveSignInMode({ EVAL_OPS_BIND: "0.0.0.0", PORT: "8080" })).toBe("bridge");
   });
 });
 
@@ -1433,7 +1730,31 @@ describe("createDefaultOpsContext", () => {
 
     const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port });
 
-    expect(built.auth?.callbackPort).toBe(8080);
+    expect(built.auth?.signIn).toMatchObject({ kind: "bridge", callbackPort: 8080 });
+  });
+
+  it("wires the bridge and its API-key resolver when no public origin is configured", async () => {
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
+
+    // The resolver and the posture are chosen together, by one decision: a bridge
+    // that minted API keys for a JWT resolver would refuse every sign-in.
+    expect(built.auth?.signIn.kind).toBe("bridge");
+    expect(built.auth?.identities).toBeInstanceOf(ApiIdentityResolver);
+  });
+
+  it("wires the token exchange and its JWT resolver once a public origin is configured", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "https://eval.index.network";
+    process.env.WEB_APP_URL = "https://index.network";
+    process.env.API_URL = "https://protocol.dev.index.network";
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
+
+    expect(built.auth?.signIn).toEqual({
+      kind: "token",
+      apiUrl: "https://protocol.dev.index.network",
+      webAppUrl: "https://index.network",
+    });
+    expect(built.auth?.identities).toBeInstanceOf(JwtIdentityResolver);
   });
 
   it("wires identity, so the default server is never unauthenticated", async () => {

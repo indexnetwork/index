@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll } from "bun:test";
 import path from "node:path";
 
-import { ALLOWED_EMAIL_DOMAIN, ApiIdentityResolver, assessIdentity, buildBridgeUrl, MAX_PENDING_STATES, OneTimeStateStore, OpsSessionStore, type ResolvedIdentity } from "../ops.auth.js";
+import { ALLOWED_EMAIL_DOMAIN, ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, MAX_PENDING_STATES, OneTimeStateStore, OpsSessionStore, type ResolvedIdentity } from "../ops.auth.js";
 
 /**
  * The bridge page's own validator, loaded from the file that actually runs in
@@ -348,6 +348,110 @@ describe("ApiIdentityResolver", () => {
     const resolved = await resolver.resolve("secret-key");
     expect(resolved).toEqual({ email: "a@index.network", emailVerified: false, name: "Ada" });
     expect(assessIdentity(resolved).allowed).toBe(false);
+  });
+});
+
+/**
+ * A syntactically plausible compact JWS. The signature is never checked here —
+ * the API checks it — but the *shape* is, so the value has to be a real one.
+ */
+const JWT = "eyJhbGciOiJFZERTQSJ9.eyJpZCI6InUxIn0.c2lnbmF0dXJl";
+
+describe("JwtIdentityResolver", () => {
+  it("presents the token as a bearer credential and never in the URL", async () => {
+    const stub = stubFetch(() => meResponse({ email: "a@index.network", emailVerified: true, name: "Ada" }));
+    const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network/", fetch: stub.fetch });
+
+    await resolver.resolve(JWT);
+
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0].url).toBe("https://protocol.dev.index.network/api/auth/me");
+    expect(stub.calls[0].url).not.toContain(JWT);
+    expect(new Headers(stub.calls[0].init?.headers).get("authorization")).toBe(`Bearer ${JWT}`);
+    // Not an API key: the API's AuthGuard reads the two headers on different paths.
+    expect(new Headers(stub.calls[0].init?.headers).get("x-api-key")).toBeNull();
+  });
+
+  it("maps the real response body to a resolved identity", async () => {
+    const stub = stubFetch(() => meResponse({ email: "a@index.network", emailVerified: true, name: "Ada" }));
+    const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: stub.fetch });
+
+    expect(await resolver.resolve(JWT)).toEqual({ email: "a@index.network", emailVerified: true, name: "Ada" });
+  });
+
+  /**
+   * The reason the `/api/auth/me` hop exists at all. The `jwt` plugin's
+   * `definePayload` in services/api/src/lib/betterauth/betterauth.ts returns
+   * `{ id, email, name }` and no `emailVerified`, so possession of a genuine
+   * token says nothing about verification — and `assessIdentity` demands it.
+   */
+  it("reports an unverified user as unverified rather than dropping the field", async () => {
+    const stub = stubFetch(() => meResponse({ email: "a@index.network", emailVerified: false, name: "Ada" }));
+    const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: stub.fetch });
+
+    const resolved = await resolver.resolve(JWT);
+    expect(resolved).toEqual({ email: "a@index.network", emailVerified: false, name: "Ada" });
+    expect(assessIdentity(resolved).allowed).toBe(false);
+  });
+
+  it("fails closed when the verified flag is missing", async () => {
+    const stub = stubFetch(() => meResponse({ email: "a@index.network", name: "Ada" }));
+    const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: stub.fetch });
+
+    const resolved = await resolver.resolve(JWT);
+    expect(resolved).toEqual({ email: "a@index.network", emailVerified: false, name: "Ada" });
+    expect(assessIdentity(resolved).allowed).toBe(false);
+  });
+
+  it("resolves nothing when the API refuses the token", async () => {
+    // What the live API answers a token it cannot verify:
+    // {"error":"Invalid or expired access token"} with status 401.
+    const stub = stubFetch(() => Response.json({ error: "Invalid or expired access token" }, { status: 401 }));
+    const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: stub.fetch });
+
+    expect(await resolver.resolve(JWT)).toBeNull();
+  });
+
+  it("resolves nothing when the body is not the documented shape", async () => {
+    for (const body of [{}, { user: null }, { user: { email: 42 } }, "not json at all"]) {
+      const stub = stubFetch(() => (typeof body === "string" ? new Response(body) : Response.json(body)));
+      const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: stub.fetch });
+      expect(await resolver.resolve(JWT)).toBeNull();
+    }
+  });
+
+  /**
+   * The token arrives from a browser POST body, so it is caller-controlled text
+   * on its way into an HTTP header. Anything that is not a compact JWS is refused
+   * before a request is made: it cannot be a better-auth token, and a value
+   * carrying CR/LF would otherwise be handed to `fetch` as a header value.
+   */
+  it("refuses anything that is not a compact JWS, without contacting the API", async () => {
+    for (const candidate of [
+      "",
+      "   ",
+      "not-a-jwt",
+      "only.two",
+      "a.b.c.d",
+      "a.b.c extra",
+      "a.b.c\r\nX-Injected: 1",
+      `${JWT} `,
+    ]) {
+      const stub = stubFetch(() => meResponse({ email: "a@index.network", emailVerified: true, name: "Ada" }));
+      const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: stub.fetch });
+
+      expect({ candidate, resolved: await resolver.resolve(candidate) }).toEqual({ candidate, resolved: null });
+      expect({ candidate, calls: stub.calls.length }).toEqual({ candidate, calls: 0 });
+    }
+  });
+
+  it("lets a transport failure reject, because a dead API is not a refusal", async () => {
+    const failing = (async () => {
+      throw new Error("connect ECONNREFUSED");
+    }) as unknown as typeof fetch;
+    const resolver = new JwtIdentityResolver({ apiUrl: "https://protocol.dev.index.network", fetch: failing });
+
+    await expect(resolver.resolve(JWT)).rejects.toThrow(/ECONNREFUSED/);
   });
 });
 

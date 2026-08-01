@@ -287,14 +287,15 @@ perform the `.env.test` cross-check that `resolveResetTarget` does, so an operat
 
 `createOpsHandler(context)` returns a plain `(Request) => Promise<Response>`.
 
-Every route below requires a session except the two marked **public**; `GET /callback` is
+Every route below requires a session except the three marked **public**; `GET /callback` is
 handled ahead of the gate because it is the request that establishes one.
 
 | Method | Route | Purpose |
 | :----- | :---- | :------ |
 | `GET` | `/api/auth/status` | **public.** `{ authenticated: false }` or `{ authenticated: true, email, name }`. |
-| `POST` | `/api/auth/login` | **public.** `{ url }` — the sign-in bridge link, carrying a one-time state. |
-| `GET` | `/callback` | **public, pre-gate.** The bridge lands here: validates the state, resolves the identity, applies the domain policy, then redirects to the UI or renders a refusal page. |
+| `POST` | `/api/auth/login` | **public.** Which sign-in this server runs: `{ kind: "bridge", url }` locally, or `{ kind: "token", apiUrl, webAppUrl }` when deployed. |
+| `POST` | `/api/auth/session` | **public.** Deployed only. `{ token }` → resolved server-side, domain policy applied, session cookie set. 403 in the local posture. |
+| `GET` | `/callback` | **public, pre-gate.** The bridge lands here: validates the state, resolves the identity, applies the domain policy, then redirects to the UI or renders a refusal page. 403 in the deployed posture, which mints no states. |
 | `POST` | `/api/auth/logout` | Clears the session and expires the cookie. |
 | `GET` | `/api/harnesses` | `HARNESS_REGISTRY` values. |
 | `GET` | `/api/profiles` | Committed profiles. |
@@ -340,27 +341,49 @@ Four independent guards stand in front of every request, and they **compose** ra
 substitute for one another: the loopback bind, the `Host` check, the `Origin` allowlist,
 and identity. Removing any one of them is not offset by the others.
 
-**Identity.** Every route except `GET /api/auth/status` and `POST /api/auth/login`
-(`PUBLIC_ROUTES` in `ops.server.ts`) requires a session, and a session exists only for an
+**Identity.** Every route except `GET /api/auth/status`, `POST /api/auth/login` and
+`POST /api/auth/session` (`PUBLIC_ROUTES` in `ops.server.ts`) requires a session — the
+exemptions are the routes that *obtain* a session, which cannot require one — and a
+session exists only for an
 Index account whose email is **verified** and whose domain is exactly `index.network`.
 The gate sits ahead of dispatch, so a route added later is gated by default and an unknown
 path is refused with 401 rather than a 404 that would confirm what exists. The policy is
 re-evaluated on **every** request, so narrowing it refuses live sessions too; 401 ("nobody
 is signed in") and 403 ("signed in, not permitted") are deliberately distinguishable.
 
-There is no cookie to forward — the ops UI is on `127.0.0.1` and the API on
-`localhost:3001`, and a Better Auth session cookie is host-scoped — so sign-in reuses the
-CLI browser-auth bridge: `POST /api/auth/login` mints a one-time state and returns
+There is no cookie to forward in either posture — a Better Auth session cookie is
+host-scoped — so there are two exchanges, chosen by `resolveSignInMode(env)`:
+`EVAL_OPS_PUBLIC_ORIGIN` unset means **bridge**, set means **token**. That is the same
+variable that extends the allowlists, and it is exactly the circumstance in which the
+bridge cannot complete. Both exchanges end with *this server* resolving a credential
+against the API; nothing is ever client-asserted.
+
+**Bridge (local).** `POST /api/auth/login` mints a one-time state and returns
 `<WEB_APP_URL>/cli-auth?callback=http://127.0.0.1:<port>/callback&version=2&state=…`, the
 bridge mints a revocable API key against the operator's existing browser session, and
 `GET /callback` consumes the state, exchanges the key for an identity, applies the domain
-policy and **discards the key**. The key is never stored in a session, never logged, never
-returned to the browser and never rendered.
+policy and **discards the key**.
 
-`WEB_APP_URL` and `API_URL` are one pair: the first mints the key, the second verifies it.
-A key minted by one deployment is meaningless to another, so the server **refuses to
-start** on a half-configured or mismatched pair rather than failing every sign-in later
-with an unhelpful "No Index account could be resolved".
+**Token (deployed).** The bridge is unusable off loopback: `validateCliCallbackUrl` in
+`apps/web/src/lib/cli-auth.ts` accepts only `http:` on `127.0.0.1`/`[::1]`, deliberately,
+so that broad API credentials are never redirected to a caller-controlled origin — and
+that rule is shared with the released CLI, so it is not changed. Instead the browser
+fetches a Better Auth JWT from `${API_URL}/api/auth/token` with `credentials: "include"`
+(cross-site works because the API's cookie is `SameSite=None; Secure`) and posts it to
+`POST /api/auth/session`. `JwtIdentityResolver` presents it to `${API_URL}/api/auth/me` as
+`Authorization: Bearer …`, where the API verifies the signature against its own JWKS. The
+`/api/auth/me` hop is **required, not an optimisation**: the `jwt` plugin's `definePayload`
+returns `{ id, email, name }` and no `emailVerified`, and the policy demands verification,
+so it can never be inferred from possession of a token.
+
+In both cases the credential is exchanged once and dropped. It is never stored in a
+session, never logged, never returned to the browser and never rendered.
+
+`WEB_APP_URL` and `API_URL` are one pair: the first is where the operator's session lives,
+the second is what verifies the credential minted from it. A credential minted by one
+deployment is meaningless to another, so the server **refuses to start** on a
+half-configured or mismatched pair rather than failing every sign-in later with an
+unhelpful "No Index account could be resolved".
 
 **What keeps this site local is the guards, not the authentication.** Both entrypoints bind
 `127.0.0.1` unless `EVAL_OPS_BIND` is set, and setting it alone changes nothing reachable:
