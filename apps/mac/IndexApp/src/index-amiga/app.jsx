@@ -112,23 +112,36 @@ function App() {
     });
   }, []);
 
+  // The resolver reads the radar through a ref, and a link already in flight is
+  // never started twice. Depending on `people` (or restarting on a screen
+  // change) would cancel and re-issue the fallback fetch on every radar update:
+  // a duplicate GET /opportunities/:id at best, and in demo mode the periodic
+  // sim tick could keep restarting it so the link never lands on a card or a
+  // notice at all. One pending link resolves once, and always terminates.
+  const peopleRef = useRef(people);
+  peopleRef.current = people;
+  const resolvingRef = useRef(null);
+
   // A link can arrive at the login screen or mid-boot (cold launch is the
   // normal case). Hold it there and apply it once the snapshot is in, rather
   // than resolving it against data that hasn't loaded.
   useEffect(() => {
     if (!pendingLink || screen === "login" || screen === "building") return;
-    let cancelled = false;
+    if (resolvingRef.current === pendingLink) return;   // already resolving this one
+    const link = pendingLink;
+    resolvingRef.current = link;
     (async () => {
-      const person = await resolveDeepLinkPerson(pendingLink, people);
-      if (cancelled) return;
-      if (person) setLinkedCard({ person, route: pendingLink.route });
-      else setNotice(pendingLink.route === "card"
+      const person = await resolveDeepLinkPerson(link, peopleRef.current);
+      // A newer link arrived mid-flight and owns the slot now; let it finish.
+      if (resolvingRef.current !== link) return;
+      resolvingRef.current = null;
+      if (person) setLinkedCard({ person, route: link.route });
+      else setNotice(link.route === "card"
         ? "that opportunity isn't on your radar."
         : "couldn't open that profile.");
       setPendingLink(null);
     })();
-    return () => { cancelled = true; };
-  }, [pendingLink, screen, people]);
+  }, [pendingLink, screen]);
 
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {

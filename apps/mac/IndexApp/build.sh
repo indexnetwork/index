@@ -41,8 +41,8 @@ IDENTITY="${CODESIGN_IDENTITY:-}"
 
 # Associated domains (universal links). The entitlement is only honoured for a
 # Developer ID-signed, notarized build whose team id matches the appIDs in the
-# apple-app-site-association served by index.network, so it is applied in both
-# branches but is not allowed to break the ad-hoc dev loop.
+# apple-app-site-association served by index.network. A real identity must carry
+# it (strict below); ad-hoc must never be broken by it, see the retry there.
 ENTITLEMENTS="IndexApp.entitlements"
 
 if [ -n "${IDENTITY}" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "${IDENTITY}"; then
@@ -53,8 +53,17 @@ else
         echo "==> WARNING: CODESIGN_IDENTITY='${IDENTITY}' not found, falling back to ad-hoc"
     fi
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
+    # associated-domains is profile-backed, so codesign can reject it outright
+    # when there is no provisioning profile. Leaving the bundle unsigned is
+    # worse than signing it without the entitlement (on Apple Silicon an
+    # unsigned binary is killed at launch), so retry bare rather than give up.
     if ! codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign - "${APP}"; then
-        echo "   (codesign skipped/failed, app still runs locally)"
+        if codesign --force --deep --sign - "${APP}"; then
+            echo "==> WARNING: codesign rejected ${ENTITLEMENTS} (associated-domains needs a"
+            echo "    provisioning profile), so this bundle is signed ad-hoc WITHOUT it."
+        else
+            echo "   (codesign skipped/failed, app still runs locally)"
+        fi
     fi
     echo "==> WARNING: universal links (https://index.network/o|u|c/...) will NOT open"
     echo "    this build. They need a Developer ID-signed, notarized app plus an"
