@@ -85,6 +85,26 @@ describe("production web server", () => {
     expect(await response.text()).toBe("");
   });
 
+  test.each(["/c/aB3xY9zQ2w", "/o/opp-123"])(
+    "injects deep-link meta for document navigations to %s",
+    async (pathname) => {
+      const fetch = createWebHandler({ distDir, metaMap: {} });
+
+      const response = fetch(
+        new Request(`https://index.network${pathname}`, {
+          headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "Sec-Fetch-Mode": "navigate",
+          },
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const html = await response.text();
+      expect(html).toContain("<title>Open in the Index app</title>");
+    },
+  );
+
   test("serves the SPA entrypoint for document route navigation", async () => {
     const fetch = createWebHandler({ distDir, metaMap: {} });
 
