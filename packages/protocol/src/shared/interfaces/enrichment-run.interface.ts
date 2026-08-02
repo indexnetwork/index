@@ -61,8 +61,7 @@ export interface EnrichmentRunRecord {
     "scopeId" |
     "indexName" |
     "sessionId" |
-    "agentId" |
-    "clientSurface"
+    "agentId"
   >;
   progress?: Record<string, unknown> | null;
   result?: unknown;

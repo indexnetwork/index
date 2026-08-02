@@ -148,7 +148,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
         ...(context.indexName ? { indexName: context.indexName } : {}),
         ...(context.sessionId ? { sessionId: context.sessionId } : {}),
         ...(context.agentId ? { agentId: context.agentId } : {}),
-        ...(context.clientSurface ? { clientSurface: context.clientSurface } : {}),
       },
     });
     try {

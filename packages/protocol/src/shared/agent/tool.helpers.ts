@@ -20,7 +20,6 @@ import type { AgentDatabase } from "../interfaces/agent.interface.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../interfaces/delivery-ledger.interface.js";
-import type { MintConnectLink } from "../interfaces/connect-link.interface.js";
 import type { ChatQuestionsHost, QuestionerDatabase } from "../interfaces/questioner.interface.js";
 import type { NegotiatorMemoryToolsHost } from "../interfaces/negotiator-memory.interface.js";
 import type { QuestionerEnqueueFn } from "../../questioner/questioner.types.js";
@@ -115,14 +114,6 @@ export interface ResolvedToolContext {
    * which are owner-trusted and receive the full owner view.
    */
   mcpCaller?: McpActivityCaller;
-  /**
-   * Receiver's rendering surface declared by the MCP client via the
-   * `x-index-surface` request header. `'telegram'` means the MCP response is
-   * being rendered inside a Telegram chat; anything
-   * else (including `undefined`) is treated as web. Forwarded into
-   * `mintConnectLink` so the click-time redirect can branch.
-   */
-  clientSurface?: 'telegram' | 'web';
   /**
    * True when the CONTACTS_ENABLED feature flag is on. Carried from the
    * composition root so prompt modules can gate contact-import guidance —
@@ -290,13 +281,8 @@ interface ToolContextBindings {
   enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
   enrichmentRunQueue?: EnrichmentRunQueue;
-  /**
-   * Legacy direct-token minting for opportunity accept redirects.
-   * Prefer `mintConnectLink` for user-facing links.
-   */
+  /** Legacy direct-token minting for opportunity accept redirects (retained for host compatibility). */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
-  /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */
-  mintConnectLink?: MintConnectLink;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -647,13 +633,8 @@ interface ToolDepsBindings {
   enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
   enrichmentRunQueue?: EnrichmentRunQueue;
-  /**
-   * Legacy direct-token minting for opportunity accept redirects.
-   * Prefer `mintConnectLink` for user-facing links.
-   */
+  /** Legacy direct-token minting for opportunity accept redirects (retained for host compatibility). */
   mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
-  /** Mints (or reuses) a short connect link, snapshotting the greeting (optional — absent in non-MCP contexts). */
-  mintConnectLink?: MintConnectLink;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */

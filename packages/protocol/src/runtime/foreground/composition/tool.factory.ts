@@ -220,7 +220,6 @@ export async function createChatTools(
     enrichmentRuns: deps.enrichmentRuns,
     enrichmentRunQueue: deps.enrichmentRunQueue,
     mintConnectToken: deps.mintConnectToken,
-    mintConnectLink: deps.mintConnectLink,
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
