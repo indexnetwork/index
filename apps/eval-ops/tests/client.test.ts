@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { onAuthRefusal, subscribeToRun, encodeArtifactId } from '../src/api/client';
+import { api, onAuthRefusal, subscribeToRun, encodeArtifactId } from '../src/api/client';
 
 describe('subscribeToRun', () => {
   let mockSource: {
@@ -197,6 +197,129 @@ describe('subscribeToRun', () => {
 
     unsubscribe();
     expect(mockSource.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('config and run-comparison client methods', () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+
+  function stubFetch(respond: (url: string) => Response) {
+    calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        return respond(url);
+      }),
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const profile = {
+    name: 'sonnet-evaluator',
+    description: 'evaluator on sonnet',
+    models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
+    env: {},
+  };
+
+  it('configs() fetches GET /api/configs', async () => {
+    const body = { repo: [], saved: [profile] };
+    stubFetch(() => new Response(JSON.stringify(body)));
+
+    const result = await api.configs();
+
+    expect(result).toEqual(body);
+    expect(calls).toEqual([{ url: '/api/configs', init: undefined }]);
+  });
+
+  it('configModels() fetches GET /api/configs/models', async () => {
+    stubFetch(() => new Response(JSON.stringify({ models: ['google/gemini-2.5-flash'] })));
+
+    const result = await api.configModels();
+
+    expect(result).toEqual({ models: ['google/gemini-2.5-flash'] });
+    expect(calls.map((c) => c.url)).toEqual(['/api/configs/models']);
+  });
+
+  it('createConfig() POSTs the profile as JSON with the anti-CSRF content type', async () => {
+    stubFetch(() => new Response(JSON.stringify(profile), { status: 201 }));
+
+    const result = await api.createConfig(profile);
+
+    expect(result).toEqual(profile);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('/api/configs');
+    expect(calls[0].init?.method).toBe('POST');
+    expect((calls[0].init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(calls[0].init?.body as string)).toEqual(profile);
+  });
+
+  it('updateConfig() PATCHes the named config with the patch body', async () => {
+    const patch = { description: 'better description' };
+    stubFetch(() => new Response(JSON.stringify({ ...profile, ...patch })));
+
+    const result = await api.updateConfig('sonnet-evaluator', patch);
+
+    expect(result.description).toBe('better description');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('/api/configs/sonnet-evaluator');
+    expect(calls[0].init?.method).toBe('PATCH');
+    expect((calls[0].init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(calls[0].init?.body as string)).toEqual(patch);
+  });
+
+  it('deleteConfig() DELETEs the named config and tolerates the 204 empty body', async () => {
+    stubFetch(() => new Response(null, { status: 204 }));
+
+    await expect(api.deleteConfig('sonnet-evaluator')).resolves.toBeUndefined();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('/api/configs/sonnet-evaluator');
+    expect(calls[0].init?.method).toBe('DELETE');
+  });
+
+  it('compareRuns() builds the run-mode compare URL', async () => {
+    const outcome = { comparable: false, findings: [] };
+    stubFetch(() => new Response(JSON.stringify(outcome)));
+
+    const result = await api.compareRuns('run-a', 'run-b');
+
+    expect(result).toEqual(outcome);
+    expect(calls.map((c) => c.url)).toEqual(['/api/compare?referenceRun=run-a&subjectRun=run-b']);
+  });
+
+  it('launch() posts a spec carrying ad-hoc overrides verbatim', async () => {
+    const record = { id: 'run-1', status: 'queued' };
+    stubFetch(() => new Response(JSON.stringify(record), { status: 202 }));
+
+    await api.launch({
+      kind: 'eval',
+      harness: 'matching',
+      profile: 'default',
+      overrides: { models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' }, env: {} },
+      flags: { runs: 1 },
+    });
+
+    const posted = JSON.parse(calls[0].init?.body as string);
+    expect(posted.overrides).toEqual({
+      models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
+      env: {},
+    });
+  });
+
+  it('surfaces the server error field on a refused create', async () => {
+    stubFetch(() =>
+      new Response(JSON.stringify({ error: 'A config named "sonnet-evaluator" already exists' }), {
+        status: 409,
+      }),
+    );
+
+    await expect(api.createConfig(profile)).rejects.toThrow(
+      'A config named "sonnet-evaluator" already exists',
+    );
   });
 });
 

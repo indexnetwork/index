@@ -32,6 +32,15 @@ export type {
   RunStepRecord,
 } from '../../../../packages/protocol/eval/ops/ops.types';
 
+/**
+ * The saved-config shape, re-exported from the ops core for the same reason as
+ * the wire types above: one definition, compiler-enforced. `import type` is
+ * erased, so the zod schema it is inferred from never enters the bundle.
+ */
+export type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
+
+import type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
+
 import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
 
 export interface RunsResult {
@@ -167,6 +176,24 @@ export type CompareResult =
       aggregate: { reference: number; subject: number; delta: number };
     };
 
+/** One side of a run-vs-run comparison, labelled from its run record. */
+export interface RunSide {
+  id: string;
+  profile: string;
+  profileFingerprint: string;
+  /** False when the run finished with incomplete execution evidence. */
+  complete: boolean | null;
+}
+
+/**
+ * What GET /api/compare?referenceRun=…&subjectRun=… serves: the same outcome
+ * as artifact compare, plus the two runs' labels. `runs` is optional so a
+ * CompareResult from artifact mode can be widened without a type lie.
+ */
+export type RunCompareResult = CompareResult & {
+  runs?: { reference: RunSide; subject: RunSide };
+};
+
 /**
  * The two ways the server can tell this app that its session does not admit it.
  *
@@ -225,6 +252,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     if (refusal !== null) notifyAuthRefusal(refusal);
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
+  // A 204 (the config DELETE) has no body to parse; response.json() would throw.
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
 
@@ -235,6 +264,20 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** PATCH helper; the JSON content type is the same anti-CSRF barrier as POST. */
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  return fetchJson<T>(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** DELETE helper. The server answers 204 with no body. */
+async function deleteJson(url: string): Promise<void> {
+  await fetchJson<unknown>(url, { method: 'DELETE' });
 }
 
 /**
@@ -297,6 +340,29 @@ export const api = {
     return fetchJson('/api/profiles');
   },
 
+  async configs(): Promise<{ repo: ConfigProfile[]; saved: ConfigProfile[] }> {
+    return fetchJson('/api/configs');
+  },
+
+  async configModels(): Promise<{ models: string[] }> {
+    return fetchJson('/api/configs/models');
+  },
+
+  async createConfig(profile: ConfigProfile): Promise<ConfigProfile> {
+    return postJson('/api/configs', profile);
+  },
+
+  async updateConfig(
+    name: string,
+    patch: Partial<Omit<ConfigProfile, 'name'>>,
+  ): Promise<ConfigProfile> {
+    return patchJson(`/api/configs/${encodeURIComponent(name)}`, patch);
+  },
+
+  async deleteConfig(name: string): Promise<void> {
+    await deleteJson(`/api/configs/${encodeURIComponent(name)}`);
+  },
+
   async artifacts(): Promise<IndexResult> {
     return fetchJson('/api/artifacts');
   },
@@ -331,6 +397,12 @@ export const api = {
   async compare(reference: string, subject: string): Promise<CompareResult> {
     return fetchJson(
       `/api/compare?reference=${encodeURIComponent(reference)}&subject=${encodeURIComponent(subject)}`,
+    );
+  },
+
+  async compareRuns(referenceRun: string, subjectRun: string): Promise<RunCompareResult> {
+    return fetchJson(
+      `/api/compare?referenceRun=${encodeURIComponent(referenceRun)}&subjectRun=${encodeURIComponent(subjectRun)}`,
     );
   },
 };
