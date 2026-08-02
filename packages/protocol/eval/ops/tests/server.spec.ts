@@ -13,6 +13,8 @@ import { RunQueue } from "../ops.queue.js";
 import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
+import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
 const DATABASE_URL = "postgres://u:p@host/neondb";
 
@@ -796,6 +798,132 @@ describe("GET /api/compare", () => {
     const response = await get("/api/compare?reference=abc");
     expect(response.status).toBe(400);
     expect((await response.json()).error).toMatch(/reference/i);
+  });
+
+  describe("run-vs-run", () => {
+    const caseResult = (caseId: string, passes: number, runs: number) => ({
+      caseId,
+      rule: "r",
+      runs,
+      passes,
+      passRate: passes / runs,
+      flaky: passes > 0 && passes < runs,
+      scoredRunIds: Array.from({ length: runs }, (_, i) => `${encodeURIComponent(caseId)}::run:${i + 1}`),
+    });
+
+    /** A valid v2 run report on disk for a fresh run record. */
+    async function seedRunWithReport(options: {
+      profile: string;
+      profileFingerprint: string;
+      configFingerprint: string;
+      passes: number;
+    }): Promise<RunRecord> {
+      const created = await store.create({
+        spec: { kind: "eval", harness: "matching", profile: options.profile, flags: { runs: 20 } },
+        argv: ["bun", "run", "eval:matching"],
+        env: {},
+        profileFingerprint: options.profileFingerprint,
+        experimental: true,
+        workload: 20,
+      });
+      const scorecard = buildScorecard([caseResult("a/b", options.passes, 20)], {
+        model: "test/model",
+        runs: 20,
+      });
+      const envelope = buildEvalArtifact(
+        EVAL_RUN_REPORT_ARTIFACT_TYPE,
+        scorecard,
+        makeTestMeta({
+          harness: "matching",
+          runs: 20,
+          configFingerprint: options.configFingerprint,
+          execution: makeSuccessfulExecution(["a/b"], 20),
+        }),
+      );
+      await Bun.write(store.reportPath(created.id), JSON.stringify(envelope));
+      await store.update(created.id, { status: "passed", exitCode: 0, endedAt: new Date().toISOString() });
+      return created;
+    }
+
+    it("diffs two run reports across configs and labels each side", async () => {
+      const reference = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+      const subject = await seedRunWithReport({
+        profile: "sonnet-evaluator",
+        profileFingerprint: "fp-subject",
+        configFingerprint: "c".repeat(64),
+        passes: 2,
+      });
+
+      const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=${subject.id}`);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.comparable).toBe(true);
+      expect(body.aggregate.delta).toBeLessThan(0);
+      expect(body.runs.reference).toEqual({
+        id: reference.id,
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        complete: true,
+      });
+      expect(body.runs.subject).toEqual({
+        id: subject.id,
+        profile: "sonnet-evaluator",
+        profileFingerprint: "fp-subject",
+        complete: true,
+      });
+    });
+
+    it("422s naming the side whose report is missing", async () => {
+      const reference = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+      const subject = await store.create({
+        spec: { kind: "eval", harness: "matching", profile: "default", flags: {} },
+        argv: ["bun", "run", "eval:matching"],
+        env: {},
+        profileFingerprint: "fp-subject",
+        experimental: true,
+        workload: 20,
+      });
+
+      const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=${subject.id}`);
+
+      expect(response.status).toBe(422);
+      expect((await response.json()).error).toContain(subject.id);
+    });
+
+    it("404s an unknown run id", async () => {
+      const reference = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+
+      const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=nope`);
+
+      expect(response.status).toBe(404);
+      expect((await response.json()).error).toContain("nope");
+    });
+
+    it("400s when run params and artifact params are mixed", async () => {
+      const response = await get("/api/compare?reference=a&subjectRun=b");
+      expect(response.status).toBe(400);
+    });
+
+    it("400s when only one run param is given", async () => {
+      const response = await get("/api/compare?referenceRun=a");
+      expect(response.status).toBe(400);
+    });
   });
 });
 

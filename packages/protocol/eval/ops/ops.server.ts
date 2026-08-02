@@ -41,7 +41,8 @@ import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, loadP
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
-import type { RunStatus, RunStepRecord } from "./ops.types.js";
+import type { RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
 
 export interface OpsContext {
   /** Absolute path to packages/protocol/eval. */
@@ -781,6 +782,22 @@ async function readArtifact(context: OpsContext, id: string): Promise<Response> 
 async function compare(context: OpsContext, url: URL): Promise<Response> {
   const referenceId = url.searchParams.get("reference");
   const subjectId = url.searchParams.get("subject");
+  const referenceRun = url.searchParams.get("referenceRun");
+  const subjectRun = url.searchParams.get("subjectRun");
+  const artifactMode = referenceId !== null || subjectId !== null;
+  const runMode = referenceRun !== null || subjectRun !== null;
+  if (artifactMode === runMode) {
+    return json(
+      { error: "compare requires either reference+subject artifact ids or referenceRun+subjectRun run ids" },
+      400,
+    );
+  }
+  if (runMode) {
+    if (referenceRun === null || subjectRun === null) {
+      return json({ error: "compare requires both referenceRun and subjectRun" }, 400);
+    }
+    return await compareRuns(context, referenceRun, subjectRun);
+  }
   if (referenceId === null || subjectId === null) {
     return json({ error: "compare requires both a reference and a subject artifact id" }, 400);
   }
@@ -801,6 +818,47 @@ async function compare(context: OpsContext, url: URL): Promise<Response> {
     const status = (error as { code?: string }).code === "ENOENT" ? 404 : 422;
     return json({ error: scrubCredentials(`Artifacts could not be compared: ${messageOf(error)}`) }, status);
   }
+}
+
+/**
+ * Diffs two runs by their captured reports. Every run — saved or --no-save —
+ * leaves a run-report envelope at its report path, so experimental A/B runs
+ * compare without ever touching the artifact store. The config difference is
+ * the variable under test, so the config-fingerprint refusal is dropped;
+ * harness, corpus and selection still refuse. Each side is labelled from its
+ * run record so the UI can head the diff with what actually ran.
+ */
+async function compareRuns(context: OpsContext, referenceRunId: string, subjectRunId: string): Promise<Response> {
+  const sides: { id: string; record: RunRecord; envelope: EvalArtifactEnvelope }[] = [];
+  for (const id of [referenceRunId, subjectRunId]) {
+    const record = await context.store.get(id);
+    if (record === null) return json({ error: `Unknown run id: ${id}` }, 404);
+    const reportPath = context.store.reportPath(record.id);
+    if (!(await Bun.file(reportPath).exists())) {
+      return json({ error: `Run ${id} has no report to compare (it may have died before writing one)` }, 422);
+    }
+    let envelope: EvalArtifactEnvelope;
+    try {
+      envelope = parseEvalArtifact(await Bun.file(reportPath).json(), { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE });
+    } catch (error) {
+      return json({ error: scrubCredentials(`Run ${id} report could not be read: ${messageOf(error)}`) }, 422);
+    }
+    sides.push({ id, record, envelope });
+  }
+  const [reference, subject] = sides;
+  const outcome = compareArtifacts(reference.envelope, subject.envelope, 0.05, { allowConfigMismatch: true });
+  const side = ({ id, record, envelope }: (typeof sides)[number]) => {
+    // v1 envelopes predate the completeness flag; null says "unknown" rather
+    // than guessing, matching how the artifact index treats them.
+    const completeness = envelope.completeness as { complete?: boolean };
+    return {
+      id,
+      profile: record.spec.kind === "eval" ? record.spec.profile : "default",
+      profileFingerprint: record.profileFingerprint,
+      complete: typeof completeness.complete === "boolean" ? completeness.complete : null,
+    };
+  };
+  return json({ ...outcome, runs: { reference: side(reference), subject: side(subject) } });
 }
 
 // ---------------------------------------------------------------------------
