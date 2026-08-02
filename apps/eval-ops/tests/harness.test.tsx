@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 
 import { Harness } from '../src/routes/Harness';
 import { encodeArtifactId } from '../src/api/client';
+import type { HarnessDescriptor } from '../src/api/client';
 
 const BASELINE_PATH = 'matching/baselines/matching.baseline.json';
 const RUN_PATH = 'matching/runs/2026-07-30.json';
@@ -74,7 +75,8 @@ const ARTIFACTS = {
   ],
 };
 
-const HARNESSES = {
+// Typed against the real descriptor so registry drift fails tsc, not just runtime.
+const HARNESSES: { harnesses: HarnessDescriptor[] } = {
   harnesses: [
     {
       harness: 'matching',

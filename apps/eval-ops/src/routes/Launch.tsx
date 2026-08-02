@@ -679,7 +679,9 @@ export function Launch() {
             )}
 
             {!envInputValid && (
-              <p className="mb-2 text-term-red">Resolve the invalid flag value above to launch.</p>
+              <p className="mb-2 text-term-red">
+                Finish or fix the flag override above to launch.
+              </p>
             )}
 
             {state.launchError !== null && (

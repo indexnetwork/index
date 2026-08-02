@@ -18,8 +18,11 @@ export const EMPTY_ENV_ROW: EnvOverrideRow = { key: '', value: '', reason: '' };
  * packages/protocol/eval/ops/ops.profiles.ts — the server still re-validates,
  * this only gives the user feedback before submit. Empty values are not an
  * issue here; they are "incomplete", which envRowsValid reports separately.
+ * Whitespace-only values are reported for every kind: envRowsToOverrides drops
+ * them, so without a marker the row would silently block submit.
  */
 export function envValueIssue(flag: EnvFlagMeta, value: string): string | null {
+  if (value !== '' && value.trim() === '') return 'must not be blank';
   switch (flag.kind) {
     case 'enum':
     case 'boolean':

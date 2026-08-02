@@ -170,11 +170,14 @@ describe('GuidedEnvEditor', () => {
     expect(screen.getByTestId('valid').textContent).toBe('false');
   });
 
-  it('treats a whitespace-only string value as incomplete and drops it from overrides', async () => {
+  it('treats a whitespace-only string value as incomplete, marks the row, and drops it from overrides', async () => {
     const user = userEvent.setup();
     render(<Harness initial={[{ ...emptyRow, key: 'DISCOVERY_ALLOWED_TYPES' }]} />);
     await user.type(screen.getByLabelText('value 1'), '   ');
     expect(screen.getByTestId('valid').textContent).toBe('false');
+    // Without an inline marker the row would silently block submit.
+    expect(screen.getByText(/must not be blank/)).toBeInTheDocument();
+    expect(screen.getByLabelText('value 1')).toHaveAttribute('aria-invalid', 'true');
     expect(envRowsToOverrides(readRows())).toEqual({});
   });
 

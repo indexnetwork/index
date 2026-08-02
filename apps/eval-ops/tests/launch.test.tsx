@@ -301,12 +301,23 @@ describe('Launch', () => {
     expect(await screen.findByText(/must be an integer/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
     // The disclosure may be collapsed — a page-level hint must say why launch is blocked.
-    expect(screen.getByText(/resolve the invalid flag value above to launch/i)).toBeInTheDocument();
+    expect(screen.getByText(/finish or fix the flag override above to launch/i)).toBeInTheDocument();
 
     await userEvent.clear(screen.getByLabelText('value 1'));
     await userEvent.type(screen.getByLabelText('value 1'), '4');
     expect(screen.getByRole('button', { name: 'Run' })).toBeEnabled();
-    expect(screen.queryByText(/resolve the invalid flag value above to launch/i)).toBeNull();
+    expect(screen.queryByText(/finish or fix the flag override above to launch/i)).toBeNull();
+  });
+
+  it('shows the same blocking hint for a merely incomplete override row', async () => {
+    renderLaunch();
+    await screen.findByLabelText(/harness/i);
+    openEnvFlags();
+    // A fresh row is incomplete, not invalid: no inline issue, but launch is blocked.
+    await userEvent.click(screen.getByRole('button', { name: /add flag override/i }));
+
+    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+    expect(screen.getByText(/finish or fix the flag override above to launch/i)).toBeInTheDocument();
   });
 
   it('submits ad-hoc model and env overrides with profile default', async () => {

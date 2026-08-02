@@ -119,12 +119,13 @@ export function validateProfileEnv(env: Record<string, string>): string[] {
       case "enum":
       case "boolean":
         if (!meta.values?.includes(value)) {
-          issues.push(`env ${key} value "${value}" is not valid. Expected one of: ${meta.values?.join(", ")}`);
+          const expected = meta.values?.join(", ") ?? "(no values defined)";
+          issues.push(`env ${key} value "${value}" is not valid. Expected one of: ${expected}`);
         }
         break;
       case "integer":
         // Non-negative digits only, mirroring optionalInt in services/api/src/startup.env.ts.
-          if (!/^\d+$/.test(value)) {
+        if (!/^\d+$/.test(value)) {
           issues.push(`env ${key} value "${value}" is not a valid integer`);
         }
         break;
