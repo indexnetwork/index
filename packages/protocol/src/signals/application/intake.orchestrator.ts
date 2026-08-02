@@ -21,12 +21,17 @@ export interface IntakeAnswer {
   freeText?: string;
 }
 
+/** One answered intake round, in order (round 1 first). */
+export interface IntakeRound {
+  prompt: string;
+  answer: IntakeAnswer;
+}
+
 /** Everything synthesis needs to write the signal. */
 export interface SynthesisInput {
   brief: string;
-  whoAnswer: IntakeAnswer;
-  bringAnswer: IntakeAnswer;
-  /** Free-text place/community constraint from round 3. */
+  rounds: IntakeRound[];
+  /** Free-text place/community constraint from the where round. */
   whereText?: string;
   /**
    * Free-text correction the user typed against a draft they already saw.
@@ -34,6 +39,23 @@ export interface SynthesisInput {
    * signal, it does not constrain where to look.
    */
   feedback?: string;
+}
+
+/** Planning input for one follow-up generation call. */
+export interface FollowUpPlanInput {
+  brief: string;
+  /** Answered rounds in order (round 1 first). */
+  rounds: IntakeRound[];
+  /** Hard cap on questions returned by THIS call. */
+  maxFollowUps: number;
+  /** Locked interview plan on continuation calls; echoed unchanged. */
+  plannedFollowUpCount?: number;
+}
+
+/** The model's follow-up batch plus its total follow-up plan. */
+export interface FollowUpPlan {
+  questions: IntakePackQuestion[];
+  plannedFollowUpCount: number;
 }
 
 /** Synthesized signal text plus its summary fields. */
@@ -48,6 +70,11 @@ const questionSchema = z.object({
   prompt: z.string().min(1),
   options: z.array(z.object({ label: z.string().min(1), description: z.string() })),
   multiSelect: z.boolean(),
+});
+
+const followUpPlanSchema = z.object({
+  questions: z.array(questionSchema),
+  plannedFollowUpCount: z.number().int().min(0),
 });
 
 const synthesisSchema = z.object({
@@ -82,13 +109,18 @@ export const FALLBACK_BRING_QUESTION: IntakePackQuestion = {
   multiSelect: false,
 };
 
-const QUESTION_SYSTEM_PROMPT = `You write one intake question for a networking product.
+const PLAN_SYSTEM_PROMPT = `You plan and write follow-up intake questions for a networking product.
 
-Given a brief about the person and who they said they want to meet, ask what they
-would bring to that connection and what gap the other side should fill. Give 3-4
-concrete options grounded in the brief, each with a short label and a one-line
-description. Include an option for mutual exchange when both sides matter. Set
-multiSelect false. Never expose raw JSON, IDs, or internal vocabulary.`;
+Given a brief about the person and the intake rounds they already answered, decide
+how many further questions (up to the stated maximum) would make their signal
+specific enough to match on, and write them. Each question is one concise prompt
+with 3-4 concrete options grounded in the brief and the previous answers; each
+option has a short label and a one-line description. Set multiSelect true only
+when several options can genuinely apply together. Never re-ask a dimension that
+is already answered; skip a dimension the brief already covers. Never expose raw
+JSON, IDs, or internal vocabulary. plannedFollowUpCount is the TOTAL number of
+follow-up questions the interview should contain, including any returned now;
+when the input already fixes it, echo that value unchanged.`;
 
 const SYNTHESIS_SYSTEM_PROMPT = `You write one clear signal for a networking product.
 
@@ -110,53 +142,74 @@ export function answerLabel(answer: IntakeAnswer): string {
   return [...answer.selectedOptions, answer.freeText?.trim() ?? ""].filter(Boolean).join(", ");
 }
 
-/** Runs the two live stages of the fast intake funnel. */
+/** Runs the two live stages of the fast intake funnel: follow-up planning and synthesis. */
 export class SignalIntakeOrchestrator {
-  private readonly questionModel: Runnable<BaseLanguageModelInput, IntakePackQuestion>;
+  private readonly plannerModel: Runnable<BaseLanguageModelInput, z.infer<typeof followUpPlanSchema>>;
   private readonly synthesisModel: Runnable<BaseLanguageModelInput, SynthesisResult>;
 
   /**
    * @param models - Optional injected structured models. Tests pass stubs.
    */
   constructor(models?: {
-    question?: Runnable<BaseLanguageModelInput, IntakePackQuestion>;
+    planner?: Runnable<BaseLanguageModelInput, z.infer<typeof followUpPlanSchema>>;
     synthesis?: Runnable<BaseLanguageModelInput, SynthesisResult>;
   }) {
-    this.questionModel = models?.question
-      ?? createStructuredModel("signalIntakePack", questionSchema) as unknown as Runnable<BaseLanguageModelInput, IntakePackQuestion>;
+    this.plannerModel = models?.planner
+      ?? createStructuredModel("signalIntakePack", followUpPlanSchema) as unknown as Runnable<BaseLanguageModelInput, z.infer<typeof followUpPlanSchema>>;
     this.synthesisModel = models?.synthesis
       ?? createStructuredModel("signalIntakePack", synthesisSchema) as unknown as Runnable<BaseLanguageModelInput, SynthesisResult>;
   }
 
   /**
-   * Generate round 2 from the brief and the round-1 answer.
+   * Plan and write follow-up questions from the brief and answered rounds.
    *
-   * @param input - Brief plus the answered round-1 question
-   * @returns A renderable question; the static fallback when generation fails
+   * @param input - Brief, answered rounds, per-call cap, and any locked plan
+   * @returns Up to `maxFollowUps` renderable questions plus the total plan;
+   * the static fallback question with count 1 when generation fails
    */
-  async nextQuestion(input: { brief: string; whoAnswer: IntakeAnswer }): Promise<IntakePackQuestion> {
+  async generateFollowUps(input: FollowUpPlanInput): Promise<FollowUpPlan> {
+    const roundsText = input.rounds
+      .map((round, index) => `Round ${index + 1} — Q: ${round.prompt}\nA: ${answerLabel(round.answer)}`)
+      .join("\n\n");
+    const lockedLine = input.plannedFollowUpCount !== undefined
+      ? `\n\nThe interview plan is fixed at ${input.plannedFollowUpCount} follow-up question(s) in total; ${input.rounds.length - 1} already asked. Echo that count unchanged.`
+      : "";
     try {
-      const raw = await this.questionModel.invoke([
-        new SystemMessage(QUESTION_SYSTEM_PROMPT),
+      const raw = await this.plannerModel.invoke([
+        new SystemMessage(PLAN_SYSTEM_PROMPT),
         new HumanMessage(
-          `Brief:\n${input.brief}\n\nThey want to meet: ${answerLabel(input.whoAnswer)}\n\nWrite the question.`,
+          `Brief:\n${input.brief}\n\n${roundsText}\n\nWrite up to ${input.maxFollowUps} follow-up question(s).${lockedLine}`,
         ),
       ]);
-      return normalizeIntakePack({ brief: input.brief, question: raw }).question;
+      const questions = raw.questions
+        .slice(0, input.maxFollowUps)
+        .map((q) => normalizeIntakePack({ brief: input.brief, question: q }).question);
+      return {
+        questions,
+        plannedFollowUpCount: input.plannedFollowUpCount
+          ?? Math.max(raw.plannedFollowUpCount, questions.length),
+      };
     } catch {
-      return FALLBACK_BRING_QUESTION;
+      if (input.maxFollowUps <= 0) return { questions: [], plannedFollowUpCount: 0 };
+      return {
+        questions: [FALLBACK_BRING_QUESTION],
+        plannedFollowUpCount: input.plannedFollowUpCount ?? 1,
+      };
     }
   }
 
   /**
-   * Write the signal from both answers, any where-constraint, and any
+   * Write the signal from every answered round, any where-constraint, and any
    * revision feedback.
    *
-   * @param input - Brief, both answers, optional where constraint, optional feedback
+   * @param input - Brief, ordered rounds, optional where constraint, optional feedback
    * @returns Description plus card summary fields
    * @throws Propagates model failure so the caller can mark the run failed
    */
   async synthesize(input: SynthesisInput): Promise<SynthesisResult> {
+    const roundsText = input.rounds
+      .map((round) => `Q: ${round.prompt}\nA: ${answerLabel(round.answer)}`)
+      .join("\n\n");
     const whereLine = input.whereText?.trim()
       ? `\n\nWhere constraint: ${input.whereText.trim()}`
       : "";
@@ -166,7 +219,7 @@ export class SignalIntakeOrchestrator {
     const result = await this.synthesisModel.invoke([
       new SystemMessage(SYNTHESIS_SYSTEM_PROMPT),
       new HumanMessage(
-        `Brief:\n${input.brief}\n\nThey want to meet: ${answerLabel(input.whoAnswer)}\n\nThey bring: ${answerLabel(input.bringAnswer)}${whereLine}${feedbackLine}\n\nWrite the signal.`,
+        `Brief:\n${input.brief}\n\n${roundsText}${whereLine}${feedbackLine}\n\nWrite the signal.`,
       ),
     ]);
     return {
