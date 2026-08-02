@@ -1,219 +1,232 @@
-# Configurable dynamic signal-intake questions — design
+# Configurable fast-intake question count and per-turn mode — design
 
-Date: 2026-08-02
+Date: 2026-08-02 (v2 — retargeted; supersedes the v1 agent-loop draft same day)
 Branch: `feat/configurable-intake-questions`
 Status: Approved design (pending spec review)
 
 ## Summary
 
-The guided New Signal intake at `/i/new` (and flag-on onboarding, which shares
-the component) currently runs a hardcoded three-round interview: the Signal
-Agent asks exactly three fixed-theme questions (`who` → `contribution` →
-`where`) via blocking `ask_user_question` rounds, then synthesizes a proposal.
+The deterministic fast intake funnel at `/i/new` (and flag-on onboarding, which
+shares `FastSignalIntake`) currently asks exactly two questions: one
+**precomputed (cached) round-1 question** from the user's intake pack, then
+**exactly one model-generated follow-up** grounded in the round-1 answer,
+followed by a deterministic where-picker and the proposal card.
 
-This change makes the question budget configurable via a single global env var
-`SIGNAL_INTAKE_MAX_QUESTIONS` (default **3**, clamped to **0–10**) and replaces
-the fixed round themes with **fully dynamic, context-driven generation**: the
-agent decides which questions to ask (up to `n`), grounded in prior answers and
-the preloaded identity/profile/membership context, and may stop early when it
-has enough to write a specific signal.
+This change makes the question budget configurable and the per-turn delivery
+mode selectable:
+
+- `SIGNAL_INTAKE_MAX_QUESTIONS=n` — total question budget **including** the
+  cached round 1. Default **2** (= current behavior, ship dark), clamped to
+  1–10, garbage → 2.
+- `SIGNAL_INTAKE_QUESTION_MODE=singular|plural` — per-turn delivery:
+  `singular` (default, current cadence) serves one question per server turn;
+  `plural` serves the whole planned batch (up to `n-1` follow-ups) in one
+  turn.
+
+After the cached round-1 answer, **one planning decision fixes the total k**
+(1 ≤ k ≤ n): the model chooses how many follow-ups the context warrants, the
+count is locked, and there is no mid-flow early-stop or extension. The UI
+learns k from the first `/question` response ("detected after the first
+answer") and sizes its progress display from it.
+
+The v1 draft targeted the legacy agent-loop `GuidedSignalIntake`; that flow is
+**unchanged** and remains the flag-off fallback with its existing 3-round
+behavior.
 
 ## Goals
 
-- One global knob (`SIGNAL_INTAKE_MAX_QUESTIONS=n`) caps the number of
-  generated intake questions; unset = current behavior (3).
-- Question topics are chosen by the agent from context, not hardcoded.
-- The agent can finish in fewer than `n` questions when context suffices
-  (maximum, not a quota).
-- `n=0` skips the interview entirely: straight to synthesis from preloaded
-  context.
-- No regression for in-flight sessions, the shared onboarding flow, or the
-  proposal confirmation card.
+- One global knob for the total question budget `n` (cached round 1 included).
+- One global knob for per-turn delivery: one-at-a-time vs batch-per-turn.
+- The follow-up count k is planned once by the model after the round-1 answer,
+  then locked; the agent never decides mid-flow to end or extend.
+- The funnel server stays stateless: the client carries the locked
+  `plannedTotal` back on subsequent calls.
+- Default config is byte-identical to current behavior (n=2, singular).
 
 ## Non-goals
 
-- Per-user or per-session configuration (env flag is global; revisit if asked).
-- Changes to the flag-gated `FastSignalIntake` one-shot funnel.
-- Changes to `create_intent` verification, persistence, or matching behavior.
-- Railway/local flip of the variable to a non-default value (code ships with
-  default 3; flipping is a separate, explicitly approved ops step).
+- Per-user or per-session configuration (env flags are global).
+- Changes to the cached round-1 pack generation, the where-picker, or the
+  clarification/rejection flow semantics (clarification does not count
+  toward n).
+- Changes to the legacy `GuidedSignalIntake` / Signal Agent prompt stage
+  machine.
+- Railway/local flip to non-default values (separate, explicitly approved ops
+  step).
 
 ## Current architecture (what changes)
 
-**Backend — `packages/protocol/src/chat/signal.prompt.ts`:**
+**Client — `apps/web/src/components/signals/FastSignalIntake.tsx`**
+(stateless funnel; both answers travel with every call):
 
-- `getSignalIntakeStage(iterCtx)` counts `ask_user_question` tool calls in the
-  current turn and maps 0/1/2/≥3 to fixed stages `who` / `contribution` /
-  `where` / `proposal`; `create_intent` seen or a
-  `new-signal-preview-feedback:` message yields `complete`.
-- `buildSignalIntakeGuidance(stage)` emits hardcoded "Round X of 3" prompts
-  per stage; reused verbatim by `onboarding.prompt.ts`.
-- `SIGNAL_PERSONA` is a static `ChatPersonaConfig` export whose
-  `buildSystemContent` calls `buildSignalSystemContent(ctx, iterCtx)`.
-  `packages/protocol/src/chat` deliberately never reads `process.env`.
+1. `POST /intents/intake/start` → cached round-1 question (intake pack).
+2. Answer → `POST /intents/intake/question { whoAnswer }` → one structured
+   model call (`SignalIntakeOrchestrator.nextQuestion`) → round-2 question.
+3. Answer → `POST /intents/intake/prepare` → speculative synthesis run
+   (returns `runId`); UI shows the client-side `WherePicker`.
+4. Where chosen → `POST /intents/intake/proposal` → proposal, or 422 +
+   clarification question (merged into the round-2 answer, retried).
+5. `ProposalCard` → confirm / revise / skip. Progress bar hardcodes
+   `Math.max(4, answered + 1)`.
 
-**Frontend — `apps/web/src/components/signals/GuidedSignalIntake.tsx`:**
+**Server — `services/api/src/services/signal-intake.service.ts` +
+`intent-intake.controller.ts`:** thin per-endpoint wrappers; no funnel state.
 
-- Progress bar assumes 4 steps (`Math.max(4, answered + current)`).
-- Proposal card derives `LOOKING FOR` from `answered[0]`, `YOU BRING` from
-  `answered[1]`, and network matching from `answered[2]` labels — all
-  positional assumptions tied to the fixed 3 rounds.
-- The `intent_proposal` block type and parser already support optional
-  `lookingFor`, `youBring`, and `networkId` fields, but `create_intent` never
-  populates the first two.
+**Protocol — `packages/protocol/src/signals/application/intake.orchestrator.ts`:**
+`nextQuestion({ brief, whoAnswer })` → one `IntakePackQuestion`;
+`synthesize(...)` → `{ description, lookingFor, youBring }` from a fixed
+two-answer prompt. Structured-output models with static fallbacks
+(`FALLBACK_BRING_QUESTION`).
 
 ## Design
 
 ### 1. Configuration surface (services/api)
 
-- New env var `SIGNAL_INTAKE_MAX_QUESTIONS`: integer, default `3`, clamped to
-  `[0, 10]`. Non-numeric/garbage values fall back to `3`.
-- Centralized accessor `getSignalIntakeMaxQuestions(): number` in
-  `services/api/src/lib/` (alongside `signal-feature.ts`, per house style —
-  no bare `process.env` at call sites).
-- Registered in `services/api/src/startup.env.ts` as an optional string field
-  (lenient; the accessor owns parsing/clamping so a bad value can never crash
-  startup).
-- Documented commented-out in `.env.example` next to the other signal-intake
-  flags, noting default 3 and the 0–10 range. Default = current behavior, so
-  the code ships "dark" in the flag-skill sense.
-- Surfaced to the web app on `GET /auth/me` as
-  `features.signalIntakeMaxQuestions: number` (added to `UserFeatures` in
-  `apps/web/src/contexts/AuthContext.tsx`).
-- `.env.development`/Railway dev are **not** changed in this PR (default 3 is
-  the active value everywhere); flipping is a separate approved step.
+- `SIGNAL_INTAKE_MAX_QUESTIONS`: integer, total budget including round 1,
+  default **2**, clamped to `[1, 10]`, non-numeric/garbage → 2.
+- `SIGNAL_INTAKE_QUESTION_MODE`: `singular` (default) | `plural`; any other
+  value → `singular`.
+- Centralized accessors `getSignalIntakeMaxQuestions()` /
+  `getSignalIntakeQuestionMode()` in `services/api/src/lib/` (house style; no
+  bare `process.env` at call sites). Protocol stays env-free: both values are
+  passed in as parameters.
+- `startup.env.ts`: register both as optional lenient strings (accessors own
+  parsing; a bad value never crashes startup).
+- `.env.example`: commented-out entries next to `FAST_SIGNAL_INTAKE`,
+  documenting defaults and ranges.
+- **No `/auth/me` features change**: the client learns k from the `/question`
+  response and is mode-agnostic (see below), so no bootstrap flag is needed.
+- `.env.development` / Railway dev unchanged in this PR (defaults = current
+  behavior).
 
-### 2. Config plumbing: signal persona factory (packages/protocol)
+### 2. Orchestrator: plan-and-deliver (packages/protocol)
 
-Mirror the existing `createNegotiatorPersona` precedent:
+One planning capability behind a single structured-output method:
 
 ```ts
-// packages/protocol/src/chat/signal.persona.ts
-export function createSignalPersona(opts?: {
-  maxIntakeQuestions?: number; // default 3, clamped 0..10
-}): ChatPersonaConfig
+generateFollowUps(input: {
+  brief: string;
+  rounds: Array<{ prompt: string; answer: IntakeAnswer }>; // round 1 (+ later rounds on re-calls)
+  maxFollowUps: number;      // budget for THIS call
+  plannedTotal?: number;     // locked total when continuing a singular flow
+}): Promise<{ questions: IntakePackQuestion[]; plannedTotal: number }>
 ```
 
-- The factory closes over the normalized value and passes it into
-  `buildSignalSystemContent(ctx, iterCtx, { maxIntakeQuestions })`.
-- Keep the static `SIGNAL_PERSONA` export as `createSignalPersona()` (default
-  3) so existing imports/tests keep working; `services/api` chat wiring
-  switches to `createSignalPersona({ maxIntakeQuestions:
-  getSignalIntakeMaxQuestions() })`.
-- The protocol package stays `process.env`-free; api injects the value.
+- The prompt renders the brief and every answered round so far, states the
+  remaining budget, and instructs the model: choose how many further
+  questions the context still needs (up to `maxFollowUps`, may be 0 only when
+  `plannedTotal` says the interview is complete — otherwise at least 1 while
+  budget remains), each with 3–4 personalized options + multi-select flag,
+  never repeating an answered dimension. When `plannedTotal` is provided the
+  model must not change it.
+- `plannedTotal` in the response = 1 + (number of follow-ups the model
+  wants in total), locked on the first call and echoed unchanged afterwards.
+- Failure fallback: current static behavior — return
+  `[FALLBACK_BRING_QUESTION]` with `plannedTotal = 2` (degrades to today's
+  funnel exactly).
+- `synthesize` generalizes from fixed `whoAnswer`/`bringAnswer` to the
+  ordered round list: every round renders as `Q: prompt\nA: label` in the
+  synthesis prompt; output schema (`description`, `lookingFor`, `youBring`)
+  is unchanged. `nextQuestion`'s round-2-only prompt is absorbed into
+  `generateFollowUps`.
 
-### 3. Dynamic stage machine (`signal.prompt.ts`)
+### 3. Intake service & API (services/api)
 
-`SignalIntakeStage` collapses from `who | contribution | where | proposal |
-complete` to `question | proposal | complete`:
+`/intents/intake/question` becomes the single follow-up endpoint for both
+modes; the server reads the two env accessors per request (no state):
 
-- `complete`: unchanged detection (`create_intent` in `recentTools`, or the
-  preview-feedback marker). This is also the early-exit mechanism: whenever
-  the agent calls `create_intent`, subsequent iterations land in `complete`.
-- `question`: kickoff message and `ask_user_question` round count `< n`.
-- `proposal`: round count `>= n` (or `n = 0`): synthesize immediately, no more
-  questions.
+- **Request**: `{ rounds: [{ prompt, answer }], plannedTotal? }` — `rounds`
+  always contains round 1 first; `plannedTotal` echoes the locked count on
+  continuation calls (server clamps it to `[1, configuredN]`; absent on the
+  first call; `total = 1` only ever originates server-side, since a client
+  that sees `total = 1` advances to `prepare` without further calls).
+- **Singular mode**: server calls `generateFollowUps` with
+  `maxFollowUps = 1` (first call: budget `n-1` so the model fixes k, but only
+  the first question is returned) → responds `{ questions: [q], total: k }`.
+- **Plural mode**: server calls with `maxFollowUps = n - rounds.length` →
+  responds `{ questions: [...rest], total: k }` — the entire remaining batch
+  in one turn.
+- Response shape is identical for both modes; `total` is the locked k.
+- **Unified client consequence** (section 4): the client never branches on
+  mode.
+- `prepare` / `proposal` / `revise`: replace the fixed
+  `whoAnswer`/`bringAnswer`/`round2Prompt` payload with the ordered `rounds`
+  list. The speculation run hash keys on all rounds; the stored run and the
+  synthesis input carry the full list. Clarification handling is unchanged
+  except the clarifying answer merges into the **last** round's answer
+  (today: the round-2 answer).
+- `start` (cached round 1), verification rejection (422 + clarification),
+  confirm/reject: unchanged.
 
-New `question`-stage guidance (replacing the three fixed round prompts):
+### 4. Client (`FastSignalIntake.tsx`)
 
-- One blocking `ask_user_question` round at a time; exactly one concise
-  question with 3–4 personalized options plus free text when appropriate.
-- State the budget: "round k of at most n".
-- Across the interview, ensure coverage of three dimensions — **who** they
-  want to meet, **what** they bring / which gap the other side fills, and
-  **where** to look (existing memberships by exact title, plus "Everywhere";
-  never invent communities) — but the agent chooses order, phrasing, and
-  which dimensions still need asking.
-- Skip any dimension already answered or unambiguous from the preloaded
-  identity/profile context.
-- If the agent judges the context sufficient before round `n`, it must call
-  `create_intent` immediately instead of asking again (early completion).
+- State: `rounds: Array<{ prompt, answer }>` replaces the positional
+  `whoAnswer`/`bringAnswer`; `queue: QuestionPayload[]` holds the current
+  batch; `total: number | null` is the locked k (`null` until detected).
+- Flow after each answer:
+  1. Append to `rounds`. If `queue` still has questions, shift and show the
+     next one — **no server call** (plural batch, or singular mid-batch
+     residue is impossible since singular batches are size 1).
+  2. If `queue` is empty and `total === null || rounds.length < total`, call
+     `/question` with `{ rounds, plannedTotal: total ?? undefined }`; set
+     `total`, replace `queue`, show the next question.
+  3. If `rounds.length === total`, advance to `prepare` + where-picker.
+- `n = 1` edge: `total = 1` is detectable from the first `/question`
+  response... except the client would never call `/question` when the
+  configured budget is 1. Handled client-side: not knowing n, the client
+  always calls `/question` after round 1; a plural-mode `n=1` server returns
+  `{ questions: [], total: 1 }`, and the client advances straight to
+  `prepare`. Singular-mode `n=1` behaves identically (empty batch, total 1).
+- **Progress bar**: while `total === null` keep the current optimistic
+  `Math.max(4, answered + 1)`; once detected, render exactly
+  `total + 2` segments (k questions + where + confirm).
+- **Proposal card**: `lookingFor`/`youBring` come from the server synthesis
+  (`proposal.lookingFor` / `proposal.youBring`), already preferred over
+  client fallbacks today; the positional client fallback now uses
+  `rounds[0]` / `rounds[1]` when present and omits the line otherwise.
+- Clarification UI: unchanged, merges into the last round.
 
-The `proposal`-stage guidance additionally instructs `create_intent` to pass
-`lookingFor` / `youBring` (and `networkId` only for an explicitly selected
-existing membership) so the confirmation card renders structured summaries.
-The `complete` stage is unchanged.
+### 5. Error handling and edge cases
 
-`onboarding.prompt.ts` reuses `buildSignalIntakeGuidance` /
-`getSignalIntakeStage`, so it inherits the configurable dynamic behavior with
-no onboarding-specific code.
+- Garbage env values → accessors fall back (2 / `singular`); never crash.
+- Model failure on planning → static fallback question, `plannedTotal = 2`
+  (today's exact funnel).
+- Client-sent `plannedTotal` outside `[2, n]` → clamped server-side; a forged
+  large value can never exceed the configured n.
+- `n = 1`: empty batch, straight to synthesis from round 1 + brief (the
+  synthesis prompt simply has one round).
+- In-flight clients across deploy: web and API ship atomically (same
+  release train), so the controller accepts **only** the new `rounds` shape;
+  an old client mid-funnel after deploy gets a validation error on its next
+  call and the UI's existing error state offers a retry, which restarts the
+  funnel. No legacy request compatibility shim.
+- Onboarding (`/onboarding`) shares `FastSignalIntake` and inherits
+  everything unchanged.
 
-### 4. `create_intent` proposal block (packages/protocol)
+### 6. Testing
 
-Extend the tool's input schema with optional presentation fields:
+Targeted validation per the Development Reference (no database-backed tests;
+all logic is orchestrator/service/client):
 
-- `lookingFor?: string` — one-line summary of who/what the user seeks.
-- `youBring?: string` — one-line summary of the user's contribution.
-
-Both are pass-through presentation metadata: when provided, they are included
-in the emitted ` ```intent_proposal ` block JSON only. The durable proposal
-record is unchanged — the confirmation card always re-parses the block from
-persisted chat history (including after refresh/resume), so block-only storage
-is sufficient. They do not affect verification, normalization, or persistence
-of the intent itself. Tool description gains one sentence documenting the fields.
-Backward compatible: existing callers never pass them, blocks without them
-parse exactly as today.
-
-### 5. Frontend decoupling from positional answers (`GuidedSignalIntake.tsx`)
-
-- **Progress bar**: total segments = `n + 1` (questions + confirm) read from
-  `features.signalIntakeMaxQuestions` (fallback 3 when absent); filled
-  segments = answered count (+ current question). Because the agent may stop
-  early, the bar represents a maximum, matching existing
-  `Math.max(...)`-style growth semantics.
-- **Proposal card summaries**: `LOOKING FOR` / `YOU BRING` come from
-  `proposal.lookingFor` / `proposal.youBring` first; fallback for legacy
-  sessions (blocks emitted before this change) keeps the positional
-  `answered[0]` / `answered[1]` derivation only when exactly three rounds
-  were answered (the pre-change flow always asked exactly three), else the
-  card omits the summary line rather than guessing wrong.
-- **Network matching**: prefer `proposal.networkId` → membership lookup
-  (existing); generic fallback matches **any** answer label (any round)
-  against membership titles instead of only `answered[2]`.
-- No changes to answer submission, confirm/reject endpoints, resume flow, or
-  `FastSignalIntake`.
-
-### 6. Error handling and edge cases
-
-- Garbage env value (`"abc"`, `"2.5"`, negative, `>10`): accessor falls back
-  to 3 or clamps; never crashes startup or the prompt builder.
-- `n = 0`: first iteration lands in `proposal`; the UI shows only the
-  confirm segment while the agent synthesizes from preloaded context.
-- Early stop: agent calls `create_intent` at round k < n — stage flips to
-  `complete`; client renders the proposal card whenever a proposal block
-  arrives regardless of answered count (already true today).
-- Agent disobeys and asks a round `n+1` question: the stage machine stops
-  injecting question guidance at count `n`, so the model sees only synthesis
-  guidance; if it still calls `ask_user_question`, the client simply renders
-  it (live-question rendering is count-agnostic). No hard failure mode.
-- In-flight sessions across deploy: stage derivation depends only on
-  tool-call counts in the conversation, so a mid-intake session continues
-  under the new guidance with its existing answers; positional fallbacks
-  cover legacy proposal blocks.
-
-## Testing
-
-Targeted validation per the Development Reference (affected tests + typecheck
-+ lint; no database-backed tests required — all changes are prompt/config/UI):
-
-- **protocol** (`signal.prompt` / persona specs): stage machine for
-  n = 0 / 1 / 3 / 10 and clamping (e.g. 99 → 10); `question` → `proposal`
-  boundary at exactly n rounds; early `complete` on `create_intent`;
-  feedback-marker `complete`; factory default parity with `SIGNAL_PERSONA`;
-  guidance text states the budget and coverage dimensions.
-- **protocol** (`intent.tools` spec): `lookingFor` / `youBring` pass through
-  into the emitted proposal block; absent fields unchanged.
-- **api**: accessor parsing/clamping/default unit tests; `/auth/me` features
-  payload includes `signalIntakeMaxQuestions`.
-- **web** (`GuidedSignalIntake` tests): progress bar segment count follows the
-  feature value; proposal card prefers block fields with legacy positional
-  fallback; network fallback matches labels from any round.
-- Typecheck + lint per package; build the web app once to catch `UserFeatures`
-  consumers.
+- **protocol** (`intake.orchestrator` specs): `generateFollowUps` budget
+  capping (model returns more than `maxFollowUps` → truncated), zero/one/many
+  follow-ups, `plannedTotal` lock-and-echo, fallback path returns
+  `[FALLBACK_BRING_QUESTION]` + total 2, synthesis prompt renders a variable
+  round list.
+- **api** (`signal-intake.service` / controller isolated tests): env accessor
+  parsing/clamping; singular returns 1 question + locked total; plural
+  returns the full batch; legacy/invalid `plannedTotal` clamped; `n=1` empty
+  batch; `prepare`/`proposal`/`revise` accept the rounds list and the
+  speculation hash covers all rounds.
+- **web** (`FastSignalIntake` tests): batch stepping without extra requests;
+  refetch on queue exhaustion in singular mode; progress bar segment count
+  before/after detection; clarification merges into the last round; proposal
+  card fallbacks with 1..k rounds.
 
 ## Rollout
 
-1. Merge with default 3 (behavior-identical) — ship dark.
-2. Separately, with explicit approval: set `SIGNAL_INTAKE_MAX_QUESTIONS` on
-   Railway dev (`protocol` service), mirror in root `.env.development`, wait
-   for redeploy SUCCESS, sanity-check `/i/new`.
+1. Merge with defaults (n=2, singular) — byte-identical behavior, ship dark.
+2. Separately, with explicit approval: set `SIGNAL_INTAKE_MAX_QUESTIONS` /
+   `SIGNAL_INTAKE_QUESTION_MODE` on Railway dev (`protocol` service), mirror
+   in root `.env.development`, wait for redeploy SUCCESS, sanity-check
+   `/i/new` in both modes.
