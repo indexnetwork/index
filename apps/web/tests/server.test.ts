@@ -43,6 +43,32 @@ describe("production web server", () => {
     expect(body).toContain("/u/*");
   });
 
+  test("excludes deeper /u/ paths so web-only routes are not claimed", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+
+    const response = fetch(
+      new Request("https://index.network/.well-known/apple-app-site-association"),
+    );
+
+    const aasa = (await response.json()) as {
+      applinks: { details: Array<{ components: Array<{ "/": string; exclude?: boolean }> }> };
+    };
+    const components = aasa.applinks.details[0].components;
+    const excludedIndex = components.findIndex((c) => c["/"] === "/u/*/*");
+    const claimedIndex = components.findIndex((c) => c["/"] === "/u/*");
+
+    expect(components[excludedIndex].exclude).toBe(true);
+    // First match wins, so the exclusion has to precede the broad claim.
+    expect(excludedIndex).toBeGreaterThanOrEqual(0);
+    expect(excludedIndex).toBeLessThan(claimedIndex);
+    // The other claimed paths are untouched.
+    expect(components.filter((c) => c.exclude !== true).map((c) => c["/"])).toEqual([
+      "/c/*",
+      "/o/*",
+      "/u/*",
+    ]);
+  });
+
   test("serves the placeholder team id when APPLE_TEAM_ID is unset", async () => {
     vi.stubEnv("APPLE_TEAM_ID", "");
     const fetch = createWebHandler({ distDir, metaMap: {} });
