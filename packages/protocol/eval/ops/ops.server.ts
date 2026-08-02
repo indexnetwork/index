@@ -37,7 +37,7 @@ import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type Confi
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
@@ -589,6 +589,7 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
     if (resource === "profiles" && rest.length === 0) return json({ profiles: await loadProfiles(context.profilesDir) });
     if (resource === "configs" && rest.length === 0) return await listConfigs(context);
     if (resource === "configs" && rest.length === 1 && rest[0] === "models") return json({ models: [...ALLOWED_CONFIG_MODELS] });
+    if (resource === "configs" && rest.length === 1 && rest[0] === "metadata") return configMetadata();
     if (resource === "artifacts" && rest.length === 0) return json(await context.artifacts.list());
     if (resource === "artifacts" && rest.length === 1) return await readArtifact(context, rest[0]);
     if (resource === "compare" && rest.length === 0) return await compare(context, url);
@@ -877,12 +878,22 @@ const ConfigPatchSchema = z
   })
   .strict();
 
+/** Static, dependency-free description of everything the guided editors may offer. */
+function configMetadata(): Response {
+  const response = json({ env: ENV_FLAG_METADATA, models: MODEL_METADATA, harnessAgents: HARNESS_AGENT_METADATA });
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
+
 async function listConfigs(context: OpsContext): Promise<Response> {
   return json({ repo: await loadProfiles(context.profilesDir), saved: await context.configs.list() });
 }
 
 /** The shipped profiles are read-only through the API: edited in git, reviewed in a PR. */
 async function repoProfileNameConflict(context: OpsContext, name: string): Promise<Response | null> {
+  // Literal GET routes live under /api/configs/<name>; a saved config with
+  // one of these names could never be read back and would confuse routing.
+  if (RESERVED_CONFIG_NAMES.has(name)) return json({ error: `"${name}" is reserved for an API endpoint` }, 409);
   if (name === DEFAULT_PROFILE_NAME) {
     return json({ error: `"${DEFAULT_PROFILE_NAME}" names the shipped default profile` }, 409);
   }
@@ -1717,6 +1728,12 @@ export async function ensureConfigStorage(context: OpsContext): Promise<void> {
     console.log("[eval-ops] eval_ops_configs table is present");
   }
 }
+
+/**
+ * Reserved saved-config names: literal routes exist at /api/configs/models and
+ * /api/configs/metadata, so these names are refused at create/update time.
+ */
+const RESERVED_CONFIG_NAMES: ReadonlySet<string> = new Set(["models", "metadata"]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
