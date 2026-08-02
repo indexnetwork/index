@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { FsArtifactSource } from "../ops.artifacts.js";
 import { ApiIdentityResolver, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
+import { InMemoryConfigStore } from "../ops.configs.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
@@ -78,6 +79,7 @@ const JWT = "eyJhbGciOiJFZERTQSJ9.eyJpZCI6InUxIn0.c2lnbmF0dXJl";
 let root: string;
 let store: FsRunStore;
 let executor: FakeExecutor;
+let configs: InMemoryConfigStore;
 let context: OpsContext;
 let handler: (request: Request) => Promise<Response>;
 let states: OneTimeStateStore;
@@ -100,6 +102,7 @@ async function build(overrides: Partial<OpsContext> = {}, auth: Partial<OpsAuthC
   );
   store = new FsRunStore({ evalDir });
   executor = new FakeExecutor(store);
+  configs = new InMemoryConfigStore();
   states = new OneTimeStateStore();
   sessions = new OpsSessionStore();
   identities = new StubIdentityResolver();
@@ -112,6 +115,7 @@ async function build(overrides: Partial<OpsContext> = {}, auth: Partial<OpsAuthC
     store,
     executor,
     queue: new RunQueue({ executor, store }),
+    configs,
     databaseUrl: DATABASE_URL,
     inspector: { count: async () => COUNTS },
     auth: {
@@ -190,6 +194,16 @@ const post = (url: string, body: unknown, headers: Record<string, string> = {}) 
       body: JSON.stringify(body),
     }),
   );
+const patch = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+  handler(
+    new Request(`http://localhost${url}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...sessionCookie, ...headers },
+      body: JSON.stringify(body),
+    }),
+  );
+const del = (url: string, headers: Record<string, string> = {}) =>
+  handler(new Request(`http://localhost${url}`, { method: "DELETE", headers: { ...sessionCookie, ...headers } }));
 
 const RUN_BODY = { kind: "eval", harness: "matching", profile: "default", flags: {} };
 
@@ -689,6 +703,90 @@ describe("GET /api/compare", () => {
     const response = await get("/api/compare?reference=abc");
     expect(response.status).toBe(400);
     expect((await response.json()).error).toMatch(/reference/i);
+  });
+});
+
+describe("config routes", () => {
+  const SONNET_CONFIG = {
+    name: "sonnet-evaluator",
+    description: "evaluator on sonnet",
+    models: { opportunityEvaluator: "anthropic/claude-sonnet-4" },
+    env: {},
+  };
+
+  it("lists repo profiles and saved configs in one response", async () => {
+    await configs.create(SONNET_CONFIG);
+    const response = await get("/api/configs");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.repo.map((p: { name: string }) => p.name)).toEqual(["claude-evaluator", "default"]);
+    expect(body.saved).toEqual([SONNET_CONFIG]);
+  });
+
+  it("creates a config and rejects names colliding with a repo profile or a saved config", async () => {
+    const created = await post("/api/configs", SONNET_CONFIG);
+    expect(created.status).toBe(201);
+    expect(await created.json()).toEqual(SONNET_CONFIG);
+
+    const duplicate = await post("/api/configs", SONNET_CONFIG);
+    expect(duplicate.status).toBe(409);
+
+    for (const name of ["default", "claude-evaluator"]) {
+      const collision = await post("/api/configs", { ...SONNET_CONFIG, name });
+      expect(collision.status).toBe(409);
+      expect((await collision.json()).error).toContain(name);
+    }
+  });
+
+  it("rejects models outside the curated list with a 400 naming the model", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, models: { opportunityEvaluator: "x/y" } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("x/y");
+  });
+
+  it("rejects env keys outside the allowlist", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, env: { OPENROUTER_API_KEY: "x" } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("OPENROUTER_API_KEY");
+  });
+
+  it("updates and deletes a saved config, 404s unknown names, 409s repo profile names", async () => {
+    await configs.create(SONNET_CONFIG);
+
+    const updated = await patch("/api/configs/sonnet-evaluator", { description: "better description" });
+    expect(updated.status).toBe(200);
+    const updatedBody = await updated.json();
+    expect(updatedBody.description).toBe("better description");
+    expect(updatedBody.models).toEqual(SONNET_CONFIG.models);
+    expect(await configs.get("sonnet-evaluator")).toEqual(updatedBody);
+
+    const patchedRepo = await patch("/api/configs/default", { description: "x" });
+    expect(patchedRepo.status).toBe(409);
+    const patchedGhost = await patch("/api/configs/ghost", { description: "x" });
+    expect(patchedGhost.status).toBe(404);
+
+    const deletedRepo = await del("/api/configs/default");
+    expect(deletedRepo.status).toBe(409);
+    const deletedGhost = await del("/api/configs/ghost");
+    expect(deletedGhost.status).toBe(404);
+
+    const deleted = await del("/api/configs/sonnet-evaluator");
+    expect(deleted.status).toBe(204);
+    expect(await configs.get("sonnet-evaluator")).toBeNull();
+  });
+
+  it("rejects an override patch that would make a saved config invalid", async () => {
+    await configs.create(SONNET_CONFIG);
+    const response = await patch("/api/configs/sonnet-evaluator", { models: { opportunityEvaluator: "x/y" } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("x/y");
+    expect((await configs.get("sonnet-evaluator"))?.models).toEqual(SONNET_CONFIG.models);
+  });
+
+  it("serves the curated model list", async () => {
+    const response = await get("/api/configs/models");
+    expect(response.status).toBe(200);
+    expect((await response.json()).models).toContain("google/gemini-2.5-flash");
   });
 });
 

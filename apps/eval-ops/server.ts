@@ -23,12 +23,14 @@
  */
 import path from 'node:path';
 
-import { createDefaultOpsContext, createOpsHandler, resolveBindHostname, resolveBindPort } from '../../packages/protocol/eval/ops/ops.server.js';
+import { createDefaultOpsContext, createOpsHandler, ensureConfigStorage, resolveBindHostname, resolveBindPort } from '../../packages/protocol/eval/ops/ops.server.js';
 import { createSiteFetch } from './site';
 
 const repoRoot = path.resolve(import.meta.dir, '../..');
 const port = resolveBindPort({ env: process.env, honourPlatformPort: true });
-const api = createOpsHandler(await createDefaultOpsContext({ repoRoot, uiUrl: '/', port }));
+const context = await createDefaultOpsContext({ repoRoot, uiUrl: '/', port });
+await ensureConfigStorage(context);
+const api = createOpsHandler(context);
 
 const server = Bun.serve({
   hostname: resolveBindHostname(process.env),

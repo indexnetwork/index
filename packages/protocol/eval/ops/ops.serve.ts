@@ -24,11 +24,12 @@
  */
 import path from "node:path";
 
-import { createDefaultOpsContext, createOpsHandler, resolveBindHostname, resolveBindPort } from "./ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, ensureConfigStorage, resolveBindHostname, resolveBindPort } from "./ops.server.js";
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..");
 const port = resolveBindPort({ env: process.env, honourPlatformPort: false });
 const context = await createDefaultOpsContext({ repoRoot, port });
+await ensureConfigStorage(context);
 
 const server = Bun.serve({
   hostname: resolveBindHostname(process.env),

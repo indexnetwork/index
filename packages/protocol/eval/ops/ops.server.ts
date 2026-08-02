@@ -33,10 +33,11 @@ import { renderRun, RunSpecSchema } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
 import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
+import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type ConfigStore } from "./ops.configs.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { loadProfiles, resolveProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, loadProfiles, resolveProfile, validateConfigOverrides, type ConfigProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
@@ -54,6 +55,8 @@ export interface OpsContext {
   executor: RunExecutor;
   queue: RunQueue;
   profilesDir: string;
+  /** Saved (DB-backed) eval configs; the writable counterpart of the shipped profiles. */
+  configs: ConfigStore;
   /** Resolved from the server's own .env.test. Never from a request, never sent to a client. */
   databaseUrl: string | undefined;
   /** Read-only live counts. Absent when no database client is configured. */
@@ -583,6 +586,8 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
     if (resource === "auth" && rest.length === 1 && rest[0] === "status") return authStatus(context, request);
     if (resource === "harnesses" && rest.length === 0) return json({ harnesses: Object.values(HARNESS_REGISTRY) });
     if (resource === "profiles" && rest.length === 0) return json({ profiles: await loadProfiles(context.profilesDir) });
+    if (resource === "configs" && rest.length === 0) return await listConfigs(context);
+    if (resource === "configs" && rest.length === 1 && rest[0] === "models") return json({ models: [...ALLOWED_CONFIG_MODELS] });
     if (resource === "artifacts" && rest.length === 0) return json(await context.artifacts.list());
     if (resource === "artifacts" && rest.length === 1) return await readArtifact(context, rest[0]);
     if (resource === "compare" && rest.length === 0) return await compare(context, url);
@@ -601,6 +606,15 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
     if (resource === "runs" && rest.length === 0) return await launchRun(context, state, request);
     if (resource === "runs" && rest.length === 2 && rest[1] === "cancel") return await cancelRun(context, rest[0]);
     if (resource === "fixture" && rest.length === 1 && rest[0] === "reset") return await resetFixture(context, state, request);
+    if (resource === "configs" && rest.length === 0) return await createConfig(context, request);
+  }
+
+  if (request.method === "PATCH") {
+    if (resource === "configs" && rest.length === 1) return await updateConfig(context, rest[0], request);
+  }
+
+  if (request.method === "DELETE") {
+    if (resource === "configs" && rest.length === 1) return await deleteConfig(context, rest[0]);
   }
 
   return null;
@@ -787,6 +801,81 @@ async function compare(context: OpsContext, url: URL): Promise<Response> {
     const status = (error as { code?: string }).code === "ENOENT" ? 404 : 422;
     return json({ error: scrubCredentials(`Artifacts could not be compared: ${messageOf(error)}`) }, status);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Configs
+// ---------------------------------------------------------------------------
+
+/**
+ * What a config edit may change. Names are immutable — a rename is delete +
+ * create — so `name` is absent here and `.strict()` refuses it if supplied.
+ */
+const ConfigPatchSchema = z
+  .object({
+    description: z.string().min(1).optional(),
+    models: z.record(z.string().min(1)).optional(),
+    env: z.record(z.string()).optional(),
+  })
+  .strict();
+
+async function listConfigs(context: OpsContext): Promise<Response> {
+  return json({ repo: await loadProfiles(context.profilesDir), saved: await context.configs.list() });
+}
+
+/** The shipped profiles are read-only through the API: edited in git, reviewed in a PR. */
+async function repoProfileNameConflict(context: OpsContext, name: string): Promise<Response | null> {
+  if (name === DEFAULT_PROFILE_NAME) {
+    return json({ error: `"${DEFAULT_PROFILE_NAME}" names the shipped default profile` }, 409);
+  }
+  const repoNames = new Set((await loadProfiles(context.profilesDir)).map((profile) => profile.name));
+  if (repoNames.has(name)) return json({ error: `"${name}" names a shipped repo profile` }, 409);
+  return null;
+}
+
+async function createConfig(context: OpsContext, request: Request): Promise<Response> {
+  const body = await readJson(request);
+  if (!body.ok) return json({ error: body.error }, body.status);
+  const parsed = ConfigProfileSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const issues = validateConfigOverrides(parsed.data);
+  if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
+  const conflict = await repoProfileNameConflict(context, parsed.data.name);
+  if (conflict !== null) return conflict;
+  try {
+    await context.configs.create(parsed.data);
+  } catch (error) {
+    if (error instanceof ConfigConflictError) return json({ error: error.message }, 409);
+    throw error;
+  }
+  return json(parsed.data, 201);
+}
+
+async function updateConfig(context: OpsContext, name: string, request: Request): Promise<Response> {
+  const conflict = await repoProfileNameConflict(context, name);
+  if (conflict !== null) return conflict;
+  const body = await readJson(request);
+  if (!body.ok) return json({ error: body.error }, body.status);
+  const parsed = ConfigPatchSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const existing = await context.configs.get(name);
+  if (existing === null) return json({ error: `Unknown config "${name}"` }, 404);
+  const merged: Pick<ConfigProfile, "models" | "env"> = {
+    models: parsed.data.models ?? existing.models,
+    env: parsed.data.env ?? existing.env,
+  };
+  const issues = validateConfigOverrides(merged);
+  if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
+  const updated = await context.configs.update(name, parsed.data);
+  if (updated === null) return json({ error: `Unknown config "${name}"` }, 404);
+  return json(updated);
+}
+
+async function deleteConfig(context: OpsContext, name: string): Promise<Response> {
+  const conflict = await repoProfileNameConflict(context, name);
+  if (conflict !== null) return conflict;
+  if (!(await context.configs.remove(name))) return json({ error: `Unknown config "${name}"` }, 404);
+  return new Response(null, { status: 204 });
 }
 
 // ---------------------------------------------------------------------------
@@ -1460,6 +1549,18 @@ export async function createDefaultOpsContext(options: {
     console.log(`[eval-ops] marked ${interrupted.length} orphaned run(s) as interrupted`);
   }
 
+  // Saved configs live in the same database fixture control uses. Constructing
+  // the store is lazy (Bun.SQL connects on first query), so tests can build
+  // this context without a socket; the table itself is created at boot by
+  // `ensureConfigStorage`, which only the real entrypoints call.
+  let configs: ConfigStore;
+  if (databaseUrl !== undefined) {
+    configs = new BunSqlConfigStore(databaseUrl);
+  } else {
+    console.warn("[eval-ops] DATABASE_URL is not set; saved configs live in memory and WILL NOT PERSIST across restarts.");
+    configs = new InMemoryConfigStore();
+  }
+
   return {
     evalDir,
     protocolDir,
@@ -1469,6 +1570,7 @@ export async function createDefaultOpsContext(options: {
     store,
     executor,
     queue: new RunQueue({ executor, store }),
+    configs,
     databaseUrl,
     inspector: new BunSqlFixtureInspector(),
     publicOrigin,
@@ -1509,6 +1611,21 @@ export async function createDefaultOpsContext(options: {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Boot-time config storage setup, called by the real entrypoints only.
+ *
+ * Idempotent DDL against the database `DATABASE_URL` names; a failure throws
+ * and refuses the boot, because a server that starts without its config table
+ * would look like it silently lost every saved config. An in-memory store
+ * (local runs without a database) has nothing to ensure.
+ */
+export async function ensureConfigStorage(context: OpsContext): Promise<void> {
+  if (context.configs instanceof BunSqlConfigStore) {
+    await context.configs.ensureTable();
+    console.log("[eval-ops] eval_ops_configs table is present");
+  }
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
