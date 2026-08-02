@@ -381,6 +381,99 @@ describe("POST /api/runs", () => {
   });
 });
 
+describe("launch with overrides", () => {
+  const PAYLOAD = { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} };
+
+  it("launches an ad-hoc run as experimental with the overrides env injected", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: { runs: 1 },
+      overrides: PAYLOAD,
+    });
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    expect(record.experimental).toBe(true);
+    expect(record.env.EVAL_MODEL_OVERRIDES).toBe(JSON.stringify(PAYLOAD.models));
+    expect(record.argv).toContain("--no-save");
+    await context.queue.drain();
+  });
+
+  it("fingerprints an ad-hoc run identically to a saved config with the same payload", async () => {
+    const created = await post("/api/configs", { name: "candidate", description: "c", ...PAYLOAD });
+    expect(created.status).toBe(201);
+
+    const named = (await (await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "candidate",
+      flags: { runs: 1 },
+    })).json()) as RunRecord;
+    const adHoc = (await (await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: { runs: 1 },
+      overrides: PAYLOAD,
+    })).json()) as RunRecord;
+
+    expect(named.profileFingerprint).toBe(adHoc.profileFingerprint);
+    expect(named.experimental).toBe(true);
+    expect(adHoc.experimental).toBe(true);
+    await context.queue.drain();
+  });
+
+  it("rejects a named profile combined with overrides", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "claude-evaluator",
+      flags: {},
+      overrides: PAYLOAD,
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/overrides/);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("rejects override models outside the curated list at launch", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: {},
+      overrides: { models: { opportunityEvaluator: "anthropic/claude-opus-9" }, env: {} },
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/claude-opus-9/);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("resolves a saved DB config exactly like a repo profile", async () => {
+    await configs.create({ name: "sonnet-evaluator", description: "d", ...PAYLOAD });
+
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "sonnet-evaluator",
+      flags: { runs: 1 },
+    });
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    expect(record.experimental).toBe(true);
+    expect(record.env.EVAL_MODEL_OVERRIDES).toBe(JSON.stringify(PAYLOAD.models));
+    expect(record.argv).toContain("--no-save");
+    await context.queue.drain();
+  });
+});
+
 describe("cross-origin requests", () => {
   // A page on any origin the operator has open can POST here with mode:"no-cors";
   // it cannot read the reply, but the run it launches spends real tokens.

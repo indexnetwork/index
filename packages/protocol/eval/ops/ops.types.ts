@@ -95,8 +95,10 @@ export interface RunFlags {
 export interface EvalRunSpec {
   kind: "eval";
   harness: OpsHarness;
-  /** Name of a committed profile. Never a set of raw overrides. */
+  /** Name of a committed or saved profile. "default" + overrides = ad-hoc. */
   profile: string;
+  /** Ad-hoc overrides; only valid with profile "default". Never credentials. */
+  overrides?: { models: Record<string, string>; env: Record<string, string> };
   flags: RunFlags;
 }
 

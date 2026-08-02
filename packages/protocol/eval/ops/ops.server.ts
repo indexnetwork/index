@@ -37,7 +37,7 @@ import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type Confi
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, loadProfiles, resolveProfile, validateConfigOverrides, type ConfigProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
@@ -894,12 +894,24 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   const parsed = RunSpecSchema.safeParse(body.value);
   if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
 
-  // The profile is looked up by name among committed files. The client cannot
-  // supply overrides, only choose from what is in the repository.
-  const profiles = await loadProfiles(context.profilesDir);
-  const profile = profiles.find((candidate) => candidate.name === parsed.data.profile);
-  if (profile === undefined) return json({ error: `Unknown profile "${parsed.data.profile}"` }, 400);
-  const resolved = resolveProfile(profile);
+  // Two ways to configure a run: ad-hoc overrides (the schema has already
+  // confined them to profile "default"), or a named profile resolved from
+  // both sources — shipped repo files and saved configs. Raw model/env keys
+  // never arrive outside the validated overrides object.
+  let resolved: ResolvedProfile;
+  if (parsed.data.overrides !== undefined) {
+    const issues = validateConfigOverrides(parsed.data.overrides);
+    if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
+    resolved = resolveAdHoc(parsed.data.overrides);
+  } else {
+    const repoProfiles = await loadProfiles(context.profilesDir);
+    const profile =
+      repoProfiles.find((candidate) => candidate.name === parsed.data.profile)
+      ?? await context.configs.get(parsed.data.profile)
+      ?? undefined;
+    if (profile === undefined) return json({ error: `Unknown profile "${parsed.data.profile}"` }, 400);
+    resolved = resolveProfile(profile);
+  }
 
   // Two phases: the report path contains the run id, and the id is minted by the
   // store, so the record is created first and then completed with its argv.
