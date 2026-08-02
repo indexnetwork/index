@@ -72,11 +72,42 @@ export class InMemoryConfigStore implements ConfigStore {
   }
 }
 
+/**
+ * Raw row shape as the driver returns it. Verified on Bun v1.3.14: Bun.SQL
+ * decodes jsonb columns to STRINGS, not objects — so `models`/`env` arrive as
+ * JSON text and must be parsed before schema validation.
+ */
 interface ConfigRow {
   name: string;
   description: string;
-  models: Record<string, string>;
-  env: Record<string, string>;
+  models: Record<string, string> | string;
+  env: Record<string, string> | string;
+}
+
+/** Parses one jsonb field, tolerating drivers that decode to objects instead. */
+function parseJsonbField(value: Record<string, string> | string, field: string, name: string): Record<string, string> {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as Record<string, string>;
+  } catch (error) {
+    throw new Error(
+      `Config "${name}" has corrupt JSON in ${field}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Normalises a raw driver row into a validated ConfigProfile. The unit under
+ * test for the row-mapping behaviour — kept pure so it needs no database.
+ */
+export function configFromRow(row: ConfigRow): ConfigProfile {
+  return ConfigProfileSchema.parse({
+    name: row.name,
+    description: row.description,
+    models: parseJsonbField(row.models, "models", row.name),
+    env: parseJsonbField(row.env, "env", row.name),
+  });
 }
 
 /**
@@ -100,12 +131,12 @@ export class BunSqlConfigStore implements ConfigStore {
 
   async list(): Promise<ConfigProfile[]> {
     const rows = (await this.sql`SELECT name, description, models, env FROM eval_ops_configs ORDER BY name`) as ConfigRow[];
-    return rows.map((row) => ConfigProfileSchema.parse(row));
+    return rows.map(configFromRow);
   }
 
   async get(name: string): Promise<ConfigProfile | null> {
     const rows = (await this.sql`SELECT name, description, models, env FROM eval_ops_configs WHERE name = ${name}`) as ConfigRow[];
-    return rows.length === 0 ? null : ConfigProfileSchema.parse(rows[0]);
+    return rows.length === 0 ? null : configFromRow(rows[0]);
   }
 
   async create(profile: ConfigProfile): Promise<void> {

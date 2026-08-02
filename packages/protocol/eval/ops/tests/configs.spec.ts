@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { CONFIG_TABLE_DDL, ConfigConflictError, InMemoryConfigStore } from "../ops.configs.js";
+import { CONFIG_TABLE_DDL, ConfigConflictError, InMemoryConfigStore, configFromRow } from "../ops.configs.js";
 
 const candidate = {
   name: "sonnet-evaluator",
@@ -39,5 +39,49 @@ describe("InMemoryConfigStore", () => {
 describe("CONFIG_TABLE_DDL", () => {
   it("is idempotent", () => {
     expect(CONFIG_TABLE_DDL).toContain("CREATE TABLE IF NOT EXISTS eval_ops_configs");
+  });
+});
+
+describe("configFromRow", () => {
+  it("parses string-typed jsonb fields (verified Bun v1.3.14 driver behaviour)", () => {
+    const profile = configFromRow({
+      name: "sonnet-evaluator",
+      description: "evaluator on sonnet",
+      models: JSON.stringify({ opportunityEvaluator: "anthropic/claude-sonnet-4" }),
+      env: JSON.stringify({ RUN_OPPORTUNITY_EVAL_IN_PARALLEL: "true" }),
+    });
+    expect(profile).toEqual({
+      name: "sonnet-evaluator",
+      description: "evaluator on sonnet",
+      models: { opportunityEvaluator: "anthropic/claude-sonnet-4" },
+      env: { RUN_OPPORTUNITY_EVAL_IN_PARALLEL: "true" },
+    });
+  });
+
+  it("passes object-typed fields through unchanged", () => {
+    const profile = configFromRow(candidate);
+    expect(profile).toEqual(candidate);
+  });
+
+  it("surfaces corrupt JSON as a clear error naming the config and field", () => {
+    expect(() =>
+      configFromRow({
+        name: "broken",
+        description: "x",
+        models: "{not json",
+        env: {},
+      }),
+    ).toThrow(/Config "broken" has corrupt JSON in models/);
+  });
+
+  it("still rejects schema violations (schema not relaxed)", () => {
+    expect(() =>
+      configFromRow({
+        name: "Not Kebab Case",
+        description: "x",
+        models: {},
+        env: {},
+      }),
+    ).toThrow();
   });
 });
