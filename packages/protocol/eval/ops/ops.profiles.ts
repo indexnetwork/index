@@ -18,6 +18,7 @@ import { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 // browser app imports it directly; re-exported here for server-side consumers.
 export { ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA } from "./ops.metadata.js";
 export type { AgentMeta, EnvFlagMeta, ModelMeta } from "./ops.metadata.js";
+import { ENV_FLAG_METADATA } from "./ops.metadata.js";
 
 export const ConfigProfileSchema = z
   .object({
@@ -104,6 +105,41 @@ function overridableAgents(): ReadonlySet<string> {
 }
 
 /**
+ * Validates env override values against the flag schemas in ENV_FLAG_METADATA.
+ * Returns human-readable issues; empty means valid. Allowlist membership is
+ * checked separately by validateConfigOverrides — unknown keys are skipped
+ * here so each problem is reported exactly once.
+ */
+export function validateProfileEnv(env: Record<string, string>): string[] {
+  const issues: string[] = [];
+  for (const [key, value] of Object.entries(env)) {
+    const meta = ENV_FLAG_METADATA.find((flag) => flag.key === key);
+    if (meta === undefined) continue;
+    switch (meta.kind) {
+      case "enum":
+      case "boolean":
+        if (!meta.values?.includes(value)) {
+          issues.push(`env ${key} value "${value}" is not valid. Expected one of: ${meta.values?.join(", ")}`);
+        }
+        break;
+      case "integer":
+        if (!/^-?\d+$/.test(value)) {
+          issues.push(`env ${key} value "${value}" is not a valid integer`);
+        }
+        break;
+      case "number":
+        if (!Number.isFinite(Number(value)) || Number(value) <= 0) {
+          issues.push(`env ${key} value "${value}" must be a positive number`);
+        }
+        break;
+      case "string":
+        break;
+    }
+  }
+  return issues;
+}
+
+/**
  * Validates client-originated overrides. Returns human-readable issues;
  * empty means valid. Used by the config routes and the launch path — never
  * by the repo profile loader, whose files are code-reviewed.
@@ -126,6 +162,7 @@ export function validateConfigOverrides(overrides: {
       issues.push(`env key ${key} is not in PROFILE_ENV_ALLOWLIST`);
     }
   }
+  issues.push(...validateProfileEnv(overrides.env));
   return issues;
 }
 

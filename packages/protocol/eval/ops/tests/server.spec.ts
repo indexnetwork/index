@@ -457,6 +457,25 @@ describe("launch with overrides", () => {
     expect(executor.starts).toHaveLength(0);
   });
 
+  it("rejects an invalid override env value at launch, naming the key and valid values", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: {},
+      overrides: { models: {}, env: { POOL_QUESTIONS_MODE: "banana" } },
+    });
+
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+    expect(error).toContain("banana");
+    expect(error).toContain("off");
+    expect(error).toContain("on");
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
   it("resolves a saved DB config exactly like a repo profile", async () => {
     await configs.create({ name: "sonnet-evaluator", description: "d", ...PAYLOAD });
 
@@ -971,6 +990,32 @@ describe("config routes", () => {
     expect((await response.json()).error).toContain("OPENROUTER_API_KEY");
   });
 
+  it("rejects an invalid env value with a 400 naming the key and valid values", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, env: { POOL_QUESTIONS_MODE: "banana" } });
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+    expect(error).toContain("banana");
+    expect(error).toContain("off");
+    expect(error).toContain("on");
+  });
+
+  it("rejects a non-integer env value with a 400 naming the key", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, env: { NEGOTIATION_MAX_TURNS_CHAT: "lots" } });
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("NEGOTIATION_MAX_TURNS_CHAT");
+    expect(error).toMatch(/integer/i);
+  });
+
+  it("still saves a config whose env values are all valid", async () => {
+    const response = await post("/api/configs", {
+      ...SONNET_CONFIG,
+      env: { POOL_QUESTIONS_MINING: "shadow", NEGOTIATION_MAX_TURNS_CHAT: "8", DISCOVERY_REJECTION_COOLDOWN_DAYS: "0.5" },
+    });
+    expect(response.status).toBe(201);
+  });
+
   it("updates and deletes a saved config, 404s unknown names, 409s repo profile names", async () => {
     await configs.create(SONNET_CONFIG);
 
@@ -1002,6 +1047,16 @@ describe("config routes", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toContain("x/y");
     expect((await configs.get("sonnet-evaluator"))?.models).toEqual(SONNET_CONFIG.models);
+  });
+
+  it("rejects an env patch with an invalid value, naming the key and valid values", async () => {
+    await configs.create(SONNET_CONFIG);
+    const response = await patch("/api/configs/sonnet-evaluator", { env: { POOL_QUESTIONS_MODE: "banana" } });
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+    expect(error).toContain("banana");
+    expect((await configs.get("sonnet-evaluator"))?.env).toEqual(SONNET_CONFIG.env);
   });
 
   it("serves the curated model list", async () => {
