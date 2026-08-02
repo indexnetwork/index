@@ -41,6 +41,27 @@ export type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.p
 
 import type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
 
+/**
+ * Guided-configuration metadata shapes, re-exported from the ops core for the
+ * same one-definition reason as the wire types above. ops.metadata.ts is a
+ * dependency-free module (like ops.allowlist.ts), and these are `import type`
+ * only — nothing from the protocol enters the bundle at runtime.
+ */
+export type {
+  AgentMeta,
+  EnvFlagMeta,
+  ModelMeta,
+} from '../../../../packages/protocol/eval/ops/ops.metadata';
+
+import type { AgentMeta, EnvFlagMeta, ModelMeta } from '../../../../packages/protocol/eval/ops/ops.metadata';
+
+/** Exactly what GET /api/configs/metadata serves. */
+export interface ConfigMetadata {
+  env: readonly EnvFlagMeta[];
+  models: readonly ModelMeta[];
+  harnessAgents: Record<OpsHarness, readonly AgentMeta[]>;
+}
+
 import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
 
 export interface RunsResult {
@@ -346,6 +367,10 @@ export const api = {
 
   async configModels(): Promise<{ models: string[] }> {
     return fetchJson('/api/configs/models');
+  },
+
+  async configMetadata(): Promise<ConfigMetadata> {
+    return fetchJson('/api/configs/metadata');
   },
 
   async createConfig(profile: ConfigProfile): Promise<ConfigProfile> {
