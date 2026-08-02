@@ -34296,6 +34296,35 @@ const ROUTE_BY_SEGMENT = {
  * @returns {DeepLinkRoute | null}
  */
 function parseDeepLink(rawUrl, options = {}) {
+  const path = claimedPath(rawUrl, options);
+  if (path === null) return null;
+  return routeFromPath(path);
+}
+
+/**
+ * Is this URL ours at all — the `index:` scheme, or https on a host we claim —
+ * regardless of whether it resolves to a route?
+ *
+ * The two questions are genuinely different: the web AASA claims `/u/*`, and
+ * `*` matches path separators, so macOS can hand over `https://index.network/
+ * u/<id>/chat` — a real web route with no screen in the app. The window has
+ * already been raised by then, so the app says so instead of dropping it.
+ *
+ * @param {unknown} rawUrl
+ * @param {{ hosts?: Array<string> }} [options]
+ * @returns {boolean}
+ */
+function isIndexDeepLink(rawUrl, options = {}) {
+  return claimedPath(rawUrl, options) !== null;
+}
+
+/**
+ * Return the path of a URL this app claims, or null when the URL is not ours.
+ * @param {unknown} rawUrl
+ * @param {{ hosts?: Array<string> }} options
+ * @returns {string | null}
+ */
+function claimedPath(rawUrl, options) {
   if (typeof rawUrl !== 'string') return null;
   const raw = rawUrl.trim();
   if (!raw) return null;
@@ -34309,7 +34338,7 @@ function parseDeepLink(rawUrl, options = {}) {
     // thing. The WHATWG parser reads the authority of a non-special scheme as
     // a host, which would split `o` off the path, so slice it by hand instead.
     const rest = raw.slice(schemeMatch[0].length).replace(/^\/*/, '');
-    return routeFromPath(stripQueryAndFragment(rest));
+    return stripQueryAndFragment(rest);
   }
 
   if (scheme !== 'https') return null;
@@ -34330,7 +34359,7 @@ function parseDeepLink(rawUrl, options = {}) {
   );
   if (!allowed) return null;
 
-  return routeFromPath(url.pathname);
+  return url.pathname;
 }
 
 /**
@@ -34373,7 +34402,7 @@ function safeDecode(segment) {
   }
 }
 
-window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink };
+window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink, isIndexDeepLink: isIndexDeepLink };
 
 })();
 </script>
@@ -43066,7 +43095,16 @@ function App() {
       const route = (window.IndexApi && window.IndexApi.parseDeepLink)
         ? window.IndexApi.parseDeepLink(url)
         : null;
-      if (!route) return;                       // not ours, stay quiet
+      if (!route) {
+        // Not ours: stay quiet. Ours but unroutable (the AASA claims `/u/*`,
+        // and macOS hands over web-only routes like `/u/<id>/chat`): the
+        // window is already up, so say something instead of dropping it.
+        const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
+          ? window.IndexApi.isIndexDeepLink(url)
+          : false;
+        if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
+        return;
+      }
       if (route.route === "legacy-connect") {
         // Connect links were retired; there is nothing left to resolve them to.
         setNotice("this link is no longer supported — open the opportunity from your radar.");
@@ -43115,7 +43153,13 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        // Drop the whole deep-link pipeline, not just what is on screen: a
+        // resolve still in flight would otherwise render a counterpart's card
+        // over the login screen. Clearing resolvingRef makes the in-flight
+        // resolve fail its own ownership check and bail when it completes.
         setLinkedCard(null);
+        setPendingLink(null);
+        resolvingRef.current = null;
         setScreen("login");
       }
     });

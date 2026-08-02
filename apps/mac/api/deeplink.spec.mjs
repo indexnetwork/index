@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { parseDeepLink } from './deeplink.mjs';
+import { isIndexDeepLink, parseDeepLink } from './deeplink.mjs';
 
 const OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b222';
 const USER_ID = '00000000-0000-4000-8000-00000000c333';
@@ -84,6 +84,24 @@ describe('mac deep-link routing contract', () => {
     expect(parseDeepLink('index://o')).toBeNull();
     expect(parseDeepLink('index://o/')).toBeNull();
     expect(parseDeepLink('index://')).toBeNull();
+  });
+
+  it('separates "is this ours" from "does it route"', () => {
+    // Routable links are ours.
+    expect(isIndexDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`)).toBe(true);
+    expect(isIndexDeepLink(`index://u/${USER_ID}`)).toBe(true);
+    // Claimed host, no route in the app: the AASA claims /u/* and `*` matches
+    // separators, so macOS hands over web-only routes like /u/<id>/chat.
+    expect(parseDeepLink(`https://index.network/u/${USER_ID}/chat`)).toBeNull();
+    expect(isIndexDeepLink(`https://index.network/u/${USER_ID}/chat`)).toBe(true);
+    expect(isIndexDeepLink('https://index.network/settings')).toBe(true);
+    expect(isIndexDeepLink('index://nope')).toBe(true);
+    // Not ours: foreign hosts, other schemes, junk.
+    expect(isIndexDeepLink(`https://evil.example/o/${OPPORTUNITY_ID}`)).toBe(false);
+    expect(isIndexDeepLink(`http://index.network/o/${OPPORTUNITY_ID}`)).toBe(false);
+    expect(isIndexDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`, { hosts: ['staging.index.network'] })).toBe(false);
+    expect(isIndexDeepLink('not a url')).toBe(false);
+    expect(isIndexDeepLink(null)).toBe(false);
   });
 
   it('never throws on malformed or non-string input', () => {

@@ -102,7 +102,16 @@ function App() {
       const route = (window.IndexApi && window.IndexApi.parseDeepLink)
         ? window.IndexApi.parseDeepLink(url)
         : null;
-      if (!route) return;                       // not ours, stay quiet
+      if (!route) {
+        // Not ours: stay quiet. Ours but unroutable (the AASA claims `/u/*`,
+        // and macOS hands over web-only routes like `/u/<id>/chat`): the
+        // window is already up, so say something instead of dropping it.
+        const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
+          ? window.IndexApi.isIndexDeepLink(url)
+          : false;
+        if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
+        return;
+      }
       if (route.route === "legacy-connect") {
         // Connect links were retired; there is nothing left to resolve them to.
         setNotice("this link is no longer supported — open the opportunity from your radar.");
@@ -151,7 +160,13 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        // Drop the whole deep-link pipeline, not just what is on screen: a
+        // resolve still in flight would otherwise render a counterpart's card
+        // over the login screen. Clearing resolvingRef makes the in-flight
+        // resolve fail its own ownership check and bail when it completes.
         setLinkedCard(null);
+        setPendingLink(null);
+        resolvingRef.current = null;
         setScreen("login");
       }
     });

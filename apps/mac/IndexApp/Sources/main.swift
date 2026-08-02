@@ -528,6 +528,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// Deep links that arrived before the page could receive them (cold launch,
     /// or a reload in flight). Flushed in arrival order from didFinish.
     private var pendingDeepLinks: [String] = []
+    /// Bound so a page that never loads cannot grow the queue without limit;
+    /// the oldest entries are dropped first, the user's latest click survives.
+    private let maxPendingDeepLinks = 8
     private var webViewReady = false
 
     /// Smallest window the web layout renders correctly at. See the note where
@@ -690,7 +693,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webView(_ webView: WKWebView,
                  didFail navigation: WKNavigation!,
                  withError error: Error) {
+        deepLinkNavigationFailed()
         presentError("Failed to load: \(error.localizedDescription)")
+    }
+
+    // A provisional failure is often just a cancelled navigation, so it stays
+    // silent as before — but readiness still has to come back.
+    func webView(_ webView: WKWebView,
+                 didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        deepLinkNavigationFailed()
+    }
+
+    /// didStartProvisionalNavigation clears `webViewReady` so links are not
+    /// dispatched into a document about to be replaced. If that navigation then
+    /// fails, nothing else would ever restore readiness and every later link
+    /// would queue forever, so restore it against whatever document is still
+    /// loaded and flush what is queued.
+    private func deepLinkNavigationFailed() {
+        guard webView != nil else { return }
+        webViewReady = true
+        flushPendingDeepLinks()
     }
 
     // MARK: - Deep links (index:// scheme + universal links)
@@ -726,6 +749,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
         guard webViewReady, webView != nil else {
             pendingDeepLinks.append(raw)
+            if pendingDeepLinks.count > maxPendingDeepLinks {
+                pendingDeepLinks.removeFirst(pendingDeepLinks.count - maxPendingDeepLinks)
+            }
             return
         }
         dispatchDeepLink(raw)
@@ -744,6 +770,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         webViewReady = true
+        flushPendingDeepLinks()
+    }
+
+    private func flushPendingDeepLinks() {
         let queued = pendingDeepLinks
         pendingDeepLinks.removeAll()
         for raw in queued { dispatchDeepLink(raw) }

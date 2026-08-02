@@ -46,6 +46,35 @@ const ROUTE_BY_SEGMENT = {
  * @returns {DeepLinkRoute | null}
  */
 export function parseDeepLink(rawUrl, options = {}) {
+  const path = claimedPath(rawUrl, options);
+  if (path === null) return null;
+  return routeFromPath(path);
+}
+
+/**
+ * Is this URL ours at all — the `index:` scheme, or https on a host we claim —
+ * regardless of whether it resolves to a route?
+ *
+ * The two questions are genuinely different: the web AASA claims `/u/*`, and
+ * `*` matches path separators, so macOS can hand over `https://index.network/
+ * u/<id>/chat` — a real web route with no screen in the app. The window has
+ * already been raised by then, so the app says so instead of dropping it.
+ *
+ * @param {unknown} rawUrl
+ * @param {{ hosts?: Array<string> }} [options]
+ * @returns {boolean}
+ */
+export function isIndexDeepLink(rawUrl, options = {}) {
+  return claimedPath(rawUrl, options) !== null;
+}
+
+/**
+ * Return the path of a URL this app claims, or null when the URL is not ours.
+ * @param {unknown} rawUrl
+ * @param {{ hosts?: Array<string> }} options
+ * @returns {string | null}
+ */
+function claimedPath(rawUrl, options) {
   if (typeof rawUrl !== 'string') return null;
   const raw = rawUrl.trim();
   if (!raw) return null;
@@ -59,7 +88,7 @@ export function parseDeepLink(rawUrl, options = {}) {
     // thing. The WHATWG parser reads the authority of a non-special scheme as
     // a host, which would split `o` off the path, so slice it by hand instead.
     const rest = raw.slice(schemeMatch[0].length).replace(/^\/*/, '');
-    return routeFromPath(stripQueryAndFragment(rest));
+    return stripQueryAndFragment(rest);
   }
 
   if (scheme !== 'https') return null;
@@ -80,7 +109,7 @@ export function parseDeepLink(rawUrl, options = {}) {
   );
   if (!allowed) return null;
 
-  return routeFromPath(url.pathname);
+  return url.pathname;
 }
 
 /**

@@ -23,7 +23,7 @@ API_EXPORTS = [
     "mapPeopleFromHomeSections", "mapPersonFromHomeCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
-    "parseDeepLink",
+    "parseDeepLink", "isIndexDeepLink",
 ]
 
 # Pinned CDN URLs -> local vendored files (downloaded once into src/vendor/).
