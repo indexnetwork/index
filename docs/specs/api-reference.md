@@ -171,13 +171,13 @@ API keys created for personal agents include `metadata.agentId`. MCP auth resolv
 
 MCP clients acting for a Telegram user MAY send that user's handle as `x-index-telegram-username` (or the alias `x-index-telegram-handle`; the username header wins when both are present). The value is normalized before use — a leading `@` and a `t.me` / `telegram.me` URL prefix are stripped, and the remainder must match `[A-Za-z0-9_]{5,32}`. A missing or unparseable value is treated as no handle at all.
 
-When a usable handle is present, the MCP auth resolver binds it to the authenticated identity:
+When a usable handle is present, the MCP auth resolver tries to bind it to the authenticated identity. Binding is additive and optional — a handle the server cannot attribute to the caller is skipped, never rejected, because the caller is already authenticated as themselves and any client (not just Telegram ones) may send the header:
 
-- If the authenticated user already has a stored `telegram` social and none of the stored values match the header, the request is rejected (`authenticated_user_handle_mismatch`).
-- If the handle is already stored for a different user, the request is rejected (`handle_belongs_to_other_user`).
+- If the authenticated user already has a stored `telegram` social and none of the stored values match the header, the binding is skipped and a warning is logged (`authenticated_user_handle_mismatch`).
+- If the handle is already stored for a different user, the binding is skipped and a warning is logged (`handle_belongs_to_other_user`).
 - Otherwise the handle is upserted into `user_socials` under `label = 'telegram'`, preserving the user's other socials. A persistence failure is logged and does not fail the request.
 
-The verification reads themselves are not best-effort: if the socials lookup or the handle-owner lookup throws, the request is rejected with a Telegram identity error rather than binding unverified or continuing unbound. Only the final write is allowed to fail silently.
+The verification reads are the one fatal step: if the socials lookup or the handle-owner lookup throws, the request is rejected with a Telegram identity error rather than binding unverified. Both the mismatch decision and the final write leave the request intact.
 
 This is **identity binding only**: it records where the user is reachable on Telegram (which Telegram opportunity delivery consumes) and never influences a redirect, rendering, or routing decision. The former routing header `x-index-surface`, the `clientSurface` value it threaded through the protocol, and the connect links it steered no longer exist — the MCP API has no surface header.
 

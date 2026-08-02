@@ -421,8 +421,10 @@ export function resolveMcpApiKeyPrincipal(
 }
 
 /**
- * Distinguishes Telegram identity verification/mismatch failures from auth
- * (token / API-key) failures. The auth resolver's per-path catch blocks
+ * Distinguishes Telegram identity verification (infrastructure) failures from
+ * auth (token / API-key) failures. A handle that simply belongs to someone
+ * else is not one of these: that skips the binding and the request proceeds.
+ * The auth resolver's per-path catch blocks
  * reclassify unknown errors (e.g. "API key authentication failed"); rethrowing
  * this type unchanged keeps the client-facing reason accurate and avoids
  * muddling auth alerting.
@@ -434,17 +436,40 @@ class TelegramIdentityError extends Error {
   }
 }
 
-async function finalizeMcpIdentity(telegramHandle: string | undefined, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
-  // Telegram identity binding: only telegram-surfaced clients send the
-  // x-index-telegram-username/-handle headers, so header presence is the
-  // binding signal now that surface routing is gone.
+/**
+ * Data access used by Telegram identity binding, injectable so the binding
+ * policy can be tested without a database.
+ */
+export interface TelegramBindingPort {
+  getUserSocials(userId: string): Promise<TelegramSocial[]>;
+  findTelegramHandleOwners(handle: string): Promise<TelegramSocial[]>;
+  setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void>;
+}
+
+const defaultTelegramBindingPort: TelegramBindingPort = {
+  getUserSocials: (userId) => chatDatabaseAdapter.getUserSocials(userId),
+  findTelegramHandleOwners: (handle) => chatDatabaseAdapter.findTelegramHandleOwners(handle),
+  setSocials: (userId, socials) => userService.setSocials(userId, socials),
+};
+
+export async function finalizeMcpIdentity(
+  telegramHandle: string | undefined,
+  identity: ResolvedMcpIdentity,
+  port: TelegramBindingPort = defaultTelegramBindingPort,
+): Promise<ResolvedMcpIdentity> {
+  // Telegram identity binding: any client may send the
+  // x-index-telegram-username/-handle headers (the Hermes plugin sends one
+  // whenever INDEX_TELEGRAM_USERNAME is set), so header presence is only a
+  // request to bind, never a claim of identity. Binding is additive and
+  // optional: a handle we cannot attribute to the authenticated user is
+  // skipped, not rejected.
   if (!telegramHandle) return identity;
 
   let existingSocials: TelegramSocial[];
   let matchingTelegramSocials: TelegramSocial[];
   try {
-    existingSocials = await chatDatabaseAdapter.getUserSocials(identity.userId);
-    matchingTelegramSocials = await chatDatabaseAdapter.findTelegramHandleOwners(telegramHandle);
+    existingSocials = await port.getUserSocials(identity.userId);
+    matchingTelegramSocials = await port.findTelegramHandleOwners(telegramHandle);
   } catch (err) {
     logger.warn('Failed to verify Telegram MCP handle', {
       userId: identity.userId,
@@ -461,20 +486,24 @@ async function finalizeMcpIdentity(telegramHandle: string | undefined, identity:
     matchingTelegramSocials,
   });
   if (mismatch) {
-    logger.warn('Telegram MCP handle mismatch', {
+    // Non-fatal: the caller is already authenticated as themselves and simply
+    // gets no Telegram binding. Failing the request instead would let one
+    // misconfigured INDEX_TELEGRAM_USERNAME break every MCP call for a
+    // deployment, and skipping the write gives up nothing security-wise.
+    logger.warn('Telegram MCP handle mismatch — skipping identity binding', {
       userId: identity.userId,
       telegramHandle,
       reason: mismatch.reason,
       ownerUserId: mismatch.ownerUserId,
     });
-    throw new TelegramIdentityError('Telegram handle does not match authenticated user');
+    return identity;
   }
 
   try {
     const merged = mergeTelegramHandleIntoSocials(existingSocials, telegramHandle);
     if (!merged) return identity;
 
-    await userService.setSocials(identity.userId, merged);
+    await port.setSocials(identity.userId, merged);
   } catch (err) {
     logger.warn('Failed to persist Telegram MCP handle', {
       userId: identity.userId,

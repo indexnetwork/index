@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { findTelegramHandleMismatch, resolveMcpApiKeyPrincipal, telegramHandleFromRequest } from '../mcp.controller';
+import { finalizeMcpIdentity, findTelegramHandleMismatch, resolveMcpApiKeyPrincipal, telegramHandleFromRequest, type TelegramBindingPort } from '../mcp.controller';
 
 function requestWithHeaders(headers: Record<string, string>): Request {
   return new Request('https://protocol.index.network/mcp', { headers });
@@ -86,6 +86,73 @@ describe('findTelegramHandleMismatch', () => {
       authenticatedUserSocials: [],
       matchingTelegramSocials: [],
     })).toBeNull();
+  });
+});
+
+describe('finalizeMcpIdentity', () => {
+  const identity = { userId: 'edge-city-user', isSessionAuth: true, networkScopeId: null };
+
+  function port(overrides: Partial<TelegramBindingPort> = {}): TelegramBindingPort & { written: Array<{ label: string; value: string }[]> } {
+    const written: Array<{ label: string; value: string }[]> = [];
+    return {
+      written,
+      getUserSocials: async () => [],
+      findTelegramHandleOwners: async () => [],
+      setSocials: async (_userId, socials) => { written.push(socials); },
+      ...overrides,
+    };
+  }
+
+  test('binds a handle that is free and consistent with the authenticated user', async () => {
+    const deps = port();
+
+    expect(await finalizeMcpIdentity('seren_tg', identity, deps)).toEqual(identity);
+    expect(deps.written).toEqual([[{ label: 'telegram', value: 'seren_tg' }]]);
+  });
+
+  test('does nothing when no handle was sent', async () => {
+    const deps = port({
+      getUserSocials: async () => { throw new Error('should not be called'); },
+    });
+
+    expect(await finalizeMcpIdentity(undefined, identity, deps)).toEqual(identity);
+    expect(deps.written).toEqual([]);
+  });
+
+  test('skips the binding without failing the request when the handle belongs to another user', async () => {
+    const deps = port({
+      findTelegramHandleOwners: async () => [{ userId: 'seren-user', label: 'telegram', value: 'seren_tg' }],
+    });
+
+    // A misconfigured INDEX_TELEGRAM_USERNAME must not take down every MCP
+    // call for the deployment: the caller stays authenticated as themselves.
+    expect(await finalizeMcpIdentity('seren_tg', identity, deps)).toEqual(identity);
+    expect(deps.written).toEqual([]);
+  });
+
+  test('skips the binding when the authenticated user has a different stored handle', async () => {
+    const deps = port({
+      getUserSocials: async () => [{ userId: 'edge-city-user', label: 'telegram', value: 'edge_city_tg' }],
+    });
+
+    expect(await finalizeMcpIdentity('seren_tg', identity, deps)).toEqual(identity);
+    expect(deps.written).toEqual([]);
+  });
+
+  test('still fails the request when verification itself cannot run', async () => {
+    const deps = port({
+      findTelegramHandleOwners: async () => { throw new Error('db down'); },
+    });
+
+    await expect(finalizeMcpIdentity('seren_tg', identity, deps)).rejects.toThrow(/Telegram handle verification failed/);
+  });
+
+  test('never fails the request when the socials write fails', async () => {
+    const deps = port({
+      setSocials: async () => { throw new Error('write failed'); },
+    });
+
+    expect(await finalizeMcpIdentity('seren_tg', identity, deps)).toEqual(identity);
   });
 });
 
