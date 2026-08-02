@@ -312,6 +312,47 @@ describe("fast signal intake", () => {
     expect(mocks.proposal).toHaveBeenCalledTimes(2);
   });
 
+  test("merges the clarification into the LAST round when the plan has three questions", async () => {
+    mocks.question.mockResolvedValueOnce(followUpResponse(["What would you bring?", "When do you need this?"], 3));
+    mocks.proposal
+      .mockRejectedValueOnce({ code: "verification_rejected", clarification: question("Narrow it down?") })
+      .mockResolvedValueOnce({
+        proposalId: "prop-2", description: "Sharper signal.", lookingFor: "l", youBring: "y",
+      });
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+
+    await screen.findByText("When do you need this?");
+    fireEvent.change(screen.getByPlaceholderText(/or tell me in your own words/i), {
+      target: { value: "next month" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    fireEvent.click(await screen.findByText("Builders"));
+
+    await screen.findByText("Narrow it down?");
+    fireEvent.change(screen.getByPlaceholderText(/or tell me in your own words/i), {
+      target: { value: "by Friday" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    await screen.findByText(/does this feel right/i);
+    expect(mocks.proposal).toHaveBeenCalledTimes(2);
+    const retry = mocks.proposal.mock.calls[1][0] as {
+      rounds: Array<{ prompt: string; answer: { selectedOptions: string[]; freeText?: string } }>;
+    };
+    expect(retry.rounds).toHaveLength(3);
+    expect(retry.rounds[0]).toEqual({
+      prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] },
+    });
+    expect(retry.rounds[1]).toEqual({
+      prompt: "What would you bring?", answer: { selectedOptions: ["A design partner"] },
+    });
+    expect(retry.rounds[2].answer.freeText).toBe("next month — by Friday");
+  });
+
   test("a non-empty server synthesis wins over the locally derived answer label", async () => {
     mocks.proposal.mockResolvedValue({
       proposalId: "prop-1", description: "Looking for a design partner.",

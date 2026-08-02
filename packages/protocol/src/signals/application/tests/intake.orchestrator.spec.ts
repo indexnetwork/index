@@ -95,6 +95,20 @@ describe("SignalIntakeOrchestrator.generateFollowUps", () => {
 
     expect(result).toEqual({ questions: [FALLBACK_BRING_QUESTION], plannedFollowUpCount: 1 });
   });
+
+  it("serves the static fallback when the planner returns zero follow-ups with budget remaining", async () => {
+    const orchestrator = new SignalIntakeOrchestrator({
+      planner: stub({ questions: [], plannedFollowUpCount: 0 }),
+    });
+
+    const result = await orchestrator.generateFollowUps({
+      brief: "b",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      maxFollowUps: 2,
+    });
+
+    expect(result).toEqual({ questions: [FALLBACK_BRING_QUESTION], plannedFollowUpCount: 1 });
+  });
 });
 
 describe("SignalIntakeOrchestrator.synthesize", () => {
@@ -136,6 +150,31 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
 
     expect(capture.prompt).toContain("Where constraint: Berlin");
     expect(capture.prompt).toContain("Revision feedback on the previous draft: shorter please");
+  });
+
+  it("propagates synthesis model failure so the caller can mark the run failed", async () => {
+    const orchestrator = new SignalIntakeOrchestrator({
+      synthesis: { invoke: async () => { throw new Error("model down"); } } as never,
+    });
+
+    await expect(orchestrator.synthesize({
+      brief: "b",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+    })).rejects.toThrow("model down");
+  });
+
+  it("renders revision feedback in its own slot, never as a where constraint", async () => {
+    const capture: { prompt?: string } = {};
+    const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
+
+    await orchestrator.synthesize({
+      brief: "b",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      feedback: "shorter please",
+    });
+
+    expect(capture.prompt).toContain("Revision feedback on the previous draft: shorter please");
+    expect(capture.prompt).not.toContain("Where constraint");
   });
 });
 

@@ -184,6 +184,14 @@ export class SignalIntakeOrchestrator {
       const questions = raw.questions
         .slice(0, input.maxFollowUps)
         .map((q) => normalizeIntakePack({ brief: input.brief, question: q }).question);
+      // Backstop: while budget remains, a successful empty plan must not
+      // silently shrink the interview; serve the static fallback instead.
+      if (questions.length === 0 && input.maxFollowUps > 0) {
+        return {
+          questions: [FALLBACK_BRING_QUESTION],
+          plannedFollowUpCount: input.plannedFollowUpCount ?? 1,
+        };
+      }
       return {
         questions,
         plannedFollowUpCount: input.plannedFollowUpCount
