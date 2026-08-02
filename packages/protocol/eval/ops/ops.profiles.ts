@@ -14,6 +14,11 @@ export const DEFAULT_PROFILE_NAME = "default";
 export { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 import { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 
+// Guided-editing metadata is likewise dependency-free (ops.metadata.ts) so the
+// browser app imports it directly; re-exported here for server-side consumers.
+export { ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA } from "./ops.metadata.js";
+export type { AgentMeta, EnvFlagMeta, ModelMeta } from "./ops.metadata.js";
+
 export const ConfigProfileSchema = z
   .object({
     name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "profile names are lowercase kebab-case"),
