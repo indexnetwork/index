@@ -22,6 +22,7 @@ comparing outcomes.
 | Storage for UI-created configs | Neon DB table; repo profiles stay as shipped read-only defaults |
 | Model freedom | Curated server-side allowlist only (live spend on a shared URL; no actor attribution yet) |
 | Knobs beyond models | Env toggles from the existing `PROFILE_ENV_ALLOWLIST` only. Judge model and runs/seed stay per-run launch fields, not config fields |
+| Payoff loop | A/B launch: two runs under different configurations, comparison shown automatically when both end (addendum below) |
 
 ## Design
 
@@ -150,6 +151,47 @@ each harness exercises — next to the `question`/`detail` added in the run-view
 work. This drives the launch form's filtered dropdowns and keeps the mapping
 in one reviewed place.
 
+## A/B runs with automatic comparison (addendum)
+
+The payoff loop the whole feature exists for: launch two runs under different
+configurations, watch both, and see the diff the moment the second one ends.
+
+Enabler (verified in source): the executor passes `--report <runDir>/report.json`
+to every harness child, and `--no-save` suppresses only the rolling-baseline
+write. **Every run — saved or experimental — captures a full report at
+`.ops-runs/<id>/report.json`.** Two experimental runs can therefore be diffed
+directly; baselines and saved artifacts are never touched.
+
+**Server — compare runs, not just artifacts.** `GET /api/compare` gains
+`referenceRun`/`subjectRun` parameters alongside the existing artifact-id
+ones. Both runs' `report.json` files are read through the run store and fed
+to the same `compareArtifacts`/`diffBaseline` path — same one-sided
+beta-binomial statistics, same incompatibility reporting (different harness,
+corpus-fingerprint mismatch). A run that died before writing a report yields
+422 naming which side. An incomplete run (exit 2/3) still has a report and
+still compares; the response carries the evidence-completeness state so the
+UI shows the caveat rather than hiding it.
+
+**Launch — A/B mode.** A toggle on the launch page, "A/B — compare two
+configurations", splits the config section into **reference** and
+**candidate** columns. Harness and run flags (runs, seed) stay shared; each
+side independently picks default / a named config / ad-hoc overrides. Submit
+fires two launches back-to-back — they serialize through the existing run
+queue, which is also the fair way to compare on one machine — and navigates
+to the pair page.
+
+**Pair page — progress now, diff when done.** The existing `/compare` route,
+extended: with run ids it shows both runs' progress views (the RunProgress
+component) stacked, each headed by its side's resolved-config summary. When
+both runs reach a terminal state it automatically fetches the run-vs-run
+comparison and renders the existing diff view (regressions/improvements per
+case) with the incomplete-evidence caveat when applicable. No new entity or
+table: **the URL is the pair** — shareable, back/forward-safe.
+
+Reference vs candidate semantics follow the existing compare view:
+regressions are cases where the candidate is worse than the reference,
+improvements the reverse.
+
 ## Error handling
 
 - Invalid config payloads: 400 with the zod issue list, rendered verbatim in
@@ -172,11 +214,18 @@ Ops package (`bun test`):
   present is rejected; DB config resolves identically to a repo profile.
 - Boot DDL idempotency (boot twice, no error).
 - Fixture reset preserves `eval_ops_configs`.
+- Run-vs-run compare: diffs two run reports; 422 when either side lacks a
+  report; incompatibility (harness/fingerprint) reported; incomplete-evidence
+  state present in the response.
 
 App (`vitest`):
 - Configs page: lists both sources, edit/delete flows, launch prefill.
 - Launch page: overrides section validates client-side, save-as-config flow,
   named-config prefill and tweak.
+- A/B launch: toggle reveals reference/candidate columns, submit fires two
+  launches and navigates to the pair URL.
+- Pair page: shows both progress views while active; flips to the diff view
+  when both runs are terminal; incomplete-evidence caveat renders.
 
 Targeted validation policy per the development reference: affected suites
 plus typecheck; no full-suite run. Database-backed tests only under the
