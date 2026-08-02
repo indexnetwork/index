@@ -15,6 +15,7 @@ The plugin provides these native Hermes tools:
 
 - `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY` with argument validation.
 - `index_agent_me` — calls `GET /api/agents/me` to return the authenticated personal Index agent for the configured key.
+- `index_open_app` — opens an `https://index.network/...` universal link with the operating system's default handler.
 - `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
 - `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
 
@@ -56,6 +57,7 @@ Optional environment variables:
 - `INDEX_API_URL` — defaults to `https://protocol.index.network/api`.
 - `INDEX_MCP_TIMEOUT_SECONDS` — defaults to `30` and is used for both MCP and API requests.
 - `INDEX_TELEGRAM_USERNAME` — forwarded as `x-index-telegram-username` when present.
+- `INDEX_APP_BASE_URL` — universal-link origin used for `appUrl` deep links and `index_open_app`; defaults to `https://index.network`. Override it only for dev/staging environments.
 
 ## Tool contract
 
@@ -110,6 +112,57 @@ Accepts no arguments:
 ```
 
 Returns the authenticated personal agent identity for the configured `INDEX_API_KEY`.
+
+### Opportunity deep links (`appUrl`)
+
+Every Index MCP response is post-processed before it is handed back to Hermes: any
+object carrying a non-empty `opportunityId` — at any nesting depth, under `data`,
+`opportunities`, or a wrapper of your own — gets an `appUrl` field:
+
+```json
+{
+  "opportunityId": "6f1c...",
+  "appUrl": "https://index.network/o/6f1c..."
+}
+```
+
+An `appUrl` that the backend already set is never overwritten, and a payload with no
+opportunities is passed through unchanged.
+
+These are **universal links**, not custom-scheme links. `https://index.network` serves
+an `apple-app-site-association` file that claims `/c/*`, `/o/*` and `/u/*` for the Index
+macOS app, so one URL covers both cases:
+
+- Index macOS app installed → macOS opens the link directly in the app.
+- App not installed → the browser opens the Index web page for that opportunity.
+
+The plugin deliberately performs **no app-installation detection**. It runs wherever
+the agent runs — often a headless server that is not the user's Mac — so probing the
+local filesystem would hide deep links from real app users. One HTTPS link is always
+attached and the operating system decides what to do with it at click time.
+
+### `index_open_app`
+
+Accepts:
+
+```json
+{
+  "target": "optional https://index.network/... URL"
+}
+```
+
+Opens the target with the OS default handler (`open` on macOS, `xdg-open` on Linux,
+`start` on Windows) and returns:
+
+```json
+{ "success": true, "url": "https://index.network/o/6f1c..." }
+```
+
+`target` defaults to `https://index.network` (or `INDEX_APP_BASE_URL`). Anything that is
+not on that origin — including `index://` URLs and plain `http://` — is rejected: this
+is an Index deep-link opener, not a generic URL opener. When the host has no usable URL
+opener, the handler returns a JSON error that includes the `url` so the user can open it
+manually. There is no app-installed/not-installed branch in the result.
 
 ### `index_pickup_negotiation`
 

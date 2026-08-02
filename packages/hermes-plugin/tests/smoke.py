@@ -138,7 +138,7 @@ def main() -> None:
     expected_tool_names = (
         ["index_read_intents"]
         + [f"index_{name}" for name in plugin.schemas.FORWARDED_MCP_TOOLS]
-        + ["index_agent_me", "index_pickup_negotiation", "index_respond_negotiation"]
+        + ["index_agent_me", "index_open_app", "index_pickup_negotiation", "index_respond_negotiation"]
     )
     assert tool_names == expected_tool_names, tool_names
     assert len(tool_names) == len(set(tool_names))
@@ -153,6 +153,7 @@ def main() -> None:
     handlers_by_name = {entry["name"]: entry["handler"] for entry in ctx.tools}
     assert handlers_by_name["index_read_intents"] == plugin.tools.index_read_intents
     assert handlers_by_name["index_agent_me"] == plugin.tools.index_agent_me
+    assert handlers_by_name["index_open_app"] == plugin.tools.index_open_app
     assert handlers_by_name["index_pickup_negotiation"] == plugin.tools.index_pickup_negotiation
     assert handlers_by_name["index_respond_negotiation"] == plugin.tools.index_respond_negotiation
     assert handlers_by_name["index_create_intent"].__name__ == "index_create_intent"
@@ -269,6 +270,12 @@ def main() -> None:
     assert "answering pending Index questions" in package_readme
     assert "dashboard/plugin_api.py" in package_readme
     assert "tools.py" in package_readme
+    assert "### `index_open_app`" in package_readme
+    assert "INDEX_APP_BASE_URL" in package_readme
+    assert "no app-installation detection" in package_readme
+    for stale in ("/c/<code>", "connect link", "x-index-surface"):
+        assert stale not in package_readme, stale
+        assert stale not in dashboard_readme, stale
 
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
@@ -356,6 +363,165 @@ def main() -> None:
             "arguments": {"description": "Find robotics mentors", "autoApprove": True},
         }
         assert json.loads(create_intent([])) == {"success": False, "error": "Arguments must be an object."}
+
+        # Every opportunity-bearing MCP response gets an https universal link.
+        # There is no app-installation detection: the plugin runs on the agent's
+        # host, and the OS decides app vs landing page when the link is clicked.
+        list_opportunities = handlers_by_name["index_list_opportunities"]
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "opportunities": [
+                                {"opportunityId": "opp-1", "status": "pending"},
+                                {"opportunityId": "opp-2", "status": "negotiating"},
+                            ],
+                            "count": 2,
+                        },
+                    },
+                    response_id=50,
+                )
+            ],
+            captured,
+        )
+        opportunities = json.loads(list_opportunities({}))
+        assert [opp["appUrl"] for opp in opportunities["data"]["opportunities"]] == [
+            "https://index.network/o/opp-1",
+            "https://index.network/o/opp-2",
+        ]
+
+        captured = []
+        install_fake_urlopen(
+            [mcp_text_response({"success": True, "opportunityId": "opp-single"}, response_id=51)],
+            captured,
+        )
+        single = json.loads(list_opportunities({"opportunityId": "opp-single"}))
+        assert single == {
+            "success": True,
+            "opportunityId": "opp-single",
+            "appUrl": "https://index.network/o/opp-single",
+        }
+
+        # Nested/wrapped payloads are walked at any depth, and an appUrl that the
+        # backend already set is never overwritten.
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "groups": [
+                                {
+                                    "intent": {
+                                        "id": "intent-1",
+                                        "matches": [{"opportunityId": "opp-nested"}],
+                                    }
+                                },
+                                {"opportunityId": "opp-kept", "appUrl": "https://index.network/o/custom"},
+                            ]
+                        },
+                    },
+                    response_id=52,
+                )
+            ],
+            captured,
+        )
+        nested = json.loads(list_opportunities({}))
+        groups = nested["data"]["groups"]
+        assert groups[0]["intent"]["matches"][0]["appUrl"] == "https://index.network/o/opp-nested"
+        assert groups[1]["appUrl"] == "https://index.network/o/custom"
+
+        # A payload without opportunities is returned untouched.
+        captured = []
+        install_fake_urlopen(
+            [mcp_text_response({"success": True, "data": {"networks": [{"id": "network-1"}]}}, response_id=53)],
+            captured,
+        )
+        untouched = json.loads(list_opportunities({}))
+        assert untouched == {"success": True, "data": {"networks": [{"id": "network-1"}]}}
+
+        # Odd payloads (blank ids, non-string ids, cycles, unexpected objects)
+        # must never raise; they degrade to the response as-is.
+        odd = {"opportunityId": "   ", "nested": {"opportunityId": 42}, "other": {1, 2}}
+        assert plugin.tools._with_app_urls(odd) == odd
+        cyclic = {"opportunityId": "opp-cycle"}
+        cyclic["self"] = cyclic
+        assert plugin.tools._with_app_urls(cyclic)["appUrl"] == "https://index.network/o/opp-cycle"
+        assert plugin.tools._with_app_urls("not-a-container") == "not-a-container"
+
+        # The universal-link origin is overridable for dev/staging.
+        os.environ["INDEX_APP_BASE_URL"] = "https://staging.index.network/"
+        try:
+            assert plugin.tools._with_app_urls({"opportunityId": "opp-1"})["appUrl"] == (
+                "https://staging.index.network/o/opp-1"
+            )
+        finally:
+            os.environ.pop("INDEX_APP_BASE_URL", None)
+
+        # index_open_app hands an Index universal link to the OS. It never probes
+        # for an installed app and never opens foreign URLs.
+        opened = []
+        original_opener_command = plugin.tools._url_opener_command
+        original_open_url = plugin.tools._open_url
+        plugin.tools._url_opener_command = lambda url, system=None: ["open", url]
+        plugin.tools._open_url = lambda command: opened.append(command) or None
+        try:
+            assert json.loads(plugin.tools.index_open_app({})) == {
+                "success": True,
+                "url": "https://index.network",
+            }
+            assert json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"})) == {
+                "success": True,
+                "url": "https://index.network/o/opp-1",
+            }
+            assert opened == [
+                ["open", "https://index.network"],
+                ["open", "https://index.network/o/opp-1"],
+            ]
+            for foreign in (
+                "index://o/opp-1",
+                "https://evil.test/o/opp-1",
+                "http://index.network/o/opp-1",
+                "https://index.network.evil.test/o/opp-1",
+            ):
+                rejected = json.loads(plugin.tools.index_open_app({"target": foreign}))
+                assert rejected["success"] is False, foreign
+                assert rejected["error"] == "target must be an https://index.network URL."
+            assert len(opened) == 2
+            assert json.loads(plugin.tools.index_open_app("nope")) == {
+                "success": False,
+                "error": "Arguments must be an object.",
+            }
+
+            plugin.tools._open_url = lambda command: "exit code 1"
+            failed = json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"}))
+            assert failed["success"] is False
+            assert failed["url"] == "https://index.network/o/opp-1"
+
+            plugin.tools._url_opener_command = lambda url, system=None: None
+            manual = json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"}))
+            assert manual["success"] is False
+            assert manual["url"] == "https://index.network/o/opp-1"
+            assert "manually" in manual["error"]
+        finally:
+            plugin.tools._url_opener_command = original_opener_command
+            plugin.tools._open_url = original_open_url
+
+        assert plugin.tools._url_opener_command("https://index.network", system="Darwin") == [
+            "open",
+            "https://index.network",
+        ]
+        assert plugin.tools._url_opener_command("https://index.network", system="Windows") == [
+            "cmd",
+            "/c",
+            "start",
+            "",
+            "https://index.network",
+        ]
 
         os.environ["INDEX_API_URL"] = "https://api.example.test/api"
         captured = []
@@ -723,7 +889,11 @@ def main() -> None:
             },
         }
         install_fake_urlopen([mcp_text_response(advisory)], captured)
-        assert dashboard_api.accept_opportunity("opp-1") == advisory
+        advisory_result = dashboard_api.accept_opportunity("opp-1")
+        # The MCP response path attaches the https deep link to any object that
+        # carries an opportunityId, including this advisory envelope.
+        assert advisory_result["advisory"].pop("appUrl") == "https://index.network/o/opp-1"
+        assert advisory_result == advisory
 
         captured = []
         install_fake_urlopen([mcp_text_response({"success": True, "conversationId": "conv-10"})], captured)
