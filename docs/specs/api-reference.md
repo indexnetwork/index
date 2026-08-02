@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
 # Protocol API Reference
@@ -167,18 +167,50 @@ Refer to the [Better Auth documentation](https://www.better-auth.com/) for detai
 
 API keys created for personal agents include `metadata.agentId`. MCP auth resolves API keys into `{ userId, agentId? }` identities, so the same user can authorize multiple agents with separate keys.
 
-### MCP request header: `x-index-surface`
+### MCP request headers: Telegram identity binding
 
-MCP clients SHOULD declare the rendering surface for their user on every request via the `x-index-surface` header. Accepted values: `telegram | web` (case-insensitive, whitespace-trimmed). Absent or unknown values are coerced to `web` (the default).
+MCP clients acting for a Telegram user MAY send that user's handle as `x-index-telegram-username` (or the alias `x-index-telegram-handle`; the username header wins when both are present). The value is normalized before use — a leading `@` and a `t.me` / `telegram.me` URL prefix are stripped, and the remainder must match `[A-Za-z0-9_]{5,32}`. A missing or unparseable value is treated as no handle at all.
 
-The value drives the click-time redirect on opportunity connect links (`/c/{code}/go`):
+When a usable handle is present, the MCP auth resolver binds it to the authenticated identity:
 
-- `telegram` — when the target user has a Telegram handle, redirects to `https://t.me/{handle}?text=...`; falls back to the web chat URL if the target has no handle.
-- `web` (or absent) — always redirects to `${FRONTEND_URL}/u/{counterpartUserId}/chat?msg=...`.
+- If the authenticated user already has a stored `telegram` social and none of the stored values match the header, the request is rejected (`authenticated_user_handle_mismatch`).
+- If the handle is already stored for a different user, the request is rejected (`handle_belongs_to_other_user`).
+- Otherwise the handle is upserted into `user_socials` under `label = 'telegram'`, preserving the user's other socials. A persistence failure is logged and does not fail the request.
 
-The surface is snapshotted onto each minted `connect_links` row at MCP-call time (the auth resolver reads the header, the protocol threads it through `ResolvedToolContext.clientSurface`, and `mintConnectLink` writes it). First mint wins for the link's lifetime; rotation of an expired row re-stamps the surface.
+This is **identity binding only**: it records where the user is reachable on Telegram (which Telegram opportunity delivery consumes) and never influences a redirect, rendering, or routing decision. The former routing header `x-index-surface`, the `clientSurface` value it threaded through the protocol, and the connect links it steered no longer exist — the MCP API has no surface header.
 
-Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback. Telegram MCP clients may also send `x-index-telegram-username` (or `x-index-telegram-handle`); when present with `x-index-surface: telegram`, the MCP auth resolver upserts that handle into `user_socials` while preserving other socials.
+### Universal links and deep-link landing pages
+
+Opportunity and profile links are plain `https://index.network/...` URLs that open in the Index macOS app when it is installed, and fall back to a web page when it is not. The web app (`apps/web`), not this protocol server, owns that origin.
+
+**Association file.** The web server answers `GET`/`HEAD /.well-known/apple-app-site-association` directly — no redirect, `Content-Type: application/json`, `Cache-Control: no-store`:
+
+```json
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["<APPLE_TEAM_ID>.network.index.system6"],
+        "components": [{ "/": "/c/*" }, { "/": "/o/*" }, { "/": "/u/*" }]
+      }
+    ]
+  }
+}
+```
+
+`APPLE_TEAM_ID` comes from the web host's environment. It is **not set in deploys yet**: the server logs a startup warning and serves the literal placeholder `TEAMIDPLACEHOLDER`, so universal links do not resolve to the app until the real team ID is configured and a signed, notarized app ships. Until then the links behave as ordinary web URLs.
+
+**Paths.** These pages are only reached when the app did not intercept the URL:
+
+| Path | Behavior without the app |
+|---|---|
+| `/o/:id` | Static landing page: "Open in the Index app", a macOS download CTA (UA sniff, presentation only) or an "open this link on your Mac" note elsewhere, plus a copyable link. No auth and no API call. |
+| `/c/:code` | Same landing page (retired connect links). |
+| `/u/:id` | The existing public profile page, unchanged. |
+
+**Legacy short links.** `GET /c/:code` on this protocol server is a tombstone for links already delivered in chats. `main.ts` rewrites the unprefixed path onto `ConnectLinkController`, which performs no database lookup and no opportunity side effects: a code matching `^[A-Za-z0-9]{10}$` gets a `302` to `${WEB_APP_URL}/c/<code>` (default `https://index.network`), anything else gets a `404` HTML page. The resolution stack behind it — `/c/:code/go`, connect-link minting, connect tokens, surface routing — is deleted.
+
+**Client-side links.** The macOS app parses the same three path shapes from `index://o|u|c/<value>` as well, as an in-app alias; `o` opens the opportunity card, `u` a profile, and `c` only a "no longer supported" notice. The Hermes plugin attaches `appUrl` = `https://index.network/o/<opportunityId>` to every opportunity-shaped payload it returns from an MCP call (origin overridable with `INDEX_APP_BASE_URL`); this protocol API does not mint or store any acceptance URL. Acceptance stays an authenticated call (`POST /api/opportunities/:id/start-chat`, `PATCH /api/opportunities/:id/status`, or the `update_opportunity` MCP tool) — no link carries authority to accept.
 
 ### MCP runtime limits and error envelopes
 
@@ -2971,7 +3003,7 @@ When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped 
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
-- `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. The authenticated `/c/:code` continuation flow preserves this advisory; legacy token links render a review page with an explicit continue-anyway link.
+- `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. Every caller reaches this endpoint authenticated, so the advisory is the single interlock contract; the unauthenticated connect-link continuation flow that used to re-render it no longer exists.
 - `500` — Status update or DM resolution failed
 
 ---
