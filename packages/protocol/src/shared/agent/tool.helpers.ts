@@ -281,8 +281,6 @@ interface ToolContextBindings {
   enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
   enrichmentRunQueue?: EnrichmentRunQueue;
-  /** Legacy direct-token minting for opportunity accept redirects (retained for host compatibility). */
-  mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -633,8 +631,6 @@ interface ToolDepsBindings {
   enrichmentRuns?: EnrichmentRunStore;
   /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
   enrichmentRunQueue?: EnrichmentRunQueue;
-  /** Legacy direct-token minting for opportunity accept redirects (retained for host compatibility). */
-  mintConnectToken?: (userId: string, opportunityId: string) => Promise<string>;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -683,12 +679,12 @@ interface ToolDepsBindings {
  * ports may Pick from this type, but it is intentionally not a root export.
  */
 export type ToolRegistryCompositionDeps = Omit<ToolDepsBindings,
-  'embedder' | 'chatMessageWriter' | 'mintConnectToken' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'chatMessageWriter' | 'apiBaseUrl' | 'mcpRateLimiter'
 >;
 
 /** Runtime-only hooks retained for MCP and existing host composition. */
 type ToolRuntimeCompatibilityDeps = Pick<ToolDepsBindings,
-  'embedder' | 'chatMessageWriter' | 'mintConnectToken' | 'apiBaseUrl' | 'mcpRateLimiter'
+  'embedder' | 'chatMessageWriter' | 'apiBaseUrl' | 'mcpRateLimiter'
 >;
 
 /**

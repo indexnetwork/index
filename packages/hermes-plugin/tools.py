@@ -131,7 +131,6 @@ def _headers(api_key: str) -> dict[str, str]:
         "Accept": "application/json, text/event-stream",
         "Content-Type": "application/json",
         "x-api-key": api_key,
-        "x-index-surface": "hermes-plugin",
     }
     telegram_handle = os.environ.get("INDEX_TELEGRAM_USERNAME", "").strip()
     if telegram_handle:

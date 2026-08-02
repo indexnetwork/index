@@ -34,7 +34,6 @@ tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
 tests/pending-candidates-introducer.isolated.ts
-tests/connect-link.surface.isolated.ts
 tests/questioner.adapter.isolated.ts
 tests/frame-drift-execution-attempt.database.adapter.isolated.ts
 tests/accepted-opportunity.isolated.ts
@@ -52,7 +51,6 @@ src/controllers/tests/invitation.controller.isolated.ts
 src/services/tests/opportunity-delivery.isolated.ts
 src/services/tests/chat-summary.service.isolated.ts
 src/services/tests/chat.service.isolated.ts
-src/services/tests/connect-link.service.isolated.ts
 src/controllers/tests/route-deprecation.controller.isolated.ts
 tests/contacts-disabled.e2e.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts

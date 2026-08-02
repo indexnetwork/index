@@ -40,7 +40,6 @@ interface EnrichmentRunContext {
   indexName?: string;
   sessionId?: string;
   agentId?: string;
-  clientSurface?: 'telegram' | 'web';
 }
 
 interface EnrichmentRunRecord {

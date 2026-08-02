@@ -23,7 +23,6 @@ export interface OpportunityCard {
   isGhost?: boolean;
   score?: number;
   status?: string;
-  acceptUrl?: string;
   profileUrl?: string;
 }
 
@@ -150,7 +149,7 @@ export function formatOpportunityCardHtml(
     lines.push(`💡 <i>${escapeHtml(card.narratorChip.text)}</i>`);
   }
 
-  const buttonUrl = card.acceptUrl ?? `${webAppUrl}/opportunities`;
+  const buttonUrl = `${webAppUrl}/opportunities`;
   const keyboard: Array<Array<{ text: string; url: string }>> = [
     [{ text: `💬 ${card.primaryActionLabel ?? 'View'}`, url: buttonUrl }],
   ];

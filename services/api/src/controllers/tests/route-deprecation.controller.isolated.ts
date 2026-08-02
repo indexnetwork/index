@@ -8,17 +8,13 @@ import type { AuthenticatedUser } from '../../guards/auth.guard';
 import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { setDeprecationReporter } from '../../lib/router/deprecated-route';
 
-mock.module('../../queues/notification.queue', () => ({
-  queueOpportunityNotification: async () => ({ id: 'mock-job' }),
-}));
-
-let OpportunityControllerClass: typeof import('../opportunity.controller').OpportunityController;
+let NetworkExperimentControllerClass: typeof import('../network-experiment.controller').NetworkExperimentController;
 const warnReporter = mock((_message: string, _metadata: Record<string, unknown>) => {});
 const restoreReporter = setDeprecationReporter(warnReporter);
 
 beforeAll(async () => {
-  const mod = await import('../opportunity.controller');
-  OpportunityControllerClass = mod.OpportunityController;
+  const mod = await import('../network-experiment.controller');
+  NetworkExperimentControllerClass = mod.NetworkExperimentController;
 });
 
 afterAll(() => {
@@ -30,8 +26,8 @@ describe('deprecated controller routes', () => {
   test('adds the deprecation header and emits one structured warning', async () => {
     warnReporter.mockClear();
     const req = new Request(
-      'http://localhost/api/opportunities/example/connect-token?noise=secret-query',
-      { method: 'POST', headers: { 'x-api-key': 'secret-api-key' } },
+      'http://localhost/api/networks/example/key?noise=secret-query',
+      { method: 'PUT', headers: { 'x-api-key': 'secret-api-key' } },
     );
     const agentId = crypto.randomUUID();
     recordRequestAuthContext(req, { kind: 'api_key', agentId });
@@ -42,19 +38,19 @@ describe('deprecated controller routes', () => {
     };
 
     try {
-      const response = await new OpportunityControllerClass().createConnectToken(req, user);
+      const response = await new NetworkExperimentControllerClass().updateKey(req, user, { id: 'example' });
       const body = (await response.json()) as { error: string };
 
       expect(response.status).toBe(400);
-      expect(body).toEqual({ error: 'Missing opportunity id' });
+      expect(body).toEqual({ error: 'Invalid JSON body' });
       expect(response.headers.get('Deprecation')).toBe('true');
       expect(warnReporter).toHaveBeenCalledTimes(1);
 
       const warning = JSON.stringify(warnReporter.mock.calls[0] ?? []);
       expect(warning).toContain('Deprecated API route used');
-      expect(warning).toContain('"routeId":"opportunity.connect-token"');
-      expect(warning).toContain('"method":"POST"');
-      expect(warning).toContain('"path":"/api/opportunities/example/connect-token"');
+      expect(warning).toContain('"routeId":"network.update-key"');
+      expect(warning).toContain('"method":"PUT"');
+      expect(warning).toContain('"path":"/api/networks/example/key"');
       expect(warning).toContain('"authKind":"api_key"');
       expect(warning).toContain(`"agentId":"${agentId}"`);
       expect(warning).not.toContain('secret-query');

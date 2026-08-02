@@ -1,55 +1,10 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
-import { findTelegramHandleMismatch, parseClientSurface, resolveMcpApiKeyPrincipal, telegramHandleFromRequest } from '../mcp.controller';
+import { findTelegramHandleMismatch, resolveMcpApiKeyPrincipal, telegramHandleFromRequest } from '../mcp.controller';
 
 function requestWithHeaders(headers: Record<string, string>): Request {
   return new Request('https://protocol.index.network/mcp', { headers });
 }
-
-describe('parseClientSurface', () => {
-  test('returns "web" when header is null', () => {
-    expect(parseClientSurface(null)).toBe('web');
-  });
-
-  test('returns "web" when header is empty string', () => {
-    expect(parseClientSurface('')).toBe('web');
-  });
-
-  test('returns "telegram" for canonical lowercase value', () => {
-    expect(parseClientSurface('telegram')).toBe('telegram');
-  });
-
-  test('returns "telegram" regardless of case', () => {
-    expect(parseClientSurface('Telegram')).toBe('telegram');
-    expect(parseClientSurface('TELEGRAM')).toBe('telegram');
-  });
-
-  test('trims whitespace before matching', () => {
-    expect(parseClientSurface('  telegram  ')).toBe('telegram');
-    expect(parseClientSurface('\ttelegram\n')).toBe('telegram');
-  });
-
-  test('returns "web" for explicit web value', () => {
-    expect(parseClientSurface('web')).toBe('web');
-    expect(parseClientSurface('WEB')).toBe('web');
-  });
-
-  test('coerces unknown values to "web"', () => {
-    expect(parseClientSurface('slack')).toBe('web');
-    expect(parseClientSurface('foo')).toBe('web');
-    expect(parseClientSurface('true')).toBe('web');
-  });
-
-  test('warns exactly once per unknown value, not on subsequent calls', () => {
-    const warnUnknown = mock((_value: string) => {});
-    // Use a value not seen by any earlier test so the Set is empty for it.
-    parseClientSurface('zz-novel-unknown-value', warnUnknown);
-    parseClientSurface('zz-novel-unknown-value', warnUnknown);
-    parseClientSurface('zz-novel-unknown-value', warnUnknown);
-    expect(warnUnknown).toHaveBeenCalledTimes(1);
-    expect(warnUnknown).toHaveBeenCalledWith('zz-novel-unknown-value');
-  });
-});
 
 describe('telegramHandleFromRequest', () => {
   test('normalizes x-index-telegram-username', () => {

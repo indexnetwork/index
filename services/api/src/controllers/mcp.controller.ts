@@ -47,9 +47,6 @@ import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieva
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { questionService } from '../services/question.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
-import { signConnectToken } from '../services/connect-token.service';
-import type { ConnectLinkKind } from '../services/connect-link.service';
-import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
@@ -84,17 +81,6 @@ const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
 const apiBaseUrl = resolveProtocolBaseUrl();
-
-const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferredSurface }: {
-  userId: string;
-  opportunityId: string;
-  kind: ConnectLinkKind;
-  greeting?: string | null;
-  preferredSurface?: 'telegram' | 'web';
-}): Promise<{ url: string }> => {
-  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting, preferredSurface });
-  return { url: buildConnectShortUrl(apiBaseUrl, code) };
-};
 
 /**
  * Host bridge for the orchestrator's blocking ask_user_question tool:
@@ -193,8 +179,6 @@ const protocolDeps = {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
   stampNewbornOpportunities,
-  mintConnectToken: signConnectToken,
-  mintConnectLink,
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   questionerDatabase: questionerAdapter,
@@ -451,7 +435,10 @@ class TelegramIdentityError extends Error {
 }
 
 async function finalizeMcpIdentity(telegramHandle: string | undefined, identity: ResolvedMcpIdentity): Promise<ResolvedMcpIdentity> {
-  if (identity.clientSurface !== 'telegram' || !telegramHandle) return identity;
+  // Telegram identity binding: only telegram-surfaced clients send the
+  // x-index-telegram-username/-handle headers, so header presence is the
+  // binding signal now that surface routing is gone.
+  if (!telegramHandle) return identity;
 
   let existingSocials: TelegramSocial[];
   let matchingTelegramSocials: TelegramSocial[];
@@ -498,45 +485,8 @@ async function finalizeMcpIdentity(telegramHandle: string | undefined, identity:
   return identity;
 }
 
-// Module-scope on purpose: dedupes the warn across the process lifetime so an
-// unknown header value only logs once per server process, not once per request.
-const seenInvalidSurfaces = new Set<string>();
-
-/**
- * Normalize the `x-index-surface` request header to one of the two values the
- * connect-link click handler understands.
- *
- * Absent or unrecognized values collapse to `'web'` — the new default. Only
- * `'telegram'` activates the t.me redirect path at click time.
- *
- * @param raw - The raw header value (case-insensitive; whitespace-trimmed).
- * @returns `'telegram'` if and only if the trimmed lower-case value is exactly
- *   `'telegram'`; `'web'` otherwise (including for `null`, `''`, and unknowns).
- */
-export function parseClientSurface(
-  raw: string | null,
-  warnUnknown: (value: string) => void = (value) => logger.warn(
-    'Unknown x-index-surface value; coercing to web',
-    { value },
-  ),
-): 'telegram' | 'web' {
-  if (raw === null) return 'web';
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === '') return 'web';
-  if (normalized === 'telegram') return 'telegram';
-  // Short-circuit for the known-valid value so explicit `web` doesn't trigger the unknown-value warn.
-  if (normalized === 'web') return 'web';
-  if (!seenInvalidSurfaces.has(normalized)) {
-    seenInvalidSurfaces.add(normalized);
-    warnUnknown(normalized);
-  }
-  return 'web';
-}
-
 const authResolver: McpAuthResolver = {
   async resolveIdentity(input: McpAuthInput): Promise<ResolvedMcpIdentity> {
-    const clientSurface = input.clientSurface ?? 'web';
-
     if (input.bearerToken) {
       const isJwt = input.bearerToken.split('.').length === 3;
 
@@ -544,8 +494,8 @@ const authResolver: McpAuthResolver = {
         // JWT path
         try {
           const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface });
-          if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface });
+          if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null });
+          if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null });
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
@@ -564,7 +514,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface });
+            if (data?.userId) return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: data.userId, isSessionAuth: true, networkScopeId: null });
           }
         } catch (err) {
           if (err instanceof TelegramIdentityError) throw err;
@@ -641,13 +591,12 @@ const authResolver: McpAuthResolver = {
               ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
               ...(principal.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
               networkScopeId,
-              clientSurface,
             });
           }
         }
 
         if (sessionUserId) {
-          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: sessionUserId, networkScopeId: null, clientSurface });
+          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: sessionUserId, networkScopeId: null });
         }
       } catch (err) {
         if (err instanceof TelegramIdentityError) throw err;
@@ -675,7 +624,6 @@ const authResolver: McpAuthResolver = {
         return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
       })(),
       apiKey: request.headers.get('x-api-key') ?? undefined,
-      clientSurface: request.headers.get('x-index-surface')?.trim().toLowerCase() === 'telegram' ? 'telegram' : 'web',
       telegramHandle: request.headers.get('x-index-telegram-handle') ?? undefined,
       telegramUsername: request.headers.get('x-index-telegram-username') ?? undefined,
     };
@@ -760,8 +708,6 @@ function createMcpServerInstance(): McpServer {
     getUserContextText: ensureGlobalUserContext,
     enrichmentRuns: protocolDeps.enrichmentRuns,
     enrichmentRunQueue: protocolDeps.enrichmentRunQueue,
-    mintConnectToken: protocolDeps.mintConnectToken,
-    mintConnectLink: protocolDeps.mintConnectLink,
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     intentProposalStore: protocolDeps.intentProposalStore,

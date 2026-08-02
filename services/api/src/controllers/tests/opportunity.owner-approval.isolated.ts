@@ -39,11 +39,6 @@ mock.module('../../guards/agent-scope.guard', () => ({
   withAgentScope: (fn: unknown) => fn,
 }));
 mock.module('../../services/opportunity.service', () => ({ opportunityService: serviceMock }));
-mock.module('../../services/connect-token.service', () => ({
-  signConnectToken: () => '',
-  verifyConnectToken: () => null,
-}));
-mock.module('../../services/connect-link.service', () => ({ mintConnectLink: async () => ({}) }));
 mock.module('../../lib/protocol-url', () => ({ resolveProtocolBaseUrl: () => 'http://localhost' }));
 mock.module('../../queues/notification.queue', () => ({ queueOpportunityNotification: async () => undefined }));
 mock.module('../../lib/mcp/owner-approval', () => ({
