@@ -133,10 +133,16 @@ describe("explicit viewer adapters", () => {
       const document = adaptViewerArtifact(artifact, { source: SOURCE });
       const html = renderViewerHtml(document);
 
-      expect(document.adapterId).toBe(`shared-${harness}-baseline-v1`);
+      const isV2 = harness === "matching"; // refreshed 2026-08-02: first committed v2 baseline
+      expect(document.adapterId).toBe(`shared-${harness}-baseline-${isV2 ? "v2" : "v1"}`);
       expect(document.items).toHaveLength(expectedCases);
-      expect(document.telemetryNotice).toContain("attempt telemetry was not recorded");
-      expect(document.items.every((item) => !item.executionAvailable && item.executionRuns.length === 0)).toBe(true);
+      if (isV2) {
+        expect(document.telemetryNotice).toContain("execution attempts are shown");
+        expect(document.items.every((item) => item.executionAvailable && item.executionRuns.length > 0)).toBe(true);
+      } else {
+        expect(document.telemetryNotice).toContain("attempt telemetry was not recorded");
+        expect(document.items.every((item) => !item.executionAvailable && item.executionRuns.length === 0)).toBe(true);
+      }
       expect(JSON.stringify(document)).not.toContain(SENSITIVE_SENTINEL);
       expect(html).not.toContain(SENSITIVE_SENTINEL);
       expect(html).not.toContain('"detail":');
@@ -303,7 +309,10 @@ describe("explicit viewer adapters", () => {
 
 describe("baseline comparison", () => {
   it("computes improved, regressed, new, missing, and unchanged deltas without mutation", async () => {
-    const baselineArtifact = asRawArtifact(await readCommittedBaseline("matching"));
+    // premise's committed baseline is still v1: the pass-count mutations below
+    // stay internally consistent, unlike a v2 artifact whose execution evidence
+    // cross-checks every case's passes/passRate/flaky.
+    const baselineArtifact = asRawArtifact(await readCommittedBaseline("premise"));
     const currentArtifact = structuredClone(baselineArtifact);
     currentArtifact.artifactType = "index-eval/run-report";
     currentArtifact.corpusFingerprint = "c".repeat(64);
@@ -342,9 +351,14 @@ describe("baseline comparison", () => {
     expect(compared.items.some((item) => item.delta?.state === "unchanged")).toBe(true);
   });
 
-  it("allows a complete v2 report to compare with a committed v1 baseline", async () => {
-    const current = adaptViewerArtifact(makeCompleteV2RunReport(), { source: SOURCE });
-    const baseline = adaptViewerArtifact(await readCommittedBaseline("matching"), { source: BASELINE_SOURCE });
+  it("allows a complete v2 report to compare with a committed v2 baseline of the same corpus", async () => {
+    // The committed matching baseline is v2 with a real corpus fingerprint, so
+    // the current report must present the same corpus to be comparable.
+    const baselineArtifact = asRawArtifact(await readCommittedBaseline("matching"));
+    const currentArtifact = structuredClone(makeCompleteV2RunReport());
+    currentArtifact.corpusFingerprint = String(baselineArtifact.corpusFingerprint);
+    const current = adaptViewerArtifact(currentArtifact, { source: SOURCE });
+    const baseline = adaptViewerArtifact(baselineArtifact, { source: BASELINE_SOURCE });
     const compared = applyViewerBaseline(current, baseline);
     expect(compared.kind).toBe("shared-scorecard-v2");
     expect(compared.baseline).toBeDefined();

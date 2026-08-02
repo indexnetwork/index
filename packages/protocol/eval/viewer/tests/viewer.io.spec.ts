@@ -78,7 +78,12 @@ describe("read-only provider-free viewer generation", () => {
       expect(digest(after)).toBe(digest(before));
       expect(after.equals(before)).toBe(true);
       for (const construct of NETWORK_CONSTRUCTS) expect(firstHtml).not.toMatch(construct);
-      expect(firstHtml).toContain("Execution retry/attempt telemetry was not recorded");
+      if (harness === "matching") {
+        // Refreshed 2026-08-02: first committed v2 baseline — telemetry is shown.
+        expect(firstHtml).toContain("execution attempts are shown");
+      } else {
+        expect(firstHtml).toContain("Execution retry/attempt telemetry was not recorded");
+      }
     }
     await rm(dir, { recursive: true, force: true });
   });
@@ -93,7 +98,9 @@ describe("read-only provider-free viewer generation", () => {
     );
     const run = JSON.parse(sourceBaseline.toString("utf8")) as Record<string, unknown>;
     run.artifactType = "index-eval/run-report";
-    run.corpusFingerprint = "c".repeat(64);
+    // The committed baseline is v2 with a real corpus fingerprint: same-corpus
+    // comparison requires presenting that fingerprint, not a placeholder.
+    run.corpusFingerprint = (JSON.parse(sourceBaseline.toString("utf8")) as { corpusFingerprint: string }).corpusFingerprint;
     await writeFile(baselinePath, sourceBaseline);
     await writeFile(runPath, JSON.stringify(run, null, 2) + "\n");
     const baselineBefore = await readFile(baselinePath);
@@ -109,7 +116,7 @@ describe("read-only provider-free viewer generation", () => {
     expect((await readFile(runPath)).equals(runBefore)).toBe(true);
     const html = await readFile(outputPath, "utf8");
     expect(html).toContain("Baseline comparison");
-    expect(html).toContain("legacy-baseline-unverified");
+    expect(html).toContain("known-corpus-match");
     expect(html).toContain("Descriptive only");
     await rm(dir, { recursive: true, force: true });
   });

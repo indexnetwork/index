@@ -76,9 +76,10 @@ describe("matching corpus", () => {
     // Cases added to the corpus but not yet captured by a live `--update-baseline`
     // run. Every entry here must still be missing from the baseline (stale entries
     // fail below) — remove ids from this set when the baseline is next refreshed.
-    const BASELINE_PENDING_CASE_IDS = new Set<string>([
-      "event_network/co-membership-is-not-attendance", // added in #1144 without a baseline run
-    ]);
+    // Empty: the 2026-08-02 refresh captured every corpus case, including
+    // event_network/co-membership-is-not-attendance (added in #1144 without a
+    // baseline run). Add ids here only when a case lands before its baseline run.
+    const BASELINE_PENDING_CASE_IDS = new Set<string>([]);
 
     const envelope = (await Bun.file(new URL("../baselines/matching.baseline.json", import.meta.url)).json()) as { payload: Scorecard };
     const baselineIds = new Set(envelope.payload.cases.map((c) => c.caseId));
