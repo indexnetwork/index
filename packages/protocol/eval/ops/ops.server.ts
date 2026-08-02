@@ -1259,6 +1259,45 @@ async function prepareAndLaunchReset(context: OpsContext, state: ServerState, re
   return json(record, 202);
 }
 
+export interface ResetEnvFileState {
+  exists: boolean;
+  databaseUrl: string | null;
+}
+
+/**
+ * Validates the relationship between the server-injected target and .env.test.
+ *
+ * The deployed preflight currently requires the file to be present because the
+ * migrate step reads it directly; the absent-file acceptance is intentionally
+ * pinned by the regression test before that behavior is changed.
+ */
+export function validateResetEnvFile(
+  injectedDatabaseUrl: string,
+  envFile: ResetEnvFileState,
+): { ok: true; databaseUrl: string } | { ok: false; reason: string } {
+  if (!envFile.exists) {
+    return {
+      ok: false,
+      reason: "Refusing to reset: .env.test is absent, so the migrate step would target an unknown database.",
+    };
+  }
+  if (envFile.databaseUrl === null) {
+    return {
+      ok: false,
+      reason: "Refusing to reset: .env.test does not set DATABASE_URL, so the migrate step would target an unknown database.",
+    };
+  }
+  if (envFile.databaseUrl !== injectedDatabaseUrl.trim()) {
+    return {
+      ok: false,
+      reason:
+        `Refusing to reset: .env.test names ${redactDatabaseUrl(envFile.databaseUrl)}, but this server validated `
+        + `${redactDatabaseUrl(injectedDatabaseUrl)}. The migrate step reads that file directly, so the two must agree.`,
+    };
+  }
+  return { ok: true, databaseUrl: envFile.databaseUrl };
+}
+
 type ResetTarget =
   | { ok: true; target: FixtureTarget; databaseUrl: string }
   | { ok: false; reason: string; status: number };
@@ -1280,24 +1319,13 @@ async function resolveResetTarget(context: OpsContext): Promise<ResetTarget> {
   if (!guard.allowed) return { ok: false, reason: guard.reason, status: 403 };
 
   const envFile = path.join(context.repoRoot, ".env.test");
-  const declared = await readEnvValue(envFile, "DATABASE_URL");
-  if (declared === null) {
-    return {
-      ok: false,
-      reason: `Refusing to reset: ${envFile} does not set DATABASE_URL, so the migrate step would target an unknown database.`,
-      status: 409,
-    };
-  }
-  if (declared !== databaseUrl.trim()) {
-    return {
-      ok: false,
-      reason:
-        `Refusing to reset: this server validated ${guard.target.redactedUrl}, but ${envFile} now names `
-        + `${redactDatabaseUrl(declared)}. The migrate step reads that file directly, so the two must agree.`,
-      status: 409,
-    };
-  }
-  return { ok: true, target: guard.target, databaseUrl: declared };
+  const envFileState: ResetEnvFileState = {
+    exists: await Bun.file(envFile).exists(),
+    databaseUrl: await readEnvValue(envFile, "DATABASE_URL"),
+  };
+  const envValidation = validateResetEnvFile(databaseUrl, envFileState);
+  if (!envValidation.ok) return { ok: false, reason: envValidation.reason, status: 409 };
+  return { ok: true, target: guard.target, databaseUrl: envValidation.databaseUrl };
 }
 
 /** Reads one key out of a dotenv file. Last assignment wins, as dotenv does. */

@@ -10,7 +10,7 @@ import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, type OpsAuthContext, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
@@ -1106,6 +1106,36 @@ describe("GET /api/fixture", () => {
 
 describe("POST /api/fixture/reset", () => {
   const writeEnvTest = (url: string) => writeFile(path.join(root, ".env.test"), `# comment\nDATABASE_URL=${url}\n`);
+
+  it("accepts an absent .env.test when the server already has the injected target", () => {
+    expect(validateResetEnvFile("postgres://u:p@host/neondb", {
+      exists: false,
+      databaseUrl: null,
+    })).toEqual({ ok: true, databaseUrl: "postgres://u:p@host/neondb" });
+  });
+
+  it("refuses an existing .env.test without DATABASE_URL", () => {
+    expect(validateResetEnvFile("postgres://u:p@host/neondb", {
+      exists: true,
+      databaseUrl: null,
+    })).toMatchObject({ ok: false });
+  });
+
+  it("refuses an existing .env.test naming a different database without credentials", () => {
+    const result = validateResetEnvFile("postgres://u:p@host/neondb", {
+      exists: true,
+      databaseUrl: "postgres://u:p@host/otherdb",
+    });
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) expect(result.reason).not.toContain(":p@");
+  });
+
+  it("accepts an existing .env.test naming the injected target exactly", () => {
+    expect(validateResetEnvFile("postgres://u:p@host/neondb", {
+      exists: true,
+      databaseUrl: "postgres://u:p@host/neondb",
+    })).toEqual({ ok: true, databaseUrl: "postgres://u:p@host/neondb" });
+  });
 
   it("runs the guarded pipeline with the environment this layer injects", async () => {
     await writeEnvTest(DATABASE_URL);
