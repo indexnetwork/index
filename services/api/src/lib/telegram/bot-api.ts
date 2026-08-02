@@ -1,3 +1,7 @@
+import { log } from '../log';
+
+const logger = log.lib.from('telegram/bot-api');
+
 const BASE = 'https://api.telegram.org';
 
 /**
@@ -7,8 +11,28 @@ const BASE = 'https://api.telegram.org';
  */
 export { escapeHtml } from '../escapeHtml';
 
-function botUrl(method: string): string {
-  return `${BASE}/bot${process.env.TELEGRAM_BOT_TOKEN}/${method}`;
+let missingTokenWarned = false;
+
+/**
+ * Resolve the bot token, or null when the gateway is not configured.
+ * Unsetting `TELEGRAM_BOT_TOKEN` is how the Telegram gateway is switched off:
+ * outbound calls then no-op instead of requesting a bot URL built from an
+ * undefined token.
+ */
+function botToken(): string | null {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  return token ? token : null;
+}
+
+/** Warn once per process that Telegram outbound is disabled, then stay quiet. */
+function warnDisabled(method: string): void {
+  if (missingTokenWarned) return;
+  missingTokenWarned = true;
+  logger.warn('Telegram outbound skipped: TELEGRAM_BOT_TOKEN is not set', { method });
+}
+
+function botUrl(token: string, method: string): string {
+  return `${BASE}/bot${token}/${method}`;
 }
 
 /**
@@ -24,6 +48,11 @@ export async function sendMessage(
   inlineKeyboard?: Array<Array<{ text: string; url: string }>>,
   parseMode?: 'HTML' | 'MarkdownV2',
 ): Promise<void> {
+  const token = botToken();
+  if (!token) {
+    warnDisabled('sendMessage');
+    return;
+  }
   const body: Record<string, unknown> = { chat_id: chatId, text };
   if (parseMode) {
     body.parse_mode = parseMode;
@@ -31,7 +60,7 @@ export async function sendMessage(
   if (inlineKeyboard) {
     body.reply_markup = { inline_keyboard: inlineKeyboard };
   }
-  const res = await fetch(botUrl('sendMessage'), {
+  const res = await fetch(botUrl(token, 'sendMessage'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -53,7 +82,12 @@ export async function sendChatAction(
   chatId: string,
   action: 'typing' | 'upload_document' = 'typing',
 ): Promise<void> {
-  await fetch(botUrl('sendChatAction'), {
+  const token = botToken();
+  if (!token) {
+    warnDisabled('sendChatAction');
+    return;
+  }
+  await fetch(botUrl(token, 'sendChatAction'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, action }),
@@ -66,7 +100,12 @@ export async function sendChatAction(
  * @param secretToken - Sent as X-Telegram-Bot-Api-Secret-Token header with each update
  */
 export async function setWebhook(url: string, secretToken: string): Promise<void> {
-  const res = await fetch(botUrl('setWebhook'), {
+  const token = botToken();
+  if (!token) {
+    warnDisabled('setWebhook');
+    return;
+  }
+  const res = await fetch(botUrl(token, 'setWebhook'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, secret_token: secretToken }),
