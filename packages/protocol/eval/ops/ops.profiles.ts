@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { HARNESS_REGISTRY } from "./ops.registry.js";
+
 export const DEFAULT_PROFILE_NAME = "default";
 
 /**
@@ -94,4 +96,63 @@ export function resolveProfile(profile: ConfigProfile): ResolvedProfile {
 
 function sortedRecord(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/**
+ * The only models a client may select. Live spend on a shared URL with no
+ * actor attribution yet: free-text slugs stay out until attribution exists.
+ * Repo profiles are code-reviewed and exempt.
+ */
+export const ALLOWED_CONFIG_MODELS = [
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-flash-lite",
+  "google/gemini-3-pro-preview",
+  "anthropic/claude-sonnet-4",
+  "anthropic/claude-haiku-4.5",
+  "openai/gpt-4.1-mini",
+] as const;
+
+/** Agent keys any scorecard harness can actually exercise (from the registry). */
+function overridableAgents(): ReadonlySet<string> {
+  return new Set(Object.values(HARNESS_REGISTRY).flatMap((d) => d.agents));
+}
+
+/**
+ * Validates client-originated overrides. Returns human-readable issues;
+ * empty means valid. Used by the config routes and the launch path — never
+ * by the repo profile loader, whose files are code-reviewed.
+ */
+export function validateConfigOverrides(overrides: {
+  models: Record<string, string>;
+  env: Record<string, string>;
+}): string[] {
+  const issues: string[] = [];
+  const agents = overridableAgents();
+  for (const [agent, model] of Object.entries(overrides.models)) {
+    if (!agents.has(agent)) {
+      issues.push(`Unknown agent "${agent}". Overridable agents: ${[...agents].sort().join(", ")}`);
+    } else if (!(ALLOWED_CONFIG_MODELS as readonly string[]).includes(model)) {
+      issues.push(`Model "${model}" is not selectable. Allowed: ${ALLOWED_CONFIG_MODELS.join(", ")}`);
+    }
+  }
+  for (const key of Object.keys(overrides.env)) {
+    if (!PROFILE_ENV_ALLOWLIST.includes(key)) {
+      issues.push(`env key ${key} is not in PROFILE_ENV_ALLOWLIST`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * Resolves ad-hoc launch overrides through the same path as a named profile,
+ * so fingerprints match a saved config with the same payload. The synthetic
+ * profile is named "default" (renderRun asserts the resolved name matches the
+ * requested one) but is always experimental: ad-hoc runs never save.
+ */
+export function resolveAdHoc(overrides: {
+  models: Record<string, string>;
+  env: Record<string, string>;
+}): ResolvedProfile {
+  const resolved = resolveProfile({ name: DEFAULT_PROFILE_NAME, description: "ad-hoc overrides", ...overrides });
+  return { ...resolved, experimental: true };
 }

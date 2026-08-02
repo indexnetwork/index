@@ -43,6 +43,8 @@ export interface HarnessDescriptor {
   question: string;
   /** One sentence on what is actually scored, shown under `question` for context. */
   detail: string;
+  /** Model-overridable agents this harness exercises, in pipeline order. */
+  agents: readonly string[];
 }
 
 export interface ArtifactRef {
