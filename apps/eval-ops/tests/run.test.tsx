@@ -258,4 +258,35 @@ describe('Run', () => {
     expect(await screen.findByText(/Usage: eval:matching/)).toBeInTheDocument();
     expect(screen.queryByText('show raw output')).toBeNull();
   });
+
+  it('summarises the resolved overrides in the header', async () => {
+    const overridden: RunRecord = {
+      ...RUN,
+      env: {
+        EVAL_MODEL_OVERRIDES: JSON.stringify({ opportunityEvaluator: 'anthropic/claude-sonnet-4' }),
+        RUN_OPPORTUNITY_EVAL_IN_PARALLEL: 'true',
+        OPENROUTER_FALLBACK_MODEL: 'none',
+      },
+    };
+    renderRun(overridden);
+    expect(
+      await screen.findByText(/opportunityEvaluator → anthropic\/claude-sonnet-4/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/RUN_OPPORTUNITY_EVAL_IN_PARALLEL=true/)).toBeInTheDocument();
+    // renderRun's internal pin is bookkeeping, not operator signal.
+    expect(screen.queryByText(/OPENROUTER_FALLBACK_MODEL/)).toBeNull();
+  });
+
+  it('renders no overrides summary for a default run', async () => {
+    renderRun(RUN);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/overrides:/)).toBeNull();
+  });
+
+  it('survives a malformed EVAL_MODEL_OVERRIDES value', async () => {
+    const corrupt: RunRecord = { ...RUN, env: { EVAL_MODEL_OVERRIDES: '{not json' } };
+    renderRun(corrupt);
+    expect(await screen.findByText(/run-1/)).toBeInTheDocument();
+    expect(screen.getByText(/EVAL_MODEL_OVERRIDES \(unparseable\)/)).toBeInTheDocument();
+  });
 });

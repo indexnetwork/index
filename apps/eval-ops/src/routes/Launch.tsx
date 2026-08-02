@@ -15,8 +15,10 @@ interface LaunchState {
   models: string[];
   selectedHarness: HarnessDescriptor | null;
   selectedProfile: string;
-  /** A/B mode: reference and candidate each carry their own overrides. */
+  /** A/B mode: each side picks its own profile and carries its own overrides. */
   ab: boolean;
+  referenceProfile: string;
+  candidateProfile: string;
   referenceOverrides: Overrides;
   candidateOverrides: Overrides;
   flags: RunFlags;
@@ -44,6 +46,8 @@ export function Launch() {
     // The configs page links here as /launch?profile=<name>.
     selectedProfile: searchParams.get('profile') ?? 'default',
     ab: false,
+    referenceProfile: 'default',
+    candidateProfile: 'default',
     referenceOverrides: EMPTY_OVERRIDES,
     candidateOverrides: EMPTY_OVERRIDES,
     flags: {},
@@ -185,14 +189,14 @@ export function Launch() {
    * server refuses a named profile combined with overrides, so the form never
    * offers the combination.
    */
-  const buildSpec = (overrides: Overrides): EvalRunSpec => {
+  const buildSpec = (profile: string, overrides: Overrides): EvalRunSpec => {
     const cleaned = cleanOverrides(overrides);
     return {
       kind: 'eval',
       harness: state.selectedHarness!.harness,
-      profile: state.selectedProfile,
+      profile,
       flags: state.flags,
-      ...(state.selectedProfile === 'default' && hasOverrides(cleaned) ? { overrides: cleaned } : {}),
+      ...(profile === 'default' && hasOverrides(cleaned) ? { overrides: cleaned } : {}),
     };
   };
 
@@ -212,8 +216,8 @@ export function Launch() {
     if (state.ab) {
       // Reference first, candidate second: they serialise through the run
       // queue, which keeps the comparison fair on one machine.
-      const referenceSpec = buildSpec(state.referenceOverrides);
-      const candidateSpec = buildSpec(state.candidateOverrides);
+      const referenceSpec = buildSpec(state.referenceProfile, state.referenceOverrides);
+      const candidateSpec = buildSpec(state.candidateProfile, state.candidateOverrides);
       api
         .launch(referenceSpec)
         .then((reference) =>
@@ -232,7 +236,7 @@ export function Launch() {
       return;
     }
 
-    const spec = buildSpec(state.referenceOverrides);
+    const spec = buildSpec(state.selectedProfile, state.referenceOverrides);
 
     api
       .launch(spec)
@@ -344,6 +348,7 @@ export function Launch() {
             )}
           </div>
 
+          {!state.ab && (
           <div>
             <label htmlFor="profile" className="block mb-1">
               Configuration Profile
@@ -371,20 +376,24 @@ export function Launch() {
               </p>
             )}
           </div>
+          )}
 
           <div>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={state.ab}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const ab = e.target.checked;
                   setState((prev) => ({
                     ...prev,
-                    ab: e.target.checked,
+                    ab,
+                    // The single-mode profile is the reference side's starting point.
+                    referenceProfile: ab ? prev.selectedProfile : prev.referenceProfile,
                     awaitingConfirmation: false,
                     launchError: null,
-                  }))
-                }
+                  }));
+                }}
               />
               <span>A/B — compare two configurations</span>
             </label>
@@ -396,6 +405,50 @@ export function Launch() {
             )}
           </div>
 
+          {state.ab && (
+            <div className="space-y-4">
+              <AbSide
+                side="reference"
+                profile={state.referenceProfile}
+                overrides={state.referenceOverrides}
+                profiles={state.profiles}
+                savedConfigs={state.savedConfigs}
+                editorProps={editorProps}
+                onProfileChange={(profile) =>
+                  setState((prev) => ({
+                    ...prev,
+                    referenceProfile: profile,
+                    awaitingConfirmation: false,
+                    launchError: null,
+                  }))
+                }
+                onOverridesChange={(next) =>
+                  setState((prev) => ({ ...prev, referenceOverrides: next }))
+                }
+              />
+              <AbSide
+                side="candidate"
+                profile={state.candidateProfile}
+                overrides={state.candidateOverrides}
+                profiles={state.profiles}
+                savedConfigs={state.savedConfigs}
+                editorProps={editorProps}
+                onProfileChange={(profile) =>
+                  setState((prev) => ({
+                    ...prev,
+                    candidateProfile: profile,
+                    awaitingConfirmation: false,
+                    launchError: null,
+                  }))
+                }
+                onOverridesChange={(next) =>
+                  setState((prev) => ({ ...prev, candidateOverrides: next }))
+                }
+              />
+            </div>
+          )}
+
+          {!state.ab && (
           <details>
             <summary className="cursor-pointer text-term-cyan">overrides (this run only)</summary>
             <div className="mt-2 space-y-3">
@@ -504,6 +557,7 @@ export function Launch() {
               )}
             </div>
           </details>
+          )}
 
           {state.selectedHarness !== null && (
             <div className="space-y-3">
@@ -572,6 +626,77 @@ export function Launch() {
         </div>
       </Frame>
     </div>
+  );
+}
+
+/**
+ * One side of an A/B launch: its own profile select (repo profiles, then saved
+ * configs) and its own overrides editor. Overrides are only expressible on top
+ * of the default configuration — the server refuses a named profile combined
+ * with overrides — so the editor is replaced by the configs-page pointer when
+ * this side runs a named profile.
+ */
+function AbSide({
+  side,
+  profile,
+  overrides,
+  profiles,
+  savedConfigs,
+  editorProps,
+  onProfileChange,
+  onOverridesChange,
+}: {
+  side: 'reference' | 'candidate';
+  profile: string;
+  overrides: Overrides;
+  profiles: ProfileDescriptor[];
+  savedConfigs: ConfigProfile[];
+  editorProps: { agents: readonly string[]; models: readonly string[]; envKeys: readonly string[] };
+  onProfileChange: (profile: string) => void;
+  onOverridesChange: (next: Overrides) => void;
+}) {
+  return (
+    <fieldset aria-label={side} className="border border-term-rule p-2 space-y-3">
+      <legend className="px-[1ch] text-term-dim">{side}</legend>
+      <div>
+        <label htmlFor={`${side}-profile`} className="block mb-1">
+          profile
+        </label>
+        <select
+          id={`${side}-profile`}
+          className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
+          value={profile}
+          onChange={(e) => onProfileChange(e.target.value)}
+        >
+          {profiles.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name} — {p.description}
+            </option>
+          ))}
+          {savedConfigs.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name} (saved) — {p.description}
+            </option>
+          ))}
+        </select>
+      </div>
+      {profile !== 'default' && (
+        <p className="text-term-yellow">
+          Experimental — forced to --no-save and never diffed against the committed baseline.
+        </p>
+      )}
+      {profile === 'default' ? (
+        <OverridesEditor {...editorProps} value={overrides} onChange={onOverridesChange} />
+      ) : (
+        <p className="text-term-dim">
+          Overrides apply on top of the default configuration. To tweak a saved config,{' '}
+          <Link to="/profiles" className="text-term-cyan underline">
+            edit it on the configs page
+          </Link>
+          .
+        </p>
+      )}
+    </fieldset>
   );
 }
 

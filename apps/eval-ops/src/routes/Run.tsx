@@ -252,6 +252,7 @@ function RunDetail({ runId }: { runId: string }) {
     run.spec.kind === 'eval'
       ? state.harnesses.find((h) => h.harness === (run.spec as { harness: string }).harness)?.question ?? null
       : null;
+  const overridesSummary = run.spec.kind === 'eval' ? summarizeRunEnv(run.env) : null;
 
   return (
     <div className="p-4 space-y-4">
@@ -283,6 +284,12 @@ function RunDetail({ runId }: { runId: string }) {
                 <span className="text-term-dim w-24">profile:</span>
                 <span>{run.spec.profile}</span>
               </div>
+              {overridesSummary !== null && (
+                <div className="flex gap-4">
+                  <span className="text-term-dim w-24">overrides:</span>
+                  <span className="text-term-dim">{overridesSummary}</span>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex gap-4">
@@ -479,6 +486,41 @@ function RunDetail({ runId }: { runId: string }) {
       )}
     </div>
   );
+}
+
+/**
+ * renderRun's internal pins are bookkeeping for the spawn, not operator
+ * signal, so they never appear in the summary.
+ */
+const INTERNAL_ENV_PINS: ReadonlySet<string> = new Set(['OPENROUTER_FALLBACK_MODEL']);
+
+/**
+ * Renders a run's injected env as a one-line overrides summary: `agent → model`
+ * pairs from EVAL_MODEL_OVERRIDES, then the remaining KEY=value entries sorted
+ * by key. Returns null when there is nothing to show — a default run's env is
+ * empty. Never throws: a hand-written or corrupt record must not break the run
+ * page.
+ */
+function summarizeRunEnv(env: Record<string, string>): string | null {
+  const parts: string[] = [];
+  const rawOverrides = env.EVAL_MODEL_OVERRIDES;
+  if (rawOverrides !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(rawOverrides);
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [agent, model] of Object.entries(parsed as Record<string, unknown>)) {
+          parts.push(`${agent} → ${String(model)}`);
+        }
+      }
+    } catch {
+      parts.push('EVAL_MODEL_OVERRIDES (unparseable)');
+    }
+  }
+  for (const key of Object.keys(env).sort()) {
+    if (key === 'EVAL_MODEL_OVERRIDES' || INTERNAL_ENV_PINS.has(key)) continue;
+    parts.push(`${key}=${env[key]}`);
+  }
+  return parts.length === 0 ? null : parts.join(', ');
 }
 
 function Delta({ value }: { value: number }) {

@@ -230,7 +230,6 @@ describe('Launch', () => {
     renderLaunch();
     await screen.findByLabelText(/harness/i);
     await userEvent.click(screen.getByLabelText(/a\/b/i));
-    await userEvent.click(screen.getByText('overrides (this run only)'));
     const candidate = await screen.findByRole('group', { name: 'candidate' });
     await userEvent.selectOptions(
       within(candidate).getByLabelText('opportunityEvaluator'),
@@ -247,6 +246,91 @@ describe('Launch', () => {
     await vi.waitFor(() =>
       expect(window.location.search).toBe('?referenceRun=run-1&subjectRun=run-2'),
     );
+  });
+
+  it('A/B mode lets each side pick its own profile independently', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
+        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+        if (String(url).endsWith('/api/configs/models')) return new Response(JSON.stringify(CONFIG_MODELS));
+        if (String(url).endsWith('/api/configs')) {
+          return new Response(
+            JSON.stringify({
+              repo: PROFILES.profiles,
+              saved: [
+                {
+                  name: 'sonnet-evaluator',
+                  description: 'evaluator on sonnet',
+                  models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
+                  env: {},
+                },
+              ],
+            }),
+          );
+        }
+        if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
+          postedRuns.push(JSON.parse(String(init.body)));
+          runCounter += 1;
+          return new Response(JSON.stringify({ id: `run-${runCounter}` }), { status: 202 });
+        }
+        return new Response(JSON.stringify({}));
+      }),
+    );
+
+    renderLaunch();
+    await screen.findByLabelText(/harness/i);
+    await userEvent.click(screen.getByLabelText(/a\/b/i));
+
+    const reference = await screen.findByRole('group', { name: 'reference' });
+    const candidate = screen.getByRole('group', { name: 'candidate' });
+    await userEvent.selectOptions(within(reference).getByLabelText('profile'), 'claude-evaluator');
+    await userEvent.selectOptions(within(candidate).getByLabelText('profile'), 'sonnet-evaluator');
+
+    // A named profile leaves no overrides editor on that side.
+    expect(within(reference).queryByLabelText('opportunityEvaluator')).toBeNull();
+    expect(within(reference).getByText(/edit it on the configs page/i)).toBeInTheDocument();
+    expect(within(candidate).queryByLabelText('opportunityEvaluator')).toBeNull();
+
+    await userEvent.type(screen.getByLabelText('--tier'), '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
+    expect((postedRuns[0] as { profile: string }).profile).toBe('claude-evaluator');
+    expect((postedRuns[1] as { profile: string }).profile).toBe('sonnet-evaluator');
+    for (const spec of postedRuns as { overrides?: unknown }[]) {
+      expect('overrides' in spec).toBe(false);
+    }
+    // Shared flags still apply to both sides.
+    for (const spec of postedRuns as { flags: { tier?: number } }[]) {
+      expect(spec.flags.tier).toBe(2);
+    }
+  });
+
+  it('A/B posts overrides only on the side whose profile is default', async () => {
+    renderLaunch();
+    await screen.findByLabelText(/harness/i);
+    await userEvent.click(screen.getByLabelText(/a\/b/i));
+
+    const reference = await screen.findByRole('group', { name: 'reference' });
+    const candidate = screen.getByRole('group', { name: 'candidate' });
+    await userEvent.selectOptions(within(reference).getByLabelText('profile'), 'claude-evaluator');
+    await userEvent.selectOptions(
+      within(candidate).getByLabelText('opportunityEvaluator'),
+      'anthropic/claude-sonnet-4',
+    );
+
+    await userEvent.type(screen.getByLabelText('--tier'), '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
+    const referenceSpec = postedRuns[0] as { profile: string; overrides?: unknown };
+    const candidateSpec = postedRuns[1] as { profile: string; overrides?: { models: Record<string, string> } };
+    expect(referenceSpec.profile).toBe('claude-evaluator');
+    expect('overrides' in referenceSpec).toBe(false);
+    expect(candidateSpec.profile).toBe('default');
+    expect(candidateSpec.overrides?.models).toEqual({ opportunityEvaluator: 'anthropic/claude-sonnet-4' });
   });
 
   it('A/B mode defaults both sides to the same profile and shares flags', async () => {
