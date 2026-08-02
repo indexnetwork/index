@@ -8,30 +8,11 @@ import { HARNESS_REGISTRY } from "./ops.registry.js";
 
 export const DEFAULT_PROFILE_NAME = "default";
 
-/**
- * Environment variables a profile is permitted to set. Everything here is a
- * protocol feature flag read live from process.env. Credentials, connection
- * strings and NODE_ENV are deliberately absent: a profile must never be able to
- * repoint a run at another database or provider account.
- */
-export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
-  "DISCOVERY_ALLOWED_TYPES",
-  "DISCOVERY_PROFILE_SOURCE",
-  "DISCOVERY_CONTEXT_TO_INTENT",
-  "DISCOVERY_REJECTION_COOLDOWN_DAYS",
-  "DISCOVERY_SOURCE_PREMISE_LIMIT",
-  "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
-  "INTRODUCER_DISCOVERY_ENABLED",
-  "NEGOTIATION_INCLUDE_OTHER_INTENTS",
-  "NEGOTIATION_MAX_TURNS_CHAT",
-  "NEGOTIATION_MAX_TURNS_AMBIENT",
-  "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
-  "OUTCOME_QUESTIONS_MODE",
-  "POOL_QUESTIONS_MINING",
-  "POOL_QUESTIONS_MODE",
-  "POOL_QUESTIONS_PUSH",
-  "POOL_QUESTIONS_RANKING",
-]);
+// The allowlist lives in ops.allowlist.ts (dependency-free) so the browser app
+// can import it without dragging node:fs/crypto into the Vite bundle. Re-exported
+// here so existing server-side imports keep working.
+export { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
+import { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 
 export const ConfigProfileSchema = z
   .object({
