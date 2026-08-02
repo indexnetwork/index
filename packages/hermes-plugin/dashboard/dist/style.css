@@ -267,6 +267,19 @@
   flex-shrink: 0;
 }
 
+/* Rendered inside the page when the host has no banner header (desktop app). */
+.index-dashboard__hdr--inline {
+  align-self: flex-end;
+  margin-bottom: -0.5rem;
+}
+
+.index-dashboard__loading-text {
+  color: var(--color-muted-foreground, inherit);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .index-dashboard__hdr-label {
   font-size: 0.72rem;
   letter-spacing: 0.08em;

@@ -1,0 +1,25 @@
+/* Desktop host adapter: map the web-dashboard theme variables the shared
+   stylesheet consumes onto the desktop app's --ui-* theme variables, so the
+   page follows every desktop theme. The shared stylesheet's own hex fallbacks
+   still apply if a variable is missing. */
+.index-network-desktop-page {
+  --color-background: var(--ui-bg-editor);
+  --background-base: var(--ui-bg-editor);
+  --color-card: var(--ui-bg-elevated);
+  --color-card-foreground: var(--ui-text-primary);
+  --color-foreground: var(--ui-text-primary);
+  --color-muted-foreground: var(--ui-text-tertiary);
+  --color-border: var(--ui-stroke-secondary);
+  --color-primary: var(--ui-accent);
+  --color-destructive: var(--ui-red);
+  --color-success: var(--ui-green);
+  --midground: var(--ui-text-secondary);
+  --midground-base: var(--ui-bg-tertiary);
+  --radius: 6px;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  height: 100%;
+  overflow-y: auto;
+  padding-top: 1rem;
+  padding-bottom: 2rem;
+}

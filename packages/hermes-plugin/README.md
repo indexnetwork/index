@@ -44,6 +44,17 @@ ln -s /path/to/index/packages/hermes-plugin ~/.hermes/plugins/index-network
 hermes plugins enable index-network
 ```
 
+For the native Hermes Desktop app, generate the desktop plugin (a single ESM
+file built from the same dashboard bundle) and symlink its folder:
+
+```bash
+node desktop/build.mjs   # writes desktop/dist/plugin.js
+ln -s /path/to/index/packages/hermes-plugin/desktop/dist ~/.hermes/desktop-plugins/index-network
+```
+
+After rebuilding, run ⌘K → **Reload desktop plugins** in the app (file edits
+behind a symlinked folder don't always trigger the hot-reload watcher).
+
 You can also set the key manually:
 
 ```bash
