@@ -9,7 +9,7 @@ const LINKS: ReadonlyArray<{ to: string; label: string }> = [
   { to: '/', label: 'overview' },
   { to: '/launch', label: 'launch' },
   { to: '/compare', label: 'compare' },
-  { to: '/profiles', label: 'profiles' },
+  { to: '/profiles', label: 'configs' },
   { to: '/fixture', label: 'fixture' },
 ];
 

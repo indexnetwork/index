@@ -49,7 +49,7 @@ describe('App', () => {
       ['overview', '/'],
       ['launch', '/launch'],
       ['compare', '/compare'],
-      ['profiles', '/profiles'],
+      ['configs', '/profiles'],
     ];
     // The nav mounts with the dashboard, once the stubbed status answer arrives:
     // a link to a route the operator cannot open yet is not an offer worth making.

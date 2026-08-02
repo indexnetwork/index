@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router';
+import { BrowserRouter, MemoryRouter } from 'react-router';
 
 import { Launch } from '../src/routes/Launch';
 
@@ -271,5 +271,14 @@ describe('Launch', () => {
 
     expect(screen.queryByLabelText('opportunityEvaluator')).toBeNull();
     expect(await screen.findByText(/edit it on the configs page/i)).toBeInTheDocument();
+  });
+  it('preselects the profile named by the ?profile= search param', async () => {
+    render(
+      <MemoryRouter initialEntries={['/launch?profile=claude-evaluator']}>
+        <Launch />
+      </MemoryRouter>,
+    );
+    await screen.findByLabelText(/harness/i);
+    expect(screen.getByLabelText(/profile/i)).toHaveValue('claude-evaluator');
   });
 });

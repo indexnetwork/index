@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
 import { cleanOverrides, EMPTY_OVERRIDES, hasOverrides, OverridesEditor, type Overrides } from '../components/OverridesEditor';
@@ -34,13 +34,15 @@ interface LaunchState {
 
 export function Launch() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [state, setState] = useState<LaunchState>({
     harnesses: [],
     profiles: [],
     savedConfigs: [],
     models: [],
     selectedHarness: null,
-    selectedProfile: 'default',
+    // The configs page links here as /launch?profile=<name>.
+    selectedProfile: searchParams.get('profile') ?? 'default',
     ab: false,
     referenceOverrides: EMPTY_OVERRIDES,
     candidateOverrides: EMPTY_OVERRIDES,
