@@ -25,6 +25,19 @@ describe("matching corpus", () => {
     }
   });
 
+  it("every discovererId names exactly one entity in its case", () => {
+    // The evaluator's candidates are `entities where userId !== discovererId`.
+    // A discovererId that names no entity silently promotes the source to a
+    // candidate, and the model can never return the expected batch: the run
+    // fails every attempt with evaluator-incomplete. This fails statically
+    // here instead of after a live model call. (scout-vs-scouted-athlete
+    // shipped exactly this way and failed 6/6 attempts across environments.)
+    for (const c of CASES) {
+      const matches = c.input.entities.filter((e) => e.userId === c.input.discovererId);
+      expect(matches.length).toBe(1);
+    }
+  });
+
   it("every case has at least one explicit domain category", () => {
     const allowed = new Set<Domain>(["technology", "research", "arts", "funding", "location", "community", "sports"]);
     for (const c of CASES) {

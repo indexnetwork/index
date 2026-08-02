@@ -114,7 +114,10 @@ const _isA_3: MatchingCase = {
     domains: ["sports"],
   description: "'scouts' identity query must accept a talent scout and reject a recently-signed athlete (being signed ≠ scouting).",
   input: {
-    discovererId: "src-creative-tech",
+    // The discoverer is the bespoke scouting-org entity below: discovererId must
+    // name an entity in this list, or every entity becomes a candidate and the
+    // evaluator's complete-batch contract can never be satisfied.
+    discovererId: "src-scout",
     entities: [
       {
         userId: "src-scout",
