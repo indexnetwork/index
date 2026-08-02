@@ -383,6 +383,28 @@ describe('Launch', () => {
     );
   });
 
+  it('blocks “save as config” while an env override is invalid, like it blocks launch', async () => {
+    // Save posted the same invalid env Run refuses, so the server 400'd on a
+    // value the UI had already flagged inline.
+    renderLaunch();
+    await screen.findByLabelText(/harness/i);
+    openEnvFlags();
+    await userEvent.click(screen.getByRole('button', { name: /add flag override/i }));
+    await userEvent.selectOptions(screen.getByLabelText('flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
+    await userEvent.type(screen.getByLabelText('value 1'), 'lots');
+
+    await userEvent.click(screen.getByRole('button', { name: /save as config/i }));
+    await userEvent.type(screen.getByLabelText(/config name/i), 'bad-flag');
+    await userEvent.type(screen.getByLabelText(/config description/i), 'invalid value');
+
+    expect(screen.getByRole('button', { name: 'Save config' })).toBeDisabled();
+    expect(postedConfigs).toHaveLength(0);
+
+    await userEvent.clear(screen.getByLabelText('value 1'));
+    await userEvent.type(screen.getByLabelText('value 1'), '4');
+    expect(screen.getByRole('button', { name: 'Save config' })).toBeEnabled();
+  });
+
   it('A/B mode fires two launches and navigates to the pair URL', async () => {
     renderLaunch();
     await screen.findByLabelText(/harness/i);

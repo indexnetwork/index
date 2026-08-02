@@ -31,33 +31,84 @@ describe("ENV_FLAG_METADATA", () => {
     }
   });
 
-  it("mirrors the startup.env.ts / use-site schemas exactly", () => {
-    const byKey = new Map(ENV_FLAG_METADATA.map((m) => [m.key, m]));
-    const expected: Record<string, Pick<EnvFlagMeta, "kind" | "values">> = {
-      DISCOVERY_ALLOWED_TYPES: { kind: "string" },
-      DISCOVERY_PROFILE_SOURCE: { kind: "string" },
-      DISCOVERY_CONTEXT_TO_INTENT: { kind: "enum", values: ["0", "1"] },
-      DISCOVERY_REJECTION_COOLDOWN_DAYS: { kind: "number" },
-      DISCOVERY_SOURCE_PREMISE_LIMIT: { kind: "integer" },
-      RUN_OPPORTUNITY_EVAL_IN_PARALLEL: { kind: "boolean", values: ["true", "false"] },
-      INTRODUCER_DISCOVERY_ENABLED: { kind: "boolean", values: ["true", "false"] },
-      NEGOTIATION_INCLUDE_OTHER_INTENTS: { kind: "enum", values: ["true", "false"] },
-      NEGOTIATION_MAX_TURNS_CHAT: { kind: "integer" },
-      NEGOTIATION_MAX_TURNS_AMBIENT: { kind: "integer" },
-      NEGOTIATION_EVIDENCE_QUESTIONS_MODE: { kind: "enum", values: ["off", "shadow", "on"] },
-      OUTCOME_QUESTIONS_MODE: { kind: "enum", values: ["off", "shadow", "on"] },
-      POOL_QUESTIONS_MINING: { kind: "enum", values: ["off", "shadow"] },
-      POOL_QUESTIONS_MODE: { kind: "enum", values: ["off", "on"] },
-      POOL_QUESTIONS_PUSH: { kind: "enum", values: ["off", "on"] },
-      POOL_QUESTIONS_RANKING: { kind: "enum", values: ["off", "on"] },
+  // Flags the API startup schema does not declare, because the protocol reads
+  // them directly at the use site. Each must name the file that reads it, so a
+  // moved/renamed use site fails here instead of leaving the entry unpinned.
+  const USE_SITE_ONLY_FLAGS: Record<string, { kind: EnvFlagMeta["kind"]; useSite: string }> = {
+    DISCOVERY_REJECTION_COOLDOWN_DAYS: {
+      kind: "number",
+      useSite: "../../../src/opportunity/application/opportunity.graph.ts",
+    },
+  };
+
+  it("mirrors the real startup.env.ts schemas — upstream widening fails here", () => {
+    // A hand-copied table compared against another hand-copied table proves
+    // nothing: validateProfileEnv HARD-REJECTS on ENV_FLAG_METADATA, so if
+    // upstream widens an enum (POOL_QUESTIONS_MODE gains 'shadow') the API and
+    // the guided editor would refuse a value the live service accepts. Parse the
+    // real source instead. Same text-pin pattern as fixture.spec.ts.
+    const source = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "..", "..", "services", "api", "src", "startup.env.ts"),
+      "utf8",
+    );
+
+    // Resolve the shared aliases (optionalInt, optionalBoolean, ...) from their
+    // real definitions rather than assuming their shape.
+    const aliasOf = (name: string): string => {
+      const match = source.match(new RegExp(`const ${name} = (.+);`));
+      if (!match) throw new Error(`alias ${name} not found in startup.env.ts`);
+      return match[1]!;
     };
-    expect(Object.keys(expected).sort()).toEqual([...PROFILE_ENV_ALLOWLIST].sort());
-    for (const [key, shape] of Object.entries(expected)) {
+    const enumMembersOf = (declaration: string): string[] | undefined => {
+      const enumMatch = declaration.match(/z\.enum\(\[([^\]]+)\]\)/);
+      if (enumMatch) return enumMatch[1]!.split(",").map((s) => s.trim().replace(/^'|'$/g, ""));
+      // z.union of z.literal()s, e.g. DISCOVERY_CONTEXT_TO_INTENT — '' is the
+      // "unset" literal and is not an offerable value.
+      const literals = [...declaration.matchAll(/z\.literal\('([^']*)'\)/g)].map((m) => m[1]!);
+      const offerable = literals.filter((value) => value !== "");
+      return offerable.length > 0 ? offerable : undefined;
+    };
+
+    const byKey = new Map(ENV_FLAG_METADATA.map((m) => [m.key, m]));
+    let pinnedFromSchema = 0;
+
+    for (const key of PROFILE_ENV_ALLOWLIST) {
       const meta = byKey.get(key);
-      expect(meta, `${key} missing`).toBeDefined();
-      expect(meta!.kind).toBe(shape.kind);
-      if (shape.values) expect(meta!.values).toEqual(shape.values);
+      expect(meta, `${key} missing from ENV_FLAG_METADATA`).toBeDefined();
+
+      const declared = source.match(new RegExp(`^  ${key}: (.+),$`, "m"));
+      if (!declared) {
+        // Not in the startup schema: must be an explicitly registered use-site flag.
+        const useSiteOnly = USE_SITE_ONLY_FLAGS[key];
+        expect(useSiteOnly, `${key} is in neither startup.env.ts nor USE_SITE_ONLY_FLAGS`).toBeDefined();
+        expect(meta!.kind).toBe(useSiteOnly!.kind);
+        const useSiteSource = readFileSync(path.join(import.meta.dir, useSiteOnly!.useSite), "utf8");
+        expect(useSiteSource, `${key} not read at its declared use site`).toContain(`process.env.${key}`);
+        continue;
+      }
+
+      pinnedFromSchema += 1;
+      const declaration = /^optional[A-Za-z]*$/.test(declared[1]!.trim())
+        ? aliasOf(declared[1]!.trim())
+        : declared[1]!;
+
+      const upstreamValues = enumMembersOf(declaration);
+      if (upstreamValues) {
+        // Enum/boolean: our offerable values must be exactly upstream's.
+        expect([...meta!.values!].sort(), `${key} values drifted from startup.env.ts`).toEqual(
+          [...upstreamValues].sort(),
+        );
+        expect(meta!.kind === "enum" || meta!.kind === "boolean").toBe(true);
+      } else if (/regex\(\/\^\\d\+\$\//.test(declaration)) {
+        expect(meta!.kind, `${key} should be integer`).toBe("integer");
+      } else {
+        expect(meta!.kind, `${key} should be free-text`).toBe("string");
+      }
     }
+
+    // Guard the guard: if the regexes stop matching, this test must not silently
+    // pass having pinned nothing.
+    expect(pinnedFromSchema).toBe(PROFILE_ENV_ALLOWLIST.length - Object.keys(USE_SITE_ONLY_FLAGS).length);
   });
 });
 

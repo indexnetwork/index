@@ -235,15 +235,6 @@ describe('config and run-comparison client methods', () => {
     expect(calls).toEqual([{ url: '/api/configs', init: undefined }]);
   });
 
-  it('configModels() fetches GET /api/configs/models', async () => {
-    stubFetch(() => new Response(JSON.stringify({ models: ['google/gemini-2.5-flash'] })));
-
-    const result = await api.configModels();
-
-    expect(result).toEqual({ models: ['google/gemini-2.5-flash'] });
-    expect(calls.map((c) => c.url)).toEqual(['/api/configs/models']);
-  });
-
   it('configMetadata() fetches GET /api/configs/metadata', async () => {
     const body = {
       env: [

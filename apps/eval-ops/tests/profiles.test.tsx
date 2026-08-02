@@ -35,9 +35,16 @@ const METADATA = {
         role: 'Decides accept or reject for each candidate pair.',
       },
     ],
-    profile: [],
-    premise: [],
-    opportunity: [],
+    profile: [
+      { id: 'profileGenerator', label: 'Profile writer', role: 'Writes the user profile.' },
+    ],
+    premise: [
+      { id: 'premiseDecomposer', label: 'Decomposer', role: 'Splits a request into premises.' },
+      { id: 'premiseAnalyzer', label: 'Analyzer', role: 'Scores each candidate premise.' },
+    ],
+    opportunity: [
+      { id: 'opportunityPresenter', label: 'Card writer', role: 'Writes the opportunity card.' },
+    ],
   },
 };
 
@@ -56,12 +63,25 @@ const REPO = [
   },
 ];
 
-const SAVED = [
+const SAVED: {
+  name: string;
+  description: string;
+  models: Record<string, string>;
+  env: Record<string, string>;
+}[] = [
   {
     name: 'my-config',
     description: 'mine',
     models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
     env: {},
+  },
+  // Launch's "save as config" can create a config with env overrides only. Its
+  // models map is empty, so nothing but agent metadata can offer model rows.
+  {
+    name: 'env-only',
+    description: 'flags only',
+    models: {},
+    env: { POOL_QUESTIONS_MODE: 'on' },
   },
 ];
 
@@ -213,6 +233,33 @@ describe('Profiles (configs page)', () => {
     expect(patched!.body).toEqual({
       description: 'mine',
       models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
+      env: { POOL_QUESTIONS_MODE: 'on' },
+    });
+  });
+
+  it('offers every scorecard agent when editing a config that overrides no model', async () => {
+    // Regression: editAgentIds was derived only from agent ids already present in
+    // some loaded profile's models map. The only repo profile ships models:{},
+    // so an env-only config offered NO model dropdowns and no way to add one —
+    // the user had to delete and recreate the config to set a model.
+    renderProfiles();
+    const envOnly = await screen.findByRole('region', { name: 'config env-only' });
+    await userEvent.click(within(envOnly).getByRole('button', { name: 'edit' }));
+
+    for (const label of ['Evaluator', 'Profile writer', 'Decomposer', 'Analyzer', 'Card writer']) {
+      expect(within(envOnly).getByText(label)).toBeInTheDocument();
+    }
+    const evaluator = within(envOnly).getByLabelText('model for Evaluator');
+    expect(evaluator).toHaveValue('');
+
+    await userEvent.selectOptions(evaluator, 'google/gemini-2.5-flash');
+    await userEvent.click(within(envOnly).getByRole('button', { name: 'save changes' }));
+
+    await waitFor(() => expect(patched).not.toBeNull());
+    expect(patched!.name).toBe('env-only');
+    expect(patched!.body).toEqual({
+      description: 'flags only',
+      models: { opportunityEvaluator: 'google/gemini-2.5-flash' },
       env: { POOL_QUESTIONS_MODE: 'on' },
     });
   });

@@ -111,7 +111,6 @@ export function Profiles() {
     const envRows: EnvOverrideRow[] = Object.entries(config.env).map(([key, value]) => ({
       key,
       value,
-      reason: '',
     }));
     const envValid = envRowsValid(envFlags, envRows);
     setState((prev) => ({
@@ -130,7 +129,7 @@ export function Profiles() {
   const handleSaveEdit = (name: string) => {
     const description = state.editDescription.trim();
     if (description === '') return;
-    // envRowsToOverrides keeps complete rows only and drops the UI-only reasons.
+    // envRowsToOverrides keeps complete rows only.
     const models = { ...state.editModels };
     const env = envRowsToOverrides(state.editEnvRows);
     api
@@ -200,10 +199,14 @@ export function Profiles() {
       .flatMap((agents) => agents)
       .map((agent) => [agent.id, agent]),
   );
-  // A saved config is harness-agnostic, so the editor offers every agent any
-  // loaded profile overrides — plus whatever the config being edited names.
+  // A saved config is harness-agnostic, so the editor offers every agent the
+  // scorecard harnesses exercise (from metadata — the shipped `default` profile
+  // overrides none, so profiles alone would leave an env-only config with no
+  // model rows at all), plus any agent some loaded profile or the config being
+  // edited already names.
   const editAgentIds = [
     ...new Set([
+      ...agentMetaById.keys(),
       ...[...state.repo, ...state.saved].flatMap((profile) => Object.keys(profile.models)),
       ...Object.keys(state.editModels),
     ]),

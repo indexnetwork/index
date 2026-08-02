@@ -75,7 +75,7 @@ function Harness({ initial }: { initial: EnvOverrideRow[] }) {
   );
 }
 
-const emptyRow: EnvOverrideRow = { key: '', value: '', reason: '' };
+const emptyRow: EnvOverrideRow = { key: '', value: '' };
 
 function readRows(): EnvOverrideRow[] {
   return JSON.parse(screen.getByTestId('rows').textContent ?? '[]') as EnvOverrideRow[];
@@ -157,7 +157,7 @@ describe('GuidedEnvEditor', () => {
     const user = userEvent.setup();
     render(<Harness initial={[{ ...emptyRow, key: 'POOL_QUESTIONS_MODE', value: 'on' }]} />);
     await user.selectOptions(screen.getByLabelText('flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
-    expect(readRows()[0]).toEqual({ key: 'NEGOTIATION_MAX_TURNS_CHAT', value: '', reason: '' });
+    expect(readRows()[0]).toEqual({ key: 'NEGOTIATION_MAX_TURNS_CHAT', value: '' });
     expect(screen.getByTestId('valid').textContent).toBe('false');
   });
 
@@ -221,19 +221,20 @@ describe('GuidedEnvEditor', () => {
     expect(readRows()[0]?.key).toBe('');
   });
 
-  it('keeps an optional free-text reason per row', async () => {
-    const user = userEvent.setup();
+  it('offers no per-row annotation field, because nothing would persist it', () => {
+    // The old "why" input was collected into row.reason and then dropped by
+    // envRowsToOverrides — the wire schema has no field for it, so a user's
+    // justification vanished on submit. Removed rather than faked.
     render(<Harness initial={[{ ...emptyRow, key: 'POOL_QUESTIONS_MODE', value: 'on' }]} />);
-    await user.type(screen.getByLabelText('why 1'), 'checking question enqueue');
-    expect(readRows()[0]?.reason).toBe('checking question enqueue');
-    expect(screen.getByTestId('valid').textContent).toBe('true');
+    expect(screen.queryByLabelText('why 1')).toBeNull();
+    expect(screen.queryByPlaceholderText('why (optional)')).toBeNull();
   });
 
-  it('envRowsToOverrides drops incomplete rows and reasons', () => {
+  it('envRowsToOverrides drops incomplete rows', () => {
     const rows: EnvOverrideRow[] = [
-      { key: 'POOL_QUESTIONS_MODE', value: 'on', reason: 'why' },
-      { key: '', value: '', reason: '' },
-      { key: 'NEGOTIATION_MAX_TURNS_CHAT', value: '', reason: '' },
+      { key: 'POOL_QUESTIONS_MODE', value: 'on' },
+      { key: '', value: '' },
+      { key: 'NEGOTIATION_MAX_TURNS_CHAT', value: '' },
     ];
     expect(envRowsToOverrides(rows)).toEqual({ POOL_QUESTIONS_MODE: 'on' });
   });

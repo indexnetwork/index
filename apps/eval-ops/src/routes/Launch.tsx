@@ -394,6 +394,11 @@ export function Launch() {
     : envValidity(state.selectedProfile, state.referenceOverrides);
 
   const launchBlocked = invalidSelectionFlags.length > 0 || !envInputValid;
+  // Saving carries the same env overrides a run would, so an invalid value must
+  // block the save too — otherwise POST /api/configs 400s on a value the editor
+  // has already flagged inline.
+  const saveConfigBlocked =
+    state.configName.trim() === '' || state.configDescription.trim() === '' || !envInputValid;
   const singleEnv = envRowsToOverrides(state.referenceOverrides.envRows);
   const showSaveConfig =
     overridesAllowed &&
@@ -566,7 +571,7 @@ export function Launch() {
                     <button
                       type="button"
                       className="px-[2ch] py-[0.5lh] bg-term-cyan text-term-bg font-bold disabled:opacity-50"
-                      disabled={state.configName.trim() === '' || state.configDescription.trim() === ''}
+                      disabled={saveConfigBlocked}
                       onClick={handleSaveConfig}
                     >
                       Save config

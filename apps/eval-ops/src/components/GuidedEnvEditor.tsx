@@ -6,11 +6,9 @@ export interface EnvOverrideRow {
   /** Empty until the user picks a flag. */
   key: string;
   value: string;
-  /** Optional annotation — never sent to the server today, kept for the parent. */
-  reason: string;
 }
 
-export const EMPTY_ENV_ROW: EnvOverrideRow = { key: '', value: '', reason: '' };
+export const EMPTY_ENV_ROW: EnvOverrideRow = { key: '', value: '' };
 
 /**
  * Human-readable problem with a non-empty value, or null when the value is
@@ -58,7 +56,7 @@ export function envRowsValid(flags: readonly EnvFlagMeta[], rows: readonly EnvOv
 
 /**
  * Projects rows into the Overrides.env record parents send to the server:
- * complete rows only, reasons dropped.
+ * complete rows only.
  */
 export function envRowsToOverrides(rows: readonly EnvOverrideRow[]): Record<string, string> {
   return Object.fromEntries(
@@ -113,13 +111,6 @@ export function GuidedEnvEditor({ flags, rows, onChange }: GuidedEnvEditorProps)
   const setValue = useCallback(
     (index: number, value: string) => {
       publish(rows.map((row, i) => (i === index ? { ...row, value } : row)));
-    },
-    [rows, publish],
-  );
-
-  const setReason = useCallback(
-    (index: number, reason: string) => {
-      publish(rows.map((row, i) => (i === index ? { ...row, reason } : row)));
     },
     [rows, publish],
   );
@@ -212,15 +203,6 @@ export function GuidedEnvEditor({ flags, rows, onChange }: GuidedEnvEditorProps)
             )}
 
             {issue !== null && <p className="text-term-red">{issue}</p>}
-
-            <input
-              type="text"
-              aria-label={`why ${n}`}
-              placeholder="why (optional)"
-              className={`${INPUT_CLASS} w-full`}
-              value={row.reason}
-              onChange={(e) => setReason(index, e.target.value)}
-            />
           </div>
         );
       })}

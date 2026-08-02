@@ -114,6 +114,8 @@ Repo-shipped profiles are exempt from *value* validation at boot (they are code-
 
 ### 5. Launch page restructure (`Launch.tsx`)
 
+> **Post-implementation note (2026-08-02):** item 2 (the "Baseline select") was **not implemented — deliberate deviation**, for the same reason as §6: it had no subject. `RunSpecSchema` (`eval/ops/ops.argv.ts:38`) accepts only `kind`, `harness`, `profile`, `overrides` and `flags` — there is no baseline/reference field to bind a control to, and `dev`'s Launch page never had such a select (its only "baseline" mentions are prose in the experimental warning). The comparison reference is chosen per run elsewhere (run/compare pages), not at launch. Items 1, 3, 4 and 5 shipped as written. Original text retained for the record:
+
 1. **What controls this run** (top): profile select (existing, with description), then `ModelOverrideEditor` scoped to the harness's agents.
 2. **Baseline** select (unchanged behavior, plain-English labels: "Committed baseline", "No comparison", "A previous run…").
 3. **▸ Advanced options** (collapsed `<details>`): runs, seed, case filters — the current controls, with the new explanations.

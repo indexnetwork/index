@@ -365,10 +365,6 @@ export const api = {
     return fetchJson('/api/configs');
   },
 
-  async configModels(): Promise<{ models: string[] }> {
-    return fetchJson('/api/configs/models');
-  },
-
   async configMetadata(): Promise<ConfigMetadata> {
     return fetchJson('/api/configs/metadata');
   },
