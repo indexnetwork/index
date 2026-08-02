@@ -1113,6 +1113,24 @@
       "source": "./capabilities/signals.facade.js"
     },
     {
+      "name": "IntakeRound",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FollowUpPlan",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FollowUpPlanInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
       "name": "SynthesisInput",
       "kind": "type",
       "stability": "stable",
