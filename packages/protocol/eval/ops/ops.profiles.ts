@@ -123,7 +123,8 @@ export function validateProfileEnv(env: Record<string, string>): string[] {
         }
         break;
       case "integer":
-        if (!/^-?\d+$/.test(value)) {
+        // Non-negative digits only, mirroring optionalInt in services/api/src/startup.env.ts.
+          if (!/^\d+$/.test(value)) {
           issues.push(`env ${key} value "${value}" is not a valid integer`);
         }
         break;

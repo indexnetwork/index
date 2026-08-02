@@ -85,7 +85,15 @@ export function Profiles() {
           models: result.models ?? [],
           harnessAgents: result.harnessAgents ?? {},
         };
-        setState((prev) => ({ ...prev, metadata }));
+        setState((prev) => ({
+          ...prev,
+          metadata,
+          // The edit panel may have opened before metadata resolved; its env
+          // validity was computed against an empty flag list, so recompute it
+          // now that the real flags are known. envRowsValid is pure.
+          editEnvValid:
+            prev.editing !== null ? envRowsValid(metadata.env, prev.editEnvRows) : prev.editEnvValid,
+        }));
       })
       .catch(() => {});
 

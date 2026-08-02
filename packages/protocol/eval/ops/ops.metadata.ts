@@ -63,7 +63,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "DISCOVERY_REJECTION_COOLDOWN_DAYS",
     label: "Rejection cooldown (days)",
     description:
-      "How many days a rejected candidate stays suppressed before discovery may suggest it again. Positive float in days (src/opportunity/application/opportunity.graph.ts).",
+      "Days during which a recently rejected or stalled candidate receives a ×0.5 ranking penalty in discovery — a soft pushdown, not removal. Positive float in days (src/opportunity/application/opportunity.graph.ts).",
     kind: "number",
     defaultDescription: "7 days",
   },

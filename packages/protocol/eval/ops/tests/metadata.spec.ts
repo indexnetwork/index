@@ -61,6 +61,19 @@ describe("ENV_FLAG_METADATA", () => {
   });
 });
 
+describe("copy honesty spot checks", () => {
+  it("describes the rejection cooldown as a soft ranking penalty, matching opportunity.graph.ts", () => {
+    const flag = ENV_FLAG_METADATA.find((f) => f.key === "DISCOVERY_REJECTION_COOLDOWN_DAYS");
+    expect(flag).toBeDefined();
+    // The code applies a ×0.5 similarity penalty to rejected OR stalled candidates
+    // (opportunity.graph.ts IND-567) — the copy must not claim suppression/removal.
+    expect(flag!.description).toContain("penalty");
+    expect(flag!.description).toContain("stalled");
+    expect(flag!.description).not.toContain("stays suppressed");
+    expect(flag!.defaultDescription).toBe("7 days");
+  });
+});
+
 describe("MODEL_METADATA", () => {
   it("covers exactly the selectable models, once each", () => {
     expect(MODEL_METADATA.map((m) => m.id).sort()).toEqual([...ALLOWED_CONFIG_MODELS].sort());

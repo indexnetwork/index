@@ -165,6 +165,16 @@ describe("validateConfigOverrides", () => {
     expect(issues[0]).toMatch(/integer/i);
   });
 
+  it("rejects negative integers for integer flags, matching startup.env optionalInt", () => {
+    for (const value of ["-3", "+4", "4.5"]) {
+      const issues = validateConfigOverrides({ models: {}, env: { NEGOTIATION_MAX_TURNS_CHAT: value } });
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("NEGOTIATION_MAX_TURNS_CHAT");
+      expect(issues[0]).toContain(value);
+      expect(issues[0]).toMatch(/integer/i);
+    }
+  });
+
   it("rejects non-positive and non-numeric values for a positive-number flag", () => {
     for (const value of ["-3", "0", "soon"]) {
       const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_REJECTION_COOLDOWN_DAYS: value } });

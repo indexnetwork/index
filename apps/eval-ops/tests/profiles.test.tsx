@@ -74,17 +74,20 @@ let savedConfigs: {
   env: Record<string, string>;
 }[];
 let metadataAvailable: boolean;
+let metadataGate: Promise<void> | null;
 
 beforeEach(() => {
   patched = null;
   deleted = [];
   metadataAvailable = true;
+  metadataGate = null;
   savedConfigs = SAVED.map((config) => ({ ...config }));
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       const href = String(url);
       if (href.endsWith('/api/configs/metadata')) {
+        if (metadataGate !== null) await metadataGate;
         return metadataAvailable
           ? new Response(JSON.stringify(METADATA))
           : new Response('boom', { status: 500 });
@@ -276,6 +279,30 @@ describe('Profiles (configs page)', () => {
       models: {},
       env: { POOL_QUESTIONS_MODE: 'off' },
     });
+  });
+
+  it('recomputes env validity when metadata resolves after the edit panel opened', async () => {
+    savedConfigs.push({
+      name: 'env-config',
+      description: 'has env',
+      models: {},
+      env: { POOL_QUESTIONS_MODE: 'off' },
+    });
+    // Hold the metadata response until the edit panel is already open: the panel
+    // computes editEnvValid against an empty flag list (false), and without a
+    // recompute on arrival save would stick disabled even though the value is valid.
+    let release!: () => void;
+    metadataGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    renderProfiles();
+    const region = await screen.findByRole('region', { name: 'config env-config' });
+    await userEvent.click(within(region).getByRole('button', { name: 'edit' }));
+
+    release();
+    // Metadata has landed once the guided env disclosure renders.
+    await within(region).findByText(/live-pipeline flags/i);
+    expect(within(region).getByRole('button', { name: 'save changes' })).toBeEnabled();
   });
 
   it('hides the guided editors with a note when metadata does not load', async () => {

@@ -6,7 +6,7 @@ import { useState } from 'react';
 afterEach(cleanup);
 
 import type { EnvFlagMeta } from '../src/api/client';
-import { envRowsToOverrides, envRowsValid, GuidedEnvEditor, type EnvOverrideRow } from '../src/components/GuidedEnvEditor';
+import { envRowsToOverrides, envRowsValid, envValueIssue, GuidedEnvEditor, type EnvOverrideRow } from '../src/components/GuidedEnvEditor';
 
 const FLAGS: EnvFlagMeta[] = [
   {
@@ -151,6 +151,44 @@ describe('GuidedEnvEditor', () => {
   it('treats an unchosen key or unchosen enum value as incomplete (invalid)', () => {
     render(<Harness initial={[emptyRow]} />);
     expect(screen.getByTestId('valid').textContent).toBe('false');
+  });
+
+  it('changing a row’s key resets its value, since the new flag has a different schema', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={[{ ...emptyRow, key: 'POOL_QUESTIONS_MODE', value: 'on' }]} />);
+    await user.selectOptions(screen.getByLabelText('flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
+    expect(readRows()[0]).toEqual({ key: 'NEGOTIATION_MAX_TURNS_CHAT', value: '', reason: '' });
+    expect(screen.getByTestId('valid').textContent).toBe('false');
+  });
+
+  it('rejects negative integers — startup.env optionalInt is non-negative', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={[{ ...emptyRow, key: 'NEGOTIATION_MAX_TURNS_CHAT' }]} />);
+    const input = screen.getByLabelText('value 1');
+    await user.type(input, '-3');
+    expect(screen.getByText(/must be an integer/)).toBeInTheDocument();
+    expect(screen.getByTestId('valid').textContent).toBe('false');
+  });
+
+  it('treats a whitespace-only string value as incomplete and drops it from overrides', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial={[{ ...emptyRow, key: 'DISCOVERY_ALLOWED_TYPES' }]} />);
+    await user.type(screen.getByLabelText('value 1'), '   ');
+    expect(screen.getByTestId('valid').textContent).toBe('false');
+    expect(envRowsToOverrides(readRows())).toEqual({});
+  });
+
+  it('never renders “undefined” in the enum issue message for a flag without values', () => {
+    const noValues: EnvFlagMeta = {
+      key: 'BROKEN_FLAG',
+      label: 'broken',
+      description: 'enum flag missing its values list',
+      kind: 'enum',
+      defaultDescription: 'off',
+    };
+    const issue = envValueIssue(noValues, 'nope');
+    expect(issue).not.toBeNull();
+    expect(issue).not.toMatch(/undefined/);
   });
 
   it('excludes keys already used in other rows from the dropdown', () => {

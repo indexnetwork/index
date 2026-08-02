@@ -74,10 +74,30 @@ const ARTIFACTS = {
   ],
 };
 
+const HARNESSES = {
+  harnesses: [
+    {
+      harness: 'matching',
+      script: 'eval:matching',
+      flags: [],
+      defaultRuns: 3,
+      caseCount: 40,
+      question: 'Does the evaluator pick the right matches?',
+      detail: 'Each case scores accept/reject decisions against a known baseline.',
+      agents: ['opportunityEvaluator'],
+    },
+  ],
+};
+
 beforeEach(() => {
+  // URL-aware stub: artifacts and harness descriptors are different endpoints.
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(JSON.stringify(ARTIFACTS))),
+    vi.fn(async (url: string) => {
+      const href = String(url);
+      if (href.endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
+      return new Response(JSON.stringify(ARTIFACTS));
+    }),
   );
 });
 
@@ -108,6 +128,13 @@ describe('Harness', () => {
 
     const links = screen.getAllByRole('link', { name: /matching\// });
     expect(links.map((link) => link.textContent)).toEqual([RUN_PATH, BASELINE_PATH]);
+  });
+
+  it('renders the plain-English harness description from the registry', async () => {
+    renderHarness();
+
+    expect(await screen.findByText(/Does the evaluator pick the right matches\?/)).toBeInTheDocument();
+    expect(screen.getByText(/Each case scores accept\/reject decisions/)).toBeInTheDocument();
   });
 
   it('links every artifact to the artifact route, not the run route', async () => {

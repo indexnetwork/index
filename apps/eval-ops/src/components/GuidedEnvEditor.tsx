@@ -23,9 +23,12 @@ export function envValueIssue(flag: EnvFlagMeta, value: string): string | null {
   switch (flag.kind) {
     case 'enum':
     case 'boolean':
-      return flag.values?.includes(value) ? null : `expected one of: ${flag.values?.join(', ')}`;
+      return flag.values?.includes(value)
+        ? null
+        : `expected one of: ${flag.values?.join(', ') ?? '(no values defined)'}`;
     case 'integer':
-      return /^-?\d+$/.test(value) ? null : 'must be an integer';
+      // Non-negative digits only — mirrors optionalInt in services/api/src/startup.env.ts.
+      return /^\d+$/.test(value) ? null : 'must be an integer';
     case 'number':
       return Number.isFinite(Number(value)) && Number(value) > 0
         ? null
@@ -44,7 +47,7 @@ export function envValueIssue(flag: EnvFlagMeta, value: string): string | null {
 export function envRowsValid(flags: readonly EnvFlagMeta[], rows: readonly EnvOverrideRow[]): boolean {
   const flagByKey = new Map(flags.map((flag) => [flag.key, flag]));
   return rows.every((row) => {
-    if (row.key === '' || row.value === '') return false;
+    if (row.key === '' || row.value.trim() === '') return false;
     const flag = flagByKey.get(row.key);
     return flag !== undefined && envValueIssue(flag, row.value) === null;
   });
@@ -56,7 +59,7 @@ export function envRowsValid(flags: readonly EnvFlagMeta[], rows: readonly EnvOv
  */
 export function envRowsToOverrides(rows: readonly EnvOverrideRow[]): Record<string, string> {
   return Object.fromEntries(
-    rows.filter((row) => row.key !== '' && row.value !== '').map((row) => [row.key, row.value]),
+    rows.filter((row) => row.key !== '' && row.value.trim() !== '').map((row) => [row.key, row.value]),
   );
 }
 
@@ -205,7 +208,7 @@ export function GuidedEnvEditor({ flags, rows, onChange }: GuidedEnvEditorProps)
               />
             )}
 
-            {issue !== null && <p className="text-term-fail">{issue}</p>}
+            {issue !== null && <p className="text-term-red">{issue}</p>}
 
             <input
               type="text"

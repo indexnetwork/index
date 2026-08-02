@@ -256,6 +256,16 @@ describe('Launch', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders Advanced options before the live-pipeline flags disclosure (spec order)', async () => {
+    renderLaunch();
+    await screen.findByLabelText(/harness/i);
+    const advanced = screen.getByText(/^advanced options$/i);
+    const envFlags = screen.getByText(/advanced: live-pipeline flags/i);
+    expect(
+      advanced.compareDocumentPosition(envFlags) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('keeps live-pipeline flags behind a disclosure with the honesty note', async () => {
     renderLaunch();
     await screen.findByLabelText(/harness/i);
@@ -290,10 +300,13 @@ describe('Launch', () => {
 
     expect(await screen.findByText(/must be an integer/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+    // The disclosure may be collapsed — a page-level hint must say why launch is blocked.
+    expect(screen.getByText(/resolve the invalid flag value above to launch/i)).toBeInTheDocument();
 
     await userEvent.clear(screen.getByLabelText('value 1'));
     await userEvent.type(screen.getByLabelText('value 1'), '4');
     expect(screen.getByRole('button', { name: 'Run' })).toBeEnabled();
+    expect(screen.queryByText(/resolve the invalid flag value above to launch/i)).toBeNull();
   });
 
   it('submits ad-hoc model and env overrides with profile default', async () => {

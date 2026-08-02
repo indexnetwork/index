@@ -518,30 +518,6 @@ export function Launch() {
                 </p>
               )}
 
-              {overridesAllowed && envFlags.length > 0 && (
-                <details>
-                  <summary className="cursor-pointer text-term-cyan">
-                    Advanced: live-pipeline flags
-                  </summary>
-                  <div className="mt-2 space-y-3">
-                    <p className="text-term-dim">
-                      These flags tune the live discovery and negotiation services. This scorecard
-                      harness does not read them — they are recorded with the run for staging work.
-                    </p>
-                    <GuidedEnvEditor
-                      flags={envFlags}
-                      rows={state.referenceOverrides.envRows}
-                      onChange={(envRows, envValid) =>
-                        setState((prev) => ({
-                          ...prev,
-                          referenceOverrides: { ...prev.referenceOverrides, envRows, envValid },
-                        }))
-                      }
-                    />
-                  </div>
-                </details>
-              )}
-
               {showSaveConfig && !state.savingConfig && (
                 <button
                   type="button"
@@ -665,6 +641,30 @@ export function Launch() {
             </details>
           )}
 
+          {!state.ab && overridesAllowed && envFlags.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-term-cyan">
+                Advanced: live-pipeline flags
+              </summary>
+              <div className="mt-2 space-y-3">
+                <p className="text-term-dim">
+                  These flags tune the live discovery and negotiation services. This scorecard
+                  harness does not read them — they are recorded with the run for staging work.
+                </p>
+                <GuidedEnvEditor
+                  flags={envFlags}
+                  rows={state.referenceOverrides.envRows}
+                  onChange={(envRows, envValid) =>
+                    setState((prev) => ({
+                      ...prev,
+                      referenceOverrides: { ...prev.referenceOverrides, envRows, envValid },
+                    }))
+                  }
+                />
+              </div>
+            </details>
+          )}
+
           <div className="border-t border-term-rule pt-4 mt-4">
             <p className="mb-2">
               <span className="text-term-dim">Workload: </span>
@@ -676,6 +676,10 @@ export function Launch() {
               <p className="mb-2 text-term-red">
                 Fix {invalidSelectionFlags.join(', ')} before running.
               </p>
+            )}
+
+            {!envInputValid && (
+              <p className="mb-2 text-term-red">Resolve the invalid flag value above to launch.</p>
             )}
 
             {state.launchError !== null && (
