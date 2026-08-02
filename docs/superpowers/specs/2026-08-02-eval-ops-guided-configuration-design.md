@@ -120,7 +120,10 @@ Repo-shipped profiles are exempt from *value* validation at boot (they are code-
 4. **▸ Advanced: live-pipeline flags** (collapsed `<details>`): honesty note ("These flags tune the live discovery and negotiation services. This scorecard harness does not read them — they are recorded with the run for staging work.") + `GuidedEnvEditor`.
 5. A/B mode: per-side sections keep profile select + that side's model editor; the shared fields (runs/seed/cases, baseline) stay shared; env flags stay per-side inside each side's advanced disclosure. A/B help copy updated to match.
 
-### 6. Harness page (`Harness.tsx`)
+### 6. Harness page (`Harness.tsx`) — SUPERSEDED (implemented as no-op)
+
+> **Post-implementation note (2026-08-02):** this section cited a `command-line` block that the earlier UX pass (#1318 era) had already replaced with the plain-English `question`/`detail` descriptor line. No per-harness default reference/profile data exists server-side, so the sentence below has no data source. Task 6 was correctly ruled obsolete during execution; the harness page was already plain-English. Original text retained for the record:
+
 
 Replace the `<div class="command-line">` with a plain-English sentence built from the same data: `Compared against the committed baseline, under profile "dev-premise".` / `No comparison; cases only, under profile "default".` etc. The raw command moves into a collapsed `<details>` (`▸ show command`) for copy-paste. Descriptions and stats rows are unchanged.
 
