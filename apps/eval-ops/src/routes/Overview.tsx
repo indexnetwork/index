@@ -117,31 +117,34 @@ function HarnessHealth({
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 
         return (
-          <div key={harness.harness} className="flex gap-4">
-            <Link
-              to={`/h/${harness.harness}`}
-              className="text-term-blue hover:underline w-24"
-            >
-              {harness.harness}
-            </Link>
-            <span className="text-term-dim w-20">baseline:</span>
-            <span className="w-16">
-              {baseline
-                ? `${(baseline.aggregatePassRate * 100).toFixed(1)}%`
-                : '—'}
-            </span>
-            <span className="text-term-dim w-20">latest:</span>
-            <span className="w-16">
-              {latestRun
-                ? `${(latestRun.aggregatePassRate * 100).toFixed(1)}%`
-                : '—'}
-            </span>
-            {baseline && latestRun && (
-              <Delta
-                baseline={baseline.aggregatePassRate}
-                current={latestRun.aggregatePassRate}
-              />
-            )}
+          <div key={harness.harness}>
+            <div className="flex gap-4">
+              <Link
+                to={`/h/${harness.harness}`}
+                className="text-term-blue hover:underline w-24"
+              >
+                {harness.harness}
+              </Link>
+              <span className="text-term-dim w-20">baseline:</span>
+              <span className="w-16">
+                {baseline
+                  ? `${(baseline.aggregatePassRate * 100).toFixed(1)}%`
+                  : '—'}
+              </span>
+              <span className="text-term-dim w-20">latest:</span>
+              <span className="w-16">
+                {latestRun
+                  ? `${(latestRun.aggregatePassRate * 100).toFixed(1)}%`
+                  : '—'}
+              </span>
+              {baseline && latestRun && (
+                <Delta
+                  baseline={baseline.aggregatePassRate}
+                  current={latestRun.aggregatePassRate}
+                />
+              )}
+            </div>
+            <p className="text-term-dim ml-28 -mt-1">{harness.question}</p>
           </div>
         );
       })}

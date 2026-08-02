@@ -1,17 +1,20 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { FsArtifactSource } from "../ops.artifacts.js";
-import { OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
+import { ApiIdentityResolver, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type IdentityResolver, type ResolvedIdentity } from "../ops.auth.js";
+import { InMemoryConfigStore } from "../ops.configs.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveIdentityEndpoints, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
+import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
 const DATABASE_URL = "postgres://u:p@host/neondb";
 
@@ -59,16 +62,26 @@ class StubIdentityResolver implements IdentityResolver {
   identity: ResolvedIdentity | null = { email: "operator@index.network", emailVerified: true, name: "Operator" };
   failure: Error | null = null;
 
-  async resolve(apiKey: string): Promise<ResolvedIdentity | null> {
-    this.seen.push(apiKey);
+  async resolve(credential: string): Promise<ResolvedIdentity | null> {
+    this.seen.push(credential);
     if (this.failure !== null) throw this.failure;
     return this.identity;
   }
 }
 
+/**
+ * A syntactically plausible better-auth JWT for the deployed sign-in tests.
+ *
+ * The stub resolver never inspects it; it exists so a test can assert the exact
+ * string the browser submitted was handed to the resolver once and then never
+ * appears anywhere else.
+ */
+const JWT = "eyJhbGciOiJFZERTQSJ9.eyJpZCI6InUxIn0.c2lnbmF0dXJl";
+
 let root: string;
 let store: FsRunStore;
 let executor: FakeExecutor;
+let configs: InMemoryConfigStore;
 let context: OpsContext;
 let handler: (request: Request) => Promise<Response>;
 let states: OneTimeStateStore;
@@ -77,7 +90,7 @@ let identities: StubIdentityResolver;
 /** A `Cookie` header for a signed-in operator, refreshed by `signIn()`. */
 let sessionCookie: Record<string, string>;
 
-async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
+async function build(overrides: Partial<OpsContext> = {}, auth: Partial<OpsAuthContext> = {}): Promise<void> {
   const evalDir = path.join(root, "eval");
   const profilesDir = path.join(evalDir, "ops/profiles");
   await mkdir(profilesDir, { recursive: true });
@@ -91,6 +104,7 @@ async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
   );
   store = new FsRunStore({ evalDir });
   executor = new FakeExecutor(store);
+  configs = new InMemoryConfigStore();
   states = new OneTimeStateStore();
   sessions = new OpsSessionStore();
   identities = new StubIdentityResolver();
@@ -103,21 +117,24 @@ async function build(overrides: Partial<OpsContext> = {}): Promise<void> {
     store,
     executor,
     queue: new RunQueue({ executor, store }),
+    configs,
     databaseUrl: DATABASE_URL,
     inspector: { count: async () => COUNTS },
     auth: {
-      states,
       sessions,
       identities,
-      webAppUrl: "https://index.network",
-      callbackPort: 4321,
       uiUrl: "http://127.0.0.1:5174",
+      signIn: { kind: "bridge", states, webAppUrl: "https://index.network", callbackPort: 4321 },
+      ...auth,
     },
     ...overrides,
   };
   handler = createOpsHandler(context);
   sessionCookie = {};
-  await signIn();
+  // Signed in through whichever door this posture actually opens: the tests past
+  // this point assert behaviour behind the gate, not the gate itself.
+  if (context.auth?.signIn.kind === "token") await signInWithToken();
+  else await signIn();
 }
 
 /**
@@ -138,6 +155,21 @@ async function signIn(): Promise<void> {
   sessionCookie = { Cookie: cookie.split(";")[0] };
   // The sign-in above exchanged one credential; a test asserting "the credential
   // was never looked at" must not see this one.
+  identities.seen.length = 0;
+}
+
+/** The deployed equivalent: submit a token, receive the same session cookie. */
+async function signInWithToken(): Promise<void> {
+  const response = await handler(
+    new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: JWT }),
+    }),
+  );
+  const cookie = response.headers.get("set-cookie");
+  if (cookie === null) throw new Error(`sign-in did not set a session cookie (status ${response.status})`);
+  sessionCookie = { Cookie: cookie.split(";")[0] };
   identities.seen.length = 0;
 }
 
@@ -164,6 +196,16 @@ const post = (url: string, body: unknown, headers: Record<string, string> = {}) 
       body: JSON.stringify(body),
     }),
   );
+const patch = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+  handler(
+    new Request(`http://localhost${url}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...sessionCookie, ...headers },
+      body: JSON.stringify(body),
+    }),
+  );
+const del = (url: string, headers: Record<string, string> = {}) =>
+  handler(new Request(`http://localhost${url}`, { method: "DELETE", headers: { ...sessionCookie, ...headers } }));
 
 const RUN_BODY = { kind: "eval", harness: "matching", profile: "default", flags: {} };
 
@@ -341,6 +383,99 @@ describe("POST /api/runs", () => {
   });
 });
 
+describe("launch with overrides", () => {
+  const PAYLOAD = { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} };
+
+  it("launches an ad-hoc run as experimental with the overrides env injected", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: { runs: 1 },
+      overrides: PAYLOAD,
+    });
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    expect(record.experimental).toBe(true);
+    expect(record.env.EVAL_MODEL_OVERRIDES).toBe(JSON.stringify(PAYLOAD.models));
+    expect(record.argv).toContain("--no-save");
+    await context.queue.drain();
+  });
+
+  it("fingerprints an ad-hoc run identically to a saved config with the same payload", async () => {
+    const created = await post("/api/configs", { name: "candidate", description: "c", ...PAYLOAD });
+    expect(created.status).toBe(201);
+
+    const named = (await (await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "candidate",
+      flags: { runs: 1 },
+    })).json()) as RunRecord;
+    const adHoc = (await (await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: { runs: 1 },
+      overrides: PAYLOAD,
+    })).json()) as RunRecord;
+
+    expect(named.profileFingerprint).toBe(adHoc.profileFingerprint);
+    expect(named.experimental).toBe(true);
+    expect(adHoc.experimental).toBe(true);
+    await context.queue.drain();
+  });
+
+  it("rejects a named profile combined with overrides", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "claude-evaluator",
+      flags: {},
+      overrides: PAYLOAD,
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/overrides/);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("rejects override models outside the curated list at launch", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: {},
+      overrides: { models: { opportunityEvaluator: "anthropic/claude-opus-9" }, env: {} },
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/claude-opus-9/);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("resolves a saved DB config exactly like a repo profile", async () => {
+    await configs.create({ name: "sonnet-evaluator", description: "d", ...PAYLOAD });
+
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "sonnet-evaluator",
+      flags: { runs: 1 },
+    });
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    expect(record.experimental).toBe(true);
+    expect(record.env.EVAL_MODEL_OVERRIDES).toBe(JSON.stringify(PAYLOAD.models));
+    expect(record.argv).toContain("--no-save");
+    await context.queue.drain();
+  });
+});
+
 describe("cross-origin requests", () => {
   // A page on any origin the operator has open can POST here with mode:"no-cors";
   // it cannot read the reply, but the run it launches spends real tokens.
@@ -481,6 +616,169 @@ describe("Host header guard", () => {
   });
 });
 
+describe("the configured public origin", () => {
+  // Deploying the site puts it on a real domain, where the loopback allowlists
+  // above would refuse every request. They are therefore extended to exactly one
+  // configured origin — never a wildcard, never a way to switch a guard off —
+  // and an unset variable still means "loopback only", which is the whole of the
+  // local posture. Every acceptance below is paired with a refusal, so a guard
+  // that stopped checking would fail here rather than pass vacuously.
+  const PUBLIC_ORIGIN = resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" });
+
+  const deployed = (path: string, headers: Record<string, string> = {}) =>
+    handler(new Request(`https://eval.index.network${path}`, { headers: { Host: "eval.index.network", ...sessionCookie, ...headers } }));
+
+  const deployedPost = (path: string, headers: Record<string, string> = {}) =>
+    handler(
+      new Request(`https://eval.index.network${path}`, {
+        method: "POST",
+        headers: {
+          Host: "eval.index.network",
+          "Content-Type": "application/json",
+          Origin: "https://eval.index.network",
+          ...sessionCookie,
+          ...headers,
+        },
+        body: JSON.stringify(RUN_BODY),
+      }),
+    );
+
+  describe("with no public origin configured", () => {
+    it("still refuses the deployed host and origin, so the default is loopback-only", async () => {
+      expect(context.publicOrigin).toBeUndefined();
+
+      expect((await deployed("/api/harnesses")).status).toBe(403);
+      expect((await deployedPost("/api/runs")).status).toBe(403);
+      await context.queue.drain();
+      expect(executor.starts).toHaveLength(0);
+    });
+  });
+
+  describe("with a public origin configured", () => {
+    beforeEach(async () => {
+      await build({ publicOrigin: PUBLIC_ORIGIN });
+    });
+
+    it("answers a read addressed to the configured host", async () => {
+      const response = await deployed("/api/harnesses");
+
+      expect(response.status).toBe(200);
+    });
+
+    it("accepts a write from the configured origin", async () => {
+      const response = await deployedPost("/api/runs");
+
+      expect(response.status).toBe(202);
+      await context.queue.drain();
+    });
+
+    it("still refuses every other host — the allowlist is one entry, not a wildcard", async () => {
+      for (const host of ["evil.example.com", "eval.index.network.evil.com", "sub.eval.index.network", "index.network"]) {
+        const response = await handler(
+          new Request("https://eval.index.network/api/harnesses", { headers: { Host: host, ...sessionCookie } }),
+        );
+        expect(response.status).toBe(403);
+      }
+    });
+
+    it("still refuses every other origin on a write", async () => {
+      for (const origin of [
+        "https://evil.example",
+        "https://eval.index.network.evil.com",
+        "https://sub.eval.index.network",
+        // The same name over plain http is a different origin, and not this one.
+        "http://eval.index.network",
+        "null",
+      ]) {
+        const response = await deployedPost("/api/runs", { Origin: origin });
+        expect(response.status).toBe(403);
+      }
+      await context.queue.drain();
+      expect(executor.starts).toHaveLength(0);
+    });
+
+    it("leaves loopback exactly as it was, so local development is unchanged", async () => {
+      for (const host of ["127.0.0.1:4321", "localhost", "[::1]:4321"]) {
+        expect((await get("/api/harnesses", { Host: host })).status).toBe(200);
+      }
+      expect((await post("/api/runs", RUN_BODY, { Origin: "http://127.0.0.1:5174" })).status).toBe(202);
+      await context.queue.drain();
+    });
+  });
+});
+
+describe("the session cookie's Secure attribute", () => {
+  // Loopback is plain http, so a Secure cookie is dropped by the browser and
+  // sign-in fails silently; over HTTPS an insecure session cookie is a real
+  // exposure. The attribute therefore follows the request, not a hand-set flag.
+  const PUBLIC_ORIGIN = resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" });
+
+  const signInAt = (url: string, headers: Record<string, string> = {}) =>
+    handler(new Request(`${url}/callback?state=${states.mint()}&api_key=k`, { headers }));
+
+  it("omits Secure on loopback, where a Secure cookie would never be sent", async () => {
+    const response = await signInAt("http://localhost");
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+  });
+
+  it("sets Secure on a sign-in served over HTTPS", async () => {
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+
+    const response = await signInAt("https://eval.index.network", { Host: "eval.index.network" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+  });
+
+  it("sets Secure behind a TLS-terminating proxy, which forwards plain http", async () => {
+    // Railway terminates TLS at its edge and speaks http to the container, so the
+    // request URL says http even though the browser is on https. The configured
+    // public origin is validated to be https, so a request addressed to it was
+    // served over https — that, not a spoofable x-forwarded-proto, is the signal.
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+
+    const response = await signInAt("http://eval.index.network", { Host: "eval.index.network" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+  });
+
+  it("does not trust x-forwarded-proto on a loopback request", async () => {
+    // Any local page can send this header; it must not be able to make the
+    // operator's own sign-in fail by getting the cookie dropped.
+    const response = await signInAt("http://localhost", { "X-Forwarded-Proto": "https" });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+  });
+
+  it("expires the cookie with the same attributes it was set with", async () => {
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+
+    const loopback = await post("/api/auth/logout", {});
+    expect(loopback.headers.get("set-cookie") ?? "").not.toMatch(/Secure/i);
+
+    await build({ publicOrigin: PUBLIC_ORIGIN });
+    const deployed = await handler(
+      new Request("https://eval.index.network/api/auth/logout", {
+        method: "POST",
+        headers: {
+          Host: "eval.index.network",
+          "Content-Type": "application/json",
+          Origin: "https://eval.index.network",
+          ...sessionCookie,
+        },
+        body: "{}",
+      }),
+    );
+    expect(deployed.status).toBe(200);
+    expect(deployed.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure/i);
+    expect(deployed.headers.get("set-cookie") ?? "").toMatch(/Max-Age=0/);
+  });
+});
+
 describe("GET /api/artifacts/:id", () => {
   it("returns 400 for an id that escapes the eval directory", async () => {
     const id = Buffer.from("../../../etc/passwd", "utf8").toString("base64url");
@@ -500,6 +798,216 @@ describe("GET /api/compare", () => {
     const response = await get("/api/compare?reference=abc");
     expect(response.status).toBe(400);
     expect((await response.json()).error).toMatch(/reference/i);
+  });
+
+  describe("run-vs-run", () => {
+    const caseResult = (caseId: string, passes: number, runs: number) => ({
+      caseId,
+      rule: "r",
+      runs,
+      passes,
+      passRate: passes / runs,
+      flaky: passes > 0 && passes < runs,
+      scoredRunIds: Array.from({ length: runs }, (_, i) => `${encodeURIComponent(caseId)}::run:${i + 1}`),
+    });
+
+    /** A valid v2 run report on disk for a fresh run record. */
+    async function seedRunWithReport(options: {
+      profile: string;
+      profileFingerprint: string;
+      configFingerprint: string;
+      passes: number;
+    }): Promise<RunRecord> {
+      const created = await store.create({
+        spec: { kind: "eval", harness: "matching", profile: options.profile, flags: { runs: 20 } },
+        argv: ["bun", "run", "eval:matching"],
+        env: {},
+        profileFingerprint: options.profileFingerprint,
+        experimental: true,
+        workload: 20,
+      });
+      const scorecard = buildScorecard([caseResult("a/b", options.passes, 20)], {
+        model: "test/model",
+        runs: 20,
+      });
+      const envelope = buildEvalArtifact(
+        EVAL_RUN_REPORT_ARTIFACT_TYPE,
+        scorecard,
+        makeTestMeta({
+          harness: "matching",
+          runs: 20,
+          configFingerprint: options.configFingerprint,
+          execution: makeSuccessfulExecution(["a/b"], 20),
+        }),
+      );
+      await Bun.write(store.reportPath(created.id), JSON.stringify(envelope));
+      await store.update(created.id, { status: "passed", exitCode: 0, endedAt: new Date().toISOString() });
+      return created;
+    }
+
+    it("diffs two run reports across configs and labels each side", async () => {
+      const reference = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+      const subject = await seedRunWithReport({
+        profile: "sonnet-evaluator",
+        profileFingerprint: "fp-subject",
+        configFingerprint: "c".repeat(64),
+        passes: 2,
+      });
+
+      const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=${subject.id}`);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.comparable).toBe(true);
+      expect(body.aggregate.delta).toBeLessThan(0);
+      expect(body.runs.reference).toEqual({
+        id: reference.id,
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        complete: true,
+      });
+      expect(body.runs.subject).toEqual({
+        id: subject.id,
+        profile: "sonnet-evaluator",
+        profileFingerprint: "fp-subject",
+        complete: true,
+      });
+    });
+
+    it("422s naming the side whose report is missing", async () => {
+      const reference = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+      const subject = await store.create({
+        spec: { kind: "eval", harness: "matching", profile: "default", flags: {} },
+        argv: ["bun", "run", "eval:matching"],
+        env: {},
+        profileFingerprint: "fp-subject",
+        experimental: true,
+        workload: 20,
+      });
+
+      const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=${subject.id}`);
+
+      expect(response.status).toBe(422);
+      expect((await response.json()).error).toContain(subject.id);
+    });
+
+    it("404s an unknown run id", async () => {
+      const reference = await seedRunWithReport({
+        profile: "default",
+        profileFingerprint: "fp-reference",
+        configFingerprint: "a".repeat(64),
+        passes: 20,
+      });
+
+      const response = await get(`/api/compare?referenceRun=${reference.id}&subjectRun=nope`);
+
+      expect(response.status).toBe(404);
+      expect((await response.json()).error).toContain("nope");
+    });
+
+    it("400s when run params and artifact params are mixed", async () => {
+      const response = await get("/api/compare?reference=a&subjectRun=b");
+      expect(response.status).toBe(400);
+    });
+
+    it("400s when only one run param is given", async () => {
+      const response = await get("/api/compare?referenceRun=a");
+      expect(response.status).toBe(400);
+    });
+  });
+});
+
+describe("config routes", () => {
+  const SONNET_CONFIG = {
+    name: "sonnet-evaluator",
+    description: "evaluator on sonnet",
+    models: { opportunityEvaluator: "anthropic/claude-sonnet-4" },
+    env: {},
+  };
+
+  it("lists repo profiles and saved configs in one response", async () => {
+    await configs.create(SONNET_CONFIG);
+    const response = await get("/api/configs");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.repo.map((p: { name: string }) => p.name)).toEqual(["claude-evaluator", "default"]);
+    expect(body.saved).toEqual([SONNET_CONFIG]);
+  });
+
+  it("creates a config and rejects names colliding with a repo profile or a saved config", async () => {
+    const created = await post("/api/configs", SONNET_CONFIG);
+    expect(created.status).toBe(201);
+    expect(await created.json()).toEqual(SONNET_CONFIG);
+
+    const duplicate = await post("/api/configs", SONNET_CONFIG);
+    expect(duplicate.status).toBe(409);
+
+    for (const name of ["default", "claude-evaluator"]) {
+      const collision = await post("/api/configs", { ...SONNET_CONFIG, name });
+      expect(collision.status).toBe(409);
+      expect((await collision.json()).error).toContain(name);
+    }
+  });
+
+  it("rejects models outside the curated list with a 400 naming the model", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, models: { opportunityEvaluator: "x/y" } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("x/y");
+  });
+
+  it("rejects env keys outside the allowlist", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, env: { OPENROUTER_API_KEY: "x" } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("OPENROUTER_API_KEY");
+  });
+
+  it("updates and deletes a saved config, 404s unknown names, 409s repo profile names", async () => {
+    await configs.create(SONNET_CONFIG);
+
+    const updated = await patch("/api/configs/sonnet-evaluator", { description: "better description" });
+    expect(updated.status).toBe(200);
+    const updatedBody = await updated.json();
+    expect(updatedBody.description).toBe("better description");
+    expect(updatedBody.models).toEqual(SONNET_CONFIG.models);
+    expect(await configs.get("sonnet-evaluator")).toEqual(updatedBody);
+
+    const patchedRepo = await patch("/api/configs/default", { description: "x" });
+    expect(patchedRepo.status).toBe(409);
+    const patchedGhost = await patch("/api/configs/ghost", { description: "x" });
+    expect(patchedGhost.status).toBe(404);
+
+    const deletedRepo = await del("/api/configs/default");
+    expect(deletedRepo.status).toBe(409);
+    const deletedGhost = await del("/api/configs/ghost");
+    expect(deletedGhost.status).toBe(404);
+
+    const deleted = await del("/api/configs/sonnet-evaluator");
+    expect(deleted.status).toBe(204);
+    expect(await configs.get("sonnet-evaluator")).toBeNull();
+  });
+
+  it("rejects an override patch that would make a saved config invalid", async () => {
+    await configs.create(SONNET_CONFIG);
+    const response = await patch("/api/configs/sonnet-evaluator", { models: { opportunityEvaluator: "x/y" } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("x/y");
+    expect((await configs.get("sonnet-evaluator"))?.models).toEqual(SONNET_CONFIG.models);
+  });
+
+  it("serves the curated model list", async () => {
+    const response = await get("/api/configs/models");
+    expect(response.status).toBe(200);
+    expect((await response.json()).models).toContain("google/gemini-2.5-flash");
   });
 });
 
@@ -744,6 +1252,7 @@ describe("POST /api/fixture/reset", () => {
 const API_ROUTES: ReadonlyArray<{ method: "GET" | "POST"; path: string }> = [
   { method: "GET", path: "/api/auth/status" },
   { method: "POST", path: "/api/auth/login" },
+  { method: "POST", path: "/api/auth/session" },
   { method: "POST", path: "/api/auth/logout" },
   { method: "GET", path: "/api/harnesses" },
   { method: "GET", path: "/api/profiles" },
@@ -794,6 +1303,7 @@ describe("authentication", () => {
       expect([...PUBLIC_ROUTES].map((entry) => `${entry.method} ${entry.path}`).sort()).toEqual([
         "GET /api/auth/status",
         "POST /api/auth/login",
+        "POST /api/auth/session",
       ]);
     });
 
@@ -852,6 +1362,9 @@ describe("authentication", () => {
       const body = await (await anonymous("POST", "/api/auth/login")).json();
       const url = new URL(body.url);
 
+      // The discriminator is what keeps the two postures from being told apart by
+      // guessing which optional field is present.
+      expect(body.kind).toBe("bridge");
       expect(url.origin + url.pathname).toBe("https://index.network/cli-auth");
       expect(url.searchParams.get("callback")).toBe("http://127.0.0.1:4321/callback");
       expect(url.searchParams.get("version")).toBe("2");
@@ -863,6 +1376,23 @@ describe("authentication", () => {
       const second = new URL((await (await anonymous("POST", "/api/auth/login")).json()).url);
 
       expect(first.searchParams.get("state")).not.toBe(second.searchParams.get("state"));
+    });
+
+    it("names no API or web app URL in the local posture, so nothing new is disclosed", async () => {
+      const body = await (await anonymous("POST", "/api/auth/login")).json();
+
+      expect(Object.keys(body).sort()).toEqual(["kind", "url"]);
+    });
+  });
+
+  describe("POST /api/auth/session in the local posture", () => {
+    it("refuses outright, so a token cannot be submitted to a bridge server", async () => {
+      const response = await anonymous("POST", "/api/auth/session");
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toMatch(/bridge/i);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(identities.seen).toHaveLength(0);
     });
   });
 
@@ -1052,6 +1582,255 @@ describe("authentication", () => {
   });
 });
 
+/**
+ * The deployed sign-in: a better-auth JWT, resolved server-side.
+ *
+ * On a real host the bridge is unusable — `validateCliCallbackUrl` in
+ * apps/web/src/lib/cli-auth.ts accepts only `http:` on loopback, by design, and
+ * that rule is shared with the released CLI. So the browser fetches a token from
+ * the API against its own session and posts it here; this server presents it to
+ * `/api/auth/me` and applies the *same* `assessIdentity` policy to what comes
+ * back. Nothing is client-asserted: the browser supplies a token, never an
+ * identity.
+ */
+describe("deployed sign-in with a better-auth token", () => {
+  const TOKEN_POSTURE = {
+    kind: "token",
+    apiUrl: "https://protocol.dev.index.network",
+    webAppUrl: "https://index.network",
+  } as const;
+  const PUBLIC_ORIGIN = resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" });
+
+  beforeEach(async () => {
+    await build({ publicOrigin: PUBLIC_ORIGIN }, { signIn: TOKEN_POSTURE });
+  });
+
+  /** Submits a token exactly as the browser does, with no session of its own. */
+  const submit = (body: unknown, headers: Record<string, string> = {}) =>
+    handler(
+      new Request("http://localhost/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  describe("POST /api/auth/login", () => {
+    it("tells the browser where to get a token and where to sign in", async () => {
+      const response = await handler(
+        new Request("http://localhost/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }),
+      );
+      const body = await response.json();
+
+      expect(body.kind).toBe("token");
+      // Exactly two fields, both of them public DNS names the browser already
+      // talks to. This is not a "dump the server's configuration" route.
+      expect(Object.keys(body).sort()).toEqual(["apiUrl", "kind", "webAppUrl"]);
+      expect(body.apiUrl).toBe("https://protocol.dev.index.network");
+      expect(body.webAppUrl).toBe("https://index.network");
+      // No loopback bridge callback: it could never complete from here.
+      expect(JSON.stringify(body)).not.toContain("/cli-auth");
+      expect(JSON.stringify(body)).not.toContain("127.0.0.1");
+    });
+  });
+
+  describe("POST /api/auth/session", () => {
+    it("establishes a session for a token that resolves to an allowed identity", async () => {
+      const response = await submit({ token: JWT });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ authenticated: true, email: "operator@index.network", name: "Operator" });
+      // Resolved server-side, exactly once.
+      expect(identities.seen).toEqual([JWT]);
+
+      const cookie = response.headers.get("set-cookie") ?? "";
+      expect(cookie).toMatch(/^eval_ops_session=/);
+      expect(cookie).toMatch(/HttpOnly/i);
+      expect(cookie).toMatch(/SameSite=Lax/i);
+      // And the session it establishes actually opens the gate.
+      const gated = await handler(
+        new Request("http://localhost/api/runs", { headers: { Cookie: cookie.split(";")[0] } }),
+      );
+      expect(gated.status).toBe(200);
+    });
+
+    it("never returns, stores or echoes the token", async () => {
+      const response = await submit({ token: JWT });
+      const cookie = response.headers.get("set-cookie") ?? "";
+
+      expect(await response.text()).not.toContain(JWT);
+      expect(cookie).not.toContain(JWT);
+      // The session holds an identity and nothing else, so no later response can
+      // carry the credential back out.
+      const status = await handler(
+        new Request("http://localhost/api/auth/status", { headers: { Cookie: cookie.split(";")[0] } }),
+      );
+      expect(await status.text()).not.toContain(JWT);
+    });
+
+    it("refuses an identity outside the allowed domain and discards the credential", async () => {
+      identities.identity = { email: "someone@evil.example", emailVerified: true, name: "Outsider" };
+
+      const response = await submit({ token: JWT });
+      const text = await response.text();
+
+      expect(response.status).toBe(403);
+      // The UI has to tell "sign in" from "your account is not permitted".
+      expect(JSON.parse(text)).toMatchObject({ authenticated: true, permitted: false });
+      expect(response.headers.get("set-cookie")).toBeNull();
+      // Exchanged once, then dropped: never echoed to the browser.
+      expect(identities.seen).toEqual([JWT]);
+      expect(text).not.toContain(JWT);
+    });
+
+    it("refuses an unverified address, which is the whole reason for the /me hop", async () => {
+      // The jwt plugin's definePayload returns { id, email, name } and no
+      // emailVerified, so verification can only come from the user record.
+      identities.identity = { email: "operator@index.network", emailVerified: false, name: "Operator" };
+
+      const response = await submit({ token: JWT });
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toMatch(/not verified/i);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("answers 401 for a token the API rejects, so the UI offers sign-in again", async () => {
+      identities.identity = null;
+
+      const response = await submit({ token: JWT });
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({ authenticated: false });
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("answers 502 when the API cannot be reached, without echoing the token", async () => {
+      // "The API is down" is not "you are not allowed in" — and a transport error
+      // that happened to quote the request must still not carry the credential out.
+      identities.failure = new Error(`fetch failed for Bearer ${JWT}`);
+
+      const response = await submit({ token: JWT });
+      const text = await response.text();
+
+      expect(response.status).toBe(502);
+      expect(text).not.toContain(JWT);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("refuses a body that is not exactly one token", async () => {
+      for (const body of [{}, { token: "" }, { token: 42 }, { token: JWT, email: "a@index.network" }]) {
+        const response = await submit(body);
+        expect({ body, status: response.status }).toEqual({ body, status: 400 });
+      }
+      // In particular the browser cannot assert who it is.
+      expect(identities.seen).toHaveLength(0);
+    });
+
+    it("is gated exactly like every other write", async () => {
+      // Content type: `no-cors` cannot produce application/json.
+      const untyped = await handler(
+        new Request("http://localhost/api/auth/session", {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          body: JSON.stringify({ token: JWT }),
+        }),
+      );
+      expect(untyped.status).toBe(415);
+
+      // Origin: a page on another origin cannot drive a sign-in here.
+      const foreignOrigin = await submit({ token: JWT }, { Origin: "https://evil.example" });
+      expect(foreignOrigin.status).toBe(403);
+
+      // Host: the rebinding guard runs first, on this route too.
+      const foreignHost = await submit({ token: JWT }, { Host: "evil.example.com" });
+      expect(foreignHost.status).toBe(403);
+
+      // None of the three ever looked at the credential.
+      expect(identities.seen).toHaveLength(0);
+    });
+
+    it("sets a Secure cookie when the browser reached the deployed origin", async () => {
+      const response = await handler(
+        new Request("https://eval.index.network/api/auth/session", {
+          method: "POST",
+          headers: {
+            Host: "eval.index.network",
+            Origin: "https://eval.index.network",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: JWT }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("set-cookie") ?? "").toMatch(/Secure/i);
+    });
+  });
+
+  describe("GET /callback", () => {
+    it("refuses the bridge callback on the posture, not on a state it happens not to hold", async () => {
+      // A deployed server mints no states at all, so the refusal has to come from
+      // "this server does not run that exchange" rather than from an empty store
+      // — which would look identical today and stop being a refusal the moment
+      // anything else minted one.
+      const response = await handler(new Request("http://localhost/callback?state=anything&api_key=k"));
+      const text = await response.text();
+
+      expect(response.status).toBe(403);
+      expect(text).toMatch(/does not sign in through the local bridge/i);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(identities.seen).toHaveLength(0);
+    });
+  });
+
+  describe("401 and 403 stay distinguishable", () => {
+    it("answers 401 with no session and 403 for a session the policy refuses", async () => {
+      const anonymous = await handler(new Request("http://localhost/api/runs"));
+      expect(anonymous.status).toBe(401);
+
+      const stale = sessions.establish({ email: "someone@evil.example", name: "Outsider" });
+      const refused = await handler(
+        new Request("http://localhost/api/runs", { headers: { Cookie: `eval_ops_session=${stale}` } }),
+      );
+      expect(refused.status).toBe(403);
+    });
+  });
+});
+
+describe("resolveSignInMode", () => {
+  // The deployed posture is already named by EVAL_OPS_PUBLIC_ORIGIN, and it is
+  // exactly the condition under which the loopback bridge cannot complete. One
+  // rule, exported and pure, rather than an implicit guess inside the wiring.
+  it("chooses the local bridge when no public origin is configured", () => {
+    expect(resolveSignInMode({})).toBe("bridge");
+    expect(resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "" })).toBe("bridge");
+    expect(resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "   " })).toBe("bridge");
+  });
+
+  it("chooses the token exchange once the server answers on a deployed origin", () => {
+    expect(resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" })).toBe("token");
+  });
+
+  it("refuses a malformed public origin rather than quietly falling back to the bridge", () => {
+    // Falling back would produce a deployed server advertising a loopback
+    // callback — the exact failure this posture exists to remove.
+    expect(() => resolveSignInMode({ EVAL_OPS_PUBLIC_ORIGIN: "http://eval.index.network" })).toThrow(
+      /EVAL_OPS_PUBLIC_ORIGIN/,
+    );
+  });
+
+  it("is not decided by a wider bind or a platform port", () => {
+    // Neither of those makes the bridge callback unreachable; only a deployed
+    // origin does.
+    expect(resolveSignInMode({ EVAL_OPS_BIND: "0.0.0.0", PORT: "8080" })).toBe("bridge");
+  });
+});
+
 describe("resolveIdentityEndpoints", () => {
   // The bridge mints the API key and the resolver verifies it, so the two are one
   // pair. A mismatched pair does not fail at startup: it fails at the end of a
@@ -1101,8 +1880,129 @@ describe("resolveIdentityEndpoints", () => {
   });
 });
 
+describe("resolveBindPort", () => {
+  // Two entrypoints, two postures, one rule. ops.serve.ts is the local dev API,
+  // started by `bun run eval:web` with --env-file=../../.env.test — and that file
+  // sets PORT=3001 for the *API service*. Honouring PORT there would silently move
+  // the ops API onto the API's port and break the documented two-process flow for
+  // every developer. apps/eval-ops/server.ts is what the platform starts, and the
+  // platform injects PORT.
+  it("defaults to 4321 in both postures", () => {
+    expect(resolveBindPort({ env: {}, honourPlatformPort: false })).toBe(4321);
+    expect(resolveBindPort({ env: {}, honourPlatformPort: true })).toBe(4321);
+  });
+
+  it("honours the platform's PORT in the deployed posture", () => {
+    expect(resolveBindPort({ env: { PORT: "8080" }, honourPlatformPort: true })).toBe(8080);
+  });
+
+  it("ignores PORT in the local posture, because .env.test sets it to the API's port", () => {
+    expect(resolveBindPort({ env: { PORT: "3001" }, honourPlatformPort: false })).toBe(4321);
+  });
+
+  it("lets EVAL_OPS_PORT win over the platform's PORT", () => {
+    expect(resolveBindPort({ env: { PORT: "8080", EVAL_OPS_PORT: "4399" }, honourPlatformPort: true })).toBe(4399);
+    expect(resolveBindPort({ env: { EVAL_OPS_PORT: "4399" }, honourPlatformPort: false })).toBe(4399);
+  });
+
+  it("reads an empty value as unset", () => {
+    expect(resolveBindPort({ env: { PORT: "", EVAL_OPS_PORT: "  " }, honourPlatformPort: true })).toBe(4321);
+  });
+
+  it("refuses a value that is not a usable TCP port, rather than binding something arbitrary", () => {
+    expect(() => resolveBindPort({ env: { EVAL_OPS_PORT: "http" }, honourPlatformPort: false })).toThrow(/EVAL_OPS_PORT/);
+    expect(() => resolveBindPort({ env: { EVAL_OPS_PORT: "4321.5" }, honourPlatformPort: false })).toThrow(/usable TCP port/);
+    expect(() => resolveBindPort({ env: { PORT: "70000" }, honourPlatformPort: true })).toThrow(/PORT/);
+    expect(() => resolveBindPort({ env: { PORT: "0" }, honourPlatformPort: true })).toThrow(/usable TCP port/);
+  });
+});
+
+describe("resolveBindHostname", () => {
+  it("binds loopback unless the environment deliberately says otherwise", () => {
+    expect(resolveBindHostname({})).toBe("127.0.0.1");
+    // A platform PORT does not imply a wider bind: widening stays one explicit act.
+    expect(resolveBindHostname({ PORT: "8080" })).toBe("127.0.0.1");
+    expect(resolveBindHostname({ EVAL_OPS_BIND: "  " })).toBe("127.0.0.1");
+  });
+
+  it("binds exactly what EVAL_OPS_BIND names", () => {
+    expect(resolveBindHostname({ EVAL_OPS_BIND: "0.0.0.0" })).toBe("0.0.0.0");
+  });
+});
+
+describe("resolvePublicOrigin", () => {
+  it("means loopback-only when it is unset", () => {
+    expect(resolvePublicOrigin({})).toBeUndefined();
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "  " })).toBeUndefined();
+  });
+
+  it("accepts one absolute https origin and normalises it", () => {
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network" }))
+      .toEqual({ origin: "https://eval.index.network", host: "eval.index.network" });
+    // A trailing slash names no path, and the host is compared case-insensitively.
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://EVAL.index.network/" }))
+      .toEqual({ origin: "https://eval.index.network", host: "eval.index.network" });
+    // A non-default port is part of the host a Host header must equal.
+    expect(resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "https://eval.index.network:8443" }))
+      .toEqual({ origin: "https://eval.index.network:8443", host: "eval.index.network:8443" });
+  });
+
+  it("refuses anything that is not exactly one https origin, loudly", () => {
+    const refused: Array<[string, RegExp]> = [
+      ["eval.index.network", /not a usable URL/],
+      ["http://eval.index.network", /https/],
+      ["https://*.index.network", /host/i],
+      ["https://*", /host/i],
+      ["*", /not a usable URL/],
+      ["https://eval.index.network/ops", /path/i],
+      ["https://eval.index.network/?a=b", /query/i],
+      ["https://eval.index.network/#f", /fragment/i],
+      ["https://user:pass@eval.index.network", /credential/i],
+      ["https://a.example https://b.example", /./],
+    ];
+    for (const [value, message] of refused) {
+      expect(() => resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: value })).toThrow(message);
+    }
+  });
+
+  it("names the variable in every refusal, so a bad deploy says what to fix", () => {
+    expect(() => resolvePublicOrigin({ EVAL_OPS_PUBLIC_ORIGIN: "http://eval.index.network" }))
+      .toThrow(/EVAL_OPS_PUBLIC_ORIGIN/);
+  });
+});
+
+describe("the entrypoints resolve one port and use it twice", () => {
+  // The bridge callback URL must name the port the server actually bound. It used
+  // to be re-read from the environment inside createDefaultOpsContext, which is
+  // exactly how an advertised callback drifts from the real listener; the port is
+  // now resolved once per entrypoint and passed to both. This pins that shape,
+  // and the posture each entrypoint declares.
+  const ENTRYPOINTS: Array<{ file: string; honoursPlatformPort: boolean }> = [
+    { file: path.join(import.meta.dir, "../ops.serve.ts"), honoursPlatformPort: false },
+    { file: path.join(import.meta.dir, "../../../../../apps/eval-ops/server.ts"), honoursPlatformPort: true },
+  ];
+
+  for (const entrypoint of ENTRYPOINTS) {
+    it(`${path.basename(path.dirname(entrypoint.file))}/${path.basename(entrypoint.file)} resolves the port once and declares its posture`, async () => {
+      const source = await readFile(entrypoint.file, "utf8");
+
+      expect(source.match(/resolveBindPort\(/g)).toHaveLength(1);
+      expect(source).toContain(`honourPlatformPort: ${entrypoint.honoursPlatformPort}`);
+      // The same resolved value reaches the listener and the bridge callback.
+      expect(source).toMatch(/createDefaultOpsContext\(\{[^}]*\bport\b[^}]*\}\)/);
+      expect(source).toMatch(/Bun\.serve\(\{[^{]*\bport,/);
+      expect(source).toMatch(/hostname: resolveBindHostname\(/);
+      // Both entrypoints mount the same SSE stream, whose heartbeat is 15s. Bun's
+      // default request idle timeout is 10s, so an entrypoint that omits this
+      // closes a quiet run-log stream before the first heartbeat can hold it
+      // open — which the deployed entrypoint did.
+      expect(source).toMatch(/idleTimeout: 255/);
+    });
+  }
+});
+
 describe("createDefaultOpsContext", () => {
-  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "EVAL_OPS_PORT", "EVAL_OPS_UI_URL"] as const;
+  const ENV_KEYS = ["API_URL", "WEB_APP_URL", "PORT", "EVAL_OPS_PORT", "EVAL_OPS_UI_URL", "EVAL_OPS_PUBLIC_ORIGIN"] as const;
   const original: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -1122,16 +2022,19 @@ describe("createDefaultOpsContext", () => {
     }
   });
 
-  it("builds a callback on the port the server actually binds", async () => {
-    // ops.serve.ts binds EVAL_OPS_PORT and this builds the bridge callback from
-    // it. If they ever disagree the bridge delivers the credential to a port
-    // nothing is listening on, and sign-in fails with no visible cause.
+  it("advertises the bridge callback on the port it was told the server bound", async () => {
+    // The port is resolved once by the entrypoint and passed in, rather than
+    // re-read from the environment here. If the two ever disagree the bridge
+    // delivers the credential to a port nothing is listening on, and sign-in
+    // fails with no visible cause — so this drives the same resolution the local
+    // entrypoint performs and asserts the advertised callback matches it.
     process.env.EVAL_OPS_PORT = "4399";
     // Set as a pair: a half-configured environment now refuses to start.
     process.env.WEB_APP_URL = "https://index.network";
     process.env.API_URL = "https://protocol.index.network";
+    const port = resolveBindPort({ env: process.env, honourPlatformPort: false });
 
-    const built = await createDefaultOpsContext({ repoRoot: root });
+    const built = await createDefaultOpsContext({ repoRoot: root, port });
     const response = await createOpsHandler(built)(
       new Request("http://localhost/api/auth/login", {
         method: "POST",
@@ -1141,11 +2044,45 @@ describe("createDefaultOpsContext", () => {
     );
     const url = new URL((await response.json()).url);
 
-    expect(url.searchParams.get("callback")).toBe("http://127.0.0.1:4399/callback");
+    expect(port).toBe(4399);
+    expect(url.searchParams.get("callback")).toBe(`http://127.0.0.1:${port}/callback`);
+  });
+
+  it("advertises the platform's port when the deployed entrypoint resolves one", async () => {
+    process.env.PORT = "8080";
+    const port = resolveBindPort({ env: process.env, honourPlatformPort: true });
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port });
+
+    expect(built.auth?.signIn).toMatchObject({ kind: "bridge", callbackPort: 8080 });
+  });
+
+  it("wires the bridge and its API-key resolver when no public origin is configured", async () => {
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
+
+    // The resolver and the posture are chosen together, by one decision: a bridge
+    // that minted API keys for a JWT resolver would refuse every sign-in.
+    expect(built.auth?.signIn.kind).toBe("bridge");
+    expect(built.auth?.identities).toBeInstanceOf(ApiIdentityResolver);
+  });
+
+  it("wires the token exchange and its JWT resolver once a public origin is configured", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "https://eval.index.network";
+    process.env.WEB_APP_URL = "https://index.network";
+    process.env.API_URL = "https://protocol.dev.index.network";
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
+
+    expect(built.auth?.signIn).toEqual({
+      kind: "token",
+      apiUrl: "https://protocol.dev.index.network",
+      webAppUrl: "https://index.network",
+    });
+    expect(built.auth?.identities).toBeInstanceOf(JwtIdentityResolver);
   });
 
   it("wires identity, so the default server is never unauthenticated", async () => {
-    const built = await createDefaultOpsContext({ repoRoot: root });
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
 
     expect(built.auth).toBeDefined();
     // An anonymous read is refused by the context the real entrypoint uses.
@@ -1155,14 +2092,14 @@ describe("createDefaultOpsContext", () => {
 
   it("sends a completed sign-in to the UI, not to a route this server does not serve", async () => {
     // The standalone API serves no UI: a bare "/" here is its own 404.
-    const built = await createDefaultOpsContext({ repoRoot: root });
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
 
     expect(built.auth?.uiUrl).toBe("http://127.0.0.1:5174");
   });
 
   it("lets an embedder that serves the UI itself say so", async () => {
     // apps/eval-ops/server.ts serves the SPA on the same origin as the API.
-    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/" });
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
 
     expect(built.auth?.uiUrl).toBe("/");
   });
@@ -1170,7 +2107,7 @@ describe("createDefaultOpsContext", () => {
   it("lets the environment override the redirect target", async () => {
     process.env.EVAL_OPS_UI_URL = "http://127.0.0.1:6000";
 
-    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/" });
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
 
     expect(built.auth?.uiUrl).toBe("http://127.0.0.1:6000");
   });
@@ -1180,13 +2117,39 @@ describe("createDefaultOpsContext", () => {
     // browser to another origin is a mistake worth refusing loudly.
     process.env.EVAL_OPS_UI_URL = "https://evil.example";
 
-    await expect(createDefaultOpsContext({ repoRoot: root })).rejects.toThrow(/loopback/);
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/loopback/);
   });
 
   it("refuses to start on a half-configured identity pair", async () => {
     process.env.WEB_APP_URL = "https://index.network";
     delete process.env.API_URL;
 
-    await expect(createDefaultOpsContext({ repoRoot: root })).rejects.toThrow(/API_URL/);
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/API_URL/);
+  });
+
+  it("stays loopback-only when no public origin is configured", async () => {
+    const built = await createDefaultOpsContext({ repoRoot: root, port: 4321 });
+
+    expect(built.publicOrigin).toBeUndefined();
+  });
+
+  it("carries the configured public origin into the guards", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "https://eval.index.network";
+
+    const built = await createDefaultOpsContext({ repoRoot: root, uiUrl: "/", port: 4321 });
+
+    expect(built.publicOrigin).toEqual({ origin: "https://eval.index.network", host: "eval.index.network" });
+  });
+
+  it("refuses to start on a malformed public origin rather than falling back to permissive", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "https://eval.index.network/ops?x=1";
+
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/EVAL_OPS_PUBLIC_ORIGIN/);
+  });
+
+  it("refuses a wildcard public origin outright", async () => {
+    process.env.EVAL_OPS_PUBLIC_ORIGIN = "*";
+
+    await expect(createDefaultOpsContext({ repoRoot: root, port: 4321 })).rejects.toThrow(/EVAL_OPS_PUBLIC_ORIGIN/);
   });
 });

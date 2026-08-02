@@ -1,27 +1,37 @@
 /**
  * Identity for the eval ops site: who is at the browser, and may they be here.
  *
- * The ops server is loopback-only and stays that way — the bind address, the
- * `Host` check and the `Origin` allowlist in ops.server.ts are what keep it off
- * the network. This module is defence in depth on top of them, not a
- * replacement: it answers "which Index account is driving this", so a machine
- * shared with anyone, or a process running as another user, still cannot spend
- * tokens or flush a database through it.
+ * Locally the ops server is loopback-only, and the bind address, the `Host`
+ * check and the `Origin` allowlist in ops.server.ts are what keep it off the
+ * network. Deployed, `EVAL_OPS_PUBLIC_ORIGIN` extends those allowlists to one
+ * configured origin and this module becomes the *only* thing between the
+ * internet and a tool that can spend tokens and flush a database. It answers
+ * "which Index account is driving this", and the answer must be earned on every
+ * sign-in.
  *
- * There is no cookie to forward. The ops UI runs on 127.0.0.1 and the API on
- * localhost:3001, and a Better Auth session cookie is host-scoped, so the ops
- * server cannot read it. The repository already solves exactly this for the CLI:
- * open `<WEB_APP_URL>/cli-auth` against the browser's existing session, let it
- * mint a revocable API key, and have it redirect that key to a loopback
- * callback. This module reuses that bridge — see `buildBridgeUrl`.
+ * There is no cookie to forward, in either posture: a Better Auth session cookie
+ * is host-scoped (`advanced.defaultCookieAttributes` sets `sameSite: "none"`,
+ * `secure: true`, with no `crossSubDomainCookies`), so the ops server cannot read
+ * it. Two exchanges therefore exist, one per posture, and both end with this
+ * server resolving a credential rather than believing a claim:
  *
- * Everything here is injectable and free of I/O except `ApiIdentityResolver`,
- * which is the one seam that talks to the API. Nothing here reads the
- * environment, opens a socket by default, or logs.
+ *  - **Local** — the CLI bridge the repository already had. Open
+ *    `<WEB_APP_URL>/cli-auth` against the browser's existing session, let it mint
+ *    a revocable API key, and have it redirect that key to a loopback callback.
+ *    See `buildBridgeUrl` and `ApiIdentityResolver`.
+ *  - **Deployed** — a better-auth JWT. The bridge cannot be used off loopback:
+ *    `validateCliCallbackUrl` in apps/web accepts only `http:` on 127.0.0.1/[::1],
+ *    deliberately, and that rule is shared with the released CLI. See
+ *    `JwtIdentityResolver`.
  *
- * The credential is radioactive: it is a broad API key for a real account. It is
- * accepted, exchanged for an identity, and dropped. It is never stored in a
- * session, never returned to the browser and never put in a message.
+ * Everything here is injectable and free of I/O except the two resolvers, which
+ * are the one seam that talks to the API. Nothing here reads the environment,
+ * opens a socket by default, or logs.
+ *
+ * The credential is radioactive in both postures — a broad API key for a real
+ * account, or a bearer token that is one. It is accepted, exchanged for an
+ * identity, and dropped. It is never stored in a session, never returned to the
+ * browser and never put in a message.
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
@@ -316,15 +326,20 @@ export function buildBridgeUrl(options: BridgeUrlOptions): string {
  * Exchanges a credential for the identity behind it.
  *
  * A seam, so the tests never need an API, a database or a socket: the ops server
- * injects {@link ApiIdentityResolver} and a spec injects a stub.
+ * injects {@link ApiIdentityResolver} or {@link JwtIdentityResolver}, and a spec
+ * injects a stub. Which one the server injects is decided by configuration — see
+ * `resolveSignInMode` in ops.server.ts — and both answer the same question, so
+ * every caller past this point is posture-blind.
  */
 export interface IdentityResolver {
   /**
-   * @param apiKey - The credential the bridge delivered. Never stored, never logged.
+   * @param credential - The credential the sign-in delivered: an API key from the
+   *          local bridge, or a better-auth JWT from the deployed browser. Never
+   *          stored, never logged.
    * @returns The identity, or null when the credential is not accepted or the
    *          reply is not the shape this server understands.
    */
-  resolve(apiKey: string): Promise<ResolvedIdentity | null>;
+  resolve(credential: string): Promise<ResolvedIdentity | null>;
 }
 
 /**
@@ -375,25 +390,103 @@ export class ApiIdentityResolver implements IdentityResolver {
       method: "GET",
       headers: { "x-api-key": apiKey, accept: "application/json" },
     });
-    if (!response.ok) return null;
-
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      return null;
-    }
-    const parsed = MeResponseSchema.safeParse(body);
-    if (!parsed.success) return null;
-
-    const { email, emailVerified, name } = parsed.data.user;
-    return {
-      email: email ?? null,
-      // Absent is not verified: the policy must never read a missing flag as a yes.
-      emailVerified: emailVerified === true,
-      name: name ?? "",
-    };
+    return readMeResponse(response);
   }
+}
+
+/**
+ * A compact JWS: three base64url segments separated by dots, and nothing else.
+ *
+ * Load-bearing twice over. It fails closed on anything that cannot be a
+ * better-auth token, so a junk submission costs no request. And the token
+ * arrives in a browser POST body on its way into an `Authorization` header, so
+ * this is also what guarantees no whitespace, CR/LF or control character ever
+ * reaches that header.
+ */
+const COMPACT_JWS_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+/** Wiring for {@link JwtIdentityResolver}. */
+export interface JwtIdentityResolverOptions {
+  /** Base URL of the API, e.g. https://protocol.dev.index.network. */
+  apiUrl: string;
+  /** Injectable for tests; defaults to the global fetch. */
+  fetch?: typeof fetch;
+}
+
+/**
+ * Resolves an identity from a better-auth JWT, server-side.
+ *
+ * This is the deployed posture's resolver. The local bridge cannot be used off
+ * loopback: `validateCliCallbackUrl` in apps/web/src/lib/cli-auth.ts accepts only
+ * `http:` on 127.0.0.1/[::1], deliberately, so that a broad API credential is
+ * never redirected to a caller-controlled origin — and that rule is shared with
+ * the released CLI. A shared parent-domain cookie is unavailable too: the
+ * better-auth cookie is host-only (`advanced.defaultCookieAttributes` sets
+ * `sameSite: "none"`, `secure: true`, with no `crossSubDomainCookies`).
+ *
+ * So the browser fetches a JWT from `${API_URL}/api/auth/token` against its own
+ * API session and posts it here, and **this server resolves it** by presenting it
+ * to `${API_URL}/api/auth/me`. The API's own `AuthGuard` verifies the signature
+ * against its JWKS with issuer and audience checks, so a user coming back proves
+ * the token is genuine. Nothing is client-asserted: the browser supplies a token,
+ * never an identity.
+ *
+ * The `/api/auth/me` hop is required, not an optimisation. The `jwt` plugin's
+ * `definePayload` returns `{ id, email, name }` and no `emailVerified`, and
+ * {@link assessIdentity} demands verification — so verification can never be
+ * inferred from possession of a token, only read from the user record.
+ *
+ * Like {@link ApiIdentityResolver}: a refusal or an unrecognised body resolves to
+ * null, and a transport failure rejects, because "the API is down" is not "you are
+ * not allowed in".
+ */
+export class JwtIdentityResolver implements IdentityResolver {
+  private readonly apiUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: JwtIdentityResolverOptions) {
+    this.apiUrl = options.apiUrl.replace(/\/$/, "");
+    this.fetchImpl = options.fetch ?? fetch;
+  }
+
+  async resolve(token: string): Promise<ResolvedIdentity | null> {
+    if (typeof token !== "string" || !COMPACT_JWS_PATTERN.test(token)) return null;
+    const response = await this.fetchImpl(`${this.apiUrl}/api/auth/me`, {
+      method: "GET",
+      // The bearer header, not x-api-key: AuthGuard reads the two on different
+      // paths, and only the bearer path verifies a JWT.
+      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    });
+    return readMeResponse(response);
+  }
+}
+
+/**
+ * Reads `/api/auth/me` into a {@link ResolvedIdentity}, or null.
+ *
+ * Shared by both resolvers so the two postures cannot disagree about what the
+ * API said — in particular about a missing `emailVerified`, which must read as
+ * "not verified" and never as "absent, so ignore it".
+ */
+async function readMeResponse(response: Response): Promise<ResolvedIdentity | null> {
+  if (!response.ok) return null;
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  const parsed = MeResponseSchema.safeParse(body);
+  if (!parsed.success) return null;
+
+  const { email, emailVerified, name } = parsed.data.user;
+  return {
+    email: email ?? null,
+    // Absent is not verified: the policy must never read a missing flag as a yes.
+    emailVerified: emailVerified === true,
+    name: name ?? "",
+  };
 }
 
 /**

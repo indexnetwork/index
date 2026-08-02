@@ -61,6 +61,42 @@ describe("compareArtifacts", () => {
     expect(outcome.aggregate.delta).toBeLessThan(0);
   });
 
+  it("still refuses across differing scoring configuration by default", () => {
+    const outcome = compareArtifacts(
+      envelope({ config: "config-a", passes: 10, runs: 10 }),
+      envelope({ config: "config-b", passes: 10, runs: 10 }),
+      0.05,
+    );
+
+    expect(outcome.comparable).toBe(false);
+  });
+
+  it("compares across configs when allowConfigMismatch is set: the config is the variable under test", () => {
+    const outcome = compareArtifacts(
+      envelope({ config: "config-a", passes: 20, runs: 20 }),
+      envelope({ config: "config-b", passes: 2, runs: 20 }),
+      0.05,
+      { allowConfigMismatch: true },
+    );
+
+    if (!outcome.comparable) throw new Error("expected a comparable outcome");
+    expect(outcome.regressions.regressions.map((r) => r.id)).toContain("a/b");
+    expect(outcome.aggregate.delta).toBeLessThan(0);
+  });
+
+  it("keeps every other refusal when allowConfigMismatch is set", () => {
+    const outcome = compareArtifacts(
+      envelope({ corpus: "corpus-a", config: "config-a", passes: 10, runs: 10 }),
+      envelope({ corpus: "corpus-b", config: "config-b", passes: 10, runs: 10 }),
+      0.05,
+      { allowConfigMismatch: true },
+    );
+
+    expect(outcome.comparable).toBe(false);
+    if (outcome.comparable) throw new Error("unreachable");
+    expect(outcome.findings.map((f) => f.dimension)).toEqual(["corpusFingerprint"]);
+  });
+
   it("reports an improvement by evaluating the reversed direction", () => {
     const outcome = compareArtifacts(
       envelope({ passes: 2, runs: 20 }),

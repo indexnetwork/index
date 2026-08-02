@@ -31,11 +31,19 @@ const selectionKey = (envelope: EvalArtifactEnvelope): string =>
  * directions are evaluated: `regressions` asks "is the subject worse?" and
  * `improvements` asks the reverse. This is not a symmetric two-sided test and
  * must not be presented as one.
+ *
+ * `opts.allowConfigMismatch` drops the config-fingerprint refusal for
+ * run-vs-run A/B comparison, where the configuration difference is the
+ * variable under test rather than evidence of an invalid comparison. Every
+ * other dimension still refuses. Artifact compare keeps the refusal: a
+ * committed baseline under a non-default config is a governance smell, not an
+ * experiment.
  */
 export function compareArtifacts(
   reference: EvalArtifactEnvelope,
   subject: EvalArtifactEnvelope,
   alpha = 0.05,
+  opts: { allowConfigMismatch?: boolean } = {},
 ): CompareOutcome {
   const findings: ComparabilityFinding[] = [];
   if (reference.harness !== subject.harness) {
@@ -48,7 +56,7 @@ export function compareArtifacts(
       subject: subject.corpusFingerprint,
     });
   }
-  if (reference.configFingerprint !== subject.configFingerprint) {
+  if (!opts.allowConfigMismatch && reference.configFingerprint !== subject.configFingerprint) {
     findings.push({
       dimension: "configFingerprint",
       reference: reference.configFingerprint,

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
-import { api, type ArtifactRef, type IndexIssue } from '../api/client';
+import { api, type ArtifactRef, type HarnessDescriptor, type IndexIssue } from '../api/client';
 
 interface HarnessState {
   artifacts: ArtifactRef[];
   issues: IndexIssue[];
+  descriptor: HarnessDescriptor | null;
   error: string | null;
 }
 
@@ -15,6 +16,7 @@ export function Harness() {
   const [state, setState] = useState<HarnessState>({
     artifacts: [],
     issues: [],
+    descriptor: null,
     error: null,
   });
 
@@ -27,24 +29,38 @@ export function Harness() {
         if (mounted) {
           const filtered = result.refs.filter((a) => a.harness === harness);
           filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-          setState({
+          setState((prev) => ({
+            ...prev,
             artifacts: filtered,
             issues: result.issues.filter((issue) =>
               issue.path.startsWith(`${harness}/`),
             ),
             error: null,
-          });
+          }));
         }
       })
       .catch((error) => {
         if (mounted) {
-          setState({
+          setState((prev) => ({
+            ...prev,
             artifacts: [],
             issues: [],
             error: error instanceof Error ? error.message : String(error),
-          });
+          }));
         }
       });
+
+    // The description is a courtesy line; a failure here must not take the
+    // artifact list down with it, so it is fetched and settled separately.
+    api
+      .harnesses()
+      .then((result) => {
+        if (!mounted) return;
+        const descriptor =
+          (result.harnesses ?? []).find((h) => h.harness === harness) ?? null;
+        setState((prev) => ({ ...prev, descriptor }));
+      })
+      .catch(() => {});
 
     return () => {
       mounted = false;
@@ -69,6 +85,12 @@ export function Harness() {
         </Link>
         <h1 className="text-xl">{harness}</h1>
       </div>
+
+      {state.descriptor !== null && (
+        <p className="text-term-dim -mt-2">
+          {state.descriptor.question} {state.descriptor.detail}
+        </p>
+      )}
 
       <Frame label="artifacts">
         <ArtifactList artifacts={state.artifacts} />

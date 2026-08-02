@@ -4,34 +4,17 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { HARNESS_REGISTRY } from "./ops.registry.js";
+
 export const DEFAULT_PROFILE_NAME = "default";
 
-/**
- * Environment variables a profile is permitted to set. Everything here is a
- * protocol feature flag read live from process.env. Credentials, connection
- * strings and NODE_ENV are deliberately absent: a profile must never be able to
- * repoint a run at another database or provider account.
- */
-export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
-  "DISCOVERY_ALLOWED_TYPES",
-  "DISCOVERY_PROFILE_SOURCE",
-  "DISCOVERY_CONTEXT_TO_INTENT",
-  "DISCOVERY_REJECTION_COOLDOWN_DAYS",
-  "DISCOVERY_SOURCE_PREMISE_LIMIT",
-  "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
-  "INTRODUCER_DISCOVERY_ENABLED",
-  "NEGOTIATION_INCLUDE_OTHER_INTENTS",
-  "NEGOTIATION_MAX_TURNS_CHAT",
-  "NEGOTIATION_MAX_TURNS_AMBIENT",
-  "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
-  "OUTCOME_QUESTIONS_MODE",
-  "POOL_QUESTIONS_MINING",
-  "POOL_QUESTIONS_MODE",
-  "POOL_QUESTIONS_PUSH",
-  "POOL_QUESTIONS_RANKING",
-]);
+// The allowlist lives in ops.allowlist.ts (dependency-free) so the browser app
+// can import it without dragging node:fs/crypto into the Vite bundle. Re-exported
+// here so existing server-side imports keep working.
+export { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
+import { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 
-const ConfigProfileSchema = z
+export const ConfigProfileSchema = z
   .object({
     name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "profile names are lowercase kebab-case"),
     description: z.string().min(1),
@@ -94,4 +77,63 @@ export function resolveProfile(profile: ConfigProfile): ResolvedProfile {
 
 function sortedRecord(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/**
+ * The only models a client may select. Live spend on a shared URL with no
+ * actor attribution yet: free-text slugs stay out until attribution exists.
+ * Repo profiles are code-reviewed and exempt.
+ */
+export const ALLOWED_CONFIG_MODELS = [
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-flash-lite",
+  "google/gemini-3-pro-preview",
+  "anthropic/claude-sonnet-4",
+  "anthropic/claude-haiku-4.5",
+  "openai/gpt-4.1-mini",
+] as const;
+
+/** Agent keys any scorecard harness can actually exercise (from the registry). */
+function overridableAgents(): ReadonlySet<string> {
+  return new Set(Object.values(HARNESS_REGISTRY).flatMap((d) => d.agents));
+}
+
+/**
+ * Validates client-originated overrides. Returns human-readable issues;
+ * empty means valid. Used by the config routes and the launch path — never
+ * by the repo profile loader, whose files are code-reviewed.
+ */
+export function validateConfigOverrides(overrides: {
+  models: Record<string, string>;
+  env: Record<string, string>;
+}): string[] {
+  const issues: string[] = [];
+  const agents = overridableAgents();
+  for (const [agent, model] of Object.entries(overrides.models)) {
+    if (!agents.has(agent)) {
+      issues.push(`Unknown agent "${agent}". Overridable agents: ${[...agents].sort().join(", ")}`);
+    } else if (!(ALLOWED_CONFIG_MODELS as readonly string[]).includes(model)) {
+      issues.push(`Model "${model}" is not selectable. Allowed: ${ALLOWED_CONFIG_MODELS.join(", ")}`);
+    }
+  }
+  for (const key of Object.keys(overrides.env)) {
+    if (!PROFILE_ENV_ALLOWLIST.includes(key)) {
+      issues.push(`env key ${key} is not in PROFILE_ENV_ALLOWLIST`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * Resolves ad-hoc launch overrides through the same path as a named profile,
+ * so fingerprints match a saved config with the same payload. The synthetic
+ * profile is named "default" (renderRun asserts the resolved name matches the
+ * requested one) but is always experimental: ad-hoc runs never save.
+ */
+export function resolveAdHoc(overrides: {
+  models: Record<string, string>;
+  env: Record<string, string>;
+}): ResolvedProfile {
+  const resolved = resolveProfile({ name: DEFAULT_PROFILE_NAME, description: "ad-hoc overrides", ...overrides });
+  return { ...resolved, experimental: true };
 }

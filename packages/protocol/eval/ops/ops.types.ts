@@ -35,6 +35,16 @@ export interface HarnessDescriptor {
   defaultRuns: number;
   /** Corpus size, used to show workload (cases x runs) before launching. */
   caseCount: number;
+  /**
+   * The question this harness answers, phrased for a reader who did not write it.
+   * Shown wherever the site names the harness, so the four names are never the
+   * only explanation on the page.
+   */
+  question: string;
+  /** One sentence on what is actually scored, shown under `question` for context. */
+  detail: string;
+  /** Model-overridable agents this harness exercises, in pipeline order. */
+  agents: readonly string[];
 }
 
 export interface ArtifactRef {
@@ -85,8 +95,10 @@ export interface RunFlags {
 export interface EvalRunSpec {
   kind: "eval";
   harness: OpsHarness;
-  /** Name of a committed profile. Never a set of raw overrides. */
+  /** Name of a committed or saved profile. "default" + overrides = ad-hoc. */
   profile: string;
+  /** Ad-hoc overrides; only valid with profile "default". Never credentials. */
+  overrides?: { models: Record<string, string>; env: Record<string, string> };
   flags: RunFlags;
 }
 

@@ -1,8 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
-import { api, type CompareResult, type ArtifactRef } from '../api/client';
+import { CompareDiff } from '../components/CompareDiff';
+import { RunProgressView } from '../components/RunProgress';
+import { useRunProgress, type RunProgressState } from '../hooks/useRunProgress';
+import { api, isTerminalStatus, type CompareResult, type RunCompareResult, type ArtifactRef } from '../api/client';
+
+export function Compare() {
+  const [searchParams] = useSearchParams();
+  // The URL is the only home of the selection, so back/forward moves the
+  // selects (or the pair) and the comparison together.
+  const referenceRun = searchParams.get('referenceRun');
+  const subjectRun = searchParams.get('subjectRun');
+
+  // Pair mode: two runs, launched together, compared the moment both end.
+  // Keyed by the pair so navigating to a different pair resets all state.
+  if (referenceRun !== null && subjectRun !== null) {
+    return (
+      <PairCompare
+        key={`${referenceRun}/${subjectRun}`}
+        referenceRunId={referenceRun}
+        subjectRunId={subjectRun}
+      />
+    );
+  }
+
+  return <ArtifactCompare />;
+}
 
 interface CompareState {
   artifacts: ArtifactRef[];
@@ -11,10 +36,8 @@ interface CompareState {
   error: string | null;
 }
 
-export function Compare() {
+function ArtifactCompare() {
   const [searchParams, setSearchParams] = useSearchParams();
-  // The URL is the only home of the selection, so back/forward moves the selects
-  // and the comparison together instead of leaving them disagreeing with the URL.
   const referenceId = searchParams.get('reference');
   const subjectId = searchParams.get('subject');
   const [state, setState] = useState<CompareState>({
@@ -174,125 +197,124 @@ export function Compare() {
         </Frame>
       )}
 
-      {state.result && !state.result.comparable && (
-        <Frame label="These artifacts cannot be compared">
-          <p className="mb-[1lh]">
-            Comparison requires identical harness, corpus fingerprint, configuration fingerprint, and case selection.
-          </p>
-          <div className="space-y-[0.5lh]">
-            {state.result.findings.map((finding, idx) => (
-              <div key={idx} className="font-mono">
-                <span className="text-term-cyan">{finding.dimension}</span>
-                <span className="text-term-dim"> · reference: </span>
-                <span className="text-term-fg">{finding.reference}</span>
-                <span className="text-term-dim"> · subject: </span>
-                <span className="text-term-fg">{finding.subject}</span>
-              </div>
-            ))}
-          </div>
+      {state.result && <CompareDiff result={state.result} />}
+    </div>
+  );
+}
+
+/**
+ * The A/B payoff loop: both runs' progress side by side (stacked), and the
+ * moment the second run goes terminal the run-vs-run diff loads itself.
+ * The URL carries the pair, so the page is shareable and back/forward-safe.
+ */
+function PairCompare({ referenceRunId, subjectRunId }: { referenceRunId: string; subjectRunId: string }) {
+  const reference = useRunProgress(referenceRunId);
+  const subject = useRunProgress(subjectRunId);
+  const [result, setResult] = useState<RunCompareResult | null>(null);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
+
+  const referenceDone = reference.run !== null && isTerminalStatus(reference.run.status);
+  const subjectDone = subject.run !== null && isTerminalStatus(subject.run.status);
+
+  useEffect(() => {
+    if (!referenceDone || !subjectDone || fetchedRef.current) return;
+    fetchedRef.current = true;
+    let mounted = true;
+    api
+      .compareRuns(referenceRunId, subjectRunId)
+      .then((outcome) => {
+        if (mounted) setResult(outcome);
+      })
+      .catch((error) => {
+        if (mounted) {
+          setCompareError(error instanceof Error ? error.message : String(error));
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [referenceDone, subjectDone, referenceRunId, subjectRunId]);
+
+  const bothDone = referenceDone && subjectDone;
+
+  return (
+    <div className="flex flex-col gap-[2lh] p-[2ch]">
+      <h1 className="text-term-cyan text-[2em]">A/B Comparison</h1>
+
+      <PairPanel side="reference" state={reference} />
+      <PairPanel side="candidate" state={subject} />
+
+      {!bothDone && (
+        <p className="text-term-dim">comparison appears when both runs finish</p>
+      )}
+
+      {compareError !== null && (
+        <Frame label="Error">
+          <pre className="text-term-red">{compareError}</pre>
         </Frame>
       )}
 
-      {state.result && state.result.comparable && (
+      {result !== null && (
         <>
-          <Frame label="Aggregate">
-            <div className="flex gap-[4ch] font-mono">
-              <div>
-                <span className="text-term-dim">Reference: </span>
-                <span className="text-term-fg">{(state.result.aggregate.reference * 100).toFixed(2)}%</span>
+          {result.runs !== undefined && (
+            <Frame label="runs compared">
+              <div className="space-y-[0.5lh] font-mono">
+                <SideHeader side="reference" label={result.runs.reference} />
+                <SideHeader side="candidate" label={result.runs.subject} />
               </div>
-              <div>
-                <span className="text-term-dim">Subject: </span>
-                <span className="text-term-fg">{(state.result.aggregate.subject * 100).toFixed(2)}%</span>
-              </div>
-              <div>
-                <span className="text-term-dim">Δ: </span>
-                <span
-                  className={
-                    state.result.aggregate.delta > 0
-                      ? 'text-term-green'
-                      : state.result.aggregate.delta < 0
-                        ? 'text-term-red'
-                        : 'text-term-dim'
-                  }
-                >
-                  {state.result.aggregate.delta > 0 ? '+' : ''}
-                  {(state.result.aggregate.delta * 100).toFixed(2)}%
-                </span>
-              </div>
-            </div>
-          </Frame>
-
-          {state.result.regressions.regressions.length > 0 && (
-            <Frame label="Regressions (subject worse)">
-              <table className="w-full font-mono">
-                <thead>
-                  <tr className="text-term-dim border-b border-term-rule">
-                    <th className="text-left py-[0.5lh]">ID</th>
-                    <th className="text-left py-[0.5lh]">Type</th>
-                    <th className="text-right py-[0.5lh]">Before</th>
-                    <th className="text-right py-[0.5lh]">After</th>
-                    <th className="text-right py-[0.5lh]">p-value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.result.regressions.regressions.map((reg, idx) => (
-                    <tr key={idx} className="border-b border-term-rule">
-                      <td className="py-[0.5lh]">{reg.id}</td>
-                      <td className="py-[0.5lh] text-term-dim">{reg.kind}</td>
-                      <td className="text-right py-[0.5lh]">{(reg.before * 100).toFixed(1)}%</td>
-                      <td className="text-right py-[0.5lh] text-term-red">{(reg.after * 100).toFixed(1)}%</td>
-                      <td className="text-right py-[0.5lh] text-term-dim">{reg.pValue.toFixed(4)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </Frame>
           )}
-
-          {state.result.improvements.regressions.length > 0 && (
-            <Frame label="Improvements (subject better)">
-              <table className="w-full font-mono">
-                <thead>
-                  <tr className="text-term-dim border-b border-term-rule">
-                    <th className="text-left py-[0.5lh]">ID</th>
-                    <th className="text-left py-[0.5lh]">Type</th>
-                    <th className="text-right py-[0.5lh]">Before</th>
-                    <th className="text-right py-[0.5lh]">After</th>
-                    <th className="text-right py-[0.5lh]">p-value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.result.improvements.regressions.map((reg, idx) => (
-                    <tr key={idx} className="border-b border-term-rule">
-                      <td className="py-[0.5lh]">{reg.id}</td>
-                      <td className="py-[0.5lh] text-term-dim">{reg.kind}</td>
-                      <td className="text-right py-[0.5lh]">{(reg.before * 100).toFixed(1)}%</td>
-                      <td className="text-right py-[0.5lh] text-term-green">{(reg.after * 100).toFixed(1)}%</td>
-                      <td className="text-right py-[0.5lh] text-term-dim">{reg.pValue.toFixed(4)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Frame>
-          )}
-
-          {state.result.regressions.regressions.length === 0 &&
-            state.result.improvements.regressions.length === 0 && (
-              <Frame label="No Significant Differences">
-                <p className="text-term-dim">
-                  No statistically significant regressions or improvements detected between these artifacts.
-                </p>
-              </Frame>
-            )}
-
-          <Frame label="Statistical Note">
-            <p className="text-term-dim text-sm">
-              Significance uses the same one-sided beta-binomial posterior-predictive test as the CLI, evaluated in
-              both directions. It is not a symmetric two-sided test.
-            </p>
-          </Frame>
+          <CompareDiff result={result} />
         </>
+      )}
+    </div>
+  );
+}
+
+function PairPanel({ side, state }: { side: 'reference' | 'candidate'; state: RunProgressState }) {
+  const profile =
+    state.run !== null && state.run.spec.kind === 'eval' ? state.run.spec.profile : null;
+  const live =
+    state.run !== null && (state.run.status === 'running' || state.run.status === 'queued');
+
+  return (
+    <Frame label={profile !== null ? `${side} · ${profile}` : side}>
+      {state.streamError !== null && <p className="text-term-red">{state.streamError}</p>}
+      {state.streamError === null && state.run === null && (
+        <p className="text-term-dim">Loading…</p>
+      )}
+      {state.streamError === null && state.run !== null && state.progress !== null && state.progress.totalCases !== null && (
+        <RunProgressView
+          progress={state.progress}
+          caseStartedAt={state.caseTimes}
+          runStartedAt={state.run.startedAt !== null ? new Date(state.run.startedAt).getTime() : null}
+          live={live}
+        />
+      )}
+      {state.streamError === null && state.run !== null && (state.progress === null || state.progress.totalCases === null) && (
+        <p className="text-term-dim">waiting for harness output…</p>
+      )}
+    </Frame>
+  );
+}
+
+function SideHeader({
+  side,
+  label,
+}: {
+  side: 'reference' | 'candidate';
+  label: { profile: string; profileFingerprint: string; complete: boolean | null };
+}) {
+  return (
+    <div>
+      <span className="text-term-cyan">{side}</span>
+      <span className="text-term-dim"> · </span>
+      <span className="text-term-fg">{label.profile}</span>
+      <span className="text-term-dim"> · config </span>
+      <span className="text-term-fg">{label.profileFingerprint.slice(0, 12)}</span>
+      {label.complete === false && (
+        <span className="text-term-yellow"> · incomplete evidence — interpret with care</span>
       )}
     </div>
   );

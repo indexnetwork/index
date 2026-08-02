@@ -40,6 +40,10 @@ export const RunSpecSchema = z
     kind: z.literal("eval"),
     harness: z.enum(OPS_HARNESSES as unknown as [string, ...string[]]),
     profile: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    overrides: z
+      .object({ models: z.record(z.string().min(1)), env: z.record(z.string()) })
+      .strict()
+      .optional(),
     flags: RunFlagsSchema,
   })
   .strict()
@@ -53,6 +57,15 @@ export const RunSpecSchema = z
           message: `The ${spec.harness} harness does not accept --${name}`,
         });
       }
+    }
+    // Ad-hoc overrides ARE the profile: combining them with a named profile
+    // would make the run's provenance ambiguous, so the pair is inexpressible.
+    if (spec.overrides !== undefined && spec.profile !== "default") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["overrides"],
+        message: 'ad-hoc overrides require profile "default"; launch a named config and tweak it from the Configs page instead',
+      });
     }
   }) as unknown as z.ZodType<EvalRunSpec>;
 

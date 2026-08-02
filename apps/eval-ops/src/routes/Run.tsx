@@ -1,15 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { LogView } from '../components/LogView';
 import { CaseTable } from '../components/CaseTable';
-import { api, encodeArtifactId, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type RunRecord } from '../api/client';
+import { RunProgressView } from '../components/RunProgress';
+import { HarnessProgressParser, type RunProgress } from '../../../../packages/protocol/eval/ops/ops.progress';
+import { api, encodeArtifactId, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type HarnessDescriptor, type RunRecord } from '../api/client';
 
 interface RunState {
   run: RunRecord | null;
   log: string;
+  progress: RunProgress | null;
+  harnesses: HarnessDescriptor[];
   artifact: Artifact | null;
   baseline: Artifact | null;
   comparison: CompareResult | null;
@@ -39,6 +43,8 @@ function RunDetail({ runId }: { runId: string }) {
   const [state, setState] = useState<RunState>({
     run: null,
     log: '',
+    progress: null,
+    harnesses: [],
     artifact: null,
     baseline: null,
     comparison: null,
@@ -47,6 +53,10 @@ function RunDetail({ runId }: { runId: string }) {
     streamError: null,
   });
   const [cancelling, setCancelling] = useState(false);
+  const [showRawLog, setShowRawLog] = useState(false);
+  const parserRef = useRef(new HarnessProgressParser());
+  /** First-seen and completion timestamps per case id, for live durations. */
+  const caseTimesRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     let logAccumulator = '';
@@ -54,11 +64,24 @@ function RunDetail({ runId }: { runId: string }) {
     let sawStatus = false;
     let closed = false;
 
+    const feedProgress = (chunk: string) => {
+      parserRef.current.push(chunk);
+      const snapshot = parserRef.current.snapshot();
+      const times = caseTimesRef.current;
+      const nowMs = Date.now();
+      for (const c of snapshot.cases) {
+        if (!times.has(c.id)) times.set(c.id, nowMs);
+        if (c.done && !times.has(`${c.id}::done`)) times.set(`${c.id}::done`, nowMs);
+      }
+      return snapshot;
+    };
+
     const unsubscribe = subscribeToRun(runId, {
       onLog: (chunk: string) => {
         if (!mounted) return;
         logAccumulator += chunk;
-        setState((prev) => ({ ...prev, log: logAccumulator }));
+        const progress = feedProgress(chunk);
+        setState((prev) => ({ ...prev, log: logAccumulator, progress }));
       },
       onStatus: (record: RunRecord) => {
         if (!mounted) return;
@@ -98,11 +121,22 @@ function RunDetail({ runId }: { runId: string }) {
         }
 
         // Mid-stream failure: EventSource reconnects and the server replays from
-        // byte 0, so reset the accumulator to avoid rendering the log twice.
+        // byte 0, so reset the accumulator AND the parser to avoid rendering
+        // the log twice or counting every case a second time.
         logAccumulator = '';
-        setState((prev) => ({ ...prev, log: '' }));
+        parserRef.current = new HarnessProgressParser();
+        caseTimesRef.current.clear();
+        setState((prev) => ({ ...prev, log: '', progress: null }));
       },
     });
+
+    // The harness's own description of what this run answers, shown next to
+    // its name. A courtesy line: never let it break the run page.
+    void api.harnesses().then((result) => {
+      if (!mounted) return;
+      const harnesses = result.harnesses ?? [];
+      setState((prev) => ({ ...prev, harnesses }));
+    }).catch(() => {});
 
     async function fetchArtifactAndComparison(record: RunRecord) {
       const { artifactPath, spec } = record;
@@ -214,6 +248,11 @@ function RunDetail({ runId }: { runId: string }) {
 
   const run = state.run;
   const isRunning = run.status === 'running' || run.status === 'queued';
+  const harnessQuestion =
+    run.spec.kind === 'eval'
+      ? state.harnesses.find((h) => h.harness === (run.spec as { harness: string }).harness)?.question ?? null
+      : null;
+  const overridesSummary = run.spec.kind === 'eval' ? summarizeRunEnv(run.env) : null;
 
   return (
     <div className="p-4 space-y-4">
@@ -237,11 +276,20 @@ function RunDetail({ runId }: { runId: string }) {
                 <Link to={`/h/${run.spec.harness}`} className="text-term-blue hover:underline">
                   {run.spec.harness}
                 </Link>
+                {harnessQuestion !== null && (
+                  <span className="text-term-dim">{harnessQuestion}</span>
+                )}
               </div>
               <div className="flex gap-4">
                 <span className="text-term-dim w-24">profile:</span>
                 <span>{run.spec.profile}</span>
               </div>
+              {overridesSummary !== null && (
+                <div className="flex gap-4">
+                  <span className="text-term-dim w-24">overrides:</span>
+                  <span className="text-term-dim">{overridesSummary}</span>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex gap-4">
@@ -409,11 +457,70 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       )}
 
-      <Frame label="log">
-        <LogView text={state.log} />
-      </Frame>
+      {state.progress !== null && state.progress.totalCases !== null ? (
+        <Frame label="progress">
+          <RunProgressView
+            progress={state.progress}
+            caseStartedAt={caseTimesRef.current}
+            runStartedAt={run.startedAt !== null ? new Date(run.startedAt).getTime() : null}
+            live={isRunning}
+          />
+          <div className="mt-2">
+            <button
+              onClick={() => setShowRawLog((v) => !v)}
+              className="text-term-blue hover:underline"
+            >
+              {showRawLog ? 'hide raw output' : 'show raw output'}
+            </button>
+          </div>
+          {showRawLog && (
+            <div className="mt-2 border-t border-term-rule pt-2">
+              <LogView text={state.log} />
+            </div>
+          )}
+        </Frame>
+      ) : (
+        <Frame label="log">
+          <LogView text={state.log} />
+        </Frame>
+      )}
     </div>
   );
+}
+
+/**
+ * renderRun's internal pins are bookkeeping for the spawn, not operator
+ * signal, so they never appear in the summary.
+ */
+const INTERNAL_ENV_PINS: ReadonlySet<string> = new Set(['OPENROUTER_FALLBACK_MODEL']);
+
+/**
+ * Renders a run's injected env as a one-line overrides summary: `agent → model`
+ * pairs from EVAL_MODEL_OVERRIDES, then the remaining KEY=value entries sorted
+ * by key. Returns null when there is nothing to show — a default run's env is
+ * empty. Never throws: a hand-written or corrupt record must not break the run
+ * page.
+ */
+function summarizeRunEnv(env: Record<string, string>): string | null {
+  const parts: string[] = [];
+  const rawOverrides = env.EVAL_MODEL_OVERRIDES;
+  if (rawOverrides !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(rawOverrides);
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [agent, model] of Object.entries(parsed as Record<string, unknown>)) {
+          parts.push(`${agent} → ${String(model)}`);
+        }
+      }
+    } catch {
+      parts.push('EVAL_MODEL_OVERRIDES (unparseable)');
+    }
+  }
+  for (const key of Object.keys(env).sort()) {
+    if (key === 'EVAL_MODEL_OVERRIDES' || INTERNAL_ENV_PINS.has(key)) continue;
+    parts.push(`${key}=${env[key]}`);
+  }
+  return parts.length === 0 ? null : parts.join(', ');
 }
 
 function Delta({ value }: { value: number }) {

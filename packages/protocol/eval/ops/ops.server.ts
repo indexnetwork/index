@@ -10,10 +10,12 @@
  * rather than substitute for one another:
  *
  *  1. `foreignHostRefusal` — every request, read included, must be addressed to a
- *     loopback host. This is what stops a rebound DNS name reading artifacts,
+ *     loopback host, or to the one origin `EVAL_OPS_PUBLIC_ORIGIN` names when the
+ *     server is deployed. This is what stops a rebound DNS name reading artifacts,
  *     run records, logs and fixture metadata.
- *  2. `crossOriginRefusal` — a state-changing request must be same-origin, so a
- *     page the operator happens to have open cannot drive a run or a flush.
+ *  2. `crossOriginRefusal` — a state-changing request must come from an allowed
+ *     origin, so a page the operator happens to have open cannot drive a run or a
+ *     flush.
  *  3. A JSON content type on writes, which `no-cors` cannot produce.
  *  4. `authRefusal` — the caller must hold a session belonging to a verified
  *     member of the allowed domain (see ops.auth.ts).
@@ -29,16 +31,18 @@ import { z } from "zod";
 
 import { renderRun, RunSpecSchema } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
-import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
+import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
+import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type ConfigStore } from "./ops.configs.js";
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { loadProfiles, resolveProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
-import type { RunStatus, RunStepRecord } from "./ops.types.js";
+import type { RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
+import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
 
 export interface OpsContext {
   /** Absolute path to packages/protocol/eval. */
@@ -52,23 +56,39 @@ export interface OpsContext {
   executor: RunExecutor;
   queue: RunQueue;
   profilesDir: string;
+  /** Saved (DB-backed) eval configs; the writable counterpart of the shipped profiles. */
+  configs: ConfigStore;
   /** Resolved from the server's own .env.test. Never from a request, never sent to a client. */
   databaseUrl: string | undefined;
   /** Read-only live counts. Absent when no database client is configured. */
   inspector?: FixtureInspector;
+  /**
+   * The one non-loopback origin this server also answers on, when it is deployed.
+   *
+   * Absent means loopback only, which is the local posture and the default. It is
+   * never a wildcard and never a way to switch a guard off: see
+   * {@link resolvePublicOrigin}, which validates it and refuses to start on
+   * anything else.
+   */
+  publicOrigin?: PublicOrigin;
   /** Identity. Absent only in tests that predate the gate; see `authRefusal`. */
   auth?: OpsAuthContext;
 }
 
 /** Everything the auth gate needs. All of it is injectable, so tests need no API. */
 export interface OpsAuthContext {
-  states: OneTimeStateStore;
   sessions: OpsSessionStore;
+  /**
+   * The one seam that turns a credential into an identity.
+   *
+   * Which implementation is here is decided together with {@link signIn}, by
+   * {@link resolveSignInMode}: the bridge mints API keys and the token exchange
+   * carries JWTs, and a resolver paired with the wrong door refuses every
+   * sign-in.
+   */
   identities: IdentityResolver;
-  /** Base URL of the web app serving /cli-auth. */
-  webAppUrl: string;
-  /** The port this server's /callback is reachable on. */
-  callbackPort: number;
+  /** How a browser is expected to prove who it is. */
+  signIn: SignInPosture;
   /**
    * Where a completed sign-in sends the browser.
    *
@@ -81,8 +101,59 @@ export interface OpsAuthContext {
   uiUrl: string;
 }
 
-/** Origins a browser may legitimately be running the ops UI on: loopback only. */
+/**
+ * The two doors a browser can sign in through, and everything each one needs.
+ *
+ * A discriminated union rather than a bag of optional fields, because the two
+ * are genuinely different exchanges and only one of them can be open at a time.
+ * The bridge holds the one-time state store; the token exchange does not have
+ * one at all, so a deployed server cannot answer a bridge callback even by
+ * accident.
+ *
+ *  - `bridge` is the local posture, unchanged: `<WEB_APP_URL>/cli-auth` mints a
+ *    revocable API key against the operator's existing browser session and
+ *    redirects it to `http://127.0.0.1:<port>/callback`.
+ *  - `token` is the deployed posture. The bridge is unusable there —
+ *    `validateCliCallbackUrl` in apps/web/src/lib/cli-auth.ts accepts only
+ *    `http:` on loopback, deliberately, and that rule is shared with the released
+ *    CLI — so the browser fetches a better-auth JWT from `${apiUrl}/api/auth/token`
+ *    against its own API session and posts it to `POST /api/auth/session`, which
+ *    resolves it server-side.
+ */
+export type SignInPosture =
+  | {
+      kind: "bridge";
+      /** One-time states, so a callback this server did not start is refused. */
+      states: OneTimeStateStore;
+      /** Base URL of the web app serving /cli-auth. */
+      webAppUrl: string;
+      /** The port this server's /callback is reachable on. */
+      callbackPort: number;
+    }
+  | {
+      kind: "token";
+      /** Base URL of the API that issues and verifies the token. */
+      apiUrl: string;
+      /** Where the operator signs in to Index when the API says it has no session. */
+      webAppUrl: string;
+    };
+
+/** Origins a browser may legitimately be running the ops UI on, before deployment. */
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * The single deployed origin the guards below also accept.
+ *
+ * Both fields are derived from one validated value, so the `Host` check and the
+ * `Origin` check cannot drift apart: `origin` is what an `Origin` header must
+ * equal, `host` is what a `Host` header must equal (including a non-default port).
+ */
+export interface PublicOrigin {
+  /** The normalised origin, e.g. `https://eval.index.network`. Never a wildcard. */
+  origin: string;
+  /** Its host, including a non-default port. */
+  host: string;
+}
 
 /**
  * The only routes reachable without a session, and the reason each one must be.
@@ -96,6 +167,12 @@ const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
  *    session; gating it would make the question unanswerable.
  *  - `POST /api/auth/login` — mints the sign-in link, so requiring a session to
  *    call it would be circular.
+ *  - `POST /api/auth/session` — the deployed posture's equivalent of `/callback`:
+ *    it is the request that *establishes* a session by submitting a better-auth
+ *    token, so it cannot require one. The same circularity, and the same
+ *    deliberate exemption. It is not a hole in the gate: the Host, Origin and
+ *    JSON content-type guards all still run in front of it, and it grants nothing
+ *    except a session for an identity `assessIdentity` admits.
  *
  * `/callback` is deliberately absent: it is not under /api/ and is handled ahead
  * of the gate, because it is the request that *establishes* a session.
@@ -103,21 +180,53 @@ const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 export const PUBLIC_ROUTES: ReadonlyArray<{ method: string; path: string }> = Object.freeze([
   Object.freeze({ method: "GET", path: "/api/auth/status" }),
   Object.freeze({ method: "POST", path: "/api/auth/login" }),
+  Object.freeze({ method: "POST", path: "/api/auth/session" }),
 ]);
 
 /** Name of the ops session cookie. */
 const SESSION_COOKIE = "eval_ops_session";
 
 /**
- * The session cookie's attributes.
+ * The session cookie's attributes, minus `Secure`.
  *
- * `Secure` is deliberately absent. The ops site is served over plain http on
- * loopback, and a Secure cookie would be dropped by the browser — sign-in would
- * appear to succeed and then silently never take effect. `SameSite=Lax` keeps the
- * cookie off cross-site writes, which is the same boundary `crossOriginRefusal`
- * enforces server-side.
+ * `SameSite=Lax` keeps the cookie off cross-site writes, which is the same
+ * boundary `crossOriginRefusal` enforces server-side.
  */
 const SESSION_COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Lax; Path=/";
+
+/**
+ * The cookie's attributes for one request.
+ *
+ * `Secure` follows the request rather than a hand-set flag, because both mistakes
+ * are silent. On loopback the site is plain http, and a Secure cookie would be
+ * dropped by the browser: sign-in would appear to succeed and never take effect.
+ * Over HTTPS an insecure session cookie is a real exposure, and nothing in the
+ * browser would say so.
+ */
+function sessionCookieAttributes(secure: boolean): string {
+  return secure ? `${SESSION_COOKIE_ATTRIBUTES}; Secure` : SESSION_COOKIE_ATTRIBUTES;
+}
+
+/**
+ * True when the browser reached this server over HTTPS.
+ *
+ * Two signals, both of them things this server can vouch for. The request URL's
+ * own scheme is one. The other is the configured public origin: it is validated
+ * to be `https:` and nothing else, so a request addressed to that host was served
+ * over HTTPS even though a TLS-terminating proxy — Railway's edge, for one —
+ * forwards it onward as plain http.
+ *
+ * `X-Forwarded-Proto` is deliberately not consulted. It is a header any client
+ * can set, including a page on the operator's own machine, and trusting it would
+ * let that page get the loopback session cookie dropped.
+ */
+function isSecureRequest(context: OpsContext, request: Request, url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  const publicOrigin = context.publicOrigin;
+  if (publicOrigin === undefined) return false;
+  const host = request.headers.get("host");
+  return host !== null && host.trim().toLowerCase() === publicOrigin.host;
+}
 
 /** Fetch metadata values that mean "this was not initiated by another site". */
 const SAME_ORIGIN_FETCH_SITES = new Set(["same-origin", "none"]);
@@ -143,15 +252,15 @@ export function createOpsHandler(context: OpsContext): (request: Request) => Pro
   const state: ServerState = { resetInFlight: false };
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
-    const rebinding = foreignHostRefusal(request);
+    const rebinding = foreignHostRefusal(context, request);
     if (rebinding !== null) return rebinding;
-    const refusal = crossOriginRefusal(request);
+    const refusal = crossOriginRefusal(context, request);
     if (refusal !== null) return refusal;
     try {
       // Ahead of the gate: this is the request that establishes a session, so it
-      // cannot require one. It is still behind both loopback guards above.
+      // cannot require one. It is still behind both host/origin guards above.
       if (url.pathname === OPS_CALLBACK_PATH && request.method === "GET") {
-        return await completeSignIn(context, url);
+        return await completeSignIn(context, request, url);
       }
 
       // Default-deny. Everything from here on either sits on PUBLIC_ROUTES or
@@ -201,8 +310,9 @@ function authRefusal(context: OpsContext, request: Request, url: URL): Response 
   // The *domain* rule is re-checked on every request rather than trusted from
   // sign-in time, so narrowing the allowed domain refuses live sessions too.
   // Verification is not re-checked: a session only exists past a verified check
-  // at /callback, and the credential that could re-ask the API was discarded
-  // there. `emailVerified: true` below states that, rather than proving it.
+  // at the sign-in that established it (/callback, or POST /api/auth/session),
+  // and the credential that could re-ask the API was discarded there.
+  // `emailVerified: true` below states that, rather than proving it.
   const verdict = assessIdentity({ email: identity.email, emailVerified: true, name: identity.name });
   if (!verdict.allowed) {
     return json({ error: verdict.reason, authenticated: true, permitted: false }, 403);
@@ -224,12 +334,23 @@ function sessionIdentity(context: OpsContext, request: Request): AllowedIdentity
  * dropped — it is a broad API key for a real account, and it is never stored in a
  * session, logged, or written into a page.
  */
-async function completeSignIn(context: OpsContext, url: URL): Promise<Response> {
+async function completeSignIn(context: OpsContext, request: Request, url: URL): Promise<Response> {
   const auth = context.auth;
   if (auth === undefined) return refusalPage("This server has no identity configured.", 500);
+  // A deployed server mints no states, so it can validate no callback. Refusing
+  // is the only honest answer: the bridge could not have sent this browser here
+  // (its own validator accepts loopback callbacks only), so anything arriving is
+  // hand-made.
+  if (auth.signIn.kind !== "bridge") {
+    return refusalPage(
+      "This server does not sign in through the local bridge. Start the sign-in again from the eval ops site.",
+      403,
+    );
+  }
+  const { states } = auth.signIn;
 
   // Consuming is the validation: unknown, expired and replayed states all fail here.
-  if (!auth.states.consume(url.searchParams.get("state"))) {
+  if (!states.consume(url.searchParams.get("state"))) {
     return refusalPage(
       "This sign-in link is no longer valid. It may have already been used, or it may have expired. Start the sign-in again from the eval ops site.",
       403,
@@ -262,7 +383,7 @@ async function completeSignIn(context: OpsContext, url: URL): Promise<Response> 
     status: 302,
     headers: {
       Location: auth.uiUrl,
-      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${SESSION_COOKIE_ATTRIBUTES}`,
+      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${sessionCookieAttributes(isSecureRequest(context, request, url))}`,
     },
   });
 }
@@ -340,6 +461,9 @@ function readCookie(request: Request, name: string): string | null {
  *    on 127.0.0.1:5174 and proxies /api here; the proxy forwards the browser's
  *    own `Origin: http://127.0.0.1:5174` verbatim, and a direct visit to this
  *    server sends `Origin: http://127.0.0.1:4321`. Both are loopback.
+ *  - the one origin `EVAL_OPS_PUBLIC_ORIGIN` names, when the server is deployed.
+ *    Exactly that origin: a different scheme, a different port and a subdomain of
+ *    it are all different origins and all refused.
  *  - no `Origin` at all: curl, and any proxy hop that drops it. A request with no
  *    `Origin` was not initiated by a page, so it is not the drive-by this closes.
  *  - `Sec-Fetch-Site: same-origin` or `none`, which say the same thing.
@@ -348,12 +472,19 @@ function readCookie(request: Request, name: string): string | null {
  * frame or a file:// page sends — and, when no `Origin` is present, a
  * `Sec-Fetch-Site` that names another site.
  */
-function crossOriginRefusal(request: Request): Response | null {
+function crossOriginRefusal(context: OpsContext, request: Request): Response | null {
   if (request.method === "GET" || request.method === "HEAD") return null;
   const origin = request.headers.get("origin");
   if (origin !== null) {
-    if (isLoopbackOrigin(origin)) return null;
-    return json({ error: `Refusing a ${request.method} from origin ${origin}: this server only accepts local requests.` }, 403);
+    if (isAllowedOrigin(origin, context.publicOrigin)) return null;
+    return json(
+      {
+        error:
+          `Refusing a ${request.method} from origin ${origin}: this server only accepts requests from `
+          + `${describeAllowedOrigins(context.publicOrigin)}.`,
+      },
+      403,
+    );
   }
   const site = request.headers.get("sec-fetch-site");
   if (site !== null && !SAME_ORIGIN_FETCH_SITES.has(site.toLowerCase())) {
@@ -379,15 +510,26 @@ function crossOriginRefusal(request: Request): Response | null {
  *
  * A request with no `Host` is accepted: it was not steered here by a resolved
  * name, so rebinding does not apply.
+ *
+ * A deployed server also answers on the one host `EVAL_OPS_PUBLIC_ORIGIN` names.
+ * That is a second entry in the allowlist, not a hole in it: every other host,
+ * including a subdomain of the configured one, is still refused.
  */
-function foreignHostRefusal(request: Request): Response | null {
+function foreignHostRefusal(context: OpsContext, request: Request): Response | null {
   const host = request.headers.get("host");
   if (host === null) return null;
-  if (isLoopbackHost(host)) return null;
+  if (isAllowedHost(host, context.publicOrigin)) return null;
   return json(
-    { error: `Refusing a request for host ${host}: this server only answers on loopback (${[...LOOPBACK_HOSTNAMES].join(", ")}).` },
+    { error: `Refusing a request for host ${host}: this server only answers on ${describeAllowedHosts(context.publicOrigin)}.` },
     403,
   );
+}
+
+/** Loopback, plus the configured public host when there is one. */
+function isAllowedHost(host: string, publicOrigin: PublicOrigin | undefined): boolean {
+  const value = host.trim().toLowerCase();
+  if (publicOrigin !== undefined && value === publicOrigin.host) return true;
+  return isLoopbackHost(value);
 }
 
 /** Strips an optional port and compares against the loopback allowlist. */
@@ -396,6 +538,21 @@ function isLoopbackHost(host: string): boolean {
   // Bracketed IPv6 keeps its brackets, which is how LOOPBACK_HOSTNAMES stores ::1.
   const hostname = value.startsWith("[") ? value.slice(0, value.indexOf("]") + 1) : value.split(":")[0];
   return LOOPBACK_HOSTNAMES.has(hostname);
+}
+
+/** Loopback at any port, plus the configured public origin exactly. */
+function isAllowedOrigin(origin: string, publicOrigin: PublicOrigin | undefined): boolean {
+  if (isLoopbackOrigin(origin)) return true;
+  if (publicOrigin === undefined) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  // URL.origin normalises scheme and host case and drops a default port, so this
+  // is an origin comparison rather than a string comparison of two spellings.
+  return parsed.origin === publicOrigin.origin;
 }
 
 function isLoopbackOrigin(origin: string): boolean {
@@ -410,6 +567,16 @@ function isLoopbackOrigin(origin: string): boolean {
   return LOOPBACK_HOSTNAMES.has(parsed.hostname);
 }
 
+/** The refusal message names what is allowed, so a misrouted deploy says what to fix. */
+function describeAllowedHosts(publicOrigin: PublicOrigin | undefined): string {
+  const loopback = `loopback (${[...LOOPBACK_HOSTNAMES].join(", ")})`;
+  return publicOrigin === undefined ? loopback : `${loopback} and ${publicOrigin.host}`;
+}
+
+function describeAllowedOrigins(publicOrigin: PublicOrigin | undefined): string {
+  return publicOrigin === undefined ? "loopback origins" : `loopback origins and ${publicOrigin.origin}`;
+}
+
 /** Returns null when nothing matched, so the caller can answer 404 in one place. */
 async function route(context: OpsContext, state: ServerState, request: Request, url: URL): Promise<Response | null> {
   const segments = url.pathname.split("/").filter((segment) => segment !== "");
@@ -420,6 +587,8 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
     if (resource === "auth" && rest.length === 1 && rest[0] === "status") return authStatus(context, request);
     if (resource === "harnesses" && rest.length === 0) return json({ harnesses: Object.values(HARNESS_REGISTRY) });
     if (resource === "profiles" && rest.length === 0) return json({ profiles: await loadProfiles(context.profilesDir) });
+    if (resource === "configs" && rest.length === 0) return await listConfigs(context);
+    if (resource === "configs" && rest.length === 1 && rest[0] === "models") return json({ models: [...ALLOWED_CONFIG_MODELS] });
     if (resource === "artifacts" && rest.length === 0) return json(await context.artifacts.list());
     if (resource === "artifacts" && rest.length === 1) return await readArtifact(context, rest[0]);
     if (resource === "compare" && rest.length === 0) return await compare(context, url);
@@ -433,10 +602,20 @@ async function route(context: OpsContext, state: ServerState, request: Request, 
 
   if (request.method === "POST") {
     if (resource === "auth" && rest.length === 1 && rest[0] === "login") return beginSignIn(context);
-    if (resource === "auth" && rest.length === 1 && rest[0] === "logout") return endSession(context, request);
+    if (resource === "auth" && rest.length === 1 && rest[0] === "session") return await establishTokenSession(context, request, url);
+    if (resource === "auth" && rest.length === 1 && rest[0] === "logout") return endSession(context, request, url);
     if (resource === "runs" && rest.length === 0) return await launchRun(context, state, request);
     if (resource === "runs" && rest.length === 2 && rest[1] === "cancel") return await cancelRun(context, rest[0]);
     if (resource === "fixture" && rest.length === 1 && rest[0] === "reset") return await resetFixture(context, state, request);
+    if (resource === "configs" && rest.length === 0) return await createConfig(context, request);
+  }
+
+  if (request.method === "PATCH") {
+    if (resource === "configs" && rest.length === 1) return await updateConfig(context, rest[0], request);
+  }
+
+  if (request.method === "DELETE") {
+    if (resource === "configs" && rest.length === 1) return await deleteConfig(context, rest[0]);
   }
 
   return null;
@@ -450,30 +629,134 @@ function authStatus(context: OpsContext, request: Request): Response {
 }
 
 /**
- * Starts a sign-in: mints a one-time state and returns the bridge link.
+ * Starts a sign-in, and says which of the two exchanges this server runs.
  *
- * Everything in the link comes from this server's own configuration; nothing in
- * it is taken from the request, so a caller cannot steer the callback elsewhere.
+ * A discriminated reply, not an optional field: the two postures return
+ * genuinely different things, and a `url` that is sometimes absent would leave
+ * the browser guessing.
+ *
+ *  - `bridge` — the local posture. Everything in the link comes from this
+ *    server's own configuration; nothing in it is taken from the request, so a
+ *    caller cannot steer the callback elsewhere.
+ *  - `token` — the deployed posture. Names the API to fetch a better-auth token
+ *    from and the web app to sign in at, and *nothing else*. Both are public DNS
+ *    names the browser already talks to, one of them being where its own session
+ *    cookie lives. This is deliberately not a route that reports server
+ *    configuration in general.
  */
 function beginSignIn(context: OpsContext): Response {
   const auth = context.auth;
   if (auth === undefined) return json({ error: "This server has no identity configured." }, 500);
+  const posture = auth.signIn;
+  if (posture.kind === "token") {
+    return json({ kind: "token", apiUrl: posture.apiUrl, webAppUrl: posture.webAppUrl });
+  }
   const url = buildBridgeUrl({
-    webAppUrl: auth.webAppUrl,
-    callbackPort: auth.callbackPort,
-    state: auth.states.mint(),
+    webAppUrl: posture.webAppUrl,
+    callbackPort: posture.callbackPort,
+    state: posture.states.mint(),
   });
-  return json({ url });
+  return json({ kind: "bridge", url });
+}
+
+/** The one field `POST /api/auth/session` accepts. Strict: no client-asserted identity. */
+const TokenSubmissionSchema = z.object({ token: z.string().min(1) }).strict();
+
+/**
+ * Completes the deployed sign-in: a better-auth token in, a session cookie out.
+ *
+ * The browser obtained the token from `${API_URL}/api/auth/token` against its
+ * own API session — that works cross-site because the API's cookie is
+ * `SameSite=None; Secure` — and posts it here. **This server resolves it**, by
+ * presenting it to `${API_URL}/api/auth/me`, where the API verifies the
+ * signature against its own JWKS. Nothing in the request is believed: the body
+ * carries a credential, never an identity, and the schema is `.strict()` so a
+ * body that tries to carry one is refused rather than ignored.
+ *
+ * The `/api/auth/me` hop is required rather than an optimisation. The `jwt`
+ * plugin's `definePayload` returns `{ id, email, name }` and no `emailVerified`,
+ * and {@link assessIdentity} demands verification — so a verified address can
+ * only ever be read from the user record, never inferred from possession of a
+ * token.
+ *
+ * The token is a bearer credential and is treated as one: it is exchanged once
+ * and dropped. It is never stored in a session, never logged, and never written
+ * into a response — including the 502 below, whose message is scrubbed of it in
+ * case a transport error quoted the request it failed to make.
+ *
+ * 401 and 403 stay distinct here for the same reason as in {@link authRefusal}:
+ * "the API does not accept this token" is a sign-in the operator can retry, and
+ * "this account is not permitted" is not.
+ */
+async function establishTokenSession(context: OpsContext, request: Request, url: URL): Promise<Response> {
+  const auth = context.auth;
+  if (auth === undefined) return json({ error: "This server has no identity configured." }, 500);
+  if (auth.signIn.kind !== "token") {
+    return json(
+      { error: "This server signs in through the local bridge; start the sign-in at POST /api/auth/login." },
+      403,
+    );
+  }
+
+  const body = await readJson(request);
+  if (!body.ok) return json({ error: body.error }, body.status);
+  const parsed = TokenSubmissionSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const token = parsed.data.token;
+
+  let resolved;
+  try {
+    resolved = await auth.identities.resolve(token);
+  } catch (error) {
+    // "The API is down" is not "you are not allowed in", and must not read as it.
+    return json(
+      { error: `The Index API could not be reached to verify this sign-in: ${redact(scrubCredentials(messageOf(error)), token)}` },
+      502,
+    );
+  }
+
+  if (resolved === null) {
+    return json(
+      { error: "The Index API did not accept this sign-in. Sign in to Index again and retry.", authenticated: false },
+      401,
+    );
+  }
+
+  const verdict = assessIdentity(resolved);
+  if (!verdict.allowed) return json({ error: verdict.reason, authenticated: true, permitted: false }, 403);
+
+  const session = auth.sessions.establish(verdict.identity);
+  return new Response(JSON.stringify({ authenticated: true, email: verdict.identity.email, name: verdict.identity.name }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Set-Cookie": `${SESSION_COOKIE}=${session}; ${sessionCookieAttributes(isSecureRequest(context, request, url))}`,
+    },
+  });
+}
+
+/**
+ * Removes a credential from a message that may have quoted it.
+ *
+ * `scrubCredentials` knows about connection strings, not bearer tokens, and the
+ * message here comes from whatever threw inside `fetch`. This is belt-and-braces
+ * on top of never interpolating the token ourselves: the one thing that must not
+ * happen is the credential travelling back to the browser in an error.
+ */
+function redact(message: string, credential: string): string {
+  return credential === "" ? message : message.split(credential).join("[redacted]");
 }
 
 /** Ends the session and expires the cookie, so the browser stops presenting it. */
-function endSession(context: OpsContext, request: Request): Response {
+function endSession(context: OpsContext, request: Request, url: URL): Response {
   context.auth?.sessions.clear(readCookie(request, SESSION_COOKIE));
   return new Response(JSON.stringify({ authenticated: false }), {
     status: 200,
     headers: {
       "Content-Type": "application/json",
-      "Set-Cookie": `${SESSION_COOKIE}=; ${SESSION_COOKIE_ATTRIBUTES}; Max-Age=0`,
+      // Expired with the attributes it was set with, so the browser overwrites the
+      // cookie it holds rather than being handed a second, differently scoped one.
+      "Set-Cookie": `${SESSION_COOKIE}=; ${sessionCookieAttributes(isSecureRequest(context, request, url))}; Max-Age=0`,
     },
   });
 }
@@ -499,6 +782,22 @@ async function readArtifact(context: OpsContext, id: string): Promise<Response> 
 async function compare(context: OpsContext, url: URL): Promise<Response> {
   const referenceId = url.searchParams.get("reference");
   const subjectId = url.searchParams.get("subject");
+  const referenceRun = url.searchParams.get("referenceRun");
+  const subjectRun = url.searchParams.get("subjectRun");
+  const artifactMode = referenceId !== null || subjectId !== null;
+  const runMode = referenceRun !== null || subjectRun !== null;
+  if (artifactMode === runMode) {
+    return json(
+      { error: "compare requires either reference+subject artifact ids or referenceRun+subjectRun run ids" },
+      400,
+    );
+  }
+  if (runMode) {
+    if (referenceRun === null || subjectRun === null) {
+      return json({ error: "compare requires both referenceRun and subjectRun" }, 400);
+    }
+    return await compareRuns(context, referenceRun, subjectRun);
+  }
   if (referenceId === null || subjectId === null) {
     return json({ error: "compare requires both a reference and a subject artifact id" }, 400);
   }
@@ -521,6 +820,122 @@ async function compare(context: OpsContext, url: URL): Promise<Response> {
   }
 }
 
+/**
+ * Diffs two runs by their captured reports. Every run — saved or --no-save —
+ * leaves a run-report envelope at its report path, so experimental A/B runs
+ * compare without ever touching the artifact store. The config difference is
+ * the variable under test, so the config-fingerprint refusal is dropped;
+ * harness, corpus and selection still refuse. Each side is labelled from its
+ * run record so the UI can head the diff with what actually ran.
+ */
+async function compareRuns(context: OpsContext, referenceRunId: string, subjectRunId: string): Promise<Response> {
+  const sides: { id: string; record: RunRecord; envelope: EvalArtifactEnvelope }[] = [];
+  for (const id of [referenceRunId, subjectRunId]) {
+    const record = await context.store.get(id);
+    if (record === null) return json({ error: `Unknown run id: ${id}` }, 404);
+    const reportPath = context.store.reportPath(record.id);
+    if (!(await Bun.file(reportPath).exists())) {
+      return json({ error: `Run ${id} has no report to compare (it may have died before writing one)` }, 422);
+    }
+    let envelope: EvalArtifactEnvelope;
+    try {
+      envelope = parseEvalArtifact(await Bun.file(reportPath).json(), { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE });
+    } catch (error) {
+      return json({ error: scrubCredentials(`Run ${id} report could not be read: ${messageOf(error)}`) }, 422);
+    }
+    sides.push({ id, record, envelope });
+  }
+  const [reference, subject] = sides;
+  const outcome = compareArtifacts(reference.envelope, subject.envelope, 0.05, { allowConfigMismatch: true });
+  const side = ({ id, record, envelope }: (typeof sides)[number]) => {
+    // v1 envelopes predate the completeness flag; null says "unknown" rather
+    // than guessing, matching how the artifact index treats them.
+    const completeness = envelope.completeness as { complete?: boolean };
+    return {
+      id,
+      profile: record.spec.kind === "eval" ? record.spec.profile : "default",
+      profileFingerprint: record.profileFingerprint,
+      complete: typeof completeness.complete === "boolean" ? completeness.complete : null,
+    };
+  };
+  return json({ ...outcome, runs: { reference: side(reference), subject: side(subject) } });
+}
+
+// ---------------------------------------------------------------------------
+// Configs
+// ---------------------------------------------------------------------------
+
+/**
+ * What a config edit may change. Names are immutable — a rename is delete +
+ * create — so `name` is absent here and `.strict()` refuses it if supplied.
+ */
+const ConfigPatchSchema = z
+  .object({
+    description: z.string().min(1).optional(),
+    models: z.record(z.string().min(1)).optional(),
+    env: z.record(z.string()).optional(),
+  })
+  .strict();
+
+async function listConfigs(context: OpsContext): Promise<Response> {
+  return json({ repo: await loadProfiles(context.profilesDir), saved: await context.configs.list() });
+}
+
+/** The shipped profiles are read-only through the API: edited in git, reviewed in a PR. */
+async function repoProfileNameConflict(context: OpsContext, name: string): Promise<Response | null> {
+  if (name === DEFAULT_PROFILE_NAME) {
+    return json({ error: `"${DEFAULT_PROFILE_NAME}" names the shipped default profile` }, 409);
+  }
+  const repoNames = new Set((await loadProfiles(context.profilesDir)).map((profile) => profile.name));
+  if (repoNames.has(name)) return json({ error: `"${name}" names a shipped repo profile` }, 409);
+  return null;
+}
+
+async function createConfig(context: OpsContext, request: Request): Promise<Response> {
+  const body = await readJson(request);
+  if (!body.ok) return json({ error: body.error }, body.status);
+  const parsed = ConfigProfileSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const issues = validateConfigOverrides(parsed.data);
+  if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
+  const conflict = await repoProfileNameConflict(context, parsed.data.name);
+  if (conflict !== null) return conflict;
+  try {
+    await context.configs.create(parsed.data);
+  } catch (error) {
+    if (error instanceof ConfigConflictError) return json({ error: error.message }, 409);
+    throw error;
+  }
+  return json(parsed.data, 201);
+}
+
+async function updateConfig(context: OpsContext, name: string, request: Request): Promise<Response> {
+  const conflict = await repoProfileNameConflict(context, name);
+  if (conflict !== null) return conflict;
+  const body = await readJson(request);
+  if (!body.ok) return json({ error: body.error }, body.status);
+  const parsed = ConfigPatchSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const existing = await context.configs.get(name);
+  if (existing === null) return json({ error: `Unknown config "${name}"` }, 404);
+  const merged: Pick<ConfigProfile, "models" | "env"> = {
+    models: parsed.data.models ?? existing.models,
+    env: parsed.data.env ?? existing.env,
+  };
+  const issues = validateConfigOverrides(merged);
+  if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
+  const updated = await context.configs.update(name, parsed.data);
+  if (updated === null) return json({ error: `Unknown config "${name}"` }, 404);
+  return json(updated);
+}
+
+async function deleteConfig(context: OpsContext, name: string): Promise<Response> {
+  const conflict = await repoProfileNameConflict(context, name);
+  if (conflict !== null) return conflict;
+  if (!(await context.configs.remove(name))) return json({ error: `Unknown config "${name}"` }, 404);
+  return new Response(null, { status: 204 });
+}
+
 // ---------------------------------------------------------------------------
 // Runs
 // ---------------------------------------------------------------------------
@@ -537,12 +952,24 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   const parsed = RunSpecSchema.safeParse(body.value);
   if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
 
-  // The profile is looked up by name among committed files. The client cannot
-  // supply overrides, only choose from what is in the repository.
-  const profiles = await loadProfiles(context.profilesDir);
-  const profile = profiles.find((candidate) => candidate.name === parsed.data.profile);
-  if (profile === undefined) return json({ error: `Unknown profile "${parsed.data.profile}"` }, 400);
-  const resolved = resolveProfile(profile);
+  // Two ways to configure a run: ad-hoc overrides (the schema has already
+  // confined them to profile "default"), or a named profile resolved from
+  // both sources — shipped repo files and saved configs. Raw model/env keys
+  // never arrive outside the validated overrides object.
+  let resolved: ResolvedProfile;
+  if (parsed.data.overrides !== undefined) {
+    const issues = validateConfigOverrides(parsed.data.overrides);
+    if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
+    resolved = resolveAdHoc(parsed.data.overrides);
+  } else {
+    const repoProfiles = await loadProfiles(context.profilesDir);
+    const profile =
+      repoProfiles.find((candidate) => candidate.name === parsed.data.profile)
+      ?? await context.configs.get(parsed.data.profile)
+      ?? undefined;
+    if (profile === undefined) return json({ error: `Unknown profile "${parsed.data.profile}"` }, 400);
+    resolved = resolveProfile(profile);
+  }
 
   // Two phases: the report path contains the run id, and the id is minted by the
   // store, so the record is created first and then completed with its argv.
@@ -911,8 +1338,10 @@ const DEFAULT_API_URL = "http://localhost:3001";
  * nothing said why. Both defaults now name the same environment.
  */
 const DEFAULT_WEB_APP_URL = "http://localhost:3000";
-/** The port this server listens on, when the environment does not say. Mirrors ops.serve.ts. */
+/** The port this server listens on, when the environment does not say. */
 const DEFAULT_PORT = 4321;
+/** The address this server binds, when the environment does not say. Loopback, deliberately. */
+const DEFAULT_BIND = "127.0.0.1";
 /**
  * Where a completed sign-in sends the browser, when the environment does not say.
  *
@@ -1018,18 +1447,160 @@ function resolveUiUrl(env: Record<string, string | undefined>, fallback: string 
   return value;
 }
 
+/**
+ * The port an entrypoint binds, and the bridge callback must therefore advertise.
+ *
+ * `EVAL_OPS_PORT` always wins: it names *this* server and nothing else. What it
+ * falls back to depends on which entrypoint is asking, which is why the posture
+ * is a parameter rather than an ambient guess:
+ *
+ *  - `apps/eval-ops/server.ts` is the deployed single-process site. The platform
+ *    (Railway) chooses the port and injects `PORT`; ignoring it would leave the
+ *    service listening where nothing routes, and its health check failing.
+ *  - `ops.serve.ts` is the local dev API, started by `bun run eval:web` with
+ *    `--env-file=../../.env.test` — and that file sets `PORT=3001` for the *API
+ *    service*. Honouring `PORT` there would silently move the ops API onto the
+ *    API's port and break the documented two-process flow on every machine.
+ *
+ * Do not collapse the two call sites back into one unconditional rule. That
+ * `PORT=3001` line is the reason this parameter exists.
+ */
+export interface BindPortOptions {
+  env: Record<string, string | undefined>;
+  /** True only for the entrypoint the platform starts and injects `PORT` into. */
+  honourPlatformPort: boolean;
+}
+
+export function resolveBindPort(options: BindPortOptions): number {
+  const explicit = readEnv(options.env, "EVAL_OPS_PORT");
+  if (explicit !== undefined) return parsePort(explicit, "EVAL_OPS_PORT");
+  if (options.honourPlatformPort) {
+    const platform = readEnv(options.env, "PORT");
+    if (platform !== undefined) return parsePort(platform, "PORT");
+  }
+  return DEFAULT_PORT;
+}
+
+/** Refuses a port that is not one, rather than letting Number() bind something arbitrary. */
+function parsePort(value: string, name: string): number {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `Refusing to start: ${name} (${value}) is not a usable TCP port. Set it to an integer between 1 and `
+      + `65535, or leave it unset to use ${DEFAULT_PORT}.`,
+    );
+  }
+  return port;
+}
+
+/**
+ * The address an entrypoint binds. Loopback unless `EVAL_OPS_BIND` says otherwise.
+ *
+ * Widening the bind stays one deliberate, explicit act, and it is not implied by
+ * anything else: a deployed port does not move it, and it is not what makes the
+ * site reachable — the `Host` and `Origin` allowlists still have to name the
+ * origin as well (see {@link resolvePublicOrigin}).
+ */
+export function resolveBindHostname(env: Record<string, string | undefined>): string {
+  return readEnv(env, "EVAL_OPS_BIND") ?? DEFAULT_BIND;
+}
+
+/** Hostnames a public origin may name: letters, digits and hyphens, dot-separated. */
+const PUBLIC_HOSTNAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+
+/**
+ * The one deployed origin the `Host` and `Origin` allowlists are extended to.
+ *
+ * Unset means loopback only — the local posture, unchanged. There is deliberately
+ * no wildcard and no way to switch a guard off: the value is one absolute origin
+ * or the server does not start.
+ *
+ * Validated rather than trusted, because every way of getting this wrong is
+ * silent at startup and expensive later. `http:` would let a session cookie ride
+ * a plaintext hop and would also make {@link isSecureRequest} wrong. A path,
+ * query or fragment means the operator supplied a URL where an origin was asked
+ * for, and the string comparison against a browser's `Origin` header would then
+ * never match — every request 403ing with no stated cause. A hostname outside
+ * LDH is either a wildcard attempt or a typo.
+ */
+export function resolvePublicOrigin(env: Record<string, string | undefined>): PublicOrigin | undefined {
+  const value = readEnv(env, "EVAL_OPS_PUBLIC_ORIGIN");
+  if (value === undefined) return undefined;
+
+  const refuse = (reason: string): never => {
+    throw new Error(
+      `Refusing to start: EVAL_OPS_PUBLIC_ORIGIN (${value}) ${reason}. It must be exactly one absolute https `
+      + `origin with no path, query or fragment, such as https://eval.index.network — or be unset, which keeps `
+      + `this server loopback-only.`,
+    );
+  };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return refuse("is not a usable URL");
+  }
+  if (parsed.protocol !== "https:") return refuse(`names ${parsed.protocol.replace(":", "")}, not https`);
+  if (parsed.username !== "" || parsed.password !== "") return refuse("carries credentials");
+  if (parsed.search !== "") return refuse("carries a query string");
+  if (parsed.hash !== "") return refuse("carries a fragment");
+  if (parsed.pathname !== "" && parsed.pathname !== "/") return refuse(`names a path (${parsed.pathname})`);
+  if (!PUBLIC_HOSTNAME_PATTERN.test(parsed.hostname)) return refuse(`does not name a usable host (${parsed.hostname})`);
+
+  return { origin: parsed.origin, host: parsed.host };
+}
+
+/**
+ * Which of the two sign-in exchanges this server runs.
+ *
+ * One rule, exported and pure, so the choice is a thing a test can state rather
+ * than a guess buried in the wiring. The condition is `EVAL_OPS_PUBLIC_ORIGIN`,
+ * because that variable *is* the deployed posture — it is what extends the Host
+ * and Origin allowlists past loopback — and it is exactly the circumstance in
+ * which the bridge cannot work: `validateCliCallbackUrl` accepts only `http:` on
+ * 127.0.0.1/[::1], so a browser on a deployed origin can never be redirected
+ * back with a credential.
+ *
+ * Nothing else decides it. A wider `EVAL_OPS_BIND` or a platform `PORT` does not
+ * make the callback unreachable, and inferring the posture from either would
+ * change how sign-in works on a developer's machine.
+ *
+ * A malformed value throws here exactly as it does in the guards, rather than
+ * falling back to the bridge — that fallback would be a deployed server
+ * advertising a loopback callback, which is the failure this posture exists to
+ * remove.
+ */
+export function resolveSignInMode(env: Record<string, string | undefined>): "bridge" | "token" {
+  return resolvePublicOrigin(env) === undefined ? "bridge" : "token";
+}
+
 /** Builds the context the standalone server runs on: everything rooted at the repository. */
-export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl?: string }): Promise<OpsContext> {
+export async function createDefaultOpsContext(options: {
+  repoRoot: string;
+  uiUrl?: string;
+  /**
+   * The port the entrypoint bound, from {@link resolveBindPort}.
+   *
+   * Passed in rather than re-read here: the bridge callback must name the port
+   * the server is actually listening on, and two independent reads of the
+   * environment are how those drift.
+   */
+  port: number;
+}): Promise<OpsContext> {
   const protocolDir = path.join(options.repoRoot, "packages/protocol");
   const evalDir = path.join(protocolDir, "eval");
   const store = new FsRunStore({ evalDir });
   const executor = new LocalProcessRunExecutor({ store, cwd: protocolDir });
   const databaseUrl = process.env.DATABASE_URL;
 
-  // Ahead of any I/O: a misconfigured identity pair must stop the server, not
-  // surface as a refused sign-in five minutes later.
+  // Ahead of any I/O: a misconfigured identity pair, or a malformed public
+  // origin, must stop the server rather than surface as a refused sign-in or a
+  // site that 403s every request five minutes later.
   const endpoints = resolveIdentityEndpoints(process.env);
   const uiUrl = resolveUiUrl(process.env, options.uiUrl);
+  const publicOrigin = resolvePublicOrigin(process.env);
+  const signInMode = resolveSignInMode(process.env);
 
   // Reported, not fatal: fixture control is only one page, and the reset route
   // fails closed on the same divergence. A silent mismatch is what must not happen.
@@ -1048,6 +1619,18 @@ export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl
     console.log(`[eval-ops] marked ${interrupted.length} orphaned run(s) as interrupted`);
   }
 
+  // Saved configs live in the same database fixture control uses. Constructing
+  // the store is lazy (Bun.SQL connects on first query), so tests can build
+  // this context without a socket; the table itself is created at boot by
+  // `ensureConfigStorage`, which only the real entrypoints call.
+  let configs: ConfigStore;
+  if (databaseUrl !== undefined) {
+    configs = new BunSqlConfigStore(databaseUrl);
+  } else {
+    console.warn("[eval-ops] DATABASE_URL is not set; saved configs live in memory and WILL NOT PERSIST across restarts.");
+    configs = new InMemoryConfigStore();
+  }
+
   return {
     evalDir,
     protocolDir,
@@ -1057,28 +1640,62 @@ export async function createDefaultOpsContext(options: { repoRoot: string; uiUrl
     store,
     executor,
     queue: new RunQueue({ executor, store }),
+    configs,
     databaseUrl,
     inspector: new BunSqlFixtureInspector(),
-    auth: {
-      states: new OneTimeStateStore(),
-      sessions: new OpsSessionStore(),
-      // The bridge mints a real API key against the operator's own browser
-      // session, so this resolver is the only part of the server that talks to
-      // the API at all.
-      identities: new ApiIdentityResolver({ apiUrl: endpoints.apiUrl }),
-      webAppUrl: endpoints.webAppUrl,
-      uiUrl,
-      // Must match the port Bun.serve actually binds, or the bridge would send the
-      // credential to a port nothing is listening on. ops.serve.ts reads the same
-      // variable and the same default.
-      callbackPort: Number(process.env.EVAL_OPS_PORT ?? DEFAULT_PORT),
-    },
+    publicOrigin,
+    // One decision picks both the door and the resolver behind it, in a single
+    // expression, because they are the same decision: the bridge delivers an API
+    // key and the token exchange delivers a JWT, and a resolver paired with the
+    // wrong door refuses every sign-in with a message about permissions.
+    auth: signInMode === "token"
+      ? {
+          sessions: new OpsSessionStore(),
+          // Resolved server-side against the API's own /api/auth/me, which is
+          // where a verified address can be read at all — the token does not
+          // carry one.
+          identities: new JwtIdentityResolver({ apiUrl: endpoints.apiUrl }),
+          uiUrl,
+          signIn: { kind: "token", apiUrl: endpoints.apiUrl, webAppUrl: endpoints.webAppUrl },
+        }
+      : {
+          sessions: new OpsSessionStore(),
+          // The bridge mints a real API key against the operator's own browser
+          // session, so this resolver is the only part of the server that talks to
+          // the API at all.
+          identities: new ApiIdentityResolver({ apiUrl: endpoints.apiUrl }),
+          uiUrl,
+          signIn: {
+            kind: "bridge",
+            states: new OneTimeStateStore(),
+            webAppUrl: endpoints.webAppUrl,
+            // The port the entrypoint bound, handed to Bun.serve and to this from
+            // one resolution — or the bridge would send the credential to a port
+            // nothing is listening on.
+            callbackPort: options.port,
+          },
+        },
   };
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Boot-time config storage setup, called by the real entrypoints only.
+ *
+ * Idempotent DDL against the database `DATABASE_URL` names; a failure throws
+ * and refuses the boot, because a server that starts without its config table
+ * would look like it silently lost every saved config. An in-memory store
+ * (local runs without a database) has nothing to ensure.
+ */
+export async function ensureConfigStorage(context: OpsContext): Promise<void> {
+  if (context.configs instanceof BunSqlConfigStore) {
+    await context.configs.ensureTable();
+    console.log("[eval-ops] eval_ops_configs table is present");
+  }
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

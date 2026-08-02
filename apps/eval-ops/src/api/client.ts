@@ -32,6 +32,15 @@ export type {
   RunStepRecord,
 } from '../../../../packages/protocol/eval/ops/ops.types';
 
+/**
+ * The saved-config shape, re-exported from the ops core for the same reason as
+ * the wire types above: one definition, compiler-enforced. `import type` is
+ * erased, so the zod schema it is inferred from never enters the bundle.
+ */
+export type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
+
+import type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.profiles';
+
 import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
 
 export interface RunsResult {
@@ -167,6 +176,24 @@ export type CompareResult =
       aggregate: { reference: number; subject: number; delta: number };
     };
 
+/** One side of a run-vs-run comparison, labelled from its run record. */
+export interface RunSide {
+  id: string;
+  profile: string;
+  profileFingerprint: string;
+  /** False when the run finished with incomplete execution evidence. */
+  complete: boolean | null;
+}
+
+/**
+ * What GET /api/compare?referenceRun=…&subjectRun=… serves: the same outcome
+ * as artifact compare, plus the two runs' labels. `runs` is optional so a
+ * CompareResult from artifact mode can be widened without a type lie.
+ */
+export type RunCompareResult = CompareResult & {
+  runs?: { reference: RunSide; subject: RunSide };
+};
+
 /**
  * The two ways the server can tell this app that its session does not admit it.
  *
@@ -225,6 +252,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     if (refusal !== null) notifyAuthRefusal(refusal);
     throw new Error(body.error ?? `HTTP ${response.status}`);
   }
+  // A 204 (the config DELETE) has no body to parse; response.json() would throw.
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
 
@@ -237,13 +266,66 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   });
 }
 
+/** PATCH helper; the JSON content type is the same anti-CSRF barrier as POST. */
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  return fetchJson<T>(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** DELETE helper. The server answers 204 with no body. */
+async function deleteJson(url: string): Promise<void> {
+  await fetchJson<unknown>(url, { method: 'DELETE' });
+}
+
+/**
+ * How this server expects a browser to prove who it is, as `POST /api/auth/login`
+ * reports it.
+ *
+ * A discriminated union because the two postures are genuinely different
+ * exchanges, not one exchange with optional fields:
+ *
+ *  - `bridge` — the local posture. Navigate to `url`: `<WEB_APP_URL>/cli-auth`
+ *    mints a revocable API key against the operator's existing Index session and
+ *    redirects it to the ops server's loopback `/callback`.
+ *  - `token` — the deployed posture. The bridge cannot complete off loopback
+ *    (`validateCliCallbackUrl` in apps/web accepts only `http:` on 127.0.0.1),
+ *    so fetch a better-auth JWT from `${apiUrl}/api/auth/token` with the
+ *    browser's own API cookie and post it to `POST /api/auth/session`, which
+ *    resolves it server-side. `webAppUrl` is where the operator signs in to Index
+ *    when the API says it has no session for them.
+ *
+ * The server sends exactly these fields. It is not a route that reports server
+ * configuration in general, and it must not become one.
+ */
+export type SignInStart =
+  | { kind: 'bridge'; url: string }
+  | { kind: 'token'; apiUrl: string; webAppUrl: string };
+
 export const api = {
   async authStatus(): Promise<{ authenticated: boolean; email?: string; name?: string }> {
     return fetchJson('/api/auth/status');
   },
 
-  async login(): Promise<{ url: string }> {
+  async login(): Promise<SignInStart> {
     return postJson('/api/auth/login', {});
+  },
+
+  /**
+   * Submits a better-auth token and, if the server resolves it to a permitted
+   * identity, receives the ops session cookie.
+   *
+   * The token is a bearer credential and this is its only use: it is passed in,
+   * sent once, and never stored, rendered or logged. The server answers 401 when
+   * the API rejects the token and 403 with `permitted: false` when the identity
+   * behind it is not admitted — `fetchJson` publishes both through
+   * `onAuthRefusal`, so the shell reacts the same way it does to any other
+   * refusal.
+   */
+  async submitToken(token: string): Promise<{ authenticated: boolean; email?: string; name?: string }> {
+    return postJson('/api/auth/session', { token });
   },
 
   async logout(): Promise<void> {
@@ -256,6 +338,29 @@ export const api = {
 
   async profiles(): Promise<{ profiles: ProfileDescriptor[] }> {
     return fetchJson('/api/profiles');
+  },
+
+  async configs(): Promise<{ repo: ConfigProfile[]; saved: ConfigProfile[] }> {
+    return fetchJson('/api/configs');
+  },
+
+  async configModels(): Promise<{ models: string[] }> {
+    return fetchJson('/api/configs/models');
+  },
+
+  async createConfig(profile: ConfigProfile): Promise<ConfigProfile> {
+    return postJson('/api/configs', profile);
+  },
+
+  async updateConfig(
+    name: string,
+    patch: Partial<Omit<ConfigProfile, 'name'>>,
+  ): Promise<ConfigProfile> {
+    return patchJson(`/api/configs/${encodeURIComponent(name)}`, patch);
+  },
+
+  async deleteConfig(name: string): Promise<void> {
+    await deleteJson(`/api/configs/${encodeURIComponent(name)}`);
   },
 
   async artifacts(): Promise<IndexResult> {
@@ -292,6 +397,12 @@ export const api = {
   async compare(reference: string, subject: string): Promise<CompareResult> {
     return fetchJson(
       `/api/compare?reference=${encodeURIComponent(reference)}&subject=${encodeURIComponent(subject)}`,
+    );
+  },
+
+  async compareRuns(referenceRun: string, subjectRun: string): Promise<RunCompareResult> {
+    return fetchJson(
+      `/api/compare?referenceRun=${encodeURIComponent(referenceRun)}&subjectRun=${encodeURIComponent(subjectRun)}`,
     );
   },
 };
