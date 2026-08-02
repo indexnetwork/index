@@ -25,6 +25,9 @@ const ids = {
   removedCandidate: uuidv4(),
   deletedNetworkCandidate: uuidv4(),
   activeNetwork: uuidv4(),
+  // Live network with live memberships that is NOT assigned to selectedIntent:
+  // simulates an intent whose network assignment changed after discovery.
+  reassignedNetwork: uuidv4(),
   deletedNetwork: uuidv4(),
   selectedIntent: uuidv4(),
   otherViewerIntent: uuidv4(),
@@ -56,10 +59,13 @@ beforeAll(async () => {
   ]);
   await db.insert(networks).values([
     { id: ids.activeNetwork, title: `${TEST_PREFIX}active` },
+    { id: ids.reassignedNetwork, title: `${TEST_PREFIX}reassigned` },
     { id: ids.deletedNetwork, title: `${TEST_PREFIX}deleted`, deletedAt: new Date() },
   ]);
   await db.insert(networkMembers).values([
     { networkId: ids.activeNetwork, userId: ids.viewer, permissions: ['owner'] },
+    { networkId: ids.reassignedNetwork, userId: ids.viewer, permissions: ['member'] },
+    { networkId: ids.reassignedNetwork, userId: ids.activeCandidate, permissions: ['member'] },
     // Contact is intentionally valid: discovery eligibility is permission-agnostic.
     { networkId: ids.activeNetwork, userId: ids.activeCandidate, permissions: ['contact'] },
     { networkId: ids.activeNetwork, userId: ids.removedCandidate, permissions: ['member'], deletedAt: new Date() },
@@ -178,8 +184,8 @@ afterAll(async () => {
     ids.removedIntent,
     ids.deletedNetworkIntent,
   ]));
-  await db.delete(networkMembers).where(inArray(networkMembers.networkId, [ids.activeNetwork, ids.deletedNetwork]));
-  await db.delete(networks).where(inArray(networks.id, [ids.activeNetwork, ids.deletedNetwork]));
+  await db.delete(networkMembers).where(inArray(networkMembers.networkId, [ids.activeNetwork, ids.reassignedNetwork, ids.deletedNetwork]));
+  await db.delete(networks).where(inArray(networks.id, [ids.activeNetwork, ids.reassignedNetwork, ids.deletedNetwork]));
   await db.delete(users).where(inArray(users.id, [
     ids.viewer,
     ids.activeCandidate,
@@ -458,7 +464,7 @@ describe('network discovery adapter isolation', () => {
   }, 20_000);
 
   it('keeps paused owned-intent Radar history while blocking inactive participants and foreign scopes', async () => {
-    const makeOpportunity = async (candidateUserId: string, suffix: string) => opportunity.createOpportunity({
+    const makeOpportunity = async (candidateUserId: string, suffix: string, networkId = ids.activeNetwork) => opportunity.createOpportunity({
       detection: {
         source: 'opportunity_graph',
         createdBy: 'agent-opportunity-finder',
@@ -466,8 +472,8 @@ describe('network discovery adapter isolation', () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { userId: ids.viewer, networkId: ids.activeNetwork, role: 'peer', intent: ids.selectedIntent },
-        { userId: candidateUserId, networkId: ids.activeNetwork, role: 'peer' },
+        { userId: ids.viewer, networkId, role: 'peer', intent: ids.selectedIntent },
+        { userId: candidateUserId, networkId, role: 'peer' },
       ],
       interpretation: {
         category: 'collaboration',
@@ -475,14 +481,18 @@ describe('network discovery adapter isolation', () => {
         confidence: 0.9,
         signals: [],
       },
-      context: { networkId: ids.activeNetwork },
+      context: { networkId },
       confidence: '0.9',
       status: 'pending',
     });
 
     const good = await makeOpportunity(ids.activeCandidate, 'good');
     const leaked = await makeOpportunity(ids.removedCandidate, 'removed');
-    createdOpportunityIds.push(good.id, leaked.id);
+    // Anchored on a live network with live memberships that is not in the
+    // intent's current network assignment: discovery-time anchors stay valid
+    // after reassignment, so this must remain visible in the scoped radar.
+    const offAssignment = await makeOpportunity(ids.activeCandidate, 'off-assignment', ids.reassignedNetwork);
+    createdOpportunityIds.push(good.id, leaked.id, offAssignment.id);
 
     const radar = await opportunity.getOpportunitiesForUser(ids.viewer, {
       scopeType: 'intent',
@@ -491,6 +501,7 @@ describe('network discovery adapter isolation', () => {
     });
     expect(radar.some((row) => row.id === good.id)).toBe(true);
     expect(radar.some((row) => row.id === leaked.id)).toBe(false);
+    expect(radar.some((row) => row.id === offAssignment.id)).toBe(true);
 
     const foreign = await opportunity.getOpportunitiesForUser(ids.activeCandidate, {
       scopeType: 'intent',
