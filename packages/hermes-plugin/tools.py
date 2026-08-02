@@ -140,9 +140,24 @@ def _api_url() -> str:
 
 
 def _app_base_url() -> str:
-    """Return the universal-link origin used for Index deep links."""
+    """Return the universal-link origin used for Index deep links.
+
+    Only a well-formed `https://<host>` origin is honored. A malformed or
+    schemeless override (for example `index.network`) falls back to the constant:
+    a base that parses to an empty scheme/netloc would make every relative path
+    compare equal to it in `index_open_app` and turn that tool into a generic
+    local-file opener.
+    """
     raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
-    return raw or INDEX_APP_BASE_URL
+    if not raw:
+        return INDEX_APP_BASE_URL
+    try:
+        parts = urllib.parse.urlsplit(raw)
+    except ValueError:
+        return INDEX_APP_BASE_URL
+    if parts.scheme != "https" or not parts.netloc:
+        return INDEX_APP_BASE_URL
+    return raw
 
 
 def _attach_app_urls(value: Any, base_url: str, depth: int = 0) -> None:
@@ -456,7 +471,12 @@ def _url_opener_command(url: str, system: str | None = None) -> list[str] | None
     if resolved == "darwin":
         return ["open", url]
     if resolved == "windows":
-        return ["cmd", "/c", "start", "", url]
+        # Never route through `cmd /c start`: subprocess quotes an argument only
+        # when it contains whitespace, so cmd.exe metacharacters (& | ^ < > %)
+        # inside an otherwise valid https://index.network URL would survive
+        # unquoted and execute as separate commands. rundll32 is handed the URL
+        # as a single argv entry and no shell ever re-parses it.
+        return ["rundll32", "url.dll,FileProtocolHandler", url]
     if shutil.which("xdg-open"):
         return ["xdg-open", url]
     return None
@@ -492,6 +512,11 @@ def index_open_app(args: dict, **kwargs) -> str:
         base_parts = urllib.parse.urlsplit(base_url)
         target_parts = urllib.parse.urlsplit(target)
     except ValueError:
+        return _error(f"target must be an {base_url} URL.")
+    # An absolute https origin is required in its own right, not just an origin
+    # that matches the base: a relative target ('/etc/passwd') has an empty
+    # scheme and netloc and must never be handed to the OS opener.
+    if target_parts.scheme != "https" or not target_parts.netloc:
         return _error(f"target must be an {base_url} URL.")
     if target_parts.scheme != base_parts.scheme or target_parts.netloc != base_parts.netloc:
         return _error(f"target must be an {base_url} URL.")

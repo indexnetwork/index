@@ -57,7 +57,7 @@ Optional environment variables:
 - `INDEX_API_URL` — defaults to `https://protocol.index.network/api`.
 - `INDEX_MCP_TIMEOUT_SECONDS` — defaults to `30` and is used for both MCP and API requests.
 - `INDEX_TELEGRAM_USERNAME` — forwarded as `x-index-telegram-username` when present.
-- `INDEX_APP_BASE_URL` — universal-link origin used for `appUrl` deep links and `index_open_app`; defaults to `https://index.network`. Override it only for dev/staging environments.
+- `INDEX_APP_BASE_URL` — universal-link origin used for `appUrl` deep links and `index_open_app`; defaults to `https://index.network`. Override it only for dev/staging environments, and only with a full `https://<host>` origin — a value without an `https://` scheme (for example `index.network`) is ignored and the default is used.
 
 ## Tool contract
 

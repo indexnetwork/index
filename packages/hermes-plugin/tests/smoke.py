@@ -497,6 +497,29 @@ def main() -> None:
                 "error": "Arguments must be an object.",
             }
 
+            # A schemeless INDEX_APP_BASE_URL (a plausible operator typo) must not
+            # degrade the tool into a generic local-file opener. Both the base
+            # fallback and the absolute-https target check reject a relative path,
+            # and no opener is invoked.
+            os.environ["INDEX_APP_BASE_URL"] = "index.network"
+            try:
+                assert plugin.tools._app_base_url() == "https://index.network"
+                for relative in ("/etc/passwd", "etc/passwd", "//evil.test/x"):
+                    local = json.loads(plugin.tools.index_open_app({"target": relative}))
+                    assert local["success"] is False, relative
+                    assert local["error"] == "target must be an https://index.network URL."
+                assert len(opened) == 2
+            finally:
+                os.environ.pop("INDEX_APP_BASE_URL", None)
+
+            # A base that is malformed in other ways falls back the same way.
+            for bad_base in ("http://index.network", "index://index.network", "https://", "::"):
+                os.environ["INDEX_APP_BASE_URL"] = bad_base
+                try:
+                    assert plugin.tools._app_base_url() == "https://index.network", bad_base
+                finally:
+                    os.environ.pop("INDEX_APP_BASE_URL", None)
+
             plugin.tools._open_url = lambda command: "exit code 1"
             failed = json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"}))
             assert failed["success"] is False
@@ -515,11 +538,25 @@ def main() -> None:
             "open",
             "https://index.network",
         ]
+        # Windows must not route through `cmd /c start`: subprocess quotes an
+        # argument only when it contains whitespace, so cmd.exe metacharacters in
+        # an otherwise valid index.network URL would survive unquoted and run as
+        # separate commands. rundll32 takes the URL as one argv entry, unparsed.
+        injecting_url = "https://index.network/o/x&calc"
+        windows_command = plugin.tools._url_opener_command(injecting_url, system="Windows")
+        assert windows_command == [
+            "rundll32",
+            "url.dll,FileProtocolHandler",
+            injecting_url,
+        ]
+        assert "cmd" not in windows_command
+        assert windows_command.count(injecting_url) == 1
+        assert subprocess.list2cmdline(windows_command) == (
+            "rundll32 url.dll,FileProtocolHandler https://index.network/o/x&calc"
+        )
         assert plugin.tools._url_opener_command("https://index.network", system="Windows") == [
-            "cmd",
-            "/c",
-            "start",
-            "",
+            "rundll32",
+            "url.dll,FileProtocolHandler",
             "https://index.network",
         ]
 
