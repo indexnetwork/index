@@ -1,7 +1,7 @@
-import { FEED_SOFT_TARGETS } from '../opportunity.utils.js';
+import { RADAR_SOFT_TARGETS } from '../opportunity.utils.js';
 
-/** Input for computing feed health score. */
-export interface FeedHealthInput {
+/** Input for computing radar health score. */
+export interface RadarHealthInput {
   connectionCount: number;
   connectorFlowCount: number;
   expiredCount: number;
@@ -14,8 +14,8 @@ export interface FeedHealthInput {
   threshold?: number;
 }
 
-/** Output of feed health computation. */
-export interface FeedHealthResult {
+/** Output of radar health computation. */
+export interface RadarHealthResult {
   score: number;
   breakdown: {
     composition: number;
@@ -37,9 +37,9 @@ const DEFAULT_THRESHOLD = 0.5;
  */
 function scoreComposition(connectionCount: number, connectorFlowCount: number, expiredCount: number): number {
   const categories = [
-    { actual: connectionCount, target: FEED_SOFT_TARGETS.connection },
-    { actual: connectorFlowCount, target: FEED_SOFT_TARGETS.connectorFlow },
-    { actual: expiredCount, target: FEED_SOFT_TARGETS.expired },
+    { actual: connectionCount, target: RADAR_SOFT_TARGETS.connection },
+    { actual: connectorFlowCount, target: RADAR_SOFT_TARGETS.connectorFlow },
+    { actual: expiredCount, target: RADAR_SOFT_TARGETS.expired },
   ];
 
   let totalScore = 0;
@@ -73,13 +73,13 @@ function scoreExpirationRatio(expiredCount: number, totalActionable: number): nu
 }
 
 /**
- * Compute feed health score (0–1) from current feed state.
+ * Compute radar health score (0–1) from current radar state.
  * Pure function, no side effects.
  *
- * @param input - Current feed composition and timing data
+ * @param input - Current radar composition and timing data
  * @returns Health score with breakdown and maintenance recommendation
  */
-export function computeFeedHealth(input: FeedHealthInput): FeedHealthResult {
+export function computeRadarHealth(input: RadarHealthInput): RadarHealthResult {
   const {
     connectionCount,
     connectorFlowCount,
@@ -90,7 +90,7 @@ export function computeFeedHealth(input: FeedHealthInput): FeedHealthResult {
     threshold = DEFAULT_THRESHOLD,
   } = input;
 
-  // Empty feed is always unhealthy
+  // Empty radar is always unhealthy
   if (totalActionable === 0 && expiredCount === 0) {
     return {
       score: 0,

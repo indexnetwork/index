@@ -520,7 +520,7 @@ def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], curre
 
 
 def _is_actionable_for_viewer(opp: dict[str, Any], current_user_id: str | None) -> bool:
-    """Mirror HomeGraph isActionableForViewer for live radar statuses."""
+    """Mirror RadarGraph isActionableForViewer for live radar statuses."""
     if not current_user_id:
         return False
     actors = [actor for actor in _list(opp.get("actors")) if isinstance(actor, dict)]
@@ -836,7 +836,7 @@ def _build_dashboard(
         "intents": 0,
         "questions": len(general),
         # Sidebar/header opportunity counts represent cards the viewer can act on now,
-        # matching HomeGraph rather than historical radar totals.
+        # matching RadarGraph rather than historical radar totals.
         "opportunities": general_actionable_opportunity_count,
         "totalOpportunities": general_total_opportunity_count,
         "statusCounts": dict(general_status_counts),

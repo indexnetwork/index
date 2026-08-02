@@ -1,5 +1,5 @@
 /**
- * Home Graph: tests for load → cards → categorize → sections.
+ * Radar Graph: tests for load → cards → flat items.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
@@ -10,10 +10,7 @@ import { afterAll, describe, test, expect, mock } from 'bun:test';
 // deterministic so the provider-free source suite cannot open a network request.
 mock.module('../../shared/agent/model.config', () => ({
   createStructuredModel: (agent: string) => ({
-    invoke: async () =>
-      agent === 'homeCategorizer'
-        ? { sections: [] }
-        : {
+    invoke: async () => ({
             presentation: {
               headline: 'A relevant connection',
               personalizedSummary: 'Their current goals may be relevant to yours.',
@@ -23,19 +20,18 @@ mock.module('../../shared/agent/model.config', () => ({
               mutualIntentsLabel: 'Shared interests',
               greeting: '',
             },
-          },
+    }),
   }),
 }));
 
-const { HomeGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES, isHomePresentationCacheable } =
-  await import('../feed/feed.graph.js');
+const { RadarGraphFactory, stripLeadingNarratorName, ALL_OPPORTUNITY_STATUSES, isRadarPresentationCacheable } =
+  await import('../radar/radar.graph.js');
 
 afterAll(() => mock.restore());
-import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../opportunity.utils.js';
-import type { HomeGraphDatabase } from '../../shared/interfaces/database.interface.js';
+import { selectByComposition, classifyOpportunity, RADAR_SOFT_TARGETS } from '../opportunity.utils.js';
+import type { RadarGraphDatabase } from '../../shared/interfaces/database.interface.js';
 import type { Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
-import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON, getIconNamesForPrompt } from '../../shared/ui/lucide.icon-catalog.js';
 
 function createMockCache(): OpportunityCache {
   const store = new Map<string, unknown>();
@@ -46,7 +42,7 @@ function createMockCache(): OpportunityCache {
   };
 }
 
-function createMockDb(opportunities: Opportunity[] = []): HomeGraphDatabase {
+function createMockDb(opportunities: Opportunity[] = []): RadarGraphDatabase {
   return {
     getOpportunitiesForUser: () => Promise.resolve(opportunities),
     getOpportunity: () => Promise.resolve(null),
@@ -116,56 +112,53 @@ function minimalOpportunityWithId(viewerId: string, otherId: string, id: string,
   };
 }
 
-describe('home presentation cache policy', () => {
+describe('radar presentation cache policy', () => {
   test('does not cache presenter fallback cards', () => {
-    expect(isHomePresentationCacheable({
+    expect(isRadarPresentationCacheable({
       name: 'Alice',
       _presentationFallback: true,
     }, 'pending')).toBe(false);
-    expect(isHomePresentationCacheable({ name: 'Alice' }, 'pending')).toBe(true);
+    expect(isRadarPresentationCacheable({ name: 'Alice' }, 'pending')).toBe(true);
   });
 });
 
-describe('HomeGraph', () => {
-  test('no opportunities returns empty sections and meta', async () => {
+describe('RadarGraph', () => {
+  test('no opportunities returns empty items and meta', async () => {
     const db = createMockDb([]);
-    const factory = new HomeGraphFactory(db, createMockCache());
+    const factory = new RadarGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: 'user-1', limit: 50 });
     expect(result.error).toBeUndefined();
-    expect(result.sections).toEqual([]);
-    expect(result.meta).toEqual({ totalOpportunities: 0, totalSections: 0 });
+    expect(result.items).toEqual([]);
+    expect(result.meta).toEqual({ totalOpportunities: 0 });
   });
 
   test('missing userId returns error', async () => {
     const db = createMockDb([]);
-    const factory = new HomeGraphFactory(db, createMockCache());
+    const factory = new RadarGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: '', limit: 50 });
     expect(result.error).toBe('userId is required');
   });
 
-  test('with one opportunity, sections items have presenter-driven fields', async () => {
+  test('with one opportunity, items have presenter-driven fields', async () => {
     const viewerId = 'viewer-1';
     const otherId = 'other-1';
     const opp = minimalOpportunityAgentViewer(viewerId, otherId);
     const db = createMockDb([opp]);
-    const factory = new HomeGraphFactory(db, createMockCache());
+    const factory = new RadarGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
     expect(result.error).toBeUndefined();
-    expect(result.sections.length).toBeGreaterThanOrEqual(1);
-    const firstSection = result.sections[0];
-    expect(firstSection.items.length).toBeGreaterThanOrEqual(1);
-    const firstItem = firstSection.items[0];
+    expect(result.items.length).toBeGreaterThanOrEqual(1);
+    const firstItem = result.items[0];
     expect(firstItem).toHaveProperty('primaryActionLabel');
     expect(firstItem).toHaveProperty('secondaryActionLabel');
     expect(firstItem).toHaveProperty('mutualIntentsLabel');
-    expect(firstItem.opportunityId).toBe(opp.id);
-    expect(typeof firstItem.primaryActionLabel).toBe('string');
-    expect(typeof firstItem.secondaryActionLabel).toBe('string');
-    expect(typeof firstItem.mutualIntentsLabel).toBe('string');
-    expect(resolveHomeSectionIcon(firstSection.iconName)).toBeDefined();
+    expect(firstItem?.opportunityId).toBe(opp.id);
+    expect(typeof firstItem?.primaryActionLabel).toBe('string');
+    expect(typeof firstItem?.secondaryActionLabel).toBe('string');
+    expect(typeof firstItem?.mutualIntentsLabel).toBe('string');
   }, 30000);
 
   test('manual source without introducer actor yields Index as narrator (no false intro attribution)', async () => {
@@ -175,12 +168,12 @@ describe('HomeGraph', () => {
     expect(opp.detection?.source).toBe('manual');
     expect(opp.actors.some((a) => a.role === 'introducer')).toBe(false);
     const db = createMockDb([opp]);
-    const factory = new HomeGraphFactory(db, createMockCache());
+    const factory = new RadarGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
     expect(result.error).toBeUndefined();
-    expect(result.sections.length).toBeGreaterThanOrEqual(1);
-    const firstItem = result.sections[0]?.items[0];
+    expect(result.items.length).toBeGreaterThanOrEqual(1);
+    const firstItem = result.items[0];
     expect(firstItem?.narratorChip?.name).toBe('Index');
   }, 70000);
 
@@ -196,12 +189,12 @@ describe('HomeGraph', () => {
       id === orphanId
         ? Promise.resolve(null)
         : Promise.resolve({ id, name: 'User ' + id, email: '', avatar: null, socials: [] });
-    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(db, createMockCache()).createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
-    const items = result.sections.flatMap((s) => s.items);
+    const items = result.items;
     expect(items.map((i) => i.opportunityId)).toEqual(['opp-kept']);
     expect(items.some((i) => i.name === 'Unknown')).toBe(false);
   }, 30000);
@@ -216,12 +209,12 @@ describe('HomeGraph', () => {
       identity: { name: 'Profile Name', bio: '', location: '' },
       context: '',
     });
-    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(db, createMockCache()).createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
-    const items = result.sections.flatMap((s) => s.items);
+    const items = result.items;
     expect(items.map((i) => i.opportunityId)).toEqual(['opp-profile-only']);
     expect(items[0]?.name).toBe('Profile Name');
   }, 30000);
@@ -233,15 +226,15 @@ describe('HomeGraph', () => {
     const opp2 = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-2');
     opp2.interpretation = { reasoning: 'You could also collaborate on early startup team formation.', category: 'connection', confidence: 0.8 };
     const db = createMockDb([opp1, opp2]);
-    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(db, createMockCache()).createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
-    const firstItem = result.sections[0]?.items[0];
+    const firstItem = result.items[0];
     expect(firstItem).toBeDefined();
     expect(firstItem?.name).toBe('User other-1');
     expect(firstItem?.opportunityId).toBeDefined();
@@ -290,19 +283,19 @@ describe('HomeGraph', () => {
     };
 
     const db = createMockDb([withIntroducerA, withIntroducerB]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
-    const firstItem = result.sections[0]?.items[0];
+    const firstItem = result.items[0];
     expect(firstItem?.userId).toBe(otherId);
     expect(firstItem?.opportunityId).toBeDefined();
     expect(['opp-intro-a', 'opp-intro-b']).toContain(firstItem?.opportunityId);
   }, 30000);
 
-  test('excludes accepted agent-with-introducer from the actionable home feed', async () => {
+  test('excludes accepted agent-with-introducer from the actionable radar', async () => {
     const introducerId = 'intro-1';
     const patientId = 'patient-1';
     const agentId = 'agent-1';
@@ -323,11 +316,11 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([acceptedWithIntroducer]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(0);
   }, 30000);
 
@@ -350,11 +343,11 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([acceptedOpp]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(0);
   }, 30000);
 
@@ -400,14 +393,14 @@ describe('HomeGraph', () => {
     ];
 
     const db = createMockDb(opps);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({
       userId: viewerId,
       limit: 50,
       statuses: ALL_OPPORTUNITY_STATUSES.filter((s) => s !== 'draft'),
     });
 
     expect(result.error).toBeUndefined();
-    const items = result.sections.flatMap((s) => s.items);
+    const items = result.items;
     const ids = items.map((i) => i.opportunityId).sort();
     expect(ids).toEqual(['opp-accepted-x', 'opp-expired', 'opp-pending-live']);
     // Cards carry the lifecycle status for client-side bucketing.
@@ -442,16 +435,16 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([latentOpportunity]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
-    expect(result.sections[0]?.items[0]?.opportunityId).toBe('opp-introducer-latent');
+    expect(result.items[0]?.opportunityId).toBe('opp-introducer-latent');
   }, 70000);
 
-  test('introducer does not see pending opportunity in feed', async () => {
+  test('introducer does not see pending opportunity in radar', async () => {
     const viewerId = 'intro-1';
     const memberA = 'member-a';
     const memberB = 'member-b';
@@ -472,11 +465,11 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([pendingOpportunity]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(0);
   }, 30000);
 
@@ -499,13 +492,13 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([pendingOpp]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
-    expect(result.sections[0]?.items[0]?.opportunityId).toBe('opp-pending-no-intro');
+    expect(result.items[0]?.opportunityId).toBe('opp-pending-no-intro');
   }, 30000);
 
   test('agent without introducer does not see latent opportunity', async () => {
@@ -527,11 +520,11 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([latentOpp]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(0);
   }, 30000);
 
@@ -572,14 +565,14 @@ describe('HomeGraph', () => {
     };
 
     const db = createMockDb([duplicateActorsOpp]);
-    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
 
-    const card = result.sections[0]?.items[0];
+    const card = result.items[0];
     expect(card).toBeDefined();
 
     // With secondParty present (2 counterparts), card.name should be a single name,
@@ -595,7 +588,7 @@ describe('HomeGraph', () => {
 
 });
 
-describe('HomeGraph caching', () => {
+describe('RadarGraph caching', () => {
   const viewerId = 'viewer-1';
   const otherId = 'other-1';
 
@@ -624,16 +617,16 @@ describe('HomeGraph caching', () => {
 
     // Pre-populate cache with a card for this opportunity
     const card = cachedCard('opp-cached', 99); // stale _cardIndex to verify recomputation
-    await cache.set(`home:v2:card:opp-cached:${opp.status}:${viewerId}`, card);
+    await cache.set(`radar:v2:card:opp-cached:${opp.status}:${viewerId}`, card);
 
-    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const graph = new RadarGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((n, s) => n + s.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
-    const item = result.sections[0]?.items[0];
+    const item = result.items[0];
     expect(item?.mainText).toBe('Cached summary');
     expect(item?.headline).toBe('Cached headline');
   }, 30000);
@@ -645,14 +638,14 @@ describe('HomeGraph caching', () => {
     const cache = createMockCache();
 
     // Only cache opp1
-    await cache.set(`home:v2:card:opp-hit:${opp1.status}:${viewerId}`, cachedCard('opp-hit', 0));
+    await cache.set(`radar:v2:card:opp-hit:${opp1.status}:${viewerId}`, cachedCard('opp-hit', 0));
 
-    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const graph = new RadarGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(2);
-    const allItems = result.sections.flatMap((s) => s.items);
+    const allItems = result.items;
     expect(allItems.length).toBe(2);
 
     const hitItem = allItems.find((i) => i.opportunityId === 'opp-hit');
@@ -669,37 +662,17 @@ describe('HomeGraph caching', () => {
     const cache = createMockCache();
 
     // Cache with stale _cardIndex of 42
-    await cache.set(`home:v2:card:opp-reindex:${opp.status}:${viewerId}`, cachedCard('opp-reindex', 42));
+    await cache.set(`radar:v2:card:opp-reindex:${opp.status}:${viewerId}`, cachedCard('opp-reindex', 42));
 
-    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const graph = new RadarGraphFactory(db, cache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     // The card should appear correctly (index 0, since it's the only opportunity)
     expect(result.error).toBeUndefined();
-    const allItems = result.sections.flatMap((s) => s.items);
+    const allItems = result.items;
     expect(allItems.length).toBe(1);
     expect(allItems[0]?.opportunityId).toBe('opp-reindex');
   }, 30000);
-
-  test('categorizer cache hit skips LLM categorization', async () => {
-    const opp = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-cat');
-    const db = createMockDb([opp]);
-    const cache = createMockCache();
-
-    // Run once to populate both presenter and categorizer caches
-    const graph = new HomeGraphFactory(db, cache).createGraph();
-    const firstResult = await graph.invoke({ userId: viewerId, limit: 50 });
-    expect(firstResult.error).toBeUndefined();
-    expect(firstResult.sections.length).toBeGreaterThanOrEqual(1);
-    const firstSectionTitle = firstResult.sections[0]?.title;
-
-    // Run again — should use cached presenter AND cached categories
-    const secondResult = await graph.invoke({ userId: viewerId, limit: 50 });
-    expect(secondResult.error).toBeUndefined();
-    expect(secondResult.sections.length).toBe(firstResult.sections.length);
-    // Same category structure since same opportunity set
-    expect(secondResult.sections[0]?.title).toBe(firstSectionTitle);
-  }, 60000);
 
   test('cache failure gracefully falls through to uncached path', async () => {
     const opp = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-fail');
@@ -712,13 +685,13 @@ describe('HomeGraph caching', () => {
       mget: async () => { throw new Error('Redis down'); },
     };
 
-    const graph = new HomeGraphFactory(db, failingCache).createGraph();
+    const graph = new RadarGraphFactory(db, failingCache).createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     // Should still work — just without caching
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.sections.reduce((n, s) => n + s.items.length, 0);
+    const totalItems = result.items.length;
     expect(totalItems).toBe(1);
   }, 30000);
 });
@@ -742,27 +715,6 @@ describe('stripLeadingNarratorName', () => {
   test('returns original remark when narrator name is empty', () => {
     const remark = 'Alice introduced you two.';
     expect(stripLeadingNarratorName(remark, '')).toBe(remark);
-  });
-});
-
-describe('Lucide icon catalog', () => {
-  test('resolveHomeSectionIcon returns default for unknown name', () => {
-    expect(resolveHomeSectionIcon('unknown-icon')).toBe(DEFAULT_HOME_SECTION_ICON);
-    expect(resolveHomeSectionIcon('')).toBe(DEFAULT_HOME_SECTION_ICON);
-    expect(resolveHomeSectionIcon(null)).toBe(DEFAULT_HOME_SECTION_ICON);
-  });
-
-  test('resolveHomeSectionIcon returns valid name for allowed icon', () => {
-    expect(resolveHomeSectionIcon('hourglass')).toBe('hourglass');
-    expect(resolveHomeSectionIcon('telescope')).toBe('telescope');
-    expect(resolveHomeSectionIcon('HOURGLASS')).toBe('hourglass');
-  });
-
-  test('getIconNamesForPrompt returns non-empty string', () => {
-    const list = getIconNamesForPrompt();
-    expect(typeof list).toBe('string');
-    expect(list.length).toBeGreaterThan(0);
-    expect(list).toContain('hourglass');
   });
 });
 
@@ -807,7 +759,7 @@ function makeOpp(
   return { id, actors, status };
 }
 
-describe('home feed fetch limit bug', () => {
+describe('radar fetch limit bug', () => {
   describe('selectByComposition includes connector-flow when candidates exist', () => {
     test('returns connector-flow items when pool contains both connections and connector-flow', () => {
       // Simulate a diverse pool: 10 connections + 5 connector-flow + 3 expired
@@ -824,7 +776,7 @@ describe('home feed fetch limit bug', () => {
         (opp) => classifyOpportunity(opp, VIEWER) === 'connector-flow'
       ).length;
       expect(connectorFlowCount).toBeGreaterThan(0);
-      expect(connectorFlowCount).toBe(FEED_SOFT_TARGETS.connectorFlow);
+      expect(connectorFlowCount).toBe(RADAR_SOFT_TARGETS.connectorFlow);
     });
 
     test('returns 0 connector-flow when pool contains ONLY connections (the bug scenario)', () => {
@@ -847,7 +799,7 @@ describe('home feed fetch limit bug', () => {
     /**
      * The minimum fetchLimit must be large enough that even when most results
      * are one category, selectByComposition still has candidates for other
-     * categories. With FEED_SOFT_TARGETS totaling 7, a minimum of 50 provides
+     * categories. With RADAR_SOFT_TARGETS totaling 7, a minimum of 50 provides
      * ~7x headroom for filtering and dedup.
      */
     const MIN_FETCH_LIMIT = 50;
@@ -891,7 +843,7 @@ const USER_MAP: Record<string, { id: string; name: string; email: string; avatar
   'party-b': { id: 'party-b', name: 'Yanki Ekin Yuksel', email: 'yanki@test.com', avatar: null, socials: [] },
 };
 
-function createIntroMockDb(opportunities: Opportunity[]): HomeGraphDatabase {
+function createIntroMockDb(opportunities: Opportunity[]): RadarGraphDatabase {
   return {
     getOpportunitiesForUser: () => Promise.resolve(opportunities),
     getOpportunity: () => Promise.resolve(null),
@@ -924,13 +876,13 @@ function makeIntroducerOpportunity(introducerId: string, partyAId: string, party
   };
 }
 
-describe('home.graph introducer card name format', () => {
+describe('radar.graph introducer card name format', () => {
   test('introducer card name should NOT use joined format when secondParty is present', async () => {
     const viewerId = 'intro-1';
     const opp = makeIntroducerOpportunity(viewerId, 'party-a', 'party-b');
     const db = createIntroMockDb([opp]);
     const cache = createMockCache();
-    const factory = new HomeGraphFactory(db, cache);
+    const factory = new RadarGraphFactory(db, cache);
     const graph = factory.createGraph();
 
     const result = await graph.invoke({
@@ -960,22 +912,21 @@ describe('home.graph introducer card name format', () => {
   }, 30_000);
 });
 
-describe('HomeGraph skeleton presentation', () => {
-  test('uncached cards come back identity-only, flagged presentationPending, in one flat section, and are never cached', async () => {
+describe('RadarGraph skeleton presentation', () => {
+  test('uncached cards come back identity-only, flagged presentationPending, in the flat items list, and are never cached', async () => {
     const viewerId = 'viewer-1';
     const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
     const db = createMockDb([opp]);
     const cache = createMockCache();
-    const factory = new HomeGraphFactory(db, cache);
+    const factory = new RadarGraphFactory(db, cache);
     const graph = factory.createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
 
     expect(result.error).toBeUndefined();
-    expect(result.sections.length).toBe(1);
-    expect(result.sections[0].items.length).toBe(1);
+    expect(result.items.length).toBe(1);
 
-    const item = result.sections[0].items[0];
+    const item = result.items[0];
     expect(item.presentationPending).toBe(true);
     // Identity fields are real…
     expect(item.name).toBe('User other-1');
@@ -988,7 +939,7 @@ describe('HomeGraph skeleton presentation', () => {
 
     // Skeleton cards must not poison the presenter cache: the follow-up full
     // request has to see a miss and generate real text.
-    const cached = await cache.get(`home:v2:card:${opp.id}:pending:${viewerId}`);
+    const cached = await cache.get(`radar:v2:card:${opp.id}:pending:${viewerId}`);
     expect(cached).toBeNull();
   });
 
@@ -997,7 +948,7 @@ describe('HomeGraph skeleton presentation', () => {
     const opp = minimalOpportunityAgentViewer(viewerId, 'other-1');
     const db = createMockDb([opp]);
     const cache = createMockCache();
-    await cache.set(`home:v2:card:${opp.id}:pending:${viewerId}`, {
+    await cache.set(`radar:v2:card:${opp.id}:pending:${viewerId}`, {
       opportunityId: opp.id,
       userId: 'other-1',
       name: 'User other-1',
@@ -1009,13 +960,13 @@ describe('HomeGraph skeleton presentation', () => {
       mutualIntentsLabel: 'Shared interests',
       _cardIndex: 0,
     });
-    const factory = new HomeGraphFactory(db, cache);
+    const factory = new RadarGraphFactory(db, cache);
     const graph = factory.createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
 
     expect(result.error).toBeUndefined();
-    const item = result.sections[0].items[0];
+    const item = result.items[0];
     expect(item.presentationPending).toBeUndefined();
     expect(item.mainText).toBe('Cached summary.');
   });
@@ -1027,13 +978,13 @@ describe('HomeGraph skeleton presentation', () => {
     // Counterpart has no users row and no profile identity name.
     db.getUser = (id: string) =>
       Promise.resolve(id === viewerId ? { id, name: 'Viewer', email: '', avatar: null, socials: [] } : null);
-    const factory = new HomeGraphFactory(db, createMockCache());
+    const factory = new RadarGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50, presentation: 'skeleton' });
 
     expect(result.error).toBeUndefined();
-    const items = result.sections.flatMap((s) => s.items);
+    const items = result.items;
     expect(items.length).toBe(0);
   });
 });

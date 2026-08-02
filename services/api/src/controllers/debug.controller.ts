@@ -185,7 +185,7 @@ export class DebugController {
     const hasOpportunities = opportunityRows.length > 0;
     const verificationAnalysis = buildVerificationAnalysisDiagnostic(intent);
 
-    // Check if all opportunities are filtered from home (using role-aware helpers)
+    // Check if all opportunities are filtered from the radar (using role-aware helpers)
     const actionableCount = opportunityRows.filter((o) => {
       const actors = o.actors as Array<{ userId: string; role: string; approved?: boolean }>;
       return (
@@ -193,11 +193,11 @@ export class DebugController {
         isActionableForViewer(actors, o.status, user.id)
       );
     }).length;
-    const allOpportunitiesFilteredFromHome = hasOpportunities && actionableCount === 0;
+    const allOpportunitiesFilteredFromRadar = hasOpportunities && actionableCount === 0;
 
     // Build filterReasons: list non-actionable statuses with counts
     const filterReasons: string[] = [];
-    if (allOpportunitiesFilteredFromHome) {
+    if (allOpportunitiesFilteredFromRadar) {
       for (const [status, cnt] of Object.entries(byStatus)) {
         filterReasons.push(`${status}: ${cnt}`);
       }
@@ -211,7 +211,7 @@ export class DebugController {
         isInAtLeastOneIndex,
       }),
       hasOpportunities,
-      allOpportunitiesFilteredFromHome,
+      allOpportunitiesFilteredFromRadar,
       filterReasons,
     };
 
@@ -226,17 +226,17 @@ export class DebugController {
   }
 
   /**
-   * Returns a home-level diagnostic snapshot for the authenticated user.
+   * Returns a radar-level diagnostic snapshot for the authenticated user.
    * Gathers intent stats, network memberships, opportunity aggregates,
-   * simulated home-view filtering, and a pipeline-health diagnosis.
+   * simulated radar-view filtering, and a pipeline-health diagnosis.
    * @param _req - Incoming request (unused beyond guard processing)
    * @param user - Authenticated user from AuthGuard
-   * @returns Diagnostic JSON payload for the user's home view
+   * @returns Diagnostic JSON payload for the user's radar view
    */
-  @Get('/home')
+  @Get('/radar')
   @UseGuards(RateLimit('read'), DebugGuard, AuthGuard)
-  async getHomeDebug(_req: Request, user: AuthenticatedUser) {
-    logger.verbose('Home debug request', { userId: user.id });
+  async getRadarDebug(_req: Request, user: AuthenticatedUser) {
+    logger.verbose('Radar debug request', { userId: user.id });
 
     // ── 1. Fetch user's intents ──────────────────────────────────────────
     const userIntents = await db
@@ -353,7 +353,7 @@ export class DebugController {
       oppByStatus[o.status] = (oppByStatus[o.status] ?? 0) + 1;
     }
 
-    // ── 4. Simulate home view filtering ──────────────────────────────────
+    // ── 4. Simulate radar view filtering ──────────────────────────────────
     let notVisible = 0;
     let notActionable = 0;
     const seenCounterparts = new Set<string>();
@@ -392,7 +392,7 @@ export class DebugController {
     const intentsHaveHydeDocuments = hasActiveIntents && withHydeDocuments > 0;
     const intentsAreIndexed = hasActiveIntents && inAtLeastOneIndex > 0;
     const hasOpportunities = opportunityRows.length > 0;
-    const opportunitiesReachHome = cardsReturned > 0;
+    const opportunitiesReachRadar = cardsReturned > 0;
 
     let bottleneck: string | null = null;
     if (!hasActiveIntents) {
@@ -409,8 +409,8 @@ export class DebugController {
       bottleneck = `${orphaned} active intents not assigned to any index`;
     } else if (!hasOpportunities) {
       bottleneck = 'No opportunities discovered yet';
-    } else if (!opportunitiesReachHome) {
-      bottleneck = `All ${opportunityRows.length} opportunities filtered out of home view`;
+    } else if (!opportunitiesReachRadar) {
+      bottleneck = `All ${opportunityRows.length} opportunities filtered out of radar view`;
     }
 
     return Response.json({
@@ -433,7 +433,7 @@ export class DebugController {
         byStatus: oppByStatus,
         actionable: cardsReturned,
       },
-      homeView: {
+      radarView: {
         cardsReturned,
         filteredOut: {
           notActionable,
@@ -447,7 +447,7 @@ export class DebugController {
         intentsHaveHydeDocuments,
         intentsAreIndexed,
         hasOpportunities,
-        opportunitiesReachHome,
+        opportunitiesReachRadar,
         bottleneck,
       },
     });

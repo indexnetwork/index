@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
-import type { OpportunityControllerDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
+import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm/sql';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
@@ -238,7 +238,7 @@ export class OpportunityService {
   private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
-  private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
+  private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
@@ -267,12 +267,12 @@ export class OpportunityService {
   }
 
 
-  private getHomeGraph(): ReturnType<HomeGraphFactory['createGraph']> {
-    this.homeGraph ??= new HomeGraphFactory(
-      this.db as unknown as HomeGraphDatabase,
+  private getRadarGraph(): ReturnType<RadarGraphFactory['createGraph']> {
+    this.radarGraph ??= new RadarGraphFactory(
+      this.db as unknown as RadarGraphDatabase,
       this.cache,
     ).createGraph();
-    return this.homeGraph;
+    return this.radarGraph;
   }
 
   private getMaintenanceGraph(): ReturnType<MaintenanceGraphFactory['createGraph']> {
@@ -349,16 +349,17 @@ export class OpportunityService {
   }
 
   /**
-   * Get home view: dynamic sections of opportunities with presenter text and LLM-chosen section titles/icons.
+   * Get radar view: a flat list of opportunity cards with presenter text,
+   * optionally scoped to one intent. Clients bucket by lifecycle status.
    */
-  async getHomeView(
+  async getRadarView(
     userId: string,
     options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
-  ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
-    logger.verbose('Getting home view', { userId, options });
+  ): Promise<{ items: unknown[]; meta: { totalOpportunities: number; maintenanceTriggered: boolean } } | { error: string }> {
+    logger.verbose('Getting radar view', { userId, options });
     try {
-      const homeGraph = this.getHomeGraph();
-      const homeInput = {
+      const radarGraph = this.getRadarGraph();
+      const radarInput = {
         userId,
         networkId: options?.networkId,
         scopeType: options?.scopeType,
@@ -368,34 +369,34 @@ export class OpportunityService {
         statuses: options?.statuses,
         presentation: options?.presentation,
       };
-      const result = await homeGraph.invoke(homeInput);
+      const result = await radarGraph.invoke(radarInput);
       if (result.error) {
         return { error: result.error };
       }
-      const sections = result.sections ?? [];
-      const meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } = {
-        ...(result.meta ?? { totalOpportunities: 0, totalSections: 0 }),
+      const items = result.items ?? [];
+      const meta: { totalOpportunities: number; maintenanceTriggered: boolean } = {
+        ...(result.meta ?? { totalOpportunities: 0 }),
         maintenanceTriggered: false,
       };
 
-      // Fire-and-forget maintenance: health-scored check replaces empty-feed-only trigger.
-      // Intent scope is a feed narrowing, not a maintenance target, so it does not suppress
+      // Fire-and-forget maintenance: health-scored check replaces empty-radar-only trigger.
+      // Intent scope is a radar narrowing, not a maintenance target, so it does not suppress
       // the existing unscoped maintenance trigger. Network scope retains current behavior.
       // Skeleton requests are the fast first phase of a two-phase fetch; the
       // full request that follows immediately will trigger maintenance, so
       // firing here would just double it.
       if (!options?.networkId && options?.presentation !== 'skeleton') {
         meta.maintenanceTriggered = true;
-        logger.info('Triggering maintenance via health scoring', { userId, source: 'home-view' });
+        logger.info('Triggering maintenance via health scoring', { userId, source: 'radar-view' });
         this.getMaintenanceGraph().invoke({ userId }).catch((err) =>
           logger.warn('Maintenance graph failed', { userId, error: err })
         );
       }
 
-      return { sections, meta };
+      return { items, meta };
     } catch (e) {
-      logger.error('getHomeView failed', { userId, error: e });
-      return { error: 'Failed to load home view' };
+      logger.error('getRadarView failed', { userId, error: e });
+      return { error: 'Failed to load radar view' };
     }
   }
 
@@ -1006,7 +1007,7 @@ export class OpportunityService {
 
     // Best-effort side effects — their failure must not block the user from
     // reaching the chat. The opp is already accepted and the DM already
-    // resolved; these keep the home feed and contacts view in sync.
+    // resolved; these keep the radar and contacts view in sync.
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {

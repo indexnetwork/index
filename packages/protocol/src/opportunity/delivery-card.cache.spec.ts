@@ -36,7 +36,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
       deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
-      presentHomeCard: mock(() => {
+      presentCard: mock(() => {
         presentCalledCount++;
         return Promise.resolve({
           headline: '',
@@ -88,7 +88,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
       deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
-      presentHomeCard: mock(() => {
+      presentCard: mock(() => {
         presentCalledCount++;
         return Promise.resolve(presentedCard);
       }),
@@ -137,7 +137,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
       deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
-      presentHomeCard: mock(() => Promise.resolve({
+      presentCard: mock(() => Promise.resolve({
         headline: 'A promising connection',
         personalizedSummary: 'A promising connection.',
         suggestedAction: 'Take a look.',
@@ -174,7 +174,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
       deleteByPattern: mock(() => Promise.resolve(0)),
     };
     const mockPresenter = {
-      presentHomeCard: mock(() => Promise.reject(new Error('LLM unavailable'))),
+      presentCard: mock(() => Promise.reject(new Error('LLM unavailable'))),
     } as unknown as OpportunityPresenter;
     const mockPresenterDb = {
       getProfile: mock(() => Promise.resolve(null)),
@@ -231,7 +231,7 @@ describe('getOrCreateDeliveryCardBatch', () => {
     };
 
     const mockPresenter = {
-      presentHomeCard: mock(() => {
+      presentCard: mock(() => {
         presentCalledCount++;
         return Promise.resolve(presentedCard);
       }),

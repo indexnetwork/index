@@ -6,34 +6,34 @@ import { selectByComposition } from '@indexnetwork/protocol';
 import { ChatDatabaseAdapter } from '../src/adapters/database.adapter';
 
 /**
- * Tests that home graph's load step uses selectByComposition instead of plain .slice().
- * We verify this indirectly by importing the home graph module and checking that
+ * Tests that radar graph's load step uses selectByComposition instead of plain .slice().
+ * We verify this indirectly by importing the radar graph module and checking that
  * selectByComposition is imported (code path verification is in the integration scope).
  */
 
-describe('ChatDatabaseAdapter HomeGraphDatabase contract', () => {
-  it('exposes getNegotiationTaskForOpportunity required by HomeGraphDatabase', () => {
+describe('ChatDatabaseAdapter RadarGraphDatabase contract', () => {
+  it('exposes getNegotiationTaskForOpportunity required by RadarGraphDatabase', () => {
     const adapter = new ChatDatabaseAdapter();
     expect(typeof adapter.getNegotiationTaskForOpportunity).toBe('function');
   });
 
-  it('exposes getMessagesForConversation required by HomeGraphDatabase', () => {
+  it('exposes getMessagesForConversation required by RadarGraphDatabase', () => {
     const adapter = new ChatDatabaseAdapter();
     expect(typeof adapter.getMessagesForConversation).toBe('function');
   });
 
-  it('exposes getArtifactsForTask required by HomeGraphDatabase', () => {
+  it('exposes getArtifactsForTask required by RadarGraphDatabase', () => {
     const adapter = new ChatDatabaseAdapter();
     expect(typeof adapter.getArtifactsForTask).toBe('function');
   });
 });
 
-describe('home.graph.ts composition import', () => {
+describe('radar.graph.ts composition import', () => {
   it('selectByComposition is exported and callable', () => {
     expect(typeof selectByComposition).toBe('function');
   });
 
-  it('selectByComposition enforces soft targets on mixed feed', () => {
+  it('selectByComposition enforces soft targets on mixed radar pool', () => {
     const viewerId = 'viewer-1';
 
     function makeOpp(id: string, isConnectorFlow: boolean, status = 'latent') {

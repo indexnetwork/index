@@ -3,9 +3,9 @@ import type { Opportunity, OpportunityStatus } from '../../shared/interfaces/dat
 import type { DebugMetaAgent } from '../../capabilities/participant-agents.debug.facade.js';
 
 /**
- * Home view card item: one opportunity with full presenter-driven display contract.
+ * Radar card item: one opportunity with full presenter-driven display contract.
  */
-export interface HomeCardItem {
+export interface RadarCardItem {
   opportunityId: string;
   /** Lifecycle status of the underlying opportunity at render time (client bucketing, e.g. intent radar). */
   status?: OpportunityStatus;
@@ -39,40 +39,19 @@ export interface HomeCardItem {
   presentationPending?: boolean;
   /** Internal marker: safe deterministic fallback rendered, but must not be cached. */
   _presentationFallback?: boolean;
-  /** For section assignment from LLM */
+  /** Internal: original position in the loaded opportunity list, for stable ordering. */
   _cardIndex: number;
 }
 
-/**
- * Dynamic section from LLM categorization.
- */
-export interface HomeSectionProposal {
-  id: string;
-  title: string;
-  subtitle?: string;
-  iconName: string;
-  itemIndices: number[];
-}
-
-/** Card item as returned in API (no internal _cardIndex). */
-export type HomeSectionItem = Omit<HomeCardItem, '_cardIndex' | '_presentationFallback'>;
+/** Card item as returned in API responses (no internal fields). */
+export type RadarResponseItem = Omit<RadarCardItem, '_cardIndex' | '_presentationFallback'>;
 
 /**
- * Final section for API response.
+ * Radar Graph State (Annotation-based).
+ * Flow: loadOpportunities → checkPresenterCache → [generateCardText if misses]
+ * → cachePresenterResults → normalizeItems.
  */
-export interface HomeSection {
-  id: string;
-  title: string;
-  subtitle?: string;
-  iconName: string;
-  items: HomeSectionItem[];
-}
-
-/**
- * Home Graph State (Annotation-based).
- * Flow: loadOpportunities → generateCardText → categorizeDynamically → normalizeAndSort → finalizeResponse.
- */
-export const HomeGraphState = Annotation.Root({
+export const RadarGraphState = Annotation.Root({
   userId: Annotation<string>({
     reducer: (curr, next) => next ?? curr,
     default: () => '',
@@ -94,24 +73,24 @@ export const HomeGraphState = Annotation.Root({
     default: () => 50,
   }),
 
-  /** When true, bypass presenter and categorizer Redis caches. */
+  /** When true, bypass the presenter Redis cache. */
   noCache: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),
 
   /**
-   * Presentation depth. 'full' (default) runs the presenter LLM and categorizer.
-   * 'skeleton' skips both for cache misses: uncached cards come back with
-   * resolved identity (name/avatar/status) and `presentationPending: true`,
-   * cached cards come back complete, and all cards land in one flat section.
+   * Presentation depth. 'full' (default) runs the presenter LLM for cache
+   * misses. 'skeleton' skips it: uncached cards come back with resolved
+   * identity (name/avatar/status) and `presentationPending: true`, cached
+   * cards come back complete.
    */
   presentation: Annotation<'full' | 'skeleton'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'full',
   }),
 
-  /** Optional status filter. When undefined, the graph uses `DEFAULT_HOME_STATUSES`. */
+  /** Optional status filter. When undefined, the graph uses `DEFAULT_RADAR_STATUSES`. */
   statuses: Annotation<OpportunityStatus[] | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
@@ -124,25 +103,19 @@ export const HomeGraphState = Annotation.Root({
   }),
 
   /** Cards with presenter output and narrator chip. */
-  cards: Annotation<HomeCardItem[]>({
+  cards: Annotation<RadarCardItem[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
 
-  /** LLM output: dynamic sections with icon and item indices. */
-  sectionProposals: Annotation<HomeSectionProposal[]>({
+  /** Final items for response (internal fields stripped). */
+  items: Annotation<RadarResponseItem[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
 
-  /** Final sections for response. */
-  sections: Annotation<HomeSection[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
-  /** Presenter results retrieved from cache (opportunityId → HomeCardItem). */
-  cachedCards: Annotation<Map<string, HomeCardItem>>({
+  /** Presenter results retrieved from cache (opportunityId → RadarCardItem). */
+  cachedCards: Annotation<Map<string, RadarCardItem>>({
     reducer: (curr, next) => next ?? curr,
     default: () => new Map(),
   }),
@@ -153,21 +126,15 @@ export const HomeGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Whether categorizer results were found in cache. */
-  categoryCacheHit: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
   error: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
 
-  /** Meta for response (e.g. totalOpportunities, totalSections). */
-  meta: Annotation<{ totalOpportunities: number; totalSections: number }>({
+  /** Meta for response (e.g. totalOpportunities). */
+  meta: Annotation<{ totalOpportunities: number }>({
     reducer: (curr, next) => next ?? curr,
-    default: () => ({ totalOpportunities: 0, totalSections: 0 }),
+    default: () => ({ totalOpportunities: 0 }),
   }),
 
   /** Timing records for each agent invocation within this graph run. */

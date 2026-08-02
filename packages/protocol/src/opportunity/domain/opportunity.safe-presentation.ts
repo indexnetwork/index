@@ -1,7 +1,7 @@
 /**
  * Shared safe-presentation primitive for all user-facing opportunity surfaces.
  *
- * Historically every surface (home feed, list/discover cards, minimal chat
+ * Historically every surface (radar, list/discover cards, minimal chat
  * cards, notification emails/Telegram, chat context, delivery cards) invented
  * its own fallback chain for the case where genuine LLM presenter output is
  * unavailable — some sliced raw `interpretation.reasoning` with no
@@ -92,7 +92,7 @@ export function safeFallbackSummary(
   return truncated || emptyText;
 }
 
-/** Minimal presenter-output shape the primitive inspects (subset of HomeCardPresentationResult). */
+/** Minimal presenter-output shape the primitive inspects (subset of CardPresentationResult). */
 export interface SafePresentationCandidate {
   headline?: string;
   personalizedSummary?: string;

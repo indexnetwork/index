@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from 'bun:test';
-import { classifyOpportunity, FEED_SOFT_TARGETS } from '@indexnetwork/protocol';
+import { classifyOpportunity, RADAR_SOFT_TARGETS } from '@indexnetwork/protocol';
 
 describe('classifyOpportunity', () => {
   const viewerId = 'user-1';
@@ -60,10 +60,10 @@ describe('classifyOpportunity', () => {
   });
 });
 
-describe('FEED_SOFT_TARGETS', () => {
+describe('RADAR_SOFT_TARGETS', () => {
   it('has expected default values', () => {
-    expect(FEED_SOFT_TARGETS.connection).toBe(3);
-    expect(FEED_SOFT_TARGETS.connectorFlow).toBe(2);
-    expect(FEED_SOFT_TARGETS.expired).toBe(2);
+    expect(RADAR_SOFT_TARGETS.connection).toBe(3);
+    expect(RADAR_SOFT_TARGETS.connectorFlow).toBe(2);
+    expect(RADAR_SOFT_TARGETS.expired).toBe(2);
   });
 });

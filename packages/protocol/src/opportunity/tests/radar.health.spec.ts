@@ -3,13 +3,13 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import { computeFeedHealth } from "../feed/feed.health.js";
+import { computeRadarHealth } from "../radar/radar.health.js";
 
 const WINDOW_12H = 12 * 60 * 60 * 1000;
 
-describe('computeFeedHealth', () => {
+describe('computeRadarHealth', () => {
   it('returns score 0 and shouldMaintain=true for an empty feed', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 0,
       connectorFlowCount: 0,
       expiredCount: 0,
@@ -25,7 +25,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('returns high score for a healthy feed discovered recently with good composition', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 5,
       connectorFlowCount: 3,
       expiredCount: 1,
@@ -39,7 +39,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('returns low freshness when lastRediscoveryAt is null', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 5,
       connectorFlowCount: 3,
       expiredCount: 0,
@@ -51,7 +51,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('returns freshness=0 when elapsed time exceeds the window', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 5,
       connectorFlowCount: 3,
       expiredCount: 0,
@@ -63,7 +63,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('respects custom threshold', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 5,
       connectorFlowCount: 3,
       expiredCount: 0,
@@ -76,7 +76,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('returns low expirationRatio when most items are expired', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 5,
       connectorFlowCount: 3,
       expiredCount: 9,
@@ -89,7 +89,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('expirationRatio is 1 when no expired items', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 5,
       connectorFlowCount: 3,
       expiredCount: 0,
@@ -101,7 +101,7 @@ describe('computeFeedHealth', () => {
   });
 
   it('score is between 0 and 1 for arbitrary valid input', () => {
-    const result = computeFeedHealth({
+    const result = computeRadarHealth({
       connectionCount: 2,
       connectorFlowCount: 1,
       expiredCount: 3,

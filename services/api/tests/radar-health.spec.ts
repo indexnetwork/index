@@ -2,13 +2,13 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from 'bun:test';
-import { computeFeedHealth, type FeedHealthInput } from '@indexnetwork/protocol';
+import { computeRadarHealth, type RadarHealthInput } from '@indexnetwork/protocol';
 
-describe('computeFeedHealth', () => {
+describe('computeRadarHealth', () => {
   const now = Date.now();
 
   it('returns perfect score for ideal composition with recent rediscovery', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 3,
       connectorFlowCount: 2,
       expiredCount: 0,
@@ -16,13 +16,13 @@ describe('computeFeedHealth', () => {
       lastRediscoveryAt: now - 1000, // 1 second ago
       freshnessWindowMs: 12 * 60 * 60 * 1000,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.score).toBeGreaterThan(0.85);
     expect(result.shouldMaintain).toBe(false);
   });
 
   it('returns zero score for empty feed', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 0,
       connectorFlowCount: 0,
       expiredCount: 0,
@@ -30,13 +30,13 @@ describe('computeFeedHealth', () => {
       lastRediscoveryAt: null,
       freshnessWindowMs: 12 * 60 * 60 * 1000,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.score).toBe(0);
     expect(result.shouldMaintain).toBe(true);
   });
 
   it('penalizes stale feed (old rediscovery)', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 3,
       connectorFlowCount: 2,
       expiredCount: 0,
@@ -44,13 +44,13 @@ describe('computeFeedHealth', () => {
       lastRediscoveryAt: now - 24 * 60 * 60 * 1000, // 24h ago
       freshnessWindowMs: 12 * 60 * 60 * 1000,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.breakdown.freshness).toBe(0);
     expect(result.score).toBeLessThan(0.8);
   });
 
   it('penalizes high expiration ratio', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 1,
       connectorFlowCount: 0,
       expiredCount: 4,
@@ -58,12 +58,12 @@ describe('computeFeedHealth', () => {
       lastRediscoveryAt: now - 1000,
       freshnessWindowMs: 12 * 60 * 60 * 1000,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.breakdown.expirationRatio).toBeLessThan(0.3);
   });
 
   it('penalizes unbalanced composition', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 10,
       connectorFlowCount: 0,
       expiredCount: 0,
@@ -71,12 +71,12 @@ describe('computeFeedHealth', () => {
       lastRediscoveryAt: now - 1000,
       freshnessWindowMs: 12 * 60 * 60 * 1000,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.breakdown.composition).toBeLessThan(1);
   });
 
   it('respects custom threshold', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 2,
       connectorFlowCount: 1,
       expiredCount: 1,
@@ -85,12 +85,12 @@ describe('computeFeedHealth', () => {
       freshnessWindowMs: 12 * 60 * 60 * 1000,
       threshold: 0.8,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.shouldMaintain).toBe(result.score < 0.8);
   });
 
   it('exposes breakdown with all three sub-scores', () => {
-    const input: FeedHealthInput = {
+    const input: RadarHealthInput = {
       connectionCount: 3,
       connectorFlowCount: 2,
       expiredCount: 0,
@@ -98,7 +98,7 @@ describe('computeFeedHealth', () => {
       lastRediscoveryAt: now - 1000,
       freshnessWindowMs: 12 * 60 * 60 * 1000,
     };
-    const result = computeFeedHealth(input);
+    const result = computeRadarHealth(input);
     expect(result.breakdown).toHaveProperty('composition');
     expect(result.breakdown).toHaveProperty('freshness');
     expect(result.breakdown).toHaveProperty('expirationRatio');

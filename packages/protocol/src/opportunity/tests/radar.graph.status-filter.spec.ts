@@ -5,8 +5,8 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterEach, describe, test, expect } from 'bun:test';
-import { HomeGraphFactory, DEFAULT_HOME_STATUSES, ALL_OPPORTUNITY_STATUSES } from '../feed/feed.graph.js';
-import type { HomeGraphDatabase, Opportunity, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
+import { RadarGraphFactory, DEFAULT_RADAR_STATUSES, ALL_OPPORTUNITY_STATUSES } from '../radar/radar.graph.js';
+import type { RadarGraphDatabase, Opportunity, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
 
 function createMockCache(): OpportunityCache {
@@ -45,7 +45,7 @@ function createPresenterHitCache(): OpportunityCache {
 function createMockDb(
   captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string },
   rows: Opportunity[] = [],
-): HomeGraphDatabase {
+): RadarGraphDatabase {
   return {
     getOpportunitiesForUser: (_userId: string, opts?: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string }) => {
       captured.statuses = opts?.statuses;
@@ -125,8 +125,8 @@ describe('home graph status filter', () => {
     delete process.env.POOL_QUESTIONS_RANKING;
   });
 
-  test('DEFAULT_HOME_STATUSES is exactly latent, pending', () => {
-    expect(DEFAULT_HOME_STATUSES).toEqual(['latent', 'pending']);
+  test('DEFAULT_RADAR_STATUSES is exactly latent, pending', () => {
+    expect(DEFAULT_RADAR_STATUSES).toEqual(['latent', 'pending']);
   });
 
   test('ALL_OPPORTUNITY_STATUSES includes accepted/rejected/expired', () => {
@@ -137,25 +137,25 @@ describe('home graph status filter', () => {
     expect(ALL_OPPORTUNITY_STATUSES).toContain('draft');
   });
 
-  test('default invocation passes DEFAULT_HOME_STATUSES to the database', async () => {
+  test('default invocation passes DEFAULT_RADAR_STATUSES to the database', async () => {
     const captured: { statuses?: OpportunityStatus[] } = {};
-    const graph = new HomeGraphFactory(createMockDb(captured), createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(createMockDb(captured), createMockCache()).createGraph();
     await graph.invoke({ userId: 'u1' });
-    expect(captured.statuses).toEqual(DEFAULT_HOME_STATUSES);
+    expect(captured.statuses).toEqual(DEFAULT_RADAR_STATUSES);
   });
 
   test('explicit statuses override the default', async () => {
     const captured: { statuses?: OpportunityStatus[] } = {};
-    const graph = new HomeGraphFactory(createMockDb(captured), createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(createMockDb(captured), createMockCache()).createGraph();
     await graph.invoke({ userId: 'u1', statuses: ALL_OPPORTUNITY_STATUSES });
     expect(captured.statuses).toEqual(ALL_OPPORTUNITY_STATUSES);
   });
 
   test('explicit intent scope is forwarded with the load query before home dedupe', async () => {
     const captured: { statuses?: OpportunityStatus[]; scopeType?: 'intent'; scopeId?: string } = {};
-    const graph = new HomeGraphFactory(createMockDb(captured), createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(createMockDb(captured), createMockCache()).createGraph();
     await graph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: '00000000-0000-4000-8000-00000000a111' });
-    expect(captured.statuses).toEqual(DEFAULT_HOME_STATUSES);
+    expect(captured.statuses).toEqual(DEFAULT_RADAR_STATUSES);
     expect(captured.scopeType).toBe('intent');
     expect(captured.scopeId).toBe('00000000-0000-4000-8000-00000000a111');
   });
@@ -179,24 +179,24 @@ describe('home graph status filter', () => {
       }),
     ];
 
-    const offGraph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const offGraph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
     const off = await offGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'], presentation: 'skeleton' });
-    expect(off.sections.flatMap((section) => section.items).map((item) => item.opportunityId))
+    expect(off.items.map((item) => item.opportunityId))
       .toEqual(['newer-demoted', 'older-prioritized']);
-    expect(off.sections.flatMap((section) => section.items)[0]?.deprioritizedReason).toBeUndefined();
+    expect(off.items[0]?.deprioritizedReason).toBeUndefined();
 
     process.env.POOL_QUESTIONS_RANKING = 'on';
-    const onGraph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const onGraph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
     const on = await onGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'], presentation: 'skeleton' });
-    const onItems = on.sections.flatMap((section) => section.items);
+    const onItems = on.items;
     expect(onItems.map((item) => item.opportunityId)).toEqual(['older-prioritized', 'newer-demoted']);
     expect(onItems[1]?.deprioritizedReason).toBe('Builders vs advisors: you chose Builders');
 
     // The full second phase must preserve that order too; otherwise the
-    // categorizer can reshuffle sections before the intent page flattens them.
-    const fullGraph = new HomeGraphFactory(createMockDb({}, rows), createPresenterHitCache()).createGraph();
+    // the intent page buckets the flat item list client-side.
+    const fullGraph = new RadarGraphFactory(createMockDb({}, rows), createPresenterHitCache()).createGraph();
     const full = await fullGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'] });
-    expect(full.sections.flatMap((section) => section.items).map((item) => item.opportunityId))
+    expect(full.items.map((item) => item.opportunityId))
       .toEqual(['older-prioritized', 'newer-demoted']);
   });
 
@@ -220,7 +220,7 @@ describe('home graph status filter', () => {
       }),
     ];
 
-    const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
     const result = await graph.invoke({
       userId: 'u1',
       scopeType: 'intent',
@@ -228,7 +228,7 @@ describe('home graph status filter', () => {
       statuses: ['draft'],
       presentation: 'skeleton',
     });
-    const items = result.sections.flatMap((section) => section.items);
+    const items = result.items;
     expect(items.map((item) => item.opportunityId)).toEqual([
       'newer-stale-demotion',
       'older-unadjusted',
@@ -258,7 +258,7 @@ describe('home graph status filter', () => {
       }),
     ];
 
-    const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+    const graph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
     const result = await graph.invoke({
       userId: 'u1',
       scopeType: 'intent',
@@ -266,7 +266,7 @@ describe('home graph status filter', () => {
       statuses: ['draft'],
       presentation: 'skeleton',
     });
-    const items = result.sections.flatMap((section) => section.items);
+    const items = result.items;
     expect(items.map((item) => item.opportunityId)).toEqual([
       'newer-active-priority',
       'older-active-demotion',
@@ -320,9 +320,9 @@ describe('home graph status filter', () => {
           ...testCase.rowOverrides,
         }),
       ];
-      const graph = new HomeGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
+      const graph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
       const result = await graph.invoke(testCase.invoke);
-      const items = result.sections.flatMap((section) => section.items);
+      const items = result.items;
       expect(items.map((item) => item.opportunityId), testCase.name)
         .toEqual(['newer-demoted', 'older-prioritized']);
       expect(items[0]?.deprioritizedReason, testCase.name).toBeUndefined();

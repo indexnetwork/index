@@ -39,7 +39,7 @@ export function NegotiationPresenceChip({
 
 /**
  * Shared opportunity card data structure.
- * Compatible with both HomeViewCardItem and OpportunityCard from chat context.
+ * Compatible with both RadarCardItem and OpportunityCard from chat context.
  * Keep in sync with OpportunityCardPayload in services/api/src/types/chat-streaming.types.ts.
  */
 export interface OpportunityCardData {

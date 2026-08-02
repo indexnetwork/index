@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
     visitIntent: vi.fn(),
   },
   opportunitiesService: {
-    getHomeView: vi.fn(),
+    getRadarView: vi.fn(),
   },
   chatStubBehavior: { failBootstrap: false },
   questionRevision: 'revision-1',
@@ -168,7 +168,7 @@ describe('Intent page — negotiator chat gating', () => {
       createdAt: new Date().toISOString(),
     });
     mocks.intentsService.visitIntent.mockResolvedValue(undefined);
-    mocks.opportunitiesService.getHomeView.mockResolvedValue({ sections: [] });
+    mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
     mocks.questionsService.getPending.mockResolvedValue([
       {
         id: 'q-1',

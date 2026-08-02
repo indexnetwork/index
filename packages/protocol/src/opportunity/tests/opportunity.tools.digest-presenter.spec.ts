@@ -9,7 +9,7 @@ import type { PresenterDatabase } from '../opportunity.presenter.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 
-type PresentedHomeCard = {
+type PresentedCard = {
   headline: string;
   personalizedSummary: string;
   digestSummary: string;
@@ -19,7 +19,7 @@ type PresentedHomeCard = {
   greeting: string;
 };
 
-let presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => ({
+let presentCardMock = mock(async (_input: unknown): Promise<PresentedCard> => ({
   headline: 'Test Headline',
   personalizedSummary: 'Test personalized summary.',
   digestSummary: 'You might like meeting Alice because she matches your current interests.',
@@ -153,7 +153,7 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
       premise: noopGraph,
     } as unknown as ToolDeps["graphs"],
     opportunityPresentation: {
-      createPresenter: () => ({ presentHomeCard: (input: unknown) => presentHomeCardMock(input) }),
+      createPresenter: () => ({ presentCard: (input: unknown) => presentCardMock(input) }),
       gatherPresenterContext: (database: PresenterDatabase, opportunity: Opportunity, viewerId: string) =>
         gatherPresenterContextMock(database, opportunity, viewerId),
     },
@@ -189,7 +189,7 @@ describe('list_opportunities digest presenter path', () => {
 
     expect(result.success).toBe(true);
     expect(gatherPresenterContextMock).toHaveBeenCalled();
-    expect(presentHomeCardMock).toHaveBeenCalled();
+    expect(presentCardMock).toHaveBeenCalled();
     expect(String(result.data?.message)).toContain('You might like meeting Alice because she matches your current interests.');
     expect(String(result.data?.message)).not.toContain('Test personalized summary');
   });
@@ -198,7 +198,7 @@ describe('list_opportunities digest presenter path', () => {
     candidateOpps = [makeOpp('opp-chat', 'c-chat')];
     getUser = mock(async (userId?: string) => ({ id: userId ?? testUserId, name: userId === 'c-chat' ? 'Chris' : 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Chris', bio: '', location: '' }, userId: 'c-chat' }) as unknown as UserIdentity | null);
-    presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => ({
+    presentCardMock = mock(async (_input: unknown): Promise<PresentedCard> => ({
       headline: 'Meet Chris',
       personalizedSummary: 'Chris is a strong fit for your current search.',
       digestSummary: 'Digest text should not be used for regular chat.',
@@ -228,7 +228,7 @@ describe('list_opportunities digest presenter path', () => {
 
     expect(result.success).toBe(true);
     expect(gatherPresenterContextMock).toHaveBeenCalled();
-    expect(presentHomeCardMock).toHaveBeenCalled();
+    expect(presentCardMock).toHaveBeenCalled();
     expect(String(result.data?.message)).toContain('Chris is a strong fit for your current search.');
     expect(String(result.data?.message)).not.toContain('Reasoning for c-chat');
   });
@@ -246,7 +246,7 @@ describe('list_opportunities digest presenter path', () => {
       updatedAt: new Date(),
     };
     // Capture the presenter input so we can assert negotiationContext threading.
-    presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => ({
+    presentCardMock = mock(async (_input: unknown): Promise<PresentedCard> => ({
       headline: 'Test Headline',
       personalizedSummary: 'Agents agreed you both want to ship privacy tooling.',
       digestSummary: 'You might like meeting Carol because your agents agreed on shared privacy-tooling goals.',
@@ -278,7 +278,7 @@ describe('list_opportunities digest presenter path', () => {
     // EDG-51: digest marker carries the negotiation-trace deep link.
     expect(String(result.data?.message)).toContain('negotiationUrl: https://index.network/chat/conv-xyz?link_preview=false');
     // EDG-50: presenter received the negotiation context so digestSummary can be grounded.
-    const lastCall = presentHomeCardMock.mock.calls.at(-1)?.[0] as { negotiationContext?: { conversationId?: string } } | undefined;
+    const lastCall = presentCardMock.mock.calls.at(-1)?.[0] as { negotiationContext?: { conversationId?: string } } | undefined;
     expect(lastCall?.negotiationContext?.conversationId).toBe('conv-xyz');
 
     negotiationTask = null;
@@ -289,7 +289,7 @@ describe('list_opportunities digest presenter path', () => {
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
     getProfile = mock(async () => ({ identity: { name: 'Bob', bio: '', location: '' }, userId: 'c-2' }) as unknown as UserIdentity | null);
 
-    presentHomeCardMock = mock(async (_input: unknown): Promise<PresentedHomeCard> => {
+    presentCardMock = mock(async (_input: unknown): Promise<PresentedCard> => {
       throw new Error('Presenter failed');
     });
 

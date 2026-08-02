@@ -1,29 +1,27 @@
 /**
- * Home Graph: Build the opportunity home view with dynamic sections.
+ * Radar Graph: Build the opportunity radar view — a flat, presenter-texted
+ * list of opportunity cards for a viewer, optionally scoped to one intent.
  *
  * Independent of ChatGraph. Flow:
- * loadOpportunities → checkPresenterCache → [generateCardText if misses] → cachePresenterResults
- * → checkCategorizerCache → [categorizeDynamically if miss] → cacheCategorizerResults → normalizeAndSort
+ * loadOpportunities → checkPresenterCache → [generateCardText if misses]
+ * → cachePresenterResults → normalizeItems
  *
- * Uses OpportunityPresenter for card text and an LLM to categorize cards into dynamic sections
- * with titles and Lucide icon names. Caches presenter and categorizer results via OpportunityCache.
+ * Uses OpportunityPresenter for card text and caches presenter results via
+ * OpportunityCache. Responses are a flat `items` array; clients bucket by
+ * lifecycle status themselves.
  */
-
-import { createHash } from 'crypto';
 
 import { StateGraph, START, END } from '@langchain/langgraph';
 
-import type { HomeGraphDatabase, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
+import type { RadarGraphDatabase, OpportunityStatus } from '../../shared/interfaces/database.interface.js';
 import type { OpportunityCache } from '../../shared/interfaces/cache.interface.js';
-import { HomeGraphState, type HomeCardItem, type HomeSection, type HomeSectionProposal, type HomeSectionItem } from './feed.state.js';
+import { RadarGraphState, type RadarCardItem, type RadarResponseItem } from './radar.state.js';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../opportunity.presenter.js';
 import { loadNegotiationContext } from '../negotiation-context.loader.js';
-import { HomeCategorizerAgent } from './feed.categorizer.js';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../opportunity.utils.js';
-import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../../shared/ui/lucide.icon-catalog.js';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../opportunity.labels.js';
 import { safeFallbackSummary } from '../opportunity.safe-presentation.js';
-import { buildHomeCardPresentationCacheKey, buildHomeCategoryPresentationCacheKey } from '../opportunity.presentation-cache.js';
+import { buildRadarCardPresentationCacheKey } from '../opportunity.presentation-cache.js';
 import type { DebugMetaAgent } from '../../capabilities/participant-agents.debug.facade.js';
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
@@ -32,19 +30,16 @@ import { adjustedConfidence, latestPoolDemotionDetail, readActivePoolAdjustments
 import type { PoolAdjustmentProvenance } from '../discriminator/discriminator.adjustments.js';
 import { poolQuestionsRanking } from '../discriminator/discriminator.env.js';
 
-const logger = protocolLogger('HomeGraph');
-const checkCategorizerCacheLog = protocolLogger('HomeGraph:checkCategorizerCache');
-const cacheCategorizerResultsLog = protocolLogger('HomeGraph:cacheCategorizerResults');
-const checkPresenterCacheLog = protocolLogger('HomeGraph:checkPresenterCache');
-const cachePresenterResultsLog = protocolLogger('HomeGraph:cachePresenterResults');
-const categorizeDynamicallyLog = protocolLogger('HomeGraph:categorizeDynamically');
-const normalizeAndSortLog = protocolLogger('HomeGraph:normalizeAndSort');
-const generateCardTextLog = protocolLogger('HomeGraph:generateCardText');
+const logger = protocolLogger('RadarGraph');
+const checkPresenterCacheLog = protocolLogger('RadarGraph:checkPresenterCache');
+const cachePresenterResultsLog = protocolLogger('RadarGraph:cachePresenterResults');
+const generateCardTextLog = protocolLogger('RadarGraph:generateCardText');
+const normalizeItemsLog = protocolLogger('RadarGraph:normalizeItems');
 
-/** Database must satisfy both HomeGraphDatabase and presenter context (getProfile, getActiveIntents, getNetwork, getUser). */
-type HomeGraphDb = HomeGraphDatabase;
+/** Database must satisfy both RadarGraphDatabase and presenter context (getProfile, getActiveIntents, getNetwork, getUser). */
+type RadarGraphDb = RadarGraphDatabase;
 
-export type HomeGraphInvokeInput = {
+export type RadarGraphInvokeInput = {
   userId: string;
   networkId?: string;
   scopeType?: 'intent';
@@ -53,28 +48,28 @@ export type HomeGraphInvokeInput = {
   noCache?: boolean;
   /**
    * 'skeleton' returns immediately without LLM work: cached cards complete,
-   * uncached cards with identity fields only + `presentationPending: true`,
-   * single flat section (no categorizer). Meant as the fast first phase of a
-   * two-phase fetch — follow up with a full request to fill in the text.
+   * uncached cards with identity fields only + `presentationPending: true`.
+   * Meant as the fast first phase of a two-phase fetch — follow up with a
+   * full request to fill in the text.
    */
   presentation?: 'full' | 'skeleton';
   /**
-   * When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_HOME_STATUSES`.
+   * When set, filter loaded opportunities to these lifecycle statuses. Defaults to `DEFAULT_RADAR_STATUSES`.
    * Explicit statuses switch the graph to "lifecycle view" mode: terminal/internal
    * statuses pass through (only latent/pending stay gated by viewer actionability),
-   * ordering is newest-first, and feed composition capping is skipped.
+   * ordering is newest-first, and composition capping is skipped.
    */
   statuses?: OpportunityStatus[];
 };
 
-export type HomeGraphInvokeResult = {
-  sections: HomeSection[];
-  meta: { totalOpportunities: number; totalSections: number };
+export type RadarGraphInvokeResult = {
+  items: RadarResponseItem[];
+  meta: { totalOpportunities: number };
   error?: string;
 };
 
-/** Default home-feed statuses: the lifecycle stages a viewer can act on today. */
-export const DEFAULT_HOME_STATUSES: OpportunityStatus[] = ['latent', 'pending'];
+/** Default radar statuses: the lifecycle stages a viewer can act on today. */
+export const DEFAULT_RADAR_STATUSES: OpportunityStatus[] = ['latent', 'pending'];
 
 // Exhaustive registry — keys must cover every OpportunityStatus union member.
 // Adding a new status to OpportunityStatus without adding a key here is a TS error,
@@ -90,19 +85,18 @@ const OPPORTUNITY_STATUS_REGISTRY: Record<OpportunityStatus, true> = {
   expired: true,
 };
 
-/** Full status enumeration. Pass this to `HomeGraphInvokeInput.statuses` to restore pre-Issue-3 (unfiltered) behavior. */
+/** Full status enumeration. Pass this to `RadarGraphInvokeInput.statuses` to restore pre-Issue-3 (unfiltered) behavior. */
 export const ALL_OPPORTUNITY_STATUSES: OpportunityStatus[] = Object.keys(
   OPPORTUNITY_STATUS_REGISTRY,
 ) as OpportunityStatus[];
 
-const MAX_ITEMS_PER_SECTION = 20;
 const PRESENTATION_CONCURRENCY = 50;
 const MAX_REASONING_SNIPPET_LENGTH = 240;
-const HOME_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
+const RADAR_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
 
 /** Pure cache policy for presenter cards; degraded current-request copy retries later. */
-export function isHomePresentationCacheable(
-  card: Pick<HomeCardItem, 'presentationPending' | '_presentationFallback' | 'name'>,
+export function isRadarPresentationCacheable(
+  card: Pick<RadarCardItem, 'presentationPending' | '_presentationFallback' | 'name'>,
   status: OpportunityStatus | undefined,
 ): boolean {
   return Boolean(
@@ -113,13 +107,6 @@ export function isHomePresentationCacheable(
     card.name &&
     card.name !== 'Unknown',
   );
-}
-
-/** Redis key for the categorizer cache, derived from the user and the ordered opportunity-id set. */
-function buildCategorizerCacheKey(userId: string, cards: HomeCardItem[]): string {
-  const oppIds = cards.map((c) => c.opportunityId).join(',');
-  const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
-  return buildHomeCategoryPresentationCacheKey(userId, hash);
 }
 
 /**
@@ -152,13 +139,13 @@ const safeParseDate = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
     const t = new Date(value).getTime();
-    return Number.isFinite(t) ? t : 0;
+    if (!Number.isNaN(t)) return t;
   }
   return 0;
 };
 
 /** Confidence score for sorting (interpretation.confidence or opportunity.confidence). */
-const getRawConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][number]): number => {
   const fromInterp = opp.interpretation?.confidence;
   if (typeof fromInterp === 'number' && !Number.isNaN(fromInterp)) return fromInterp;
   if (typeof fromInterp === 'string') {
@@ -177,11 +164,11 @@ const getRawConfidence = (opp: typeof HomeGraphState.State['opportunities'][numb
 /**
  * Sort confidence, optionally pool-adjusted (IND-419): when
  * POOL_QUESTIONS_RANKING=on, answered discriminators multiply confidence by
- * their stored factors (floor 0.3) so the user's answers re-rank the feed.
+ * their stored factors (floor 0.3) so the user's answers re-rank the radar.
  * Flag off → identical to raw confidence (adjustments are write-only).
  */
 const getPoolRankingProvenance = (
-  state: typeof HomeGraphState.State,
+  state: typeof RadarGraphState.State,
 ): PoolAdjustmentProvenance | null => {
   if (
     poolQuestionsRanking() !== 'on' ||
@@ -193,7 +180,7 @@ const getPoolRankingProvenance = (
 };
 
 const hasPoolAdjustment = (
-  opp: typeof HomeGraphState.State['opportunities'][number],
+  opp: typeof RadarGraphState.State['opportunities'][number],
   provenance: PoolAdjustmentProvenance,
 ): boolean => readActivePoolAdjustments(
   (opp as { metadata?: Record<string, unknown> | null }).metadata,
@@ -201,7 +188,7 @@ const hasPoolAdjustment = (
 ).length > 0;
 
 const getConfidence = (
-  opp: typeof HomeGraphState.State['opportunities'][number],
+  opp: typeof RadarGraphState.State['opportunities'][number],
   provenance: PoolAdjustmentProvenance | null,
 ): number => {
   const raw = getRawConfidence(opp);
@@ -215,7 +202,7 @@ const getConfidence = (
 
 /** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
 const getUniqueCounterpartUserIds = (
-  opp: typeof HomeGraphState.State['opportunities'][number],
+  opp: typeof RadarGraphState.State['opportunities'][number],
   viewerId: string
 ): Set<string> => {
   const ids = new Set<string>();
@@ -228,7 +215,7 @@ const getUniqueCounterpartUserIds = (
 };
 
 const pickDisplayCounterpartActor = (
-  opportunity: typeof HomeGraphState.State['opportunities'][number],
+  opportunity: typeof RadarGraphState.State['opportunities'][number],
   viewerId: string
 ): { userId: string; role: string } | null => {
   const candidates = opportunity.actors.filter(
@@ -255,24 +242,23 @@ const pickDisplayCounterpartActor = (
   return sorted[0] ?? null;
 };
 
-export class HomeGraphFactory {
-  constructor(private database: HomeGraphDb, private cache: OpportunityCache) {}
+export class RadarGraphFactory {
+  constructor(private database: RadarGraphDb, private cache: OpportunityCache) {}
 
   createGraph() {
     const presenter = new OpportunityPresenter();
-    const categorizer = new HomeCategorizerAgent();
 
-    const loadOpportunitiesNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.loadOpportunities", async () => {
+    const loadOpportunitiesNode = async (state: typeof RadarGraphState.State) => {
+      return timed("RadarGraph.loadOpportunities", async () => {
         if (!state.userId) {
           return { error: 'userId is required' };
         }
         try {
-          // Minimum of 50 ensures enough candidates across all feed categories
+          // Minimum of 50 ensures enough candidates across all radar categories
           // (connection, connector-flow, expired) for selectByComposition to fill
           // its soft targets, even after visibility filtering and dedup.
           const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
-          const statuses = state.statuses ?? DEFAULT_HOME_STATUSES;
+          const statuses = state.statuses ?? DEFAULT_RADAR_STATUSES;
           const poolRankingProvenance = getPoolRankingProvenance(state);
           const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
             limit: fetchLimit,
@@ -283,7 +269,7 @@ export class HomeGraphFactory {
             options.scopeType = 'intent';
             options.scopeId = state.scopeId;
           }
-          // Do not pass conversationId: home view excludes draft opportunities (chat-only drafts).
+          // Do not pass conversationId: radar view excludes draft opportunities (chat-only drafts).
           const raw = await this.database.getOpportunitiesForUser(state.userId, options);
           const visible = raw.filter((opp) =>
             canUserSeeOpportunity(opp.actors, opp.status, state.userId)
@@ -297,7 +283,7 @@ export class HomeGraphFactory {
           // The requested-status membership check is defense-in-depth: rows
           // outside the requested set are dropped even if the adapter drifts.
           const requestedStatuses = new Set<OpportunityStatus>(statuses);
-          const visibleForFeed = visible.filter((opp) => {
+          const visibleForRadar = visible.filter((opp) => {
             if (!requestedStatuses.has(opp.status)) return false;
             if (opp.status === 'latent' || opp.status === 'pending') {
               return isActionableForViewer(opp.actors, opp.status, state.userId);
@@ -310,7 +296,7 @@ export class HomeGraphFactory {
             // dedup keeps each person's most recent state (an accepted
             // opportunity supersedes an older pending one), no composition
             // capping — the caller wants the full pipeline up to `limit`.
-            const newestFirst = [...visibleForFeed].sort(
+            const newestFirst = [...visibleForRadar].sort(
               (a, b) => safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt)
             );
             const seenIds = new Set<string>();
@@ -338,7 +324,7 @@ export class HomeGraphFactory {
             });
             return { opportunities: adjustedOrder.slice(0, state.limit) };
           }
-          const sorted = [...visibleForFeed].sort((a, b) => {
+          const sorted = [...visibleForRadar].sort((a, b) => {
             // Connections before connector-flow so dedup claims counterpart IDs
             // for direct connections first — prevents introducer cards from
             // shadowing a user's own connection opportunities.
@@ -363,14 +349,14 @@ export class HomeGraphFactory {
           const opportunities = selectByComposition(deduped, state.userId);
           return { opportunities };
         } catch (e) {
-          logger.error('HomeGraph loadOpportunities failed', { error: e });
+          logger.error('RadarGraph loadOpportunities failed', { error: e });
           return { error: 'Failed to load opportunities', opportunities: [] };
         }
       });
     };
 
-    const checkPresenterCacheNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.checkPresenterCache", async () => {
+    const checkPresenterCacheNode = async (state: typeof RadarGraphState.State) => {
+      return timed("RadarGraph.checkPresenterCache", async () => {
         const { opportunities, userId } = state;
         const poolRankingProvenance = getPoolRankingProvenance(state);
         if (opportunities.length === 0) {
@@ -394,11 +380,11 @@ export class HomeGraphFactory {
           const liveNegotiating = opportunities.filter((opp) => opp.status === 'negotiating');
 
           const keys = cacheable.map((opp) =>
-            buildHomeCardPresentationCacheKey(opp.id, opp.status, userId)
+            buildRadarCardPresentationCacheKey(opp.id, opp.status, userId)
           );
-          const results = keys.length > 0 ? await this.cache.mget<HomeCardItem>(keys) : [];
+          const results = keys.length > 0 ? await this.cache.mget<RadarCardItem>(keys) : [];
 
-          const cachedCards = new Map<string, HomeCardItem>();
+          const cachedCards = new Map<string, RadarCardItem>();
           const uncachedOpportunities: typeof opportunities = [...liveNegotiating];
 
           for (let i = 0; i < cacheable.length; i++) {
@@ -438,7 +424,7 @@ export class HomeGraphFactory {
       });
     };
 
-    const shouldGenerateCards = (state: typeof HomeGraphState.State): string => {
+    const shouldGenerateCards = (state: typeof RadarGraphState.State): string => {
       if (state.uncachedOpportunities.length > 0) {
         return 'generate';
       }
@@ -446,18 +432,18 @@ export class HomeGraphFactory {
       return 'skip';
     };
 
-    const generateCardTextNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.generateCardText", async () => {
+    const generateCardTextNode = async (state: typeof RadarGraphState.State) => {
+      return timed("RadarGraph.generateCardText", async () => {
       const opportunities = state.uncachedOpportunities.length > 0
         ? state.uncachedOpportunities
         : state.opportunities;
       generateCardTextLog.verbose('entry', { opportunitiesLength: opportunities.length, userId: state.userId });
       if (opportunities.length === 0) {
-        generateCardTextLog.verbose('exit', { totalOpportunities: 0, totalSections: 0 });
-        return { cards: [], agentTimings: [], meta: { totalOpportunities: 0, totalSections: 0 } };
+        generateCardTextLog.verbose('exit', { totalOpportunities: 0 });
+        return { cards: [], agentTimings: [], meta: { totalOpportunities: 0 } };
       }
-      const db = this.database as PresenterDatabase & HomeGraphDb;
-      const cards: HomeCardItem[] = [];
+      const db = this.database as PresenterDatabase & RadarGraphDb;
+      const cards: RadarCardItem[] = [];
       const relevantActorIds = new Set<string>();
       for (const opp of opportunities) {
         for (const a of opp.actors) {
@@ -536,9 +522,9 @@ export class HomeGraphFactory {
             // "Unknown" placeholder: such cards are unusable, excluded from the
             // presenter cache (see cachePresenterResults), and would otherwise
             // trigger a fresh presenter LLM call on every request — a permanent
-            // cache miss that keeps the whole feed slow (~9s per load).
+            // cache miss that keeps the whole radar slow (~9s per load).
             if (userName === 'Unknown' || !userName?.trim()) {
-              logger.verbose('[HomeGraph:generateCardText] dropping card with unresolvable counterpart', {
+              logger.verbose('[RadarGraph:generateCardText] dropping card with unresolvable counterpart', {
                 opportunityId: opportunity.id,
                 otherActorUserId: otherActor?.userId,
               });
@@ -594,10 +580,10 @@ export class HomeGraphFactory {
                 ...(secondPartyData ? { secondParty: secondPartyData } : {}),
                 presentationPending: true,
                 _cardIndex: cardIndex,
-              } satisfies HomeCardItem;
+              } satisfies RadarCardItem;
             }
             const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
-            const fallbackCard = (): HomeCardItem => ({
+            const fallbackCard = (): RadarCardItem => ({
               opportunityId: opportunity.id,
               status: opportunity.status,
               userId: otherActor?.userId ?? '',
@@ -630,7 +616,7 @@ export class HomeGraphFactory {
                 ),
                 loadNegotiationContext(db, opportunity.id, opportunity.status),
               ]);
-              const homeInput = {
+              const presenterInput = {
                 ...ctx,
                 mutualIntentCount: undefined,
                 opportunityStatus: opportunity.status,
@@ -639,7 +625,7 @@ export class HomeGraphFactory {
               const _traceEmitterPresenter = requestContext.getStore()?.traceEmitter;
               const presenterStart = Date.now();
               _traceEmitterPresenter?.({ type: "agent_start", name: "opportunity-presenter" });
-              const presentation = await presenter.presentHomeCard(homeInput);
+              const presentation = await presenter.presentCard(presenterInput);
               const _presenterDuration = Date.now() - presenterStart;
               agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
               _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
@@ -681,26 +667,26 @@ export class HomeGraphFactory {
                 isGhost: isCounterpartGhost,
                 ...(secondPartyData ? { secondParty: secondPartyData } : {}),
                 _cardIndex: cardIndex,
-              } satisfies HomeCardItem;
+              } satisfies RadarCardItem;
             } catch (e) {
-              logger.warn('HomeGraph presenter failed for opportunity', { opportunityId: opportunity.id, error: e });
+              logger.warn('RadarGraph presenter failed for opportunity', { opportunityId: opportunity.id, error: e });
               return fallbackCard();
             }
           })
         );
-        cards.push(...chunkCards.filter((c): c is HomeCardItem => c !== null));
+        cards.push(...chunkCards.filter((c): c is RadarCardItem => c !== null));
       }
-      generateCardTextLog.verbose('exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
+      generateCardTextLog.verbose('exit', { totalOpportunities: state.opportunities.length });
       return {
         cards,
         agentTimings: agentTimingsAccum,
-        meta: { totalOpportunities: state.opportunities.length, totalSections: 0 },
+        meta: { totalOpportunities: state.opportunities.length },
       };
       });
     };
 
-    const cachePresenterResultsNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.cachePresenterResults", async () => {
+    const cachePresenterResultsNode = async (state: typeof RadarGraphState.State) => {
+      return timed("RadarGraph.cachePresenterResults", async () => {
         const { cards, cachedCards, userId, opportunities } = state;
         const poolRankingProvenance = getPoolRankingProvenance(state);
         const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
@@ -725,11 +711,11 @@ export class HomeGraphFactory {
               const status = statusById.get(card.opportunityId);
               // Negotiating, skeleton, fallback, and unresolved-name cards are
               // safe for the current response but must not become 24h entries.
-              if (!status || !isHomePresentationCacheable(card, status)) return Promise.resolve();
+              if (!status || !isRadarPresentationCacheable(card, status)) return Promise.resolve();
               return this.cache.set(
-                buildHomeCardPresentationCacheKey(card.opportunityId, status, userId),
+                buildRadarCardPresentationCacheKey(card.opportunityId, status, userId),
                 card,
-                { ttl: HOME_CACHE_TTL }
+                { ttl: RADAR_CACHE_TTL }
               );
             })
           );
@@ -738,7 +724,7 @@ export class HomeGraphFactory {
         }
 
         // Merge cached cards into full card list
-        const allCards: HomeCardItem[] = [...cardsWithAdjustments];
+        const allCards: RadarCardItem[] = [...cardsWithAdjustments];
         for (const [oppId, cachedCard] of cachedCards) {
           if (!cardsWithAdjustments.some((card) => card.opportunityId === oppId)) {
             allCards.push(cachedCard);
@@ -755,188 +741,30 @@ export class HomeGraphFactory {
 
         return {
           cards: allCards,
-          meta: { totalOpportunities: state.opportunities.length, totalSections: 0 },
+          meta: { totalOpportunities: state.opportunities.length },
         };
       });
     };
 
-    const checkCategorizerCacheNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.checkCategorizerCache", async () => {
-        if (state.cards.length === 0) {
-          return { categoryCacheHit: false };
-        }
-
-        // Skeleton runs never categorize (some cards have no text to categorize
-        // and the response must stay LLM-free). Ranking-enabled lifecycle views
-        // also stay flat: the intent Radar flattens sections and buckets by
-        // status, so dynamic categorization would erase the adjusted order on
-        // the full second-phase response. Flag off retains the legacy path.
-        // Chunk by MAX_ITEMS_PER_SECTION because normalizeAndSort caps sections.
-        const poolRankingProvenance = getPoolRankingProvenance(state);
-        const preserveAdjustedLifecycleOrder =
-          (state.statuses?.length ?? 0) > 0 &&
-          poolRankingProvenance !== null &&
-          state.opportunities.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance));
-        if (state.presentation === 'skeleton' || preserveAdjustedLifecycleOrder) {
-          const sectionProposals: HomeSectionProposal[] = [];
-          for (let start = 0; start < state.cards.length; start += MAX_ITEMS_PER_SECTION) {
-            sectionProposals.push({
-              id: `all-${sectionProposals.length + 1}`,
-              title: 'All matches',
-              iconName: DEFAULT_HOME_SECTION_ICON,
-              itemIndices: state.cards.slice(start, start + MAX_ITEMS_PER_SECTION).map((_, i) => start + i),
-            });
-          }
-          return { sectionProposals, categoryCacheHit: true };
-        }
-
-        if (state.noCache) {
-          checkCategorizerCacheLog.verbose('noCache=true, skipping cache');
-          return { categoryCacheHit: false };
-        }
-
-        try {
-          const key = buildCategorizerCacheKey(state.userId, state.cards);
-
-          const cached = await this.cache.get<HomeSectionProposal[]>(key);
-          if (cached) {
-            checkCategorizerCacheLog.verbose('cache hit');
-            return { sectionProposals: cached, categoryCacheHit: true };
-          }
-
-          checkCategorizerCacheLog.verbose('cache miss');
-        } catch (e) {
-          checkCategorizerCacheLog.warn('cache unavailable, skipping', { error: e });
-        }
-        return { categoryCacheHit: false };
-      });
-    };
-
-    const shouldCategorize = (state: typeof HomeGraphState.State): string => {
-      if (state.categoryCacheHit) {
-        logger.verbose('Categorizer results cached, skipping');
-        return 'skip';
-      }
-      return 'categorize';
-    };
-
-    const categorizeDynamicallyNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.categorizeDynamically", async () => {
-        categorizeDynamicallyLog.verbose('entry', { cardsLength: state.cards.length });
-        if (state.cards.length === 0) {
-          categorizeDynamicallyLog.verbose('exit', { sectionProposalsCount: 0 });
-          return { sectionProposals: [], agentTimings: [] };
-        }
-        const agentTimingsAccum: DebugMetaAgent[] = [];
-        const categorizerInput = state.cards.map((c) => ({
-          index: c._cardIndex,
-          headline: c.headline,
-          mainText: c.mainText,
-          name: c.name,
-          viewerRole: c.viewerRole === 'introducer' ? 'introducer' : undefined,
-          opportunityStatus: c.viewerRole === 'introducer' ? 'pending' : undefined,
-        }));
-        const _traceEmitterCategorizer = requestContext.getStore()?.traceEmitter;
-        const categorizerStart = Date.now();
-        _traceEmitterCategorizer?.({ type: "agent_start", name: "home-categorizer" });
-        const { sections } = await categorizer.categorize(categorizerInput);
-        const _categorizerDuration = Date.now() - categorizerStart;
-        agentTimingsAccum.push({ name: 'home.categorizer', durationMs: _categorizerDuration });
-        _traceEmitterCategorizer?.({ type: "agent_end", name: "home-categorizer", durationMs: _categorizerDuration, summary: `Categorized into ${sections.length} section(s)` });
-        const proposals: HomeSectionProposal[] = sections.map((s) => ({
-          ...s,
-          itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
-        }));
-        categorizeDynamicallyLog.verbose('exit', { sectionProposalsCount: proposals.length });
-        return { sectionProposals: proposals, agentTimings: agentTimingsAccum };
-      });
-    };
-
-    const cacheCategorizerResultsNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.cacheCategorizerResults", async () => {
-        if (
-          state.categoryCacheHit ||
-          state.sectionProposals.length === 0 ||
-          state.cards.some((card) => card._presentationFallback)
-        ) {
-          return {};
-        }
-
-        try {
-          const key = buildCategorizerCacheKey(state.userId, state.cards);
-
-          await this.cache.set(key, state.sectionProposals, { ttl: HOME_CACHE_TTL });
-
-          cacheCategorizerResultsLog.verbose('cached', {
-            sectionCount: state.sectionProposals.length,
-          });
-        } catch (e) {
-          cacheCategorizerResultsLog.warn('cache write failed, continuing', { error: e });
-        }
-
-        return {};
-      });
-    };
-
-    const normalizeAndSortNode = async (state: typeof HomeGraphState.State) => {
-      return timed("HomeGraph.normalizeAndSort", async () => {
-        const cards = state.cards;
-        const proposals = state.sectionProposals;
-        normalizeAndSortLog.verbose('entry', { cardsLength: cards.length, proposalsLength: proposals.length });
-        if (cards.length === 0) {
-          normalizeAndSortLog.verbose('exit', { totalOpportunities: 0, totalSections: 0 });
-          return { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
-        }
-        const usedIndices = new Set<number>();
-        const sections: HomeSection[] = proposals.map((p) => {
-          const iconName = resolveHomeSectionIcon(p.iconName);
-          const items: HomeSectionItem[] = p.itemIndices
-            .filter((i) => i >= 0 && i < cards.length && !usedIndices.has(i))
-            .slice(0, MAX_ITEMS_PER_SECTION)
-            .map((i) => {
-              usedIndices.add(i);
-              const card = cards[i];
-              const { _cardIndex, _presentationFallback, ...rest } = card;
-              return rest;
-            });
-          return {
-            id: p.id,
-            title: p.title,
-            subtitle: p.subtitle,
-            iconName,
-            items,
-          };
+    const normalizeItemsNode = async (state: typeof RadarGraphState.State) => {
+      return timed("RadarGraph.normalizeItems", async () => {
+        normalizeItemsLog.verbose('entry', { cardsLength: state.cards.length });
+        const items: RadarResponseItem[] = state.cards.map((card) => {
+          const { _cardIndex, _presentationFallback, ...rest } = card;
+          return rest;
         });
-
-        // Enforce category ordering: sections with connections first, then
-        // connector-flow only, then expired only. This prevents the LLM
-        // categorizer from placing introducer sections before connection sections.
-        const sectionCategoryPriority = (section: HomeSection): number => {
-          const hasConnection = section.items.some((item) => item.viewerRole !== 'introducer');
-          if (hasConnection) return 0; // mixed or connection-only sections first
-          const hasConnectorFlow = section.items.some((item) => item.viewerRole === 'introducer');
-          if (hasConnectorFlow) return 1; // connector-flow only sections next
-          return 2; // empty or expired sections last
-        };
-        sections.sort((a, b) => sectionCategoryPriority(a) - sectionCategoryPriority(b));
-        const meta = {
-          totalOpportunities: state.opportunities.length,
-          totalSections: sections.length,
-        };
-        normalizeAndSortLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
-        return { sections, meta };
+        const meta = { totalOpportunities: state.opportunities.length };
+        normalizeItemsLog.verbose('exit', { totalOpportunities: meta.totalOpportunities, totalItems: items.length });
+        return { items, meta };
       });
     };
 
-    const graph = new StateGraph(HomeGraphState)
+    const graph = new StateGraph(RadarGraphState)
       .addNode('loadOpportunities', loadOpportunitiesNode)
       .addNode('checkPresenterCache', checkPresenterCacheNode)
       .addNode('generateCardText', generateCardTextNode)
       .addNode('cachePresenterResults', cachePresenterResultsNode)
-      .addNode('checkCategorizerCache', checkCategorizerCacheNode)
-      .addNode('categorizeDynamically', categorizeDynamicallyNode)
-      .addNode('cacheCategorizerResults', cacheCategorizerResultsNode)
-      .addNode('normalizeAndSort', normalizeAndSortNode)
+      .addNode('normalizeItems', normalizeItemsNode)
       .addEdge(START, 'loadOpportunities')
       .addEdge('loadOpportunities', 'checkPresenterCache')
       .addConditionalEdges('checkPresenterCache', shouldGenerateCards, {
@@ -944,14 +772,8 @@ export class HomeGraphFactory {
         skip: 'cachePresenterResults',
       })
       .addEdge('generateCardText', 'cachePresenterResults')
-      .addEdge('cachePresenterResults', 'checkCategorizerCache')
-      .addConditionalEdges('checkCategorizerCache', shouldCategorize, {
-        categorize: 'categorizeDynamically',
-        skip: 'normalizeAndSort',
-      })
-      .addEdge('categorizeDynamically', 'cacheCategorizerResults')
-      .addEdge('cacheCategorizerResults', 'normalizeAndSort')
-      .addEdge('normalizeAndSort', END);
+      .addEdge('cachePresenterResults', 'normalizeItems')
+      .addEdge('normalizeItems', END);
 
     return graph.compile();
   }

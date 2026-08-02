@@ -104,7 +104,7 @@ export default function DiscoverHome() {
           <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
             Find your others
           </h1>
-          <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
+          <DebugCopyButton fetchPath="/debug/radar" title="Copy radar debug JSON" iconSize="w-5 h-5" />
         </div>
         <p className="mb-6 text-center text-xs text-gray-400 font-ibm-plex-mono">
           {intents.length} signals · {totalWaitingOpportunities} opportunities

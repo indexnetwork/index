@@ -48,8 +48,8 @@ export type OpportunityLifecycleStatus =
   | 'rejected'
   | 'expired';
 
-/** Home view card item (from GET /opportunities/home). Presenter-driven display contract. */
-export interface HomeViewCardItem {
+/** Radar card item (from GET /opportunities/radar). Presenter-driven display contract. */
+export interface RadarCardItem {
   opportunityId: string;
   /** Lifecycle status of the underlying opportunity (present for client bucketing, e.g. intent radar). */
   status?: OpportunityLifecycleStatus;
@@ -85,27 +85,18 @@ export interface HomeViewCardItem {
   presentationPending?: boolean;
 }
 
-/** Home view section (dynamic title, icon, items). */
-export interface HomeViewSection {
-  id: string;
-  title: string;
-  subtitle?: string;
-  iconName: string;
-  items: HomeViewCardItem[];
+export interface RadarViewResponse {
+  items: RadarCardItem[];
+  meta: { totalOpportunities: number; maintenanceTriggered?: boolean };
 }
 
-export interface HomeViewResponse {
-  sections: HomeViewSection[];
-  meta: { totalOpportunities: number; totalSections: number };
-}
-
-export interface GetHomeViewOptions {
+export interface GetRadarViewOptions {
   networkId?: string;
   scopeType?: 'intent';
   scopeId?: string;
   limit?: number;
   noCache?: boolean;
-  /** Explicit lifecycle filter — switches the home view into lifecycle mode (intent radar). */
+  /** Explicit lifecycle filter — switches the radar view into lifecycle mode (intent radar). */
   statuses?: OpportunityLifecycleStatus[];
   /** 'skeleton' = fast LLM-free response; uncached cards flagged presentationPending. */
   presentation?: 'skeleton';
@@ -172,9 +163,9 @@ export interface ChatContextOpportunity {
   acceptedAt: string | null;
 }
 
-const HOME_VIEW_RECENT_CACHE_TTL_MS = 1500;
-const homeViewInFlight = new Map<string, Promise<HomeViewResponse>>();
-const homeViewRecent = new Map<string, { data: HomeViewResponse; timestamp: number }>();
+const RADAR_VIEW_RECENT_CACHE_TTL_MS = 1500;
+const radarViewInFlight = new Map<string, Promise<RadarViewResponse>>();
+const radarViewRecent = new Map<string, { data: RadarViewResponse; timestamp: number }>();
 
 export const createOpportunitiesService = (
   api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>
@@ -193,9 +184,9 @@ export const createOpportunitiesService = (
     return res.opportunities ?? [];
   },
 
-  getHomeView: async (
-    options?: GetHomeViewOptions
-  ): Promise<HomeViewResponse> => {
+  getRadarView: async (
+    options?: GetRadarViewOptions
+  ): Promise<RadarViewResponse> => {
     const params = new URLSearchParams();
     if (options?.networkId) params.set('networkId', options.networkId);
     if (options?.scopeType) params.set('scopeType', options.scopeType);
@@ -205,36 +196,36 @@ export const createOpportunitiesService = (
     if (options?.noCache) params.set('noCache', '1');
     if (options?.presentation) params.set('presentation', options.presentation);
     const qs = params.toString();
-    const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
+    const url = qs ? `/opportunities/radar?${qs}` : '/opportunities/radar';
 
     // When noCache is set, skip the in-memory dedup cache entirely
     if (options?.noCache) {
-      return api.get<HomeViewResponse>(url);
+      return api.get<RadarViewResponse>(url);
     }
 
     const cacheKey = url;
     const now = Date.now();
-    const recent = homeViewRecent.get(cacheKey);
-    if (recent && now - recent.timestamp < HOME_VIEW_RECENT_CACHE_TTL_MS) {
+    const recent = radarViewRecent.get(cacheKey);
+    if (recent && now - recent.timestamp < RADAR_VIEW_RECENT_CACHE_TTL_MS) {
       return recent.data;
     }
 
-    const inFlight = homeViewInFlight.get(cacheKey);
+    const inFlight = radarViewInFlight.get(cacheKey);
     if (inFlight) {
       return inFlight;
     }
 
     const request = api
-      .get<HomeViewResponse>(url)
+      .get<RadarViewResponse>(url)
       .then((res) => {
-        homeViewRecent.set(cacheKey, { data: res, timestamp: Date.now() });
+        radarViewRecent.set(cacheKey, { data: res, timestamp: Date.now() });
         return res;
       })
       .finally(() => {
-        homeViewInFlight.delete(cacheKey);
+        radarViewInFlight.delete(cacheKey);
       });
 
-    homeViewInFlight.set(cacheKey, request);
+    radarViewInFlight.set(cacheKey, request);
     return request;
   },
 

@@ -63,7 +63,7 @@ export async function getOrCreateDeliveryCardBatch(
       );
       presenterInput.opportunityStatus = opp.status;
 
-      const presented = await presenter.presentHomeCard(presenterInput);
+      const presented = await presenter.presentCard(presenterInput);
       const card: CachedDeliveryCard = {
         opportunityId: opp.id,
         headline: presented.headline,

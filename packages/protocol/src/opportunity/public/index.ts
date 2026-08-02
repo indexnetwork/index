@@ -40,7 +40,7 @@ export {
   selectByComposition,
   deduplicateByPerson,
   selectDigestCandidates,
-  FEED_SOFT_TARGETS,
+  RADAR_SOFT_TARGETS,
   DIGEST_REDELIVERY_COOLDOWN_DAYS,
 } from "../domain/opportunity.utils.js";
 export type {
@@ -87,8 +87,7 @@ export {
 } from "../domain/opportunity.safe-presentation.js";
 export {
   OPPORTUNITY_PRESENTATION_CACHE_VERSION,
-  buildHomeCardPresentationCacheKey,
-  buildHomeCategoryPresentationCacheKey,
+  buildRadarCardPresentationCacheKey,
   buildDeliveryCardPresentationCacheKey,
   buildApiChatCardPresentationCacheKey,
 } from "../domain/opportunity.presentation-cache.js";
@@ -179,9 +178,9 @@ export {
   OUTCOME_MAX_PUBLIC_CONTEXT_CHARS,
 } from "../outcome/outcome.env.js";
 
-// feed domain
-export { computeFeedHealth } from "../feed/feed.health.js";
-export type { FeedHealthInput } from "../feed/feed.health.js";
+// radar domain
+export { computeRadarHealth } from "../radar/radar.health.js";
+export type { RadarHealthInput } from "../radar/radar.health.js";
 
 // ── Application exports ───────────────────────────────────────────────────────
 export { isIntroducerDiscoveryEnabled } from "../application/opportunity.introducer-feature.js";
@@ -230,8 +229,8 @@ export { runNegotiationEvidenceShadow } from "../negotiation-evidence/negotiatio
 // outcome application
 export { runOutcomeShadow } from "../outcome/outcome.shadow.js";
 
-// feed application
-export { HomeGraphFactory } from "../feed/feed.graph.js";
+// radar application
+export { RadarGraphFactory } from "../radar/radar.graph.js";
 
 // ── Tools ────────────────────────────────────────────────────────────────────
 export { createOpportunityTools } from "../application/opportunity.tools.js";
