@@ -95,6 +95,30 @@ window.IndexApp = (function () {
     return () => authSubscribers.delete(cb);
   }
 
+  // ---- deep links ---------------------------------------------------------
+
+  // Swift hands over a URL (an index:// open or a verified universal link) by
+  // dispatching an `index-deeplink` CustomEvent carrying the raw string; it
+  // makes no routing decision, window.IndexApi.parseDeepLink does that.
+  //
+  // This listener is registered while the bundle evaluates, before React's
+  // first effects run, because on a cold launch the queued link is dispatched
+  // as soon as the page finishes loading. Anything that arrives before the app
+  // subscribes waits here instead of being dropped on the floor.
+  const deepLinkBuffer = [];
+  let deepLinkSubscriber = null;
+  window.addEventListener("index-deeplink", (event) => {
+    const url = event && event.detail && event.detail.url;
+    if (!url) return;
+    if (deepLinkSubscriber) deepLinkSubscriber(url);
+    else deepLinkBuffer.push(url);
+  });
+  function onDeepLink(cb) {
+    deepLinkSubscriber = cb;
+    while (deepLinkBuffer.length) cb(deepLinkBuffer.shift());
+    return () => { if (deepLinkSubscriber === cb) deepLinkSubscriber = null; };
+  }
+
   // ---- snapshot -----------------------------------------------------------
 
   // Resolve a promise into a {ok,value} pair so one failing endpoint (e.g. a
@@ -341,6 +365,7 @@ window.IndexApp = (function () {
     setupHermes,
     teardownHermes,
     onAuthChanged,
+    onDeepLink,
     createIntent,
     parseIntentProposals,
     streamChat,

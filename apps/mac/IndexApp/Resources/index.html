@@ -34248,7 +34248,132 @@ function relativeAge(isoDate) {
   return `${weeks}w ago`;
 }
 
-window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary };
+/**
+ * Pure deep-link parser for the macOS/iOS shells.
+ *
+ * The native side does no routing: it receives a URL from macOS (a universal
+ * link handed over as an NSUserActivity, or an `index://` scheme open) and
+ * forwards the raw absolute string to the web layer, which asks this function
+ * what it means. Keeping every URL→route decision here is what makes app
+ * routing as verifiable as an HTTP endpoint: see api/deeplink.spec.mjs.
+ *
+ * Dependency-free ESM like the rest of api/; assemble.py strips `export` when
+ * it inlines this file into the single-file bundle as window.IndexApi.
+ */
+
+/** Hosts whose https:// links this app claims (see the web AASA). */
+const DEFAULT_HOSTS = ['index.network'];
+
+/** First path segment -> route name. The web serves the same three paths. */
+const ROUTE_BY_SEGMENT = {
+  o: 'card',
+  u: 'profile',
+  c: 'legacy-connect',
+};
+
+/**
+ * @typedef {{ route: 'card', id: string }
+ *   | { route: 'profile', id: string }
+ *   | { route: 'legacy-connect', code: string }} DeepLinkRoute
+ */
+
+/**
+ * Resolve a deep link into a route, or null when it is not one of ours.
+ *
+ * Accepts two URL families:
+ *   · `https://<allowed host>/o|u|c/<id>` — universal links. Only https, since
+ *     that is the only scheme macOS ever hands over as a universal link; extra
+ *     hosts (staging, a review app) go through `options.hosts` so adding one
+ *     never touches the routing table.
+ *   · `index://o|u|c/<id>` — the internal scheme alias, no host to check.
+ *
+ * Query strings, fragments and trailing slashes are ignored. Anything else —
+ * a foreign host, an unknown path, a missing id, malformed input — is null.
+ * Never throws.
+ *
+ * @param {unknown} rawUrl
+ * @param {{ hosts?: Array<string> }} [options]
+ * @returns {DeepLinkRoute | null}
+ */
+function parseDeepLink(rawUrl, options = {}) {
+  if (typeof rawUrl !== 'string') return null;
+  const raw = rawUrl.trim();
+  if (!raw) return null;
+
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/.exec(raw);
+  if (!schemeMatch) return null;
+  const scheme = schemeMatch[1].toLowerCase();
+
+  if (scheme === 'index') {
+    // `index://o/<id>`, `index:o/<id>` and `index:///o/<id>` all mean the same
+    // thing. The WHATWG parser reads the authority of a non-special scheme as
+    // a host, which would split `o` off the path, so slice it by hand instead.
+    const rest = raw.slice(schemeMatch[0].length).replace(/^\/*/, '');
+    return routeFromPath(stripQueryAndFragment(rest));
+  }
+
+  if (scheme !== 'https') return null;
+
+  let url;
+  try {
+    url = new URL(raw);
+  } catch (error) {
+    return null;
+  }
+
+  const hosts = Array.isArray(options.hosts) && options.hosts.length
+    ? options.hosts
+    : DEFAULT_HOSTS;
+  const hostname = url.hostname.toLowerCase();
+  const allowed = hosts.some(
+    (host) => typeof host === 'string' && host.trim().toLowerCase() === hostname,
+  );
+  if (!allowed) return null;
+
+  return routeFromPath(url.pathname);
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function stripQueryAndFragment(value) {
+  return value.split('#')[0].split('?')[0];
+}
+
+/**
+ * Turn `/o/<id>` (with or without trailing slashes) into a route.
+ * @param {string} path
+ * @returns {DeepLinkRoute | null}
+ */
+function routeFromPath(path) {
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length !== 2) return null;
+
+  const route = ROUTE_BY_SEGMENT[segments[0]];
+  if (!route) return null;
+
+  const value = safeDecode(segments[1]);
+  if (!value) return null;
+
+  return route === 'legacy-connect' ? { route, code: value } : { route, id: value };
+}
+
+/**
+ * decodeURIComponent that keeps the raw segment rather than throwing on a
+ * malformed escape.
+ * @param {string} segment
+ * @returns {string}
+ */
+function safeDecode(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch (error) {
+    return segment;
+  }
+}
+
+window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink };
 
 })();
 </script>
@@ -36135,6 +36260,35 @@ function MacSegmented({ value, onChange, options, size }) {
   );
 }
 
+/* ---------- one-line, non-blocking notice ---------- */
+// For the things the app can only report, not fix: a retired /c/ link, a deep
+// link to a card this account cannot see. It sits at the foot of the desktop,
+// times out on its own, and never takes the keyboard, so whatever the user was
+// doing keeps working. Anything that needs a decision still gets a MacWindow.
+function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
+  useEffect(() => {
+    if (!onDismiss) return;
+    const t = setTimeout(onDismiss, timeoutMs);
+    return () => clearTimeout(t);
+  }, [text, timeoutMs]);
+  if (!text) return null;
+  return (
+    <div
+      onClick={onDismiss}
+      role="status"
+      title="dismiss"
+      style={{
+        position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)",
+        maxWidth:"min(560px, calc(100% - 36px))",
+        padding:"8px 14px", cursor:"default",
+        background: A.paper, color: A.fg,
+        border:`2px solid ${A.fg}`, boxShadow: bevel("out"),
+        fontFamily:"var(--mac-mono)", fontSize:11.5, lineHeight:1.5,
+        zIndex:1200,
+      }}>{text}</div>
+  );
+}
+
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
@@ -36143,7 +36297,7 @@ Object.assign(window, {
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
-  MacWindow, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
+  MacWindow, MacNotice, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
   AMIGA_PALETTE: A,
 });
 
@@ -36244,6 +36398,30 @@ window.IndexApp = (function () {
   function onAuthChanged(cb) {
     authSubscribers.add(cb);
     return () => authSubscribers.delete(cb);
+  }
+
+  // ---- deep links ---------------------------------------------------------
+
+  // Swift hands over a URL (an index:// open or a verified universal link) by
+  // dispatching an `index-deeplink` CustomEvent carrying the raw string; it
+  // makes no routing decision, window.IndexApi.parseDeepLink does that.
+  //
+  // This listener is registered while the bundle evaluates, before React's
+  // first effects run, because on a cold launch the queued link is dispatched
+  // as soon as the page finishes loading. Anything that arrives before the app
+  // subscribes waits here instead of being dropped on the floor.
+  const deepLinkBuffer = [];
+  let deepLinkSubscriber = null;
+  window.addEventListener("index-deeplink", (event) => {
+    const url = event && event.detail && event.detail.url;
+    if (!url) return;
+    if (deepLinkSubscriber) deepLinkSubscriber(url);
+    else deepLinkBuffer.push(url);
+  });
+  function onDeepLink(cb) {
+    deepLinkSubscriber = cb;
+    while (deepLinkBuffer.length) cb(deepLinkBuffer.shift());
+    return () => { if (deepLinkSubscriber === cb) deepLinkSubscriber = null; };
   }
 
   // ---- snapshot -----------------------------------------------------------
@@ -36492,6 +36670,7 @@ window.IndexApp = (function () {
     setupHermes,
     teardownHermes,
     onAuthChanged,
+    onDeepLink,
     createIntent,
     parseIntentProposals,
     streamChat,
@@ -42427,9 +42606,39 @@ function SocialLink({ social }) {
   );
 }
 
+/* A card opened from outside the app (an index:// link or a universal link).
+   The route can land on any screen, including the hub where no signal is open
+   and the radar's selection state does not exist, so it floats above whatever
+   is showing instead. It only wraps the windows the radar already uses:
+   an expired opportunity reads as its summary, anything else as the profile.
+   Read-only, because accept/pass/chat belong to the signal that surfaced the
+   card and a deep link does not say which signal that was. */
+function DeepLinkWindow({ person, route, onClose }) {
+  const expired = route === "card" && person.status === "expired";
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:900,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"56px 18px",
+      }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ display:"flex", width:"min(460px, 100%)", maxHeight:"100%", minHeight:0 }}>
+        {expired
+          ? <SummaryWindow person={person} onClose={onClose}/>
+          : <ProfileWindow person={person} onClose={onClose} actions={false}/>}
+      </div>
+    </div>
+  );
+}
+
 /* Full profile for a person, opens in the 3rd window when you click their
-   name or avatar on the radar. */
-function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
+   name or avatar on the radar. `actions` off drops the stage CTA, for a
+   profile opened outside a signal (see DeepLinkWindow) where accepting or
+   passing has no scope to act in. */
+function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions = true }) {
   const status = person.status;
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
@@ -42523,6 +42732,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
         </div>
 
         {/* footer CTA, matches the radar stage */}
+        {actions && (
         <div style={{
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
           display:"flex", alignItems:"center", gap:10,
@@ -42548,6 +42758,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
             </span>
           )}
         </div>
+        )}
       </div>
     </MacWindow>
   );
@@ -42747,6 +42958,7 @@ function BottomBar({ stats }) {
 }
 
 window.MainView = MainView;
+window.DeepLinkWindow = DeepLinkWindow;
 
 </script>
 <script type="text/babel">
@@ -42773,6 +42985,52 @@ function nativeAuthed() {
   return !!(window.IndexApp && window.IndexApp.isAuthed());
 }
 
+// Resolve a parsed deep link (see api/deeplink.mjs) to a person card. A card
+// link carries an opportunity id, a profile link a user id, so each is looked
+// up against the loaded radar first. Anything this snapshot does not carry
+// gets one fetch by id through the existing client methods, and null when even
+// that comes up empty, so the caller can say so instead of opening a blank
+// window.
+async function resolveDeepLinkPerson(route, people) {
+  const known = route.route === "card"
+    ? people.find(p => p.id === route.id)
+    : people.find(p => p.userId === route.id);
+  if (known) return known;
+
+  if (!nativeAuthed() || !window.IndexApp) return null;
+  const client = window.IndexApp.getClient();
+  if (!client) return null;
+  try {
+    if (route.route === "card") {
+      const res = await client.opportunities.get(route.id);
+      const row = (res && res.opportunity) || res;
+      if (!row || !row.id) return null;
+      const person = window.IndexApi.mapPeopleFromOpportunities([row])[0] || null;
+      // GET /opportunities/:id names the counterpart under otherParties rather
+      // than the counterpartUserId/counterpartName the list mapper reads, and
+      // the profile needs the user id to fetch their bio.
+      const other = Array.isArray(row.otherParties) ? row.otherParties[0] : null;
+      if (person && other) {
+        person.userId = person.userId || other.id || null;
+        person.name = other.name || person.name;
+      }
+      return person;
+    }
+    const res = await client.users.get(route.id);
+    const user = (res && res.user) || res;
+    if (!user || !user.id) return null;
+    return {
+      id: user.id,
+      userId: user.id,
+      name: user.name || "unknown",
+      location: user.location || "",
+      ...window.IndexApi.mapCounterpartProfile(user),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
   // True until the user creates their first signal, the hub opens empty.
@@ -42794,6 +43052,48 @@ function App() {
   // profile-review gate after the building screen.
   const freshLoginRef = useRef(false);
 
+  // ---- deep links (index:// and universal links) --------------------------
+  // Swift forwards the raw URL it was handed and decides nothing about it;
+  // window.IndexApi.parseDeepLink (apps/mac/api/deeplink.mjs, unit tested) is
+  // the only place a URL turns into a route.
+  const [notice, setNotice] = useState(null);
+  const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
+  const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
+
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
+    return window.IndexApp.onDeepLink((url) => {
+      const route = (window.IndexApi && window.IndexApi.parseDeepLink)
+        ? window.IndexApi.parseDeepLink(url)
+        : null;
+      if (!route) return;                       // not ours, stay quiet
+      if (route.route === "legacy-connect") {
+        // Connect links were retired; there is nothing left to resolve them to.
+        setNotice("this link is no longer supported — open the opportunity from your radar.");
+        return;
+      }
+      setPendingLink(route);
+    });
+  }, []);
+
+  // A link can arrive at the login screen or mid-boot (cold launch is the
+  // normal case). Hold it there and apply it once the snapshot is in, rather
+  // than resolving it against data that hasn't loaded.
+  useEffect(() => {
+    if (!pendingLink || screen === "login" || screen === "building") return;
+    let cancelled = false;
+    (async () => {
+      const person = await resolveDeepLinkPerson(pendingLink, people);
+      if (cancelled) return;
+      if (person) setLinkedCard({ person, route: pendingLink.route });
+      else setNotice(pendingLink.route === "card"
+        ? "that opportunity isn't on your radar."
+        : "couldn't open that profile.");
+      setPendingLink(null);
+    })();
+    return () => { cancelled = true; };
+  }, [pendingLink, screen, people]);
+
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
     if (!window.IndexApp) return;
@@ -42802,6 +43102,7 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        setLinkedCard(null);
         setScreen("login");
       }
     });
@@ -43006,6 +43307,17 @@ function App() {
                                        onNew={goOnboarding}
                                        onSignOut={signOut}/>}
         {screen === "onboarding"  && <Onboarding onDone={finishOnboarding} onBack={() => setScreen("intents")}/>}
+        {/* A deep-linked card floats over whatever screen is showing: the link
+            can land on the hub, where the radar's selection state doesn't
+            exist. */}
+        {linkedCard && (
+          <DeepLinkWindow
+            person={linkedCard.person}
+            route={linkedCard.route}
+            onClose={() => setLinkedCard(null)}
+          />
+        )}
+        {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
         {screen === "main"        && (
           <MainView
             profile={profile}

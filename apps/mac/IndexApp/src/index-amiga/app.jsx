@@ -21,6 +21,52 @@ function nativeAuthed() {
   return !!(window.IndexApp && window.IndexApp.isAuthed());
 }
 
+// Resolve a parsed deep link (see api/deeplink.mjs) to a person card. A card
+// link carries an opportunity id, a profile link a user id, so each is looked
+// up against the loaded radar first. Anything this snapshot does not carry
+// gets one fetch by id through the existing client methods, and null when even
+// that comes up empty, so the caller can say so instead of opening a blank
+// window.
+async function resolveDeepLinkPerson(route, people) {
+  const known = route.route === "card"
+    ? people.find(p => p.id === route.id)
+    : people.find(p => p.userId === route.id);
+  if (known) return known;
+
+  if (!nativeAuthed() || !window.IndexApp) return null;
+  const client = window.IndexApp.getClient();
+  if (!client) return null;
+  try {
+    if (route.route === "card") {
+      const res = await client.opportunities.get(route.id);
+      const row = (res && res.opportunity) || res;
+      if (!row || !row.id) return null;
+      const person = window.IndexApi.mapPeopleFromOpportunities([row])[0] || null;
+      // GET /opportunities/:id names the counterpart under otherParties rather
+      // than the counterpartUserId/counterpartName the list mapper reads, and
+      // the profile needs the user id to fetch their bio.
+      const other = Array.isArray(row.otherParties) ? row.otherParties[0] : null;
+      if (person && other) {
+        person.userId = person.userId || other.id || null;
+        person.name = other.name || person.name;
+      }
+      return person;
+    }
+    const res = await client.users.get(route.id);
+    const user = (res && res.user) || res;
+    if (!user || !user.id) return null;
+    return {
+      id: user.id,
+      userId: user.id,
+      name: user.name || "unknown",
+      location: user.location || "",
+      ...window.IndexApi.mapCounterpartProfile(user),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
   // True until the user creates their first signal, the hub opens empty.
@@ -42,6 +88,48 @@ function App() {
   // profile-review gate after the building screen.
   const freshLoginRef = useRef(false);
 
+  // ---- deep links (index:// and universal links) --------------------------
+  // Swift forwards the raw URL it was handed and decides nothing about it;
+  // window.IndexApi.parseDeepLink (apps/mac/api/deeplink.mjs, unit tested) is
+  // the only place a URL turns into a route.
+  const [notice, setNotice] = useState(null);
+  const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
+  const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
+
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
+    return window.IndexApp.onDeepLink((url) => {
+      const route = (window.IndexApi && window.IndexApi.parseDeepLink)
+        ? window.IndexApi.parseDeepLink(url)
+        : null;
+      if (!route) return;                       // not ours, stay quiet
+      if (route.route === "legacy-connect") {
+        // Connect links were retired; there is nothing left to resolve them to.
+        setNotice("this link is no longer supported — open the opportunity from your radar.");
+        return;
+      }
+      setPendingLink(route);
+    });
+  }, []);
+
+  // A link can arrive at the login screen or mid-boot (cold launch is the
+  // normal case). Hold it there and apply it once the snapshot is in, rather
+  // than resolving it against data that hasn't loaded.
+  useEffect(() => {
+    if (!pendingLink || screen === "login" || screen === "building") return;
+    let cancelled = false;
+    (async () => {
+      const person = await resolveDeepLinkPerson(pendingLink, people);
+      if (cancelled) return;
+      if (person) setLinkedCard({ person, route: pendingLink.route });
+      else setNotice(pendingLink.route === "card"
+        ? "that opportunity isn't on your radar."
+        : "couldn't open that profile.");
+      setPendingLink(null);
+    })();
+    return () => { cancelled = true; };
+  }, [pendingLink, screen, people]);
+
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
     if (!window.IndexApp) return;
@@ -50,6 +138,7 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        setLinkedCard(null);
         setScreen("login");
       }
     });
@@ -254,6 +343,17 @@ function App() {
                                        onNew={goOnboarding}
                                        onSignOut={signOut}/>}
         {screen === "onboarding"  && <Onboarding onDone={finishOnboarding} onBack={() => setScreen("intents")}/>}
+        {/* A deep-linked card floats over whatever screen is showing: the link
+            can land on the hub, where the radar's selection state doesn't
+            exist. */}
+        {linkedCard && (
+          <DeepLinkWindow
+            person={linkedCard.person}
+            route={linkedCard.route}
+            onClose={() => setLinkedCard(null)}
+          />
+        )}
+        {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
         {screen === "main"        && (
           <MainView
             profile={profile}

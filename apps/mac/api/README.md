@@ -2,7 +2,7 @@
 
 This folder is the standalone API-consumption boundary for the native macOS/iOS prototypes under `apps/mac`.
 
-It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data. `IndexApp-iOS` is not wired yet.
+It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` + `deeplink.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data. `IndexApp-iOS` is not wired yet.
 
 ## Role
 
@@ -26,6 +26,7 @@ API-key chat uses the **orchestrator** persona (not the Signal web persona). Ses
 
 - `client.mjs` — dependency-free fetch wrapper and resource methods for the Index API (`x-api-key` aware).
 - `mappers.mjs` — pure mappers from API responses to the current mac prototype view models.
+- `deeplink.mjs` — pure `parseDeepLink(url)`: the single place where a `https://index.network/o|u|c/<id>` universal link or an `index://` alias becomes a route. The Swift shell only delivers URLs; it makes no routing decision. Contract tested in `deeplink.spec.mjs`.
 - `index.mjs` — barrel exports for future consumers.
 
 ## Endpoint coverage checked against controllers

@@ -39,15 +39,27 @@ cp Resources/index.html "${CONTENTS}/Resources/index.html"
 # Set CODESIGN_IDENTITY to sign with a real identity when you have one.
 IDENTITY="${CODESIGN_IDENTITY:-}"
 
+# Associated domains (universal links). The entitlement is only honoured for a
+# Developer ID-signed, notarized build whose team id matches the appIDs in the
+# apple-app-site-association served by index.network, so it is applied in both
+# branches but is not allowed to break the ad-hoc dev loop.
+ENTITLEMENTS="IndexApp.entitlements"
+
 if [ -n "${IDENTITY}" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "${IDENTITY}"; then
     echo "==> Code signing as '${IDENTITY}'"
-    codesign --force --deep --sign "${IDENTITY}" "${APP}"
+    codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign "${IDENTITY}" "${APP}"
 else
     if [ -n "${IDENTITY}" ]; then
         echo "==> WARNING: CODESIGN_IDENTITY='${IDENTITY}' not found, falling back to ad-hoc"
     fi
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
-    codesign --force --deep --sign - "${APP}" || echo "   (codesign skipped/failed, app still runs locally)"
+    if ! codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign - "${APP}"; then
+        echo "   (codesign skipped/failed, app still runs locally)"
+    fi
+    echo "==> WARNING: universal links (https://index.network/o|u|c/...) will NOT open"
+    echo "    this build. They need a Developer ID-signed, notarized app plus an"
+    echo "    apple-app-site-association listing <TEAM_ID>.network.index.system6."
+    echo "    Use 'open index://o/<id>' to exercise deep links locally."
 fi
 
 echo "==> Done: ${APP}"
