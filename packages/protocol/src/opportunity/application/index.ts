@@ -27,7 +27,7 @@
  * - discriminator/ — miner, assigner, shadow orchestrator
  * - negotiation-evidence/ — miner, shadow orchestrator
  * - outcome/ — shadow orchestrator
- * - feed/ — home feed categorizer and graph
+ * - radar/ — radar graph
  *
  * IND-551: canonical application layer for the opportunities capability.
  */
@@ -71,6 +71,5 @@ export { runNegotiationEvidenceShadow } from "../negotiation-evidence/negotiatio
 // outcome application
 export { runOutcomeShadow } from "../outcome/outcome.shadow.js";
 
-// feed application
-export { HomeGraphFactory } from "../feed/feed.graph.js";
-export { HomeCategorizerAgent } from "../feed/feed.categorizer.js";
+// radar application
+export { RadarGraphFactory } from "../radar/radar.graph.js";

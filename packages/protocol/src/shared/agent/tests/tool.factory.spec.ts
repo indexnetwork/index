@@ -202,7 +202,7 @@ let mockDiscoveryResult: {
 };
 mock.module("../../../opportunity/opportunity.presenter.js", () => ({
   OpportunityPresenter: class {
-    async presentHomeCard() {
+    async presentCard() {
       return {
         personalizedSummary: "A relevant connection is ready to review.",
         digestSummary: "A relevant connection is ready to review.",
@@ -1532,7 +1532,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
       negotiationDatabase: { getNegotiationTaskForOpportunity: async () => null },
       opportunityPresentation: {
         createPresenter: () => ({
-          presentHomeCard: async () => ({
+          presentCard: async () => ({
             headline: "A relevant connection",
             personalizedSummary: "Their current goals may be relevant to yours.",
             digestSummary: "This connection may be relevant to your current goals.",
@@ -1869,7 +1869,7 @@ describe("createChatTools — MCP connect-link wiring", () => {
       frontendUrl: FRONTEND_URL,
       opportunityPresentation: {
         createPresenter: () => ({
-          presentHomeCard: async () => ({
+          presentCard: async () => ({
             personalizedSummary: "A pending introduction is awaiting the other party.",
             suggestedAction: "Wait for the other party.",
             headline: "Connection with Counterpart",

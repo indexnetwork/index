@@ -24,7 +24,7 @@
  * - discriminator/ — pool question mining, scoring, assignment
  * - negotiation-evidence/ — Lens C evidence extraction and mining
  * - outcome/ — Lens B outcome hypothesis mining
- * - feed/ — home feed graph and categorizer
+ * - radar/ — radar graph (flat presenter-card list) and radar health
  *
  * ## Legacy paths (thin inward shims)
  * The following old flat-file paths are preserved as thin re-export shims for

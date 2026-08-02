@@ -53,8 +53,8 @@ function renderLegacyUptakeAdvisory(
 }
 
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
-/** Full lifecycle enum for the home view's explicit `statuses` filter (e.g. the intent radar). */
-const homeStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+/** Full lifecycle enum for the radar view's explicit `statuses` filter (e.g. the intent radar). */
+const radarStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -193,11 +193,11 @@ export class OpportunityController {
   }
 
   /**
-   * GET /opportunities/home — home view with dynamic sections (LLM-categorized, presenter text, Lucide icons).
+   * GET /opportunities/radar — radar view: flat presenter-card list, optionally intent-scoped.
    */
-  @Get('/home')
+  @Get('/radar')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getHome(req: Request, user: AuthenticatedUser) {
+  async getRadar(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const networkId = url.searchParams.get('networkId') ?? undefined;
     const limitParam = url.searchParams.get('limit');
@@ -206,19 +206,19 @@ export class OpportunityController {
     const scope = parseIntentScopeFromUrl(url);
     if (scope instanceof Response) return scope;
 
-    // Optional explicit lifecycle filter (comma-separated). Switches the home
-    // graph into lifecycle-view mode (see HomeGraphInvokeInput.statuses).
+    // Optional explicit lifecycle filter (comma-separated). Switches the radar
+    // graph into lifecycle-view mode (see RadarGraphInvokeInput.statuses).
     const statusesParam = url.searchParams.get('statuses');
-    let statuses: z.infer<typeof homeStatusSchema>[] | undefined;
+    let statuses: z.infer<typeof radarStatusSchema>[] | undefined;
     if (statusesParam) {
-      const parsed = z.array(homeStatusSchema).nonempty().safeParse(statusesParam.split(',').map((s) => s.trim()).filter(Boolean));
+      const parsed = z.array(radarStatusSchema).nonempty().safeParse(statusesParam.split(',').map((s) => s.trim()).filter(Boolean));
       if (!parsed.success) {
-        return Response.json({ error: `Invalid statuses; allowed: ${homeStatusSchema.options.join(', ')}` }, { status: 400 });
+        return Response.json({ error: `Invalid statuses; allowed: ${radarStatusSchema.options.join(', ')}` }, { status: 400 });
       }
       statuses = [...new Set(parsed.data)];
     }
 
-    // Optional fast mode: skip presenter LLM + categorizer for cache misses and
+    // Optional fast mode: skip the presenter LLM for cache misses and
     // return identity-only cards flagged presentationPending (two-phase fetch).
     const presentationParam = url.searchParams.get('presentation');
     if (presentationParam && presentationParam !== 'skeleton' && presentationParam !== 'full') {
@@ -226,7 +226,7 @@ export class OpportunityController {
     }
     const presentation = presentationParam === 'skeleton' ? 'skeleton' as const : undefined;
 
-    const result = await opportunityService.getHomeView(user.id, {
+    const result = await opportunityService.getRadarView(user.id, {
       networkId,
       ...scope,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,

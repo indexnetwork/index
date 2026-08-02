@@ -63,14 +63,14 @@ function createMockCache(): OpportunityCache {
 }
 
 function createService(opts: {
-  homeGraphResult?: Record<string, unknown>;
+  radarGraphResult?: Record<string, unknown>;
   withMaintenanceGraph?: boolean;
 }) {
   const cache = createMockCache();
   const service = new OpportunityService(undefined, cache);
 
-  const graphResult = opts.homeGraphResult ?? { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
-  (service as unknown as Record<string, unknown>).homeGraph = {
+  const graphResult = opts.radarGraphResult ?? { items: [], meta: { totalOpportunities: 0 } };
+  (service as unknown as Record<string, unknown>).radarGraph = {
     invoke: mock(() => Promise.resolve(graphResult)),
   };
 
@@ -90,11 +90,11 @@ function createService(opts: {
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("OpportunityService.getHomeView — rediscovery trigger", () => {
-  it("triggers maintenance graph on every home view request", async () => {
+describe("OpportunityService.getRadarView — rediscovery trigger", () => {
+  it("triggers maintenance graph on every radar view request", async () => {
     const { service, mockMaintenanceInvoke } = createService({});
 
-    await service.getHomeView(USER_ID);
+    await service.getRadarView(USER_ID);
     await new Promise((r) => setTimeout(r, 50));
 
     expect(mockMaintenanceInvoke).toHaveBeenCalledTimes(1);
@@ -105,7 +105,7 @@ describe("OpportunityService.getHomeView — rediscovery trigger", () => {
   it("sets maintenanceTriggered:true in meta", async () => {
     const { service } = createService({});
 
-    const result = await service.getHomeView(USER_ID);
+    const result = await service.getRadarView(USER_ID);
 
     expect('meta' in result).toBe(true);
     expect((result as { meta: { maintenanceTriggered: boolean } }).meta.maintenanceTriggered).toBe(true);
@@ -114,7 +114,7 @@ describe("OpportunityService.getHomeView — rediscovery trigger", () => {
   it("does NOT trigger maintenance graph when networkId scoped", async () => {
     const { service, mockMaintenanceInvoke } = createService({});
 
-    await service.getHomeView(USER_ID, { networkId: "some-network-id" });
+    await service.getRadarView(USER_ID, { networkId: "some-network-id" });
     await new Promise((r) => setTimeout(r, 50));
 
     expect(mockMaintenanceInvoke).not.toHaveBeenCalled();
@@ -123,24 +123,24 @@ describe("OpportunityService.getHomeView — rediscovery trigger", () => {
   it("does NOT trigger maintenance graph when maintenanceGraph is absent", async () => {
     const { service, mockMaintenanceInvoke } = createService({ withMaintenanceGraph: false });
 
-    await service.getHomeView(USER_ID);
+    await service.getRadarView(USER_ID);
     await new Promise((r) => setTimeout(r, 50));
 
     expect(mockMaintenanceInvoke).not.toHaveBeenCalled();
   });
 
-  it("still returns home view even when maintenance graph throws", async () => {
+  it("still returns radar view even when maintenance graph throws", async () => {
     const { service, mockMaintenanceInvoke } = createService({
-      homeGraphResult: {
-        sections: [{ id: "s1", title: "For You", iconName: "sparkles", items: [{ id: "opp-1" }] }],
-        meta: { totalOpportunities: 1, totalSections: 1 },
+      radarGraphResult: {
+        items: [{ id: "opp-1" }],
+        meta: { totalOpportunities: 1 },
       },
     });
     mockMaintenanceInvoke.mockImplementation(() => Promise.reject(new Error("Maintenance failed")));
 
-    const result = await service.getHomeView(USER_ID);
+    const result = await service.getRadarView(USER_ID);
 
-    expect('sections' in result).toBe(true);
-    expect((result as { sections: unknown[] }).sections).toHaveLength(1);
+    expect('items' in result).toBe(true);
+    expect((result as { items: unknown[] }).items).toHaveLength(1);
   });
 });

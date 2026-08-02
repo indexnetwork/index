@@ -73,6 +73,47 @@ Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case I
 takes `--component decompose|analyze`. Baseline/report writes refuse to replace existing
 files unless `--force` is passed (see the artifact envelope section below).
 
+## Eval ops site (internal, local-only)
+
+[`eval/ops/`](./ops/README.md) is the provider-free core behind the **eval ops website**
+([`apps/eval-ops`](../../../apps/eval-ops/README.md)): a local console that indexes every
+baseline and run report at once, launches harness runs and streams their logs live,
+compares two artifacts, and drives a guarded test-database fixture reset.
+
+```bash
+cd packages/protocol && bun run eval:web    # API on 127.0.0.1:4321
+bun run dev:eval-ops                        # UI on 127.0.0.1:5174 (from the repo root)
+```
+
+It is **not** the public artifact viewer above, and the two are not interchangeable:
+
+| | `eval:view` (viewer) | `eval:web` + `dev:eval-ops` (ops site) |
+| :-- | :-- | :-- |
+| Output | one self-contained, deterministic HTML file | a live local web app |
+| Scope | exactly one artifact | every baseline and run report at once |
+| Audience | shareable/public | internal operator, loopback only |
+| Content | allowlisted **redacted** public projection | full internal detail, credentials excluded |
+| Capability | read-only rendering | can **launch runs that spend money** and flush the test database |
+
+Only the four baseline-backed scorecard harnesses (`matching`, `profile`, `premise`,
+`opportunity`) are supported by the ops site — they are the ones that emit the shared
+artifact envelope. Every other harness stays CLI-only.
+
+Destructive flags (`--update-baseline`, `--force`) are structurally unreachable from the
+site: they are absent from both `HARNESS_REGISTRY` and the request schema, so no request
+can produce them. Updating a committed baseline remains a deliberate CLI act with a
+human-written `--reason`. Any run under a profile other than `default` is **experimental**:
+it is forced to `--no-save` (so it can never become `--rolling-baseline` fuel in
+`eval/<harness>/runs/` for everyone else) and is never diffed against the committed
+baseline.
+
+The API binds loopback **and** requires a verified `@index.network` Index identity on every
+route but the two that make signing in possible — defence in depth, not a licence to expose
+it: the loopback bind, the `Host` check and the `Origin` allowlist are what keep it local,
+and it is still not safe to expose. See
+[`eval/ops/README.md`](./ops/README.md) for the full security model, the profile contract,
+the exit-code→status map, the comparability refusal, and the fixture guard.
+
 ## Live-eval canary (scheduled + manual)
 
 `bun run eval:canary` executes the committed manifest in
@@ -123,6 +164,7 @@ eval/
 ├── opportunity/            # opportunity-card corpus, scorer, leakage detectors, reporter
 ├── clarification/          # IntentClarifier QUD taxonomy corpus + scorer
 ├── viewer/                 # provider-free, privacy-aware static artifact viewer
+├── ops/                    # eval ops core: artifact index, run launcher, compare, fixture guard
 └── verify.ts               # provider-free CI gate: per-suite typecheck + tests (see below)
 ```
 

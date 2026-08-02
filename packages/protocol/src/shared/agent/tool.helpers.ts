@@ -574,7 +574,7 @@ interface ToolDepsBindings {
    * compositions leave this unset so tools construct the real presenter.
    */
   opportunityPresentation?: {
-    createPresenter?: () => { presentHomeCard(input: unknown): Promise<unknown> };
+    createPresenter?: () => { presentCard(input: unknown): Promise<unknown> };
     gatherPresenterContext?: (...args: unknown[]) => Promise<unknown>;
   };
   /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */

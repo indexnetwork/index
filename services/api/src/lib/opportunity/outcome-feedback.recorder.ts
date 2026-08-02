@@ -23,7 +23,7 @@
  * The stored snapshot is presentation-approved and bounded; the sole
  * counterpart is stored only as a recipient-scoped, non-reversible hash.
  */
-import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, buildDeliveryCardPresentationCacheKey, buildHomeCardPresentationCacheKey, isOutcomeQuestionsActivated, stripUnsupportedOpportunityClaims, stripUuids, truncateAtBoundary, type Opportunity, type OutcomeLabel } from '@indexnetwork/protocol';
+import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey, isOutcomeQuestionsActivated, stripUnsupportedOpportunityClaims, stripUuids, truncateAtBoundary, type Opportunity, type OutcomeLabel } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { cacheAdapter } from '../../adapters/cache.adapter';
@@ -82,7 +82,7 @@ async function getCachedApprovedSnapshot(
 ): Promise<string | null> {
   try {
     const [home, delivery] = await cacheAdapter.mget<CachedHomePresentation | CachedDeliveryPresentation>([
-      buildHomeCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
+      buildRadarCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
       buildDeliveryCardPresentationCacheKey(opportunity.id, opportunity.status, recipientUserId),
     ]);
     if (home?.opportunityId === opportunity.id && 'mainText' in home) {

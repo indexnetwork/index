@@ -588,7 +588,7 @@ export interface OpportunityQueryOptions {
   role?: string;
   limit?: number;
   offset?: number;
-  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. home view, API). */
+  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. radar view, API). */
   conversationId?: string;
 }
 
@@ -2913,12 +2913,12 @@ export type HydeGraphDatabase = Pick<
 >;
 
 /**
- * Database interface for Home Graph (opportunity home view).
+ * Database interface for Radar Graph (opportunity radar view).
  * Load opportunities, enrich with profile/index, and support presenter context.
  *
  * Access layer: UserDatabase (own opportunities and profile)
  */
-export type HomeGraphDatabase = Pick<
+export type RadarGraphDatabase = Pick<
   Database,
   | 'getOpportunitiesForUser'
   | 'getOpportunity'

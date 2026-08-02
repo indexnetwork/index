@@ -22,7 +22,7 @@ const STUB_CARD: RenderedCard = {
 
 class StubPresenter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async presentHomeCard(_input: any): Promise<typeof STUB_CARD & { mutualIntentsLabel: string }> {
+  async presentCard(_input: any): Promise<typeof STUB_CARD & { mutualIntentsLabel: string }> {
     return { ...STUB_CARD, mutualIntentsLabel: 'Shared interests' };
   }
 }

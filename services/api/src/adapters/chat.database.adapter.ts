@@ -27,7 +27,7 @@ export class ChatDatabaseAdapter {
     return this._questionerAdapter;
   }
 
-  // Negotiation context methods — required by HomeGraphDatabase
+  // Negotiation context methods — required by RadarGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
   async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }

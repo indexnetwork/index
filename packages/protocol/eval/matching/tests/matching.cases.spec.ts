@@ -25,6 +25,19 @@ describe("matching corpus", () => {
     }
   });
 
+  it("every discovererId names exactly one entity in its case", () => {
+    // The evaluator's candidates are `entities where userId !== discovererId`.
+    // A discovererId that names no entity silently promotes the source to a
+    // candidate, and the model can never return the expected batch: the run
+    // fails every attempt with evaluator-incomplete. This fails statically
+    // here instead of after a live model call. (scout-vs-scouted-athlete
+    // shipped exactly this way and failed 6/6 attempts across environments.)
+    for (const c of CASES) {
+      const matches = c.input.entities.filter((e) => e.userId === c.input.discovererId);
+      expect(matches.length).toBe(1);
+    }
+  });
+
   it("every case has at least one explicit domain category", () => {
     const allowed = new Set<Domain>(["technology", "research", "arts", "funding", "location", "community", "sports"]);
     for (const c of CASES) {
@@ -63,9 +76,10 @@ describe("matching corpus", () => {
     // Cases added to the corpus but not yet captured by a live `--update-baseline`
     // run. Every entry here must still be missing from the baseline (stale entries
     // fail below) — remove ids from this set when the baseline is next refreshed.
-    const BASELINE_PENDING_CASE_IDS = new Set<string>([
-      "event_network/co-membership-is-not-attendance", // added in #1144 without a baseline run
-    ]);
+    // Empty: the 2026-08-02 refresh captured every corpus case, including
+    // event_network/co-membership-is-not-attendance (added in #1144 without a
+    // baseline run). Add ids here only when a case lands before its baseline run.
+    const BASELINE_PENDING_CASE_IDS = new Set<string>([]);
 
     const envelope = (await Bun.file(new URL("../baselines/matching.baseline.json", import.meta.url)).json()) as { payload: Scorecard };
     const baselineIds = new Set(envelope.payload.cases.map((c) => c.caseId));

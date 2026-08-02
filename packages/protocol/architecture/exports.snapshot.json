@@ -237,7 +237,7 @@
       "source": "./shared/interfaces/database.interface.js"
     },
     {
-      "name": "HomeGraphDatabase",
+      "name": "RadarGraphDatabase",
       "kind": "type",
       "stability": "stable",
       "source": "./shared/interfaces/database.interface.js"
@@ -819,7 +819,7 @@
       "source": "./capabilities/participant-agents.facade.js"
     },
     {
-      "name": "HomeGraphFactory",
+      "name": "RadarGraphFactory",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1689,7 +1689,7 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "FEED_SOFT_TARGETS",
+      "name": "RADAR_SOFT_TARGETS",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1701,13 +1701,13 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "computeFeedHealth",
+      "name": "computeRadarHealth",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "FeedHealthInput",
+      "name": "RadarHealthInput",
       "kind": "type",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1827,7 +1827,7 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "buildHomeCardPresentationCacheKey",
+      "name": "buildRadarCardPresentationCacheKey",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"

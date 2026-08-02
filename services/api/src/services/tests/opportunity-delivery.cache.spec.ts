@@ -34,11 +34,11 @@ const STUB_OPP = {
   expiresAt: null,
 };
 
-const presentHomeCard = mock(async () => ({
+const presentCard = mock(async () => ({
   ...STUB_CARD,
   mutualIntentsLabel: '',
 }));
-const presenter = { presentHomeCard } as unknown as OpportunityPresenter;
+const presenter = { presentCard } as unknown as OpportunityPresenter;
 
 const database = {
   select: mock(() => ({
@@ -82,7 +82,7 @@ function makeMockCache(primed = false): Cache & {
 
 describe('OpportunityDeliveryService cache-aside wiring', () => {
   beforeEach(() => {
-    presentHomeCard.mockClear();
+    presentCard.mockClear();
   });
 
   async function renderCard(
@@ -122,13 +122,13 @@ describe('OpportunityDeliveryService cache-aside wiring', () => {
   it('invokes the presenter exactly once on a cache miss', async () => {
     await renderCard(makeService(makeMockCache()), OPP_ID, USER_ID);
 
-    expect(presentHomeCard).toHaveBeenCalledTimes(1);
+    expect(presentCard).toHaveBeenCalledTimes(1);
   });
 
   it('does not call the presenter on a cache hit', async () => {
     const rendered = await renderCard(makeService(makeMockCache(true)), OPP_ID, USER_ID);
 
-    expect(presentHomeCard).not.toHaveBeenCalled();
+    expect(presentCard).not.toHaveBeenCalled();
     expect(rendered.headline).toBe(STUB_CARD.headline);
   });
 

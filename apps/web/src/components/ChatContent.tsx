@@ -1118,7 +1118,7 @@ export default function ChatContent({
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
               Talk to your agent
             </h1>
-            <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
+            <DebugCopyButton fetchPath="/debug/radar" title="Copy radar debug JSON" iconSize="w-5 h-5" />
           </div>
           <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
             {reporterSurface && (

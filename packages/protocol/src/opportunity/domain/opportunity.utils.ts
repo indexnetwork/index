@@ -110,7 +110,7 @@ export function validateOpportunityActors(actors: Array<{ userId?: string; role:
  * viewing an accepted opportunity).
  *
  * The feed graph and debug controller chain both predicates: an opportunity only
- * reaches the home feed if it passes `canUserSeeOpportunity` first, then
+ * reaches the radar view if it passes `canUserSeeOpportunity` first, then
  * `isActionableForViewer`. For `agent with introducer at pending`,
  * `canUserSeeOpportunity` returns false (read gate blocks it), so the opportunity
  * never surfaces even though `isActionableForViewer` Rule 4 would return true in
@@ -146,7 +146,7 @@ export function canUserSeeOpportunity(
 }
 
 /**
- * Whether an opportunity should appear on the viewer's home feed (actionable =
+ * Whether an opportunity should appear on the viewer's radar (actionable =
  * has a pending action for this user).
  *
  * Rules (see `docs/design/opportunity-status-lifecycle.md`, §3.E):
@@ -209,8 +209,8 @@ export function isActionableForViewer(
 /** Feed category for home composition. */
 export type FeedCategory = 'connection' | 'connector-flow' | 'expired';
 
-/** Soft targets for home feed composition. */
-export const FEED_SOFT_TARGETS = {
+/** Soft targets for radar composition. */
+export const RADAR_SOFT_TARGETS = {
   connection: 3,
   connectorFlow: 2,
   expired: 2,
@@ -235,7 +235,7 @@ export function classifyOpportunity(
 }
 
 /**
- * Select opportunities for the home feed using soft composition targets.
+ * Select opportunities for the radar using soft composition targets.
  * Fills each category up to its target, then redistributes unused slots
  * to categories that have more items available. Preserves input order.
  *
@@ -259,9 +259,9 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
   }
 
   const targets: Record<FeedCategory, number> = {
-    connection: FEED_SOFT_TARGETS.connection,
-    'connector-flow': FEED_SOFT_TARGETS.connectorFlow,
-    expired: FEED_SOFT_TARGETS.expired,
+    connection: RADAR_SOFT_TARGETS.connection,
+    'connector-flow': RADAR_SOFT_TARGETS.connectorFlow,
+    expired: RADAR_SOFT_TARGETS.expired,
   };
 
   // First pass: fill each category up to its target

@@ -1,10 +1,10 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Opportunity } from '../shared/interfaces/database.interface.js';
-import type { FeedHealthResult } from '../opportunity/feed/feed.health.js';
+import type { RadarHealthResult } from '../opportunity/radar/radar.health.js';
 
 /**
  * Maintenance Graph State (Annotation-based).
- * Flow: loadCurrentFeed → scoreFeedHealth → [conditional: rediscover | END] → logMaintenance → END
+ * Flow: loadCurrentRadar → scoreRadarHealth → [conditional: rediscover | END] → logMaintenance → END
  */
 export const MaintenanceGraphState = Annotation.Root({
   userId: Annotation<string>({
@@ -36,8 +36,8 @@ export const MaintenanceGraphState = Annotation.Root({
     default: () => null,
   }),
 
-  /** Feed health score result. */
-  healthResult: Annotation<FeedHealthResult | null>({
+  /** Radar health score result. */
+  healthResult: Annotation<RadarHealthResult | null>({
     reducer: (curr, next) => next ?? curr,
     default: () => null,
   }),
@@ -48,7 +48,7 @@ export const MaintenanceGraphState = Annotation.Root({
     default: () => 0,
   }),
 
-  /** Current connector-flow opportunity count (from scoreFeedHealth). */
+  /** Current connector-flow opportunity count (from scoreRadarHealth). */
   connectorFlowCount: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
     default: () => 0,

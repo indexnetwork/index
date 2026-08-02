@@ -33,7 +33,7 @@ export type PresenterDatabase = Pick<
 >;
 
 const presentLog = protocolLogger("OpportunityPresenter:present");
-const presentHomeCardLog = protocolLogger("OpportunityPresenter:presentHomeCard");
+const presentCardLog = protocolLogger("OpportunityPresenter:presentCard");
 const LLM_TIMEOUT_MS = 20_000;
 
 
@@ -70,8 +70,8 @@ export type OpportunityPresentationResult = z.infer<typeof PresentationSchema> &
   fallbackReason?: "timeout" | "error" | "sanitization";
 };
 
-/** Input for home-card presenter call; extends PresenterInput with optional mutual intent count. */
-export interface HomeCardPresenterInput extends PresenterInput {
+/** Input for card presenter call; extends PresenterInput with optional mutual intent count. */
+export interface CardPresenterInput extends PresenterInput {
   /** Number of overlapping intents (for generating mutualIntentsLabel). */
   mutualIntentCount?: number;
   /**
@@ -83,8 +83,8 @@ export interface HomeCardPresenterInput extends PresenterInput {
   negotiationContext?: NegotiationContext;
 }
 
-/** LLM-generated fields for home-card presentation (buttons are hardcoded by callers, not LLM-generated). */
-export const HomeCardLLMSchema = z.object({
+/** LLM-generated fields for card presentation (buttons are hardcoded by callers, not LLM-generated). */
+export const CardLLMSchema = z.object({
   headline: z
     .string()
     .describe("Short, compelling headline for this opportunity"),
@@ -117,8 +117,8 @@ export const HomeCardLLMSchema = z.object({
   greeting: z.string().max(500).describe(GREETING_DESCRIPTION),
 });
 
-/** LLM-generated result from presentHomeCard (callers append button labels from opportunity.constants). */
-export type HomeCardLLMResult = z.infer<typeof HomeCardLLMSchema> & {
+/** LLM-generated result from presentCard (callers append button labels from opportunity.constants). */
+export type CardLLMResult = z.infer<typeof CardLLMSchema> & {
   /**
    * True when the LLM call failed and this is fallback-shaped copy built from
    * raw match reasoning. Callers with strict quality requirements (digests,
@@ -128,14 +128,14 @@ export type HomeCardLLMResult = z.infer<typeof HomeCardLLMSchema> & {
   isFallback?: boolean;
 };
 
-/** Full home-card display contract including hardcoded button labels (assembled by callers). */
-export type HomeCardPresentationResult = HomeCardLLMResult & {
+/** Full card display contract including hardcoded button labels (assembled by callers). */
+export type CardPresentationResult = CardLLMResult & {
   primaryActionLabel: string;
   secondaryActionLabel: string;
 };
 
 const homeCardResponseFormat = z.object({
-  presentation: HomeCardLLMSchema,
+  presentation: CardLLMSchema,
 });
 
 /** Input for a single presenter call (all context pre-assembled). */
@@ -212,7 +212,7 @@ When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created b
 `;
 
 const homeCardSystemPrompt = `
-You are an expert at presenting connection opportunities for a home feed card.
+You are an expert at presenting connection opportunities for an opportunity card.
 
 Given context about the viewer, the other person, and why they were matched, produce:
 1. headline: one short hook line.
@@ -427,7 +427,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
   }
 
   /**
-   * Generate LLM-powered home-card content (headline, body, narrator remark, mutual-intent label).
+   * Generate LLM-powered card content (headline, body, narrator remark, mutual-intent label).
    * Callers append button labels from opportunity.constants.
    *
    * When `negotiationContext.status === 'negotiating'`, returns a templated
@@ -435,9 +435,9 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
    * "negotiation in progress" at that point.
    */
   @Timed()
-  public async presentHomeCard(
-    input: HomeCardPresenterInput,
-  ): Promise<HomeCardLLMResult> {
+  public async presentCard(
+    input: CardPresenterInput,
+  ): Promise<CardLLMResult> {
     if (input.negotiationContext?.status === 'negotiating') {
       return buildNegotiatingChip(input);
     }
@@ -532,7 +532,7 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      presentHomeCardLog.warn(
+      presentCardLog.warn(
         "LLM failed, returning fallback",
         {
           event: "presenter_fallback",
@@ -587,20 +587,20 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
   }
 
   /**
-   * Process multiple opportunities as home cards in parallel with bounded concurrency.
-   * Returns full home-card display contracts (headline, body, narrator remark, action labels, mutual-intent label).
+   * Process multiple opportunities as cards in parallel with bounded concurrency.
+   * Returns full card display contracts (headline, body, narrator remark, action labels, mutual-intent label).
    */
   @Timed()
-  public async presentHomeCardBatch(
-    inputs: HomeCardPresenterInput[],
+  public async presentCardBatch(
+    inputs: CardPresenterInput[],
     options?: { concurrency?: number },
-  ): Promise<HomeCardLLMResult[]> {
+  ): Promise<CardLLMResult[]> {
     const concurrency = options?.concurrency ?? 5;
-    const results: HomeCardLLMResult[] = [];
+    const results: CardLLMResult[] = [];
     for (let i = 0; i < inputs.length; i += concurrency) {
       const chunk = inputs.slice(i, i + concurrency);
       const chunkResults = await Promise.all(
-        chunk.map((inp) => this.presentHomeCard(inp)),
+        chunk.map((inp) => this.presentCard(inp)),
       );
       results.push(...chunkResults);
     }
@@ -613,7 +613,7 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
 // ──────────────────────────────────────────────────────────────
 
 /**
- * Builds a "NEGOTIATION CONTEXT:" block for the home-card prompt. Returns an
+ * Builds a "NEGOTIATION CONTEXT:" block for the card prompt. Returns an
  * empty string when the opportunity has no meaningful negotiation context
  * (draft/latent) or when the opportunity is still negotiating (handled via
  * the templated chip, not the LLM).
@@ -651,11 +651,11 @@ ${turnLines.length > 0 ? turnLines.map((l) => `  ${l}`).join("\n") : "  (no turn
 }
 
 /**
- * Builds a templated home-card result for an opportunity whose negotiation
+ * Builds a templated card result for an opportunity whose negotiation
  * is still in progress. Bypasses the LLM so users see a stable "currently
  * negotiating" chip while turns are still being exchanged.
  */
-function buildNegotiatingChip(input: HomeCardPresenterInput): HomeCardLLMResult {
+function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   const ctx = input.negotiationContext;
   const turnCount = ctx?.turnCount ?? 0;
   const turnCap = ctx?.turnCap && ctx.turnCap > 0 ? ctx.turnCap : undefined;
@@ -697,7 +697,7 @@ export function summarizeSignalsForPresenter(
  * Gather all context needed for the presenter from the database.
  * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
  *
- * @param displayCounterpartUserId - When set (e.g. for home card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card. Omitted for introducer view (card shows both parties).
+ * @param displayCounterpartUserId - When set (e.g. for a radar card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card. Omitted for introducer view (card shows both parties).
  */
 export async function gatherPresenterContext(
   database: PresenterDatabase,

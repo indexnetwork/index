@@ -3,7 +3,7 @@
  *
  * When a user answers a pool_discovery question, every candidate the mining
  * pass assigned to a side gets a multiplicative adjustment written to
- * `opportunities.metadata.poolAdjustments`. The home feed (flag-gated) orders
+ * `opportunities.metadata.poolAdjustments`. The radar view (flag-gated) orders
  * by `confidence × Π factor`, floored so demoted candidates stay visible.
  *
  * Invariants:

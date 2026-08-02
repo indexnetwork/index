@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/*
+ * Dark terminal palette. Colours are bound to eval meaning, not decoration:
+ * green pass (exit 0), red regression (1), magenta execution error (2),
+ * yellow insufficient evidence (3), dim queued/cancelled, cyan selection.
+ * Values are tuned for WCAG AA on the near-black background; literal ANSI
+ * values fail contrast here.
+ */
+@theme {
+  --color-term-bg: #0b0d0e;
+  --color-term-panel: #111416;
+  --color-term-rule: #2b3236;
+  --color-term-fg: #c8ccc8;
+  --color-term-dim: #7d878c;
+  --color-term-green: #5ddc7a;
+  --color-term-red: #ff6b64;
+  --color-term-yellow: #e6c34a;
+  --color-term-magenta: #d982e0;
+  --color-term-cyan: #56c8d8;
+  --color-term-blue: #6fa8ff;
+  --color-term-white: #f0f3f0;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html, body, #root {
+  background: var(--color-term-bg);
+  color: var(--color-term-fg);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* Motion is limited to a caret and a spinner, and stops entirely on request. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

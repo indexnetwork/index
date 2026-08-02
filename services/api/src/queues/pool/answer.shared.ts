@@ -14,7 +14,7 @@
  *     completion re-mines via the shared hook (P2.1), staging the next
  *     question, and writes Beat 2.
  *
- * Ordering itself is read-side: feed.graph.ts multiplies confidence by the
+ * Ordering itself is read-side: radar.graph.ts multiplies confidence by the
  * stored factors when POOL_QUESTIONS_RANKING=on. The categorizer cache key
  * hashes the ORDERED id set, so a reorder is structurally a fresh cache key —
  * no explicit invalidation needed (verified IND-419 recon).

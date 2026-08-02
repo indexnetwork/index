@@ -283,7 +283,7 @@ const CHAT_DISPLAY_LIMIT = 6;
  *
  * Note: narratorChip.text is generated via regex heuristics (narratorRemarkFromReasoning)
  * rather than the OpportunityPresenter LLM. If narrator quality becomes an issue again,
- * consider making this function async and delegating to OpportunityPresenter.presentHomeCard()
+ * consider making this function async and delegating to OpportunityPresenter.presentCard()
  * which already produces a high-quality narratorRemark via LLM (used by the home graph
  * and discovery pipeline). The trade-off is 5-20s latency per card.
  *
@@ -659,7 +659,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
                     loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status),
                   ]);
 
-                  const presentation = await presenter.presentHomeCard({
+                  const presentation = await presenter.presentCard({
                     ...ctx,
                     opportunityStatus: opp.status,
                     ...(negotiationContext ? { negotiationContext } : {}),
@@ -846,7 +846,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
                   loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status),
                 ]);
 
-                const presentation = await presenter.presentHomeCard({
+                const presentation = await presenter.presentCard({
                   ...ctx,
                   opportunityStatus: opp.status,
                   ...(negotiationContext ? { negotiationContext } : {}),

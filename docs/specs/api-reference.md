@@ -1587,9 +1587,9 @@ promptless automatic assignment therefore reports `promptPresence: "none"`,
 The three `missing*` diagnosis fields independently identify absent verification,
 assignment, and HyDE artifacts.
 
-### GET /api/debug/home
+### GET /api/debug/radar
 
-Returns a home-level diagnostic snapshot for the authenticated user, including intent stats, network memberships, opportunity aggregates, simulated home-view filtering, and a pipeline-health diagnosis.
+Returns a radar-level diagnostic snapshot for the authenticated user, including intent stats, network memberships, opportunity aggregates, simulated radar-view filtering, and a pipeline-health diagnosis.
 
 **Auth**: DebugGuard + AuthGuard
 
@@ -1614,7 +1614,7 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
     "byStatus": { "pending": 5, "accepted": 10 },
     "actionable": 4
   },
-  "homeView": {
+  "radarView": {
     "cardsReturned": 4,
     "filteredOut": {
       "notActionable": 3,
@@ -1628,7 +1628,7 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
     "intentsHaveHydeDocuments": true,
     "intentsAreIndexed": true,
     "hasOpportunities": true,
-    "opportunitiesReachHome": true,
+    "opportunitiesReachRadar": true,
     "bottleneck": null
   }
 }
@@ -2864,21 +2864,21 @@ Get shared accepted opportunities between the authenticated user and a peer, use
 
 **Response**: JSON with opportunity cards for chat context.
 
-### GET /api/opportunities/home
+### GET /api/opportunities/radar
 
-Home view with dynamic sections including LLM-categorized opportunities, presenter text, and Lucide icons.
+Radar view: a flat list of opportunity cards with presenter text, optionally scoped to one intent. Clients bucket by lifecycle status themselves.
 
 **Auth**: AuthGuard
 
 **Query params**:
 - `networkId` — Scope to a specific network (optional)
 - `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
-- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe. Pool-answer factors and deprioritization reasons apply only when their `recipientUserId + intentId` provenance exactly matches this viewer and selected intent; global Home and legacy unscoped adjustments ignore them.
+- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Applied before radar visibility filtering, sorting, and counterpart dedupe. Pool-answer factors and deprioritization reasons apply only when their `recipientUserId + intentId` provenance exactly matches this viewer and selected intent; global Radar and legacy unscoped adjustments ignore them.
 - `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
-- `noCache` — Bypass home cache when `true` or `1` (optional)
+- `noCache` — Bypass radar cache when `true` or `1` (optional)
 
-**Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
+**Response**: JSON with a flat `items` array of presenter cards plus `meta`. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
 
 ### GET /api/opportunities/:id
 

@@ -1,19 +1,12 @@
 /** Cache namespace for opportunity presentation copy. Bump to invalidate copy safety changes. */
 export const OPPORTUNITY_PRESENTATION_CACHE_VERSION = "v2";
 
-export function buildHomeCardPresentationCacheKey(
+export function buildRadarCardPresentationCacheKey(
   opportunityId: string,
   status: string,
   viewerId: string,
 ): string {
-  return `home:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}`;
-}
-
-export function buildHomeCategoryPresentationCacheKey(
-  viewerId: string,
-  opportunitySetHash: string,
-): string {
-  return `home:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:categories:${viewerId}:${opportunitySetHash}`;
+  return `radar:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}`;
 }
 
 export function buildDeliveryCardPresentationCacheKey(

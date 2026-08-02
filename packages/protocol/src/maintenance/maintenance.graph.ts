@@ -1,16 +1,16 @@
 /**
- * Maintenance Graph: evaluate feed health and trigger rediscovery when unhealthy.
+ * Maintenance Graph: evaluate radar health and trigger rediscovery when unhealthy.
  * Also runs introducer discovery when connector-flow slots are underfilled.
  *
- * Write path — separate from the read-only HomeGraph.
- * Flow: loadCurrentFeed → scoreFeedHealth → [shouldRediscover] → rediscover → introducerDiscovery → logMaintenance → END
+ * Write path — separate from the read-only RadarGraph.
+ * Flow: loadCurrentRadar → scoreRadarHealth → [shouldRediscover] → rediscover → introducerDiscovery → logMaintenance → END
  *                                          └─ [skip rediscovery] ─────────────→ introducerDiscovery → logMaintenance → END
  */
 import { StateGraph, START, END } from '@langchain/langgraph';
 
 import { MaintenanceGraphState } from './maintenance.state.js';
-import { computeFeedHealth } from '../opportunity/feed/feed.health.js';
-import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, FEED_SOFT_TARGETS } from '../opportunity/opportunity.utils.js';
+import { computeRadarHealth } from '../opportunity/radar/radar.health.js';
+import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, RADAR_SOFT_TARGETS } from '../opportunity/opportunity.utils.js';
 import { shouldRunIntroducerDiscovery, runIntroducerDiscovery, type IntroducerDiscoveryDatabase, type IntroducerDiscoveryQueue } from '../opportunity/opportunity.introducer.js';
 import { isIntroducerDiscoveryEnabled } from '../opportunity/application/opportunity.introducer-feature.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -57,7 +57,7 @@ export class MaintenanceGraphFactory {
 
   /** Compile and return the maintenance graph. */
   createGraph() {
-    const loadCurrentFeedNode = async (state: typeof MaintenanceGraphState.State) => {
+    const loadCurrentRadarNode = async (state: typeof MaintenanceGraphState.State) => {
       if (!state.userId) {
         return { error: 'userId is required' };
       }
@@ -92,12 +92,12 @@ export class MaintenanceGraphFactory {
           lastRediscoveryAt,
         };
       } catch (e) {
-        logger.error('MaintenanceGraph loadCurrentFeed failed', { error: e });
-        return { error: 'Failed to load current feed' };
+        logger.error('MaintenanceGraph loadCurrentRadar failed', { error: e });
+        return { error: 'Failed to load current radar' };
       }
     };
 
-    const scoreFeedHealthNode = async (state: typeof MaintenanceGraphState.State) => {
+    const scoreRadarHealthNode = async (state: typeof MaintenanceGraphState.State) => {
       if (state.error) return {};
       try {
         const opps = state.currentOpportunities ?? [];
@@ -110,7 +110,7 @@ export class MaintenanceGraphFactory {
           else if (category === 'connector-flow') connectorFlowCount++;
         }
 
-        const healthResult = computeFeedHealth({
+        const healthResult = computeRadarHealth({
           connectionCount,
           connectorFlowCount,
           expiredCount: state.expiredCount,
@@ -119,7 +119,7 @@ export class MaintenanceGraphFactory {
           freshnessWindowMs: FRESHNESS_WINDOW_MS,
         });
 
-        logger.verbose('Feed health scored', {
+        logger.verbose('Radar health scored', {
           userId: state.userId,
           score: healthResult.score,
           shouldMaintain: healthResult.shouldMaintain,
@@ -128,8 +128,8 @@ export class MaintenanceGraphFactory {
 
         return { healthResult, connectorFlowCount };
       } catch (e) {
-        logger.error('MaintenanceGraph scoreFeedHealth failed', { error: e });
-        return { error: 'Failed to score feed health' };
+        logger.error('MaintenanceGraph scoreRadarHealth failed', { error: e });
+        return { error: 'Failed to score radar health' };
       }
     };
 
@@ -191,7 +191,7 @@ export class MaintenanceGraphFactory {
       }
 
       try {
-        const connectorFlowTarget = FEED_SOFT_TARGETS.connectorFlow;
+        const connectorFlowTarget = RADAR_SOFT_TARGETS.connectorFlow;
         if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {
           logger.verbose('Introducer discovery skipped — connector-flow target met', {
             userId: state.userId,
@@ -237,17 +237,17 @@ export class MaintenanceGraphFactory {
     };
 
     const graph = new StateGraph(MaintenanceGraphState)
-      .addNode('loadCurrentFeed', loadCurrentFeedNode)
-      .addNode('scoreFeedHealth', scoreFeedHealthNode)
+      .addNode('loadCurrentRadar', loadCurrentRadarNode)
+      .addNode('scoreRadarHealth', scoreRadarHealthNode)
       .addNode('rediscover', rediscoverNode)
       .addNode('introducerDiscovery', introducerDiscoveryNode)
       .addNode('logMaintenance', logMaintenanceNode)
-      .addEdge(START, 'loadCurrentFeed')
-      .addConditionalEdges('loadCurrentFeed', (state) => (state.error ? 'end' : 'scoreFeedHealth'), {
-        scoreFeedHealth: 'scoreFeedHealth',
+      .addEdge(START, 'loadCurrentRadar')
+      .addConditionalEdges('loadCurrentRadar', (state) => (state.error ? 'end' : 'scoreRadarHealth'), {
+        scoreRadarHealth: 'scoreRadarHealth',
         end: END,
       })
-      .addConditionalEdges('scoreFeedHealth', shouldRediscover, {
+      .addConditionalEdges('scoreRadarHealth', shouldRediscover, {
         rediscover: 'rediscover',
         introducerDiscovery: 'introducerDiscovery',
       })

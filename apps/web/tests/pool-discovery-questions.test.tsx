@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
     visitIntent: vi.fn(async () => {}),
   },
   opportunitiesService: {
-    getHomeView: vi.fn(),
+    getRadarView: vi.fn(),
   },
 }));
 
@@ -82,7 +82,7 @@ function primePageServices() {
     summary: 'Looking for a technical co-founder',
     createdAt: new Date().toISOString(),
   });
-  mocks.opportunitiesService.getHomeView.mockResolvedValue({ sections: [] });
+  mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
 }
 
 

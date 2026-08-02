@@ -94,6 +94,51 @@ git push <indexnetwork-remote> main
 
 > **Subtree:** `packages/protocol/` mirrors `indexnetwork/protocol`. Edit via this monorepo; see `### Subtrees` for sync commands.
 
+### Protocol Evals
+
+The eval harnesses live in `packages/protocol/eval/`. Each suite is gated by the
+`SUITES` manifest in `eval/verify.ts`; a new suite needs its own `tsconfig.json`
+and `tests/` directory, and its tests must be provider-free because `eval:verify`
+strips provider credentials from the child processes it spawns.
+
+```bash
+cd packages/protocol
+
+bun run eval:verify                         # Typecheck + test every eval suite (provider-free)
+bun run eval:matching -- --list-cases       # List a harness's corpus without calling a model
+bun run eval:matching -- --runs 3           # Run a harness (costs tokens)
+```
+
+Harness exit codes: `0` pass, `1` regression, `2` execution error, `3`
+insufficient evidence.
+
+### Eval Ops Site
+
+A local-first web console over the eval artifacts: browse baselines and runs,
+launch the four scorecard harnesses (`matching`, `profile`, `premise`,
+`opportunity`) with live streaming output, compare runs A/B, and control the
+seeded test database. The headless core is `packages/protocol/eval/ops/` (the
+`ops` eval suite); the UI is the `apps/eval-ops/` workspace.
+
+```bash
+cd packages/protocol && bun run eval:web    # Ops API on 127.0.0.1:4321
+bun run dev:eval-ops                        # UI on 127.0.0.1:5174 (from repo root)
+bun run build:eval-ops                      # Build the UI
+```
+
+Both bind loopback, and every route but the two that make signing in possible
+requires a session belonging to a verified `@index.network` Index account
+(sign-in reuses the CLI browser-auth bridge). That is defence in depth, not
+permission to expose it: state-changing requests must be same-origin and carry a
+JSON content type, and every request must be addressed to a loopback host, so
+another site the operator has open cannot drive or read it — those guards, not
+the authentication, are what keep the site local. `WEB_APP_URL` and `API_URL`
+are one pair (mint and verify); the ops server refuses to start on a mismatched
+or half-configured pair. The app is
+deliberately excluded from the root `build` script and from Railway. CI gates it
+through the `eval-ops` job in `.github/workflows/lint.yml` (typecheck, test,
+lint) — the root `build` does not cover it.
+
 ### Subtrees
 
 The following paths are git subtrees tracked to external repos. **Syncing is automatic for Index-owned subtrees** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). AgentVillage is Edge-City-owned and is mounted as a git submodule at `packages/edge-city/agentvillage`; `Edge-City/agentvillage` is canonical. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
@@ -191,6 +236,8 @@ bun run worktree:dev <name>                 # Run all dev servers from a worktre
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run skills:validate                      # Validate every project-local Pi and Codex skill
 bun run test:scripts                         # Run focused deterministic script tests
+bun run dev:eval-ops                         # Eval ops UI on 127.0.0.1:5174 (see ### Eval Ops Site)
+bun run build:eval-ops                       # Build the eval ops UI (excluded from root build)
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
 
@@ -210,6 +257,7 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 index/
 ├── apps/
 │   ├── web/             # Vite + React Router v7 SPA with React 19
+│   ├── eval-ops/        # Local-first eval ops console (Vite + React 19) — not deployed
 │   └── mac/             # Native Apple client subtree → indexnetwork/mac-client
 ├── services/
 │   └── api/             # Backend API & Agent Engine (Bun, TypeScript)
@@ -310,7 +358,7 @@ IND-430 adds disabled-by-default, measurement-only daily monitoring through `Fra
 
 ### Pool-Aware Intent Questions
 
-Discovery completion in both the MCP `DiscoveryRunQueue` and web `FromIntentQueue` runs the shared pool-discriminator mining hook. With `POOL_QUESTIONS_MODE=on`, the top evidence-verified axis becomes an intent-scoped `pool_discovery` question (at most one pending per intent; “Both matter” is always available). The queued/chained final gate re-reads the exact recipient+intent pool and normalized payload+summary fingerprint: it accepts only unchanged fingerprints with pool Jaccard ≥`0.7`; otherwise no row, push, or dismissal is created. Completion system-voids pending drifted rows with `detection.voidedReason='pool_drift'`; voided rows never render, push, count, affect dismissal decay, or suppress novelty. Repeated MODE-on mining skips when the latest durable non-voided snapshot has the same fingerprint and Jaccard ≥`0.7`; independently gated shadow-only mining has no durable cadence anchor. Answer handling is deterministic: the same shared `0.7` threshold governs P3 retained-assignment admission, then chosen/other/live-unassigned candidates receive `1.0`/`0.6`/`0.9` metadata adjustments and matching `pool_discriminator` signals through row-locked adapter writes. Substantive answers also refine the canonical owned intent and fresh resolved axes are suppressed by a full normalized payload+summary fingerprint. No premise is created. With both `POOL_QUESTIONS_MODE=on` and default-off `POOL_QUESTIONS_STAMP_NEWBORN=on`, an evidence-verified fixed-axis classifier stamps the same factors and `questionId` provenance onto genuinely new intent-triggered opportunities immediately before insertion; lifecycle/fingerprint drift, unsafe callback output, and classifier failure fail open to the original insert. `POOL_QUESTIONS_RANKING=on` makes an intent-scoped HomeGraph order by confidence × cumulative adjustment (floor `0.3`) and stamps a template-only deprioritization reason onto cards; off preserves the prior order. Every new adjustment carries `recipientUserId + intentId` provenance, legacy unscoped entries are ignored, and ranking/reasons apply only when both the viewer and selected intent match. Tier-0 reads and row-locked writes require the opportunity's exact `detection.triggeredBy` intent (the broader actor-intent Radar fallback is never used), while canonical refinement deliberately remains keyed only by `questions.detection.sourceId`; newborn stamping uses the same scoped provenance. A preference answer also uses one BullMQ deduplication key per intent (`pool-rerun-<intentId>`) with a sliding 60-second replace/extend window and `keepLastIfActive`, so bursts coalesce while an answer received during an active run is retained as one trailing run; the worker reads the latest durable answers into its search query, re-runs from-intent discovery, awaits failure-isolated mining, and appends count-only Beat 2 narration to the stable intent negotiator session. The intent page uses bounded refresh checkpoints rather than permanent polling. With default-off `POOL_QUESTIONS_PUSH=on` (plus pool-question mode and negotiator availability), both initial and chained producers enqueue the dedicated `PoolQuestionPushQueue` after the shared persist choke point. A per-recipient advisory transaction lock enforces strict dismissal-decayed VoI, pool ≥8, active/owned lifecycle, explicit `intents.lastVisitedAt`, one claim per run/mined cycle, and two claims per UTC day. Delivery inserts/verifies the question ID as one deterministic message in the stable unscoped Personal Agent DM and stamps `detection.pushedAt` atomically; resolved-before-delivery rows are suppressed. Only successfully delivered pending pool rows join the Personal Agent badge. The global Questions page, unscoped injected questions, REST/MCP payloads, and intent-pinned sessions remain pool-push-free. Material payload/summary intent edits void pending stale questions, let an answered axis be asked once under the new fingerprint, and mark exact recipient+intent `poolAdjustments` as `stale:true`; stale adjustments remain for audit but do not rank or demote, while legacy unscoped/malformed entries are preserved. `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_STAMP_NEWBORN`, and `POOL_QUESTIONS_RANKING` remain independent gates. The seven-day TTL is unchanged.
+Discovery completion in both the MCP `DiscoveryRunQueue` and web `FromIntentQueue` runs the shared pool-discriminator mining hook. With `POOL_QUESTIONS_MODE=on`, the top evidence-verified axis becomes an intent-scoped `pool_discovery` question (at most one pending per intent; “Both matter” is always available). The queued/chained final gate re-reads the exact recipient+intent pool and normalized payload+summary fingerprint: it accepts only unchanged fingerprints with pool Jaccard ≥`0.7`; otherwise no row, push, or dismissal is created. Completion system-voids pending drifted rows with `detection.voidedReason='pool_drift'`; voided rows never render, push, count, affect dismissal decay, or suppress novelty. Repeated MODE-on mining skips when the latest durable non-voided snapshot has the same fingerprint and Jaccard ≥`0.7`; independently gated shadow-only mining has no durable cadence anchor. Answer handling is deterministic: the same shared `0.7` threshold governs P3 retained-assignment admission, then chosen/other/live-unassigned candidates receive `1.0`/`0.6`/`0.9` metadata adjustments and matching `pool_discriminator` signals through row-locked adapter writes. Substantive answers also refine the canonical owned intent and fresh resolved axes are suppressed by a full normalized payload+summary fingerprint. No premise is created. With both `POOL_QUESTIONS_MODE=on` and default-off `POOL_QUESTIONS_STAMP_NEWBORN=on`, an evidence-verified fixed-axis classifier stamps the same factors and `questionId` provenance onto genuinely new intent-triggered opportunities immediately before insertion; lifecycle/fingerprint drift, unsafe callback output, and classifier failure fail open to the original insert. `POOL_QUESTIONS_RANKING=on` makes an intent-scoped RadarGraph order by confidence × cumulative adjustment (floor `0.3`) and stamps a template-only deprioritization reason onto cards; off preserves the prior order. Every new adjustment carries `recipientUserId + intentId` provenance, legacy unscoped entries are ignored, and ranking/reasons apply only when both the viewer and selected intent match. Tier-0 reads and row-locked writes require the opportunity's exact `detection.triggeredBy` intent (the broader actor-intent Radar fallback is never used), while canonical refinement deliberately remains keyed only by `questions.detection.sourceId`; newborn stamping uses the same scoped provenance. A preference answer also uses one BullMQ deduplication key per intent (`pool-rerun-<intentId>`) with a sliding 60-second replace/extend window and `keepLastIfActive`, so bursts coalesce while an answer received during an active run is retained as one trailing run; the worker reads the latest durable answers into its search query, re-runs from-intent discovery, awaits failure-isolated mining, and appends count-only Beat 2 narration to the stable intent negotiator session. The intent page uses bounded refresh checkpoints rather than permanent polling. With default-off `POOL_QUESTIONS_PUSH=on` (plus pool-question mode and negotiator availability), both initial and chained producers enqueue the dedicated `PoolQuestionPushQueue` after the shared persist choke point. A per-recipient advisory transaction lock enforces strict dismissal-decayed VoI, pool ≥8, active/owned lifecycle, explicit `intents.lastVisitedAt`, one claim per run/mined cycle, and two claims per UTC day. Delivery inserts/verifies the question ID as one deterministic message in the stable unscoped Personal Agent DM and stamps `detection.pushedAt` atomically; resolved-before-delivery rows are suppressed. Only successfully delivered pending pool rows join the Personal Agent badge. The global Questions page, unscoped injected questions, REST/MCP payloads, and intent-pinned sessions remain pool-push-free. Material payload/summary intent edits void pending stale questions, let an answered axis be asked once under the new fingerprint, and mark exact recipient+intent `poolAdjustments` as `stale:true`; stale adjustments remain for audit but do not rank or demote, while legacy unscoped/malformed entries are preserved. `POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_STAMP_NEWBORN`, and `POOL_QUESTIONS_RANKING` remain independent gates. The seven-day TTL is unchanged.
 
 ### Intent-Page Refinement Questions
 

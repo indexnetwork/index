@@ -537,7 +537,7 @@ describe("scoring-config fingerprint", () => {
 });
 
 describe("committed schema-v1 baselines", () => {
-  const committed: Array<[string]> = [["matching"], ["opportunity"], ["premise"], ["profile"]];
+  const committed: Array<[string]> = [["opportunity"], ["premise"], ["profile"]];
 
   it.each(committed)("eval/%s committed baseline stays readable and is unprovable, never incompatible, for a same-model run", async (harness) => {
     const path = new URL(`../../${harness}/${harness}.eval.ts`, import.meta.url).pathname
@@ -558,6 +558,42 @@ describe("committed schema-v1 baselines", () => {
     const result = assessBaselineComparability(subject, envelope!);
     expect(result.status).toBe("unprovable");
     expect(result.mismatches).toHaveLength(0);
+  });
+
+  // The matching baseline was refreshed on 2026-08-02 as a v2 run artifact:
+  // provenance questions a v1 baseline could only shrug at are now answered.
+  it("eval/matching committed v2 baseline makes provenance provable in both directions", async () => {
+    const path = new URL("../../matching/matching.eval.ts", import.meta.url).pathname
+      .replace("matching.eval.ts", "baselines/matching.baseline.json");
+    const { readBaselineArtifact } = await import("../baseline.js");
+    const envelope = await readBaselineArtifact(path, { harness: "matching" });
+    expect(envelope).not.toBeNull();
+    expect(envelope!.schemaVersion).toBe(2);
+
+    const base = {
+      harness: "matching",
+      harnessVersion: envelope!.harnessVersion,
+      models: [...envelope!.models],
+      selection: { fullCorpus: true, filters: {} },
+      complete: true,
+    };
+
+    // A run from the same corpus and scoring config is provably comparable.
+    const same = assessBaselineComparability(
+      { ...base, corpusFingerprint: envelope!.corpusFingerprint, configFingerprint: envelope!.configFingerprint },
+      envelope!,
+    );
+    expect(same.status).toBe("comparable");
+
+    // A run from a different corpus/config is a named mismatch, never unprovable.
+    const drifted = assessBaselineComparability(
+      { ...base, corpusFingerprint: TEST_FINGERPRINT, configFingerprint: TEST_FINGERPRINT },
+      envelope!,
+    );
+    expect(drifted.status).toBe("incompatible");
+    expect(drifted.mismatches.map((m) => m.dimension)).toEqual(
+      expect.arrayContaining(["corpus", "config"]),
+    );
   });
 });
 

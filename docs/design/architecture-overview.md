@@ -160,7 +160,7 @@ export class IntentNetworkGraphFactory {
 }
 ```
 
-This pattern is applied to all graph factories: `EnrichmentGraphDatabase`, `OpportunityGraphDatabase`, `IntentGraphDatabase`, `NetworkGraphDatabase`, `IntentNetworkGraphDatabase`, `NetworkMembershipGraphDatabase`, `HydeGraphDatabase`, and `HomeGraphDatabase`.
+This pattern is applied to all graph factories: `EnrichmentGraphDatabase`, `OpportunityGraphDatabase`, `IntentGraphDatabase`, `NetworkGraphDatabase`, `IntentNetworkGraphDatabase`, `NetworkMembershipGraphDatabase`, `HydeGraphDatabase`, and `RadarGraphDatabase`.
 
 ### Adapter Naming Convention
 
@@ -208,7 +208,7 @@ Graphs are LangGraph state machines. Each graph is created by a factory class th
 | Network | Manage network (network) CRUD |
 | NetworkMembership | Manage network member join/leave |
 | IntentNetwork | Evaluate and assign/unassign intents to indexes |
-| Home | Categorize and curate home feed content |
+| Radar | Build the radar view: flat presenter-card list |
 | Maintenance | Periodic maintenance tasks |
 | Negotiation | Multi-turn negotiation flows |
 

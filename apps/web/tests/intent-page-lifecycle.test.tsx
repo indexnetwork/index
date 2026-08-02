@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
   const setIntentStatus = vi.fn();
   const archiveIntent = vi.fn();
   const refineIntent = vi.fn();
-  const getHomeView = vi.fn();
+  const getRadarView = vi.fn();
   const getNegotiationActivity = vi.fn();
   const getPending = vi.fn();
   const getAnswered = vi.fn();
@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => {
     setIntentStatus,
     archiveIntent,
     refineIntent,
-    getHomeView,
+    getRadarView,
     getNegotiationActivity,
     getPending,
     getAnswered,
@@ -46,7 +46,7 @@ const mocks = vi.hoisted(() => {
     dismissQuestion,
     notificationError: vi.fn(),
     intentsService: { getIntent, setIntentStatus, archiveIntent, refineIntent, visitIntent: vi.fn(async () => {}) },
-    opportunitiesService: { getHomeView },
+    opportunitiesService: { getRadarView },
     conversationsService: { getNegotiationActivity },
     questionsService: {
       getPending,
@@ -171,10 +171,8 @@ describe('Intent detail lifecycle', () => {
     vi.clearAllMocks();
     mocks.intent.status = 'ACTIVE';
     mocks.getIntent.mockImplementation(async () => ({ ...mocks.intent }));
-    mocks.getHomeView.mockResolvedValue({
-      sections: [{
-        items: [{ opportunityId: 'opportunity-1', status: 'negotiating' }],
-      }],
+    mocks.getRadarView.mockResolvedValue({
+      items: [{ opportunityId: 'opportunity-1', status: 'negotiating' }],
     });
     mocks.getNegotiationActivity.mockResolvedValue([]);
     mocks.getAnswered.mockResolvedValue([]);
@@ -254,7 +252,7 @@ describe('Intent detail lifecycle', () => {
     });
     expect(screen.getByTestId('radar-card-opportunity-1')).toBeInTheDocument();
 
-    mocks.getHomeView.mockResolvedValue({ sections: [] });
+    mocks.getRadarView.mockResolvedValue({ items: [] });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
@@ -336,7 +334,7 @@ describe('Intent detail lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
     await expectWorkspacePreserved();
     expect(mocks.getPending).toHaveBeenCalledTimes(1);
-    expect(mocks.getHomeView).toHaveBeenCalledTimes(2);
+    expect(mocks.getRadarView).toHaveBeenCalledTimes(2);
   });
 
   test('Resume schedules bounded refreshes and surfaces a newly returned pool question', async () => {
@@ -545,7 +543,7 @@ describe('intent-mode answer outcome UI', () => {
     mocks.intent.payload = 'Looking for a co-founder';
     mocks.intent.summary = 'Looking for a co-founder';
     mocks.getIntent.mockResolvedValue({ ...mocks.intent });
-    mocks.getHomeView.mockResolvedValue({ sections: [] });
+    mocks.getRadarView.mockResolvedValue({ items: [] });
     mocks.getNegotiationActivity.mockResolvedValue([]);
     mocks.getAnswered.mockResolvedValue([]);
     mocks.getPending.mockResolvedValue([makeIntentQuestion()]);
