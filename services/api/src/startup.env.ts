@@ -135,6 +135,8 @@ const envSchema = z.object({
   CHAT_SESSION_GAP_MS: optionalPositiveInt,
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
   FAST_SIGNAL_INTAKE: optionalBoolean,
+  SIGNAL_INTAKE_MAX_QUESTIONS: z.string().optional(),
+  SIGNAL_INTAKE_QUESTION_MODE: z.string().optional(),
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
