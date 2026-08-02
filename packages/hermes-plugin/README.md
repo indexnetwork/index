@@ -66,6 +66,15 @@ Handlers intentionally follow Hermes' plugin rules:
 - catch exceptions and return JSON error payloads
 - accept `**kwargs` for forward compatibility
 
+### Naming convention: the `index_` prefix
+
+Every Hermes-facing tool is named `index_<mcp_tool_name>`, while the Index MCP server itself exposes unprefixed names (`list_opportunities`, `read_intents`, ...). This is a deliberate client-side namespacing convention, not an MCP protocol requirement:
+
+- **Collision avoidance.** Hermes merges all plugin tools into one flat namespace; generic names like `read_docs` or `list_opportunities` could clash with other plugins or built-in tools. `index_read_docs` cannot.
+- **Self-describing calls.** In tool-call logs, dashboards, and multi-server setups it is always clear which system a call belongs to.
+
+Implementation: `schemas.py` builds schema names as `f"index_{tool_name}"` and `tools.py` sets `handler.__name__` the same way. Keep the prefix when adding new wrappers so `plugin.yaml`'s `provides_tools` list stays consistent.
+
 ### `index_read_intents`
 
 Accepts:
