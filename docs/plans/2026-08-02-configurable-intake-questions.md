@@ -144,7 +144,7 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
       rounds: [
         { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
         { prompt: "What do you bring?", answer: { selectedOptions: ["Engineering depth"] } },
-        { prompt: "When?", answer: { freeText: "This quarter" } },
+        { prompt: "When?", answer: { selectedOptions: [], freeText: "This quarter" } },
       ],
     });
 
@@ -479,7 +479,7 @@ const MAX_QUESTIONS_CEILING = 10;
 export function getSignalIntakeMaxQuestions(): number {
   const raw = process.env.SIGNAL_INTAKE_MAX_QUESTIONS;
   if (!raw) return DEFAULT_MAX_QUESTIONS;
-  const parsed = /^[1-9]\d*$/.test(raw.trim()) ? Number.parseInt(raw.trim(), 10) : Number.NaN;
+  const parsed = /^\d+$/.test(raw.trim()) ? Number.parseInt(raw.trim(), 10) : Number.NaN;
   if (Number.isNaN(parsed)) return DEFAULT_MAX_QUESTIONS;
   return Math.min(Math.max(parsed, MAX_QUESTIONS_FLOOR), MAX_QUESTIONS_CEILING);
 }
