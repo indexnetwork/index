@@ -1264,38 +1264,25 @@ export interface ResetEnvFileState {
   databaseUrl: string | null;
 }
 
-/**
- * Validates the relationship between the server-injected target and .env.test.
- *
- * The deployed preflight currently requires the file to be present because the
- * migrate step reads it directly; the absent-file acceptance is intentionally
- * pinned by the regression test before that behavior is changed.
- */
+/** Validates the relationship between the server-injected target and .env.test. */
 export function validateResetEnvFile(
   injectedDatabaseUrl: string,
   envFile: ResetEnvFileState,
 ): { ok: true; databaseUrl: string } | { ok: false; reason: string } {
-  if (!envFile.exists) {
-    return {
-      ok: false,
-      reason: "Refusing to reset: .env.test is absent, so the migrate step would target an unknown database.",
-    };
-  }
+  const databaseUrl = injectedDatabaseUrl.trim();
+  if (!envFile.exists) return { ok: true, databaseUrl };
   if (envFile.databaseUrl === null) {
-    return {
-      ok: false,
-      reason: "Refusing to reset: .env.test does not set DATABASE_URL, so the migrate step would target an unknown database.",
-    };
+    return { ok: false, reason: "DATABASE_URL is not set in .env.test; fixture control is unavailable." };
   }
-  if (envFile.databaseUrl !== injectedDatabaseUrl.trim()) {
+  if (envFile.databaseUrl !== databaseUrl) {
     return {
       ok: false,
       reason:
-        `Refusing to reset: .env.test names ${redactDatabaseUrl(envFile.databaseUrl)}, but this server validated `
-        + `${redactDatabaseUrl(injectedDatabaseUrl)}. The migrate step reads that file directly, so the two must agree.`,
+        `this server's DATABASE_URL is ${redactDatabaseUrl(databaseUrl)}, but .env.test names `
+        + `${redactDatabaseUrl(envFile.databaseUrl)}. The migrate step reads that file directly, so the two must agree.`,
     };
   }
-  return { ok: true, databaseUrl: envFile.databaseUrl };
+  return { ok: true, databaseUrl };
 }
 
 type ResetTarget =
@@ -1305,13 +1292,12 @@ type ResetTarget =
 /**
  * Resolves the one database a reset may touch.
  *
- * The guard decides whether the target is disposable at all. The second check is
- * load-bearing, not documentation: every reset runs `db:migrate:test`, whose
- * drizzle.config.ts loads the repository-root .env.test with `override: true` and
- * therefore ignores the DATABASE_URL injected into the child. Flush and seed use
- * the injected URL. The two are the same database only while this server's
- * DATABASE_URL is still the one .env.test names, so a divergence fails the reset
- * closed instead of migrating a database the operator never confirmed.
+ * The guard decides whether the target is disposable at all. When .env.test
+ * exists, the second check is load-bearing: `db:migrate:test` reads that file
+ * directly, while flush and seed use the injected URL. A divergent existing file
+ * therefore fails the reset closed instead of migrating a database the operator
+ * never confirmed. If the file is absent, every subprocess receives the validated
+ * server URL through its environment.
  */
 async function resolveResetTarget(context: OpsContext): Promise<ResetTarget> {
   const databaseUrl = context.databaseUrl ?? "";
@@ -1319,9 +1305,10 @@ async function resolveResetTarget(context: OpsContext): Promise<ResetTarget> {
   if (!guard.allowed) return { ok: false, reason: guard.reason, status: 403 };
 
   const envFile = path.join(context.repoRoot, ".env.test");
+  const declared = await readEnvValue(envFile, "DATABASE_URL");
   const envFileState: ResetEnvFileState = {
-    exists: await Bun.file(envFile).exists(),
-    databaseUrl: await readEnvValue(envFile, "DATABASE_URL"),
+    exists: declared.exists,
+    databaseUrl: declared.value,
   };
   const envValidation = validateResetEnvFile(databaseUrl, envFileState);
   if (!envValidation.ok) return { ok: false, reason: envValidation.reason, status: 409 };
@@ -1329,9 +1316,14 @@ async function resolveResetTarget(context: OpsContext): Promise<ResetTarget> {
 }
 
 /** Reads one key out of a dotenv file. Last assignment wins, as dotenv does. */
-async function readEnvValue(file: string, key: string): Promise<string | null> {
+interface EnvFileValue {
+  exists: boolean;
+  value: string | null;
+}
+
+async function readEnvValue(file: string, key: string): Promise<EnvFileValue> {
   const handle = Bun.file(file);
-  if (!(await handle.exists())) return null;
+  if (!(await handle.exists())) return { exists: false, value: null };
   const pattern = new RegExp(`^(?:export\\s+)?${key}\\s*=\\s*(.*)$`);
   let found: string | null = null;
   for (const raw of (await handle.text()).split(/\r?\n/)) {
@@ -1341,9 +1333,10 @@ async function readEnvValue(file: string, key: string): Promise<string | null> {
     if (match === null) continue;
     const value = match[1].trim();
     const quoted = value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")));
-    found = quoted ? value.slice(1, -1) : value;
+    const parsed = quoted ? value.slice(1, -1) : value;
+    found = parsed === "" ? null : parsed;
   }
-  return found;
+  return { exists: true, value: found };
 }
 
 // ---------------------------------------------------------------------------
@@ -1633,10 +1626,10 @@ export async function createDefaultOpsContext(options: {
   // Reported, not fatal: fixture control is only one page, and the reset route
   // fails closed on the same divergence. A silent mismatch is what must not happen.
   const declared = await readEnvValue(path.join(options.repoRoot, ".env.test"), "DATABASE_URL");
-  if (databaseUrl !== undefined && declared !== null && declared !== databaseUrl.trim()) {
+  if (databaseUrl !== undefined && declared.exists && declared.value !== null && declared.value !== databaseUrl.trim()) {
     console.warn(
       `[eval-ops] DATABASE_URL (${redactDatabaseUrl(databaseUrl)}) differs from the one in .env.test `
-      + `(${redactDatabaseUrl(declared)}); fixture reset will refuse until they agree.`,
+      + `(${redactDatabaseUrl(declared.value)}); fixture reset will refuse until they agree.`,
     );
   }
 

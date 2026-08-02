@@ -1182,11 +1182,17 @@ describe("POST /api/fixture/reset", () => {
     expect(executor.starts).toHaveLength(0);
   });
 
-  it("refuses when .env.test is missing", async () => {
+  it("accepts when .env.test is missing because the server injects the validated target", async () => {
     const response = await post("/api/fixture/reset", { confirmDatabaseName: "neondb", personas: 1 });
 
-    expect(response.status).toBe(409);
-    expect(executor.starts).toHaveLength(0);
+    expect(response.status).toBe(202);
+    const call = executor.starts[0];
+    expect(call.steps?.map((step) => step.label)).toEqual(["flush", "migrate", "seed"]);
+    for (const step of call.steps ?? []) {
+      expect(step.env.DATABASE_URL).toBe(DATABASE_URL);
+      expect(step.env.NODE_ENV).toBe("test");
+      expect(step.env.TEST_DATABASE_SAFE).toBe("1");
+    }
   });
 
   it("refuses a mistyped confirmation", async () => {
