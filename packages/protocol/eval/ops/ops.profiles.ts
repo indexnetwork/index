@@ -33,7 +33,7 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
   "POOL_QUESTIONS_RANKING",
 ]);
 
-const ConfigProfileSchema = z
+export const ConfigProfileSchema = z
   .object({
     name: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "profile names are lowercase kebab-case"),
     description: z.string().min(1),
