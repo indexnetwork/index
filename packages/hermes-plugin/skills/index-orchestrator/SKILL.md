@@ -25,4 +25,4 @@ app is installed, and an Index web page offering the app otherwise.
   when that machine is the user's own Mac. Showing the link is the default, because this
   plugin often runs on a different host and opening a URL there is invisible to the user.
 - Acting on a card is a separate, authenticated step: the user acts in the Index app, or
-  asks you to use `update_opportunity` on their behalf.
+  asks you to use `index_update_opportunity` on their behalf.

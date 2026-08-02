@@ -177,6 +177,8 @@ When a usable handle is present, the MCP auth resolver binds it to the authentic
 - If the handle is already stored for a different user, the request is rejected (`handle_belongs_to_other_user`).
 - Otherwise the handle is upserted into `user_socials` under `label = 'telegram'`, preserving the user's other socials. A persistence failure is logged and does not fail the request.
 
+The verification reads themselves are not best-effort: if the socials lookup or the handle-owner lookup throws, the request is rejected with a Telegram identity error rather than binding unverified or continuing unbound. Only the final write is allowed to fail silently.
+
 This is **identity binding only**: it records where the user is reachable on Telegram (which Telegram opportunity delivery consumes) and never influences a redirect, rendering, or routing decision. The former routing header `x-index-surface`, the `clientSurface` value it threaded through the protocol, and the connect links it steered no longer exist — the MCP API has no surface header.
 
 ### Universal links and deep-link landing pages
@@ -207,6 +209,8 @@ Opportunity and profile links are plain `https://index.network/...` URLs that op
 | `/o/:id` | Static landing page: "Open in the Index app", a macOS download CTA (UA sniff, presentation only) or an "open this link on your Mac" note elsewhere, plus a copyable link. No auth and no API call. |
 | `/c/:code` | Same landing page (retired connect links). |
 | `/u/:id` | The existing public profile page, unchanged. |
+
+The macOS download CTA on that landing page currently points at `https://index.network/download`, which is not a registered web route — it falls through to the web app's catch-all and renders the not-found page until the signed release publishes its real URL.
 
 **Legacy short links.** `GET /c/:code` on this protocol server is a tombstone for links already delivered in chats. `main.ts` rewrites the unprefixed path onto `ConnectLinkController`, which performs no database lookup and no opportunity side effects: a code matching `^[A-Za-z0-9]{10}$` gets a `302` to `${WEB_APP_URL}/c/<code>` (default `https://index.network`), anything else gets a `404` HTML page. The resolution stack behind it — `/c/:code/go`, connect-link minting, connect tokens, surface routing — is deleted.
 
