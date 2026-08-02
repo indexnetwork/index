@@ -758,7 +758,7 @@ Add this exact test to the existing `prepare` describe:
       rounds: [
         { prompt: 'Who?', answer: { selectedOptions: ['A'] } },
         { prompt: 'Bring?', answer: { selectedOptions: ['B'] } },
-        { prompt: 'When?', answer: { freeText: 'Now' } },
+        { prompt: 'When?', answer: { selectedOptions: [], freeText: 'Now' } },
       ],
     });
 
