@@ -189,13 +189,30 @@ describe('formatOpportunityCardHtml', () => {
     expect(text).toContain('💡 <i>Strong overlap in AI</i>');
   });
 
-  it('links the inline keyboard to /opportunities', () => {
+  it('links the inline keyboard to the card deep link, not a non-existent route', () => {
     const { keyboard } = formatOpportunityCardHtml(
-      { opportunityId: '1', name: 'Grace' },
+      { opportunityId: 'opp-42', name: 'Grace' },
       'https://app.example.com',
     );
     expect(keyboard[0][0].text).toContain('View');
-    expect(keyboard[0][0].url).toBe('https://app.example.com/opportunities');
+    expect(keyboard[0][0].url).toBe('https://app.example.com/o/opp-42');
+    expect(keyboard[0][0].url).not.toContain('/opportunities');
+  });
+
+  it('strips trailing slashes from the web app base before building the deep link', () => {
+    const { keyboard } = formatOpportunityCardHtml(
+      { opportunityId: 'opp-43', name: 'Grace' },
+      'https://app.example.com//',
+    );
+    expect(keyboard[0][0].url).toBe('https://app.example.com/o/opp-43');
+  });
+
+  it('falls back to the web app base when the card carries no opportunity id', () => {
+    const { keyboard } = formatOpportunityCardHtml(
+      { opportunityId: '', name: 'Grace' },
+      'https://app.example.com',
+    );
+    expect(keyboard[0][0].url).toBe('https://app.example.com');
   });
 
   it('handles minimal card with only name', () => {
