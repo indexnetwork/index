@@ -92,6 +92,30 @@ export function buildNegotiationUrl(
 }
 
 /**
+ * Build the agent-facing deep link for an opportunity — the canonical
+ * `https://index.network/o/<id>` universal link. Returns `undefined` when
+ * `frontendUrl` is unset or there is no opportunity id.
+ *
+ * This is the *only* place the protocol mints an opportunity deep link. It is
+ * a navigation link, not an authority: opening it raises the opportunity card
+ * in the Index macOS app when installed and a static Index landing page
+ * otherwise. Acceptance stays an authenticated call.
+ *
+ * No `?link_preview=false` hint here (unlike `buildProfileUrl`): the Hermes
+ * plugin mints the identical bare form for payloads the protocol does not
+ * touch, and keeping the two byte-identical is what makes its never-overwrite
+ * rule invisible.
+ */
+export function buildOpportunityAppUrl(
+  opportunityId: string,
+  frontendUrl: string | undefined,
+): string | undefined {
+  if (!frontendUrl || !opportunityId) return undefined;
+  const base = frontendUrl.replace(/\/+$/, "");
+  return `${base}/o/${opportunityId}`;
+}
+
+/**
  * Attach the agent-facing profile link for a counterpart to `card` (mutates
  * in place). Every counterpart has a profile page worth linking to — without
  * this, the agent gets a name with no URL attached and tends to fabricate
@@ -107,6 +131,21 @@ export function attachProfileLink(
 ): void {
   const profileUrl = buildProfileUrl(opts.counterpartUserId, opts.frontendUrl);
   if (profileUrl) card.profileUrl = profileUrl;
+}
+
+/**
+ * Attach the opportunity deep link to `card` (mutates in place) so every MCP
+ * client — Claude Desktop, the CLI, the web, Hermes — can hand the user one
+ * clickable link to the card instead of fabricating one from an id.
+ */
+export function attachOpportunityAppLink(
+  card: Record<string, unknown> & { opportunityId: string },
+  opts: {
+    frontendUrl: string | undefined;
+  },
+): void {
+  const appUrl = buildOpportunityAppUrl(card.opportunityId, opts.frontendUrl);
+  if (appUrl) card.appUrl = appUrl;
 }
 
 interface PublicUptakeQuestion {
@@ -620,10 +659,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
                       : {}),
                   };
 
-                  // Attach the agent-facing profile link for MCP callers
+                  // Attach the agent-facing profile and opportunity links for
+                  // MCP callers
                   if (context.isMcp) {
                     attachProfileLink(card as Record<string, unknown> & { opportunityId: string }, {
                       counterpartUserId,
+                      frontendUrl: deps.frontendUrl,
+                    });
+                    attachOpportunityAppLink(card as Record<string, unknown> & { opportunityId: string }, {
                       frontendUrl: deps.frontendUrl,
                     });
                   }
@@ -785,13 +828,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
                     : {}),
                 };
 
-                // For MCP callers, attach the agent-facing profile link so the
-                // agent never has to fabricate one. Accept guidance is plain
-                // text ("accept in the Index app") — no actionable URLs are
-                // minted.
+                // For MCP callers, attach the agent-facing profile link and the
+                // opportunity deep link so the agent never has to fabricate
+                // either. Accepting still happens in the Index app behind an
+                // authenticated call — the deep link only opens the card.
                 if (context.isMcp) {
                   attachProfileLink(cardData as Record<string, unknown> & { opportunityId: string }, {
                     counterpartUserId,
+                    frontendUrl: deps.frontendUrl,
+                  });
+                  attachOpportunityAppLink(cardData as Record<string, unknown> & { opportunityId: string }, {
                     frontendUrl: deps.frontendUrl,
                   });
                 }

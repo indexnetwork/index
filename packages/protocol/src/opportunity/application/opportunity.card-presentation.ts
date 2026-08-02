@@ -21,6 +21,8 @@ export type OpportunityCardLike = Record<string, unknown> & {
   status?: string | undefined;
   feedCategory?: string | undefined;
   profileUrl?: string | undefined;
+  /** Universal link that opens this opportunity's card (`/o/<id>`). */
+  appUrl?: string | undefined;
   /** Deep-link to the A2A negotiation trace that produced this opportunity. */
   negotiationUrl?: string | undefined;
   score?: number | undefined;
@@ -56,12 +58,13 @@ function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCar
  * "include EXACTLY as-is" directive so the frontend card renderer can parse
  * and render interactive cards.
  *
- * MCP (`isMcp=true`): emits prose (name, reason, status, profileUrl when
- * present, feedCategory when present) and includes `opportunityId` for every
- * card so the agent can act via the tools. The trailing instruction reminds
- * the agent to synthesize in natural language, points users at the Index app
- * to accept, and forbids fabricating action URLs. MCP clients have no card
- * renderer, so code fences would surface as raw JSON to end users.
+ * MCP (`isMcp=true`): emits prose (name, reason, status, appUrl and profileUrl
+ * when present, feedCategory when present) and includes `opportunityId` for
+ * every card so the agent can act via the tools. The trailing instruction
+ * reminds the agent to synthesize in natural language, to surface the `appUrl`
+ * verbatim as the one link that opens the card, and to fabricate no other URL.
+ * MCP clients have no card renderer, so code fences would surface as raw JSON
+ * to end users.
  */
 export function buildOpportunityPresentation(
   inputCards: OpportunityCardLike[],
@@ -90,6 +93,7 @@ export function buildOpportunityPresentation(
           lines.push(`   ${card.mainText}`);
         }
         if (card.status) lines.push(`   status: ${card.status}`);
+        if (card.appUrl) lines.push(`   appUrl: ${card.appUrl}`);
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (opts.includeDigestMarkers && card.negotiationUrl) lines.push(`   negotiationUrl: ${card.negotiationUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
@@ -104,7 +108,8 @@ export function buildOpportunityPresentation(
       `${opts.leadIn}\n\n${prose}\n\n` +
       `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
       `For each card that has a profileUrl, link the person's name to it. Some cards may have no URL — render those as plain text and never fabricate URLs for them. ` +
-      `There is no link to accept or act on a connection here: to accept, the user opens the opportunity in the Index app — say so in plain text and never invent an accept URL. ` +
+      `For each card that has an appUrl, show that link so the user can open the opportunity: it opens the card in the Index app when installed, and an Index web page otherwise. Show only an appUrl a tool returned — never assemble one from an opportunityId. ` +
+      `No link accepts on the user's behalf: accepting happens in the Index app (or via update_opportunity) — never invent an accept URL. ` +
       `Do NOT print raw JSON, field labels, or opportunityIds. ` +
       `${idInstructions}`
     );

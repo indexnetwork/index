@@ -237,7 +237,7 @@ describe('buildMinimalOpportunityCard - introducer discovery (IND-140)', () => {
   });
 });
 
-import { buildOpportunityPresentation, attachProfileLink, buildProfileUrl } from "../opportunity.tools.js";
+import { buildOpportunityPresentation, attachProfileLink, attachOpportunityAppLink, buildProfileUrl, buildOpportunityAppUrl } from "../opportunity.tools.js";
 
 // ---------------------------------------------------------------------------
 // attachProfileLink — profileUrl attachment (no actionable URLs are minted)
@@ -262,6 +262,54 @@ describe("attachProfileLink", () => {
     };
     attachProfileLink(card, { counterpartUserId: "counterpart-2", frontendUrl: undefined });
     expect("profileUrl" in card).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// attachOpportunityAppLink / buildOpportunityAppUrl — the opportunity deep link
+// ---------------------------------------------------------------------------
+
+describe("attachOpportunityAppLink", () => {
+  test("attaches the universal opportunity link when frontendUrl is set", () => {
+    const card: Record<string, unknown> & { opportunityId: string } = {
+      opportunityId: "opp-1",
+      name: "Counterpart",
+      status: "pending",
+    };
+    attachOpportunityAppLink(card, { frontendUrl: "https://index.network" });
+    expect(card.appUrl).toBe("https://index.network/o/opp-1");
+  });
+
+  test("is a no-op when frontendUrl is missing", () => {
+    const card: Record<string, unknown> & { opportunityId: string } = {
+      opportunityId: "opp-2",
+      name: "Counterpart",
+      status: "draft",
+    };
+    attachOpportunityAppLink(card, { frontendUrl: undefined });
+    expect("appUrl" in card).toBe(false);
+  });
+});
+
+describe("buildOpportunityAppUrl", () => {
+  test("mints the bare /o/<id> universal link the Hermes plugin also mints", () => {
+    expect(buildOpportunityAppUrl("opp-3", "https://index.network")).toBe(
+      "https://index.network/o/opp-3",
+    );
+  });
+
+  test("strips trailing slash(es) from frontendUrl before concatenation", () => {
+    expect(buildOpportunityAppUrl("opp-4", "https://index.network/")).toBe(
+      "https://index.network/o/opp-4",
+    );
+    expect(buildOpportunityAppUrl("opp-4", "https://index.network///")).toBe(
+      "https://index.network/o/opp-4",
+    );
+  });
+
+  test("returns undefined without a frontendUrl or an opportunity id", () => {
+    expect(buildOpportunityAppUrl("opp-5", undefined)).toBeUndefined();
+    expect(buildOpportunityAppUrl("", "https://index.network")).toBeUndefined();
   });
 });
 
@@ -340,6 +388,25 @@ describe("buildOpportunityPresentation — MCP prose rendering", () => {
 
     expect(out).toContain("Index app");
     expect(out).toContain("never invent an accept URL");
+  });
+
+  test("weaves an attached appUrl into the MCP prose and tells the agent to show it", () => {
+    const card: Record<string, unknown> & { opportunityId: string } = {
+      opportunityId: "opp-deep-link-1",
+      name: "Alice",
+      mainText: "Both work on protocol design.",
+      status: "pending",
+    };
+    attachOpportunityAppLink(card, { frontendUrl: "https://index.network" });
+
+    const out = buildOpportunityPresentation([card], {
+      isMcp: true,
+      leadIn: "Found 1 connection.",
+    });
+
+    expect(out).toContain("appUrl: https://index.network/o/opp-deep-link-1");
+    expect(out).toContain("For each card that has an appUrl");
+    expect(out).toContain("never assemble one from an opportunityId");
   });
 
   test("strips unsupported claims from MCP card prose", () => {

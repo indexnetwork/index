@@ -22,11 +22,13 @@ Connect links are gone. Do not reintroduce them, and do not review as if they ex
 - Surface routing was deleted with them: the `x-index-surface` request header,
   `clientSurface` threading in the protocol, and `connect_links.preferred_surface` reads
   no longer exist. There is no surface signal to route on.
-- Acceptance is app-only. Opportunities surfaced through the Hermes plugin carry
-  `appUrl` = `https://index.network/o/<id>` (the plugin attaches it to MCP-forwarded
-  payloads; nothing in `packages/protocol` or `services/api` mints it, so plain MCP
-  results to Claude Desktop, the CLI, or the web carry none). That URL opens the macOS
-  app through a universal link, and the app makes the authenticated acceptance call.
+- Acceptance is app-only. Opportunity cards carry `appUrl` =
+  `https://index.network/o/<id>`: `packages/protocol` mints it for every MCP-facing card
+  (`attachOpportunityAppLink` in `opportunity.tools.ts`, woven into the card prose next
+  to `profileUrl`), so Claude Desktop, the CLI, the web and Hermes all get it. The Hermes
+  plugin additionally attaches the identical link to any MCP-forwarded payload carrying
+  an `opportunityId` and never overwrites one the backend already set. That URL opens the
+  macOS app through a universal link, and the app makes the authenticated acceptance call.
   Without the app it renders a static landing page (download CTA on macOS, "open it on
   your Mac" elsewhere — the CTA target is still a placeholder route).
 - `GET /c/:code` survives only as a tombstone: valid-looking codes 302 to

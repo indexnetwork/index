@@ -115,9 +115,13 @@ Returns the authenticated personal agent identity for the configured `INDEX_API_
 
 ### Opportunity deep links (`appUrl`)
 
-Every Index MCP response is post-processed before it is handed back to Hermes: any
-object carrying a non-empty `opportunityId` — at any nesting depth, under `data`,
-`opportunities`, or a wrapper of your own — gets an `appUrl` field:
+Opportunity cards already carry `appUrl` when they come back from the Index MCP server:
+the protocol mints `https://index.network/o/<opportunityId>` for every MCP-facing card,
+so Claude Desktop, the CLI and the web get the same link Hermes does.
+
+On top of that, every Index MCP response is post-processed before it is handed back to
+Hermes: any object carrying a non-empty `opportunityId` — at any nesting depth, under
+`data`, `opportunities`, or a wrapper of your own — gets an `appUrl` field:
 
 ```json
 {
@@ -126,15 +130,17 @@ object carrying a non-empty `opportunityId` — at any nesting depth, under `dat
 }
 ```
 
-An `appUrl` that the backend already set is never overwritten, and a payload with no
-opportunities is passed through unchanged.
+An `appUrl` that the backend already set is never overwritten (the plugin mints the
+identical bare `/o/<id>` form, so the two agree), and a payload with no opportunities is
+passed through unchanged. The walk still earns its keep for payload shapes the protocol
+does not build cards for — advisory envelopes, negotiation wrappers, API responses.
 
 These are **universal links**, not custom-scheme links. `https://index.network` serves
 an `apple-app-site-association` file that claims `/c/*`, `/o/*` and `/u/*` for the Index
 macOS app, so one URL covers both cases:
 
 - Index macOS app installed → macOS opens the link directly in the app.
-- App not installed → the browser opens the Index landing page for that link, which offers the macOS app (its download button still points at a placeholder URL that 404s until the signed release publishes).
+- App not installed → the browser opens the Index landing page for that link, which offers the macOS app (its download button still points at `https://index.network/download`, an unregistered route that falls through to the web app's client-rendered not-found page, until the signed release publishes its real URL).
 
 The plugin deliberately performs **no app-installation detection**. It runs wherever
 the agent runs — often a headless server that is not the user's Mac — so probing the
@@ -152,7 +158,8 @@ Accepts:
 ```
 
 Opens the target with the OS default handler (`open` on macOS, `xdg-open` on Linux,
-`start` on Windows) and returns:
+`rundll32 url.dll,FileProtocolHandler` on Windows — never `cmd /c start`, which would
+re-parse shell metacharacters in the URL) and returns:
 
 ```json
 { "success": true, "url": "https://index.network/o/6f1c..." }

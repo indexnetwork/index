@@ -14,10 +14,11 @@ Do not claim an opportunity exists until a persisted card is returned. Keep cont
 
 ## Showing an opportunity to the user
 
-Persisted opportunity cards come back with an `appUrl` field — an ordinary
-`https://index.network/o/<id>` link. Show that link verbatim when you tell the user about
-an opportunity, and let them click it: it opens the card in the Index macOS app when the
-app is installed, and an Index web page offering the app otherwise.
+Persisted opportunity cards come back with an `appUrl` — an ordinary
+`https://index.network/o/<id>` link, listed in the card text `list_opportunities` returns
+and set as a field on structured payloads. Show that link verbatim when you tell the user
+about an opportunity, and let them click it: it opens the card in the Index macOS app when
+the app is installed, and an Index web page offering the app otherwise.
 
 - Only ever surface an `appUrl` that a tool returned. There is no accept link, connect
   link, or `/c/` URL to hand out, and you must not build a link from an ID yourself.
