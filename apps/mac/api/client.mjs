@@ -177,9 +177,9 @@ export function createIndexApiClient(options = {}) {
         `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
-      home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
-      homeForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities/home${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+      radar: (query = {}, options = {}) => request(`/opportunities/radar${toQueryString(query)}`, options),
+      radarForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities/radar${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       chatContext: (peerUserId, options = {}) => request(

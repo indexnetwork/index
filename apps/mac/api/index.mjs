@@ -15,7 +15,7 @@ export {
   mapIntent,
   mapIntents,
   mapOpportunityStatusToPrototype,
-  mapPeopleFromHomeSections,
   mapPeopleFromOpportunities,
-  mapPersonFromHomeCard,
+  mapPeopleFromRadarItems,
+  mapPersonFromRadarCard,
 } from './mappers.mjs';

@@ -21,6 +21,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "python3 tests/smoke.py"
+    "test": "python3 tests/smoke.py",
+    "build:desktop": "node desktop/build.mjs"
   }
 }

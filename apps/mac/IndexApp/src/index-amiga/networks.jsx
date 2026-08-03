@@ -337,13 +337,6 @@ function NetworkRow({ net, onOpen, onJoin }) {
         }}>{net.members} members</span>
       </button>
 
-      {net.kind === "event" && (
-        <span style={{
-          flex:"0 0 auto",
-          fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-        }}>▤ event</span>
-      )}
-
       {net.joined
         ? <QuietTag>{net.role || "member"}</QuietTag>
         : <ActionButton onClick={() => onJoin && onJoin(net)} title="ask to join">join</ActionButton>}
@@ -450,7 +443,6 @@ function NetworkDetail({ net, onBack, onLeave }) {
                   marginTop:5, display:"flex", flexWrap:"wrap", gap:"4px 16px",
                 }}>
                   {net.privacy && <MetaBit glyph="🔒">{net.privacy}</MetaBit>}
-                  {net.kind === "event" && <MetaBit glyph="▤">event</MetaBit>}
                   <MetaBit glyph="👤">{net.members} members</MetaBit>
                 </div>
               </div>
@@ -538,8 +530,6 @@ function Networks({ onClose }) {
 
   // You made it, so you're in it and you run it.
   const createNetwork = ({ name, desc, access, photo }) => {
-    // no kind: the form no longer asks, and NetworkRow only renders an event
-    // badge when one is present, so leaving it off is the correct default
     NETWORKS.unshift({
       id: `net-${Date.now().toString(36)}`,
       name,
