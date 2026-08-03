@@ -572,10 +572,18 @@
   function IntentRow(props) {
     const intent = props.intent;
     const className = props.selected ? "index-dashboard__intent-row index-dashboard__intent-row--selected" : "index-dashboard__intent-row";
+    // Mirrors the mac app's signal rows: the beacon blinks while the signal
+    // is live (real mac rows are only ever live or paused).
+    const running = intent.status === "live";
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        intent.status ? React.createElement(BadgeText, { tone: statusTone(intent.status) }, intent.status) : null,
+        intent.status
+          ? React.createElement(BadgeText, { tone: statusTone(intent.status) },
+            running ? React.createElement("span", { className: "index-dashboard__live-dot" }) : null,
+            intent.status,
+          )
+          : null,
       ),
       React.createElement("div", { className: "index-dashboard__intent-counts" },
         PendingBadge(intent.pendingCount),

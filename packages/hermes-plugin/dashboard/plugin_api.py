@@ -881,16 +881,11 @@ def _build_dashboard(
         intent["totalOpportunityCount"] = total_opportunity_count
         intent["questionCount"] = question_count
         intent["networks"] = intent["networks"][:4]
-        # Row status mirrors the mac app's signalStatus: paused wins, then a
-        # match, then an active negotiation, otherwise the signal is live.
-        if intent["lifecycleStatus"] == "PAUSED":
-            intent["status"] = "paused"
-        elif counts.get("accepted", 0):
-            intent["status"] = "matched"
-        elif counts.get("negotiating", 0):
-            intent["status"] = "negotiating"
-        else:
-            intent["status"] = "live"
+        # Row status mirrors the mac app's real-data behavior: its mapper
+        # (apps/mac/api/mappers.mjs) hardcodes matches/pipeline to zero, so the
+        # "matched"/"negotiating" branches of signalStatus never fire outside
+        # demo data — real rows are only ever paused or live.
+        intent["status"] = "paused" if intent["lifecycleStatus"] == "PAUSED" else "live"
         totals["intents"] += 1
         totals["questions"] += question_count
         totals["opportunities"] += actionable_opportunity_count

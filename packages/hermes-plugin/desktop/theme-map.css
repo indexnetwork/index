@@ -24,17 +24,16 @@
   padding-bottom: 2rem;
 }
 
-/* The pitch art is white line-art on transparent (drawn for the dark web
-   dashboard) — invisible on light desktop themes, and its 1.25x scale bleeds
-   over the card border. `difference` re-inks it against the card background
-   (dark on light themes, white on dark), and clipping keeps it inside the
-   border. */
+/* The pitch art's 1.25x scale bleeds over the card border — clip it. */
 .index-network-desktop-page .index-dashboard__pitch {
   overflow: hidden;
 }
 
-.index-network-desktop-page .index-dashboard__pitch-media {
-  mix-blend-mode: difference;
+/* Show the animated assets in their original colors on desktop: undo the
+   shared stylesheet's invert/grayscale treatment (tuned for the dark web
+   dashboard). */
+.index-network-desktop-page .index-dashboard__loading-anim {
+  filter: none;
 }
 
 /* The desktop host has no Badge component (head.js provides components: {}),
