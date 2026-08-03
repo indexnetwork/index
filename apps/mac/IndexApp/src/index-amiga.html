@@ -352,6 +352,24 @@
   }
 
   /* Override any leftover hard borders on inner panels, handled per-component */
+
+  /* ---------- Agent chat markdown (rendered via vendored marked) ---------- */
+  .agent-md > :first-child{ margin-top:0 }
+  .agent-md > :last-child{ margin-bottom:0 }
+  .agent-md p, .agent-md ul, .agent-md ol, .agent-md blockquote, .agent-md pre{ margin:0 0 8px }
+  .agent-md h1, .agent-md h2, .agent-md h3, .agent-md h4{
+    font-size:13px; font-weight:700; text-transform:lowercase;
+    letter-spacing:0.4px; margin:10px 0 4px;
+    font-family: var(--mac-mono);
+  }
+  .agent-md ul, .agent-md ol{ padding-left:18px }
+  .agent-md li{ margin:2px 0 }
+  .agent-md code{ font-family: var(--mac-mono); font-size:12px; background:#eee; padding:0 3px }
+  .agent-md pre{ font-family: var(--mac-mono); font-size:12px; background:#eee; padding:6px 8px; overflow-x:auto }
+  .agent-md pre code{ background:none; padding:0 }
+  .agent-md a{ text-decoration:underline }
+  .agent-md blockquote{ border-left:2px solid var(--amiga-fg); padding-left:8px; color:#444 }
+  .agent-md hr{ border:none; border-top:1px solid var(--amiga-fg); margin:8px 0 }
 </style>
 
 <!-- Bundler thumbnail -->
@@ -368,6 +386,7 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/marked@18.0.7/lib/marked.umd.js" integrity="sha384-7njNzKcJUBdezPGfqUrIFizi2QkXJH0M6wF3o1h9GE/nce6X4YdecMwh31B19yTi" crossorigin="anonymous"></script>
 </head>
 <body>
 <div id="root"></div>

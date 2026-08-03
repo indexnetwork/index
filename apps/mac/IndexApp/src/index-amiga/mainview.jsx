@@ -62,9 +62,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent-chat session id per intent, persisted across signal switches.
+  // Agent chat runs the negotiator persona when the backend enables it: the
+  // negotiator drops list_opportunities in intent-pinned chats (the Radar
+  // beside this pane owns opportunity listing), while api-key callers without
+  // a persona fall back to the orchestrator's unrestricted toolset.
+  const { features } = useIndexEnv();
+  const chatPersona = features && features.negotiatorChat ? "negotiator" : null;
+  // Agent-chat session id per intent, persisted across signal switches. Keyed
+  // by persona too: a session created under one persona cannot be continued
+  // as another (the server rejects the mismatch).
   const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
-  const chatSessionRef = useRef(chatSessions[intentId] || null);
+  const chatKey = chatPersona ? `${chatPersona}:${intentId}` : intentId;
+  const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
   const convByPerson = useRef({});             // opportunityId -> conversationId
   const personByConv = useRef({});             // conversationId -> opportunityId
@@ -215,13 +224,13 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
-    const [homeR, qR] = await Promise.all([
-      (intentId ? client.opportunities.homeForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.home()).catch(() => null),
+    const [radarR, qR] = await Promise.all([
+      (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
     ]);
-    if (homeR) {
-      const sections = window.IndexApp.normalizeList(homeR, "sections");
-      const mapped = window.IndexApi.mapPeopleFromHomeSections(sections).map((p) => ({
+    if (radarR) {
+      const items = window.IndexApp.normalizeList(radarR, "items");
+      const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
       setPeople(mapped);
@@ -318,6 +327,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         sessionId: chatSessionRef.current,
         scopeType: intentId ? "intent" : undefined,
         scopeId: intentId || undefined,
+        persona: chatPersona || undefined,
         onEvent: (e) => {
           if (!e || !e.type) return;
           if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }
@@ -327,7 +337,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           else if (e.type === "user_question") { fetchChatQuestions(); }
         },
       }).then((sid) => {
-        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[intentId] = sid; }
+        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[chatKey] = sid; }
       }).catch(() => {});
       return;
     }
@@ -1202,7 +1212,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               ) : it.kind === "user" ? (
                 <UserLine key={it.id}>{it.text}</UserLine>
               ) : (
-                <AgentLine key={it.id}>{it.text}</AgentLine>
+                <AgentLine key={it.id}><AgentMarkdown text={it.text}/></AgentLine>
               )
             )}
         </div>
@@ -1528,6 +1538,21 @@ function HELLO_FOR(profile) {
 
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
+
+// Agent replies arrive as markdown; render them through the vendored marked
+// UMD (window.marked). `<` is escaped first so raw HTML in model output never
+// reaches the DOM — only markdown-generated tags do. Falls back to plain text
+// if marked is missing or throws (e.g. on a half-streamed construct).
+function AgentMarkdown({ text }) {
+  const html = useMemo(() => {
+    if (!window.marked || !text) return null;
+    try {
+      return window.marked.parse(String(text).replace(/</g, "&lt;"), { breaks: true, async: false });
+    } catch (e) { return null; }
+  }, [text]);
+  if (html == null) return text || null;
+  return <div className="agent-md" dangerouslySetInnerHTML={{ __html: html }}/>;
+}
 
 function AgentLine({ children, pending, highlight, collective }) {
   return (

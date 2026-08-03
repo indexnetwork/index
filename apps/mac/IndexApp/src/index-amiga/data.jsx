@@ -703,12 +703,12 @@ const NET_SIGNALS = [
 ];
 
 const NETWORKS = [
-  { id:"edge",     name:"Edge City",         members:239, kind:"event", privacy:"experiment",
+  { id:"edge",     name:"Edge City",         members:239, privacy:"experiment",
     role:"member", joined:true, signals:NET_SIGNALS },
   { id:"early",    name:"Index Early Birds", members:120, role:"member", joined:true,
     signals:NET_SIGNALS.slice(0, 2) },
   { id:"builders", name:"NYC Builders",      members:412, joined:false },
-  { id:"design",   name:"Quiet Design Club", members:88,  kind:"event", joined:false },
+  { id:"design",   name:"Quiet Design Club", members:88,  joined:false },
   { id:"o1",       name:"O-1 Alumni",        members:57,  joined:false },
 ];
 

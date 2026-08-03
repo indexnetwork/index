@@ -58,9 +58,9 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.list', (client) => client.opportunities.list({ status: 'pending', limit: 10 }), { path: '/opportunities?status=pending&limit=10' });
     await expectCall('opportunities.list scoped intent', (client) => client.opportunities.list({ status: 'pending', scopeType: 'intent', scopeId: SELECTED_INTENT_ID, limit: 10 }), { path: `/opportunities?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}&limit=10` });
     await expectCall('opportunities.listForIntent', (client) => client.opportunities.listForIntent(SELECTED_INTENT_ID, { status: 'pending', limit: 10 }), { path: `/opportunities?status=pending&limit=10&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
-    await expectCall('opportunities.home', (client) => client.opportunities.home({ noCache: true }), { path: '/opportunities/home?noCache=true' });
-    await expectCall('opportunities.home scoped intent', (client) => client.opportunities.home({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/home?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
-    await expectCall('opportunities.homeForIntent', (client) => client.opportunities.homeForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/home?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('opportunities.radar', (client) => client.opportunities.radar({ noCache: true }), { path: '/opportunities/radar?noCache=true' });
+    await expectCall('opportunities.radar scoped intent', (client) => client.opportunities.radar({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/radar?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
+    await expectCall('opportunities.radarForIntent', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/radar?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('opportunities.chatContext', (client) => client.opportunities.chatContext('user/1'), { path: '/opportunities/chat-context?peerUserId=user%2F1' });
     await expectCall('opportunities.get', (client) => client.opportunities.get('opp/1'), { path: '/opportunities/opp%2F1' });
     await expectCall('opportunities.inviteMessage', (client) => client.opportunities.inviteMessage('opp/1'), { path: '/opportunities/opp%2F1/invite-message' });

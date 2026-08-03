@@ -3,7 +3,7 @@
   "label": "Index",
   "description": "Intent-centric Index Network overview: each intent carries its own questions and opportunity radar, with a separate Networks view.",
   "icon": "Sparkles",
-  "version": "0.12.0",
+  "version": "0.14.0",
   "tab": {
     "path": "/index-network",
     "position": "after:skills"

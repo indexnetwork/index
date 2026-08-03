@@ -17,7 +17,6 @@ import importlib.util
 import json
 import os
 import re
-from functools import lru_cache
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -55,7 +54,9 @@ _PREVIEW_CHARS = 240
 
 # Maps raw opportunity status values to the radar status strip buckets.
 # latent/draft (pre-send) fold into "pending"; stalled (a stalled negotiation)
-# folds into "negotiating".
+# folds into "negotiating". Rejected opportunities are hidden entirely
+# (mac-app parity): those are mostly agent-side filtering decisions, and
+# listing them reads as if the user (or the other person) did the rejecting.
 _STATUS_BUCKET = {
     "latent": "pending",
     "draft": "pending",
@@ -63,13 +64,32 @@ _STATUS_BUCKET = {
     "negotiating": "negotiating",
     "stalled": "negotiating",
     "accepted": "accepted",
-    "rejected": "rejected",
     "expired": "expired",
 }
 
 # Raw statuses surfaced in the flat Negotiations view (decoupled from the
 # split pending/negotiating display buckets above).
 _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
+
+# Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
+# address the dashboard's static file mount by URL). Allow-list only.
+_DESKTOP_ASSETS = {
+    "loading-white.webp": "image/webp",
+    "eye-white.webp": "image/webp",
+    "loading2.png": "image/png",
+}
+
+
+@router.get("/assets/{name}")
+async def desktop_asset(name: str) -> dict[str, Any]:
+    mime = _DESKTOP_ASSETS.get(name)
+    if mime is None:
+        return {"success": False, "error": "Unknown asset."}
+    try:
+        raw = (_DASHBOARD_DIR / "dist" / name).read_bytes()
+    except OSError:
+        return {"success": False, "error": "Asset unavailable."}
+    return {"success": True, "mime": mime, "data": base64.b64encode(raw).decode("ascii")}
 
 
 def _load_tools_module():
@@ -95,19 +115,23 @@ def _parse_tool_json(raw: str) -> dict[str, Any]:
 
 
 def _call_read_intents() -> dict[str, Any]:
-    """Fetch all of the caller's intents across pages so every intent resolves a title."""
+    """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
+
+    This is the Mac app's intent source: unlike MCP `read_intents` it includes PAUSED intents
+    and carries each intent's lifecycle `status`, which the pause/resume control needs.
+    """
     all_intents: list[dict[str, Any]] = []
     last_error: dict[str, Any] | None = None
     page = 1
     while page <= _MAX_INTENT_PAGES:
-        payload = _parse_tool_json(tools.index_read_intents({"limit": _INTENT_PAGE_SIZE, "page": page}))
+        payload = tools._api_request("POST", "/intents/list", {"limit": _INTENT_PAGE_SIZE, "page": page, "archived": False})
         if payload.get("success") is False:
             last_error = payload
             break
-        data = _data(payload)
-        intents = _list(data.get("intents") if isinstance(data, dict) else None)
+        intents = _list(payload.get("intents"))
         all_intents.extend(intent for intent in intents if isinstance(intent, dict))
-        total_pages = data.get("totalPages") if isinstance(data, dict) else None
+        pagination = payload.get("pagination") if isinstance(payload.get("pagination"), dict) else {}
+        total_pages = pagination.get("total")
         if isinstance(total_pages, int):
             if page >= total_pages:
                 break
@@ -123,8 +147,44 @@ def _call_mcp(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, A
     return _parse_tool_json(tools.index_forwarded_mcp_tool(tool_name, args or {}))
 
 
+def _flatten_rest_question(question: dict[str, Any]) -> dict[str, Any] | None:
+    """Flatten a REST `GET /questions` row (detection/payload nesting) into the flat
+    shape `_question_item`/`_question_target` expect."""
+    question_id = _text(question.get("id"))
+    if not question_id:
+        return None
+    detection = question.get("detection") if isinstance(question.get("detection"), dict) else {}
+    payload = question.get("payload") if isinstance(question.get("payload"), dict) else {}
+    flat: dict[str, Any] = {
+        "id": question_id,
+        "title": payload.get("title"),
+        "prompt": payload.get("prompt"),
+        "options": payload.get("options"),
+        "multiSelect": payload.get("multiSelect"),
+        "mode": detection.get("mode"),
+        "sourceType": detection.get("sourceType"),
+        "sourceId": detection.get("sourceId"),
+    }
+    if question.get("createdAt"):
+        flat["createdAt"] = question.get("createdAt")
+    if question.get("expiresAt"):
+        flat["expiresAt"] = question.get("expiresAt")
+    return flat
+
+
 def _call_pending_questions() -> dict[str, Any]:
-    return _call_mcp("read_pending_questions", {"limit": _QUESTION_LIMIT})
+    """Fetch pending questions over REST (`GET /questions?status=pending`), matching the Mac app."""
+    payload = tools._api_request("GET", "/questions?status=pending")
+    if payload.get("success") is False:
+        return payload
+    questions: list[dict[str, Any]] = []
+    for question in _list(payload.get("questions")):
+        if not isinstance(question, dict):
+            continue
+        flat = _flatten_rest_question(question)
+        if flat is not None:
+            questions.append(flat)
+    return {"success": True, "data": {"questions": questions}}
 
 
 def _web_url() -> str:
@@ -136,12 +196,41 @@ def _web_url() -> str:
 def _update_opportunity(
     opportunity_id: str,
     status: str,
+    scope_id: str | None = None,
     acknowledged_uptake_question_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    arguments: dict[str, Any] = {"opportunityId": opportunity_id, "status": status}
+    """Accept/skip an opportunity over REST (`PATCH /opportunities/:id/status`), matching the Mac app."""
+    body: dict[str, Any] = {"status": status}
+    if scope_id:
+        body["scopeType"] = "intent"
+        body["scopeId"] = scope_id
     if acknowledged_uptake_question_ids:
-        arguments["acknowledgedUptakeQuestionIds"] = acknowledged_uptake_question_ids
-    return _call_mcp("update_opportunity", arguments)
+        body["acknowledgedUptakeQuestionIds"] = acknowledged_uptake_question_ids
+    return tools._api_request("PATCH", f"/opportunities/{quote(opportunity_id, safe='')}/status", body)
+
+
+def _start_chat(opportunity_id: str, scope_id: str | None = None) -> dict[str, Any]:
+    """Open (or resolve) the DM for an opportunity over REST (`POST /opportunities/:id/start-chat`)."""
+    body: dict[str, Any] = {}
+    if scope_id:
+        body["scopeType"] = "intent"
+        body["scopeId"] = scope_id
+    return tools._api_request("POST", f"/opportunities/{quote(opportunity_id, safe='')}/start-chat", body)
+
+
+def _uptake_advisory(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Surface the `unresolved_uptake_questions` advisory the UI needs for a continue-anyway retry.
+
+    The REST status route returns it as HTTP 409 `{error, advisory}`, so it arrives under
+    `details.advisory` from `_api_request`.
+    """
+    for candidate in (
+        payload.get("advisory"),
+        payload.get("details", {}).get("advisory") if isinstance(payload.get("details"), dict) else None,
+    ):
+        if isinstance(candidate, dict) and candidate.get("code") == "unresolved_uptake_questions":
+            return candidate
+    return None
 
 
 def _call_answer_question(question_id: str, answer: dict[str, Any]) -> dict[str, Any]:
@@ -153,13 +242,9 @@ def _call_dismiss_question(question_id: str) -> dict[str, Any]:
 
 
 def _resolve_user_id() -> str | None:
-    """Resolve the current API-key principal's userId via read_network_memberships."""
-    data = _data(_call_mcp("read_network_memberships"))
-    if isinstance(data, dict):
-        user_id = _text(data.get("userId"))
-        if user_id:
-            return user_id
-    return None
+    """Resolve the current API-key principal's userId via REST `GET /auth/me` (the Mac app's identity source)."""
+    user_id = _text(_fetch_me().get("id"))
+    return user_id or None
 
 
 def _fetch_user(user_id: str) -> dict[str, Any]:
@@ -251,22 +336,6 @@ def _api_multipart(path: str, field: str, filename: str, content: bytes, content
         return {"success": False, "error": f"Avatar upload request failed: {exc.reason}"}
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
-
-
-@lru_cache(maxsize=512)
-def _counterpart_socials(user_id: str) -> tuple[tuple[str, str], ...]:
-    """Cached (label, value) social links for a counterpart, for radar cards.
-
-    Socials rarely change, so an lru_cache keeps summary loads cheap instead of
-    re-fetching each counterpart's public row on every refresh.
-    """
-    if not user_id:
-        return ()
-    try:
-        user = _fetch_user(user_id)
-    except Exception:
-        return ()
-    return tuple((s["label"], s["value"]) for s in _profile_socials(user))
 
 
 def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
@@ -362,6 +431,10 @@ def _truncate(value: Any, limit: int = _PREVIEW_CHARS) -> str:
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and value > 0 else 0
 
 
 def _section_error(payload: dict[str, Any]) -> str | None:
@@ -472,7 +545,7 @@ def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> st
 def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
     """Return user ids visible through the caller's opportunity cards."""
     visible: set[str] = set()
-    for query in ("", "?status=expired", "?status=rejected"):
+    for query in ("", "?status=expired"):
         opportunities, _ = _fetch_opportunities(query)
         for opp in opportunities:
             status = _text(opp.get("status"))
@@ -484,7 +557,7 @@ def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
     return visible
 
 
-def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], current_user_id: str | None = None) -> dict[str, Any]:
+def _opportunity_item(opp: dict[str, Any], current_user_id: str | None = None) -> dict[str, Any]:
     """Build a card-shaped opportunity item aligned with the Index web OpportunityCard."""
     interpretation = opp.get("interpretation") if isinstance(opp.get("interpretation"), dict) else {}
     item: dict[str, Any] = {
@@ -499,23 +572,9 @@ def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], curre
     status = _text(opp.get("status"))
     if status:
         item["status"] = status
-    nets = _opportunity_networks(opp, network_titles)
-    if nets:
-        item["networks"] = nets[:4]
-    score = interpretation.get("confidence")
-    if not isinstance(score, (int, float)):
-        try:
-            score = float(_text(opp.get("confidence")))
-        except (TypeError, ValueError):
-            score = None
-    if isinstance(score, (int, float)) and score > 0:
-        item["score"] = score
     counterpart_id = _counterpart_user_id(opp, current_user_id)
     if counterpart_id:
         item["counterpartUserId"] = counterpart_id
-        socials = _counterpart_socials(counterpart_id)
-        if socials:
-            item["socials"] = [{"label": label, "value": value} for label, value in socials]
     return item
 
 
@@ -567,37 +626,17 @@ def _intent_for_opportunity(opp: dict[str, Any], known_ids: set[str]) -> str | N
     return candidates[0] if candidates else None
 
 
-def _network_key(network: dict[str, Any]) -> str:
-    for key in ("networkId", "id", "title", "name"):
-        value = _text(network.get(key))
-        if value:
-            return value
-    return json.dumps(network, sort_keys=True, default=str)
+def _rest_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the raw network rows from a REST `{networks: [...]}` response."""
+    rows = payload.get("networks") if isinstance(payload, dict) else None
+    return [network for network in _list(rows) if isinstance(network, dict)]
 
 
-def _joined_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = _data(payload)
-    joined: list[Any] = []
-    if isinstance(data, dict):
-        joined.extend(_list(data.get("memberOf")))
-        joined.extend(_list(data.get("owns")))
-    return [network for network in joined if isinstance(network, dict)]
-
-
-def _network_title_map(networks_payload: dict[str, Any], memberships_payload: dict[str, Any]) -> dict[str, str]:
+def _network_title_map(networks_payload: dict[str, Any]) -> dict[str, str]:
+    """Map of network id -> title from REST `GET /networks`, for labeling opportunities."""
     titles: dict[str, str] = {}
-    data = _data(memberships_payload)
-    for membership in _list(data.get("memberships") if isinstance(data, dict) else None):
-        if not isinstance(membership, dict):
-            continue
-        network_id = _text(membership.get("networkId") or membership.get("id"))
-        if network_id and network_id not in titles:
-            titles[network_id] = _text(
-                membership.get("networkTitle") or membership.get("title") or membership.get("name"),
-                "Untitled network",
-            )
-    for network in _joined_networks(networks_payload):
-        network_id = _text(network.get("networkId") or network.get("id"))
+    for network in _rest_networks(networks_payload):
+        network_id = _text(network.get("id") or network.get("networkId"))
         if network_id and network_id not in titles:
             titles[network_id] = _text(network.get("title") or network.get("name"), "Untitled network")
     return titles
@@ -614,44 +653,28 @@ def _member_count(network: dict[str, Any]) -> int | None:
     return None
 
 
-def _owned_networks_map(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Map of network id -> raw `owns` entry (carries memberCount and implies owner role)."""
-    data = _data(payload)
-    owned: dict[str, dict[str, Any]] = {}
-    if isinstance(data, dict):
-        for network in _list(data.get("owns")):
-            if isinstance(network, dict):
-                network_id = _text(network.get("networkId") or network.get("id"))
-                if network_id:
-                    owned[network_id] = network
-    return owned
-
-
-def _normalize_networks(payload: dict[str, Any]) -> dict[str, Any]:
-    owned = _owned_networks_map(payload)
+def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any], current_user_id: str | None) -> dict[str, Any]:
+    """Normalize the caller's joined networks from REST `GET /networks` for the Networks view."""
     seen: set[str] = set()
     items = []
-    for network in _joined_networks(payload):
-        key = _network_key(network)
-        if key in seen:
+    for network in _rest_networks(payload):
+        network_id = _text(network.get("id") or network.get("networkId"))
+        key = network_id or _text(network.get("title"))
+        if not key or key in seen:
             continue
         seen.add(key)
         title = _text(network.get("title") or network.get("name"), "Untitled network")
-        detail = _truncate(network.get("renderedContext") or network.get("prompt") or network.get("description"))
-        permissions = [_text(p).lower() for p in _list(network.get("permissions")) if _text(p)]
-        network_id = _text(network.get("networkId") or network.get("id"))
+        detail = _truncate(network.get("prompt") or network.get("description"))
+        owner = network.get("user") if isinstance(network.get("user"), dict) else {}
         is_personal = network.get("isPersonal") is True
-        is_owner = (network_id and network_id in owned) or ("owner" in permissions)
-        member_count = _member_count(network)
-        if member_count is None and network_id in owned:
-            member_count = _member_count(owned[network_id])
-
+        is_owner = bool(current_user_id) and _text(owner.get("id")) == current_user_id
         item: dict[str, Any] = {"title": title}
         if network_id:
             item["id"] = network_id
         image_url = _text(network.get("imageUrl"))
         if image_url:
             item["imageUrl"] = image_url
+        member_count = _member_count(network)
         if member_count is not None:
             item["memberCount"] = member_count
         item["isPersonal"] = is_personal
@@ -666,21 +689,17 @@ def _normalize_networks(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "items": items,
         "count": len(items),
-        "discover": _normalize_public_networks(payload),
+        "discover": _normalize_public_networks(discover_payload),
         "error": _section_error(payload),
     }
 
 
 def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Joinable public communities (read_networks `publicNetworks`) for the Discover tab."""
-    data = _data(payload)
-    raw = _list(data.get("publicNetworks")) if isinstance(data, dict) else []
+    """Joinable public communities from REST `GET /networks/discovery/public` for the Discover tab."""
     seen: set[str] = set()
     items = []
-    for network in raw:
-        if not isinstance(network, dict):
-            continue
-        network_id = _text(network.get("networkId") or network.get("id"))
+    for network in _rest_networks(payload):
+        network_id = _text(network.get("id") or network.get("networkId"))
         key = network_id or _text(network.get("title"))
         if not key or key in seen:
             continue
@@ -694,7 +713,7 @@ def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
         net_type = _text(network.get("type"))
         if net_type:
             item["type"] = net_type
-        detail = _truncate(network.get("renderedContext") or network.get("prompt") or network.get("description"))
+        detail = _truncate(network.get("prompt") or network.get("description"))
         if detail:
             item["detail"] = detail
         items.append(item)
@@ -703,7 +722,7 @@ def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _empty_status_counts() -> dict[str, int]:
-    return {"pending": 0, "negotiating": 0, "accepted": 0, "rejected": 0, "expired": 0}
+    return {"pending": 0, "negotiating": 0, "accepted": 0, "expired": 0}
 
 
 def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -747,6 +766,8 @@ def _build_dashboard(
                 "opportunities": [],
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
+                "lifecycleStatus": "ACTIVE",
+                "pendingCount": 0,
             }
             intents[intent_id] = existing
             order.append(intent_id)
@@ -767,7 +788,12 @@ def _build_dashboard(
             or _text(intent.get("summary"))
             or "Untitled intent"
         )
-        ensure(intent_id, title)
+        obj = ensure(intent_id, title)
+        obj["lifecycleStatus"] = _text(intent.get("status"), "ACTIVE").upper()
+        # Consolidated row badge: pending questions + awaiting opportunities,
+        # taken verbatim from the server list counts so every surface (Hermes
+        # web/desktop, mac app, web app) shows the same number.
+        obj["pendingCount"] = _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount"))
 
     known_ids = set(intents.keys())
     opp_to_intent: dict[str, str] = {}
@@ -788,10 +814,12 @@ def _build_dashboard(
             if intent is not None:
                 opp_to_intent[opp_id] = intent_id
         status = _text(opp.get("status"))
+        if status == "rejected":
+            return  # hidden — see _STATUS_BUCKET comment
         if status in {"latent", "pending"} and not _is_actionable_for_viewer(opp, current_user_id):
             return
         bucket = _STATUS_BUCKET.get(status, "pending")
-        item = _opportunity_item(opp, network_titles, current_user_id)
+        item = _opportunity_item(opp, current_user_id)
         if intent is None:
             general_status_counts[bucket] = general_status_counts.get(bucket, 0) + 1
             general_opportunities.append(item)
@@ -800,6 +828,7 @@ def _build_dashboard(
                 nego["subtitle"] = "General"
                 negotiations.append(nego)
             return
+        item["intentScopeId"] = intent_id
         intent["statusCounts"][bucket] = intent["statusCounts"].get(bucket, 0) + 1
         intent["opportunities"].append(item)
         if status in _NEGOTIATION_STATUSES:
@@ -852,7 +881,11 @@ def _build_dashboard(
         intent["totalOpportunityCount"] = total_opportunity_count
         intent["questionCount"] = question_count
         intent["networks"] = intent["networks"][:4]
-        intent["status"] = "running" if actionable_opportunity_count else ("calibrating" if question_count else "idle")
+        # Row status mirrors the mac app's real-data behavior: its mapper
+        # (apps/mac/api/mappers.mjs) hardcodes matches/pipeline to zero, so the
+        # "matched"/"negotiating" branches of signalStatus never fire outside
+        # demo data — real rows are only ever paused or live.
+        intent["status"] = "paused" if intent["lifecycleStatus"] == "PAUSED" else "live"
         totals["intents"] += 1
         totals["questions"] += question_count
         totals["opportunities"] += actionable_opportunity_count
@@ -860,6 +893,10 @@ def _build_dashboard(
         for bucket, value in counts.items():
             totals["statusCounts"][bucket] += value
         ordered_intents.append(intent)
+
+    # Mac-app shelf order: active signals first, paused sink to the bottom
+    # (stable, so server order is kept within each group).
+    ordered_intents.sort(key=lambda item: item["lifecycleStatus"] == "PAUSED")
 
     return {
         "intents": ordered_intents,
@@ -880,23 +917,20 @@ def _build_dashboard(
 @router.get("/summary")
 def summary() -> dict[str, Any]:
     """Return a intent-centric, user-scoped dashboard summary."""
+    current_user_id = _resolve_user_id() or ""
     intents_payload = _call_read_intents()
     questions_payload = _call_pending_questions()
-    networks_payload = _call_mcp("read_networks")
-    memberships_payload = _call_mcp("read_network_memberships")
+    networks_payload = tools._api_request("GET", "/networks")
+    discover_payload = tools._api_request("GET", "/networks/discovery/public")
 
     opps_live, opps_error = _fetch_opportunities()
-    # The default list hides resolved statuses, so fetch them explicitly to keep
-    # the radar's expired/rejected chip counts and their listed items consistent.
+    # The default list hides resolved statuses, so fetch expired explicitly to
+    # keep the radar's Missed chip count and its listed items consistent.
     opps_expired, _ = _fetch_opportunities("?status=expired")
-    opps_rejected, _ = _fetch_opportunities("?status=rejected")
 
-    memberships_data = _data(memberships_payload)
-    current_user_id = _text(memberships_data.get("userId")) if isinstance(memberships_data, dict) else ""
-
-    network_titles = _network_title_map(networks_payload, memberships_payload)
+    network_titles = _network_title_map(networks_payload)
     dashboard = _build_dashboard(
-        intents_payload, opps_live, opps_expired + opps_rejected, questions_payload, network_titles, current_user_id or None
+        intents_payload, opps_live, opps_expired, questions_payload, network_titles, current_user_id or None
     )
 
     negotiations = dashboard["negotiations"]
@@ -916,7 +950,7 @@ def summary() -> dict[str, Any]:
         "intents": dashboard["intents"],
         "general": dashboard["general"],
         "negotiations": negotiations,
-        "networks": _normalize_networks(networks_payload),
+        "networks": _normalize_networks(networks_payload, discover_payload, current_user_id or None),
         "totals": dashboard["totals"],
         "errors": {key: value for key, value in errors.items() if value},
     }
@@ -945,11 +979,11 @@ def dismiss_question(question_id: str) -> dict[str, Any]:
 
 @router.post("/networks/{network_id}/join")
 def join_network(network_id: str) -> dict[str, Any]:
-    """Self-join an open (joinPolicy 'anyone') community via MCP create_network_membership."""
+    """Self-join an open (joinPolicy 'anyone') community via REST `POST /networks/:id/join`."""
     network_id = _text(network_id)
     if not network_id:
         return {"success": False, "error": "A network id is required."}
-    payload = _call_mcp("create_network_membership", {"networkId": network_id})
+    payload = tools._api_request("POST", f"/networks/{quote(network_id, safe='')}/join")
     if payload.get("success") is False:
         return payload
     return {"success": True}
@@ -960,9 +994,10 @@ def accept_opportunity(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
 ) -> dict[str, Any]:
-    """Accept an opportunity (Start chat) via MCP update_opportunity → status=accepted.
+    """Accept an opportunity via REST `PATCH /opportunities/:id/status` → status=accepted.
 
-    Returns the new conversation's web chat URL when the tool surfaces one.
+    Preserves the `unresolved_uptake_questions` advisory so the dashboard can offer a
+    continue-anyway retry with acknowledged question IDs.
     """
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
@@ -974,30 +1009,82 @@ def accept_opportunity(
     ):
         return {"success": False, "error": "acknowledgedUptakeQuestionIds must be an array of non-empty strings."}
     acknowledged_ids = list(dict.fromkeys(question_id.strip() for question_id in (acknowledged or [])))
-    payload = _update_opportunity(opportunity_id, "accepted", acknowledged_ids)
+    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    payload = _update_opportunity(opportunity_id, "accepted", scope_id or None, acknowledged_ids)
     if payload.get("success") is False:
-        # Preserve the structured advisory exactly; the dashboard needs its
-        # question IDs and public question shapes for a continue-anyway retry.
+        advisory = _uptake_advisory(payload)
+        if advisory is not None:
+            return {
+                "success": False,
+                "error": _text(payload.get("error")) or "Resolve pending uptake questions.",
+                "advisory": advisory,
+            }
         return payload
-    data = _data(payload)
-    conversation_id = _text(data.get("conversationId")) if isinstance(data, dict) else ""
-    result: dict[str, Any] = {"success": True, "status": "accepted"}
-    if conversation_id:
-        result["conversationId"] = conversation_id
-        result["chatUrl"] = f"{_web_url()}/chat/{quote(conversation_id, safe='')}"
-    return result
+    return {"success": True, "status": "accepted"}
 
 
 @router.post("/opportunities/{opportunity_id}/skip")
-def skip_opportunity(opportunity_id: str) -> dict[str, Any]:
-    """Skip (decline) an opportunity via MCP update_opportunity → status=rejected."""
+def skip_opportunity(
+    opportunity_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Skip (decline) an opportunity via REST `PATCH /opportunities/:id/status` → status=rejected."""
     opportunity_id = _text(opportunity_id)
     if not opportunity_id:
         return {"success": False, "error": "An opportunity id is required."}
-    payload = _update_opportunity(opportunity_id, "rejected")
+    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    payload = _update_opportunity(opportunity_id, "rejected", scope_id or None)
     if payload.get("success") is False:
         return payload
     return {"success": True, "status": "rejected"}
+
+
+@router.post("/opportunities/{opportunity_id}/start-chat")
+def start_chat(
+    opportunity_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Open (or resolve) the DM for an opportunity via REST `POST /opportunities/:id/start-chat`.
+
+    Returns the conversation id so the dashboard can open the Messages panel.
+    """
+    opportunity_id = _text(opportunity_id)
+    if not opportunity_id:
+        return {"success": False, "error": "An opportunity id is required."}
+    scope_id = _text(body.get("scopeId")) if isinstance(body, dict) else ""
+    payload = _start_chat(opportunity_id, scope_id or None)
+    if payload.get("success") is False:
+        return payload
+    conversation_id = _text(payload.get("conversationId"))
+    if not conversation_id:
+        return {"success": False, "error": "Start chat did not return a conversation.", "response": payload}
+    result: dict[str, Any] = {"success": True, "conversationId": conversation_id}
+    counterpart_id = _text(payload.get("counterpartUserId"))
+    if counterpart_id:
+        result["counterpartUserId"] = counterpart_id
+    result["chatUrl"] = f"{_web_url()}/chat/{quote(conversation_id, safe='')}"
+    return result
+
+
+_INTENT_STATUSES = {"ACTIVE", "PAUSED"}
+
+
+@router.post("/intents/{intent_id}/status")
+def set_intent_status(
+    intent_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Pause/resume one of the caller's intents via REST `PATCH /intents/:id/status`."""
+    intent_id = _text(intent_id)
+    if not intent_id:
+        return {"success": False, "error": "An intent id is required."}
+    status = _text(body.get("status")).upper() if isinstance(body, dict) else ""
+    if status not in _INTENT_STATUSES:
+        return {"success": False, "error": "status must be one of: ACTIVE, PAUSED."}
+    payload = tools._api_request("PATCH", f"/intents/{quote(intent_id, safe='')}/status", {"status": status})
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "status": status}
 
 
 @router.get("/profile")
@@ -1009,13 +1096,13 @@ def profile() -> dict[str, Any]:
     timezone, and notification preferences are sourced from the now API-key-capable
     `GET /auth/me` (email stays read-only — see `_MOCKED_PROFILE_FIELDS`).
     """
-    user_id = _resolve_user_id()
+    me = _fetch_me()
+    user_id = _text(me.get("id"))
     if not user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
 
     contexts = _data(_call_mcp("read_user_contexts")) or {}
     user = _fetch_user(user_id)
-    me = _fetch_me()
 
     name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
     intro = _text(user.get("intro")) or _text(contexts.get("bio") if isinstance(contexts, dict) else None)
