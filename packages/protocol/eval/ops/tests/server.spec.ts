@@ -9,6 +9,7 @@ import { InMemoryConfigStore } from "../ops.configs.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
+import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
 import { RunQueue } from "../ops.queue.js";
 import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
@@ -453,6 +454,25 @@ describe("launch with overrides", () => {
 
     expect(response.status).toBe(400);
     expect((await response.json()).error).toMatch(/claude-opus-9/);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("rejects an invalid override env value at launch, naming the key and valid values", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: {},
+      overrides: { models: {}, env: { POOL_QUESTIONS_MODE: "banana" } },
+    });
+
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+    expect(error).toContain("banana");
+    expect(error).toContain("off");
+    expect(error).toContain("on");
     await context.queue.drain();
     expect(executor.starts).toHaveLength(0);
   });
@@ -971,6 +991,32 @@ describe("config routes", () => {
     expect((await response.json()).error).toContain("OPENROUTER_API_KEY");
   });
 
+  it("rejects an invalid env value with a 400 naming the key and valid values", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, env: { POOL_QUESTIONS_MODE: "banana" } });
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+    expect(error).toContain("banana");
+    expect(error).toContain("off");
+    expect(error).toContain("on");
+  });
+
+  it("rejects a non-integer env value with a 400 naming the key", async () => {
+    const response = await post("/api/configs", { ...SONNET_CONFIG, env: { NEGOTIATION_MAX_TURNS_CHAT: "lots" } });
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("NEGOTIATION_MAX_TURNS_CHAT");
+    expect(error).toMatch(/integer/i);
+  });
+
+  it("still saves a config whose env values are all valid", async () => {
+    const response = await post("/api/configs", {
+      ...SONNET_CONFIG,
+      env: { POOL_QUESTIONS_MINING: "shadow", NEGOTIATION_MAX_TURNS_CHAT: "8", DISCOVERY_REJECTION_COOLDOWN_DAYS: "0.5" },
+    });
+    expect(response.status).toBe(201);
+  });
+
   it("updates and deletes a saved config, 404s unknown names, 409s repo profile names", async () => {
     await configs.create(SONNET_CONFIG);
 
@@ -1004,10 +1050,43 @@ describe("config routes", () => {
     expect((await configs.get("sonnet-evaluator"))?.models).toEqual(SONNET_CONFIG.models);
   });
 
+  it("rejects an env patch with an invalid value, naming the key and valid values", async () => {
+    await configs.create(SONNET_CONFIG);
+    const response = await patch("/api/configs/sonnet-evaluator", { env: { POOL_QUESTIONS_MODE: "banana" } });
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error;
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+    expect(error).toContain("banana");
+    expect((await configs.get("sonnet-evaluator"))?.env).toEqual(SONNET_CONFIG.env);
+  });
+
   it("serves the curated model list", async () => {
     const response = await get("/api/configs/models");
     expect(response.status).toBe(200);
     expect((await response.json()).models).toContain("google/gemini-2.5-flash");
+  });
+
+  it("serves guided-editing metadata as a static no-store payload", async () => {
+    const response = await get("/api/configs/metadata");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = await response.json();
+    expect(body.env).toHaveLength(PROFILE_ENV_ALLOWLIST.length);
+    expect(body.env.map((flag: { key: string }) => flag.key)).toEqual([...PROFILE_ENV_ALLOWLIST]);
+    expect(body.models.length).toBeGreaterThan(0);
+    for (const harness of ["matching", "opportunity", "premise", "profile"]) {
+      expect(body.harnessAgents[harness].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("reserves endpoint names so a saved config can never shadow them", async () => {
+    for (const name of ["metadata", "models"]) {
+      const response = await post("/api/configs", { ...SONNET_CONFIG, name });
+      expect(response.status).toBe(409);
+      expect((await response.json()).error).toContain(name);
+    }
+    // The literal route still wins: no config lookup happens for these paths.
+    expect((await get("/api/configs/metadata")).status).toBe(200);
   });
 });
 

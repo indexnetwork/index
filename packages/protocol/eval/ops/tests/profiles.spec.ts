@@ -123,6 +123,67 @@ describe("validateConfigOverrides", () => {
     const issues = validateConfigOverrides({ models: {}, env: { OPENROUTER_API_KEY: "x" } });
     expect(issues.some((i) => i.includes("OPENROUTER_API_KEY"))).toBe(true);
   });
+
+  it("accepts valid env values of every kind", () => {
+    expect(validateConfigOverrides({
+      models: {},
+      env: {
+        POOL_QUESTIONS_MODE: "on",
+        NEGOTIATION_EVIDENCE_QUESTIONS_MODE: "shadow",
+        RUN_OPPORTUNITY_EVAL_IN_PARALLEL: "false",
+        NEGOTIATION_MAX_TURNS_CHAT: "12",
+        DISCOVERY_REJECTION_COOLDOWN_DAYS: "3.5",
+        DISCOVERY_CONTEXT_TO_INTENT: "0",
+        DISCOVERY_ALLOWED_TYPES: "intent,profile",
+      },
+    })).toEqual([]);
+  });
+
+  it("rejects an enum value outside the flag's valid values, naming key, value and choices", () => {
+    const issues = validateConfigOverrides({ models: {}, env: { POOL_QUESTIONS_MODE: "banana" } });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("POOL_QUESTIONS_MODE");
+    expect(issues[0]).toContain("banana");
+    expect(issues[0]).toContain("off");
+    expect(issues[0]).toContain("on");
+  });
+
+  it("rejects a non-boolean value for a boolean flag", () => {
+    const issues = validateConfigOverrides({ models: {}, env: { RUN_OPPORTUNITY_EVAL_IN_PARALLEL: "yes" } });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("RUN_OPPORTUNITY_EVAL_IN_PARALLEL");
+    expect(issues[0]).toContain("yes");
+    expect(issues[0]).toContain("true");
+    expect(issues[0]).toContain("false");
+  });
+
+  it("rejects a non-integer value for an integer flag", () => {
+    const issues = validateConfigOverrides({ models: {}, env: { NEGOTIATION_MAX_TURNS_CHAT: "lots" } });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("NEGOTIATION_MAX_TURNS_CHAT");
+    expect(issues[0]).toContain("lots");
+    expect(issues[0]).toMatch(/integer/i);
+  });
+
+  it("rejects negative integers for integer flags, matching startup.env optionalInt", () => {
+    for (const value of ["-3", "+4", "4.5"]) {
+      const issues = validateConfigOverrides({ models: {}, env: { NEGOTIATION_MAX_TURNS_CHAT: value } });
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("NEGOTIATION_MAX_TURNS_CHAT");
+      expect(issues[0]).toContain(value);
+      expect(issues[0]).toMatch(/integer/i);
+    }
+  });
+
+  it("rejects non-positive and non-numeric values for a positive-number flag", () => {
+    for (const value of ["-3", "0", "soon"]) {
+      const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_REJECTION_COOLDOWN_DAYS: value } });
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("DISCOVERY_REJECTION_COOLDOWN_DAYS");
+      expect(issues[0]).toContain(value);
+      expect(issues[0]).toMatch(/positive number/i);
+    }
+  });
 });
 
 describe("resolveAdHoc", () => {
