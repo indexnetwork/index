@@ -1,94 +1,32 @@
 # Index Network Hermes Plugin
 
-Hermes-native plugin for Index Network. It follows the official Hermes plugin layout from [Build a Hermes Plugin](https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin):
+A native [Hermes](https://hermes-agent.nousresearch.com) plugin for [Index Network](https://index.network). It gives Hermes first-class Index tools (signals, opportunities, networks, negotiations), bundled guidance skills, a `/index` command, and a live dashboard tab — all authenticated with a single Index API key.
 
-```text
-plugin.yaml   # manifest: tools, hooks, env requirements
-__init__.py   # register(ctx): schemas -> handlers, hooks, commands, plugin skills
-schemas.py    # LLM-facing tool schemas
-tools.py      # JSON-string-returning tool handlers
-```
-
-## Current status
-
-The plugin provides these native Hermes tools:
-
-- `index_read_intents` — calls the canonical Index MCP `read_intents` tool using `INDEX_API_KEY` with argument validation.
-- `index_agent_me` — calls `GET /api/agents/me` to return the authenticated personal Index agent for the configured key.
-- `index_pickup_negotiation` — calls the personal-agent pickup endpoint to poll and claim one pending negotiation turn.
-- `index_respond_negotiation` — submits an autonomous personal-agent negotiation response with action, message, reasoning, and suggested roles.
-
-It also bundles generated, namespaced Hermes plugin skills, an orchestrator hint hook, a slash command, and a live dashboard tab:
-
-- `skills/index-orchestrator/SKILL.md` — signal/intent review and discovery preparation guidance for Hermes.
-- `skills/index-negotiator/SKILL.md` — autonomous personal-agent negotiation guidance for scheduled Hermes runs.
-- `pre_llm_call` hook — nudges Hermes to load `skill_view("index-network:index-orchestrator")` for clear Index/signal/intent/opportunity prompts.
-- `/index` command — returns the same skill-loading hint explicitly.
-- `dashboard/` — Hermes dashboard tab showing scoped intents, opportunities, negotiation activity, and joined networks.
-
-## Install / enable in Hermes
-
-Install the public plugin with Hermes:
+## Installation
 
 ```bash
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-The manifest declares `requires_env: INDEX_API_KEY`, so `hermes plugins install` prompts for it and saves it to Hermes' `.env`. Use an Index agent-bound API key when running autonomous negotiation tools.
+The manifest declares `requires_env: INDEX_API_KEY`, so the installer prompts for the key and saves it to Hermes' `.env`. Get an agent-bound API key at [index.network/agents](https://index.network/agents); an agent-bound key is required for the autonomous negotiation tools.
 
-For local development, a Hermes plugin directory must be installed under `~/.hermes/plugins/<plugin-name>/` or a one-level category path. Copy or symlink this directory:
+## Configuration
 
-```bash
-mkdir -p ~/.hermes/plugins
-ln -s /path/to/index/packages/hermes-plugin ~/.hermes/plugins/index-network
-hermes plugins enable index-network
-```
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `INDEX_API_KEY` | yes | — | Authenticates MCP tool calls and personal-agent API requests |
+| `INDEX_MCP_URL` | no | `https://protocol.index.network/mcp` | Index MCP server |
+| `INDEX_API_URL` | no | `https://protocol.index.network/api` | Index REST API |
+| `INDEX_MCP_TIMEOUT_SECONDS` | no | `30` | Timeout for both MCP and API requests |
+| `INDEX_TELEGRAM_USERNAME` | no | — | Forwarded as `x-index-telegram-username` when present |
 
-For the native Hermes Desktop app, generate the desktop plugin (a single ESM
-file built from the same dashboard bundle) and symlink its folder:
+## Tools
 
-```bash
-node desktop/build.mjs   # writes desktop/dist/plugin.js
-ln -s /path/to/index/packages/hermes-plugin/desktop/dist ~/.hermes/desktop-plugins/index-network
-```
+All Hermes-facing tools are prefixed `index_` (see [Naming convention](#naming-convention-the-index_-prefix)).
 
-After rebuilding, run ⌘K → **Reload desktop plugins** in the app (file edits
-behind a symlinked folder don't always trigger the hot-reload watcher).
+### MCP wrappers
 
-You can also set the key manually:
-
-```bash
-export INDEX_API_KEY="..."
-```
-
-Optional environment variables:
-
-- `INDEX_MCP_URL` — defaults to `https://protocol.index.network/mcp`.
-- `INDEX_API_URL` — defaults to `https://protocol.index.network/api`.
-- `INDEX_MCP_TIMEOUT_SECONDS` — defaults to `30` and is used for both MCP and API requests.
-- `INDEX_TELEGRAM_USERNAME` — forwarded as `x-index-telegram-username` when present.
-
-## Tool contract
-
-Handlers intentionally follow Hermes' plugin rules:
-
-- signature: `def handler(args: dict, **kwargs) -> str`
-- always return a JSON string
-- catch exceptions and return JSON error payloads
-- accept `**kwargs` for forward compatibility
-
-### Naming convention: the `index_` prefix
-
-Every Hermes-facing tool is named `index_<mcp_tool_name>`, while the Index MCP server itself exposes unprefixed names (`list_opportunities`, `read_intents`, ...). This is a deliberate client-side namespacing convention, not an MCP protocol requirement:
-
-- **Collision avoidance.** Hermes merges all plugin tools into one flat namespace; generic names like `read_docs` or `list_opportunities` could clash with other plugins or built-in tools. `index_read_docs` cannot.
-- **Self-describing calls.** In tool-call logs, dashboards, and multi-server setups it is always clear which system a call belongs to.
-
-Implementation: `schemas.py` builds schema names as `f"index_{tool_name}"` and `tools.py` sets `handler.__name__` the same way. Keep the prefix when adding new wrappers so `plugin.yaml`'s `provides_tools` list stays consistent.
-
-### `index_read_intents`
-
-Accepts:
+`index_read_intents` is a dedicated wrapper with argument validation:
 
 ```json
 {
@@ -99,57 +37,37 @@ Accepts:
 }
 ```
 
-With no arguments, it returns the authenticated caller's own active intents as seen through the scoped Index MCP server.
+With no arguments it returns the authenticated caller's own active intents.
 
-### `index_<mcp_tool_name>` forwarded wrappers
-
-The plugin registers Hermes wrappers for each canonical Index MCP tool that does not already have a dedicated wrapper. Examples:
+Every other canonical Index MCP tool gets a forwarded wrapper: the name is the MCP tool name prefixed with `index_`, arguments pass through unchanged, and the MCP response envelope is decoded into a JSON string. Examples:
 
 - `index_read_docs({"topic":"mcp_agent_guide"})`
 - `index_create_intent({"description":"...","autoApprove":true})`
 - `index_read_networks({})`
 - `index_list_opportunities({})`
 
-Wrapper names are formed by prefixing the MCP tool name with `index_`; arguments are passed through unchanged to the underlying MCP tool. Tool responses are decoded from the MCP envelope and returned as JSON strings to Hermes.
+The full list is `provides_tools` in `plugin.yaml`.
 
-### `index_agent_me`
+### Personal-agent tools
 
-Accepts no arguments:
+**`index_agent_me`** — no arguments. Returns the authenticated personal Index agent for the configured key (`GET /api/agents/me`).
 
-```json
-{}
-```
-
-Returns the authenticated personal agent identity for the configured `INDEX_API_KEY`.
-
-### `index_pickup_negotiation`
-
-Accepts:
+**`index_pickup_negotiation`** — polls and claims one pending negotiation turn:
 
 ```json
-{
-  "agentId": "optional personal agent UUID"
-}
+{ "agentId": "optional personal agent UUID" }
 ```
 
-If `agentId` is omitted, the handler resolves it with `/api/agents/me`. A 204/no-work pickup returns:
+If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work returns `{ "success": true, "pending": false }`; a claimed turn returns `pending: true` plus the negotiation payload.
 
-```json
-{ "success": true, "pending": false }
-```
-
-A claimed turn returns `pending: true` plus the backend negotiation payload.
-
-### `index_respond_negotiation`
-
-Accepts:
+**`index_respond_negotiation`** — submits an autonomous negotiation response:
 
 ```json
 {
   "agentId": "optional personal agent UUID",
   "negotiationId": "required negotiation UUID from pickup",
   "action": "propose | accept | reject | counter | question",
-  "message": "required for counter/question; optional but useful for other actions",
+  "message": "required for counter/question; optional otherwise",
   "reasoning": "required private rationale",
   "suggestedRoles": {
     "ownUser": "agent | patient | peer",
@@ -158,52 +76,101 @@ Accepts:
 }
 ```
 
-The handler sends the backend body shape expected by the personal-agent negotiation endpoint:
+The handler maps this to the backend body shape (`action`, `message`, and an `assessment` object containing `reasoning` and `suggestedRoles`).
 
-```json
-{
-  "action": "accept",
-  "message": "...",
-  "assessment": {
-    "reasoning": "...",
-    "suggestedRoles": {
-      "ownUser": "agent",
-      "otherUser": "patient"
-    }
-  }
-}
-```
+## Skills, hook, and command
 
-## Autonomous negotiation setup
+Two namespaced plugin skills are bundled and registered automatically:
 
-Hermes can run as the user's personal Index negotiator by invoking the bundled `index-network:index-negotiator` skill on a schedule through Hermes' gateway/cron mechanism.
+- `index-network:index-orchestrator` — signal/intent review and discovery preparation guidance.
+- `index-network:index-negotiator` — autonomous personal-agent negotiation guidance for scheduled runs.
 
-A minimal scheduled prompt should instruct Hermes to load the negotiator skill and run one autonomous polling pass, for example:
+A defensive `pre_llm_call` hook injects a hint to load the orchestrator skill when a prompt clearly mentions Index Network, signals, intents, opportunities, or discovery; it never runs tools itself. The `/index` command returns the same hint for explicit activation.
+
+Plugin skills are namespaced and read-only — do not copy them into `~/.hermes/skills`.
+
+## Dashboard
+
+The plugin ships an **Index Network** dashboard tab under `dashboard/`: an intent-centric master-detail view with pending-question answers, opportunity accept/skip, community self-join, intent pause/archive, profile editing, and realtime direct messages. The dashboard backend reuses `tools.py` for authentication, MCP forwarding, and timeouts, and it never claims or responds to negotiation turns — those remain explicit tool/skill flows.
+
+See [`dashboard/README.md`](./dashboard/README.md) for the full scope and runtime behavior.
+
+## Autonomous negotiation
+
+Hermes can act as the user's personal Index negotiator by running the negotiator skill on a schedule through Hermes' gateway/cron mechanism. A minimal scheduled prompt:
 
 ```text
 Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.
 ```
 
-The skill's scheduled-run contract is:
+The skill's scheduled-run contract:
 
 1. call `index_pickup_negotiation()`
 2. if `pending=false`, respond exactly `[SILENT]`
-3. inspect returned context/opportunity/turn history/deadline when a turn is pending
+3. inspect the returned context, opportunity, turn history, and deadline
 4. choose one cautious action
 5. call `index_respond_negotiation(...)`
 6. report only the tool-confirmed submission
 
-Run the Hermes gateway/cron often enough to keep the personal-agent heartbeat fresh. A 1 minute interval is recommended. The Index dispatcher falls back to the system negotiator when no personal agent has polled recently, so a slow or stopped cron may cause Hermes to miss turns even though the plugin is installed.
+Run the cron often enough to keep the personal-agent heartbeat fresh — a 1 minute interval is recommended. The Index dispatcher falls back to the system negotiator when no personal agent has polled recently, so a slow or stopped cron causes missed turns even with the plugin installed.
 
-## Hook and command behavior
+## Development
 
-`__init__.py` registers a defensive `pre_llm_call` hook. When the user message clearly mentions Index Network, signals, intents, opportunities, or discovery, the hook injects a short hint telling Hermes to load `skill_view("index-network:index-orchestrator")`. The hook does not run tools by itself.
+### Layout
 
-The `/index` command returns the same hint for explicit activation. Plugin skills are namespaced, so refer to them as `index-network:index-orchestrator` and `index-network:index-negotiator`.
+The plugin follows the official layout from [Build a Hermes Plugin](https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin):
 
-## Bundled skills
+```text
+plugin.yaml   # manifest: tools, hooks, env requirements
+__init__.py   # register(ctx): schemas -> handlers, hooks, commands, plugin skills
+schemas.py    # LLM-facing tool schemas
+tools.py      # JSON-string-returning tool handlers
+skills/       # generated plugin skills (do not edit directly)
+dashboard/    # Hermes dashboard tab (manifest, bundle, FastAPI routes)
+desktop/      # Hermes Desktop plugin build
+```
 
-The committed Hermes plugin skills are generated from templates in the monorepo:
+### Local install
+
+A Hermes plugin directory must live under `~/.hermes/plugins/<plugin-name>/`. Symlink this directory:
+
+```bash
+mkdir -p ~/.hermes/plugins
+ln -s /path/to/index/packages/hermes-plugin ~/.hermes/plugins/index-network
+hermes plugins enable index-network
+export INDEX_API_KEY="..."
+```
+
+For the native Hermes Desktop app, build the desktop plugin (a single ESM file from the same dashboard bundle) and symlink its folder:
+
+```bash
+node desktop/build.mjs   # writes desktop/dist/plugin.js
+ln -s /path/to/index/packages/hermes-plugin/desktop/dist ~/.hermes/desktop-plugins/index-network
+```
+
+After rebuilding, run ⌘K → **Reload desktop plugins** in the app (file edits behind a symlinked folder don't always trigger the hot-reload watcher).
+
+### Tool contract
+
+Handlers follow Hermes' plugin rules:
+
+- signature: `def handler(args: dict, **kwargs) -> str`
+- always return a JSON string
+- catch exceptions and return JSON error payloads
+- accept `**kwargs` for forward compatibility
+
+### Naming convention: the `index_` prefix
+
+Every Hermes-facing tool is named `index_<mcp_tool_name>`, while the Index MCP server exposes unprefixed names. This is a deliberate client-side namespacing convention, not an MCP requirement:
+
+- **Collision avoidance.** Hermes merges all plugin tools into one flat namespace; generic names like `read_docs` could clash with other plugins or built-ins.
+- **Self-describing calls.** Logs, dashboards, and multi-server setups always show which system a call belongs to.
+
+`schemas.py` builds schema names as `f"index_{tool_name}"` and `tools.py` sets `handler.__name__` the same way. Keep the prefix when adding wrappers so `plugin.yaml`'s `provides_tools` list stays consistent.
+
+### Generated skills
+
+The committed skills are generated from monorepo templates:
 
 ```text
 packages/protocol/skills/hermes-plugin/<skill-name>.template.md
@@ -211,26 +178,9 @@ packages/protocol/skills/hermes-plugin/<skill-name>.template.md
 packages/hermes-plugin/skills/<skill-name>/SKILL.md
 ```
 
-Do not edit generated `SKILL.md` files directly. Edit the templates and run `bun run build:skills` from the monorepo root.
+Do not edit generated `SKILL.md` files directly — edit the templates and run `bun run build:skills` from the monorepo root.
 
-`__init__.py` registers each skill directory with `ctx.register_skill()`, so Hermes can load them as `index-network:<skill-name>`. Do not copy plugin skills into `~/.hermes/skills`; Hermes plugin skills are namespaced and read-only.
-
-## Dashboard view
-
-The plugin ships a plugin-local Hermes dashboard tab under `dashboard/`:
-
-```text
-dashboard/manifest.json
-dashboard/dist/index.js
-dashboard/dist/style.css
-dashboard/plugin_api.py
-```
-
-The tab appears as **Index Network** in Hermes and is write-enabled for several workflows: answering pending Index questions, accepting/skipping opportunities, self-joining open communities, archiving intents, editing the profile (name/intro/location/socials/timezone/notifications + avatar upload + AI intro), and sending realtime direct messages. It shows the authenticated user's pending questions, own intents, actionable opportunities, negotiation activity summary, joined networks, a profile/settings panel, and a searchable Messages panel with unread markers, agent-thread badges, and a live `/conversations/stream` feed (authoritative realtime consumed via `SDK.authedFetch` streaming, with reconnect + optimistic send, matching the web app). The dashboard backend reuses `tools.py` for Index authentication, scoped MCP forwarding, API writes, timeouts, and response decoding instead of creating a second Index client.
-
-The dashboard never claims pending negotiation turns or submits negotiation responses. Those actions remain explicit Hermes tool/skill flows.
-
-## Verify
+### Verify
 
 From the monorepo root:
 
@@ -240,9 +190,9 @@ bun test scripts/tests/build-skills.spec.ts
 cd packages/hermes-plugin && bun run test
 ```
 
-For manual dashboard checks, restart `hermes dashboard` after changing `plugin_api.py` (or run `curl http://127.0.0.1:9119/api/dashboard/plugins/rescan` after asset-only changes), then open the **Index Network** tab. The tab should load `/api/plugins/index-network/summary` through `SDK.fetchJSON`, render scoped Index data, and submit pending-question answers through `/api/plugins/index-network/questions/:id/answer`.
+For manual dashboard checks, restart `hermes dashboard` after changing `plugin_api.py` (or `curl http://127.0.0.1:9119/api/dashboard/plugins/rescan` after asset-only changes), then open the **Index Network** tab.
 
-For Hermes discovery debugging:
+For Hermes plugin discovery debugging:
 
 ```bash
 HERMES_PLUGINS_DEBUG=1 hermes plugins list
