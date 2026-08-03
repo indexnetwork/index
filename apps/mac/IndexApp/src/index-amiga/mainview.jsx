@@ -1212,7 +1212,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               ) : it.kind === "user" ? (
                 <UserLine key={it.id}>{it.text}</UserLine>
               ) : (
-                <AgentLine key={it.id}>{it.text}</AgentLine>
+                <AgentLine key={it.id}><AgentMarkdown text={it.text}/></AgentLine>
               )
             )}
         </div>
@@ -1538,6 +1538,21 @@ function HELLO_FOR(profile) {
 
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
+
+// Agent replies arrive as markdown; render them through the vendored marked
+// UMD (window.marked). `<` is escaped first so raw HTML in model output never
+// reaches the DOM — only markdown-generated tags do. Falls back to plain text
+// if marked is missing or throws (e.g. on a half-streamed construct).
+function AgentMarkdown({ text }) {
+  const html = useMemo(() => {
+    if (!window.marked || !text) return null;
+    try {
+      return window.marked.parse(String(text).replace(/</g, "&lt;"), { breaks: true, async: false });
+    } catch (e) { return null; }
+  }, [text]);
+  if (html == null) return text || null;
+  return <div className="agent-md" dangerouslySetInnerHTML={{ __html: html }}/>;
+}
 
 function AgentLine({ children, pending, highlight, collective }) {
   return (

@@ -30,6 +30,7 @@ VENDOR = {
     "https://unpkg.com/react@18.3.1/umd/react.development.js": "react.development.js",
     "https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js": "react-dom.development.js",
     "https://unpkg.com/@babel/standalone@7.29.0/babel.min.js": "babel.min.js",
+    "https://unpkg.com/marked@18.0.7/lib/marked.umd.js": "marked.umd.js",
 }
 
 html = (SRC / "index-amiga.html").read_text()
