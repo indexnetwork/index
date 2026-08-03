@@ -479,7 +479,8 @@ def main() -> None:
                         "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
                     }
                 ),
-                # _call_pending_questions → GET /questions?status=pending (nested detection/payload).
+                # _call_questions_by_intent("pending") → server-scoped per intent
+                # (identical query to the Mac app; nested detection/payload).
                 FakeResponse(
                     {
                         "questions": [
@@ -494,17 +495,30 @@ def main() -> None:
                                     "multiSelect": False,
                                 },
                             },
+                        ]
+                    }
+                ),
+                # _call_questions_by_intent("answered") → server-scoped settled records
+                # per intent (identical scope to the Mac app), surviving reloads.
+                FakeResponse(
+                    {
+                        "questions": [
                             {
-                                "id": "question-2",
-                                "status": "pending",
-                                "detection": {"mode": "enrichment", "sourceType": "profile", "sourceId": "user-1"},
+                                "id": "question-answered",
+                                "status": "answered",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
                                 "payload": {
-                                    "title": "Onboarding",
-                                    "prompt": "Tell us about yourself.",
+                                    "title": "Focus",
+                                    "prompt": "Which robotics area did you pick?",
                                     "options": [],
                                     "multiSelect": False,
                                 },
-                            },
+                                "answer": {
+                                    "selectedOptions": ["Hiring"],
+                                    "freeText": "",
+                                    "answeredAt": "2026-06-01T00:00:00.000Z",
+                                },
+                            }
                         ]
                     }
                 ),
@@ -624,6 +638,9 @@ def main() -> None:
         assert intent["networks"] == ["Robotics Guild"]
         assert intent["questions"][0]["id"] == "question-1"
         assert intent["questions"][0]["options"][0]["label"] == "Hiring"
+        # Settled records ride along per intent, pending counts unaffected.
+        assert intent["answeredQuestions"][0]["id"] == "question-answered"
+        assert intent["answeredQuestions"][0]["answerText"] == "Hiring"
         assert intent["opportunities"][0]["opportunityId"] == "opp-1"
         assert intent["opportunities"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
         assert intent["opportunities"][0]["name"] == "Ada"
@@ -632,10 +649,12 @@ def main() -> None:
         assert "networks" not in intent["opportunities"][0]
         assert intent["opportunities"][0]["counterpartUserId"] == "other"
         assert intent["opportunities"][0]["intentScopeId"] == "intent-1"
-        assert summary["general"]["count"] == 2
-        assert summary["general"]["questionCount"] == 1
+        # Questions are server-scoped per intent, so the general questions
+        # bucket is always empty (only unlinked opportunities remain general).
+        assert summary["general"]["count"] == 1
+        assert summary["general"]["questionCount"] == 0
         assert summary["general"]["opportunityCount"] == 1
-        assert summary["general"]["questions"][0]["id"] == "question-2"
+        assert summary["general"]["questions"] == []
         assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
         assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
         all_opp_ids = [
@@ -654,17 +673,18 @@ def main() -> None:
         assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
         assert summary["totals"] == {
             "intents": 1,
-            "questions": 2,
+            "questions": 1,
             "opportunities": 2,
             "totalOpportunities": 3,
             "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "expired": 1},
         }
         # The summary is now fully REST (Mac-app parity): no MCP tool calls remain.
         calls = [(entry["method"], entry["url"]) for entry in captured]
-        assert calls[:7] == [
+        assert calls[:8] == [
             ("GET", "https://api.example.test/api/auth/me"),
             ("POST", "https://api.example.test/api/intents/list"),
-            ("GET", "https://api.example.test/api/questions?status=pending"),
+            ("GET", "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"),
+            ("GET", "https://api.example.test/api/questions?status=answered&scopeType=intent&scopeId=intent-1"),
             ("GET", "https://api.example.test/api/networks"),
             ("GET", "https://api.example.test/api/networks/discovery/public"),
             ("GET", "https://api.example.test/api/opportunities"),
@@ -672,7 +692,7 @@ def main() -> None:
         ]
         assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
         # No per-counterpart /users/:id fetches: cards no longer carry socials.
-        assert calls[7:] == []
+        assert calls[8:] == []
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)

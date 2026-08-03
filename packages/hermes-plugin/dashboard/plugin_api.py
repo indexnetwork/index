@@ -4,10 +4,10 @@ Mounted at /api/plugins/index-network/ by Hermes dashboard. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
 question-answer writes stay scoped to the configured INDEX_API_KEY principal.
 
-The dashboard is intent-centric: each intent (intent) carries its own pending
-questions and its own opportunities ("radar"). Questions and opportunities not
-tied to a intent land in a "general" bucket. Networks are returned separately
-for the Networks view.
+The dashboard is intent-centric: each intent carries its own pending and
+answered questions (server-scoped per intent, the Mac app's queries) and its
+own opportunities ("radar"). Opportunities not tied to an intent land in a
+"general" bucket. Networks are returned separately for the Networks view.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -149,7 +150,7 @@ def _call_mcp(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, A
 
 def _flatten_rest_question(question: dict[str, Any]) -> dict[str, Any] | None:
     """Flatten a REST `GET /questions` row (detection/payload nesting) into the flat
-    shape `_question_item`/`_question_target` expect."""
+    shape `_question_item` expects."""
     question_id = _text(question.get("id"))
     if not question_id:
         return None
@@ -169,22 +170,56 @@ def _flatten_rest_question(question: dict[str, Any]) -> dict[str, Any] | None:
         flat["createdAt"] = question.get("createdAt")
     if question.get("expiresAt"):
         flat["expiresAt"] = question.get("expiresAt")
+    answer = question.get("answer") if isinstance(question.get("answer"), dict) else {}
+    if answer:
+        chosen = [option.strip() for option in _list(answer.get("selectedOptions")) if isinstance(option, str) and option.strip()]
+        flat["answerText"] = ", ".join(chosen) or _text(answer.get("freeText"))
+        if answer.get("answeredAt"):
+            flat["answeredAt"] = _text(answer.get("answeredAt"))
     return flat
 
 
-def _call_pending_questions() -> dict[str, Any]:
-    """Fetch pending questions over REST (`GET /questions?status=pending`), matching the Mac app."""
-    payload = tools._api_request("GET", "/questions?status=pending")
-    if payload.get("success") is False:
-        return payload
-    questions: list[dict[str, Any]] = []
-    for question in _list(payload.get("questions")):
-        if not isinstance(question, dict):
-            continue
-        flat = _flatten_rest_question(question)
-        if flat is not None:
-            questions.append(flat)
-    return {"success": True, "data": {"questions": questions}}
+def _call_questions_by_intent(
+    status: str, intent_ids: list[str]
+) -> tuple[dict[str, list[dict[str, Any]]], str | None]:
+    """Fetch each intent's questions with the server's intent scope
+    (`GET /questions?status=...&scopeType=intent&scopeId=...`).
+
+    This is the same canonical query the Mac app issues — the server resolves
+    triggeredBy, opportunity, and negotiation linkage that client-side grouping
+    cannot replicate — so both surfaces show identical questions. Pending keeps
+    server order; answered records sort oldest-first (Mac feed order)."""
+
+    def fetch(intent_id: str) -> tuple[list[dict[str, Any]], str | None]:
+        payload = tools._api_request(
+            "GET", f"/questions?status={status}&scopeType=intent&scopeId={quote(intent_id, safe='')}"
+        )
+        error = _section_error(payload)
+        if error:
+            return [], error
+        records: list[dict[str, Any]] = []
+        for question in _list(payload.get("questions")):
+            if not isinstance(question, dict):
+                continue
+            flat = _flatten_rest_question(question)
+            item = _question_item(flat) if flat is not None else None
+            if item is None:
+                continue
+            if flat.get("answerText") is not None:
+                item["answerText"] = _text(flat.get("answerText"))
+            if flat.get("answeredAt"):
+                item["answeredAt"] = _text(flat.get("answeredAt"))
+            records.append(item)
+        if status == "answered":
+            records.sort(key=lambda record: record.get("answeredAt", ""))
+        return records, None
+
+    if not intent_ids:
+        return {}, None
+    with ThreadPoolExecutor(max_workers=min(4, len(intent_ids))) as pool:
+        results = list(pool.map(fetch, intent_ids))
+    error = next((err for _records, err in results if err), None)
+    return {intent_id: records for intent_id, (records, _err) in zip(intent_ids, results)}, error
 
 
 def _web_url() -> str:
@@ -485,19 +520,6 @@ def _question_item(question: dict[str, Any]) -> dict[str, Any] | None:
     return item
 
 
-def _question_target(question: dict[str, Any], opp_to_intent: dict[str, str], known_ids: set[str]) -> str | None:
-    """Resolve which intent (intent id) a pending question belongs to, or None for general."""
-    mode = _text(question.get("mode"))
-    source_id = _text(question.get("sourceId"))
-    if mode == "intent" and source_id in known_ids:
-        return source_id
-    if mode == "negotiation":
-        mapped = opp_to_intent.get(source_id)
-        if mapped:
-            return mapped
-    return None
-
-
 def _opportunity_networks(opp: dict[str, Any], network_titles: dict[str, str]) -> list[str]:
     nets: list[str] = []
     for actor in _list(opp.get("actors")):
@@ -748,7 +770,8 @@ def _build_dashboard(
     intents_payload: dict[str, Any],
     opps_live: list[dict[str, Any]],
     opps_extra: list[dict[str, Any]],
-    questions_payload: dict[str, Any],
+    pending_by_intent: dict[str, list[dict[str, Any]]],
+    answered_by_intent: dict[str, list[dict[str, Any]]],
     network_titles: dict[str, str],
     current_user_id: str | None = None,
 ) -> dict[str, Any]:
@@ -763,6 +786,7 @@ def _build_dashboard(
                 "id": intent_id,
                 "title": title or "Untitled intent",
                 "questions": [],
+                "answeredQuestions": [],
                 "opportunities": [],
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
@@ -796,8 +820,6 @@ def _build_dashboard(
         obj["pendingCount"] = _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount"))
 
     known_ids = set(intents.keys())
-    opp_to_intent: dict[str, str] = {}
-
     seen_opp_ids: set[str] = set()
 
     general_opportunities: list[dict[str, Any]] = []
@@ -811,8 +833,6 @@ def _build_dashboard(
             if opp_id in seen_opp_ids:
                 return
             seen_opp_ids.add(opp_id)
-            if intent is not None:
-                opp_to_intent[opp_id] = intent_id
         status = _text(opp.get("status"))
         if status == "rejected":
             return  # hidden — see _STATUS_BUCKET comment
@@ -844,20 +864,17 @@ def _build_dashboard(
     for opp in opps_extra:
         place_opportunity(opp)
 
-    known_ids = set(intents.keys())
+    # Questions are server-scoped per intent (see _call_questions_by_intent),
+    # identical to the Mac app's queries: pending render as answer forms,
+    # answered as settled records that survive reloads. There is no client-side
+    # grouping, so the general questions bucket is always empty.
     general: list[dict[str, Any]] = []
-    questions_data = _data(questions_payload)
-    for question in _list(questions_data.get("questions") if isinstance(questions_data, dict) else None):
-        if not isinstance(question, dict):
-            continue
-        item = _question_item(question)
-        if item is None:
-            continue
-        target = _question_target(question, opp_to_intent, known_ids)
-        if target and target in intents:
-            intents[target]["questions"].append(item)
-        else:
-            general.append(item)
+    for intent_id, records in pending_by_intent.items():
+        if intent_id in intents:
+            intents[intent_id]["questions"] = records
+    for intent_id, records in answered_by_intent.items():
+        if intent_id in intents:
+            intents[intent_id]["answeredQuestions"] = records
 
     general_total_opportunity_count = sum(general_status_counts.values())
     general_actionable_opportunity_count = general_status_counts.get("pending", 0)
@@ -919,7 +936,14 @@ def summary() -> dict[str, Any]:
     """Return a intent-centric, user-scoped dashboard summary."""
     current_user_id = _resolve_user_id() or ""
     intents_payload = _call_read_intents()
-    questions_payload = _call_pending_questions()
+    intents_data = _data(intents_payload)
+    intent_ids = [
+        _text(intent.get("id"))
+        for intent in _list(intents_data.get("intents") if isinstance(intents_data, dict) else None)
+        if isinstance(intent, dict) and _text(intent.get("id"))
+    ]
+    pending_by_intent, questions_error = _call_questions_by_intent("pending", intent_ids)
+    answered_by_intent, _answered_error = _call_questions_by_intent("answered", intent_ids)
     networks_payload = tools._api_request("GET", "/networks")
     discover_payload = tools._api_request("GET", "/networks/discovery/public")
 
@@ -930,7 +954,7 @@ def summary() -> dict[str, Any]:
 
     network_titles = _network_title_map(networks_payload)
     dashboard = _build_dashboard(
-        intents_payload, opps_live, opps_expired, questions_payload, network_titles, current_user_id or None
+        intents_payload, opps_live, opps_expired, pending_by_intent, answered_by_intent, network_titles, current_user_id or None
     )
 
     negotiations = dashboard["negotiations"]
@@ -939,7 +963,7 @@ def summary() -> dict[str, Any]:
 
     errors = {
         "intents": _section_error(intents_payload),
-        "questions": _section_error(questions_payload),
+        "questions": questions_error,
         "opportunities": opps_error,
         "networks": _section_error(networks_payload),
     }

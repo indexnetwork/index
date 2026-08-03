@@ -74,6 +74,8 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('questions.pending', (client) => client.questions.pending({ sourceId: 'intent/1' }), { path: '/questions?status=pending&sourceId=intent%2F1' });
     await expectCall('questions.pending scoped intent', (client) => client.questions.pending({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID }), { path: `/questions?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('questions.pendingForIntent', (client) => client.questions.pendingForIntent(SELECTED_INTENT_ID), { path: `/questions?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('questions.answered', (client) => client.questions.answered(), { path: '/questions?status=answered' });
+    await expectCall('questions.answeredForIntent', (client) => client.questions.answeredForIntent(SELECTED_INTENT_ID), { path: `/questions?status=answered&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('questions.answer', (client) => client.questions.answer('question/1', { selectedOptions: ['yes'] }), { path: '/questions/question%2F1/answer', method: 'POST', body: { selectedOptions: ['yes'] } });
     await expectCall('questions.dismiss', (client) => client.questions.dismiss('question/1'), { path: '/questions/question%2F1/dismiss', method: 'POST', body: {} });
 

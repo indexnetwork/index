@@ -218,6 +218,14 @@ export function createIndexApiClient(options = {}) {
         `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
+      answered: (filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'answered', ...filters })}`,
+        options,
+      ),
+      answeredForIntent: (intentId, filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'answered', ...filters, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
       answer: (questionId, body, options = {}) => request(
         `/questions/${encodeURIComponent(questionId)}/answer`,
         { ...options, method: 'POST', body },
