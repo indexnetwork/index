@@ -9,7 +9,7 @@
 
 import crypto from 'crypto';
 
-import { FALLBACK_WHO_QUESTION, normalizeIntentDescription, IntentGraphFactory, SignalIntakeOrchestrator, SignalIntakePackGenerator, type IntakeAnswer, type IntakePackQuestion } from '@indexnetwork/protocol';
+import { FALLBACK_WHO_QUESTION, normalizeIntentDescription, IntentGraphFactory, SignalIntakeOrchestrator, SignalIntakePackGenerator, type IntakeAnswer, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
@@ -19,6 +19,7 @@ import { questionerAdapter } from '../adapters/questioner.adapter.instance';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { getSignalIntakeConfig, type SignalIntakeQuestionMode } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
 const logger = log.service.from('signal-intake');
@@ -71,8 +72,10 @@ export interface SignalIntakeServiceDeps {
   >;
   /** Server-side authority for the client-supplied `networkId`. */
   isNetworkMember: (networkId: string, userId: string) => Promise<boolean>;
-  orchestrator: Pick<SignalIntakeOrchestrator, 'nextQuestion' | 'synthesize'>;
+  orchestrator: Pick<SignalIntakeOrchestrator, 'generateFollowUps' | 'synthesize'>;
   packGenerator: Pick<SignalIntakePackGenerator, 'generate'>;
+  /** Intake knobs; production reads the env accessors, tests inject fixed values. */
+  intakeConfig?: () => { maxQuestions: number; mode: SignalIntakeQuestionMode };
   getPremises: (userId: string) => Promise<Array<{ text: string }>>;
   getNetworkTitles: (userId: string) => Promise<string[]>;
   getGlobalContext: (userId: string) => Promise<string | null>;
@@ -85,12 +88,11 @@ export interface SignalIntakeServiceDeps {
     userId: string;
     prompt: string;
     answer: IntakeAnswer;
-    stage: 'who' | 'bring';
+    stage: string;
     /**
      * The real question offered to the user, when it is in scope at the
-     * call site. Optional because the `bring` stage's round-2 question is
-     * not accessible without editing a forbidden endpoint schema; when
-     * absent, the recorder falls back to a derived proxy.
+     * call site. Optional because follow-up rounds carry only their prompt;
+     * when absent, the recorder falls back to a derived proxy.
      */
     question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
   }) => Promise<void>;
@@ -174,50 +176,91 @@ export class SignalIntakeService {
   }
 
   /**
-   * Generate round 2 from the round-1 answer.
+   * Plan and serve the next follow-up question batch.
+   *
+   * The total interview length is fixed by the first call's plan (or the
+   * budget when the plan is smaller) and locked: continuation calls echo the
+   * client-carried `plannedTotal`, clamped to the configured budget. Singular
+   * mode serves one question per call; plural mode serves the remaining
+   * batch in one call.
    *
    * @param userId - Owner
-   * @param whoAnswer - Answer to round 1
-   * @returns The round-2 question
+   * @param input - Answered rounds (round 1 first) and the locked total when continuing
+   * @returns The next question batch (empty when the budget is spent) and the locked total
    */
-  async nextQuestion(userId: string, whoAnswer: IntakeAnswer): Promise<IntakePackQuestion> {
+  async followUpQuestions(
+    userId: string,
+    input: { rounds: IntakeRound[]; plannedTotal?: number },
+  ): Promise<{ questions: IntakePackQuestion[]; total: number }> {
     const started = Date.now();
+    const { maxQuestions, mode } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
     const { brief, question: round1 } = await this.getOrCreatePack(userId);
-    this.record({
-      userId,
-      prompt: round1.prompt,
-      answer: whoAnswer,
-      stage: 'who',
-      question: { title: round1.title, options: round1.options, multiSelect: round1.multiSelect },
+    if (input.rounds.length === 1) {
+      // Round 1's answer is recorded against the pack's authoritative question
+      // payload, never the client-echoed prompt.
+      this.record({
+        userId,
+        prompt: round1.prompt,
+        answer: input.rounds[0].answer,
+        stage: 'who',
+        question: { title: round1.title, options: round1.options, multiSelect: round1.multiSelect },
+      });
+    }
+
+    const remaining = Math.max(0, maxQuestions - input.rounds.length);
+    if (remaining === 0) {
+      logger.info('signal_intake_stage', {
+        stage: 'question', durationMs: Date.now() - started,
+        packHit: true, speculationHit: false, whereTextUsed: false, fallbackUsed: false,
+      });
+      return { questions: [], total: input.rounds.length };
+    }
+
+    const lockedTotal = input.plannedTotal !== undefined
+      ? Math.min(Math.max(Math.trunc(input.plannedTotal), 1), maxQuestions)
+      : undefined;
+    const budget = mode === 'plural' || lockedTotal === undefined ? remaining : 1;
+    const plan = await this.deps.orchestrator.generateFollowUps({
+      brief,
+      rounds: input.rounds,
+      maxFollowUps: budget,
+      ...(lockedTotal !== undefined
+        ? { plannedFollowUpCount: Math.max(0, lockedTotal - input.rounds.length) }
+        : {}),
     });
-    const question = await this.deps.orchestrator.nextQuestion({ brief, whoAnswer });
+
+    const questions = mode === 'plural' ? plan.questions : plan.questions.slice(0, 1);
+    const total = lockedTotal ?? (mode === 'plural'
+      ? input.rounds.length + plan.questions.length
+      : input.rounds.length + Math.min(Math.max(plan.plannedFollowUpCount, questions.length), remaining));
+
     logger.info('signal_intake_stage', {
       stage: 'question', durationMs: Date.now() - started,
       packHit: true, speculationHit: false, whereTextUsed: false, fallbackUsed: false,
     });
-    return question;
+    return { questions, total };
   }
 
   /**
    * Claim a run and start speculative synthesis without awaiting it.
    *
    * @param userId - Owner
-   * @param answers - Both answered rounds
+   * @param input - Every answered round, in order (round 1 first)
    * @returns The run handle the client polls with
    */
   async prepare(
     userId: string,
-    answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer; round2Prompt?: string },
+    input: { rounds: IntakeRound[] },
   ): Promise<{ runId: string }> {
     const started = Date.now();
     await this.deps.runStore.sweepStaleRuns(userId, new Date(this.now.getTime() - SIGNAL_INTAKE_RUN_TTL_MS));
-    this.record({
-      userId, prompt: answers.round2Prompt ?? '', answer: answers.bringAnswer, stage: 'bring',
+    // Follow-up rounds arrive with their real prompts from the client; round 1
+    // was already recorded by followUpQuestions against the pack payload.
+    input.rounds.slice(1).forEach((round, index) => {
+      this.record({ userId, prompt: round.prompt, answer: round.answer, stage: `followup-${index + 2}` });
     });
 
-    const answersHash = computeAnswersHash({
-      whoAnswer: answers.whoAnswer, bringAnswer: answers.bringAnswer,
-    });
+    const answersHash = computeAnswersHash({ rounds: input.rounds });
     const { run, claimed } = await this.deps.runStore.claimRun(userId, answersHash);
 
     // The hash keys only on the answers, and each round offers a handful of
@@ -231,7 +274,7 @@ export class SignalIntakeService {
     if (claimed || stale) {
       // Deliberately not awaited: this is the speculation that overlaps the
       // user's community pick. Failures are recorded on the run, never thrown.
-      void this.runSynthesis(userId, run.id, answers).catch(() => undefined);
+      void this.runSynthesis(userId, run.id, { rounds: input.rounds }).catch(() => undefined);
     }
 
     logger.info('signal_intake_stage', {
@@ -245,16 +288,16 @@ export class SignalIntakeService {
    * Resolve the proposal for a run, awaiting or redoing synthesis as needed.
    *
    * @param userId - Owner
-   * @param input - Run handle, both answers, and the optional free-text where constraint
+   * @param input - Run handle, answered rounds, and the optional free-text where constraint
    * @returns The proposal to render on the confirmation card
    */
   async resolveProposal(
     userId: string,
     input: {
       runId: string;
+      rounds: IntakeRound[];
       whereText?: string;
       networkId?: string;
-      answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer };
     },
   ): Promise<IntakeProposal> {
     const started = Date.now();
@@ -272,7 +315,7 @@ export class SignalIntakeService {
     // speculation has nothing to hand back — both synthesize serially here.
     if (whereTextUsed || run.status === 'failed') {
       const proposal = await this.runSynthesis(userId, run.id, {
-        ...input.answers,
+        rounds: input.rounds,
         ...(input.whereText?.trim() ? { whereText: input.whereText.trim() } : {}),
       }, networkId);
       logger.info('signal_intake_stage', {
@@ -294,7 +337,7 @@ export class SignalIntakeService {
       return speculative;
     }
 
-    const proposal = await this.runSynthesis(userId, run.id, input.answers, networkId);
+    const proposal = await this.runSynthesis(userId, run.id, { rounds: input.rounds }, networkId);
     logger.info('signal_intake_stage', {
       stage: 'proposal', durationMs: Date.now() - started,
       packHit: true, speculationHit: false, whereTextUsed: false, fallbackUsed: true,
@@ -306,7 +349,7 @@ export class SignalIntakeService {
    * Replace a run's proposal from user feedback on the visible draft.
    *
    * @param userId - Owner
-   * @param input - Run handle, feedback text, and the original answers
+   * @param input - Run handle, feedback text, and the answered rounds
    * @returns The replacement proposal
    */
   async revise(
@@ -314,8 +357,8 @@ export class SignalIntakeService {
     input: {
       runId: string;
       feedback: string;
+      rounds: IntakeRound[];
       networkId?: string;
-      answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer };
     },
   ): Promise<IntakeProposal> {
     const started = Date.now();
@@ -328,7 +371,7 @@ export class SignalIntakeService {
     // Feedback is a correction to the whole draft, not a place constraint: it
     // travels in its own synthesis slot.
     const proposal = await this.runSynthesis(userId, run.id, {
-      ...input.answers,
+      rounds: input.rounds,
       feedback: input.feedback,
     }, networkId);
     logger.info('signal_intake_stage', {
@@ -343,14 +386,14 @@ export class SignalIntakeService {
    *
    * @param userId - Owner
    * @param runId - Run to settle
-   * @param answers - Answers plus any where constraint
+   * @param answers - Answered rounds plus any where constraint or feedback
    * @returns The persisted proposal
    * @throws IntakeVerificationRejectedError when nothing verified
    */
   private async runSynthesis(
     userId: string,
     runId: string,
-    answers: { whoAnswer: IntakeAnswer; bringAnswer: IntakeAnswer; whereText?: string; feedback?: string },
+    answers: { rounds: IntakeRound[]; whereText?: string; feedback?: string },
     networkId?: string,
   ): Promise<IntakeProposal> {
     try {
@@ -493,7 +536,7 @@ export class SignalIntakeService {
     userId: string;
     prompt: string;
     answer: IntakeAnswer;
-    stage: 'who' | 'bring';
+    stage: string;
     question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
   }): void {
     void this.deps.recordAnsweredQuestion?.(input).catch(() => undefined);
@@ -562,11 +605,10 @@ async function getGlobalContextProduction(userId: string): Promise<string | null
  * (stored as `null`). The `who` stage's real round-1 question (`title`,
  * `options`, `multiSelect`) is in scope at its call site and is threaded
  * through via `input.question`, so `payload` mirrors the actual menu the
- * user was offered. The `bring` stage's round-2 question is generated by
- * the orchestrator behind a forbidden endpoint schema and is genuinely not
- * available here, so when `input.question` is absent, `payload.title` and
- * `payload.options` fall back to a proxy derived from the stage name and
- * the user's actual selections rather than the original option set.
+ * user was offered. Follow-up rounds carry only their prompt, so when
+ * `input.question` is absent, `payload.title` and `payload.options` fall
+ * back to a proxy derived from the stage name and the user's actual
+ * selections rather than the original option set.
  *
  * @param input - Stage, prompt, answer, owner, and (when available) the real
  * question offered.
@@ -575,7 +617,7 @@ async function recordAnsweredQuestionProduction(input: {
   userId: string;
   prompt: string;
   answer: IntakeAnswer;
-  stage: 'who' | 'bring';
+  stage: string;
   question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
 }): Promise<void> {
   const now = new Date().toISOString();
@@ -593,7 +635,7 @@ async function recordAnsweredQuestionProduction(input: {
       options: input.question.options,
       multiSelect: input.question.multiSelect,
     } : {
-      title: input.stage === 'who' ? 'Who' : 'Bring',
+      title: input.stage === 'who' ? 'Who' : 'Follow-up',
       prompt: input.prompt,
       options: input.answer.selectedOptions.map((label) => ({ label, description: label })),
       multiSelect: input.answer.selectedOptions.length > 1,
@@ -623,4 +665,5 @@ export const signalIntakeService = new SignalIntakeService({
   getGlobalContext: getGlobalContextProduction,
   invokeIntentGraph: invokeIntentGraphProduction,
   recordAnsweredQuestion: recordAnsweredQuestionProduction,
+  intakeConfig: getSignalIntakeConfig,
 });

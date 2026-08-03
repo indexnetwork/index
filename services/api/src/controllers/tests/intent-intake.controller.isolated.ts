@@ -18,15 +18,15 @@ const proposal = {
   lookingFor: 'A design partner',
   youBring: 'Engineering depth',
 };
-const answers = {
-  whoAnswer: { selectedOptions: ['A design partner'] },
-  bringAnswer: { selectedOptions: ['Engineering depth'] },
-};
+const rounds = [
+  { prompt: 'Who do you want to meet?', answer: { selectedOptions: ['A design partner'] } },
+  { prompt: 'What do you bring?', answer: { selectedOptions: ['Engineering depth'] } },
+];
 
 function makeService(overrides: Record<string, unknown> = {}) {
   return {
     getOrCreatePack: mock(async () => ({ brief: 'b', question, packHit: true })),
-    nextQuestion: mock(async () => question),
+    followUpQuestions: mock(async () => ({ questions: [question], total: 2 })),
     prepare: mock(async () => ({ runId: 'run-1' })),
     resolveProposal: mock(async () => proposal),
     revise: mock(async () => proposal),
@@ -54,10 +54,10 @@ describe('IntentIntakeController flag gating', () => {
 
     const responses = await Promise.all([
       controller.start(request({}), user),
-      controller.question(request({ whoAnswer: answers.whoAnswer }), user),
-      controller.prepare(request(answers), user),
-      controller.proposal(request({ runId: '11111111-1111-4111-8111-111111111111', ...answers }), user),
-      controller.revise(request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'x', ...answers }), user),
+      controller.question(request({ rounds: [rounds[0]] }), user),
+      controller.prepare(request({ rounds }), user),
+      controller.proposal(request({ runId: '11111111-1111-4111-8111-111111111111', rounds }), user),
+      controller.revise(request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'x', rounds }), user),
     ]);
 
     for (const response of responses) expect(response.status).toBe(404);
@@ -105,10 +105,35 @@ describe('IntentIntakeController routes', () => {
     expect(data.question.prompt).toBe('Who do you want to meet?');
   });
 
+  it('returns the follow-up question batch from /question', async () => {
+    const controller = new IntentIntakeController({ service: makeService() as never });
+
+    const response = await controller.question(request({ rounds: [rounds[0]] }), user);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ questions: [question], total: 2 });
+  });
+
+  it('passes a client-carried plannedTotal through to the service', async () => {
+    const followUpQuestions = mock(async () => ({ questions: [question], total: 3 }));
+    const controller = new IntentIntakeController({ service: makeService({ followUpQuestions }) as never });
+
+    const response = await controller.question(request({ rounds, plannedTotal: 3 }), user);
+
+    expect(response.status).toBe(200);
+    expect(followUpQuestions).toHaveBeenCalledWith('u1', { rounds, plannedTotal: 3 });
+  });
+
+  it('rejects an empty rounds list', async () => {
+    const controller = new IntentIntakeController({ service: makeService() as never });
+    const response = await controller.question(request({ rounds: [] }), user);
+    expect(response.status).toBe(400);
+  });
+
   it('returns 202 with a runId from /prepare', async () => {
     const controller = new IntentIntakeController({ service: makeService() as never });
 
-    const response = await controller.prepare(request(answers), user);
+    const response = await controller.prepare(request({ rounds }), user);
     const data = await response.json() as { runId: string };
 
     expect(response.status).toBe(202);
@@ -119,7 +144,7 @@ describe('IntentIntakeController routes', () => {
     const controller = new IntentIntakeController({ service: makeService() as never });
 
     const response = await controller.proposal(
-      request({ runId: '11111111-1111-4111-8111-111111111111', ...answers }), user,
+      request({ runId: '11111111-1111-4111-8111-111111111111', rounds }), user,
     );
     const data = await response.json() as { proposalId: string };
 
@@ -133,7 +158,7 @@ describe('IntentIntakeController routes', () => {
     const networkId = '22222222-2222-4222-8222-222222222222';
 
     await controller.proposal(
-      request({ runId: '11111111-1111-4111-8111-111111111111', networkId, ...answers }), user,
+      request({ runId: '11111111-1111-4111-8111-111111111111', networkId, rounds }), user,
     );
 
     // The regression: `networkId` was parsed and then dropped, so the proposal
@@ -147,7 +172,7 @@ describe('IntentIntakeController routes', () => {
     const networkId = '22222222-2222-4222-8222-222222222222';
 
     await controller.revise(
-      request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'sharper', networkId, ...answers }), user,
+      request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'sharper', networkId, rounds }), user,
     );
 
     expect(service.revise).toHaveBeenCalledWith('u1', expect.objectContaining({ networkId }));
@@ -165,7 +190,7 @@ describe('IntentIntakeController routes', () => {
     const response = await controller.proposal(request({
       runId: '11111111-1111-4111-8111-111111111111',
       networkId: '22222222-2222-4222-8222-222222222222',
-      ...answers,
+      rounds,
     }), user);
 
     expect(response.status).toBe(403);
@@ -177,10 +202,10 @@ describe('IntentIntakeController routes', () => {
     const controller = new IntentIntakeController({ service: service as never });
 
     const empty = await controller.prepare(request({
-      whoAnswer: { selectedOptions: [] }, bringAnswer: answers.bringAnswer,
+      rounds: [{ prompt: 'Who do you want to meet?', answer: { selectedOptions: [] } }],
     }), user);
     const blank = await controller.prepare(request({
-      whoAnswer: { selectedOptions: [], freeText: '   ' }, bringAnswer: answers.bringAnswer,
+      rounds: [{ prompt: 'Who do you want to meet?', answer: { selectedOptions: [], freeText: '   ' } }],
     }), user);
 
     expect(empty.status).toBe(400);
@@ -193,8 +218,10 @@ describe('IntentIntakeController routes', () => {
     const controller = new IntentIntakeController({ service: service as never });
 
     const response = await controller.prepare(request({
-      whoAnswer: { selectedOptions: [], freeText: 'a robotics co-founder' },
-      bringAnswer: answers.bringAnswer,
+      rounds: [
+        rounds[0],
+        { prompt: 'What do you bring?', answer: { selectedOptions: [], freeText: 'a robotics co-founder' } },
+      ],
     }), user);
 
     expect(response.status).toBe(202);
@@ -211,7 +238,7 @@ describe('IntentIntakeController routes', () => {
     const controller = new IntentIntakeController({ service: service as never });
 
     const response = await controller.proposal(
-      request({ runId: '11111111-1111-4111-8111-111111111111', ...answers }), user,
+      request({ runId: '11111111-1111-4111-8111-111111111111', rounds }), user,
     );
     const data = await response.json() as { code: string };
 
@@ -229,7 +256,7 @@ describe('IntentIntakeController routes', () => {
     const controller = new IntentIntakeController({ service: service as never });
 
     const response = await controller.proposal(
-      request({ runId: '11111111-1111-4111-8111-111111111111', ...answers }), user,
+      request({ runId: '11111111-1111-4111-8111-111111111111', rounds }), user,
     );
     const data = await response.json() as { code: string; clarification: { prompt: string } };
 
@@ -242,7 +269,7 @@ describe('IntentIntakeController routes', () => {
     const controller = new IntentIntakeController({ service: makeService() as never });
 
     const response = await controller.revise(
-      request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'more specific', ...answers }), user,
+      request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'more specific', rounds }), user,
     );
 
     expect(response.status).toBe(200);

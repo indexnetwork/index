@@ -2745,9 +2745,9 @@ Archive an intent.
 
 **Controller prefix**: `/intents/intake`
 
-Deterministic fast-intake funnel for `/i/new` (dark-shipped behind `FAST_SIGNAL_INTAKE=true`). Round 1 is served from a per-user pack generated offline (no model call); round 2 and synthesis are single structured `gemini-2.5-flash` calls; round 3 (where/community) is resolved entirely client-side and only travels as `whereText`/`networkId` on `/proposal`. Every route below is gated by `FastSignalIntakeEnabledGuard`, which runs **before** `AuthGuard` and throws when the flag is off, so a flag-off deployment returns `404 { "error": "Not found" }` even to unauthenticated callers (mirrors `ContactsEnabledGuard`). `/prepare` and `/revise` use the `intake_synthesis` rate-limit class (see **Rate Limiting** in the development reference) instead of `write`, since each call launches a background LLM synthesis plus a full intent-graph run and persists a durable proposal row.
+Deterministic fast-intake funnel for `/i/new` (dark-shipped behind `FAST_SIGNAL_INTAKE=true`). Round 1 is served from a per-user pack generated offline (no model call); follow-up questions are planned in one structured `gemini-2.5-flash` call whose total interview length (`total`, round 1 included) is then locked; synthesis is one more structured call. Two server-side knobs shape the interview: `SIGNAL_INTAKE_MAX_QUESTIONS` (total budget including round 1, integer 1–10, default 2) and `SIGNAL_INTAKE_QUESTION_MODE` (`singular` = one follow-up per `/question` turn, default; `plural` = the whole remaining batch in one turn). The where/community round is resolved entirely client-side and only travels as `whereText`/`networkId` on `/proposal`. Every route below is gated by `FastSignalIntakeEnabledGuard`, which runs **before** `AuthGuard` and throws when the flag is off, so a flag-off deployment returns `404 { "error": "Not found" }` even to unauthenticated callers (mirrors `ContactsEnabledGuard`). `/prepare` and `/revise` use the `intake_synthesis` rate-limit class (see **Rate Limiting** in the development reference) instead of `write`, since each call launches a background LLM synthesis plus a full intent-graph run and persists a durable proposal row.
 
-A shared `IntakePackQuestion` shape (`{ title, prompt, options: [{ label, description }], multiSelect }`) is returned for round-1 and round-2 questions. An answered round is `{ selectedOptions: string[], freeText?: string }`, and at least one of `selectedOptions`/`freeText` is required.
+A shared `IntakePackQuestion` shape (`{ title, prompt, options: [{ label, description }], multiSelect }`) is returned for every generated question. An answer is `{ selectedOptions: string[], freeText?: string }` with at least one of `selectedOptions`/`freeText` required, and an answered round is `IntakeRound = { prompt: string (1–400 chars), answer }`. The server holds no funnel state: every route below takes the ordered `rounds` list (round 1 first, 1–10 entries), and `/question` continuation calls echo the locked `plannedTotal` (integer 1–10), which the server re-clamps to the configured budget.
 
 **Shared error responses** (in addition to per-route errors below):
 - `404` — `{ "error": "run_not_found", "code": "run_not_found" }` when `runId` does not resolve to a run owned by the caller.
@@ -2769,32 +2769,36 @@ Round 1: read the user's precomputed intake pack, or generate one synchronously 
 
 ### POST /api/intents/intake/question
 
-Round 2: one structured call grounded by the pack brief and the round-1 answer.
+Follow-ups: one structured planning call grounded by the pack brief and every answered round. In `singular` mode the response carries one question per call; in `plural` mode it carries the whole remaining planned batch. Either way `total` is the locked interview length (round 1 included); the client stops asking and advances to `/prepare` once `rounds.length` reaches `total`, or when `questions` is empty.
 
 **Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
 
 **Request body** (Zod-validated):
 ```json
-{ "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }
+{
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }],
+  "plannedTotal": "integer (optional, 1-10; echo of the locked total on continuation calls)"
+}
 ```
 
 **Response**:
 ```json
-{ "question": { "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true } }
+{
+  "questions": [{ "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true }],
+  "total": 2
+}
 ```
 
 ### POST /api/intents/intake/prepare
 
-Claim a run and start speculative synthesis (round-2 synthesis plus the intent graph) without awaiting it, so it can overlap the client's round-3 community picker.
+Claim a run and start speculative synthesis (signal synthesis plus the intent graph) without awaiting it, so it can overlap the client's where/community picker.
 
 **Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
 
 **Request body** (Zod-validated):
 ```json
 {
-  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
-  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
-  "round2Prompt": "string (optional, max 400)"
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }]
 }
 ```
 
@@ -2813,14 +2817,13 @@ Resolve the proposal for a run: awaits the speculative synthesis started by `/pr
 ```json
 {
   "runId": "UUID (required)",
-  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
-  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }],
   "networkId": "UUID (optional)",
   "whereText": "string (optional, max 280)"
 }
 ```
 
-`networkId` is the community the user picked in round 3; it is re-verified server-side against the caller's actual membership (see `network_membership_required` above) and attached to the proposal row so `POST /api/intents/confirm` later rejects any mismatched `networkId`.
+`networkId` is the community the user picked in the where round; it is re-verified server-side against the caller's actual membership (see `network_membership_required` above) and attached to the proposal row so `POST /api/intents/confirm` later rejects any mismatched `networkId`.
 
 **Response**:
 ```json
@@ -2843,8 +2846,7 @@ Replace the visible draft from user feedback: writes a brand-new proposal row (t
 {
   "runId": "UUID (required)",
   "feedback": "string (required, 1-600 chars)",
-  "whoAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
-  "bringAnswer": { "selectedOptions": ["..."], "freeText": "string (optional)" },
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }],
   "networkId": "UUID (optional)"
 }
 ```

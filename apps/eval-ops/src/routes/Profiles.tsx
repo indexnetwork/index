@@ -3,9 +3,9 @@ import { Link } from 'react-router';
 
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
-import { cleanOverrides, OverridesEditor, type Overrides } from '../components/OverridesEditor';
-import { PROFILE_ENV_ALLOWLIST } from '../../../../packages/protocol/eval/ops/ops.allowlist';
-import { api, type ConfigProfile, type RunRecord } from '../api/client';
+import { GuidedEnvEditor, envRowsToOverrides, envRowsValid, type EnvOverrideRow } from '../components/GuidedEnvEditor';
+import { ModelOverrideEditor } from '../components/ModelOverrideEditor';
+import { api, type AgentMeta, type ConfigMetadata, type ConfigProfile, type RunRecord } from '../api/client';
 
 interface ProfilesState {
   /** Shipped repo profiles: committed, code-reviewed, read-only here. */
@@ -14,18 +14,19 @@ interface ProfilesState {
   saved: ConfigProfile[];
   runs: RunRecord[];
   /**
-   * Union of every harness's overridable agents. A saved config is
-   * harness-agnostic — it can be selected for any harness — so the edit
-   * editor offers every agent any harness exercises, not one harness's set.
+   * Guided-editing metadata (flag descriptions, agent roles, model blurbs).
+   * Null until it loads; when it never does, the guided editors hide and the
+   * page says so — there is no raw-text fallback.
    */
-  agents: string[];
-  /** The curated model list for the edit editor's dropdowns. */
-  models: string[];
+  metadata: ConfigMetadata | null;
   loaded: boolean;
   /** Name of the config currently being edited, or null. */
   editing: string | null;
   editDescription: string;
-  editOverrides: Overrides;
+  editModels: Record<string, string>;
+  editEnvRows: EnvOverrideRow[];
+  /** GuidedEnvEditor's verdict on editEnvRows; empty rows are valid. */
+  editEnvValid: boolean;
   editError: string | null;
   /** Name of the config awaiting delete confirmation, or null. */
   confirmingDelete: string | null;
@@ -38,12 +39,13 @@ export function Profiles() {
     repo: [],
     saved: [],
     runs: [],
-    agents: [],
-    models: [],
+    metadata: null,
     loaded: false,
     editing: null,
     editDescription: '',
-    editOverrides: { models: {}, env: {} },
+    editModels: {},
+    editEnvRows: [],
+    editEnvValid: true,
     editError: null,
     confirmingDelete: null,
     deleteError: null,
@@ -72,24 +74,26 @@ export function Profiles() {
         }));
       });
 
-    // Agents and curated models only enhance the edit form; a failure here must
-    // not take the page down, so both settle independently.
+    // Guided-editing metadata only enhances the edit panel; a failure here must
+    // not take the page down, so it settles independently.
     api
-      .harnesses()
+      .configMetadata()
       .then((result) => {
         if (!mounted) return;
-        const agents = [
-          ...new Set((result.harnesses ?? []).flatMap((h) => h.agents ?? [])),
-        ].sort();
-        setState((prev) => ({ ...prev, agents }));
-      })
-      .catch(() => {});
-    api
-      .configModels()
-      .then((result) => {
-        if (!mounted) return;
-        const models = result.models ?? [];
-        setState((prev) => ({ ...prev, models }));
+        const metadata: ConfigMetadata = {
+          env: result.env ?? [],
+          models: result.models ?? [],
+          harnessAgents: result.harnessAgents ?? {},
+        };
+        setState((prev) => ({
+          ...prev,
+          metadata,
+          // The edit panel may have opened before metadata resolved; its env
+          // validity was computed against an empty flag list, so recompute it
+          // now that the real flags are known. envRowsValid is pure.
+          editEnvValid:
+            prev.editing !== null ? envRowsValid(metadata.env, prev.editEnvRows) : prev.editEnvValid,
+        }));
       })
       .catch(() => {});
 
@@ -102,11 +106,20 @@ export function Profiles() {
     state.runs.filter((r) => r.spec.kind === 'eval' && r.spec.profile === name);
 
   const startEdit = (config: ConfigProfile) => {
+    // Derived values are computed here, outside any setState updater.
+    const envFlags = state.metadata?.env ?? [];
+    const envRows: EnvOverrideRow[] = Object.entries(config.env).map(([key, value]) => ({
+      key,
+      value,
+    }));
+    const envValid = envRowsValid(envFlags, envRows);
     setState((prev) => ({
       ...prev,
       editing: config.name,
       editDescription: config.description,
-      editOverrides: { models: { ...config.models }, env: { ...config.env } },
+      editModels: { ...config.models },
+      editEnvRows: envRows,
+      editEnvValid: envValid,
       editError: null,
       confirmingDelete: null,
       deleteError: null,
@@ -116,9 +129,11 @@ export function Profiles() {
   const handleSaveEdit = (name: string) => {
     const description = state.editDescription.trim();
     if (description === '') return;
-    const cleaned = cleanOverrides(state.editOverrides);
+    // envRowsToOverrides keeps complete rows only.
+    const models = { ...state.editModels };
+    const env = envRowsToOverrides(state.editEnvRows);
     api
-      .updateConfig(name, { description, models: cleaned.models, env: cleaned.env })
+      .updateConfig(name, { description, models, env })
       .then((updated) => {
         setState((prev) => ({
           ...prev,
@@ -174,10 +189,36 @@ export function Profiles() {
     );
   }
 
-  // When the harness list has not arrived, the edit editor still shows the
-  // agents the config already overrides rather than hiding them.
-  const editAgents =
-    state.agents.length > 0 ? state.agents : Object.keys(state.editOverrides.models);
+  const envFlags = state.metadata?.env ?? [];
+  const guidedModels = state.metadata?.models ?? [];
+  // Agent id → metadata, for labels and roles. Agents no metadata describes
+  // (profiles may name agents beyond the five scorecard ones) fall back to
+  // their raw id with no role text.
+  const agentMetaById = new Map<string, AgentMeta>(
+    Object.values(state.metadata?.harnessAgents ?? {})
+      .flatMap((agents) => agents)
+      .map((agent) => [agent.id, agent]),
+  );
+  // A saved config is harness-agnostic, so the editor offers every agent the
+  // scorecard harnesses exercise (from metadata — the shipped `default` profile
+  // overrides none, so profiles alone would leave an env-only config with no
+  // model rows at all), plus any agent some loaded profile or the config being
+  // edited already names.
+  const editAgentIds = [
+    ...new Set([
+      ...agentMetaById.keys(),
+      ...[...state.repo, ...state.saved].flatMap((profile) => Object.keys(profile.models)),
+      ...Object.keys(state.editModels),
+    ]),
+  ].sort();
+  const editAgents: AgentMeta[] = editAgentIds.map(
+    (id) => agentMetaById.get(id) ?? { id, label: id, role: '' },
+  );
+  // Each model dropdown's default option names what the default profile assigns.
+  const profileDefaults = state.repo.find((p) => p.name === 'default')?.models ?? {};
+  // Only a visible env editor participates in validity; hidden cannot block.
+  const envInputValid = envFlags.length > 0 ? state.editEnvValid : true;
+  const saveDisabled = state.editDescription.trim() === '' || !envInputValid;
 
   return (
     <div className="p-4 space-y-4">
@@ -292,13 +333,51 @@ export function Profiles() {
                         }
                       />
                     </div>
-                    <OverridesEditor
-                      agents={editAgents}
-                      models={state.models}
-                      envKeys={PROFILE_ENV_ALLOWLIST}
-                      value={state.editOverrides}
-                      onChange={(next) => setState((prev) => ({ ...prev, editOverrides: next }))}
-                    />
+
+                    {state.metadata === null && (
+                      <p className="text-term-dim">
+                        Guided editing unavailable — configuration metadata did not load.
+                      </p>
+                    )}
+
+                    {guidedModels.length > 0 && editAgents.length > 0 && (
+                      <ModelOverrideEditor
+                        agents={editAgents}
+                        models={guidedModels}
+                        profileDefaults={profileDefaults}
+                        value={state.editModels}
+                        onChange={(models) =>
+                          setState((prev) => ({ ...prev, editModels: models }))
+                        }
+                      />
+                    )}
+
+                    {envFlags.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-term-cyan">
+                          Advanced: live-pipeline flags
+                        </summary>
+                        <div className="mt-2 space-y-3">
+                          <p className="text-term-dim">
+                            These flags tune the live discovery and negotiation services. The
+                            scorecard harnesses do not read them — they are recorded with runs for
+                            staging work.
+                          </p>
+                          <GuidedEnvEditor
+                            flags={envFlags}
+                            rows={state.editEnvRows}
+                            onChange={(envRows, envValid) =>
+                              setState((prev) => ({
+                                ...prev,
+                                editEnvRows: envRows,
+                                editEnvValid: envValid,
+                              }))
+                            }
+                          />
+                        </div>
+                      </details>
+                    )}
+
                     {state.editError !== null && (
                       <p role="alert" className="text-term-red">
                         {state.editError}
@@ -308,7 +387,7 @@ export function Profiles() {
                       <button
                         type="button"
                         className="px-[2ch] py-[0.5lh] bg-term-cyan text-term-bg font-bold disabled:opacity-50"
-                        disabled={state.editDescription.trim() === ''}
+                        disabled={saveDisabled}
                         onClick={() => handleSaveEdit(config.name)}
                       >
                         save changes

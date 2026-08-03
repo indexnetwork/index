@@ -196,6 +196,9 @@ export {
 } from "./capabilities/signals.facade.js";
 export type {
   IntakeAnswer,
+  IntakeRound,
+  FollowUpPlan,
+  FollowUpPlanInput,
   SynthesisInput,
   SynthesisResult,
 } from "./capabilities/signals.facade.js";

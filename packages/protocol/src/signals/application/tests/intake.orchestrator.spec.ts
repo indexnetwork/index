@@ -31,32 +31,83 @@ describe("answerLabel", () => {
   });
 });
 
-describe("SignalIntakeOrchestrator.nextQuestion", () => {
-  it("grounds round 2 in the brief and the round-1 answer", async () => {
-    const capture: { prompt?: string } = {};
-    const orchestrator = new SignalIntakeOrchestrator({ question: stub(question, capture) });
+describe("SignalIntakeOrchestrator.generateFollowUps", () => {
+  const plan = {
+    questions: [question, { ...question, prompt: "Where should we look?" }],
+    plannedFollowUpCount: 2,
+  };
 
-    const result = await orchestrator.nextQuestion({
+  it("returns the planned questions and count, grounded in brief and rounds", async () => {
+    const capture: { prompt?: string } = {};
+    const orchestrator = new SignalIntakeOrchestrator({ planner: stub(plan, capture) });
+
+    const result = await orchestrator.generateFollowUps({
       brief: "Ada builds developer tools.",
-      whoAnswer: { selectedOptions: ["A design partner"] },
+      rounds: [{ prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } }],
+      maxFollowUps: 3,
     });
 
-    expect(result.prompt).toBe("What would you bring to that connection?");
+    expect(result.questions).toHaveLength(2);
+    expect(result.plannedFollowUpCount).toBe(2);
     expect(capture.prompt).toContain("Ada builds developer tools.");
     expect(capture.prompt).toContain("A design partner");
   });
 
-  it("falls back to the static question when the model fails", async () => {
-    const orchestrator = new SignalIntakeOrchestrator({
-      question: { invoke: async () => { throw new Error("model down"); } } as never,
-    });
+  it("truncates model output to maxFollowUps", async () => {
+    const orchestrator = new SignalIntakeOrchestrator({ planner: stub(plan) });
 
-    const result = await orchestrator.nextQuestion({
+    const result = await orchestrator.generateFollowUps({
       brief: "b",
-      whoAnswer: { selectedOptions: ["x"] },
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      maxFollowUps: 1,
     });
 
-    expect(result).toEqual(FALLBACK_BRING_QUESTION);
+    expect(result.questions).toHaveLength(1);
+    expect(result.plannedFollowUpCount).toBe(2);
+  });
+
+  it("echoes a locked plannedFollowUpCount instead of re-planning", async () => {
+    const orchestrator = new SignalIntakeOrchestrator({ planner: stub(plan) });
+
+    const result = await orchestrator.generateFollowUps({
+      brief: "b",
+      rounds: [
+        { prompt: "p1", answer: { selectedOptions: ["x"] } },
+        { prompt: "p2", answer: { selectedOptions: ["y"] } },
+      ],
+      maxFollowUps: 1,
+      plannedFollowUpCount: 3,
+    });
+
+    expect(result.plannedFollowUpCount).toBe(3);
+  });
+
+  it("falls back to the static question with count 1 when the model fails", async () => {
+    const orchestrator = new SignalIntakeOrchestrator({
+      planner: { invoke: async () => { throw new Error("model down"); } } as never,
+    });
+
+    const result = await orchestrator.generateFollowUps({
+      brief: "b",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      maxFollowUps: 2,
+    });
+
+    expect(result).toEqual({ questions: [FALLBACK_BRING_QUESTION], plannedFollowUpCount: 1 });
+  });
+
+  it("serves the static fallback when the planner returns zero follow-ups with budget remaining", async () => {
+    const orchestrator = new SignalIntakeOrchestrator({
+      planner: stub({ questions: [], plannedFollowUpCount: 0 }),
+    });
+
+    const result = await orchestrator.generateFollowUps({
+      brief: "b",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      maxFollowUps: 2,
+    });
+
+    expect(result).toEqual({ questions: [FALLBACK_BRING_QUESTION], plannedFollowUpCount: 1 });
   });
 });
 
@@ -67,82 +118,63 @@ describe("SignalIntakeOrchestrator.synthesize", () => {
     youBring: "Engineering depth",
   };
 
-  it("includes both answers in the synthesis prompt", async () => {
+  it("renders every round into the synthesis prompt", async () => {
     const capture: { prompt?: string } = {};
     const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
 
     const result = await orchestrator.synthesize({
       brief: "Ada builds developer tools.",
-      whoAnswer: { selectedOptions: ["A design partner"] },
-      bringAnswer: { selectedOptions: ["Engineering depth"] },
+      rounds: [
+        { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
+        { prompt: "What do you bring?", answer: { selectedOptions: ["Engineering depth"] } },
+        { prompt: "When?", answer: { selectedOptions: [], freeText: "This quarter" } },
+      ],
     });
 
     expect(result.description).toBe(synthesis.description);
-    expect(capture.prompt).toContain("A design partner");
-    expect(capture.prompt).toContain("Engineering depth");
+    expect(capture.prompt).toContain("Q: Who do you want to meet?\nA: A design partner");
+    expect(capture.prompt).toContain("Q: What do you bring?\nA: Engineering depth");
+    expect(capture.prompt).toContain("Q: When?\nA: This quarter");
   });
 
-  it("includes the where constraint only when provided", async () => {
-    const withWhere: { prompt?: string } = {};
-    const withoutWhere: { prompt?: string } = {};
-
-    await new SignalIntakeOrchestrator({ synthesis: stub(synthesis, withWhere) }).synthesize({
-      brief: "b",
-      whoAnswer: { selectedOptions: ["x"] },
-      bringAnswer: { selectedOptions: ["y"] },
-      whereText: "Berlin only",
-    });
-    await new SignalIntakeOrchestrator({ synthesis: stub(synthesis, withoutWhere) }).synthesize({
-      brief: "b",
-      whoAnswer: { selectedOptions: ["x"] },
-      bringAnswer: { selectedOptions: ["y"] },
-    });
-
-    expect(withWhere.prompt).toContain("Berlin only");
-    expect(withoutWhere.prompt).not.toContain("Where constraint");
-  });
-
-  it("renders revision feedback in its own slot, never as a where constraint", async () => {
+  it("appends where and feedback lines when present", async () => {
     const capture: { prompt?: string } = {};
+    const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
 
-    await new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) }).synthesize({
+    await orchestrator.synthesize({
       brief: "b",
-      whoAnswer: { selectedOptions: ["x"] },
-      bringAnswer: { selectedOptions: ["y"] },
-      feedback: "make it about hardware, not software",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      whereText: "Berlin",
+      feedback: "shorter please",
     });
 
-    expect(capture.prompt).toContain("Revision feedback on the previous draft: make it about hardware, not software");
-    // The regression this pins: feedback used to be passed as `whereText`, so a
-    // content correction was presented to the model as a location constraint.
-    expect(capture.prompt).not.toContain("Where constraint");
+    expect(capture.prompt).toContain("Where constraint: Berlin");
+    expect(capture.prompt).toContain("Revision feedback on the previous draft: shorter please");
   });
 
-  it("keeps a where constraint and revision feedback in separate slots", async () => {
-    const capture: { prompt?: string } = {};
-
-    await new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) }).synthesize({
-      brief: "b",
-      whoAnswer: { selectedOptions: ["x"] },
-      bringAnswer: { selectedOptions: ["y"] },
-      whereText: "Berlin only",
-      feedback: "more senior",
-    });
-
-    expect(capture.prompt).toContain("Where constraint: Berlin only");
-    expect(capture.prompt).toContain("Revision feedback on the previous draft: more senior");
-  });
-
-  it("propagates synthesis failures so the caller can degrade", async () => {
+  it("propagates synthesis model failure so the caller can mark the run failed", async () => {
     const orchestrator = new SignalIntakeOrchestrator({
       synthesis: { invoke: async () => { throw new Error("model down"); } } as never,
     });
 
     await expect(orchestrator.synthesize({
       brief: "b",
-      whoAnswer: { selectedOptions: ["x"] },
-      bringAnswer: { selectedOptions: ["y"] },
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
     })).rejects.toThrow("model down");
+  });
+
+  it("renders revision feedback in its own slot, never as a where constraint", async () => {
+    const capture: { prompt?: string } = {};
+    const orchestrator = new SignalIntakeOrchestrator({ synthesis: stub(synthesis, capture) });
+
+    await orchestrator.synthesize({
+      brief: "b",
+      rounds: [{ prompt: "p", answer: { selectedOptions: ["x"] } }],
+      feedback: "shorter please",
+    });
+
+    expect(capture.prompt).toContain("Revision feedback on the previous draft: shorter please");
+    expect(capture.prompt).not.toContain("Where constraint");
   });
 });
 

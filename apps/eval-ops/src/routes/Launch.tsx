@@ -2,25 +2,35 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { Frame } from '../components/Frame';
-import { cleanOverrides, EMPTY_OVERRIDES, hasOverrides, OverridesEditor, type Overrides } from '../components/OverridesEditor';
-import { PROFILE_ENV_ALLOWLIST } from '../../../../packages/protocol/eval/ops/ops.allowlist';
-import { api, type ConfigProfile, type EvalRunSpec, type HarnessDescriptor, type HarnessFlag, type ProfileDescriptor, type RunFlags } from '../api/client';
+import { GuidedEnvEditor, envRowsToOverrides, type EnvOverrideRow } from '../components/GuidedEnvEditor';
+import { ModelOverrideEditor } from '../components/ModelOverrideEditor';
+import { api, type AgentMeta, type ConfigMetadata, type ConfigProfile, type EnvFlagMeta, type EvalRunSpec, type HarnessDescriptor, type HarnessFlag, type ModelMeta, type ProfileDescriptor, type RunFlags } from '../api/client';
+
+/** One side's ad-hoc overrides: model choices plus guided env-flag rows. */
+interface SideOverrides {
+  models: Record<string, string>;
+  envRows: EnvOverrideRow[];
+  /** GuidedEnvEditor's verdict on envRows; empty rows are valid. */
+  envValid: boolean;
+}
+
+const EMPTY_SIDE: SideOverrides = { models: {}, envRows: [], envValid: true };
 
 interface LaunchState {
   harnesses: HarnessDescriptor[];
   profiles: ProfileDescriptor[];
   /** Saved (DB) configs, listed after the shipped repo profiles. */
   savedConfigs: ConfigProfile[];
-  /** The curated model list for the override dropdowns. */
-  models: string[];
+  /** Guided-editing metadata; null when the endpoint cannot be reached. */
+  metadata: ConfigMetadata | null;
   selectedHarness: HarnessDescriptor | null;
   selectedProfile: string;
   /** A/B mode: each side picks its own profile and carries its own overrides. */
   ab: boolean;
   referenceProfile: string;
   candidateProfile: string;
-  referenceOverrides: Overrides;
-  candidateOverrides: Overrides;
+  referenceOverrides: SideOverrides;
+  candidateOverrides: SideOverrides;
   flags: RunFlags;
   awaitingConfirmation: boolean;
   /** The "save as config…" inline form. */
@@ -34,6 +44,47 @@ interface LaunchState {
   launchError: string | null;
 }
 
+/**
+ * Plain-English presentation for the runner knobs, keyed by flag name. Every
+ * explanation is grounded in the harness/runner code — see the eval shared
+ * runner, baseline comparison, and matching harness sources. Unknown flags
+ * fall back to their CLI spelling with no explanation.
+ */
+const FLAG_COPY: Readonly<Record<string, { label: string; help: string }>> = {
+  runs: {
+    label: 'Runs per case',
+    help: 'How many times every case is executed; 3 lets flaky behavior show up.',
+  },
+  case: {
+    label: 'Case filter',
+    help: 'Only run cases whose id contains this text.',
+  },
+  rule: {
+    label: 'Rule filter',
+    help: 'Only run cases whose scoring rule contains this text.',
+  },
+  tier: {
+    label: 'Tier filter',
+    help: 'Only run cases from this corpus tier.',
+  },
+  alpha: {
+    label: 'Significance level',
+    help: 'How strict the regression test against the baseline is — smaller is stricter (default 0.05).',
+  },
+  attemptTimeoutMs: {
+    label: 'Attempt timeout (ms)',
+    help: 'Cancel a single model attempt after this many milliseconds.',
+  },
+  noJudge: {
+    label: 'Skip the judge model',
+    help: 'Every judgment auto-passes — fast and free, but scores say nothing about judgment quality.',
+  },
+  strictEvidence: {
+    label: 'Strict evidence',
+    help: 'Fail the run when any requested case run is incomplete, instead of recording partial evidence.',
+  },
+};
+
 export function Launch() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -41,15 +92,15 @@ export function Launch() {
     harnesses: [],
     profiles: [],
     savedConfigs: [],
-    models: [],
+    metadata: null,
     selectedHarness: null,
     // The configs page links here as /launch?profile=<name>.
     selectedProfile: searchParams.get('profile') ?? 'default',
     ab: false,
     referenceProfile: 'default',
     candidateProfile: 'default',
-    referenceOverrides: EMPTY_OVERRIDES,
-    candidateOverrides: EMPTY_OVERRIDES,
+    referenceOverrides: EMPTY_SIDE,
+    candidateOverrides: EMPTY_SIDE,
     flags: {},
     awaitingConfirmation: false,
     savingConfig: false,
@@ -84,8 +135,7 @@ export function Launch() {
         }
       });
 
-    // Saved configs and the curated model list enhance the form but must never
-    // break it: both settle independently and failures are swallowed.
+    // Saved configs enhance the form but must never break it: failures are swallowed.
     api
       .configs()
       .then((result) => {
@@ -94,12 +144,18 @@ export function Launch() {
         setState((prev) => ({ ...prev, savedConfigs: saved }));
       })
       .catch(() => {});
+    // Guided-editing metadata (flag descriptions, agent roles, model blurbs).
+    // Without it the guided sections hide; the plain form keeps working.
     api
-      .configModels()
+      .configMetadata()
       .then((result) => {
         if (!mounted) return;
-        const models = result.models ?? [];
-        setState((prev) => ({ ...prev, models }));
+        const metadata: ConfigMetadata = {
+          env: result.env ?? [],
+          models: result.models ?? [],
+          harnessAgents: result.harnessAgents ?? {},
+        };
+        setState((prev) => ({ ...prev, metadata }));
       })
       .catch(() => {});
 
@@ -115,8 +171,8 @@ export function Launch() {
       selectedHarness: descriptor,
       flags: {},
       // Overrides name agents; a different harness exercises different agents.
-      referenceOverrides: EMPTY_OVERRIDES,
-      candidateOverrides: EMPTY_OVERRIDES,
+      referenceOverrides: EMPTY_SIDE,
+      candidateOverrides: EMPTY_SIDE,
       awaitingConfirmation: false,
       launchError: null,
     }));
@@ -189,19 +245,23 @@ export function Launch() {
    * server refuses a named profile combined with overrides, so the form never
    * offers the combination.
    */
-  const buildSpec = (profile: string, overrides: Overrides): EvalRunSpec => {
-    const cleaned = cleanOverrides(overrides);
+  const buildSpec = (profile: string, side: SideOverrides): EvalRunSpec => {
+    const env = envRowsToOverrides(side.envRows);
+    const hasModels = Object.keys(side.models).length > 0;
+    const hasEnv = Object.keys(env).length > 0;
     return {
       kind: 'eval',
       harness: state.selectedHarness!.harness,
       profile,
       flags: state.flags,
-      ...(profile === 'default' && hasOverrides(cleaned) ? { overrides: cleaned } : {}),
+      ...(profile === 'default' && (hasModels || hasEnv)
+        ? { overrides: { models: side.models, env } }
+        : {}),
     };
   };
 
   const handleRun = () => {
-    if (invalidSelectionFlags.length > 0) return;
+    if (launchBlocked) return;
 
     if (isFullCorpus() && !state.awaitingConfirmation) {
       setState((prev) => ({ ...prev, awaitingConfirmation: true }));
@@ -254,11 +314,12 @@ export function Launch() {
   };
 
   const handleSaveConfig = () => {
-    const cleaned = cleanOverrides(state.referenceOverrides);
     const name = state.configName.trim();
     const description = state.configDescription.trim();
-    if (name === '' || description === '' || !hasOverrides(cleaned)) return;
-    const profile: ConfigProfile = { name, description, models: cleaned.models, env: cleaned.env };
+    const env = envRowsToOverrides(state.referenceOverrides.envRows);
+    const hasValues = Object.keys(state.referenceOverrides.models).length > 0 || Object.keys(env).length > 0;
+    if (name === '' || description === '' || !hasValues) return;
+    const profile: ConfigProfile = { name, description, models: state.referenceOverrides.models, env };
     api
       .createConfig(profile)
       .then((created) => {
@@ -271,8 +332,8 @@ export function Launch() {
           configDescription: '',
           saveError: null,
           // The overrides now live in the saved config; the editors reset.
-          referenceOverrides: EMPTY_OVERRIDES,
-          candidateOverrides: EMPTY_OVERRIDES,
+          referenceOverrides: EMPTY_SIDE,
+          candidateOverrides: EMPTY_SIDE,
         }));
       })
       .catch((error) => {
@@ -314,12 +375,43 @@ export function Launch() {
   // The same first factor renderRun uses: a narrowed selection runs exactly one case.
   const cases = state.selectedHarness === null ? 0 : fullCorpus ? state.selectedHarness.caseCount : 1;
   const workload = cases * runs * (state.ab ? 2 : 1);
-  const launchBlocked = invalidSelectionFlags.length > 0;
-  const agents = state.selectedHarness?.agents ?? [];
-  const showSaveConfig =
-    overridesAllowed && hasOverrides(cleanOverrides(state.referenceOverrides));
 
-  const editorProps = { agents, models: state.models, envKeys: PROFILE_ENV_ALLOWLIST };
+  // Guided-editing inputs derived from the metadata (empty when unavailable).
+  const harnessId = state.selectedHarness?.harness ?? null;
+  const agents: readonly AgentMeta[] =
+    harnessId === null ? [] : (state.metadata?.harnessAgents[harnessId] ?? []);
+  const guidedModels: readonly ModelMeta[] = state.metadata?.models ?? [];
+  const envFlags: readonly EnvFlagMeta[] = state.metadata?.env ?? [];
+  // The default option in each model dropdown names what the default profile assigns.
+  const profileDefaults = state.profiles.find((p) => p.name === 'default')?.models ?? {};
+
+  // Only visible env editors participate in validity; hidden ones cannot block.
+  const envValidity = (profile: string, side: SideOverrides): boolean =>
+    profile === 'default' && envFlags.length > 0 ? side.envValid : true;
+  const envInputValid = state.ab
+    ? envValidity(state.referenceProfile, state.referenceOverrides) &&
+      envValidity(state.candidateProfile, state.candidateOverrides)
+    : envValidity(state.selectedProfile, state.referenceOverrides);
+
+  const launchBlocked = invalidSelectionFlags.length > 0 || !envInputValid;
+  // Saving carries the same env overrides a run would, so an invalid value must
+  // block the save too — otherwise POST /api/configs 400s on a value the editor
+  // has already flagged inline.
+  const saveConfigBlocked =
+    state.configName.trim() === '' || state.configDescription.trim() === '' || !envInputValid;
+  const singleEnv = envRowsToOverrides(state.referenceOverrides.envRows);
+  const showSaveConfig =
+    overridesAllowed &&
+    (Object.keys(state.referenceOverrides.models).length > 0 || Object.keys(singleEnv).length > 0);
+
+  const sideProps = {
+    agents,
+    guidedModels,
+    profileDefaults,
+    envFlags,
+    profiles: state.profiles,
+    savedConfigs: state.savedConfigs,
+  };
 
   return (
     <div className="p-4">
@@ -348,36 +440,6 @@ export function Launch() {
             )}
           </div>
 
-          {!state.ab && (
-          <div>
-            <label htmlFor="profile" className="block mb-1">
-              Configuration Profile
-            </label>
-            <select
-              id="profile"
-              className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
-              value={state.selectedProfile}
-              onChange={(e) => handleProfileChange(e.target.value)}
-            >
-              {state.profiles.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name} — {p.description}
-                </option>
-              ))}
-              {state.savedConfigs.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name} (saved) — {p.description}
-                </option>
-              ))}
-            </select>
-            {isExperimental && (
-              <p className="mt-2 text-term-yellow">
-                Experimental — forced to --no-save and never diffed against the committed baseline.
-              </p>
-            )}
-          </div>
-          )}
-
           <div>
             <label className="flex items-center gap-2">
               <input
@@ -405,15 +467,137 @@ export function Launch() {
             )}
           </div>
 
+          {!state.ab && (
+            <div className="space-y-3">
+              <h3 className="text-term-cyan">What controls this run</h3>
+              <div>
+                <label htmlFor="profile" className="block mb-1">
+                  Configuration profile
+                </label>
+                <select
+                  id="profile"
+                  className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
+                  value={state.selectedProfile}
+                  onChange={(e) => handleProfileChange(e.target.value)}
+                >
+                  {state.profiles.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name} — {p.description}
+                    </option>
+                  ))}
+                  {state.savedConfigs.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name} (saved) — {p.description}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-term-dim mt-1">The named configuration this run executes under.</p>
+                {isExperimental && (
+                  <p className="mt-2 text-term-yellow">
+                    Experimental — forced to --no-save and never diffed against the committed baseline.
+                  </p>
+                )}
+              </div>
+
+              {overridesAllowed && agents.length > 0 && (
+                <ModelOverrideEditor
+                  agents={agents}
+                  models={guidedModels}
+                  profileDefaults={profileDefaults}
+                  value={state.referenceOverrides.models}
+                  onChange={(models) =>
+                    setState((prev) => ({
+                      ...prev,
+                      referenceOverrides: { ...prev.referenceOverrides, models },
+                    }))
+                  }
+                />
+              )}
+              {!overridesAllowed && (
+                <p className="text-term-dim">
+                  Overrides apply on top of the default configuration. To tweak a saved config,{' '}
+                  <Link to="/profiles" className="text-term-cyan underline">
+                    edit it on the configs page
+                  </Link>
+                  .
+                </p>
+              )}
+
+              {showSaveConfig && !state.savingConfig && (
+                <button
+                  type="button"
+                  className="px-[2ch] py-[0.5lh] border border-term-rule text-term-dim"
+                  onClick={() => setState((prev) => ({ ...prev, savingConfig: true, saveError: null }))}
+                >
+                  save as config…
+                </button>
+              )}
+              {state.savingConfig && (
+                <div className="space-y-2 border border-term-rule p-2">
+                  <div>
+                    <label htmlFor="config-name" className="block mb-1 text-term-dim">
+                      config name
+                    </label>
+                    <input
+                      id="config-name"
+                      type="text"
+                      placeholder="kebab-case-name"
+                      className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
+                      value={state.configName}
+                      onChange={(e) => setState((prev) => ({ ...prev, configName: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="config-description" className="block mb-1 text-term-dim">
+                      config description
+                    </label>
+                    <input
+                      id="config-description"
+                      type="text"
+                      placeholder="what this config is for"
+                      className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
+                      value={state.configDescription}
+                      onChange={(e) =>
+                        setState((prev) => ({ ...prev, configDescription: e.target.value }))
+                      }
+                    />
+                  </div>
+                  {state.saveError !== null && (
+                    <p role="alert" className="text-term-red">
+                      {state.saveError}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="px-[2ch] py-[0.5lh] bg-term-cyan text-term-bg font-bold disabled:opacity-50"
+                      disabled={saveConfigBlocked}
+                      onClick={handleSaveConfig}
+                    >
+                      Save config
+                    </button>
+                    <button
+                      type="button"
+                      className="px-[2ch] py-[0.5lh] border border-term-rule"
+                      onClick={() =>
+                        setState((prev) => ({ ...prev, savingConfig: false, saveError: null }))
+                      }
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {state.ab && (
             <div className="space-y-4">
               <AbSide
                 side="reference"
                 profile={state.referenceProfile}
                 overrides={state.referenceOverrides}
-                profiles={state.profiles}
-                savedConfigs={state.savedConfigs}
-                editorProps={editorProps}
+                {...sideProps}
                 onProfileChange={(profile) =>
                   setState((prev) => ({
                     ...prev,
@@ -430,9 +614,7 @@ export function Launch() {
                 side="candidate"
                 profile={state.candidateProfile}
                 overrides={state.candidateOverrides}
-                profiles={state.profiles}
-                savedConfigs={state.savedConfigs}
-                editorProps={editorProps}
+                {...sideProps}
                 onProfileChange={(profile) =>
                   setState((prev) => ({
                     ...prev,
@@ -448,129 +630,44 @@ export function Launch() {
             </div>
           )}
 
-          {!state.ab && (
-          <details>
-            <summary className="cursor-pointer text-term-cyan">overrides (this run only)</summary>
-            <div className="mt-2 space-y-3">
-              {!overridesAllowed && (
-                <p className="text-term-dim">
-                  Overrides apply on top of the default configuration. To tweak a saved config,{' '}
-                  <Link to="/profiles" className="text-term-cyan underline">
-                    edit it on the configs page
-                  </Link>
-                  .
-                </p>
-              )}
-              {overridesAllowed && state.ab && (
-                <div className="space-y-4">
-                  <fieldset aria-label="reference" className="border border-term-rule p-2">
-                    <legend className="px-[1ch] text-term-dim">reference</legend>
-                    <OverridesEditor
-                      {...editorProps}
-                      value={state.referenceOverrides}
-                      onChange={(next) => setState((prev) => ({ ...prev, referenceOverrides: next }))}
-                    />
-                  </fieldset>
-                  <fieldset aria-label="candidate" className="border border-term-rule p-2">
-                    <legend className="px-[1ch] text-term-dim">candidate</legend>
-                    <OverridesEditor
-                      {...editorProps}
-                      value={state.candidateOverrides}
-                      onChange={(next) => setState((prev) => ({ ...prev, candidateOverrides: next }))}
-                    />
-                  </fieldset>
-                </div>
-              )}
-              {overridesAllowed && !state.ab && (
-                <>
-                  <OverridesEditor
-                    {...editorProps}
-                    value={state.referenceOverrides}
-                    onChange={(next) => setState((prev) => ({ ...prev, referenceOverrides: next }))}
+          {state.selectedHarness !== null && (
+            <details>
+              <summary className="cursor-pointer text-term-cyan">Advanced options</summary>
+              <div className="mt-2 space-y-3">
+                {state.selectedHarness.flags.map((flag) => (
+                  <FlagInput
+                    key={flag.name}
+                    flag={flag}
+                    value={state.flags[flag.name]}
+                    onChange={(value) => handleFlagChange(flag.name, value)}
                   />
-                  {showSaveConfig && !state.savingConfig && (
-                    <button
-                      type="button"
-                      className="px-[2ch] py-[0.5lh] border border-term-rule text-term-dim"
-                      onClick={() => setState((prev) => ({ ...prev, savingConfig: true, saveError: null }))}
-                    >
-                      save as config…
-                    </button>
-                  )}
-                  {state.savingConfig && (
-                    <div className="space-y-2 border border-term-rule p-2">
-                      <div>
-                        <label htmlFor="config-name" className="block mb-1 text-term-dim">
-                          config name
-                        </label>
-                        <input
-                          id="config-name"
-                          type="text"
-                          placeholder="kebab-case-name"
-                          className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
-                          value={state.configName}
-                          onChange={(e) => setState((prev) => ({ ...prev, configName: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="config-description" className="block mb-1 text-term-dim">
-                          config description
-                        </label>
-                        <input
-                          id="config-description"
-                          type="text"
-                          placeholder="what this config is for"
-                          className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]"
-                          value={state.configDescription}
-                          onChange={(e) =>
-                            setState((prev) => ({ ...prev, configDescription: e.target.value }))
-                          }
-                        />
-                      </div>
-                      {state.saveError !== null && (
-                        <p role="alert" className="text-term-red">
-                          {state.saveError}
-                        </p>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="px-[2ch] py-[0.5lh] bg-term-cyan text-term-bg font-bold disabled:opacity-50"
-                          disabled={state.configName.trim() === '' || state.configDescription.trim() === ''}
-                          onClick={handleSaveConfig}
-                        >
-                          Save config
-                        </button>
-                        <button
-                          type="button"
-                          className="px-[2ch] py-[0.5lh] border border-term-rule"
-                          onClick={() =>
-                            setState((prev) => ({ ...prev, savingConfig: false, saveError: null }))
-                          }
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </details>
+                ))}
+              </div>
+            </details>
           )}
 
-          {state.selectedHarness !== null && (
-            <div className="space-y-3">
-              <h3 className="text-term-cyan">Flags</h3>
-              {state.selectedHarness.flags.map((flag) => (
-                <FlagInput
-                  key={flag.name}
-                  flag={flag}
-                  value={state.flags[flag.name]}
-                  onChange={(value) => handleFlagChange(flag.name, value)}
+          {!state.ab && overridesAllowed && envFlags.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-term-cyan">
+                Advanced: live-pipeline flags
+              </summary>
+              <div className="mt-2 space-y-3">
+                <p className="text-term-dim">
+                  These flags tune the live discovery and negotiation services. This scorecard
+                  harness does not read them — they are recorded with the run for staging work.
+                </p>
+                <GuidedEnvEditor
+                  flags={envFlags}
+                  rows={state.referenceOverrides.envRows}
+                  onChange={(envRows, envValid) =>
+                    setState((prev) => ({
+                      ...prev,
+                      referenceOverrides: { ...prev.referenceOverrides, envRows, envValid },
+                    }))
+                  }
                 />
-              ))}
-            </div>
+              </div>
+            </details>
           )}
 
           <div className="border-t border-term-rule pt-4 mt-4">
@@ -580,9 +677,15 @@ export function Launch() {
               {fullCorpus ? '' : ' (filtered)'} × {runs} runs{state.ab ? ' × 2 sides' : ''} = {workload}
             </p>
 
-            {launchBlocked && (
+            {invalidSelectionFlags.length > 0 && (
               <p className="mb-2 text-term-red">
                 Fix {invalidSelectionFlags.join(', ')} before running.
+              </p>
+            )}
+
+            {!envInputValid && (
+              <p className="mb-2 text-term-red">
+                Finish or fix the flag override above to launch.
               </p>
             )}
 
@@ -631,29 +734,35 @@ export function Launch() {
 
 /**
  * One side of an A/B launch: its own profile select (repo profiles, then saved
- * configs) and its own overrides editor. Overrides are only expressible on top
- * of the default configuration — the server refuses a named profile combined
- * with overrides — so the editor is replaced by the configs-page pointer when
- * this side runs a named profile.
+ * configs), its own model editor, and its own live-pipeline env disclosure.
+ * Overrides are only expressible on top of the default configuration — the
+ * server refuses a named profile combined with overrides — so a named profile
+ * replaces the editors with the configs-page pointer.
  */
 function AbSide({
   side,
   profile,
   overrides,
+  agents,
+  guidedModels,
+  profileDefaults,
+  envFlags,
   profiles,
   savedConfigs,
-  editorProps,
   onProfileChange,
   onOverridesChange,
 }: {
   side: 'reference' | 'candidate';
   profile: string;
-  overrides: Overrides;
+  overrides: SideOverrides;
+  agents: readonly AgentMeta[];
+  guidedModels: readonly ModelMeta[];
+  profileDefaults: Record<string, string>;
+  envFlags: readonly EnvFlagMeta[];
   profiles: ProfileDescriptor[];
   savedConfigs: ConfigProfile[];
-  editorProps: { agents: readonly string[]; models: readonly string[]; envKeys: readonly string[] };
   onProfileChange: (profile: string) => void;
-  onOverridesChange: (next: Overrides) => void;
+  onOverridesChange: (next: SideOverrides) => void;
 }) {
   return (
     <fieldset aria-label={side} className="border border-term-rule p-2 space-y-3">
@@ -686,7 +795,35 @@ function AbSide({
         </p>
       )}
       {profile === 'default' ? (
-        <OverridesEditor {...editorProps} value={overrides} onChange={onOverridesChange} />
+        <>
+          {agents.length > 0 && (
+            <ModelOverrideEditor
+              agents={agents}
+              models={guidedModels}
+              profileDefaults={profileDefaults}
+              value={overrides.models}
+              onChange={(models) => onOverridesChange({ ...overrides, models })}
+            />
+          )}
+          {envFlags.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-term-cyan">
+                Advanced: live-pipeline flags
+              </summary>
+              <div className="mt-2 space-y-3">
+                <p className="text-term-dim">
+                  These flags tune the live discovery and negotiation services. This scorecard
+                  harness does not read them — they are recorded with the run for staging work.
+                </p>
+                <GuidedEnvEditor
+                  flags={envFlags}
+                  rows={overrides.envRows}
+                  onChange={(envRows, envValid) => onOverridesChange({ ...overrides, envRows, envValid })}
+                />
+              </div>
+            </details>
+          )}
+        </>
       ) : (
         <p className="text-term-dim">
           Overrides apply on top of the default configuration. To tweak a saved config,{' '}
@@ -709,6 +846,9 @@ function FlagInput({
   value: string | number | boolean | undefined;
   onChange: (value: string | number | boolean | undefined) => void;
 }) {
+  const copy = FLAG_COPY[flag.name];
+  const label = copy?.label ?? flag.cli;
+
   if (flag.kind === 'boolean') {
     return (
       <div>
@@ -718,8 +858,9 @@ function FlagInput({
             checked={Boolean(value)}
             onChange={(e) => onChange(e.target.checked || undefined)}
           />
-          <span>{flag.cli}</span>
+          <span>{label}</span>
         </label>
+        {copy !== undefined && <p className="mt-1 text-term-dim">{copy.help}</p>}
       </div>
     );
   }
@@ -728,7 +869,7 @@ function FlagInput({
     return (
       <div>
         <label htmlFor={flag.name} className="block mb-1">
-          {flag.cli}
+          {label}
         </label>
         <input
           type="number"
@@ -743,6 +884,11 @@ function FlagInput({
           max={flag.max}
           step={flag.step}
         />
+        {copy !== undefined && (
+          <p className="mt-1 text-term-dim">
+            {copy.help} <span className="text-term-dim">({flag.cli})</span>
+          </p>
+        )}
       </div>
     );
   }
@@ -752,7 +898,7 @@ function FlagInput({
   return (
     <div>
       <label htmlFor={flag.name} className="block mb-1">
-        {flag.cli}
+        {label}
       </label>
       <input
         type="text"
@@ -762,6 +908,11 @@ function FlagInput({
         aria-invalid={invalid}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
       />
+      {copy !== undefined && (
+        <p className="mt-1 text-term-dim">
+          {copy.help} <span className="text-term-dim">({flag.cli})</span>
+        </p>
+      )}
       {invalid && (
         <p className="mt-1 text-term-red text-sm">
           {flag.cli} values may not begin with &apos;-&apos;
