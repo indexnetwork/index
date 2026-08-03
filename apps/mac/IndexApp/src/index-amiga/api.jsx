@@ -200,17 +200,19 @@ window.IndexApp = (function () {
     }
   }
 
-  // POST /chat/stream (orchestrator persona for api-key callers). Resolves with
+  // POST /chat/stream. `persona` selects the server persona (e.g. "negotiator");
+  // api-key callers fall back to the orchestrator when omitted. Resolves with
   // the session id (from the X-Session-Id response header) once the stream ends.
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
+  async function streamChat({ message, sessionId, scopeType, scopeId, persona, onEvent, onSession, signal }) {
     const headers = { "Content-Type": "application/json" };
     const key = apiKey();
     if (key) headers["x-api-key"] = key;
     const body = { message };
     if (sessionId) body.sessionId = sessionId;
     if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
+    if (persona) body.persona = persona;
 
     const response = await fetch(`${apiBaseUrl()}/chat/stream`, {
       method: "POST",
