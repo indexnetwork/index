@@ -151,12 +151,17 @@ function Onboarding({ onDone, onBack }) {
   const DYN_MAX = Math.max(1, ONBOARDING_STEPS.length - 2);
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
+  const env = useIndexEnv();
+  // The web app's deterministic intake funnel (/intents/intake/*), gated by the
+  // backend FAST_SIGNAL_INTAKE flag. When off (or start fails) the chat flow
+  // below stays the path.
+  const fastEnabled = !!(client && env.features && env.features.fastSignalIntake);
 
   // Completed turns drive the progress bar and the faded history; the current
   // step is either a local scripted one or a backend-generated question.
   const [turns, setTurns] = useState([]);
   const [step, setStep] = useState(() => resolveStep(ONBOARDING_STEPS[0], {}));
-  const [thinking, setThinking] = useState(false);
+  const [thinking, setThinking] = useState(fastEnabled);
   const [answers, setAnswers] = useState({});
   const [draft, setDraft] = useState("");
   const [calibrating, setCalibrating] = useState(false);
@@ -180,7 +185,7 @@ function Onboarding({ onDone, onBack }) {
   useEffect(() => {
     setDraft("");
     if (inputRef.current) {
-      setTimeout(() => inputRef.current && inputRef.current.focus(), 700);
+      setTimeout(() => inputRef.current && inputRef.current.focus(), 50);
     }
   }, [step && step.id, thinking]);
 
@@ -194,6 +199,137 @@ function Onboarding({ onDone, onBack }) {
   };
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- fast intake (the web app's /intents/intake funnel) ------------------
+  //
+  // Round 1 comes from /start, follow-ups from /question until the locked
+  // total, then /prepare + /proposal synthesize the draft (a 422 carries a
+  // clarification question). The signal always looks everywhere (no networkId),
+  // and a one-button summary gates /intents/confirm. The server holds no funnel
+  // session: every call resends the answered rounds.
+
+  const fastRounds = useRef([]);          // [{ prompt, answer }]
+  const fastQueue = useRef([]);           // prefetched follow-up questions
+  const fastTotal = useRef(null);         // locked question budget
+  const fastPrepare = useRef(null);       // in-flight /prepare promise
+  const fastRunId = useRef(null);
+  const fastProposal = useRef(null);      // resolved proposal shown on the summary
+
+  const showFastQuestion = (q, kind = "question") => {
+    setThinking(false);
+    setStep({
+      id: `fast-${kind}-${Date.now()}`,
+      fast: kind,
+      prompt: q.prompt,
+      hint: q.evidence || "",
+      placeholder: "type your answer…",
+      examples: (q.options || []).map((o) => o.label).filter(Boolean),
+    });
+  };
+
+  // Summary gate: rendered as a dedicated card (SignalSummaryCard), not the
+  // generic question layout. `choices` stays so submit() resolves the label.
+  const showFastSummary = (p, note) => {
+    fastProposal.current = p;
+    setThinking(false);
+    setStep({
+      id: `fast-summary-${Date.now()}`,
+      fast: "summary",
+      prompt: p.description,
+      proposal: p,
+      note: note || "",
+      choices: [{ value: "create", label: "create this signal", sub: "looking everywhere" }],
+    });
+  };
+
+  const showFastRetry = () => {
+    setThinking(false);
+    setStep({
+      id: `fast-retry-${Date.now()}`,
+      fast: "retry",
+      prompt: "couldn't build your signal.",
+      choices: [{ value: "retry", label: "try again", sub: "your answers are kept" }],
+    });
+  };
+
+  // Next follow-up from the queue or the server; once the budget is spent,
+  // fire speculative synthesis and move on to the where step.
+  const fastAdvance = async () => {
+    if (fastQueue.current.length > 0) { showFastQuestion(fastQueue.current.shift()); return; }
+    const rounds = fastRounds.current;
+    if (fastTotal.current === null || rounds.length < fastTotal.current) {
+      try {
+        const res = await client.intents.intake.question({
+          rounds,
+          ...(fastTotal.current !== null ? { plannedTotal: fastTotal.current } : {}),
+        });
+        if (cancelledRef.current) return;
+        fastTotal.current = res.total;
+        const qs = res.questions || [];
+        if (qs.length > 0 && rounds.length < res.total) {
+          fastQueue.current = qs.slice(1);
+          showFastQuestion(qs[0]);
+          return;
+        }
+      } catch (_e) { /* proceed with the rounds we have */ }
+      if (cancelledRef.current) return;
+    }
+    fastPrepare.current = client.intents.intake.prepare({ rounds });
+    fastPrepare.current.then((r) => { fastRunId.current = r.runId; }).catch(() => {});
+    fastResolve();
+  };
+
+  const fastResolve = async () => {
+    setThinking(true);
+    try {
+      if (!fastRunId.current && fastPrepare.current) {
+        fastRunId.current = await fastPrepare.current.then((r) => r.runId).catch(() => null);
+      }
+      if (!fastRunId.current) {
+        fastRunId.current = (await client.intents.intake.prepare({ rounds: fastRounds.current })).runId;
+      }
+      const p = await client.intents.intake.proposal({
+        runId: fastRunId.current,
+        rounds: fastRounds.current,
+      });
+      if (!cancelledRef.current) showFastSummary(p);
+    } catch (e) {
+      if (cancelledRef.current) return;
+      const body = e && e.response;
+      if (body && body.code === "verification_rejected" && body.clarification) {
+        showFastQuestion(body.clarification, "clarify");
+        return;
+      }
+      showFastRetry();
+    }
+  };
+
+  const fastConfirm = async (ans) => {
+    setThinking(true);
+    try {
+      const p = fastProposal.current;
+      const res = await client.intents.confirm({
+        proposalId: p.proposalId,
+        description: p.description,
+      });
+      if (cancelledRef.current) return;
+      if (res && res.intentId) intentIdRef.current = res.intentId;
+      createdRef.current = true;
+      finish(ans);
+    } catch (_e) {
+      if (cancelledRef.current) return;
+      showFastSummary(fastProposal.current, "that didn't go through — try again.");
+    }
+  };
+
+  useEffect(() => {
+    if (!fastEnabled) return;
+    client.intents.intake.start()
+      .then(({ question }) => { if (!cancelledRef.current) showFastQuestion(question); })
+      // Start failed (flag raced off, network): the scripted first step is
+      // still in place, so the chat flow takes over untouched.
+      .catch(() => { if (!cancelledRef.current) setThinking(false); });
+  }, []);
 
   // ---- chat-driven clarification (same machinery as the web app) ----------
   //
@@ -341,10 +477,43 @@ function Onboarding({ onDone, onBack }) {
       if (dynAsked.current === 1) newAns.edges = v;
       else if (!newAns["off-limits"]) newAns["off-limits"] = v;
     }
+    if (step.fast === "question" || step.fast === "clarify") {
+      if (!newAns.intent) newAns.intent = v;
+      else if (!newAns.edges) newAns.edges = v;
+      else if (!newAns["off-limits"]) newAns["off-limits"] = v;
+    }
     setAnswers(newAns);
     answersRef.current = newAns;
 
     if (step.id === "shape") { finish(newAns); return; }
+
+    // Fast-intake steps: each answer extends the resent rounds, exactly like
+    // the web funnel.
+    if (step.fast) {
+      const isChip = (step.examples || []).includes(raw);
+      if (step.fast === "question") {
+        fastRounds.current = [...fastRounds.current, {
+          prompt: step.prompt,
+          answer: isChip ? { selectedOptions: [raw] } : { selectedOptions: [], freeText: v },
+        }];
+        setThinking(true);
+        fastAdvance();
+      } else if (step.fast === "clarify") {
+        // Merges into the last round's free text; it is not a new round and
+        // does not count toward the locked total.
+        const last = fastRounds.current[fastRounds.current.length - 1];
+        last.answer = {
+          selectedOptions: last.answer.selectedOptions,
+          freeText: [last.answer.freeText, v].filter(Boolean).join(" — "),
+        };
+        fastResolve();
+      } else if (step.fast === "summary") {
+        fastConfirm(newAns);
+      } else if (step.fast === "retry") {
+        fastResolve();
+      }
+      return;
+    }
 
     // A structured chat question, answering it resumes the blocked turn, and
     // the same stream carries the next question or the final proposal.
@@ -466,15 +635,24 @@ function Onboarding({ onDone, onBack }) {
                   <AgentBubble>
                     <span style={{
                       color:"var(--ink-2)", display:"inline-flex",
-                      alignItems:"center", flexWrap:"wrap",
+                      alignItems:"center",
                     }}>
-                      working out who to look for<WorkingDots/>
+                      <WorkingDots/>
                     </span>
                   </AgentBubble>
                 </div>
+              ) : step.fast === "summary" ? (
+              <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
+                <AgentBubble>Here's your signal.</AgentBubble>
+                <SignalSummaryCard
+                  proposal={step.proposal}
+                  note={step.note}
+                  onCreate={() => submit("create")}
+                />
+              </div>
               ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
-                <AgentBubble><StreamText text={step.prompt} speed={18}/></AgentBubble>
+                <AgentBubble>{step.prompt}</AgentBubble>
                 {step.hint && (
                   <div style={{
                     fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
@@ -575,7 +753,7 @@ function AgentBubble({ children }) {
    the rest of the app use, so "busy" looks the same everywhere. */
 function WorkingDots({ size = 8 }) {
   return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:5, marginLeft:10 }}>
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
       {[0, 1, 2].map(i => (
         <span key={i} style={{
           width:size, height:size, background:"#000",
@@ -606,6 +784,77 @@ function PastTurn({ step, answer }) {
         <span style={{ fontSize:16, color:"var(--ink-2)" }}>{step.prompt}</span>
       </AgentBubble>
       <UserBubble>{step.choices ? step.choices.find(c => c.value === answer)?.label : answer}</UserBubble>
+    </div>
+  );
+}
+
+// The fast-intake summary gate: the synthesized signal as a Workbench card,
+// one primary action. Sits in the conversation column, indented like answers.
+function SignalSummaryCard({ proposal, note, onCreate }) {
+  return (
+    <div style={{
+      marginLeft:36, maxWidth:560,
+      border:"1px solid #000", background:"#fff",
+      boxShadow:"2px 2px 0 rgba(0,0,0,0.25)",
+    }}>
+      {/* title strip */}
+      <div style={{
+        display:"flex", alignItems:"center", gap:10,
+        padding:"7px 14px", borderBottom:"1px solid #000",
+      }}>
+        <LiveDot size={8}/>
+        <span style={{
+          fontFamily:"var(--mac-mono)", fontSize:11,
+          letterSpacing:2, textTransform:"uppercase",
+        }}>your signal</span>
+        <div style={{ flex:1 }}/>
+        <Tag>looking everywhere</Tag>
+      </div>
+
+      <div style={{ padding:"16px 18px", display:"grid", gap:14 }}>
+        <div style={{
+          fontFamily:"var(--mac-sans)", fontSize:19, fontWeight:600,
+          lineHeight:1.35, letterSpacing:-0.2, color:"#000",
+        }}>{proposal.description}</div>
+
+        {(proposal.lookingFor || proposal.youBring) && (
+          <div style={{
+            display:"grid", gap:8,
+            borderTop:"1px dashed var(--ink-3)", paddingTop:12,
+          }}>
+            {proposal.lookingFor && <SummaryRow k="looking for" v={proposal.lookingFor}/>}
+            {proposal.youBring && <SummaryRow k="you bring" v={proposal.youBring}/>}
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        padding:"12px 18px 14px", borderTop:"1px solid #000",
+        display:"flex", alignItems:"center", gap:12,
+      }}>
+        <Btn primary onClick={onCreate}>create this signal</Btn>
+        {note && (
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            color:"#000", fontWeight:700,
+          }}>{note}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ k, v }) {
+  return (
+    <div style={{ display:"flex", gap:12, alignItems:"baseline" }}>
+      <span style={{
+        fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
+        textTransform:"uppercase", color:"var(--ink-3)", flex:"0 0 88px",
+      }}>{k}</span>
+      <span style={{
+        fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+        lineHeight:1.5, minWidth:0,
+      }}>{v}</span>
     </div>
   );
 }
