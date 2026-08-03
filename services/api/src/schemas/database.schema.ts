@@ -66,6 +66,25 @@ export interface NetworkPermissionsState {
   profileEnrichment?: ProfileEnrichmentPolicy;
 }
 
+/**
+ * Early-access "request a network" details, stored under `networks.metadata.request`.
+ * A network row carrying a non-null `requestStatus` is a pending request, not a
+ * usable network: it has no members and is hidden from discovery until a staff
+ * reviewer approves it (which clears `requestStatus` and adds the owner).
+ */
+export interface NetworkRequestDetails {
+  requestedByUserId: string;
+  purpose?: string;
+  audience?: string;
+  expectedSize?: string;
+  notes?: string;
+  reviewNote?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
+export type NetworkRequestStatus = 'pending' | 'needs_changes';
+
 export interface TelegramPrefs {
   chatId: string;
   sessionId?: string;       // lazily created on first outbound message
@@ -789,6 +808,9 @@ export const networks = pgTable('networks', {
   isExperiment: boolean('is_experiment').default(false).notNull(),
   experimentMasterKeyHash: text('experiment_master_key_hash'),
   type: networkTypeEnum('type').default('community').notNull(),
+  // Non-null only while this row is an unapproved "create a network" request
+  // (early access). Cleared to null when a staff reviewer approves it.
+  requestStatus: text('request_status').$type<NetworkRequestStatus>(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',

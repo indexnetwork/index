@@ -1,18 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Plus, Users, Loader2, Calendar } from 'lucide-react';
 import NetworkAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
+import RequestNetworkModal from '@/components/modals/RequestNetworkModal';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import MasterKeyDialog from '@/components/MasterKeyDialog';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useNetworks } from '@/contexts/APIContext';
+import { useNetworks, useNetworkRequests } from '@/contexts/APIContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { Network as NetworkType } from '@/lib/types';
+import type { NetworkRequest, NetworkRequestInput } from '@/services/networkRequests';
 import { log } from '@/lib/logger';
 
 const logger = log.page.from('networks');
@@ -22,14 +24,72 @@ export default function NetworksPage() {
   const { user } = useAuthContext();
   const { success, error } = useNotifications();
   const indexesService = useNetworks();
+  const networkRequestsService = useNetworkRequests();
   const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useNetworksState();
+
+  const isStaff = !!user?.email?.endsWith('@index.network');
 
   const [activeTab, setActiveTab] = useState<'my-networks' | 'discover'>('my-networks');
   const [createNetworkModalOpen, setCreateNetworkModalOpen] = useState(false);
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<NetworkRequest | null>(null);
+  const [myRequests, setMyRequests] = useState<NetworkRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<NetworkRequest[]>([]);
   const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
   const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
+
+  const loadRequests = useCallback(async () => {
+    try {
+      const [mine, pending] = await Promise.all([
+        networkRequestsService.listMine(),
+        isStaff ? networkRequestsService.listPending() : Promise.resolve([]),
+      ]);
+      setMyRequests(mine);
+      setPendingRequests(pending);
+    } catch (err) {
+      logger.error('Error loading network requests', { error: err });
+    }
+  }, [networkRequestsService, isStaff]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  const handleRequestSubmit = useCallback(async (input: NetworkRequestInput): Promise<NetworkRequest> => {
+    const request = editingRequest
+      ? await networkRequestsService.update(editingRequest.id, input)
+      : await networkRequestsService.create(input);
+    await loadRequests();
+    return request;
+  }, [editingRequest, networkRequestsService, loadRequests]);
+
+  const handleDismissRequest = useCallback(async (id: string) => {
+    try {
+      await networkRequestsService.dismiss(id);
+      setMyRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      logger.error('Error dismissing request', { error: err });
+      error('Failed to dismiss request');
+    }
+  }, [networkRequestsService, error]);
+
+  const handleReview = useCallback(async (id: string, decision: 'approve' | 'needs_changes') => {
+    try {
+      let reviewNote: string | undefined;
+      if (decision === 'needs_changes') {
+        reviewNote = window.prompt('What context is missing? This is sent to the requester.') || undefined;
+        if (!reviewNote) return;
+      }
+      await networkRequestsService.review(id, decision, reviewNote);
+      success(decision === 'approve' ? 'Network approved' : 'Sent back for changes');
+      await loadRequests();
+    } catch (err) {
+      logger.error('Error reviewing request', { error: err });
+      error('Failed to review request');
+    }
+  }, [networkRequestsService, loadRequests, success, error]);
 
   const allNetworks = (rawIndexes || []).filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
@@ -102,15 +162,20 @@ export default function NetworksPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
               <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">Networks</h1>
-              {user?.email?.endsWith('@index.network') && (
-                <button
-                  onClick={() => setCreateNetworkModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-sm transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (isStaff) {
+                    setCreateNetworkModalOpen(true);
+                  } else {
+                    setEditingRequest(null);
+                    setRequestModalOpen(true);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Create a network
+              </button>
             </div>
 
             <Tabs.Root value={activeTab} onValueChange={(v) => {
@@ -136,6 +201,67 @@ export default function NetworksPage() {
 
               {/* My Networks */}
               <Tabs.Content value="my-networks">
+                {/* Staff review queue */}
+                {isStaff && pendingRequests.length > 0 && (
+                  <div className="mb-8">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Requests to review</p>
+                    <div className="space-y-3">
+                      {pendingRequests.map((r) => (
+                        <div key={r.id} className="border border-gray-200 rounded-sm p-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-sm font-medium text-black">{r.title}</p>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-sm ${r.status === 'needs_changes' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {r.status === 'needs_changes' ? 'Needs changes' : 'In review'}
+                            </span>
+                          </div>
+                          {r.requestedBy && (
+                            <p className="text-xs text-gray-400 mb-2">{r.requestedBy.name}{r.requestedBy.email ? ` · ${r.requestedBy.email}` : ''}</p>
+                          )}
+                          {r.purpose && <p className="text-sm text-gray-600 mb-2">{r.purpose}</p>}
+                          {(r.audience || r.expectedSize) && (
+                            <p className="text-xs text-gray-500 mb-2">
+                              {[r.audience, r.expectedSize].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                          {r.notes && <p className="text-xs text-gray-500 mb-3">{r.notes}</p>}
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleReview(r.id, 'approve')} className="text-xs h-7">Approve</Button>
+                            <Button size="sm" variant="outline" onClick={() => handleReview(r.id, 'needs_changes')} className="text-xs h-7">Needs changes</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* The caller's own requests */}
+                {myRequests.length > 0 && (
+                  <div className="mb-8 space-y-3">
+                    {myRequests.map((r) => (
+                      <div key={r.id} className="border border-gray-200 rounded-sm p-4">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm font-medium text-black">{r.title}</p>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-sm ${r.status === 'needs_changes' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {r.status === 'needs_changes' ? 'Needs changes' : 'In review'}
+                          </span>
+                        </div>
+                        {r.status === 'needs_changes' && r.reviewNote ? (
+                          <>
+                            <p className="text-xs text-gray-500 mb-1">Index team</p>
+                            <p className="text-sm text-gray-700 mb-3 italic">“{r.reviewNote}”</p>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => handleDismissRequest(r.id)} className="text-xs h-7">Dismiss</Button>
+                              <Button size="sm" onClick={() => { setEditingRequest(r); setRequestModalOpen(true); }} className="text-xs h-7">Update request</Button>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-sm text-gray-500">We&apos;re reviewing your request and may reach out with questions.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {indexesLoading ? (
                   <div className="flex justify-center py-16">
                     <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
@@ -246,6 +372,16 @@ export default function NetworksPage() {
         onOpenChange={setCreateNetworkModalOpen}
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
+      />
+
+      <RequestNetworkModal
+        open={requestModalOpen}
+        onOpenChange={(open) => {
+          setRequestModalOpen(open);
+          if (!open) setEditingRequest(null);
+        }}
+        onSubmit={handleRequestSubmit}
+        initial={editingRequest}
       />
 
       <MasterKeyDialog
