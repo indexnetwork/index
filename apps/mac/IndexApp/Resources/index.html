@@ -40460,50 +40460,31 @@ function PastTurn({ step, answer }) {
   );
 }
 
-// The fast-intake summary gate: the synthesized signal as a Workbench card,
-// one primary action. Sits in the conversation column, indented like answers.
+// The fast-intake summary gate, kept quiet: the signal as an indented quote in
+// the conversation, small detail lines, one button. No card chrome.
 function SignalSummaryCard({ proposal, note, onCreate }) {
   return (
-    <div style={{
-      marginLeft:36, maxWidth:560,
-      border:"1px solid #000", background:"#fff",
-      boxShadow:"2px 2px 0 rgba(0,0,0,0.25)",
-    }}>
-      {/* title strip */}
+    <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:14 }}>
       <div style={{
-        display:"flex", alignItems:"center", gap:10,
-        padding:"7px 14px", borderBottom:"1px solid #000",
+        borderLeft:"2px solid #000", paddingLeft:14,
+        display:"grid", gap:8,
       }}>
-        <LiveDot size={8}/>
-        <span style={{
-          fontFamily:"var(--mac-mono)", fontSize:11,
-          letterSpacing:2, textTransform:"uppercase",
-        }}>your signal</span>
-        <div style={{ flex:1 }}/>
-        <Tag>looking everywhere</Tag>
-      </div>
-
-      <div style={{ padding:"16px 18px", display:"grid", gap:14 }}>
         <div style={{
-          fontFamily:"var(--mac-sans)", fontSize:19, fontWeight:600,
-          lineHeight:1.35, letterSpacing:-0.2, color:"#000",
+          fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
+          lineHeight:1.4, color:"#000",
         }}>{proposal.description}</div>
-
         {(proposal.lookingFor || proposal.youBring) && (
           <div style={{
-            display:"grid", gap:8,
-            borderTop:"1px dashed var(--ink-3)", paddingTop:12,
+            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+            lineHeight:1.6, display:"grid", gap:2,
           }}>
-            {proposal.lookingFor && <SummaryRow k="looking for" v={proposal.lookingFor}/>}
-            {proposal.youBring && <SummaryRow k="you bring" v={proposal.youBring}/>}
+            {proposal.lookingFor && <div>looking for · {proposal.lookingFor}</div>}
+            {proposal.youBring && <div>you bring · {proposal.youBring}</div>}
           </div>
         )}
       </div>
 
-      <div style={{
-        padding:"12px 18px 14px", borderTop:"1px solid #000",
-        display:"flex", alignItems:"center", gap:12,
-      }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         <Btn primary onClick={onCreate}>create this signal</Btn>
         {note && (
           <span style={{
@@ -40512,21 +40493,6 @@ function SignalSummaryCard({ proposal, note, onCreate }) {
           }}>{note}</span>
         )}
       </div>
-    </div>
-  );
-}
-
-function SummaryRow({ k, v }) {
-  return (
-    <div style={{ display:"flex", gap:12, alignItems:"baseline" }}>
-      <span style={{
-        fontFamily:"var(--mac-mono)", fontSize:10, letterSpacing:1,
-        textTransform:"uppercase", color:"var(--ink-3)", flex:"0 0 88px",
-      }}>{k}</span>
-      <span style={{
-        fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-        lineHeight:1.5, minWidth:0,
-      }}>{v}</span>
     </div>
   );
 }
