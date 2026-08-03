@@ -1,35 +1,35 @@
 import { describe, expect, it } from 'bun:test';
 
-import { computeAnswersHash } from '../signal-intake-run.database.adapter';
+import { computeAnswersHash, type IntakeRound } from '../signal-intake-run.database.adapter';
 
-const base = {
-  whoAnswer: { selectedOptions: ['A design partner'] },
-  bringAnswer: { selectedOptions: ['Engineering depth'] },
-};
+const round = (prompt: string, selectedOptions: string[], freeText?: string): IntakeRound => ({
+  prompt,
+  answer: { selectedOptions, ...(freeText !== undefined ? { freeText } : {}) },
+});
 
 describe('computeAnswersHash', () => {
-  it('is stable for identical answers', () => {
-    expect(computeAnswersHash(base)).toBe(computeAnswersHash(base));
+  it('is stable across option ordering within a round', () => {
+    const a = computeAnswersHash({ rounds: [round('p1', ['A', 'B']), round('p2', ['C'])] });
+    const b = computeAnswersHash({ rounds: [round('p1', ['B', 'A']), round('p2', ['C'])] });
+    expect(a).toBe(b);
   });
 
-  it('changes when an answer changes', () => {
-    expect(computeAnswersHash(base)).not.toBe(
-      computeAnswersHash({ ...base, bringAnswer: { selectedOptions: ['Distribution'] } }),
-    );
+  it('changes when round order changes', () => {
+    const a = computeAnswersHash({ rounds: [round('p1', ['A']), round('p2', ['B'])] });
+    const b = computeAnswersHash({ rounds: [round('p2', ['B']), round('p1', ['A'])] });
+    expect(a).not.toBe(b);
   });
 
-  it('separates a whereText re-synthesis from the speculative run', () => {
-    expect(computeAnswersHash(base)).not.toBe(computeAnswersHash({ ...base, whereText: 'Berlin only' }));
+  it('changes when a round is added', () => {
+    const a = computeAnswersHash({ rounds: [round('p1', ['A']), round('p2', ['B'])] });
+    const b = computeAnswersHash({ rounds: [round('p1', ['A']), round('p2', ['B']), round('p3', ['C'])] });
+    expect(a).not.toBe(b);
   });
 
-  it('treats blank whereText as absent so speculation is reused', () => {
-    expect(computeAnswersHash({ ...base, whereText: '   ' })).toBe(computeAnswersHash(base));
-  });
-
-  it('is insensitive to selected-option ordering', () => {
-    const ab = computeAnswersHash({ ...base, bringAnswer: { selectedOptions: ['a', 'b'] } });
-    const ba = computeAnswersHash({ ...base, bringAnswer: { selectedOptions: ['b', 'a'] } });
-    expect(ab).toBe(ba);
+  it('folds in the where constraint', () => {
+    const rounds = [round('p1', ['A']), round('p2', ['B'])];
+    expect(computeAnswersHash({ rounds, whereText: 'Berlin' }))
+      .not.toBe(computeAnswersHash({ rounds }));
   });
 });
 

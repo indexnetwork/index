@@ -14,6 +14,12 @@ export interface IntakeAnswer {
   freeText?: string;
 }
 
+/** One answered intake round in order, structurally aligned with protocol's `IntakeRound`. */
+export interface IntakeRound {
+  prompt: string;
+  answer: IntakeAnswer;
+}
+
 /** One speculative or on-demand synthesis run. */
 export interface SignalIntakeRunRecord {
   id: string;
@@ -30,34 +36,21 @@ export interface SignalIntakeRunRecord {
 }
 
 /**
- * Deterministic key over the answers that feed speculative synthesis.
+ * Stable hash of the full answered round list plus the optional where
+ * constraint. Order matters across rounds (round 1 first); option order
+ * within one round does not.
  *
- * Only `SignalIntakeService.prepare` computes this key, and it passes the two
- * answers alone: a where-driven or feedback-driven re-synthesis does NOT get
- * its own row. It reuses the run the client already holds and replaces that
- * run's `proposal_id` in place, which is what keeps `runId` a stable handle for
- * the whole funnel. `whereText` still participates in the digest when a caller
- * supplies it, so the key stays correct if a future caller ever needs to
- * separate those runs, but no caller does today.
- *
- * The key alone is not a reuse decision: with a handful of canned options per
- * round, a user's second signal can legitimately hash to their first. `prepare`
- * therefore re-checks that the matched run's proposal is still pending before
- * reusing it (see {@link SignalIntakeRunDatabaseAdapter.resetRun}).
- *
- * @param input - Both answers plus the optional where constraint
+ * @param input - Ordered answered rounds plus the optional where constraint
  * @returns A 16-char hex digest, stable across option ordering
  */
 export function computeAnswersHash(input: {
-  whoAnswer: IntakeAnswer;
-  bringAnswer: IntakeAnswer;
+  rounds: IntakeRound[];
   whereText?: string;
 }): string {
   const part = (answer: IntakeAnswer) =>
     [...answer.selectedOptions].sort().join('|') + '::' + (answer.freeText?.trim() ?? '');
   const payload = [
-    part(input.whoAnswer),
-    part(input.bringAnswer),
+    ...input.rounds.map((round) => part(round.answer)),
     input.whereText?.trim() ?? '',
   ].join('###');
   return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);

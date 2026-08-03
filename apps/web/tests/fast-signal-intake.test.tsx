@@ -60,6 +60,11 @@ const question = (prompt: string) => ({
   multiSelect: false,
 });
 
+const followUpResponse = (prompts: string[], total: number) => ({
+  questions: prompts.map((prompt) => question(prompt)),
+  total,
+});
+
 function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>;
 }
@@ -82,7 +87,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.fastSignalIntake = true;
   mocks.start.mockResolvedValue({ question: question("Who do you want to meet?") });
-  mocks.question.mockResolvedValue({ question: question("What would you bring?") });
+  mocks.question.mockResolvedValue(followUpResponse(["What would you bring?"], 2));
   mocks.prepare.mockResolvedValue({ runId: "run-1" });
   mocks.proposal.mockResolvedValue({
     proposalId: "prop-1", description: "Looking for a design partner.",
@@ -106,7 +111,82 @@ describe("fast signal intake", () => {
     await answer("Who do you want to meet?", "A design partner");
 
     await screen.findByText("What would you bring?");
-    expect(mocks.question).toHaveBeenCalledWith({ selectedOptions: ["A design partner"] });
+    expect(mocks.question).toHaveBeenCalledWith(
+      [{ prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } }],
+      undefined,
+    );
+  });
+
+  test("singular mode: fetches the next question per turn and locks the total", async () => {
+    mocks.start.mockResolvedValue({ question: question("Who do you want to meet?") });
+    mocks.question
+      .mockResolvedValueOnce(followUpResponse(["What would you bring?"], 3))
+      .mockResolvedValueOnce(followUpResponse(["When do you need this?"], 3));
+    mocks.prepare.mockResolvedValue({ runId: "run-1" });
+
+    render(<MemoryRouter><FastSignalIntake onConfirmed={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("A design partner"));
+    fireEvent.click(screen.getByText("Continue"));
+
+    expect(await screen.findByText("What would you bring?")).toBeTruthy();
+    fireEvent.click(screen.getByText("A design partner")); // option label shared by the fixture
+    fireEvent.click(screen.getByText("Continue"));
+
+    expect(await screen.findByText("When do you need this?")).toBeTruthy();
+    expect(mocks.question).toHaveBeenCalledTimes(2);
+    expect(mocks.question).toHaveBeenLastCalledWith(
+      [
+        { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
+        { prompt: "What would you bring?", answer: { selectedOptions: ["A design partner"] } },
+      ],
+      3,
+    );
+  });
+
+  test("plural mode: steps through the batch client-side without extra calls", async () => {
+    mocks.start.mockResolvedValue({ question: question("Who do you want to meet?") });
+    mocks.question.mockResolvedValueOnce(followUpResponse(["What would you bring?", "When do you need this?"], 3));
+    mocks.prepare.mockResolvedValue({ runId: "run-1" });
+
+    render(<MemoryRouter><FastSignalIntake onConfirmed={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("A design partner"));
+    fireEvent.click(screen.getByText("Continue"));
+
+    expect(await screen.findByText("What would you bring?")).toBeTruthy();
+    fireEvent.click(screen.getByText("A design partner"));
+    fireEvent.click(screen.getByText("Continue"));
+
+    expect(await screen.findByText("When do you need this?")).toBeTruthy();
+    expect(mocks.question).toHaveBeenCalledTimes(1); // no refetch while the queue holds questions
+
+    fireEvent.click(screen.getByText("A design partner"));
+    fireEvent.click(screen.getByText("Continue"));
+    await waitFor(() => expect(mocks.prepare).toHaveBeenCalledTimes(1));
+  });
+
+  test("sizes the progress bar to total + 2 once the plan is detected", async () => {
+    mocks.start.mockResolvedValue({ question: question("Who do you want to meet?") });
+    mocks.question.mockResolvedValueOnce(followUpResponse(["What would you bring?", "When do you need this?", "Budget?"], 4));
+
+    const { container } = render(<MemoryRouter><FastSignalIntake onConfirmed={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("A design partner"));
+    fireEvent.click(screen.getByText("Continue"));
+
+    await screen.findByText("What would you bring?");
+    expect(container.querySelectorAll('[aria-label="Signal progress"] > span')).toHaveLength(6); // 4 questions + where + confirm
+  });
+
+  test("advances straight to the where picker when the plan returns no follow-ups", async () => {
+    mocks.start.mockResolvedValue({ question: question("Who do you want to meet?") });
+    mocks.question.mockResolvedValueOnce({ questions: [], total: 1 });
+    mocks.prepare.mockResolvedValue({ runId: "run-1" });
+
+    render(<MemoryRouter><FastSignalIntake onConfirmed={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("A design partner"));
+    fireEvent.click(screen.getByText("Continue"));
+
+    await waitFor(() => expect(mocks.prepare).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Everywhere")).toBeTruthy(); // WherePicker rendered
   });
 
   test("shows the where picker before any proposal resolves", async () => {
@@ -123,6 +203,12 @@ describe("fast signal intake", () => {
 
     await screen.findByText(/everywhere/i);
     expect(mocks.prepare).toHaveBeenCalledTimes(1);
+    expect(mocks.prepare).toHaveBeenCalledWith({
+      rounds: [
+        { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
+        { prompt: "What would you bring?", answer: { selectedOptions: ["A design partner"] } },
+      ],
+    });
     expect(screen.queryByText(/does this feel right/i)).toBeNull();
     releaseProposal?.();
   });
@@ -136,7 +222,12 @@ describe("fast signal intake", () => {
 
     await screen.findByText(/does this feel right/i);
     expect(mocks.proposal).toHaveBeenCalledWith(expect.objectContaining({
-      runId: "run-1", networkId: "network-1",
+      runId: "run-1",
+      networkId: "network-1",
+      rounds: [
+        { prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] } },
+        { prompt: "What would you bring?", answer: { selectedOptions: ["A design partner"] } },
+      ],
     }));
     expect(mocks.proposal.mock.calls[0][0]).not.toHaveProperty("whereText");
   });
@@ -219,6 +310,47 @@ describe("fast signal intake", () => {
     await answer("What would make it concrete?", "A design partner");
     await screen.findByText(/does this feel right/i);
     expect(mocks.proposal).toHaveBeenCalledTimes(2);
+  });
+
+  test("merges the clarification into the LAST round when the plan has three questions", async () => {
+    mocks.question.mockResolvedValueOnce(followUpResponse(["What would you bring?", "When do you need this?"], 3));
+    mocks.proposal
+      .mockRejectedValueOnce({ code: "verification_rejected", clarification: question("Narrow it down?") })
+      .mockResolvedValueOnce({
+        proposalId: "prop-2", description: "Sharper signal.", lookingFor: "l", youBring: "y",
+      });
+    renderPage();
+
+    await answer("Who do you want to meet?", "A design partner");
+    await answer("What would you bring?", "A design partner");
+
+    await screen.findByText("When do you need this?");
+    fireEvent.change(screen.getByPlaceholderText(/or tell me in your own words/i), {
+      target: { value: "next month" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    fireEvent.click(await screen.findByText("Builders"));
+
+    await screen.findByText("Narrow it down?");
+    fireEvent.change(screen.getByPlaceholderText(/or tell me in your own words/i), {
+      target: { value: "by Friday" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    await screen.findByText(/does this feel right/i);
+    expect(mocks.proposal).toHaveBeenCalledTimes(2);
+    const retry = mocks.proposal.mock.calls[1][0] as {
+      rounds: Array<{ prompt: string; answer: { selectedOptions: string[]; freeText?: string } }>;
+    };
+    expect(retry.rounds).toHaveLength(3);
+    expect(retry.rounds[0]).toEqual({
+      prompt: "Who do you want to meet?", answer: { selectedOptions: ["A design partner"] },
+    });
+    expect(retry.rounds[1]).toEqual({
+      prompt: "What would you bring?", answer: { selectedOptions: ["A design partner"] },
+    });
+    expect(retry.rounds[2].answer.freeText).toBe("next month — by Friday");
   });
 
   test("a non-empty server synthesis wins over the locally derived answer label", async () => {

@@ -20,24 +20,26 @@ const AnswerSchema = z.object({
   (answer) => answer.selectedOptions.length > 0 || Boolean(answer.freeText),
   { message: 'answer must have at least one selected option or free text' },
 );
-const QuestionSchema = z.object({ whoAnswer: AnswerSchema }).strict();
-const PrepareSchema = z.object({
-  whoAnswer: AnswerSchema,
-  bringAnswer: AnswerSchema,
-  round2Prompt: z.string().trim().max(400).optional(),
+const RoundSchema = z.object({
+  prompt: z.string().trim().min(1).max(400),
+  answer: AnswerSchema,
 }).strict();
+const RoundsSchema = z.array(RoundSchema).min(1).max(10);
+const QuestionSchema = z.object({
+  rounds: RoundsSchema,
+  plannedTotal: z.number().int().min(1).max(10).optional(),
+}).strict();
+const PrepareSchema = z.object({ rounds: RoundsSchema }).strict();
 const ProposalSchema = z.object({
   runId: z.string().uuid('runId must be a UUID'),
-  whoAnswer: AnswerSchema,
-  bringAnswer: AnswerSchema,
+  rounds: RoundsSchema,
   networkId: z.string().uuid('networkId must be a UUID').optional(),
   whereText: z.string().trim().max(280).optional(),
 }).strict();
 const ReviseSchema = z.object({
   runId: z.string().uuid('runId must be a UUID'),
   feedback: z.string().trim().min(1).max(600),
-  whoAnswer: AnswerSchema,
-  bringAnswer: AnswerSchema,
+  rounds: RoundsSchema,
   networkId: z.string().uuid('networkId must be a UUID').optional(),
 }).strict();
 
@@ -54,7 +56,7 @@ const ReviseSchema = z.object({
 export class IntentIntakeController {
   private readonly service: Pick<
     SignalIntakeService,
-    'getOrCreatePack' | 'nextQuestion' | 'prepare' | 'resolveProposal' | 'revise'
+    'getOrCreatePack' | 'followUpQuestions' | 'prepare' | 'resolveProposal' | 'revise'
   >;
 
   /**
@@ -77,7 +79,7 @@ export class IntentIntakeController {
     }
   }
 
-  /** Round 2: one structured call grounded by the brief and round-1 answer. */
+  /** Follow-ups: planned batch or single question, with the locked total. */
   @Post('/question')
   @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
   async question(req: Request, user: AuthenticatedUser) {
@@ -85,8 +87,8 @@ export class IntentIntakeController {
     const parsed = QuestionSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
     try {
-      const question = await this.service.nextQuestion(user.id, parsed.data.whoAnswer);
-      return Response.json({ question });
+      const { questions, total } = await this.service.followUpQuestions(user.id, parsed.data);
+      return Response.json({ questions, total });
     } catch (error) {
       return this.fail(error, user.id, 'question');
     }
@@ -120,13 +122,13 @@ export class IntentIntakeController {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ProposalSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
-    const { runId, whereText, networkId, whoAnswer, bringAnswer } = parsed.data;
+    const { runId, whereText, networkId, rounds } = parsed.data;
     try {
       // `networkId` must reach the proposal row: /intents/confirm rejects any
       // confirmation whose networkId differs from the stored one.
       const proposal = await this.service.resolveProposal(user.id, {
         runId,
-        answers: { whoAnswer, bringAnswer },
+        rounds,
         ...(whereText ? { whereText } : {}),
         ...(networkId ? { networkId } : {}),
       });
@@ -148,12 +150,12 @@ export class IntentIntakeController {
     if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ReviseSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
-    const { runId, feedback, networkId, whoAnswer, bringAnswer } = parsed.data;
+    const { runId, feedback, networkId, rounds } = parsed.data;
     try {
       // The replacement proposal is a new row, so the already-picked community
       // travels with the revision too.
       const proposal = await this.service.revise(user.id, {
-        runId, feedback, answers: { whoAnswer, bringAnswer },
+        runId, feedback, rounds,
         ...(networkId ? { networkId } : {}),
       });
       return Response.json(proposal);

@@ -70,7 +70,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     },
     isNetworkMember: mock(async () => true),
     orchestrator: {
-      nextQuestion: mock(async () => question),
+      generateFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
       synthesize: mock(async () => ({ description: 'Looking for a design partner.', lookingFor: 'A design partner', youBring: 'Depth' })),
     },
     packGenerator: { generate: mock(async () => ({ brief: 'generated brief', question })) },
@@ -119,17 +119,103 @@ describe('SignalIntakeService.getOrCreatePack', () => {
   });
 });
 
+describe('SignalIntakeService.followUpQuestions', () => {
+  const followUp = { title: 'Q2', prompt: 'What do you bring?', options: [{ label: 'X', description: 'x' }], multiSelect: false };
+
+  it('singular: returns one question and locks the total from the plan', async () => {
+    const service = new SignalIntakeService(makeDeps({
+      intakeConfig: () => ({ maxQuestions: 4, mode: 'singular' as const }),
+      orchestrator: {
+        generateFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }], plannedFollowUpCount: 2 })),
+        synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+      },
+    }));
+
+    const result = await service.followUpQuestions('u1', {
+      rounds: [{ prompt: 'Who?', answer: { selectedOptions: ['A design partner'] } }],
+    });
+
+    expect(result.questions).toHaveLength(1);
+    expect(result.total).toBe(3);
+  });
+
+  it('plural: returns the whole batch and totals rounds + batch', async () => {
+    const service = new SignalIntakeService(makeDeps({
+      intakeConfig: () => ({ maxQuestions: 5, mode: 'plural' as const }),
+      orchestrator: {
+        generateFollowUps: mock(async () => ({ questions: [followUp, { ...followUp, prompt: 'q3' }, { ...followUp, prompt: 'q4' }], plannedFollowUpCount: 3 })),
+        synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+      },
+    }));
+
+    const result = await service.followUpQuestions('u1', {
+      rounds: [{ prompt: 'Who?', answer: { selectedOptions: ['A'] } }],
+    });
+
+    expect(result.questions).toHaveLength(3);
+    expect(result.total).toBe(4);
+  });
+
+  it('caps the planning budget at maxQuestions - answered rounds', async () => {
+    const generateFollowUps = mock(async () => ({ questions: [followUp], plannedFollowUpCount: 9 }));
+    const service = new SignalIntakeService(makeDeps({
+      intakeConfig: () => ({ maxQuestions: 3, mode: 'singular' as const }),
+      orchestrator: { generateFollowUps, synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })) },
+    }));
+
+    const result = await service.followUpQuestions('u1', {
+      rounds: [{ prompt: 'Who?', answer: { selectedOptions: ['A'] } }],
+    });
+
+    expect(generateFollowUps).toHaveBeenCalledWith(expect.objectContaining({ maxFollowUps: 2 }));
+    expect(result.total).toBe(3); // plan of 9 follow-ups clamps to the configured budget
+  });
+
+  it('singular continuation: echoes a clamped client-carried plannedTotal', async () => {
+    const service = new SignalIntakeService(makeDeps({
+      intakeConfig: () => ({ maxQuestions: 4, mode: 'singular' as const }),
+      orchestrator: {
+        generateFollowUps: mock(async () => ({ questions: [followUp], plannedFollowUpCount: 1 })),
+        synthesize: mock(async () => ({ description: 'd', lookingFor: 'l', youBring: 'y' })),
+      },
+    }));
+
+    const result = await service.followUpQuestions('u1', {
+      rounds: [
+        { prompt: 'Who?', answer: { selectedOptions: ['A'] } },
+        { prompt: 'Bring?', answer: { selectedOptions: ['B'] } },
+      ],
+      plannedTotal: 99,
+    });
+
+    expect(result.questions).toHaveLength(1);
+    expect(result.total).toBe(4);
+  });
+
+  it('returns an empty batch with total = answered rounds when the budget is spent', async () => {
+    const service = new SignalIntakeService(makeDeps({
+      intakeConfig: () => ({ maxQuestions: 1, mode: 'plural' as const }),
+    }));
+
+    const result = await service.followUpQuestions('u1', {
+      rounds: [{ prompt: 'Who?', answer: { selectedOptions: ['A'] } }],
+    });
+
+    expect(result).toEqual({ questions: [], total: 1 });
+  });
+});
+
 describe('SignalIntakeService.resolveProposal', () => {
-  const answers = {
-    whoAnswer: { selectedOptions: ['A design partner'] },
-    bringAnswer: { selectedOptions: ['Engineering depth'] },
-  };
+  const rounds = [
+    { prompt: 'Who do you want to meet?', answer: { selectedOptions: ['A design partner'] } },
+    { prompt: 'What do you bring?', answer: { selectedOptions: ['Engineering depth'] } },
+  ];
 
   it('returns the speculative proposal without re-synthesizing', async () => {
     const deps = makeDeps();
     const service = new SignalIntakeService(deps as never);
 
-    const result = await service.resolveProposal('u1', { runId: 'run-1', answers });
+    const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
     expect(result.proposalId).toBe('prop-1');
     expect(deps.orchestrator.synthesize).not.toHaveBeenCalled();
@@ -139,7 +225,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const deps = makeDeps();
     const service = new SignalIntakeService(deps as never);
 
-    await service.resolveProposal('u1', { runId: 'run-1', whereText: 'Berlin only', answers });
+    await service.resolveProposal('u1', { runId: 'run-1', whereText: 'Berlin only', rounds });
 
     expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
     expect(deps.proposalStore.createProposals).toHaveBeenCalledTimes(1);
@@ -150,7 +236,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const deps = makeDeps({
       orchestrator: {
-        nextQuestion: mock(async () => question),
+        generateFollowUps: mock(async () => ({ questions: [question], plannedFollowUpCount: 1 })),
         synthesize: mock(async () => {
           await gate;
           return { description: 'd', lookingFor: 'l', youBring: 'y' };
@@ -159,7 +245,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    const result = await service.prepare('u1', answers);
+    const result = await service.prepare('u1', { rounds });
 
     expect(result.runId).toBe('run-1');
     expect(deps.proposalStore.createProposals).not.toHaveBeenCalled();
@@ -177,7 +263,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    const result = await service.resolveProposal('u1', { runId: 'run-1', answers });
+    const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
     expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
     // normalizeIntentDescription strips trailing sentence punctuation from the
@@ -189,7 +275,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const deps = makeDeps();
     const service = new SignalIntakeService(deps as never);
 
-    const result = await service.resolveProposal('u1', { runId: 'run-1', answers });
+    const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
     // The hit path is the design's expected outcome, so it must carry the
     // synthesized copy; returning '' here made the client fall back to the raw
@@ -203,7 +289,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const deps = makeDeps();
     const service = new SignalIntakeService(deps as never);
 
-    await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, answers });
+    await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, rounds });
 
     expect(deps.isNetworkMember).toHaveBeenCalledWith(NETWORK_ID, 'u1');
     expect(deps.proposalStore.setProposalNetwork).toHaveBeenCalledWith('prop-1', 'u1', NETWORK_ID);
@@ -214,7 +300,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const service = new SignalIntakeService(deps as never);
 
     await service.resolveProposal('u1', {
-      runId: 'run-1', networkId: NETWORK_ID, whereText: 'Berlin only', answers,
+      runId: 'run-1', networkId: NETWORK_ID, whereText: 'Berlin only', rounds,
     });
 
     const [[created]] = deps.proposalStore.createProposals.mock.calls as [[Array<{ networkId?: string }>]];
@@ -225,7 +311,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     const deps = makeDeps({ isNetworkMember: mock(async () => false) });
     const service = new SignalIntakeService(deps as never);
 
-    await expect(service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, answers }))
+    await expect(service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, rounds }))
       .rejects.toBeInstanceOf(IntakeNetworkMembershipError);
     expect(deps.proposalStore.setProposalNetwork).not.toHaveBeenCalled();
   });
@@ -240,7 +326,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    const result = await service.resolveProposal('u1', { runId: 'run-1', answers });
+    const result = await service.resolveProposal('u1', { runId: 'run-1', rounds });
 
     expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
     expect(result.proposalId).not.toBe('prop-1');
@@ -252,7 +338,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    await expect(service.resolveProposal('u1', { runId: 'run-1', answers })).rejects.toThrow('run_not_found');
+    await expect(service.resolveProposal('u1', { runId: 'run-1', rounds })).rejects.toThrow('run_not_found');
   });
 
   it('re-synthesizes when the community can no longer be attached', async () => {
@@ -266,7 +352,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    const result = await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, answers });
+    const result = await service.resolveProposal('u1', { runId: 'run-1', networkId: NETWORK_ID, rounds });
 
     expect(deps.orchestrator.synthesize).toHaveBeenCalledTimes(1);
     expect(result.proposalId).not.toBe('prop-1');
@@ -284,7 +370,7 @@ describe('SignalIntakeService.resolveProposal', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    const call = service.resolveProposal('u1', { runId: 'run-1', answers });
+    const call = service.resolveProposal('u1', { runId: 'run-1', rounds });
 
     await expect(call).rejects.toThrow('verification_rejected');
     await call.catch((error: { clarification?: { options: unknown[] } }) => {
@@ -295,10 +381,28 @@ describe('SignalIntakeService.resolveProposal', () => {
 });
 
 describe('SignalIntakeService.prepare run reuse', () => {
-  const answers = {
-    whoAnswer: { selectedOptions: ['A design partner'] },
-    bringAnswer: { selectedOptions: ['Engineering depth'] },
-  };
+  const rounds = [
+    { prompt: 'Who do you want to meet?', answer: { selectedOptions: ['A design partner'] } },
+    { prompt: 'What do you bring?', answer: { selectedOptions: ['Engineering depth'] } },
+  ];
+
+  it('records every follow-up round with its client-sent prompt', async () => {
+    const recordAnsweredQuestion = mock(async () => undefined);
+    const service = new SignalIntakeService(makeDeps({ recordAnsweredQuestion }));
+
+    await service.prepare('u1', {
+      rounds: [
+        { prompt: 'Who?', answer: { selectedOptions: ['A'] } },
+        { prompt: 'Bring?', answer: { selectedOptions: ['B'] } },
+        { prompt: 'When?', answer: { selectedOptions: [], freeText: 'Now' } },
+      ],
+    });
+
+    const stages = recordAnsweredQuestion.mock.calls.map((call) => (call[0] as { stage: string }).stage);
+    expect(stages).toEqual(['followup-2', 'followup-3']);
+    const prompts = recordAnsweredQuestion.mock.calls.map((call) => (call[0] as { prompt: string }).prompt);
+    expect(prompts).toEqual(['Bring?', 'When?']);
+  });
 
   function readyRun(proposalId: string | null = 'prop-1') {
     return {
@@ -325,7 +429,7 @@ describe('SignalIntakeService.prepare run reuse', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    await service.prepare('u1', answers);
+    await service.prepare('u1', { rounds });
     // Speculation is deliberately not awaited; let the microtask chain drain.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -342,7 +446,7 @@ describe('SignalIntakeService.prepare run reuse', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    await service.prepare('u1', answers);
+    await service.prepare('u1', { rounds });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(deps.runStore.resetRun).not.toHaveBeenCalled();
@@ -364,7 +468,7 @@ describe('SignalIntakeService.prepare run reuse', () => {
     });
     const service = new SignalIntakeService(deps as never);
 
-    await service.prepare('u1', answers);
+    await service.prepare('u1', { rounds });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(deps.runStore.resetRun).not.toHaveBeenCalled();
@@ -373,17 +477,17 @@ describe('SignalIntakeService.prepare run reuse', () => {
 });
 
 describe('SignalIntakeService.revise', () => {
-  const answers = {
-    whoAnswer: { selectedOptions: ['A design partner'] },
-    bringAnswer: { selectedOptions: ['Engineering depth'] },
-  };
+  const rounds = [
+    { prompt: 'Who do you want to meet?', answer: { selectedOptions: ['A design partner'] } },
+    { prompt: 'What do you bring?', answer: { selectedOptions: ['Engineering depth'] } },
+  ];
 
   it('sends feedback in its own slot rather than as a where constraint', async () => {
     const deps = makeDeps();
     const service = new SignalIntakeService(deps as never);
 
     await service.revise('u1', {
-      runId: 'run-1', feedback: 'make it about hardware, not software', answers,
+      runId: 'run-1', feedback: 'make it about hardware, not software', rounds,
     });
 
     const [input] = deps.orchestrator.synthesize.mock.calls[0] as [{ feedback?: string; whereText?: string }];
@@ -396,7 +500,7 @@ describe('SignalIntakeService.revise', () => {
     const service = new SignalIntakeService(deps as never);
 
     await service.revise('u1', {
-      runId: 'run-1', feedback: 'more senior', networkId: NETWORK_ID, answers,
+      runId: 'run-1', feedback: 'more senior', networkId: NETWORK_ID, rounds,
     });
 
     const [[created]] = deps.proposalStore.createProposals.mock.calls as [[Array<{ networkId?: string }>]];
@@ -407,7 +511,7 @@ describe('SignalIntakeService.revise', () => {
     const deps = makeDeps();
     const service = new SignalIntakeService(deps as never);
 
-    await service.revise('u1', { runId: 'run-1', feedback: 'more senior', answers });
+    await service.revise('u1', { runId: 'run-1', feedback: 'more senior', rounds });
 
     expect(deps.runStore.markReady).toHaveBeenCalledWith(
       'run-1', expect.any(String), { lookingFor: 'A design partner', youBring: 'Depth' },
