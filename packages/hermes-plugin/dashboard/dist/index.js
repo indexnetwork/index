@@ -89,7 +89,7 @@
   // scheduled cron job (green success tag).
   function statusTone(status) {
     const s = String(status || "").toLowerCase();
-    if (["running", "active", "enabled", "scheduled", "accepted", "connected"].indexOf(s) >= 0) return "success";
+    if (["running", "active", "enabled", "scheduled", "accepted", "connected", "live", "matched"].indexOf(s) >= 0) return "success";
     if (["paused", "pending", "negotiating", "stalled"].indexOf(s) >= 0) return "warning";
     if (["error", "failed", "completed", "rejected", "declined"].indexOf(s) >= 0) return "destructive";
     return "outline";
@@ -149,30 +149,11 @@
     ]);
   }
 
-  function brandIcon(d) {
-    return React.createElement("svg", {
-      xmlns: "http://www.w3.org/2000/svg", width: 16, height: 16, viewBox: "0 0 24 24",
-      fill: "currentColor", "aria-hidden": "true",
-    }, React.createElement("path", { d: d }));
-  }
-  function ICON_TWITTER() { return brandIcon("M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"); }
-  function ICON_LINKEDIN() { return brandIcon("M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"); }
-  function ICON_GITHUB() { return brandIcon("M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"); }
-  function ICON_TELEGRAM() { return brandIcon("M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"); }
-  const SOCIAL_ICONS = { twitter: ICON_TWITTER, linkedin: ICON_LINKEDIN, github: ICON_GITHUB, telegram: ICON_TELEGRAM };
-
   // The blinking eye, sized to sit inline next to the "Radar" title.
   function RADAR_EYE() {
     const src = RADAR_IMAGE();
     if (!src) return null;
     return React.createElement("img", { className: "index-dashboard__radar-eye", src: src, alt: "", "aria-hidden": "true", loading: "lazy" });
-  }
-
-  function ICON_PENCIL() {
-    return svgIcon("", [
-      svgPath("M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"),
-      svgPath("m15 5 4 4"),
-    ]);
   }
 
   function ICON_TRASH() {
@@ -439,6 +420,8 @@
   }
 
   // Mirrors plugin_api.py _STATUS_BUCKET: raw status -> display bucket.
+  // Rejected is hidden (null bucket), matching the mac app: those are mostly
+  // agent-side filtering decisions, and listing them reads as user rejection.
   const STATUS_BUCKET = {
     latent: "pending",
     draft: "pending",
@@ -446,7 +429,7 @@
     negotiating: "negotiating",
     stalled: "negotiating",
     accepted: "accepted",
-    rejected: "rejected",
+    rejected: null,
     expired: "expired",
   };
 
@@ -454,12 +437,12 @@
     { key: "pending", label: "Awaiting you" },
     { key: "negotiating", label: "negotiating" },
     { key: "accepted", label: "accepted" },
-    { key: "rejected", label: "rejected" },
     { key: "expired", label: "Missed" },
   ];
 
   function bucketForStatus(status) {
-    return STATUS_BUCKET[String(status || "")] || "pending";
+    const key = String(status || "");
+    return key in STATUS_BUCKET ? STATUS_BUCKET[key] : "pending";
   }
 
   function RadarStrip(props) {
@@ -477,7 +460,7 @@
     );
   }
 
-  const OPP_RESOLVED_LABEL = { accepted: "Connected", rejected: "Declined", expired: "Missed" };
+  const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
 
   function initialsFor(name) {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -490,21 +473,20 @@
     const opportunity = props.opportunity;
     const status = opportunity.status || "";
     const resolved = OPP_RESOLVED_LABEL[status];
-    const networks = Array.isArray(opportunity.networks) ? opportunity.networks : [];
     const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
     let actionButtons = null;
     if (props.onAccept && bucketForStatus(status) === "pending") {
       actionButtons = [
         React.createElement(Button, {
-          key: "skip", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
-          disabled: acting,
-          onClick: function () { if (props.onSkip) props.onSkip(opportunity); },
-        }, "Skip"),
-        React.createElement(Button, {
-          key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
+          key: "accept", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onAccept(opportunity); },
-        }, acting ? "Working…" : "Start chat"),
+        }, acting ? "Working…" : "Accept"),
+        React.createElement(Button, {
+          key: "pass", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
+          disabled: acting,
+          onClick: function () { if (props.onSkip) props.onSkip(opportunity); },
+        }, "Pass"),
       ];
     } else if (status === "accepted") {
       if (props.onStartChat && opportunity.counterpartUserId) {
@@ -512,7 +494,7 @@
           key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onStartChat(opportunity); },
-        }, acting ? "Working…" : "Start chat")];
+        }, acting ? "Working…" : "Open chat ›")];
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
           key: "open", className: "index-dashboard__opp-openchat",
@@ -520,28 +502,6 @@
         }, "Open chat ↗")];
       }
     }
-
-    const socialsArr = Array.isArray(opportunity.socials) ? opportunity.socials : [];
-    const socialIcons = socialsArr
-      .filter(function (s) { return s && SOCIAL_ICONS[s.label] && s.value; })
-      .map(function (s) {
-        return React.createElement("a", {
-          key: s.label,
-          className: "index-dashboard__opp-social",
-          href: socialUrl(s.label, s.value),
-          target: "_blank",
-          rel: "noopener noreferrer",
-          title: s.label,
-          "aria-label": s.label,
-          onClick: function (e) { e.stopPropagation(); },
-        }, SOCIAL_ICONS[s.label]());
-      });
-    const footer = (socialIcons.length || actionButtons)
-      ? React.createElement("div", { className: "index-dashboard__opp-actions" },
-        React.createElement("div", { className: "index-dashboard__opp-socials" }, socialIcons),
-        actionButtons ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons) : React.createElement("span", null),
-      )
-      : null;
     const clickable = !!props.onOpenUser && !!opportunity.counterpartUserId;
     const idProps = clickable
       ? {
@@ -573,27 +533,15 @@
             React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
           ),
         ),
-        resolved
-          ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
-          : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
+        // Mac-app parity: the head's right column shows the action buttons when
+        // the card is actionable, otherwise the status label — never both.
+        actionButtons
+          ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons)
+          : resolved
+            ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
+            : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
       opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
-      networks.length > 0 || (typeof opportunity.score === "number" && opportunity.score > 0)
-        ? React.createElement("div", { className: "index-dashboard__opp-foot" },
-          networks.length > 0
-            ? React.createElement("div", { className: "index-dashboard__item-networks" },
-              React.createElement("span", null, "Surfaced in"),
-              networks.map(function (network) {
-                return React.createElement(BadgeText, { key: String(network), variant: "outline" }, network);
-              }),
-            )
-            : React.createElement("span", null),
-          typeof opportunity.score === "number" && opportunity.score > 0
-            ? React.createElement("span", { className: "index-dashboard__opp-score" }, Math.round(opportunity.score * 100) + "% match")
-            : null,
-        )
-        : null,
-      footer,
     );
   }
 
@@ -630,24 +578,17 @@
         intent.status ? React.createElement(BadgeText, { tone: statusTone(intent.status) }, intent.status) : null,
       ),
       React.createElement("div", { className: "index-dashboard__intent-counts" },
-        React.createElement(BadgeText, null, formatCount(intent.opportunityCount) + " opps"),
-        intent.questionCount ? React.createElement(BadgeText, { variant: "default" }, formatCount(intent.questionCount) + " Q") : null,
+        PendingBadge(intent.pendingCount),
       ),
     );
   }
 
-  function GeneralRow(props) {
-    const className = props.selected ? "index-dashboard__intent-row index-dashboard__intent-row--selected" : "index-dashboard__intent-row";
-    return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect("general"); } },
-      React.createElement("div", { className: "index-dashboard__intent-main" },
-        React.createElement("span", { className: "index-dashboard__intent-title" }, "General"),
-        React.createElement("span", { className: "index-dashboard__intent-sub" }, "Not tied to an intent"),
-      ),
-      React.createElement("div", { className: "index-dashboard__intent-counts" },
-        props.opportunityCount ? React.createElement(BadgeText, null, formatCount(props.opportunityCount) + " opps") : null,
-        props.questionCount ? React.createElement(BadgeText, { variant: "default" }, formatCount(props.questionCount) + " Q") : null,
-      ),
-    );
+  // One consolidated, unlabeled number per row: pending questions + awaiting
+  // opportunities. Every surface (Hermes web/desktop, mac app) shows this same
+  // sum so counts stay consistent.
+  function PendingBadge(count) {
+    if (!count) return null;
+    return React.createElement(BadgeText, null, formatCount(count));
   }
 
   function IntentPitch() {
@@ -755,9 +696,8 @@
   function NetworkMiniRow(props) {
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
-    const isEvent = network.type === "event";
     const isOwner = network.role === "owner";
-    return React.createElement("button", { type: "button", className: "index-dashboard__net-row", onClick: function () { if (props.onOpen) props.onOpen(network); } },
+    return React.createElement("div", { className: "index-dashboard__net-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -770,7 +710,6 @@
           (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
         ),
       ),
-      isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
       isOwner
         ? React.createElement(BadgeText, null, "Owner")
         : React.createElement(BadgeText, { tone: "secondary" }, "Member"),
@@ -780,9 +719,8 @@
   function NetworkDiscoverRow(props) {
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
-    const isEvent = network.type === "event";
     const joining = props.joiningId === network.id;
-    return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-row--static" },
+    return React.createElement("div", { className: "index-dashboard__net-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -795,7 +733,6 @@
           (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
         ),
       ),
-      isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
       React.createElement(Button, {
         type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
         disabled: joining, onClick: function () { if (props.onJoin) props.onJoin(network.id); },
@@ -815,7 +752,7 @@
       items.map(function (network, index) {
         return props.discover
           ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
-          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
       }),
     );
   }
@@ -861,7 +798,7 @@
           ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
           : React.createElement("div", { className: "index-dashboard__net-list" },
             items.map(function (network, index) {
-              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
+              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
             }),
           ),
       open ? React.createElement(NetworkDiscoverModal, { discover: discover, error: networks.error, onJoin: props.onJoin, joiningId: props.joiningId, onClose: function () { setOpen(false); } }) : null,
@@ -870,12 +807,7 @@
 
   function IntentList(props) {
     const intents = Array.isArray(props.intents) ? props.intents : [];
-    const general = props.general || {};
-    const generalCount = general.count || 0;
     return React.createElement("div", { className: "index-dashboard__intent-list" },
-      generalCount > 0
-        ? React.createElement(GeneralRow, { questionCount: general.questionCount, opportunityCount: general.opportunityCount, selected: props.selectedId === "general", onSelect: props.onSelect })
-        : null,
       intents.length === 0
         ? React.createElement(EmptyState, null, "No active intents yet.")
         : intents.map(function (intent) {
@@ -886,21 +818,21 @@
 
   function DetailHead(props) {
     return React.createElement("div", { className: "index-dashboard__detail-head" },
-      props.onBack ? React.createElement(Button, { type: "button", ghost: true, size: "sm", prefix: ICON_ARROW_LEFT(), onClick: props.onBack }, "Back") : null,
+      props.onBack ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back") : null,
       React.createElement("div", { className: "index-dashboard__detail-card" },
         React.createElement("div", { className: "index-dashboard__detail-title-row" },
           React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
           props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
         ),
-        props.live
-          ? React.createElement("div", { className: "index-dashboard__detail-live" },
-            React.createElement("span", { className: "index-dashboard__live" },
-              React.createElement("span", { className: "index-dashboard__live-dot" }),
-              "live",
-            ),
-            React.createElement("span", { className: "index-dashboard__detail-live-text" }, "agent is looking in the background"),
-          )
-          : null,
+      props.live
+        ? React.createElement("div", { className: "index-dashboard__detail-live" },
+          React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
+            React.createElement("span", { className: "index-dashboard__live-dot" }),
+            props.paused ? "paused" : "live",
+          ),
+          React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
+        )
+        : null,
       ),
     );
   }
@@ -910,11 +842,23 @@
     const bucketState = React.useState("pending");
     const selectedBucket = bucketState[0];
     const setSelectedBucket = bucketState[1];
+    // Armed archive: the first click arms the segment ("sure?"), the second
+    // commits. Disarms itself after a few seconds, like the Mac app — this
+    // replaces window.confirm, which the desktop host doesn't provide.
+    const armedState = React.useState(false);
+    const armed = armedState[0];
+    const setArmed = armedState[1];
+    React.useEffect(function () {
+      if (!armed) return undefined;
+      const timer = setTimeout(function () { setArmed(false); }, 4000);
+      return function () { clearTimeout(timer); };
+    }, [armed]);
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
         React.createElement(EmptyState, null, "Select an intent to see its questions and radar."),
       );
     }
+    const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
     const questionSection = { items: intent.questions || [] };
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
@@ -925,29 +869,32 @@
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
         live: true,
+        paused: paused,
         onBack: props.onBack,
         actions: (function () {
-          const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
           const archiving = props.archivingId === intent.id;
-          return [
-            Tip("pause", paused ? "Resume" : "Pause", React.createElement(Button, {
-              ghost: true, size: "icon",
+          return React.createElement("span", { className: "index-dashboard__action-group" },
+            Tip("pause", paused ? "Resume" : "Pause", React.createElement("button", {
+              type: "button",
               "aria-label": paused ? "Resume" : "Pause",
-              className: paused ? "text-success" : "text-warning",
-              onClick: props.onPause ? function () { props.onPause(intent.id, paused); } : undefined,
+              className: "index-dashboard__action-seg "
+                + (paused ? "index-dashboard__action-seg--resume index-dashboard__action-seg--filled" : "index-dashboard__action-seg--pause"),
+              onClick: props.onPause ? function () { setArmed(false); props.onPause(intent.id, paused); } : undefined,
             }, paused ? ICON_PLAY() : ICON_PAUSE())),
-            Tip("edit", "Edit", React.createElement(Button, {
-              ghost: true, size: "icon",
-              "aria-label": "Edit",
-              onClick: props.onEdit ? function () { props.onEdit(intent.id); } : undefined,
-            }, ICON_PENCIL())),
-            Tip("archive", archiving ? "Archiving…" : "Archive", React.createElement(Button, {
-              ghost: true, destructive: true, size: "icon",
-              "aria-label": "Archive",
+            React.createElement("span", { key: "sep", className: "index-dashboard__action-sep", "aria-hidden": "true" }),
+            Tip("archive", archiving ? "Archiving…" : armed ? "Confirm archive" : "Archive", React.createElement("button", {
+              type: "button",
+              "aria-label": armed ? "Confirm archive" : "Archive",
+              className: "index-dashboard__action-seg index-dashboard__action-seg--archive"
+                + (armed || archiving ? " index-dashboard__action-seg--filled" : ""),
               disabled: archiving,
-              onClick: archiving ? undefined : function () { if (props.onArchive) props.onArchive(intent.id); },
-            }, ICON_TRASH())),
-          ];
+              onClick: archiving ? undefined : function () {
+                if (!armed) { setArmed(true); return; }
+                setArmed(false);
+                if (props.onArchive) props.onArchive(intent.id);
+              },
+            }, ICON_TRASH(), armed ? "sure?" : null)),
+          );
         })(),
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
@@ -957,30 +904,6 @@
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
-        ),
-      ),
-    );
-  }
-
-  function GeneralDetail(props) {
-    const general = props.general || { questions: [], opportunities: [] };
-    const bucketState = React.useState("pending");
-    const selectedBucket = bucketState[0];
-    const setSelectedBucket = bucketState[1];
-    const questionSection = { items: general.questions || [] };
-    const allOpps = Array.isArray(general.opportunities) ? general.opportunities : [];
-    const visibleOpps = allOpps.filter(function (opp) {
-      return bucketForStatus(opp.status) === selectedBucket;
-    });
-    return React.createElement("div", { className: "index-dashboard__detail" },
-      React.createElement(DetailHead, { title: "General", onBack: props.onBack }),
-      React.createElement("div", { className: "index-dashboard__detail-cols" },
-        React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
-          React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
-        ),
-        React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People surfaced outside a specific intent." },
-          React.createElement(RadarStrip, { counts: general.statusCounts || {}, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: "No general matches here yet.", onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -2118,9 +2041,29 @@
       openOpportunityChat(opportunity);
     }
 
+    // Optimistic lifecycle flip: rewrite the intent's lifecycleStatus and the
+    // derived row status in place (same derivation the plugin API uses), so the
+    // pause button, badge and list tag react instantly; load() reconciles order.
+    function applyIntentLifecycle(intentId, lifecycle) {
+      setSummary(function (prev) {
+        if (!prev || !Array.isArray(prev.intents)) return prev;
+        return Object.assign({}, prev, {
+          intents: prev.intents.map(function (intent) {
+            if (intent.id !== intentId) return intent;
+            const counts = intent.statusCounts || {};
+            const status = lifecycle === "PAUSED" ? "paused"
+              : counts.accepted ? "matched"
+                : counts.negotiating ? "negotiating" : "live";
+            return Object.assign({}, intent, { lifecycleStatus: lifecycle, status: status });
+          }),
+        });
+      });
+    }
+
     function togglePauseIntent(intentId, paused) {
       if (!intentId) return;
       setActionError(null);
+      applyIntentLifecycle(intentId, paused ? "ACTIVE" : "PAUSED");
       fetchPluginJSON(API + "/intents/" + encodeURIComponent(intentId) + "/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2133,13 +2076,15 @@
           load();
         })
         .catch(function (err) {
+          applyIntentLifecycle(intentId, paused ? "PAUSED" : "ACTIVE");
           setActionError(err && err.message ? err.message : String(err));
         });
     }
 
+    // No confirm dialog here: the archive segment in IntentDetail arms on the
+    // first click and only calls this on the confirming second click.
     function archiveIntent(intentId) {
       if (!intentId) return;
-      if (typeof window.confirm === "function" && !window.confirm("Archive this intent? It will stop matching.")) return;
       setArchivingId(intentId);
       setActionError(null);
       fetchPluginJSON(API + "/intents/" + encodeURIComponent(intentId) + "/archive", {
@@ -2183,13 +2128,6 @@
         .finally(function () {
           setJoiningId(null);
         });
-    }
-
-    function openNetworkInWeb(network) {
-      const base = summary && summary.webUrl;
-      if (base && network && network.id) {
-        try { window.open(base + "/networks/" + encodeURIComponent(network.id), "_blank", "noopener"); } catch (e) { /* popup blocked */ }
-      }
     }
 
     loadRef.current = load;
@@ -2306,7 +2244,6 @@
     }, []);
 
     const intents = (summary && summary.intents) || [];
-    const general = (summary && summary.general) || { count: 0, questions: [] };
 
     function selectIntent(id) {
       setSelectedId(id);
@@ -2328,23 +2265,20 @@
       writeHash(null);
     }
 
-    const selectedIntent = selectedId && selectedId !== "general"
+    const selectedIntent = selectedId
       ? intents.filter(function (intent) { return intent.id === selectedId; })[0]
       : null;
-    const showDetail = selectedId === "general" || !!selectedIntent;
 
-    const intentsView = showDetail
-      ? (selectedId === "general"
-        ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl })
-        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent }))
+    const intentsView = selectedIntent
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, { icon: ICON_TARGET(), title: "Intents", count: intents.length },
-            React.createElement(IntentList, { intents: intents, general: general, selectedId: selectedId, onSelect: selectIntent }),
+            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, onOpen: openNetworkInWeb, onJoin: joinNetwork, joiningId: joiningId }),
+            React.createElement(NetworksMini, { networks: summary && summary.networks, onJoin: joinNetwork, joiningId: joiningId }),
           ),
         ),
       );

@@ -6,7 +6,7 @@ It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappe
 
 ## Role
 
-- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/home`, `/api/questions`, conversations, etc.).
+- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/radar`, `/api/questions`, conversations, etc.).
 - Keep endpoint paths aligned with the decorated controllers in `services/api/src/controllers` and the `/api` global prefix in `services/api/src/main.ts`.
 - Convert backend DTOs into the existing prototype shapes (`INTENTS`, people/opportunity cards, clarifiers).
 - Keep auth/token handling isolated from UI components.
@@ -35,7 +35,7 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `auth.controller.ts`: `GET /auth/me`, `PATCH /auth/profile/update`, `POST /auth/cli-credential/revoke`
 - `network.controller.ts`: `GET /networks`, `GET /networks/:id/overview`, `GET /networks/:id/my-intents`, `POST /networks`, `POST /networks/:id/join`, `POST /networks/:id/leave`
 - `intent.controller.ts`: `POST /intents/list`, `GET /intents/:id`, `PATCH /intents/:id/archive`, `PATCH /intents/:id/status`
-- `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/home` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)
+- `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/radar` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)
 - `question.controller.ts`: `GET /questions` (incl. `scopeType=intent`, `conversationId`, `mode`), `POST /questions/:id/answer`, `POST /questions/:id/dismiss`
 - `conversation.controller.ts`: `GET /conversations`, `GET /conversations/negotiations`, `GET /conversations/:id/messages`, `POST /conversations/:id/messages`, `POST /conversations/dm`, `PATCH /conversations/:id/metadata`, `DELETE /conversations/:id`
 - `agent.controller.ts`: `GET /agents` (read-only; management writes are session-only)

@@ -33830,9 +33830,9 @@ function createIndexApiClient(options = {}) {
         `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
-      home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
-      homeForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities/home${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+      radar: (query = {}, options = {}) => request(`/opportunities/radar${toQueryString(query)}`, options),
+      radarForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities/radar${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       chatContext: (peerUserId, options = {}) => request(
@@ -34012,28 +34012,28 @@ function mapIntent(intent, questionCount = 0) {
     connected: 0,
     inConversations: 0,
     questions: questionCount,
+    // Consolidated row badge: pending questions + awaiting opportunities,
+    // straight from the server list counts so it matches the Hermes and web
+    // dashboards.
+    pending: count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount),
     inbound: [],
     source: intent,
   };
 }
 
 /**
- * Convert home-view opportunity sections to the current people card shape.
- * @param {Array<Object>} sections
+ * Convert the radar view's flat presenter-card list to the current people card shape.
+ * @param {Array<Object>} items
  */
-function mapPeopleFromHomeSections(sections = []) {
-  return sections.flatMap((section) => {
-    const items = Array.isArray(section.items) ? section.items : [];
-    return items.map((item) => mapPersonFromHomeCard(item, section));
-  });
+function mapPeopleFromRadarItems(items = []) {
+  return items.map((item) => mapPersonFromRadarCard(item));
 }
 
 /**
- * Convert a presenter card from GET /opportunities/home into a mac person card.
+ * Convert a presenter card from GET /opportunities/radar into a mac person card.
  * @param {Object} card
- * @param {Object} [section]
  */
-function mapPersonFromHomeCard(card, section = {}) {
+function mapPersonFromRadarCard(card) {
   return {
     id: card.opportunityId || card.userId,
     // kept separate from `id` (which is the opportunity) so the profile window
@@ -34163,15 +34163,15 @@ function mapClarifier(question) {
  * @param {Array<Object>} [input.networks]
  * @param {Array<Object>} [input.intents]
  * @param {Array<Object>} [input.questions]
- * @param {Array<Object>} [input.homeSections]
+ * @param {Array<Object>} [input.radarItems]
  * @param {Array<Object>} [input.opportunities]
  */
 function mapIndexSnapshot(input = {}) {
   const questions = Array.isArray(input.questions) ? input.questions : [];
-  const homeSections = Array.isArray(input.homeSections) ? input.homeSections : [];
+  const radarItems = Array.isArray(input.radarItems) ? input.radarItems : [];
   const opportunityRows = Array.isArray(input.opportunities) ? input.opportunities : [];
-  const people = homeSections.length
-    ? mapPeopleFromHomeSections(homeSections)
+  const people = radarItems.length
+    ? mapPeopleFromRadarItems(radarItems)
     : mapPeopleFromOpportunities(opportunityRows);
 
   return {
@@ -34223,6 +34223,14 @@ function countQuestionsBySource(questions) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {number}
+ */
+function count(value) {
+  return typeof value === 'number' && value > 0 ? value : 0;
+}
+
+/**
  * @param {Array<unknown>} values
  * @returns {Array<string>}
  */
@@ -34248,7 +34256,7 @@ function relativeAge(isoDate) {
   return `${weeks}w ago`;
 }
 
-window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromHomeSections: mapPeopleFromHomeSections, mapPersonFromHomeCard: mapPersonFromHomeCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary };
+window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromRadarItems: mapPeopleFromRadarItems, mapPersonFromRadarCard: mapPersonFromRadarCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary };
 
 })();
 </script>
@@ -34958,12 +34966,12 @@ const NET_SIGNALS = [
 ];
 
 const NETWORKS = [
-  { id:"edge",     name:"Edge City",         members:239, kind:"event", privacy:"experiment",
+  { id:"edge",     name:"Edge City",         members:239, privacy:"experiment",
     role:"member", joined:true, signals:NET_SIGNALS },
   { id:"early",    name:"Index Early Birds", members:120, role:"member", joined:true,
     signals:NET_SIGNALS.slice(0, 2) },
   { id:"builders", name:"NYC Builders",      members:412, joined:false },
-  { id:"design",   name:"Quiet Design Club", members:88,  kind:"event", joined:false },
+  { id:"design",   name:"Quiet Design Club", members:88,  joined:false },
   { id:"o1",       name:"O-1 Alumni",        members:57,  joined:false },
 ];
 
@@ -36264,12 +36272,12 @@ window.IndexApp = (function () {
   async function loadSnapshot() {
     const c = getClient();
     if (!c) return null;
-    const [meR, netR, intentR, questionR, homeR] = await Promise.all([
+    const [meR, netR, intentR, questionR, radarR] = await Promise.all([
       settle(c.auth.me()),
       settle(c.networks.list()),
       settle(c.intents.list({})),
       settle(c.questions.pending()),
-      settle(c.opportunities.home()),
+      settle(c.opportunities.radar()),
     ]);
 
     const user = meR.ok ? (meR.value.user || meR.value) : null;
@@ -36277,15 +36285,15 @@ window.IndexApp = (function () {
     const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
     const questions = questionR.ok ? normalizeList(questionR.value, "questions") : [];
-    const homeSections = homeR.ok ? normalizeList(homeR.value, "sections") : [];
+    const radarItems = radarR.ok ? normalizeList(radarR.value, "items") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, homeSections });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, radarItems });
     return {
       snapshot,
       me: mapMe(user),
       networks: mapNetworks(networks),
       features,
-      raw: { user, features, networks, intents, questions, homeSections },
+      raw: { user, features, networks, intents, questions, radarItems },
     };
   }
 
@@ -36313,7 +36321,6 @@ window.IndexApp = (function () {
       id: n.id,
       name: n.title || n.name || "untitled",
       members: (n._count && n._count.members) || n.memberCount || 0,
-      kind: n.type === "event" ? "event" : undefined,
       role: n.isPersonal ? "personal" : (n.role || "member"),
       joined: true,
       isPersonal: n.isPersonal === true,
@@ -37665,13 +37672,6 @@ function NetworkRow({ net, onOpen, onJoin }) {
         }}>{net.members} members</span>
       </button>
 
-      {net.kind === "event" && (
-        <span style={{
-          flex:"0 0 auto",
-          fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-        }}>▤ event</span>
-      )}
-
       {net.joined
         ? <QuietTag>{net.role || "member"}</QuietTag>
         : <ActionButton onClick={() => onJoin && onJoin(net)} title="ask to join">join</ActionButton>}
@@ -37778,7 +37778,6 @@ function NetworkDetail({ net, onBack, onLeave }) {
                   marginTop:5, display:"flex", flexWrap:"wrap", gap:"4px 16px",
                 }}>
                   {net.privacy && <MetaBit glyph="🔒">{net.privacy}</MetaBit>}
-                  {net.kind === "event" && <MetaBit glyph="▤">event</MetaBit>}
                   <MetaBit glyph="👤">{net.members} members</MetaBit>
                 </div>
               </div>
@@ -37866,8 +37865,6 @@ function Networks({ onClose }) {
 
   // You made it, so you're in it and you run it.
   const createNetwork = ({ name, desc, access, photo }) => {
-    // no kind: the form no longer asks, and NetworkRow only renders an event
-    // badge when one is present, so leaving it off is the correct default
     NETWORKS.unshift({
       id: `net-${Date.now().toString(36)}`,
       name,
@@ -39417,7 +39414,11 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  const hasQ = intent.questions > 0;
+  // Consolidated count: pending questions + awaiting opportunities (same
+  // number as the Hermes and web dashboards). Demo data carries only
+  // `questions`, hence the fallback.
+  const pending = intent.pending ?? intent.questions ?? 0;
+  const hasQ = pending > 0;
   const statusLabel = signalStatus(intent);
   // the blink is the signal working. only the states that are actually running
   // get it, so a shelf of closed and matched rows stays still
@@ -39468,24 +39469,25 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         </span>
       </div>
 
-      {/* questions, the hero */}
-      <QCount n={intent.questions} muted={!hasQ}/>
+      {/* pending questions + awaiting opportunities, the hero */}
+      <QCount n={pending} muted={!hasQ}/>
     </button>
   );
 }
 
-/* ---------- Inbound-questions hero count ---------- */
-// A bare number left you to guess what it counted. These are questions holding
-// on your answer, so the badge says pending and the number keeps its weight.
+/* ---------- Pending hero count ---------- */
+// One consolidated, unlabeled number: pending questions + awaiting
+// opportunities, matching the Hermes and web dashboards. The tooltip carries
+// the explanation the label used to.
 function QCount({ n, muted }) {
   if (muted) {
     return null;
   }
   return (
     <span
-      title={`${n} question${n === 1 ? "" : "s"} waiting on you`}
+      title={`${n} waiting on you — pending questions and opportunities`}
       style={{
-        display:"flex", alignItems:"baseline", justifyContent:"center", gap:4,
+        display:"flex", alignItems:"baseline", justifyContent:"center",
         padding:"3px 8px",
         border:"1px solid #000",
         background:"#FF8A00",
@@ -39496,9 +39498,6 @@ function QCount({ n, muted }) {
         fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
         lineHeight:1, color:"#000", letterSpacing:-0.3,
       }}>{n}</span>
-      <span style={{
-        fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1, color:"#000",
-      }}>pending</span>
     </span>
   );
 }
@@ -40570,13 +40569,13 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
-    const [homeR, qR] = await Promise.all([
-      (intentId ? client.opportunities.homeForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.home()).catch(() => null),
+    const [radarR, qR] = await Promise.all([
+      (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
     ]);
-    if (homeR) {
-      const sections = window.IndexApp.normalizeList(homeR, "sections");
-      const mapped = window.IndexApi.mapPeopleFromHomeSections(sections).map((p) => ({
+    if (radarR) {
+      const items = window.IndexApp.normalizeList(radarR, "items");
+      const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
       setPeople(mapped);

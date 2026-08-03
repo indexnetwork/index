@@ -23,3 +23,169 @@
   padding-top: 1rem;
   padding-bottom: 2rem;
 }
+
+/* The pitch art is white line-art on transparent (drawn for the dark web
+   dashboard) — invisible on light desktop themes, and its 1.25x scale bleeds
+   over the card border. `difference` re-inks it against the card background
+   (dark on light themes, white on dark), and clipping keeps it inside the
+   border. */
+.index-network-desktop-page .index-dashboard__pitch {
+  overflow: hidden;
+}
+
+.index-network-desktop-page .index-dashboard__pitch-media {
+  mix-blend-mode: difference;
+}
+
+/* The desktop host has no Badge component (head.js provides components: {}),
+   so BadgeText renders a bare <span> — recreate the web dashboard's badge
+   pill here. React forwards the unknown `tone` prop as a DOM attribute,
+   which lets tones (success/warning/destructive) be styled from CSS. */
+.index-network-desktop-page .index-dashboard__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-border, #d4d4d8);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--color-muted-foreground, #6b7280);
+  background: transparent;
+}
+
+/* Pending-count badges (the number on each intent row) read in the accent
+   color so they stand out from plain outline tags. */
+.index-network-desktop-page .index-dashboard__intent-counts .index-dashboard__badge {
+  color: var(--color-primary, #4fd1c5);
+  border-color: color-mix(in srgb, var(--color-primary, #4fd1c5) 45%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 12%, transparent);
+}
+
+.index-network-desktop-page .index-dashboard__badge[tone="success"] {
+  color: var(--color-success, #16a34a);
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 45%, transparent);
+  background: color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent);
+}
+
+.index-network-desktop-page .index-dashboard__badge[tone="warning"] {
+  color: var(--ui-yellow, #d97706);
+  border-color: color-mix(in srgb, var(--ui-yellow, #d97706) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-yellow, #d97706) 12%, transparent);
+}
+
+.index-network-desktop-page .index-dashboard__badge[tone="destructive"] {
+  color: var(--color-destructive, #ef4444);
+  border-color: color-mix(in srgb, var(--color-destructive, #ef4444) 45%, transparent);
+  background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent);
+}
+
+.index-network-desktop-page .index-dashboard__badge[tone="secondary"] {
+  background: var(--midground-base, rgba(127, 127, 127, 0.15));
+  border-color: transparent;
+  color: var(--color-foreground, inherit);
+}
+
+/* SDK Button adapter (see DesktopButton in head.js): recreate the dashboard's
+   button variants from the desktop theme variables, in the same accent-tinted
+   language as the badges above so they read correctly on every theme. */
+.index-network-desktop-page .idx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: var(--ui-text-primary, inherit);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.index-network-desktop-page .idx-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.index-network-desktop-page .idx-btn--solid {
+  color: var(--ui-accent, #4fd1c5);
+  border-color: color-mix(in srgb, var(--ui-accent, #4fd1c5) 50%, transparent);
+  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 14%, transparent);
+}
+
+.index-network-desktop-page .idx-btn--solid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 26%, transparent);
+}
+
+.index-network-desktop-page .idx-btn--outlined {
+  border-color: var(--ui-stroke-secondary, #d4d4d8);
+}
+
+.index-network-desktop-page .idx-btn--outlined:hover:not(:disabled) {
+  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
+}
+
+.index-network-desktop-page .idx-btn--ghost {
+  color: var(--ui-text-secondary, inherit);
+}
+
+.index-network-desktop-page .idx-btn--ghost:hover:not(:disabled) {
+  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
+  color: var(--ui-text-primary, inherit);
+}
+
+.index-network-desktop-page .idx-btn--icon {
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+}
+
+.index-network-desktop-page .idx-btn--destructive {
+  color: var(--ui-red, #ef4444);
+}
+
+/* The desktop app keeps the header pause/archive pill a step larger than the
+   web dashboard's base sizing. */
+.index-network-desktop-page .index-dashboard__action-seg {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.78rem;
+}
+
+.index-network-desktop-page .index-dashboard__action-seg svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+/* Gadget-style actions on opportunity cards and question cards: square mono
+   buttons in ink color (Mac-app flavored), primary inverted to an ink fill. */
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn,
+.index-network-desktop-page .index-dashboard__question-actions .idx-btn {
+  border-radius: 0;
+  border: 1px solid var(--ui-text-primary, #000);
+  background: transparent;
+  color: var(--ui-text-primary, #000);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.75rem;
+}
+
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid,
+.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid {
+  background: var(--ui-text-primary, #000);
+  color: var(--ui-bg-editor, #fff);
+}
+
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn:hover:not(:disabled),
+.index-network-desktop-page .index-dashboard__question-actions .idx-btn:hover:not(:disabled) {
+  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
+}
+
+.index-network-desktop-page .index-dashboard__opp-btns .idx-btn--solid:hover:not(:disabled),
+.index-network-desktop-page .index-dashboard__question-actions .idx-btn--solid:hover:not(:disabled) {
+  background: var(--ui-text-secondary, #333);
+}

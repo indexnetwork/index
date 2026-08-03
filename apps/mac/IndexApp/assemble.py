@@ -20,7 +20,7 @@ API_DIR = ROOT.parent / "api"
 API_EXPORTS = [
     "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
-    "mapPeopleFromHomeSections", "mapPersonFromHomeCard", "mapPeopleFromOpportunities",
+    "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
 ]

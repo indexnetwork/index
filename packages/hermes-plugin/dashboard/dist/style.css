@@ -29,7 +29,7 @@
 
 .index-dashboard__opp-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
 }
@@ -92,19 +92,6 @@
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
   font-size: 0.88rem;
   line-height: 1.55;
-}
-
-.index-dashboard__opp-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.index-dashboard__opp-score {
-  flex-shrink: 0;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-size: 0.76rem;
 }
 
 .index-dashboard__opp-status {
@@ -177,48 +164,13 @@
   letter-spacing: 0.08em;
 }
 
-.index-dashboard__opp-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.index-dashboard__opp-socials {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
+/* Mac-app parity: actions sit in the head's top-right column, not a footer. */
 .index-dashboard__opp-btns {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.index-dashboard__opp-social {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.index-dashboard__opp-social:hover {
-  color: var(--midground, #ffe6cb);
-  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 40%, transparent);
-}
-
-.index-dashboard__opp-social svg {
-  width: 0.9rem;
-  height: 0.9rem;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 /* Medium footprint for the SDK action buttons (no native `md` size). Used by
@@ -347,6 +299,19 @@
   border-radius: 50%;
   background: currentColor;
   animation: index-dashboard-pulse 1.4s ease-in-out infinite;
+}
+
+/* Paused signal: same badge in the warning tone (--ui-yellow on desktop
+   themes, amber on the web dashboard), dot held steady — nothing is pulsing
+   while the agent is on hold. */
+.index-dashboard__live--paused {
+  border-color: color-mix(in srgb, var(--ui-yellow, #fbbf24) 30%, transparent);
+  background: color-mix(in srgb, var(--ui-yellow, #fbbf24) 15%, transparent);
+  color: var(--ui-yellow, #fbbf24);
+}
+
+.index-dashboard__live--paused .index-dashboard__live-dot {
+  animation: none;
 }
 
 @keyframes index-dashboard-pulse {
@@ -597,14 +562,6 @@
   gap: 0.5rem;
 }
 
-.index-dashboard__net-row--static {
-  cursor: default;
-}
-
-.index-dashboard__net-row--static:hover {
-  background: transparent;
-}
-
 .index-dashboard__net-row {
   display: flex;
   align-items: center;
@@ -617,13 +574,6 @@
   color: var(--color-card-foreground, inherit);
   font: inherit;
   text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.index-dashboard__net-row:hover {
-  border-color: color-mix(in srgb, var(--midground, #ffe6cb) 30%, transparent);
-  background: color-mix(in srgb, var(--midground, #ffe6cb) 6%, var(--background-base, #041c1c));
 }
 
 .index-dashboard__net-avatar {
@@ -666,14 +616,6 @@
 
 .index-dashboard__net-role--member {
   background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 22%, transparent);
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-}
-
-.index-dashboard__net-event {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  font-size: 0.72rem;
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
 }
 
@@ -771,6 +713,28 @@
   gap: 0.6rem;
 }
 
+.index-dashboard__back-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--color-card-foreground, inherit);
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 10%, transparent);
+}
+
+.index-dashboard__back-pill svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.index-dashboard__back-pill:hover {
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 18%, transparent);
+}
+
 .index-dashboard__tip {
   position: relative;
   display: inline-flex;
@@ -798,6 +762,65 @@
 .index-dashboard__tip:hover::after,
 .index-dashboard__tip:focus-within::after {
   opacity: 1;
+}
+
+/* Grouped pause/archive control in the detail header: one bordered pill with
+   two segments. The icon tints live here so both hosts color them the same
+   (the desktop host has no `text-warning` utility class): amber pause, green
+   resume, red trash. State fills the segment behind the icon — green while
+   paused/resumable, red while the archive is armed ("sure?"). */
+.index-dashboard__action-group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+  border-radius: 999px;
+}
+
+.index-dashboard__action-sep {
+  width: 1px;
+  background: color-mix(in srgb, var(--midground, #ffe6cb) 15%, transparent);
+}
+
+.index-dashboard__action-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.75rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.index-dashboard__action-seg svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.index-dashboard__action-seg:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.index-dashboard__action-seg:hover:not(:disabled),
+.index-dashboard__action-seg--filled {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.index-dashboard__action-seg--pause {
+  color: var(--ui-yellow, #fbbf24);
+  border-radius: 999px 0 0 999px;
+}
+
+.index-dashboard__action-seg--resume {
+  color: var(--color-success, #4ade80);
+  border-radius: 999px 0 0 999px;
+}
+
+.index-dashboard__action-seg--archive {
+  color: var(--color-destructive, #ef4444);
+  border-radius: 0 999px 999px 0;
 }
 
 .index-dashboard__detail-title {
@@ -961,19 +984,6 @@
 .index-dashboard__item-meta {
   color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
   font-size: 0.78rem;
-}
-
-.index-dashboard__item-networks {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
-  font-size: 0.76rem;
-}
-
-.index-dashboard__item-networks > span:first-child {
-  margin-right: 0.1rem;
 }
 
 .index-dashboard__detail-live {

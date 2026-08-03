@@ -17,7 +17,6 @@ import importlib.util
 import json
 import os
 import re
-from functools import lru_cache
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -55,7 +54,9 @@ _PREVIEW_CHARS = 240
 
 # Maps raw opportunity status values to the radar status strip buckets.
 # latent/draft (pre-send) fold into "pending"; stalled (a stalled negotiation)
-# folds into "negotiating".
+# folds into "negotiating". Rejected opportunities are hidden entirely
+# (mac-app parity): those are mostly agent-side filtering decisions, and
+# listing them reads as if the user (or the other person) did the rejecting.
 _STATUS_BUCKET = {
     "latent": "pending",
     "draft": "pending",
@@ -63,7 +64,6 @@ _STATUS_BUCKET = {
     "negotiating": "negotiating",
     "stalled": "negotiating",
     "accepted": "accepted",
-    "rejected": "rejected",
     "expired": "expired",
 }
 
@@ -338,22 +338,6 @@ def _api_multipart(path: str, field: str, filename: str, content: bytes, content
         return {"success": False, "error": f"Avatar upload could not be processed: {exc}"}
 
 
-@lru_cache(maxsize=512)
-def _counterpart_socials(user_id: str) -> tuple[tuple[str, str], ...]:
-    """Cached (label, value) social links for a counterpart, for radar cards.
-
-    Socials rarely change, so an lru_cache keeps summary loads cheap instead of
-    re-fetching each counterpart's public row on every refresh.
-    """
-    if not user_id:
-        return ()
-    try:
-        user = _fetch_user(user_id)
-    except Exception:
-        return ()
-    return tuple((s["label"], s["value"]) for s in _profile_socials(user))
-
-
 def _profile_socials(user: dict[str, Any]) -> list[dict[str, str]]:
     socials: list[dict[str, str]] = []
     for social in _list(user.get("socials")):
@@ -447,6 +431,10 @@ def _truncate(value: Any, limit: int = _PREVIEW_CHARS) -> str:
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and value > 0 else 0
 
 
 def _section_error(payload: dict[str, Any]) -> str | None:
@@ -557,7 +545,7 @@ def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> st
 def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
     """Return user ids visible through the caller's opportunity cards."""
     visible: set[str] = set()
-    for query in ("", "?status=expired", "?status=rejected"):
+    for query in ("", "?status=expired"):
         opportunities, _ = _fetch_opportunities(query)
         for opp in opportunities:
             status = _text(opp.get("status"))
@@ -569,7 +557,7 @@ def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
     return visible
 
 
-def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], current_user_id: str | None = None) -> dict[str, Any]:
+def _opportunity_item(opp: dict[str, Any], current_user_id: str | None = None) -> dict[str, Any]:
     """Build a card-shaped opportunity item aligned with the Index web OpportunityCard."""
     interpretation = opp.get("interpretation") if isinstance(opp.get("interpretation"), dict) else {}
     item: dict[str, Any] = {
@@ -584,23 +572,9 @@ def _opportunity_item(opp: dict[str, Any], network_titles: dict[str, str], curre
     status = _text(opp.get("status"))
     if status:
         item["status"] = status
-    nets = _opportunity_networks(opp, network_titles)
-    if nets:
-        item["networks"] = nets[:4]
-    score = interpretation.get("confidence")
-    if not isinstance(score, (int, float)):
-        try:
-            score = float(_text(opp.get("confidence")))
-        except (TypeError, ValueError):
-            score = None
-    if isinstance(score, (int, float)) and score > 0:
-        item["score"] = score
     counterpart_id = _counterpart_user_id(opp, current_user_id)
     if counterpart_id:
         item["counterpartUserId"] = counterpart_id
-        socials = _counterpart_socials(counterpart_id)
-        if socials:
-            item["socials"] = [{"label": label, "value": value} for label, value in socials]
     return item
 
 
@@ -748,7 +722,7 @@ def _normalize_public_networks(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _empty_status_counts() -> dict[str, int]:
-    return {"pending": 0, "negotiating": 0, "accepted": 0, "rejected": 0, "expired": 0}
+    return {"pending": 0, "negotiating": 0, "accepted": 0, "expired": 0}
 
 
 def _sanitize_answer_payload(body: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -793,6 +767,7 @@ def _build_dashboard(
                 "networks": [],
                 "statusCounts": _empty_status_counts(),
                 "lifecycleStatus": "ACTIVE",
+                "pendingCount": 0,
             }
             intents[intent_id] = existing
             order.append(intent_id)
@@ -815,6 +790,10 @@ def _build_dashboard(
         )
         obj = ensure(intent_id, title)
         obj["lifecycleStatus"] = _text(intent.get("status"), "ACTIVE").upper()
+        # Consolidated row badge: pending questions + awaiting opportunities,
+        # taken verbatim from the server list counts so every surface (Hermes
+        # web/desktop, mac app, web app) shows the same number.
+        obj["pendingCount"] = _count(intent.get("pendingQuestionCount")) + _count(intent.get("waitingOpportunityCount"))
 
     known_ids = set(intents.keys())
     opp_to_intent: dict[str, str] = {}
@@ -835,10 +814,12 @@ def _build_dashboard(
             if intent is not None:
                 opp_to_intent[opp_id] = intent_id
         status = _text(opp.get("status"))
+        if status == "rejected":
+            return  # hidden — see _STATUS_BUCKET comment
         if status in {"latent", "pending"} and not _is_actionable_for_viewer(opp, current_user_id):
             return
         bucket = _STATUS_BUCKET.get(status, "pending")
-        item = _opportunity_item(opp, network_titles, current_user_id)
+        item = _opportunity_item(opp, current_user_id)
         if intent is None:
             general_status_counts[bucket] = general_status_counts.get(bucket, 0) + 1
             general_opportunities.append(item)
@@ -900,7 +881,16 @@ def _build_dashboard(
         intent["totalOpportunityCount"] = total_opportunity_count
         intent["questionCount"] = question_count
         intent["networks"] = intent["networks"][:4]
-        intent["status"] = "running" if actionable_opportunity_count else ("calibrating" if question_count else "idle")
+        # Row status mirrors the mac app's signalStatus: paused wins, then a
+        # match, then an active negotiation, otherwise the signal is live.
+        if intent["lifecycleStatus"] == "PAUSED":
+            intent["status"] = "paused"
+        elif counts.get("accepted", 0):
+            intent["status"] = "matched"
+        elif counts.get("negotiating", 0):
+            intent["status"] = "negotiating"
+        else:
+            intent["status"] = "live"
         totals["intents"] += 1
         totals["questions"] += question_count
         totals["opportunities"] += actionable_opportunity_count
@@ -908,6 +898,10 @@ def _build_dashboard(
         for bucket, value in counts.items():
             totals["statusCounts"][bucket] += value
         ordered_intents.append(intent)
+
+    # Mac-app shelf order: active signals first, paused sink to the bottom
+    # (stable, so server order is kept within each group).
+    ordered_intents.sort(key=lambda item: item["lifecycleStatus"] == "PAUSED")
 
     return {
         "intents": ordered_intents,
@@ -935,14 +929,13 @@ def summary() -> dict[str, Any]:
     discover_payload = tools._api_request("GET", "/networks/discovery/public")
 
     opps_live, opps_error = _fetch_opportunities()
-    # The default list hides resolved statuses, so fetch them explicitly to keep
-    # the radar's expired/rejected chip counts and their listed items consistent.
+    # The default list hides resolved statuses, so fetch expired explicitly to
+    # keep the radar's Missed chip count and its listed items consistent.
     opps_expired, _ = _fetch_opportunities("?status=expired")
-    opps_rejected, _ = _fetch_opportunities("?status=rejected")
 
     network_titles = _network_title_map(networks_payload)
     dashboard = _build_dashboard(
-        intents_payload, opps_live, opps_expired + opps_rejected, questions_payload, network_titles, current_user_id or None
+        intents_payload, opps_live, opps_expired, questions_payload, network_titles, current_user_id or None
     )
 
     negotiations = dashboard["negotiations"]

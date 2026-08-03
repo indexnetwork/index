@@ -472,6 +472,8 @@ def main() -> None:
                                 "summary": "Find robotics mentors",
                                 "payload": "Looking for mentors in applied robotics.",
                                 "status": "ACTIVE",
+                                "pendingQuestionCount": 1,
+                                "waitingOpportunityCount": 1,
                             }
                         ],
                         "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
@@ -566,7 +568,17 @@ def main() -> None:
                                     },
                                     {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
                                 ],
-                            }
+                            },
+                            {
+                                "id": "opp-rejected",
+                                "status": "rejected",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Rejected Match",
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
+                                ],
+                            },
                         ]
                     }
                 ),
@@ -586,22 +598,6 @@ def main() -> None:
                         ]
                     }
                 ),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-rejected",
-                                "status": "rejected",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Rejected Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            }
-                        ]
-                    }
-                ),
             ],
             captured,
         )
@@ -612,13 +608,18 @@ def main() -> None:
         intent = intents[0]
         assert intent["id"] == "intent-1"
         assert intent["title"] == "Looking for mentors in applied robotics."
-        assert intent["status"] == "running"
+        # Mac-app signalStatus parity: an active intent with no accepted or
+        # negotiating opportunities reads "live".
+        assert intent["status"] == "live"
         assert intent["lifecycleStatus"] == "ACTIVE"
         assert intent["questionCount"] == 1
         assert intent["opportunityCount"] == 1
-        assert intent["totalOpportunityCount"] == 3
+        # Consolidated badge count from the server list fields.
+        assert intent["pendingCount"] == 2
+        assert intent["totalOpportunityCount"] == 2
         assert intent["statusCounts"]["pending"] == 1
-        assert intent["statusCounts"]["rejected"] == 1
+        # Rejected is hidden entirely (mac-app parity): no bucket, no count.
+        assert "rejected" not in intent["statusCounts"]
         assert intent["statusCounts"]["expired"] == 1
         assert intent["networks"] == ["Robotics Guild"]
         assert intent["questions"][0]["id"] == "question-1"
@@ -628,7 +629,7 @@ def main() -> None:
         assert intent["opportunities"][0]["name"] == "Ada"
         assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
         assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
-        assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
+        assert "networks" not in intent["opportunities"][0]
         assert intent["opportunities"][0]["counterpartUserId"] == "other"
         assert intent["opportunities"][0]["intentScopeId"] == "intent-1"
         assert summary["general"]["count"] == 2
@@ -643,6 +644,7 @@ def main() -> None:
             for opp in group.get("opportunities", [])
         ]
         assert "opp-waiting-on-other" not in all_opp_ids
+        assert "opp-rejected" not in all_opp_ids
         assert summary["general"]["statusCounts"]["pending"] == 1
         assert summary["negotiations"]["count"] == 2
         assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
@@ -654,12 +656,12 @@ def main() -> None:
             "intents": 1,
             "questions": 2,
             "opportunities": 2,
-            "totalOpportunities": 4,
-            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "rejected": 1, "expired": 1},
+            "totalOpportunities": 3,
+            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "expired": 1},
         }
         # The summary is now fully REST (Mac-app parity): no MCP tool calls remain.
         calls = [(entry["method"], entry["url"]) for entry in captured]
-        assert calls[:8] == [
+        assert calls[:7] == [
             ("GET", "https://api.example.test/api/auth/me"),
             ("POST", "https://api.example.test/api/intents/list"),
             ("GET", "https://api.example.test/api/questions?status=pending"),
@@ -667,15 +669,10 @@ def main() -> None:
             ("GET", "https://api.example.test/api/networks/discovery/public"),
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
-            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
         ]
         assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
-        assert set(calls[8:]) == {
-            ("GET", "https://api.example.test/api/users/other"),
-            ("GET", "https://api.example.test/api/users/other-general"),
-            ("GET", "https://api.example.test/api/users/expired-other"),
-            ("GET", "https://api.example.test/api/users/rejected-other"),
-        }
+        # No per-counterpart /users/:id fetches: cards no longer carry socials.
+        assert calls[7:] == []
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)
@@ -1103,7 +1100,6 @@ def main() -> None:
                     }
                 ),
                 FakeResponse({"opportunities": []}),
-                FakeResponse({"opportunities": []}),
                 FakeResponse(
                     {
                         "user": {
@@ -1139,7 +1135,6 @@ def main() -> None:
             ("GET", "https://api.example.test/api/auth/me"),
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
-            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
             ("GET", "https://api.example.test/api/users/other"),
         ]
         public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]

@@ -215,13 +215,13 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
-    const [homeR, qR] = await Promise.all([
-      (intentId ? client.opportunities.homeForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.home()).catch(() => null),
+    const [radarR, qR] = await Promise.all([
+      (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
     ]);
-    if (homeR) {
-      const sections = window.IndexApp.normalizeList(homeR, "sections");
-      const mapped = window.IndexApi.mapPeopleFromHomeSections(sections).map((p) => ({
+    if (radarR) {
+      const items = window.IndexApp.normalizeList(radarR, "items");
+      const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
       setPeople(mapped);

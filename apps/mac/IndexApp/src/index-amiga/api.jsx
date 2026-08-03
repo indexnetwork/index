@@ -113,12 +113,12 @@ window.IndexApp = (function () {
   async function loadSnapshot() {
     const c = getClient();
     if (!c) return null;
-    const [meR, netR, intentR, questionR, homeR] = await Promise.all([
+    const [meR, netR, intentR, questionR, radarR] = await Promise.all([
       settle(c.auth.me()),
       settle(c.networks.list()),
       settle(c.intents.list({})),
       settle(c.questions.pending()),
-      settle(c.opportunities.home()),
+      settle(c.opportunities.radar()),
     ]);
 
     const user = meR.ok ? (meR.value.user || meR.value) : null;
@@ -126,15 +126,15 @@ window.IndexApp = (function () {
     const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
     const questions = questionR.ok ? normalizeList(questionR.value, "questions") : [];
-    const homeSections = homeR.ok ? normalizeList(homeR.value, "sections") : [];
+    const radarItems = radarR.ok ? normalizeList(radarR.value, "items") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, homeSections });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, radarItems });
     return {
       snapshot,
       me: mapMe(user),
       networks: mapNetworks(networks),
       features,
-      raw: { user, features, networks, intents, questions, homeSections },
+      raw: { user, features, networks, intents, questions, radarItems },
     };
   }
 
@@ -162,7 +162,6 @@ window.IndexApp = (function () {
       id: n.id,
       name: n.title || n.name || "untitled",
       members: (n._count && n._count.members) || n.memberCount || 0,
-      kind: n.type === "event" ? "event" : undefined,
       role: n.isPersonal ? "personal" : (n.role || "member"),
       joined: true,
       isPersonal: n.isPersonal === true,
