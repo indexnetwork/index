@@ -4,6 +4,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+source "$(dirname "$0")/link-host.sh"
+LINK_HOST="$(resolve_link_host)"
+
 APP_NAME="index"
 APP="dist/${APP_NAME}.app"
 CONTENTS="${APP}/Contents"
@@ -23,6 +26,8 @@ swiftc -Onone \
 
 echo "==> Copying resources"
 cp Info.plist "${CONTENTS}/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :IndexDeepLinkHost" "${CONTENTS}/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :IndexDeepLinkHost string ${LINK_HOST}" "${CONTENTS}/Info.plist"
 cp Resources/index.html "${CONTENTS}/Resources/index.html"
 # Dock/Finder icon. Assets.car carries the macOS 26 Liquid Glass icon
 # (CFBundleIconName=AppIcon, shadow/specular disabled); AppIcon.icns is the
@@ -51,7 +56,9 @@ IDENTITY="${CODESIGN_IDENTITY:-}"
 # Developer ID-signed, notarized build whose team id matches the appIDs in the
 # apple-app-site-association served by index.network. A real identity must carry
 # it (strict below); ad-hoc must never be broken by it, see the retry there.
-ENTITLEMENTS="IndexApp.entitlements"
+ENTITLEMENTS="$(mktemp "${TMPDIR:-/tmp}/index-entitlements.XXXXXX.plist")"
+trap 'rm -f "$ENTITLEMENTS"' EXIT
+write_associated_domains_entitlements "$LINK_HOST" "$ENTITLEMENTS"
 
 if [ -n "${IDENTITY}" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "${IDENTITY}"; then
     echo "==> Code signing as '${IDENTITY}'"
