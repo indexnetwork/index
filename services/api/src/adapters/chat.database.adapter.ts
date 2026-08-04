@@ -576,7 +576,6 @@ export class ChatDatabaseAdapter {
     id: string;
     title: string;
     prompt?: string | null;
-    type?: string;
     metadata?: Record<string, unknown> | null;
     permissions?: Record<string, unknown> | null;
   } | null> {
@@ -585,7 +584,6 @@ export class ChatDatabaseAdapter {
         id: schema.networks.id,
         title: schema.networks.title,
         prompt: schema.networks.prompt,
-        type: schema.networks.type,
         metadata: schema.networks.metadata,
         permissions: schema.networks.permissions,
       })
@@ -686,13 +684,13 @@ export class ChatDatabaseAdapter {
         imageUrl: schema.networks.imageUrl,
         permissions: schema.networks.permissions,
         isPersonal: schema.networks.isPersonal,
-        isExperiment: schema.networks.isExperiment,
+        hidden: schema.networks.hidden,
+        masterKeyHash: schema.networks.masterKeyHash,
         ownerId: ownerMembers.userId,
         createdAt: schema.networks.createdAt,
         updatedAt: schema.networks.updatedAt,
         ownerName: schema.users.name,
         ownerAvatar: schema.users.avatar,
-        type: schema.networks.type,
         metadata: schema.networks.metadata,
       })
       .from(schema.networks)
@@ -728,11 +726,11 @@ export class ChatDatabaseAdapter {
           key: row.key,
           prompt: row.prompt,
           imageUrl: row.imageUrl,
-          type: row.type ?? 'community',
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
           permissions: row.permissions,
           isPersonal: row.isPersonal,
-          isExperiment: row.isExperiment,
+          hidden: row.hidden,
+          hasMasterKey: row.masterKeyHash != null,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
@@ -813,7 +811,7 @@ export class ChatDatabaseAdapter {
     const whereConditions = [
       isNull(schema.networks.deletedAt),
       eq(schema.networks.isPersonal, false),
-      or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment)),
+      eq(schema.networks.hidden, false),
     ];
 
     if (excludeIds.length > 0) {
@@ -1665,7 +1663,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1694,7 +1692,6 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: data.allowGuestVibeCheck ?? currentPerms.allowGuestVibeCheck ?? false,
       };
     }
-    if (data.type !== undefined) updateData.type = data.type;
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
     if (data.contextInjection !== undefined || data.profileEnrichment !== undefined) {
       const currentPerms = (existing.permissions as unknown as Record<string, unknown> | null) ?? {};
@@ -1733,7 +1730,6 @@ export class ChatDatabaseAdapter {
         ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
-        type: networks.type,
         metadata: networks.metadata,
       })
       .from(networks)
@@ -1766,7 +1762,6 @@ export class ChatDatabaseAdapter {
       title: updatedRow.title,
       prompt: updatedRow.prompt,
       imageUrl: updatedRow.imageUrl,
-      type: updatedRow.type ?? 'community',
       metadata: (updatedRow.metadata ?? {}) as Record<string, unknown>,
       permissions: {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
@@ -1830,18 +1825,18 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Cascading soft delete for an experiment network.
+   * Cascading soft delete for a provisioned-cohort network.
    *
-   * Soft-deletes users who were *invited into* this experiment (i.e. have a
-   * network-scoped personal agent permissioned on this network) along with
-   * their data (intents, agents, API keys, personal networks, network
-   * memberships). Organic users who happen to be members but were not
-   * provisioned through the invitation flow are NOT cascaded — they keep their
-   * accounts.
+   * Soft-deletes users provisioned via master-key signup or CSV import into
+   * this network (i.e. have a network-scoped personal agent permissioned on
+   * this network) along with their data (intents, agents, API keys, personal
+   * networks, network memberships). Organic users who happen to be members
+   * but were not provisioned through the invitation flow are NOT cascaded —
+   * they keep their accounts.
    *
-   * @param networkId - The experiment network to delete
+   * @param networkId - The provisioned-cohort network to delete
    */
-  async softDeleteExperimentNetwork(networkId: string): Promise<void> {
+  async softDeleteProvisionedCohort(networkId: string): Promise<void> {
     const now = new Date();
 
     // Identify experimentally-onboarded users: those who own at least one
@@ -1980,7 +1975,6 @@ export class ChatDatabaseAdapter {
     joinPolicy?: 'anyone' | 'invite_only';
     allowGuestVibeCheck?: boolean;
     profileEnrichment?: schema.ProfileEnrichmentPolicy;
-    type?: 'community' | 'event';
     metadata?: Record<string, unknown>;
   }): Promise<{
     id: string;
@@ -1988,7 +1982,6 @@ export class ChatDatabaseAdapter {
     prompt: string | null;
     imageUrl: string | null;
     permissions: schema.NetworkPermissionsState;
-    type: 'community' | 'event';
     metadata: Record<string, unknown>;
   }> {
     const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
@@ -2005,7 +1998,6 @@ export class ChatDatabaseAdapter {
         prompt: data.prompt ?? null,
         imageUrl: data.imageUrl ?? null,
         permissions,
-        type: data.type ?? 'community',
         metadata: data.metadata ?? {},
       })
       .returning({
@@ -2014,7 +2006,6 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
-        type: networks.type,
         metadata: networks.metadata,
       });
     if (!row) throw new Error('Failed to create network');
@@ -2034,7 +2025,6 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
         ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
       },
-      type: row.type ?? 'community',
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
     };
   }
@@ -2300,13 +2290,13 @@ export class ChatDatabaseAdapter {
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
         isPersonal: networks.isPersonal,
-        isExperiment: networks.isExperiment,
+        hidden: networks.hidden,
+        masterKeyHash: networks.masterKeyHash,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
         ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
-        type: networks.type,
         metadata: networks.metadata,
       })
       .from(networks)
@@ -2337,11 +2327,11 @@ export class ChatDatabaseAdapter {
       key: row.key,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
-      type: row.type ?? 'community',
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       permissions: row.permissions,
       isPersonal: row.isPersonal,
-      isExperiment: row.isExperiment,
+      hidden: row.hidden,
+      hasMasterKey: row.masterKeyHash != null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
