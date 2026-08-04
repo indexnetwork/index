@@ -38,6 +38,32 @@ describe('buildAbPlan', () => {
       .toThrow(/POOL_QUESTIONS_MODE/);
   });
 
+  it('refuses a key set present on one side only, because the omitted side takes the graph default', () => {
+    expect(() => buildAbPlan(
+      [testCase('c1')],
+      [{ id: 'a', config: {} }, { id: 'b', config: { DISCOVERY_ALLOWED_TYPES: 'intent,profile' } }],
+      1,
+    )).toThrow(/DISCOVERY_ALLOWED_TYPES/);
+  });
+
+  it('accepts that same comparison once both sides state the key explicitly', () => {
+    const plan = buildAbPlan(
+      [testCase('c1')],
+      [{ id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } }, { id: 'b', config: { DISCOVERY_ALLOWED_TYPES: 'intent,profile' } }],
+      1,
+    );
+    expect(plan).toHaveLength(2);
+  });
+
+  it('refuses two sides sharing an id, which would collapse into one row downstream', () => {
+    expect(() => buildAbPlan([testCase('c1')], [sideA, { id: 'a', config: sideB.config }], 1))
+      .toThrow(/'a' then 'a'/);
+  });
+
+  it('refuses sides given in the reverse order, which would file b under the a column', () => {
+    expect(() => buildAbPlan([testCase('c1')], [sideB, sideA], 1)).toThrow(/'b' then 'a'/);
+  });
+
   it('refuses a non-positive repetition count', () => {
     expect(() => buildAbPlan([testCase('c1')], [sideA, sideB], 0)).toThrow(/repetition/i);
   });
