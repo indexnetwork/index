@@ -297,6 +297,51 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     expect(call[0]).toEqual({ userId: user.id, networkId, reason: 'experiment_import' });
   });
 
+  databaseTest('importMembers forces consent-safe permissions on the network', async () => {
+    // Network starts with non-consent-safe permissions and an invitation link
+    // that must survive the forcing.
+    const [permNet] = await db.insert(schema.networks)
+      .values({
+        title: 'Import Perms Net',
+        isPersonal: false,
+        permissions: {
+          joinPolicy: 'anyone',
+          invitationLink: { code: 'keepme' },
+          allowGuestVibeCheck: true,
+          profileEnrichment: 'auto',
+        },
+      })
+      .returning({ id: schema.networks.id });
+    cleanupNetworkIds.push(permNet.id);
+    await db.insert(schema.networkMembers).values({
+      networkId: permNet.id,
+      userId: ownerId,
+      permissions: ['owner'],
+    });
+
+    const email = `csv-perms-${Date.now()}@test.dev`;
+    const result = await experimentService.importMembers(permNet.id, [
+      { email, name: 'Perms Test', socials: [] },
+    ]);
+    expect(result.imported).toBe(1);
+
+    const [user] = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, email));
+    cleanupUserIds.push(user.id);
+
+    const [net] = await db
+      .select({ permissions: schema.networks.permissions })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, permNet.id));
+    expect(net.permissions.allowGuestVibeCheck).toBe(false);
+    expect(net.permissions.profileEnrichment).toBe('consent_required');
+    // joinPolicy and invitationLink are preserved by the spread-merge
+    expect(net.permissions.joinPolicy).toBe('anyone');
+    expect(net.permissions.invitationLink).toEqual({ code: 'keepme' });
+  });
+
   databaseTest('signup leaves onboarding incomplete for new users', async () => {
     enrichSingleSpy.mockClear();
     const email = `signup-onboard-${Date.now()}@test.dev`;

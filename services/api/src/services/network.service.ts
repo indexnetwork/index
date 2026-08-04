@@ -61,9 +61,10 @@ export class NetworkService {
   /**
    * Enable master-key signup on any network. Owner-only. Generates a master
    * key, stores only its hash, and forces consent-safe permissions
-   * (profileEnrichment: 'consent_required', allowGuestVibeCheck: false)
-   * because key/import-provisioned users never pass a consenting UI.
-   * The plaintext is returned exactly once.
+   * (joinPolicy: 'invite_only', profileEnrichment: 'consent_required',
+   * allowGuestVibeCheck: false) because key/import-provisioned users never
+   * pass a consenting UI. The forcing is not a lock — owners can change the
+   * permissions afterwards. The plaintext is returned exactly once.
    */
   async enableMasterKey(networkId: string, userId: string): Promise<{ masterKey: string }> {
     const isOwner = await this.adapter.isIndexOwner(networkId, userId);
@@ -79,6 +80,7 @@ export class NetworkService {
 
     const permissions: schema.NetworkPermissionsState = {
       ...(existing.permissions as schema.NetworkPermissionsState),
+      joinPolicy: 'invite_only',
       allowGuestVibeCheck: false,
       profileEnrichment: 'consent_required',
     };

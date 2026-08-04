@@ -9,7 +9,7 @@ mock.module('../../lib/email/transport.helper', () => ({
   executeSendEmail: sendEmailSpy,
 }));
 
-import { inArray } from "drizzle-orm/sql";
+import { eq, inArray } from "drizzle-orm/sql";
 
 // ---------------------------------------------------------------------------
 // Restore mocks after all tests
@@ -384,6 +384,35 @@ describe("NetworkController Integration", () => {
       expect(res.status).toBe(201);
       expect(data.masterKey).toBeTruthy();
       expect(data.masterKey!.length).toBe(64);
+    });
+
+    test("forces joinPolicy invite_only while preserving invitationLink", async () => {
+      // Seed non-consent-safe permissions with an invitation link to preserve.
+      await db.update(schema.networks)
+        .set({
+          permissions: {
+            joinPolicy: 'anyone',
+            invitationLink: { code: 'preserve-me' },
+            allowGuestVibeCheck: true,
+            profileEnrichment: 'auto',
+          },
+        })
+        .where(eq(schema.networks.id, enableNetworkId));
+
+      const req = new Request(`http://localhost/networks/${enableNetworkId}/master-key`, {
+        method: "POST",
+      });
+      const res = await controller.enableMasterKey(req, mockUser(), { id: enableNetworkId });
+      expect(res.status).toBe(201);
+
+      const [net] = await db
+        .select({ permissions: schema.networks.permissions })
+        .from(schema.networks)
+        .where(eq(schema.networks.id, enableNetworkId));
+      expect(net.permissions.joinPolicy).toBe('invite_only');
+      expect(net.permissions.allowGuestVibeCheck).toBe(false);
+      expect(net.permissions.profileEnrichment).toBe('consent_required');
+      expect(net.permissions.invitationLink).toEqual({ code: 'preserve-me' });
     });
 
     test("returns 403 or 404 when network does not exist", async () => {
