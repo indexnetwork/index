@@ -114,7 +114,7 @@ export class NetworkService {
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal network.
    */
-  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }) {
     logger.verbose('Updating index', { networkId, userId });
     if (await this.adapter.isPersonalNetwork(networkId)) {
       // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),

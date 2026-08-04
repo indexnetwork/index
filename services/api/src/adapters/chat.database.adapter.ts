@@ -1663,7 +1663,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1679,6 +1679,7 @@ export class ChatDatabaseAdapter {
     if (data.title !== undefined) updateData.title = data.title;
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+    if (data.hidden !== undefined) updateData.hidden = data.hidden;
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
       const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
         joinPolicy: 'invite_only',

@@ -108,7 +108,9 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Update network
-  updateNetwork: async (id: string, data: UpdateNetworkRequest): Promise<Network> => {
+  // `hidden` is declared locally: UpdateNetworkRequest resolves through the
+  // pre-broken `@/lib/types` chain, so it cannot carry new fields.
+  updateNetwork: async (id: string, data: UpdateNetworkRequest & { hidden?: boolean }): Promise<Network> => {
     const response = await api.put<APIResponse<Network>>(`/networks/${id}`, data);
     if (!response.network) {
       throw new Error('Failed to update network');

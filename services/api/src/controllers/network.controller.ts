@@ -257,6 +257,7 @@ export class NetworkController {
         profileEnrichment?: 'auto' | 'consent_required' | 'disabled';
         metadata?: Record<string, unknown>;
         contextInjection?: { discovery: boolean };
+        hidden?: boolean;
       };
 
       const result = await networkService.updateNetwork(params.id, user.id, body);

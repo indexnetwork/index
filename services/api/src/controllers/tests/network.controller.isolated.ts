@@ -194,6 +194,31 @@ describe("NetworkController Integration", () => {
       expect(res.status).toBe(200);
       expect(data.network!.permissions.contextInjection?.discovery).toBe(false);
     });
+
+    test("should persist hidden when updating with { hidden: true }", async () => {
+      const put = async (hidden: boolean) => controller.update(
+        new Request("http://localhost/networks/" + createdIndexId, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hidden }),
+        }),
+        mockUser(),
+        { id: createdIndexId },
+      );
+      const getHidden = async () => {
+        const res = await controller.get(new Request("http://localhost/networks/" + createdIndexId), mockUser(), { id: createdIndexId });
+        const data = (await res.json()) as { network?: { hidden: boolean } };
+        return data.network!.hidden;
+      };
+
+      const res = await put(true);
+      expect(res.status).toBe(200);
+      expect(await getHidden()).toBe(true);
+
+      const restore = await put(false);
+      expect(restore.status).toBe(200);
+      expect(await getHidden()).toBe(false);
+    }, 30_000);
   });
 
   describe("GET /:id/members", () => {
