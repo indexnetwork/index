@@ -2,10 +2,11 @@ import { useState } from "react";
 
 import CopyableBox from "@/components/CopyableBox";
 
-// TODO(release): replace with the real macOS app download URL once the
-// signed/notarized release is published. Single point of change for every
-// deep-link landing page (/c/:code, /o/:id).
-export const MAC_APP_DOWNLOAD_URL = "https://index.network/download";
+// The install page owns the artifact URL (and its "not yet published" state),
+// so this CTA always points at a real route rather than at a build that may
+// not exist yet. A plain anchor keeps this fallback page free of router
+// context — it is rendered for visitors with no app and no session.
+export const DOWNLOAD_PATH = "/download";
 
 /**
  * Presentation-only platform sniff. iPadOS reports a Macintosh UA, so require
@@ -49,10 +50,10 @@ export default function DeepLinkLanding() {
               This link opens in the Index macOS app.
             </p>
             <a
-              href={MAC_APP_DOWNLOAD_URL}
+              href={DOWNLOAD_PATH}
               className="inline-block px-6 py-3 bg-[#041729] text-white rounded hover:bg-[#0a2d4a] transition-colors mb-3"
             >
-              Download the Index app
+              Get the Index app
             </a>
             <p className="text-sm text-gray-500 mb-8">
               Already installed? Re-click your link — it will open in the app.

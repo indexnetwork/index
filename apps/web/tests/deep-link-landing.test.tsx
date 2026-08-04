@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import DeepLinkLanding, { MAC_APP_DOWNLOAD_URL } from "@/components/DeepLinkLanding";
+import DeepLinkLanding, { DOWNLOAD_PATH } from "@/components/DeepLinkLanding";
 
 const ORIGINAL_UA = window.navigator.userAgent;
 const MAC_UA =
@@ -30,8 +30,11 @@ describe("DeepLinkLanding", () => {
     stubUserAgent(MAC_UA);
     render(<DeepLinkLanding />);
 
-    const cta = screen.getByRole("link", { name: "Download the Index app" });
-    expect(cta).toHaveAttribute("href", MAC_APP_DOWNLOAD_URL);
+    const cta = screen.getByRole("link", { name: "Get the Index app" });
+    expect(cta).toHaveAttribute("href", DOWNLOAD_PATH);
+    // Never link straight at an artifact from here: /download owns the
+    // published-vs-not state, so this CTA cannot dead-end.
+    expect(cta.getAttribute("href")).not.toMatch(/\.dmg|\.zip|https?:/);
     expect(
       screen.getByText(/Already installed\? Re-click your link/),
     ).toBeInTheDocument();
@@ -47,7 +50,7 @@ describe("DeepLinkLanding", () => {
       screen.getByText(/Index connect links open in the macOS app/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Download the Index app" }),
+      screen.queryByRole("link", { name: "Get the Index app" }),
     ).not.toBeInTheDocument();
   });
 });
