@@ -315,13 +315,10 @@ const AGENT_FACES = [
    yours and a single picture. The runtimes on the agents page (hermes, claude
    code) are where it *runs*, not who it is, they keep their vendor tiles.
    Everything the negotiator says anywhere in the app wears this picture. */
-/* The record for whoever is signed in. Signing in replaces
-   window.INDEX_DATA.ME wholesale with the live user, while the demo `ME` const
-   stays as it was, so reading the const directly would keep naming the agent
-   after the demo profile. */
+/* The record for whoever is signed in. applyLoaded sets window.INDEX_DATA.ME to
+   the live user once the snapshot loads; live-only, so it is empty until then. */
 function currentMe() {
-  const live = (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || null;
-  return live || (typeof ME !== "undefined" && ME) || {};
+  return (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || {};
 }
 
 /* Where a shuffled face is kept.

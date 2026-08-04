@@ -1,154 +1,36 @@
-// Onboarding, Mac System 6 chrome, conversational. + Calibrating screen.
+// NewIntent — the signal-creation flow. Mac System 6 chrome, conversational.
+// + Calibrating screen.
+// Live-only: the clarifying questions between the opening prompt and the
+// operating-mode choice come from the backend (the intake funnel or the chat
+// agent). There is no local scripted question set or canned example content.
 
-// The second step adapts to whatever intent the person gave in step one, so the
-// follow-up question is actually relevant to what they're looking for.
-function resolveStep(baseStep, answers) {
-  if (baseStep.id === "edges" && answers.intent) {
-    return { ...baseStep, ...followUpFor(answers.intent) };
-  }
-  if (baseStep.id === "off-limits" && answers.intent) {
-    return { ...baseStep, ...offLimitsFor(answers.intent) };
-  }
-  return baseStep;
-}
+// The opening prompt: the user's first answer IS the signal, handed to the
+// agent to clarify. No suggestion chips — whatever they type drives it.
+const INTENT_STEP = {
+  id: "intent",
+  prompt: "who are you trying to meet right now?",
+  placeholder: "type what you're looking for…",
+};
 
-// Off-limits chips, tuned to whatever they're actually looking for, so the
-// suggestions feel like the agent gets the context, not a canned list.
-function offLimitsFor(intent) {
-  const t = (intent || "").toLowerCase();
+// The closing beat: how the agent should operate for you. A real product
+// choice, not scripted filler, so it stays.
+const SHAPE_STEP = {
+  id: "shape",
+  prompt: "how do you want me to operate?",
+  hint: "i can be a busybody, or i can sit quietly in the background.",
+  choices: [
+    { value: "quiet",  label: "quiet",  sub: "introduce 1–2 high-signal people a week; otherwise nothing." },
+    { value: "warm",   label: "warm",   sub: "surface a handful, ask before negotiating." },
+    { value: "active", label: "active", sub: "keep the radar busy; you can ignore most of it." },
+  ],
+};
 
-  if (/(feedback|\bidea\b|business|startup|launch|validate|pitch)/.test(t)) {
-    return {
-      placeholder: "no investors in pitch mode · skip direct competitors · no 'just pivot' people…",
-      examples: [
-        "no investors pitching me",
-        "skip direct competitors",
-        "no 'you should pivot' takes",
-      ],
-    };
-  }
+// How many dynamic follow-ups sit between the two beats. Caps the chat clarify
+// loop and drives the progress pips (opening + middle + operating-mode).
+const DYN_MAX = 2;
+const STEP_COUNT = 2 + DYN_MAX;
 
-  if (/(open.?source|contribut|\brepo\b|github|maintainer|\boss\b)/.test(t)) {
-    return {
-      placeholder: "no recruiters · skip crypto projects · no vague 'let's collab' DMs…",
-      examples: [
-        "no recruiters",
-        "skip crypto projects",
-        "no vague 'let's collab'",
-      ],
-    };
-  }
-
-  if (/(co.?founder|cofounder|\bpartner\b|start a company|build a company)/.test(t)) {
-    return {
-      placeholder: "no idea-only people · skip anyone not ready to commit · no recruiters…",
-      examples: [
-        "no idea-only people",
-        "skip the not-ready-to-commit",
-        "no recruiters",
-      ],
-    };
-  }
-
-  if (/(\bai\b|\bml\b|machine learning|\bmodel|\bllm)/.test(t)) {
-    return {
-      placeholder: "no recruiters · skip web3 / crypto · no one in hard-sell mode…",
-      examples: [
-        "no recruiters",
-        "skip web3 / crypto",
-        "no hard-sell mode",
-      ],
-    };
-  }
-
-  return {
-    placeholder: "no recruiters · skip sales pitches · don't introduce me to my ex's friends…",
-    examples: [
-      "no recruiters",
-      "skip sales pitches",
-      "no crypto",
-    ],
-  };
-}
-
-function followUpFor(intent) {
-  const t = (intent || "").toLowerCase();
-
-  // a new idea / wants feedback
-  if (/(feedback|\bidea\b|business|startup|launch|validate|pitch)/.test(t)) {
-    return {
-      prompt: "what's the idea, in a sentence?",
-      hint: "rough is fine. i'll look for people who've been near this problem.",
-      placeholder: "a payments tool for small crews · a calmer email client · ai notetaker for therapists…",
-      examples: [
-        "a payments tool for small crews",
-        "an AI notetaker for therapists",
-        "a marketplace for vintage synths",
-      ],
-    };
-  }
-
-  // open source / contributing
-  if (/(open.?source|contribut|\brepo\b|github|maintainer|\boss\b)/.test(t)) {
-    return {
-      prompt: "what do you like to build with?",
-      hint: "languages, stacks, the kind of problem you enjoy. helps me find the right projects.",
-      placeholder: "rust + systems · typescript + dev tools · python + ml…",
-      examples: [
-        "rust + systems work",
-        "typescript + developer tooling",
-        "python + ml infra",
-      ],
-    };
-  }
-
-  // co-founder hunt
-  if (/(co.?founder|cofounder|\bpartner\b|start a company|build a company)/.test(t)) {
-    return {
-      prompt: "what do you bring, and where's the gap?",
-      hint: "your strength plus what you're missing lets me match the complement.",
-      placeholder: "technical, need someone commercial · strong on design, weak on distribution…",
-      examples: [
-        "technical, need someone commercial",
-        "strong on product, weak on sales",
-        "can sell, need an engineer",
-      ],
-    };
-  }
-
-  // AI people / general interest
-  if (/(\bai\b|\bml\b|machine learning|\bmodel|\bllm)/.test(t)) {
-    return {
-      prompt: "what corner of AI are you in right now?",
-      hint: "the part you're closest to helps me find your people.",
-      placeholder: "agents + tool use · evals + interpretability · open-weights models · ai for science…",
-      examples: [
-        "agents and tool use",
-        "evals and interpretability",
-        "open-weights tinkering",
-      ],
-    };
-  }
-
-  // default, meeting people generally
-  return {
-    prompt: "what're you into these days?",
-    hint: "what's on your mind. it helps me pattern-match.",
-    placeholder: "a side project i'm shipping · getting back into climbing · reading more fiction…",
-    examples: [
-      "a side project i'm shipping",
-      "getting back into climbing",
-      "reading more this year",
-    ],
-  };
-}
-
-function Onboarding({ onDone, onBack }) {
-  const { ONBOARDING_STEPS } = window.INDEX_DATA;
-  const SHAPE_STEP = ONBOARDING_STEPS[ONBOARDING_STEPS.length - 1];
-  // How many follow-up questions sit between "intent" and "shape", the live
-  // flow asks the backend for the same number the local script would.
-  const DYN_MAX = Math.max(1, ONBOARDING_STEPS.length - 2);
+function NewIntent({ onDone, onBack }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
   const env = useIndexEnv();
@@ -160,7 +42,7 @@ function Onboarding({ onDone, onBack }) {
   // Completed turns drive the progress bar and the faded history; the current
   // step is either a local scripted one or a backend-generated question.
   const [turns, setTurns] = useState([]);
-  const [step, setStep] = useState(() => resolveStep(ONBOARDING_STEPS[0], {}));
+  const [step, setStep] = useState(() => INTENT_STEP);
   const [thinking, setThinking] = useState(fastEnabled);
   const [answers, setAnswers] = useState({});
   const [draft, setDraft] = useState("");
@@ -175,12 +57,10 @@ function Onboarding({ onDone, onBack }) {
   const seenQ = useRef(new Set());
   const awaitingRef = useRef(false);      // a chat turn owes us the next step
   const dynAsked = useRef(0);
-  const localIdx = useRef(0);             // pointer into the scripted steps
-  const usedLocalFallback = useRef(false);
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
-  const stepIdx = Math.min(turns.length, ONBOARDING_STEPS.length - 1);
+  const stepIdx = Math.min(turns.length, STEP_COUNT - 1);
 
   useEffect(() => {
     setDraft("");
@@ -335,7 +215,7 @@ function Onboarding({ onDone, onBack }) {
   //
   // The first answer opens a /chat/stream turn. The agent asks clarifying
   // questions via ask_user_question, each arrives as a `user_question` SSE
-  // event and becomes the next onboarding step; answering it resumes the same
+  // event and becomes the next question step; answering it resumes the same
   // blocked turn. The turn ends in an ```intent_proposal``` block, which we
   // confirm through POST /intents/confirm.
 
@@ -371,20 +251,15 @@ function Onboarding({ onDone, onBack }) {
   const toShape = () => {
     awaitingRef.current = false;
     setThinking(false);
-    setStep(resolveStep(SHAPE_STEP, answersRef.current));
+    setStep(SHAPE_STEP);
   };
 
-  // No dynamic flow available (demo, stream error before anything happened),
-  // continue with the original scripted follow-ups.
-  const fallbackLocal = () => {
+  // Backend clarification is unavailable or errored: there is no local script to
+  // fall back to, so close out the guided beat and go to the operating-mode
+  // choice. finish() still creates the signal from whatever was answered.
+  const skipToShape = () => {
     if (cancelledRef.current) return;
-    if (dynAsked.current > 0 || createdRef.current) { toShape(); return; }
-    usedLocalFallback.current = true;
-    awaitingRef.current = false;
-    setThinking(false);
-    localIdx.current += 1;
-    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
-    setStep(resolveStep(next, answersRef.current));
+    toShape();
   };
 
   const confirmProposal = async (p) => {
@@ -431,7 +306,7 @@ function Onboarding({ onDone, onBack }) {
       });
       return;
     }
-    fallbackLocal();
+    skipToShape();
   };
 
   // Open one chat turn and route its events back into the step machine.
@@ -455,10 +330,10 @@ function Onboarding({ onDone, onBack }) {
         } else if (ev.type === "done") {
           handleDone(ev.response || ev.fullResponse || "");
         } else if (ev.type === "error") {
-          if (awaitingRef.current) fallbackLocal();
+          if (awaitingRef.current) skipToShape();
         }
       },
-    }).catch(() => { if (awaitingRef.current) fallbackLocal(); });
+    }).catch(() => { if (awaitingRef.current) skipToShape(); });
   };
 
   const submit = (val) => {
@@ -544,10 +419,9 @@ function Onboarding({ onDone, onBack }) {
       return;
     }
 
-    // Demo / scripted fallback, the original local flow.
-    localIdx.current += 1;
-    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
-    setStep(resolveStep(next, newAns));
+    // No live client to clarify against — go straight to the operating-mode
+    // choice; finish() creates the signal from what was answered.
+    toShape();
   };
 
   const finish = (ans) => {
@@ -555,18 +429,12 @@ function Onboarding({ onDone, onBack }) {
     (async () => {
       let created = createdRef.current;
       if (client && !created) {
-        // Live but the early create failed (or never ran), create from the
-        // composed script answers, exactly like the original flow.
+        // The agent never created the signal (no proposal, or the guided beat
+        // was cut short), so create it from the composed answers.
         try {
           await window.IndexApp.createIntent(composeDescription(ans));
           created = true;
-        } catch (_e) { /* fall back to demo transition */ }
-      } else if (client && created && intentIdRef.current && usedLocalFallback.current) {
-        // Scripted fallback answers still refine the created signal.
-        window.IndexApp.mcpCall("update_intent", {
-          intentId: intentIdRef.current,
-          description: composeDescription(ans),
-        }).catch(() => {});
+        } catch (_e) { /* fall through to the calibrating transition */ }
       }
       // Keep the calibrating beat visible even if the calls are fast.
       await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
@@ -608,7 +476,7 @@ function Onboarding({ onDone, onBack }) {
 
             {/* progress, pinstripe segments */}
             <div style={{ display:"flex", gap:3, marginBottom:24 }}>
-              {ONBOARDING_STEPS.map((_, i) => (
+              {Array.from({ length: STEP_COUNT }).map((_, i) => (
                 <div key={i} style={{
                   flex:1, height:8,
                   border:"1px solid #000",
@@ -722,14 +590,14 @@ function Onboarding({ onDone, onBack }) {
 
         {/* RIGHT, the field warming */}
         <MacWindow title="the field, warming">
-          <OnboardingFieldPreview answers={answers} stepIdx={stepIdx}/>
+          <NewIntentFieldPreview answers={answers} stepIdx={stepIdx}/>
         </MacWindow>
       </div>
     </div>
   );
 }
 
-// Onboarding is the same agent that speaks on the signals page, so it wears the
+// New-intent is the same agent that speaks on the signals page, so it wears the
 // same mark. The "h" tile this replaced named the runtime (hermes) at the one
 // moment you have no idea what that is, and made your first conversation with
 // index look like it came from something else.
@@ -880,8 +748,8 @@ function ChoiceRow({ c, onClick }) {
   );
 }
 
-// Right column during onboarding
-function OnboardingFieldPreview({ answers, stepIdx }) {
+// Right column during signal creation
+function NewIntentFieldPreview({ answers, stepIdx }) {
   // Just the narrative of what the agent is doing with you.
   const lines = [
     "getting a read on what you need…",
@@ -1012,4 +880,4 @@ function Calibrating() {
   );
 }
 
-window.Onboarding = Onboarding;
+window.NewIntent = NewIntent;

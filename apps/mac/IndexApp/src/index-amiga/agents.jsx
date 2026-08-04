@@ -1,6 +1,17 @@
 // Agents: the runtimes on this Mac, and which one speaks for you.
 // Reached from the agents row on the hub's sidebar footer, same as networks.
 
+// Per-agent permissions, shown when a connected runtime is expanded.
+const AGENT_PERMISSIONS = [
+  { id:"updates", title:"connection updates",
+    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
+  { id:"indexing", title:"nightly indexing",
+    blurb:"turns what this agent learned today into signals, overnight. off means "
+        + "discovery only knows what you've told it." },
+  { id:"brief", title:"daily brief",
+    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
+];
+
 // On/off switch. A sliding knob rather than a checkmark: these rows are states
 // a runtime is in, not items you tick, and the knob's position reads at a
 // glance down a column. Squared off, since a rounded pill would be the only
@@ -352,15 +363,13 @@ function mapLiveAgent(a) {
 }
 
 function Agents({ onClose }) {
-  const { AGENTS } = window.INDEX_DATA;
-  const [agents, setAgents] = useState(AGENTS);
+  // Live-only: no demo runtimes. The list is populated by fetchRegistered (the
+  // account's registered agents) and the local harness scan below.
+  const [agents, setAgents] = useState([]);
   const [expanded, setExpanded] = useState(null);
-  // Demo defaults, replaced wholesale by the live list below when signed in.
-  const [perms, setPerms] = useState(() => ({
-    hermes: { updates:true, indexing:true, brief:true },
-    claude: { updates:true, indexing:false, brief:false },
-  }));
-  const [negotiator, setNegotiator] = useState("hermes");
+  // Filled from the live agent list; "index" is the builtin negotiator fallback.
+  const [perms, setPerms] = useState({});
+  const [negotiator, setNegotiator] = useState("index");
 
   // Which local runtimes are already registered on the account: personal
   // agents matched by name (lowercased). System agents (orchestrator, index

@@ -138,21 +138,24 @@ window.IndexApp = (function () {
     };
   }
 
+  // Map an API user onto the shape the UI's ME expects. Live-only: there is no
+  // demo fallback, so missing fields become empty rather than borrowing another
+  // identity's values.
   function mapMe(user) {
-    const base = (window.INDEX_DATA && window.INDEX_DATA.ME) || {};
-    if (!user) return base;
+    if (!user) return {};
     const socials = Array.isArray(user.socials)
       ? user.socials.map((s) => ({ id: s.label || s.id || "", prefix: "", handle: s.value || s.handle || "" }))
-      : base.socials;
+      : [];
     return {
-      ...base,
-      id: user.id || base.id,
-      name: user.name || base.name,
-      handle: user.username ? `@${user.username}` : base.handle,
-      email: user.email || base.email,
-      location: user.location || base.location,
-      intro: user.intro || user.bio || base.intro,
+      id: user.id || "",
+      name: user.name || "",
+      handle: user.username ? `@${user.username}` : "",
+      email: user.email || "",
+      location: user.location || "",
+      intro: user.intro || user.bio || "",
+      photo: user.avatar || null,
       socials,
+      websites: [],
       source: user,
     };
   }
