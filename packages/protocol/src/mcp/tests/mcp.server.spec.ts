@@ -10,7 +10,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
-import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface, getMcpToolMetadataCacheKey } from "../mcp.server.js";
+import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, getMcpToolMetadataCacheKey } from "../mcp.server.js";
 import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS } from "../../shared/agent/canonical-guidance.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
@@ -293,24 +293,6 @@ describe('getMcpToolMetadataCacheKey', () => {
     const base = getMcpToolMetadataCacheKey(baseDeps);
     const withContacts = { ...baseDeps, contactsEnabled: true } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
     expect(getMcpToolMetadataCacheKey(withContacts)).toBe(base);
-  });
-});
-
-describe("parseClientSurface", () => {
-  test("defaults absent, empty, and whitespace-only values to web", () => {
-    expect(parseClientSurface(null)).toBe("web");
-    expect(parseClientSurface("")).toBe("web");
-    expect(parseClientSurface("   ")).toBe("web");
-  });
-
-  test("normalizes known surfaces", () => {
-    expect(parseClientSurface("telegram")).toBe("telegram");
-    expect(parseClientSurface(" Telegram ")).toBe("telegram");
-    expect(parseClientSurface("WEB")).toBe("web");
-  });
-
-  test("coerces unknown surfaces to web", () => {
-    expect(parseClientSurface("slack")).toBe("web");
   });
 });
 

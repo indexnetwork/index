@@ -1,15 +1,11 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
-import { and, eq } from 'drizzle-orm/sql';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import db from '../lib/drizzle/drizzle';
-import { userSocials } from '../schemas/database.schema';
-import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
@@ -72,7 +68,7 @@ interface IntentScopeOptions {
   /**
    * Verified provenance of the owner action, set ONLY by controller entry
    * points that represent a genuine explicit human owner action (REST session
-   * accept/reject/start-chat, connect-link, connect-token). Absent for
+   * accept/reject/start-chat). Absent for
    * internal, queue, agent, and API-key callers — so Lens B capture (IND-434)
    * never records their status mutations as preference labels.
    */
@@ -311,41 +307,6 @@ export class OpportunityService {
   ): () => void {
     this.events.on(event, handler);
     return () => this.events.off(event, handler);
-  }
-
-  /**
-   * Render (or reuse cached) the delivery card for a given (opportunity, viewer)
-   * pair and return the snapshotted greeting string. Returns `''` when the
-   * presenter could not produce one (cache miss + LLM fallback path).
-   *
-   * @param opportunityId - The opportunity to render.
-   * @param viewerUserId - The user the card is being rendered for.
-   * @returns The greeting string, or `''` when unavailable.
-   */
-  async getGreetingForCard(opportunityId: string, viewerUserId: string): Promise<string> {
-    const opp = await this.db.getOpportunity(opportunityId);
-    if (!opp) return '';
-    try {
-      const cards = await getOrCreateDeliveryCardBatch(
-        this.deliveryCache,
-        this.getPresenter(),
-        this.presenterDb,
-        [
-          {
-            id: opp.id,
-            status: opp.status,
-            actors: opp.actors as Array<{ userId: string; role: string }>,
-            interpretation: opp.interpretation,
-            detection: opp.detection,
-          },
-        ],
-        viewerUserId,
-      );
-      return cards.get(opportunityId)?.greeting ?? '';
-    } catch (err) {
-      logger.warn('getGreetingForCard failed', { opportunityId, error: err });
-      return '';
-    }
   }
 
   /**
@@ -764,63 +725,6 @@ export class OpportunityService {
       opportunity: sanitizeOpportunityForResponse(updated),
       counterpartUserId,
     };
-  }
-
-  /**
-   * Approve an introduction: validate the user is an introducer with
-   * `approved: false`, flip the approved flag, and transition the
-   * opportunity to `pending` (which triggers negotiation).
-   *
-   * @param opportunityId - The opportunity ID
-   * @param userId - The user approving (must be an introducer)
-   * @returns Success object or error with status
-   */
-  async approveIntroduction(
-    opportunityId: string,
-    userId: string,
-    options?: Pick<IntentScopeOptions, 'networkScopeId'>,
-  ): Promise<{ success: true } | { error: string; status: number }> {
-    const opp = await this.db.getOpportunity(opportunityId);
-    if (!opp) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-
-    const actor = opp.actors.find((a) => a.userId === userId);
-    if (!actor || actor.role !== 'introducer') {
-      return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
-    }
-    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-
-    const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);
-
-    if (actor.approved === true) {
-      // Approval already flipped — only retry the status transition if it hasn't landed yet.
-      // This handles the case where a prior call flipped approved but failed to transition status.
-      if (TERMINAL_STATUSES.has(opp.status)) {
-        return { success: true };
-      }
-    } else {
-      // Flip approved flag
-      const updated = await this.db.updateOpportunityActorApproval(opportunityId, userId, true);
-      if (!updated) {
-        return { error: 'Failed to update approval', status: 500 };
-      }
-    }
-
-    // Transition to pending (triggers negotiation)
-    const statusResult = await this.updateOpportunityStatus(opportunityId, 'pending', userId);
-    if (statusResult && 'error' in statusResult) {
-      logger.error('Status transition failed during introduction approval', {
-        opportunityId,
-        userId,
-        error: statusResult.error,
-      });
-      return { error: 'Failed to trigger negotiation after approval', status: 500 };
-    }
-
-    return { success: true };
   }
 
   /**
@@ -1377,69 +1281,6 @@ export class OpportunityService {
     if (isSelfIncluded) return { allowed: true };
 
     return { allowed: true };
-  }
-
-  /**
-   * Look up a user's Telegram handle from user_socials.
-   * Returns the normalized handle (no @ prefix, no URL) or null.
-   */
-  async getCounterpartTelegramHandle(userId: string): Promise<string | null> {
-    const [row] = await db
-      .select({ value: userSocials.value })
-      .from(userSocials)
-      .where(and(eq(userSocials.userId, userId), eq(userSocials.label, 'telegram')))
-      .limit(1);
-
-    return normalizeTelegramHandle(row?.value);
-  }
-
-  /**
-   * Telegram handle of the counterpart on an opportunity, given the viewer.
-   * Resolves the counterpart from the opportunity's actors JSONB (excluding
-   * the viewer and any introducer) and looks up their public Telegram handle
-   * in user_socials.
-   *
-   * @param opportunityId - The opportunity to inspect.
-   * @param viewerUserId - The user viewing the opportunity (excluded from counterpart pick).
-   * @returns The counterpart's normalized Telegram handle, or null if there is
-   *   no counterpart, no telegram social, or the opportunity is not found.
-   */
-  async getCounterpartTelegramHandleForOpp(opportunityId: string, viewerUserId: string): Promise<string | null> {
-    const opp = await this.db.getOpportunity(opportunityId);
-    if (!opp) return null;
-    const counterpart = resolveCounterpart(opp.actors, viewerUserId);
-    if (!counterpart) return null;
-    return this.getCounterpartTelegramHandle(counterpart.userId);
-  }
-
-
-  /**
-   * Conversation id (DM) for the (opportunity, viewer) pair.
-   *
-   * Resolves the counterpart from the opportunity's actors JSONB and returns
-   * the DM conversation id between the viewer and the counterpart via
-   * `getOrCreateDM` (idempotent — does not create a new chat row when one
-   * already exists for the user pair).
-   *
-   * @param opportunityId - The opportunity to inspect.
-   * @param viewerUserId - The user requesting the conversation.
-   * @returns The DM conversation id, or null if the opportunity has no
-   *   resolvable counterpart.
-   */
-  async getConversationIdForOpp(opportunityId: string, viewerUserId: string): Promise<string | null> {
-    const opp = await this.db.getOpportunity(opportunityId);
-    if (!opp) return null;
-    const counterpart = resolveCounterpart(opp.actors, viewerUserId);
-    if (!counterpart) return null;
-    try {
-      const dm = await this.db.getOrCreateDM(viewerUserId, counterpart.userId);
-      return dm.id;
-    } catch (err) {
-      logger.error('getOrCreateDM failed while resolving conversation for opportunity', {
-        opportunityId, viewerUserId, counterpartUserId: counterpart.userId, error: err,
-      });
-      return null;
-    }
   }
 }
 

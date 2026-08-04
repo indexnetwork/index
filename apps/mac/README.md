@@ -91,6 +91,46 @@ The app will hot-reload as you edit files, great for UI tweaking.
 **"codesign failed"**
 - Ad-hoc signing is skipped for local builds. The app will still run locally.
 
+## Deep links
+
+The app opens two URL families, and **all** routing lives in one pure function,
+`parseDeepLink` in `api/deeplink.mjs` (unit tested in `api/deeplink.spec.mjs`,
+inlined into the bundle as `window.IndexApi.parseDeepLink`). The Swift shell
+only delivers URLs — it raises the window and forwards the raw string to the
+page as an `index-deeplink` `CustomEvent`, queuing anything that arrives before
+the web view has finished loading (cold launch).
+
+| URL | Opens |
+| --- | --- |
+| `https://index.network/o/<id>` · `index://o/<id>` | that opportunity's card |
+| `https://index.network/u/<id>` · `index://u/<id>` | that person's profile |
+| `https://index.network/c/<code>` · `index://c/<code>` | nothing — retired connect links get a one-line notice |
+
+Query strings, fragments and trailing slashes are ignored; foreign hosts,
+unknown paths and malformed URLs are ignored silently. Extra hosts (staging)
+are a `hosts` argument, not a code change.
+
+### Known limitation: universal links need a real signature
+
+The `https://` half only works in a **Developer ID-signed, notarized** build.
+macOS verifies the `com.apple.developer.associated-domains` entitlement in
+`IndexApp/IndexApp.entitlements` (`applinks:index.network`) against the
+`apple-app-site-association` served by `index.network`, which lists
+`<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
+`APPLE_TEAM_ID` set. An ad-hoc dev build has no team, so macOS never hands it a
+universal link and `build.sh` says so.
+
+The `index://` scheme (registered via `CFBundleURLTypes` in `Info.plist`) has no
+such requirement and is the way to exercise deep links locally:
+
+```bash
+open "index://o/<opportunity-id>"
+open "index://u/<user-id>"
+open "index://c/<code>"            # expect the "no longer supported" notice
+# only on a signed, notarized build:
+open "https://index.network/o/<opportunity-id>"
+```
+
 ## Running
 
 ### From Build Output

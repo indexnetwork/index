@@ -525,6 +525,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var webView: WKWebView!
     private var authServer: LoopbackAuthServer?
 
+    /// Deep links that arrived before the page could receive them (cold launch,
+    /// or a reload in flight). Flushed in arrival order from didFinish.
+    private var pendingDeepLinks: [String] = []
+    /// Bound so a page that never loads cannot grow the queue without limit;
+    /// the oldest entries are dropped first, the user's latest click survives.
+    private let maxPendingDeepLinks = 8
+    private var webViewReady = false
+
     /// Smallest window the web layout renders correctly at. See the note where
     /// it's applied, the screens clip below roughly 860x600. The width is held
     /// higher than that: the radar column keeps a 600px floor so its funnel
@@ -685,7 +693,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webView(_ webView: WKWebView,
                  didFail navigation: WKNavigation!,
                  withError error: Error) {
+        deepLinkNavigationFailed()
         presentError("Failed to load: \(error.localizedDescription)")
+    }
+
+    // A provisional failure is often just a cancelled navigation, so it stays
+    // silent as before — but readiness still has to come back.
+    func webView(_ webView: WKWebView,
+                 didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        deepLinkNavigationFailed()
+    }
+
+    /// didStartProvisionalNavigation clears `webViewReady` so links are not
+    /// dispatched into a document about to be replaced. If that navigation then
+    /// fails, nothing else would ever restore readiness and every later link
+    /// would queue forever, so restore it against whatever document is still
+    /// loaded and flush what is queued.
+    private func deepLinkNavigationFailed() {
+        guard webView != nil else { return }
+        webViewReady = true
+        flushPendingDeepLinks()
+    }
+
+    // MARK: - Deep links (index:// scheme + universal links)
+    //
+    // Deliberately thin: this side decides nothing about where a URL leads. It
+    // raises the window and hands the raw absolute string to the page, which
+    // asks window.IndexApi.parseDeepLink (apps/mac/api/deeplink.mjs, unit
+    // tested) what it means. Adding or changing a route touches only that file.
+
+    /// `index://o/<id>` and friends, opened via LaunchServices.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { deliverDeepLink(url) }
+    }
+
+    /// Universal links: macOS hands `https://index.network/...` over as a
+    /// browsing NSUserActivity once the domain is verified against the app's
+    /// associated-domains entitlement (Developer ID-signed builds only).
+    func application(_ application: NSApplication,
+                     continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else { return false }
+        deliverDeepLink(url)
+        return true
+    }
+
+    private func deliverDeepLink(_ url: URL) {
+        let raw = url.absoluteString
+        guard !raw.isEmpty else { return }
+
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+
+        guard webViewReady, webView != nil else {
+            pendingDeepLinks.append(raw)
+            if pendingDeepLinks.count > maxPendingDeepLinks {
+                pendingDeepLinks.removeFirst(pendingDeepLinks.count - maxPendingDeepLinks)
+            }
+            return
+        }
+        dispatchDeepLink(raw)
+    }
+
+    private func dispatchDeepLink(_ raw: String) {
+        let js = "window.dispatchEvent(new CustomEvent('index-deeplink', { detail: { url: \(jsonValue(raw)) } }));"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        // A link arriving mid-load would be dispatched into a document that is
+        // about to be replaced, so queue again until the new one is up.
+        webViewReady = false
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        webViewReady = true
+        flushPendingDeepLinks()
+    }
+
+    private func flushPendingDeepLinks() {
+        let queued = pendingDeepLinks
+        pendingDeepLinks.removeAll()
+        for raw in queued { dispatchDeepLink(raw) }
     }
 
     // <input type="file"> does nothing in a WKWebView unless the host puts up

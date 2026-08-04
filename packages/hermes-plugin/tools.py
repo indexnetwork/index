@@ -8,16 +8,29 @@ Handlers follow the official Hermes plugin contract:
 
 from __future__ import annotations
 
+import copy
 import json
 import os
+import platform
+import shutil
+import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
 _DEFAULT_INDEX_MCP_URL = "https://protocol.index.network/mcp"
 _DEFAULT_INDEX_API_URL = "https://protocol.index.network/api"
+# Universal-link host for Index deep links. The macOS app claims /c/*, /o/* and
+# /u/* through its apple-app-site-association file, so the same https URL opens
+# the app when it is installed and the web landing page when it is not. The
+# plugin never detects app installation: it runs on the agent's host, which is
+# usually not the user's Mac, so the OS decides at click time.
+INDEX_APP_BASE_URL = "https://index.network"
 _MAX_ERROR_BODY_CHARS = 2_000
+_MAX_APP_URL_WALK_DEPTH = 16
+_OPEN_URL_TIMEOUT_SECONDS = 15
 _NEGOTIATION_ACTIONS = {"propose", "accept", "reject", "counter", "question"}
 _NEGOTIATION_ROLES = {"agent", "patient", "peer"}
 _FORWARDED_MCP_TOOLS = frozenset(
@@ -126,12 +139,62 @@ def _api_url() -> str:
     return os.environ.get("INDEX_API_URL", _DEFAULT_INDEX_API_URL).strip() or _DEFAULT_INDEX_API_URL
 
 
+def _app_base_url() -> str:
+    """Return the universal-link origin used for Index deep links.
+
+    Only a well-formed `https://<host>` origin is honored. A malformed or
+    schemeless override (for example `index.network`) falls back to the constant:
+    a base that parses to an empty scheme/netloc would make every relative path
+    compare equal to it in `index_open_app` and turn that tool into a generic
+    local-file opener.
+    """
+    raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
+    if not raw:
+        return INDEX_APP_BASE_URL
+    try:
+        parts = urllib.parse.urlsplit(raw)
+    except ValueError:
+        return INDEX_APP_BASE_URL
+    if parts.scheme != "https" or not parts.netloc:
+        return INDEX_APP_BASE_URL
+    return raw
+
+
+def _attach_app_urls(value: Any, base_url: str, depth: int = 0) -> None:
+    """Attach `appUrl` to every opportunity-shaped object in a decoded payload.
+
+    An object counts as an opportunity when it carries a non-empty
+    `opportunityId`. Existing `appUrl` values are never overwritten.
+    """
+    if depth > _MAX_APP_URL_WALK_DEPTH:
+        return
+    if isinstance(value, dict):
+        opportunity_id = _clean_string(value.get("opportunityId"))
+        if opportunity_id and not _clean_string(value.get("appUrl")):
+            value["appUrl"] = f"{base_url}/o/{opportunity_id}"
+        for item in value.values():
+            _attach_app_urls(item, base_url, depth + 1)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _attach_app_urls(item, base_url, depth + 1)
+
+
+def _with_app_urls(payload: Any) -> Any:
+    """Return the payload with deep links attached, or untouched on any surprise."""
+    try:
+        enriched = copy.deepcopy(payload)
+        _attach_app_urls(enriched, _app_base_url())
+        return enriched
+    except Exception:  # noqa: BLE001 - deep links are additive; never fail a response.
+        return payload
+
+
 def _headers(api_key: str) -> dict[str, str]:
     headers = {
         "Accept": "application/json, text/event-stream",
         "Content-Type": "application/json",
         "x-api-key": api_key,
-        "x-index-surface": "hermes-plugin",
     }
     telegram_handle = os.environ.get("INDEX_TELEGRAM_USERNAME", "").strip()
     if telegram_handle:
@@ -244,8 +307,8 @@ def _call_index_mcp(tool_name: str, arguments: dict[str, Any]) -> str:
             body = response.read()
             parsed = _parse_mcp_response(body, response.headers.get("Content-Type", ""))
             if not isinstance(parsed, dict):
-                return _json({"success": True, "data": parsed})
-            return _json(_decode_tool_result(parsed))
+                return _json(_with_app_urls({"success": True, "data": parsed}))
+            return _json(_with_app_urls(_decode_tool_result(parsed)))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:_MAX_ERROR_BODY_CHARS]
         return _error(
@@ -400,6 +463,75 @@ def index_read_intents(args: dict, **kwargs) -> str:
         arguments["page"] = page
 
     return _call_index_mcp("read_intents", arguments)
+
+
+def _url_opener_command(url: str, system: str | None = None) -> list[str] | None:
+    """Return the platform command that hands a URL to the OS, if there is one."""
+    resolved = (system or platform.system() or "").strip().lower()
+    if resolved == "darwin":
+        return ["open", url]
+    if resolved == "windows":
+        # Never route through `cmd /c start`: subprocess quotes an argument only
+        # when it contains whitespace, so cmd.exe metacharacters (& | ^ < > %)
+        # inside an otherwise valid https://index.network URL would survive
+        # unquoted and execute as separate commands. rundll32 is handed the URL
+        # as a single argv entry and no shell ever re-parses it.
+        return ["rundll32", "url.dll,FileProtocolHandler", url]
+    if shutil.which("xdg-open"):
+        return ["xdg-open", url]
+    return None
+
+
+def _open_url(command: list[str]) -> str | None:
+    """Run a URL-opener command. Returns None on success, an error string otherwise."""
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=_OPEN_URL_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
+        return str(exc)
+    if result.returncode != 0:
+        return (result.stderr or "").strip() or f"exit code {result.returncode}"
+    return None
+
+
+def index_open_app(args: dict, **kwargs) -> str:
+    """Open an Index universal link with the operating system's default handler."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+
+    base_url = _app_base_url()
+    target = _clean_string(args.get("target")) or base_url
+
+    try:
+        base_parts = urllib.parse.urlsplit(base_url)
+        target_parts = urllib.parse.urlsplit(target)
+    except ValueError:
+        return _error(f"target must be an {base_url} URL.")
+    # An absolute https origin is required in its own right, not just an origin
+    # that matches the base: a relative target ('/etc/passwd') has an empty
+    # scheme and netloc and must never be handed to the OS opener.
+    if target_parts.scheme != "https" or not target_parts.netloc:
+        return _error(f"target must be an {base_url} URL.")
+    if target_parts.scheme != base_parts.scheme or target_parts.netloc != base_parts.netloc:
+        return _error(f"target must be an {base_url} URL.")
+
+    command = _url_opener_command(target)
+    if command is None:
+        return _error(
+            f"No URL opener is available on this host. Open {target} manually to continue in the Index app.",
+            url=target,
+        )
+
+    failure = _open_url(command)
+    if failure is not None:
+        return _error(f"Could not open {target}: {failure}", url=target)
+    return _json({"success": True, "url": target})
 
 
 def index_agent_me(args: dict, **kwargs) -> str:

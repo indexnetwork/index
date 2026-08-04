@@ -35,6 +35,41 @@ const MARKETING: Record<string, PageMeta> = {
   },
 };
 
+/**
+ * Prefix-matched meta for dynamic deep-link routes. Ids/codes cannot be
+ * enumerated into the exact-match map, so document navigations to these
+ * paths resolve by prefix instead. (`/u/:id` is intentionally absent: it
+ * keeps its real profile-page meta/behavior.)
+ */
+const DEEP_LINK_PREFIXES: Record<string, PageMeta> = {
+  "/c/": {
+    title: "Open in the Index app",
+    description:
+      "This Index link opens in the Index macOS app. Install the app or open this link on your Mac.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
+  "/o/": {
+    title: "Open in the Index app",
+    description:
+      "This Index opportunity link opens in the Index macOS app. Install the app or open this link on your Mac.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
+};
+
+export function resolvePageMeta(
+  map: Record<string, PageMeta>,
+  pathname: string,
+): PageMeta | undefined {
+  const exact = map[pathname];
+  if (exact) return exact;
+  for (const [prefix, meta] of Object.entries(DEEP_LINK_PREFIXES)) {
+    if (pathname.startsWith(prefix)) return meta;
+  }
+  return undefined;
+}
+
 export function buildMetaMap(distDir: string): Record<string, PageMeta> {
   const map: Record<string, PageMeta> = { ...MARKETING };
 

@@ -2,13 +2,48 @@ import { existsSync, readFileSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-import { buildMetaMap, ORIGIN, type PageMeta } from "./meta.config";
+import { buildMetaMap, resolvePageMeta, ORIGIN, type PageMeta } from "./meta.config";
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "dist");
 const HTML_CACHE_CONTROL = "no-store";
 const HASHED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const STATIC_FILE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 const NOT_FOUND_CACHE_CONTROL = "no-store";
+
+// Apple app-site-association (universal links). Served directly — Apple
+// rejects redirects and requires an extensionless JSON response.
+const AASA_PATH = "/.well-known/apple-app-site-association";
+const AASA_CACHE_CONTROL = "no-store";
+const MAC_APP_BUNDLE_ID = "network.index.system6";
+const APPLE_TEAM_ID_PLACEHOLDER = "TEAMIDPLACEHOLDER";
+
+function appleAppSiteAssociation(): string {
+  const teamId = process.env.APPLE_TEAM_ID || APPLE_TEAM_ID_PLACEHOLDER;
+  return JSON.stringify({
+    applinks: {
+      details: [
+        {
+          appIDs: [`${teamId}.${MAC_APP_BUNDLE_ID}`],
+          // Order matters: the system uses the first component that matches,
+          // and `*` matches path separators too. Without the exclusion, `/u/*`
+          // would also claim real web-only routes like `/u/<id>/chat`, which
+          // the app cannot render — it would raise its window and drop the
+          // link (apps/mac/api/deeplink.mjs only routes 2-segment paths).
+          components: [
+            { "/": "/c/*" },
+            { "/": "/o/*" },
+            {
+              "/": "/u/*/*",
+              exclude: true,
+              comment: "Deeper /u/ paths (e.g. /u/<id>/chat) are web-only; do not open the app.",
+            },
+            { "/": "/u/*" },
+          ],
+        },
+      ],
+    },
+  });
+}
 
 interface WebHandlerOptions {
   distDir?: string;
@@ -80,6 +115,16 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
   return (req: Request): Response => {
     const reqUrl = new URL(req.url);
     const pathname = reqUrl.pathname;
+
+    if (pathname === AASA_PATH && (req.method === "GET" || req.method === "HEAD")) {
+      return new Response(req.method === "HEAD" ? null : appleAppSiteAssociation(), {
+        headers: {
+          "Cache-Control": AASA_CACHE_CONTROL,
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
     const suppressPreview = reqUrl.searchParams.get("link_preview") === "false";
     const relativePath = pathname.replace(/^\/+/, "");
     const filePath = join(distDir, relativePath);
@@ -104,7 +149,7 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
       return notFound(req);
     }
 
-    const meta = metaMap[pathname];
+    const meta = resolvePageMeta(metaMap, pathname);
     let html = meta ? injectMeta(template, meta, pathname) : template;
     if (suppressPreview) html = stripPreviewSurface(html);
 
@@ -119,6 +164,10 @@ export function createWebHandler(options: WebHandlerOptions = {}): (req: Request
 
 if (import.meta.main) {
   const port = parseInt(process.env.PORT || "4173", 10);
+
+  if (!process.env.APPLE_TEAM_ID) {
+    console.warn(`[web] APPLE_TEAM_ID is not set — serving placeholder team id ${APPLE_TEAM_ID_PLACEHOLDER} in ${AASA_PATH}; set APPLE_TEAM_ID before shipping universal links.`);
+  }
 
   Bun.serve({
     port,

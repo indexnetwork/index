@@ -39,7 +39,6 @@ It does **not**:
 - submit negotiation responses;
 - run discovery;
 - create or delete intents, or mutate other Index records beyond the writes listed above (question answers, opportunity accept/skip, Discover self-join, intent archive, profile edits, and DM messages);
-- approve introductions (no API-key path — only the `/c/<code>` connect link);
 - expose raw tool envelopes, tokens, or assistant reasoning.
 
 ## Runtime behavior

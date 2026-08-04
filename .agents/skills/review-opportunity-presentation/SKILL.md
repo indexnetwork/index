@@ -54,4 +54,4 @@ or use reasoning-derived fallback copy, but only through
 
 ## Related skills
 
-- `review-connect-routing` — for opportunity connect-link routing and delivery URL safety.
+- `review-connect-routing` — for opportunity deep-link (`appUrl` / universal link) routing and delivery URL safety.

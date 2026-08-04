@@ -18,6 +18,6 @@ export type OpportunityToolDeps = Pick<ToolRegistryCompositionDeps,
   | "opportunityPresentation" | "questionGenerator"
   | "questionerEnqueue" | "findPendingQuestions" | "negotiationSummary"
   | "negotiationDatabase" | "deliveryLedger"
-  | "mintConnectLink" | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
+  | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
 > & OpportunityOwnerApprovalDeps
   & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "index" | "networkMembership" | "opportunity"> };

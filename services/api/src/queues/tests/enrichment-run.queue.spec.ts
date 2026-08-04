@@ -40,7 +40,6 @@ type EnrichmentRunFixture = {
     scopeType?: 'network';
     scopeId?: string;
     sessionId?: string;
-    clientSurface?: 'telegram' | 'web';
   };
   createdAt: Date;
 };
@@ -59,7 +58,6 @@ function runFixture(overrides: Partial<EnrichmentRunFixture> = {}): EnrichmentRu
       userEmail: 'test@example.com',
       scopeType: 'network',
       scopeId: 'net-1',
-      clientSurface: 'telegram',
     },
     createdAt: new Date(),
     ...overrides,
