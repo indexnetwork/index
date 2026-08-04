@@ -101,6 +101,12 @@ def register(ctx):
         handler=tools.index_agent_me,
     )
     ctx.register_tool(
+        name="index_open_app",
+        toolset="index-network",
+        schema=schemas.INDEX_OPEN_APP,
+        handler=tools.index_open_app,
+    )
+    ctx.register_tool(
         name="index_pickup_negotiation",
         toolset="index-network",
         schema=schemas.INDEX_PICKUP_NEGOTIATION,

@@ -5,6 +5,8 @@ export {
   toQueryString,
 } from './client.mjs';
 
+export { parseDeepLink } from './deeplink.mjs';
+
 export {
   mapClarifier,
   mapClarifiers,

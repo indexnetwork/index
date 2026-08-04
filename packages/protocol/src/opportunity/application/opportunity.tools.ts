@@ -45,57 +45,10 @@ import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
 import type { PendingQuestionSummary } from "../../shared/schemas/pending-question.schema.js";
-import type { ConnectLinkKind } from "../../shared/interfaces/connect-link.interface.js";
 import { mergePendingQuestions } from "./opportunity.pending-questions.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
-
-/**
- * Pure status × role → ConnectLinkKind matrix.
- *
- * Returns the kind of short-link the viewer can act on directly, or `null` if
- * no direct link makes sense for this combination. Non-null kinds map to:
- *
- * - `connect` — pending opp where viewer is a non-introducer party. Clicking
- *   flips the opp to accepted and opens the chat with the counterpart.
- * - `approve_introduction` — draft or latent opp where viewer is an unapproved
- *   introducer. Clicking flips approved=true and triggers negotiation. The
- *   `draft` case represents a pending introduction; the `latent`
- *   case comes from background-discovered connector-flow cards surfaced in
- *   `list_opportunities`. In both, status remains pre-send and the `/c/<code>`
- *   link is the only MCP path to approve.
- * - `outreach` — accepted opp where viewer is a non-introducer party.
- *   Clicking opens the existing chat (no state change).
- * - `send_direct` — draft or latent opp where viewer is a non-introducer
- *   party. Issued for a direct opportunity without an introducer
- *   mode: the match has already passed evaluation, the row exists in
- *   draft state, and the sender just needs to release it. Clicking flips
- *   the opp straight to accepted and opens the chat with a greeting —
- *   same handler path as `connect`. The counterpart's side sees the new
- *   accepted opp and can engage or ignore.
- */
-export function resolveActionableLinkKind(input: {
-  status: string;
-  viewerRole: string;
-  viewerApproved?: boolean;
-  viewerActedAt?: string | null;
-}): ConnectLinkKind | null {
-  const { status, viewerRole, viewerApproved, viewerActedAt } = input;
-  const isIntroducer = viewerRole === "introducer";
-  const hasViewerActed = !!viewerActedAt;
-  if (status === "accepted") {
-    return isIntroducer ? null : "outreach";
-  }
-  if (status === "pending") {
-    return isIntroducer || hasViewerActed ? null : "connect";
-  }
-  if (status === "draft" || status === "latent") {
-    if (!isIntroducer) return hasViewerActed ? null : "send_direct";
-    return viewerApproved === true ? null : "approve_introduction";
-  }
-  return null;
-}
 
 /**
  * Build the agent-facing profile link for a counterpart — always the Index web
@@ -113,9 +66,7 @@ export function buildProfileUrl(
   frontendUrl: string | undefined,
 ): string | undefined {
   // The profile link is always the Index web profile, regardless of the
-  // counterpart's socials or the viewer's surface. Surface-aware Telegram
-  // deep-linking lives on the connect URL (`/c/:code`) — the connect-link
-  // controller resolves that to a pre-messaged t.me link — never here.
+  // counterpart's socials.
   if (!frontendUrl) return undefined;
   const base = frontendUrl.replace(/\/+$/, "");
   return `${base}/u/${counterpartUserId}?link_preview=false`;
@@ -141,75 +92,60 @@ export function buildNegotiationUrl(
 }
 
 /**
- * Mint a short-link for `card` if the (status, viewerRole, viewerApproved)
- * combination is actionable; mutate the card in place with `acceptUrl`,
- * `profileUrl`, and `feedCategory`. No-op (and no DB call) if not actionable.
+ * Build the agent-facing deep link for an opportunity — the canonical
+ * `https://index.network/o/<id>` universal link. Returns `undefined` when
+ * `frontendUrl` is unset or there is no opportunity id.
  *
- * Swallows mint errors after logging — the card is still returned without an
- * `acceptUrl`, matching the prior `list_opportunities` resilience behavior.
+ * This is the *only* place the protocol mints an opportunity deep link. It is
+ * a navigation link, not an authority: opening it raises the opportunity card
+ * in the Index macOS app when installed and a static Index landing page
+ * otherwise. Acceptance stays an authenticated call.
+ *
+ * No `?link_preview=false` hint here (unlike `buildProfileUrl`): the Hermes
+ * plugin mints the identical bare form for payloads the protocol does not
+ * touch, and keeping the two byte-identical is what makes its never-overwrite
+ * rule invisible.
  */
-export async function attachActionableLinks(
-  card: Record<string, unknown> & {
-    opportunityId: string;
-    viewerRole: string;
-    status: string;
-  },
+export function buildOpportunityAppUrl(
+  opportunityId: string,
+  frontendUrl: string | undefined,
+): string | undefined {
+  if (!frontendUrl || !opportunityId) return undefined;
+  const base = frontendUrl.replace(/\/+$/, "");
+  return `${base}/o/${opportunityId}`;
+}
+
+/**
+ * Attach the agent-facing profile link for a counterpart to `card` (mutates
+ * in place). Every counterpart has a profile page worth linking to — without
+ * this, the agent gets a name with no URL attached and tends to fabricate
+ * one. Accept/act guidance is plain text ("accept in the Index app"); no
+ * actionable URLs are minted here.
+ */
+export function attachProfileLink(
+  card: Record<string, unknown> & { opportunityId: string },
   opts: {
-    viewerId: string;
-    viewerApproved?: boolean;
-    viewerActedAt?: string | null;
     counterpartUserId: string;
-    mintConnectLink: NonNullable<OpportunityToolDeps["mintConnectLink"]>;
     frontendUrl: string | undefined;
-    preferredSurface?: 'telegram' | 'web';
   },
-): Promise<void> {
-  // profileUrl is independent of whether the (status, viewerRole) combination
-  // is actionable — every counterpart has a profile page worth linking to,
-  // even on a fresh draft where there is no acceptUrl yet. Setting it before
-  // the early-return below means cards from non-actionable combinations
-  // (e.g. a draft party card) still carry
-  // the profile link the agent needs to render. Without this, the agent gets
-  // a name with no URL attached and tends to fabricate one.
+): void {
   const profileUrl = buildProfileUrl(opts.counterpartUserId, opts.frontendUrl);
   if (profileUrl) card.profileUrl = profileUrl;
+}
 
-  const kind = resolveActionableLinkKind({
-    status: card.status,
-    viewerRole: card.viewerRole,
-    viewerApproved: opts.viewerApproved,
-    viewerActedAt: opts.viewerActedAt,
-  });
-  logger.info("Opportunity actionability decision", {
-    opportunityId: card.opportunityId,
-    status: card.status,
-    viewerRole: card.viewerRole,
-    viewerApproved: opts.viewerApproved,
-    viewerActedAt: opts.viewerActedAt,
-    kind: kind ?? "none",
-  });
-  if (kind === null) return;
-
-  try {
-    const { url } = await opts.mintConnectLink({
-      userId: opts.viewerId,
-      opportunityId: card.opportunityId,
-      kind,
-      greeting: null,
-      preferredSurface: opts.preferredSurface,
-    });
-    card.acceptUrl = url;
-    card.feedCategory = card.viewerRole === "introducer" ? "connector-flow" : "connection";
-  } catch (err) {
-    logger.warn(
-      "Failed to mint MCP opportunity link — surfacing card without acceptUrl/feedCategory; profileUrl is still attached",
-      {
-        opportunityId: card.opportunityId,
-        kind,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    );
-  }
+/**
+ * Attach the opportunity deep link to `card` (mutates in place) so every MCP
+ * client — Claude Desktop, the CLI, the web, Hermes — can hand the user one
+ * clickable link to the card instead of fabricating one from an id.
+ */
+export function attachOpportunityAppLink(
+  card: Record<string, unknown> & { opportunityId: string },
+  opts: {
+    frontendUrl: string | undefined;
+  },
+): void {
+  const appUrl = buildOpportunityAppUrl(card.opportunityId, opts.frontendUrl);
+  if (appUrl) card.appUrl = appUrl;
 }
 
 interface PublicUptakeQuestion {
@@ -723,22 +659,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
                       : {}),
                   };
 
-                  // Attach actionable links for MCP callers
-                  if (context.isMcp && deps.mintConnectLink) {
-                    const viewerApproved =
-                      viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
-                    await attachActionableLinks(card as Record<string, unknown> & {
-                      opportunityId: string;
-                      viewerRole: string;
-                      status: string;
-                    }, {
-                      viewerId: context.userId,
-                      viewerApproved,
-                      viewerActedAt: viewerActor?.actedAt ?? null,
+                  // Attach the agent-facing profile and opportunity links for
+                  // MCP callers
+                  if (context.isMcp) {
+                    attachProfileLink(card as Record<string, unknown> & { opportunityId: string }, {
                       counterpartUserId,
-                      mintConnectLink: deps.mintConnectLink,
                       frontendUrl: deps.frontendUrl,
-                      preferredSurface: context.clientSurface,
+                    });
+                    attachOpportunityAppLink(card as Record<string, unknown> & { opportunityId: string }, {
+                      frontendUrl: deps.frontendUrl,
                     });
                   }
 
@@ -899,27 +828,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
                     : {}),
                 };
 
-                // For MCP callers (e.g. Edge Claw), mint a connect token and attach
-                // acceptUrl + profileUrl when the (status, viewerRole) is actionable
-                // for the viewer. Non-actionable combos (sender-on-draft,
-                // pending-on-introducer-waiting, rejected, etc.) deliberately get
-                // no link — the LLM would otherwise hallucinate `/api/.../connect`
-                // URLs from the exposed opportunityId.
-                if (context.isMcp && deps.mintConnectLink) {
-                  const viewerApproved =
-                    viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
-                  await attachActionableLinks(cardData as Record<string, unknown> & {
-                    opportunityId: string;
-                    viewerRole: string;
-                    status: string;
-                  }, {
-                    viewerId: context.userId,
-                    viewerApproved,
-                    viewerActedAt: viewerActor?.actedAt ?? null,
+                // For MCP callers, attach the agent-facing profile link and the
+                // opportunity deep link so the agent never has to fabricate
+                // either. Accepting still happens in the Index app behind an
+                // authenticated call — the deep link only opens the card.
+                if (context.isMcp) {
+                  attachProfileLink(cardData as Record<string, unknown> & { opportunityId: string }, {
                     counterpartUserId,
-                    mintConnectLink: deps.mintConnectLink,
                     frontendUrl: deps.frontendUrl,
-                    preferredSurface: context.clientSurface,
+                  });
+                  attachOpportunityAppLink(cardData as Record<string, unknown> & { opportunityId: string }, {
+                    frontendUrl: deps.frontendUrl,
                   });
                 }
 

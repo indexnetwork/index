@@ -23,7 +23,6 @@ export interface OpportunityCard {
   isGhost?: boolean;
   score?: number;
   status?: string;
-  acceptUrl?: string;
   profileUrl?: string;
 }
 
@@ -150,7 +149,13 @@ export function formatOpportunityCardHtml(
     lines.push(`💡 <i>${escapeHtml(card.narratorChip.text)}</i>`);
   }
 
-  const buttonUrl = card.acceptUrl ?? `${webAppUrl}/opportunities`;
+  // The card's own deep link (`/o/<id>`): it opens the opportunity in the Index
+  // macOS app when installed, and the Index web landing page otherwise. The old
+  // `/opportunities` target was never a registered web route, so the button
+  // landed on the web app's catch-all not-found page.
+  const base = webAppUrl.replace(/\/+$/, '');
+  const opportunityId = card.opportunityId?.trim();
+  const buttonUrl = opportunityId ? `${base}/o/${opportunityId}` : base;
   const keyboard: Array<Array<{ text: string; url: string }>> = [
     [{ text: `💬 ${card.primaryActionLabel ?? 'View'}`, url: buttonUrl }],
   ];

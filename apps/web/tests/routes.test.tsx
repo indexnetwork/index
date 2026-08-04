@@ -370,6 +370,24 @@ describe('Route rendering smoke tests', () => {
     expect(container).toBeTruthy();
   });
 
+  test('/c/:code — Connect-link landing page renders without crashing', async () => {
+    const { Component } = await import('@/app/c/[code]/page');
+    const { container } = renderWithRouter(<Component />, {
+      route: '/c/mock-connect-code',
+    });
+    expect(container).toBeTruthy();
+    expect(container.textContent).toContain('Open in the Index app');
+  });
+
+  test('/o/:id — Opportunity link landing page renders without crashing', async () => {
+    const { Component } = await import('@/app/o/[id]/page');
+    const { container } = renderWithRouter(<Component />, {
+      route: '/o/mock-opportunity-id',
+    });
+    expect(container).toBeTruthy();
+    expect(container.textContent).toContain('Open in the Index app');
+  });
+
   test('/u/:id — User profile page renders without crashing', async () => {
     const { Component } = await import('@/app/u/[id]/page');
     const { container } = renderWithRouter(<Component />, {

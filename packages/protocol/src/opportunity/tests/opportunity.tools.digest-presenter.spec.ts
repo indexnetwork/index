@@ -284,6 +284,81 @@ describe('list_opportunities digest presenter path', () => {
     negotiationTask = null;
   });
 
+  // Regression: the branch shipped `appUrl` guidance to MCP agents while the
+  // tool returned prose with no link in it at all. Both MCP paths must carry
+  // the canonical https://index.network/o/<id> deep link for their card.
+  it('carries the opportunity deep link in the MCP list presentation', async () => {
+    candidateOpps = [makeOpp('opp-deep-link', 'c-deep')];
+    getUser = mock(async (userId?: string) => ({ id: userId ?? testUserId, name: userId === 'c-deep' ? 'Dana' : 'Viewer' }) as UserRecord | null);
+    getProfile = mock(async () => ({ identity: { name: 'Dana', bio: '', location: '' }, userId: 'c-deep' }) as unknown as UserIdentity | null);
+    presentCardMock = mock(async (_input: unknown): Promise<PresentedCard> => ({
+      headline: 'Meet Dana',
+      personalizedSummary: 'Dana is working on the same problem.',
+      digestSummary: 'You might like meeting Dana.',
+      suggestedAction: 'Say hello.',
+      narratorRemark: 'Relevant match.',
+      mutualIntentsLabel: undefined,
+      greeting: '',
+    }));
+
+    const deps = makeDeps();
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
+
+    const result = parseResult(
+      await listTool.handler({
+        context: {
+          userId: testUserId,
+          isMcp: true,
+          networkId: undefined,
+          sessionId: undefined,
+          userName: 'Viewer',
+          userNetworks: [],
+        },
+        query: {},
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(String(result.data?.message)).toContain('appUrl: https://index.network/o/opp-deep-link');
+  });
+
+  it('carries the opportunity deep link in the MCP digest presentation', async () => {
+    candidateOpps = [makeOpp('opp-deep-digest', 'c-digest')];
+    getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);
+    getProfile = mock(async () => ({ identity: { name: 'Erin', bio: '', location: '' }, userId: 'c-digest' }) as unknown as UserIdentity | null);
+    presentCardMock = mock(async (_input: unknown): Promise<PresentedCard> => ({
+      headline: 'Meet Erin',
+      personalizedSummary: 'Erin is a strong fit.',
+      digestSummary: 'You might like meeting Erin.',
+      suggestedAction: 'Say hello.',
+      narratorRemark: 'Relevant match.',
+      mutualIntentsLabel: undefined,
+      greeting: '',
+    }));
+
+    const deps = makeDeps();
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
+
+    const result = parseResult(
+      await listTool.handler({
+        context: {
+          userId: testUserId,
+          isMcp: true,
+          networkId: undefined,
+          sessionId: undefined,
+          userName: 'Viewer',
+          userNetworks: [],
+        },
+        query: { includeDigestMarkers: true },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(String(result.data?.message)).toContain('appUrl: https://index.network/o/opp-deep-digest');
+  });
+
   it('skips digest cards instead of surfacing raw fallback when presenter throws', async () => {
     candidateOpps = [makeOpp('opp-2', 'c-2')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);

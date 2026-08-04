@@ -19,6 +19,11 @@ The manifest declares `requires_env: INDEX_API_KEY`, so the installer prompts fo
 | `INDEX_API_URL` | no | `https://protocol.index.network/api` | Index REST API |
 | `INDEX_MCP_TIMEOUT_SECONDS` | no | `30` | Timeout for both MCP and API requests |
 | `INDEX_TELEGRAM_USERNAME` | no | — | Forwarded as `x-index-telegram-username` when present |
+| `INDEX_APP_BASE_URL` | no | `https://index.network` | Universal-link origin used for `appUrl` deep links and `index_open_app` |
+
+Override `INDEX_APP_BASE_URL` only for dev/staging environments, and only with a full
+`https://<host>` origin — a value without an `https://` scheme (for example
+`index.network`) is ignored and the default is used.
 
 ## Tools
 
@@ -60,6 +65,8 @@ The full list is `provides_tools` in `plugin.yaml`.
 
 If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work returns `{ "success": true, "pending": false }`; a claimed turn returns `pending: true` plus the negotiation payload.
 
+**`index_open_app`** — opens an `https://index.network/...` universal link with the operating system's default handler (see [`index_open_app`](#index_open_app) below).
+
 **`index_respond_negotiation`** — submits an autonomous negotiation response:
 
 ```json
@@ -77,6 +84,65 @@ If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work ret
 ```
 
 The handler maps this to the backend body shape (`action`, `message`, and an `assessment` object containing `reasoning` and `suggestedRoles`).
+
+### Opportunity deep links (`appUrl`)
+
+Opportunity cards already carry `appUrl` when they come back from the Index MCP server:
+the protocol mints `https://index.network/o/<opportunityId>` for every MCP-facing card,
+so Claude Desktop, the CLI and the web get the same link Hermes does.
+
+On top of that, every Index MCP response is post-processed before it is handed back to
+Hermes: any object carrying a non-empty `opportunityId` — at any nesting depth, under
+`data`, `opportunities`, or a wrapper of your own — gets an `appUrl` field:
+
+```json
+{
+  "opportunityId": "6f1c...",
+  "appUrl": "https://index.network/o/6f1c..."
+}
+```
+
+An `appUrl` that the backend already set is never overwritten (the plugin mints the
+identical bare `/o/<id>` form, so the two agree), and a payload with no opportunities is
+passed through unchanged. The walk still earns its keep for payload shapes the protocol
+does not build cards for — advisory envelopes, negotiation wrappers, API responses. It
+runs over MCP responses only; the dashboard's REST writes are not rewritten.
+
+These are **universal links**, not custom-scheme links. `https://index.network` serves
+an `apple-app-site-association` file that claims `/c/*`, `/o/*` and `/u/*` for the Index
+macOS app, so one URL covers both cases:
+
+- Index macOS app installed → macOS opens the link directly in the app.
+- App not installed → the browser opens the Index landing page for that link, which offers the macOS app (its download button still points at `https://index.network/download`, an unregistered route that falls through to the web app's client-rendered not-found page, until the signed release publishes its real URL).
+
+The plugin deliberately performs **no app-installation detection**. It runs wherever
+the agent runs — often a headless server that is not the user's Mac — so probing the
+local filesystem would hide deep links from real app users. One HTTPS link is always
+attached and the operating system decides what to do with it at click time.
+
+### `index_open_app`
+
+Accepts:
+
+```json
+{
+  "target": "optional https://index.network/... URL"
+}
+```
+
+Opens the target with the OS default handler (`open` on macOS, `xdg-open` on Linux,
+`rundll32 url.dll,FileProtocolHandler` on Windows — never `cmd /c start`, which would
+re-parse shell metacharacters in the URL) and returns:
+
+```json
+{ "success": true, "url": "https://index.network/o/6f1c..." }
+```
+
+`target` defaults to `https://index.network` (or `INDEX_APP_BASE_URL`). Anything that is
+not on that origin — including `index://` URLs and plain `http://` — is rejected: this
+is an Index deep-link opener, not a generic URL opener. When the host has no usable URL
+opener, the handler returns a JSON error that includes the `url` so the user can open it
+manually. There is no app-installed/not-installed branch in the result.
 
 ## Skills, hook, and command
 

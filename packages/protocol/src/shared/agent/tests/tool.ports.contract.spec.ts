@@ -28,7 +28,7 @@ type _OpportunityPortIsExact = Expect<Equal<keyof OpportunityToolDeps,
   | "opportunityDiscovery" | "opportunityPresentation" | "questionGenerator"
   | "questionerEnqueue" | "findPendingQuestions" | "negotiationSummary"
   | "negotiationDatabase" | "deliveryLedger"
-  | "mintConnectLink" | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
+  | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
 >>;
 type _AskUserPortIsExact = Expect<Equal<keyof AskUserQuestionToolDeps,
   "chatQuestions" | "chatSession" | "getUserContextText"

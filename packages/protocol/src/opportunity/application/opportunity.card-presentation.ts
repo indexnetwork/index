@@ -20,8 +20,9 @@ export type OpportunityCardLike = Record<string, unknown> & {
   digestSummary?: string | undefined;
   status?: string | undefined;
   feedCategory?: string | undefined;
-  acceptUrl?: string | undefined;
   profileUrl?: string | undefined;
+  /** Universal link that opens this opportunity's card (`/o/<id>`). */
+  appUrl?: string | undefined;
   /** Deep-link to the A2A negotiation trace that produced this opportunity. */
   negotiationUrl?: string | undefined;
   score?: number | undefined;
@@ -57,14 +58,13 @@ function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCar
  * "include EXACTLY as-is" directive so the frontend card renderer can parse
  * and render interactive cards.
  *
- * MCP (`isMcp=true`): emits prose (name, reason, status, profileUrl when
- * present, acceptUrl when present, feedCategory when present) and includes
- * `opportunityId` ONLY for cards without an `acceptUrl` — exposing the UUID
- * alongside an actionable link gave LLMs a foothold to hallucinate bare
- * `/api/opportunities/<id>/connect` URLs (see IND-271). The trailing
- * instruction reminds the agent to synthesize in natural language and never
- * fabricate URLs for cards that don't have them. MCP clients have no card
- * renderer, so code fences would surface as raw JSON to end users.
+ * MCP (`isMcp=true`): emits prose (name, reason, status, appUrl and profileUrl
+ * when present, feedCategory when present) and includes `opportunityId` for
+ * every card so the agent can act via the tools. The trailing instruction
+ * reminds the agent to synthesize in natural language, to surface the `appUrl`
+ * verbatim as the one link that opens the card, and to fabricate no other URL.
+ * MCP clients have no card renderer, so code fences would surface as raw JSON
+ * to end users.
  */
 export function buildOpportunityPresentation(
   inputCards: OpportunityCardLike[],
@@ -93,33 +93,23 @@ export function buildOpportunityPresentation(
           lines.push(`   ${card.mainText}`);
         }
         if (card.status) lines.push(`   status: ${card.status}`);
+        if (card.appUrl) lines.push(`   appUrl: ${card.appUrl}`);
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
-        if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
         if (opts.includeDigestMarkers && card.negotiationUrl) lines.push(`   negotiationUrl: ${card.negotiationUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
         if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
         if (opts.includeDigestMarkers && card.redelivery) lines.push(`   redelivery: true`);
-        // Only surface opportunityId when there's no acceptUrl. Exposing the
-        // UUID alongside an actionable link gives the LLM a foothold to
-        // hallucinate bare `/api/opportunities/<id>/connect` URLs.
-        if (!card.acceptUrl) {
-          lines.push(`   opportunityId: ${card.opportunityId}`);
-        }
+        lines.push(`   opportunityId: ${card.opportunityId}`);
         return lines.join("\n");
       })
       .join("\n\n");
-    const hasLinks = cards.some((c) => c.acceptUrl);
-    const hasOpportunityIds = cards.some((c) => !c.acceptUrl);
-    const linkInstructions = hasLinks
-      ? `For each card that has an acceptUrl, embed it on a short verb phrase (e.g. "message [Name]" for connection, "make intro" for connector-flow). For each card that has a profileUrl, link the person's name to it. Some cards may have neither — render those as plain text and never fabricate URLs for them. The acceptUrl is opaque and self-contained — embed it verbatim. Do NOT append, encode, or modify any part of any URL. Never render link strips or tables — weave URLs into prose. `
-      : "";
-    const idInstructions = hasOpportunityIds
-      ? `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery.`
-      : "";
+    const idInstructions = `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery.`;
     return (
       `${opts.leadIn}\n\n${prose}\n\n` +
       `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
-      `${linkInstructions}` +
+      `For each card that has a profileUrl, link the person's name to it. Some cards may have no URL — render those as plain text and never fabricate URLs for them. ` +
+      `For each card that has an appUrl, show that link so the user can open the opportunity: it opens the card in the Index app when installed, and an Index web page otherwise. Show only an appUrl a tool returned — never assemble one from an opportunityId. ` +
+      `No link accepts on the user's behalf: accepting happens in the Index app (or via update_opportunity) — never invent an accept URL. ` +
       `Do NOT print raw JSON, field labels, or opportunityIds. ` +
       `${idInstructions}`
     );

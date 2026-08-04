@@ -1136,6 +1136,35 @@ function MacSegmented({ value, onChange, options, size }) {
   );
 }
 
+/* ---------- one-line, non-blocking notice ---------- */
+// For the things the app can only report, not fix: a retired /c/ link, a deep
+// link to a card this account cannot see. It sits at the foot of the desktop,
+// times out on its own, and never takes the keyboard, so whatever the user was
+// doing keeps working. Anything that needs a decision still gets a MacWindow.
+function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
+  useEffect(() => {
+    if (!onDismiss) return;
+    const t = setTimeout(onDismiss, timeoutMs);
+    return () => clearTimeout(t);
+  }, [text, timeoutMs]);
+  if (!text) return null;
+  return (
+    <div
+      onClick={onDismiss}
+      role="status"
+      title="dismiss"
+      style={{
+        position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)",
+        maxWidth:"min(560px, calc(100% - 36px))",
+        padding:"8px 14px", cursor:"default",
+        background: A.paper, color: A.fg,
+        border:`2px solid ${A.fg}`, boxShadow: bevel("out"),
+        fontFamily:"var(--mac-mono)", fontSize:11.5, lineHeight:1.5,
+        zIndex:1200,
+      }}>{text}</div>
+  );
+}
+
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
@@ -1144,6 +1173,6 @@ Object.assign(window, {
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
-  MacWindow, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
+  MacWindow, MacNotice, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
   AMIGA_PALETTE: A,
 });

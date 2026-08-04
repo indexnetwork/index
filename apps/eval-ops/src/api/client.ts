@@ -50,16 +50,18 @@ import type { ConfigProfile } from '../../../../packages/protocol/eval/ops/ops.p
 export type {
   AgentMeta,
   EnvFlagMeta,
+  FlagMeta,
   ModelMeta,
 } from '../../../../packages/protocol/eval/ops/ops.metadata';
 
-import type { AgentMeta, EnvFlagMeta, ModelMeta } from '../../../../packages/protocol/eval/ops/ops.metadata';
+import type { AgentMeta, EnvFlagMeta, FlagMeta, ModelMeta } from '../../../../packages/protocol/eval/ops/ops.metadata';
 
 /** Exactly what GET /api/configs/metadata serves. */
 export interface ConfigMetadata {
   env: readonly EnvFlagMeta[];
   models: readonly ModelMeta[];
   harnessAgents: Record<OpsHarness, readonly AgentMeta[]>;
+  flags: readonly FlagMeta[];
 }
 
 import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
