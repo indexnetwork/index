@@ -38,7 +38,7 @@ CLI-only. Adding one is a deliberate code change, not a configuration change.
 | [`ops.compare.ts`](./ops.compare.ts) | `compareArtifacts` — refuses incomparable artifacts, no new statistics. |
 | [`ops.store.ts`](./ops.store.ts) | `RunStore` — run records, logs, report paths, exit-code mapping, restart reconciliation. |
 | [`ops.executor.ts`](./ops.executor.ts) | `RunExecutor` — the one `Bun.spawn` path, log streaming, cancel. |
-| [`ops.queue.ts`](./ops.queue.ts) | FIFO queue, concurrency 1 by default. |
+| [`ops.queue.ts`](./ops.queue.ts) | FIFO queue, concurrency 1 by default; the single `discovery-ab` slot. |
 | [`ops.fixture.ts`](./ops.fixture.ts) | The fixture guard, credential redaction, read-only inspector, reset pipeline. |
 | [`ops.server.ts`](./ops.server.ts) | The HTTP + SSE API and the default wiring. |
 | [`ops.serve.ts`](./ops.serve.ts) | Standalone entrypoint (`bun run eval:web`). |
@@ -187,6 +187,39 @@ committed baseline like any CLI invocation.
 the executor spawns one child with combined stdout/stderr streamed to that log. Concurrency
 defaults to 1 (`EVAL_OPS_MAX_CONCURRENT_RUNS` raises it): evals cost real tokens and share
 provider rate limits, so concurrent runs make both logs and spend unattributable.
+
+### Where a run is spawned, and with what environment
+
+By default a run is spawned in `packages/protocol` with the record's own environment.
+A run that needs more is enqueued with a one-step **plan** (`ExecutionStep`), which the
+queue holds in memory and writes nowhere:
+
+- **its own working directory**, from the registry's repository-relative `cwd` resolved
+  against the repository root. `discovery-ab` declares `services/api`, because its package
+  script and CLI live there and `bun run eval:discovery-ab` resolves nowhere else. The
+  `--report` path is absolute (`store.reportPath`), so the working directory does not move
+  the artifact; `store.artifactPathFor` — the eval-relative form — is what the record
+  stores, after the fact.
+- **credentials the run record must not carry.** `HARNESS_CREDENTIALS` in
+  [`ops.server.ts`](./ops.server.ts) states, per harness, what must come from this server's
+  own environment. The four scorecard harnesses need nothing, and say so. `discovery-ab`
+  needs `NEON_API_KEY` and `DISCOVERY_AB_TARGETS`, which its own gate
+  (`assertAbConfirmation`, services/api/src/cli/discovery-ab.gate.ts) refuses to run
+  without; the server adds `DISCOVERY_AB_CONFIRM=1` and `TEST_DATABASE_SAFE=1`, which are
+  attestations rather than secrets. A launch is refused with **503** naming what an
+  operator must configure when either secret is absent or blank — rather than spawning a
+  child that dies at the gate.
+
+### One `discovery-ab` run at a time
+
+`EXCLUSIVE_HARNESSES` ([`ops.queue.ts`](./ops.queue.ts)) names the harnesses whose runs may
+never overlap, and why. `discovery-ab` resets and uses the same two designated Neon
+evaluation branches on every run, so two at once would reset each other's databases
+mid-run. A second launch is refused with **409** naming the run that holds the slot —
+before a record exists, so run history never shows a run that was never started. The rule
+is enforced by the queue rather than only by the route: a run whose slot is taken is left
+pending regardless of `EVAL_OPS_MAX_CONCURRENT_RUNS`, and is passed over rather than
+allowed to block the scorecard runs behind it, which share nothing with it.
 
 ### Exit code → status
 
@@ -364,7 +397,9 @@ handled ahead of the gate because it is the request that establishes one.
   header is added anywhere, so a reply still cannot be *read* cross-origin — this is about
   the write.
 - Nothing that leaves here contains a credential. Every error path runs through
-  `scrubCredentials`.
+  `scrubCredentials`, and the credentials a harness's own gate demands are read from this
+  server's environment into the child's — never into a run record, a response or a log.
+  A browser can neither send nor receive them.
 - Artifact ids are decoded and rejected if they normalise outside `eval/`.
 
 ### Who may use this server

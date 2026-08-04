@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { createReadStream } from "node:fs";
-import { appendFile, mkdtemp, rm, truncate } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, realpath, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -112,6 +112,55 @@ describe("LocalProcessRunExecutor", () => {
     expect(log).toContain("seeded two in");
     // The labels are in the log so a multi-step run reads back as a pipeline.
     expect(log).toContain("[eval-ops] flush:");
+  });
+
+  it("runs a single step in that step's own directory, not the executor's", async () => {
+    // The registry gives discovery-ab a cwd of services/api, because its package
+    // script and CLI live there and `bun run eval:discovery-ab` resolves nowhere
+    // else. A step whose cwd were ignored would run the wrong package's scripts.
+    const elsewhere = path.join(dir, "elsewhere");
+    await mkdir(elsewhere);
+    const record = await createRecord([]);
+
+    const finished = await executor.start(record, [
+      { label: "discovery-ab", argv: ["bun", "-e", "console.log(`ran in ${process.cwd()}`)"], cwd: elsewhere, env: {} },
+    ]);
+
+    expect(finished.status).toBe("passed");
+    const log = await Bun.file(store.logPath(record.id)).text();
+    expect(log.trim()).toBe(`ran in ${await realpath(elsewhere)}`);
+    expect(log).not.toContain(await realpath(process.cwd()));
+  });
+
+  it("keeps the harness exit-code contract for a one-step plan", async () => {
+    // A harness run given a step is still one command, so exit 1 is a regression
+    // rather than the coarse pass/fail a multi-command pipeline reports.
+    const record = await createRecord([]);
+
+    const finished = await executor.start(record, [
+      { label: "discovery-ab", argv: ["bun", FAKE, "--exit", "1"], cwd: dir, env: {} },
+    ]);
+
+    expect(finished.status).toBe("regression");
+  });
+
+  it("gives a step's environment to the child without writing it to the log", async () => {
+    // discovery-ab's gate demands NEON_API_KEY, and the log is streamed to a
+    // browser and kept on disk: the value must reach the child and nothing else.
+    const record = await createRecord([]);
+
+    await executor.start(record, [
+      {
+        label: "discovery-ab",
+        argv: ["bun", "-e", "console.log(`key length ${(process.env.NEON_API_KEY ?? '').length}`)"],
+        cwd: dir,
+        env: { NEON_API_KEY: "napi-secret-value" },
+      },
+    ]);
+
+    const log = await Bun.file(store.logPath(record.id)).text();
+    expect(log).toContain(`key length ${"napi-secret-value".length}`);
+    expect(log).not.toContain("napi-secret-value");
   });
 
   it("stops a step sequence at the first failure and reports execution-error", async () => {

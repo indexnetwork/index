@@ -18,8 +18,14 @@ export interface RunExecutor {
   /**
    * Runs `steps` in order, stopping at the first non-zero exit, or the record's
    * own argv when `steps` is omitted. Callers that need a different working
-   * directory or extra environment — the guarded fixture reset is the only one —
-   * pass steps, so there is exactly one spawn, log and status-mapping path.
+   * directory or extra environment pass steps, so there is exactly one spawn,
+   * log and status-mapping path.
+   *
+   * Two callers do: the guarded fixture reset, whose pipeline is several
+   * commands; and a harness whose script does not live in packages/protocol or
+   * whose own gate demands credentials this server holds (discovery-ab is both).
+   * A one-step plan is still one command, so it keeps the numbered harness
+   * exit-code contract — see {@link terminalStatus}.
    */
   start(record: RunRecord, steps?: readonly ExecutionStep[]): Promise<RunRecord>;
   cancel(id: string): Promise<RunRecord>;
@@ -27,7 +33,11 @@ export interface RunExecutor {
 
 export interface LocalProcessRunExecutorOptions {
   store: RunStore;
-  /** Working directory for the child. Always packages/protocol in production use. */
+  /**
+   * Working directory for a child spawned without a step plan: packages/protocol
+   * in production use, where the four scorecard harnesses' scripts live. A step
+   * carries its own cwd and this is not consulted for it.
+   */
   cwd: string;
 }
 
@@ -43,6 +53,11 @@ interface LiveRun {
  * Spawns a harness as a child process, streaming combined stdout/stderr to the
  * run's log file. argv is passed as an array — there is no shell, so nothing in a
  * RunSpec can be interpreted as a command.
+ *
+ * A step's environment is handed to the child and written nowhere: the log
+ * receives the child's own output, and a step label (which names the step, never
+ * its environment) only for a plan of more than one command. That is what lets a
+ * caller inject a credential the run record must not carry.
  */
 export class LocalProcessRunExecutor implements RunExecutor {
   private readonly store: RunStore;

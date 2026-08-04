@@ -39,9 +39,9 @@ import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PE
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
 import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
-import { RunQueue } from "./ops.queue.js";
+import { EXCLUSIVE_HARNESSES, RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
-import type { RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
+import type { OpsHarness, RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
 
 export interface OpsContext {
@@ -60,6 +60,18 @@ export interface OpsContext {
   configs: ConfigStore;
   /** Resolved from the server's own .env.test. Never from a request, never sent to a client. */
   databaseUrl: string | undefined;
+  /**
+   * This server's own environment: the only place a harness credential may come
+   * from.
+   *
+   * Injected rather than read from `process.env` where it is used, for two
+   * reasons. A test states the posture it means to test instead of mutating the
+   * process — including the posture where nothing is configured, which is a real
+   * deployment and must be refused rather than depend on whatever the developer
+   * happens to have exported. And a context that says nothing here holds no
+   * credentials at all, which is the fail-closed answer.
+   */
+  serverEnv?: Record<string, string | undefined>;
   /** Read-only live counts. Absent when no database client is configured. */
   inspector?: FixtureInspector;
   /**
@@ -954,6 +966,157 @@ async function deleteConfig(context: OpsContext, name: string): Promise<Response
 
 const RESET_IN_FLIGHT = "A test-database reset is in flight; a run launched now would see a half-seeded database.";
 
+/** What one harness needs from this server's own environment before it can run. */
+interface HarnessCredentialRequirement {
+  /** Keys that must be non-blank in the server's environment. Never in a record. */
+  keys: readonly string[];
+  /** Constants this server asserts on the operator's behalf. Not secrets. */
+  asserts: Readonly<Record<string, string>>;
+  /** What an operator must configure, appended to the refusal. Empty when `keys` is. */
+  advice: string;
+}
+
+/** A harness that needs nothing from this server's environment beyond its profile's. */
+const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
+  keys: Object.freeze([]),
+  asserts: Object.freeze({}),
+  advice: "",
+});
+
+/**
+ * What each harness needs from this server's own environment, and nowhere else.
+ *
+ * discovery-ab's bootstrap refuses to run without four variables
+ * (`assertAbConfirmation`, services/api/src/cli/discovery-ab.gate.ts), and they
+ * are two different kinds of thing.
+ *
+ * `NEON_API_KEY` and `DISCOVERY_AB_TARGETS` are secrets an operator configures
+ * once — a control-plane key that can create and delete branches, and an
+ * attested manifest carrying two `protocol_eval` connection strings, passwords
+ * included. They are `keys`: resolved at launch, handed to the child, written
+ * nowhere.
+ *
+ * `DISCOVERY_AB_CONFIRM=1` and `TEST_DATABASE_SAFE=1` are attestations that the
+ * databases about to be mutated are disposable, and they are `asserts` because
+ * this server is in a position to make them. That decision has already been made
+ * by an operator, twice: once when they configured the manifest — which names
+ * the two designated evaluation branches and nothing else — and again when they
+ * launched a harness whose own description says it runs the real graph against
+ * them. The gate still re-derives each side's branch and refuses any URL that is
+ * not Neon, not `/protocol_eval`, or not that side's branch
+ * (`assertAbSideEnvironment`), so asserting them here widens nothing. Demanding
+ * them from the environment instead would add a variable meaning "yes, really"
+ * to a server already told exactly which branches to use, and an operator who
+ * set the manifest but not the flag would get a child that dies at the gate with
+ * nothing on the page explaining why.
+ *
+ * Exhaustive by type, and the four scorecard harnesses' `NO_CREDENTIALS` is the
+ * point of it: "this run received no credential" is then a statement the code
+ * makes rather than an omission, and a harness added later has to answer.
+ */
+const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialRequirement>> = Object.freeze({
+  matching: NO_CREDENTIALS,
+  profile: NO_CREDENTIALS,
+  premise: NO_CREDENTIALS,
+  opportunity: NO_CREDENTIALS,
+  "discovery-ab": Object.freeze({
+    keys: Object.freeze(["NEON_API_KEY", "DISCOVERY_AB_TARGETS"]),
+    asserts: Object.freeze({ DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1" }),
+    // Returned to a browser: it names variables and what they are for, never a value.
+    advice:
+      "It resets and runs the real discovery graph against the two designated Neon evaluation branches, so an "
+      + "operator must set NEON_API_KEY (a Neon control-plane key) and DISCOVERY_AB_TARGETS (the attested manifest "
+      + "naming the project, the base branch, and both side branches with their protocol_eval databases) in this "
+      + "server's own environment. Neither is ever sent from a browser.",
+  }),
+});
+
+export type HarnessEnvironment =
+  /** Merged over the run's own environment when the child is spawned. */
+  | { ok: true; env: Record<string, string> }
+  /** Names what is missing and what to configure. Safe to display: no value is in it. */
+  | { ok: false; reason: string };
+
+/**
+ * The environment a harness needs beyond its profile's, resolved from this
+ * server's own environment.
+ *
+ * Called before the run is queued, so a server that cannot run this harness says
+ * what to configure instead of spawning a child that dies at its own gate —
+ * which an operator would meet as an exit code and a log they cannot act on.
+ *
+ * A blank value counts as absent: `NEON_API_KEY=` in a dotenv file is an
+ * operator who has not set it, and passing it through would produce exactly the
+ * gate failure this refusal exists to replace.
+ */
+export function resolveHarnessEnvironment(
+  harness: OpsHarness,
+  env: Record<string, string | undefined>,
+): HarnessEnvironment {
+  const requirement = HARNESS_CREDENTIALS[harness];
+
+  const missing = requirement.keys.filter((key) => (env[key] ?? "").trim() === "");
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: `Refusing to launch ${harness}: this server has no ${missing.join(" or ")} configured. ${requirement.advice}`,
+    };
+  }
+
+  const resolved: Record<string, string> = { ...requirement.asserts };
+  for (const key of requirement.keys) resolved[key] = (env[key] as string).trim();
+  return { ok: true, env: resolved };
+}
+
+/**
+ * Why a second run of an exclusive harness is refused, naming the run that holds
+ * the slot. The reason itself comes from {@link EXCLUSIVE_HARNESSES}, which is
+ * also what enforces the rule, so the explanation cannot outlive it.
+ */
+function exclusiveRefusal(harness: OpsHarness, holder: RunRecord): string {
+  return (
+    `Refusing a second ${harness} run: run ${holder.id} is already ${holder.status}. `
+    + `${EXCLUSIVE_HARNESSES[harness] ?? ""} Wait for it to finish, or cancel it.`
+  );
+}
+
+/**
+ * The step plan a run needs, or undefined when the executor's own single-command
+ * path is exactly right.
+ *
+ * A plan exists only for a run that needs something the record cannot express: a
+ * working directory other than packages/protocol — discovery-ab's script and CLI
+ * live in services/api, and `bun run eval:discovery-ab` resolves nowhere else —
+ * or an environment that must not be written down. The four scorecard harnesses
+ * need neither, so they keep the executor's own cwd and the record's own
+ * environment, unchanged by this harness existing.
+ */
+function harnessSteps(
+  context: OpsContext,
+  record: RunRecord,
+  harness: OpsHarness,
+  injected: Record<string, string>,
+): readonly ExecutionStep[] | undefined {
+  const descriptor = HARNESS_REGISTRY[harness];
+  if (descriptor.cwd === undefined && Object.keys(injected).length === 0) return undefined;
+  return [
+    {
+      label: harness,
+      argv: record.argv,
+      // The registry's cwd is repository-relative, exactly as a reset step's is:
+      // it resolves against the repository root, never against whatever directory
+      // this process was started in. The argv it runs is unaffected by it —
+      // --report already carries the store's absolute path (see launchRun).
+      cwd: descriptor.cwd === undefined ? context.protocolDir : path.join(context.repoRoot, descriptor.cwd),
+      // Injected last. A profile's environment is confined to the feature-flag
+      // allowlist (ops.allowlist.ts) and cannot name one of these keys today; if
+      // that ever changed, the server's own credential must still be the one the
+      // child receives.
+      env: { ...record.env, ...injected },
+    },
+  ];
+}
+
 async function launchRun(context: OpsContext, state: ServerState, request: Request): Promise<Response> {
   if (state.resetInFlight) return json({ error: RESET_IN_FLIGHT }, 409);
   const body = await readJson(request);
@@ -963,6 +1126,23 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // unknown key fails here rather than being silently ignored.
   const parsed = RunSpecSchema.safeParse(body.value);
   if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const harness = parsed.data.harness;
+
+  // Both refusals below happen before a record exists, so a refused launch
+  // leaves nothing behind: a stored run that never ran teaches an operator the
+  // wrong thing about what this server did.
+
+  // At most one run of a harness that owns a shared physical resource.
+  const holder = context.queue.exclusiveConflict(harness);
+  if (holder !== null) return json({ error: exclusiveRefusal(harness, holder) }, 409);
+
+  // The credentials this harness's own gate demands, from this server's
+  // environment and nowhere else. A browser never sends them, and a server that
+  // does not hold them refuses here rather than spawning a child to die at the
+  // gate. 503 rather than 4xx: the request is valid, and it is this server that
+  // is not configured to serve it.
+  const harnessEnv = resolveHarnessEnvironment(harness, context.serverEnv ?? {});
+  if (!harnessEnv.ok) return json({ error: harnessEnv.reason }, 503);
 
   // Two ways to configure a run: ad-hoc overrides (the schema has already
   // confined them to profile "default"), or a named profile resolved from
@@ -995,6 +1175,10 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   });
   let record;
   try {
+    // reportPath is ABSOLUTE, and must stay so: a run may be spawned with its own
+    // working directory (harnessSteps), and the engine resolves a relative
+    // --report against that directory. The eval-relative form the record stores
+    // is store.artifactPathFor, which the executor writes after the fact.
     const rendered = renderRun(parsed.data, resolved, context.store.reportPath(created.id));
     record = await context.store.update(created.id, {
       argv: rendered.argv,
@@ -1014,7 +1198,16 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
     await context.store.update(record.id, { status: "interrupted", endedAt: new Date().toISOString() });
     return json({ error: RESET_IN_FLIGHT }, 409);
   }
-  context.queue.enqueue(record);
+  // The same re-check for the exclusive slot, and for the same reason: two
+  // launches that both passed the check above — profile resolution and the
+  // record write are awaits, and another request runs during them — must not
+  // both end up holding the same two branches.
+  const raced = context.queue.exclusiveConflict(harness);
+  if (raced !== null) {
+    await context.store.update(record.id, { status: "interrupted", endedAt: new Date().toISOString() });
+    return json({ error: exclusiveRefusal(harness, raced) }, 409);
+  }
+  context.queue.enqueue(record, harnessSteps(context, record, harness, harnessEnv.env));
   return json(record, 202);
 }
 
@@ -1675,6 +1868,11 @@ export async function createDefaultOpsContext(options: {
     queue: new RunQueue({ executor, store }),
     configs,
     databaseUrl,
+    // The process environment is where a harness credential legitimately lives:
+    // set on the deployed service, or loaded from .env.test by `bun run eval:web`.
+    // Nothing is read out of it until a run of a harness that needs it is
+    // launched, and what is read never leaves the child process.
+    serverEnv: process.env,
     inspector: new BunSqlFixtureInspector(),
     publicOrigin,
     // One decision picks both the door and the resolver behind it, in a single

@@ -11,13 +11,31 @@ import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveHarnessEnvironment, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
 import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
 const DATABASE_URL = "postgres://u:p@host/neondb";
+
+/**
+ * The two credentials discovery-ab's own gate demands, as this server would hold
+ * them: a Neon control-plane key and the attested manifest naming both branches.
+ *
+ * Both are real secrets in production — the manifest carries two `protocol_eval`
+ * connection strings, passwords included — so the tests below assert on these
+ * exact strings never appearing in anything the server returns, stores or logs.
+ */
+const NEON_API_KEY = "napi_test_key_that_must_never_leave_the_server";
+const DISCOVERY_AB_TARGETS = JSON.stringify({
+  project: "eval-project",
+  baseBranch: "eval-base",
+  sides: {
+    a: { branch: "eval-ab-a", databaseUrl: "postgres://u:pw-side-a@ep-a.neon.tech/protocol_eval" },
+    b: { branch: "eval-ab-b", databaseUrl: "postgres://u:pw-side-b@ep-b.neon.tech/protocol_eval" },
+  },
+});
 
 interface StartCall {
   record: RunRecord;
@@ -120,6 +138,10 @@ async function build(overrides: Partial<OpsContext> = {}, auth: Partial<OpsAuthC
     queue: new RunQueue({ executor, store }),
     configs,
     databaseUrl: DATABASE_URL,
+    // The posture a configured server has. Injected rather than read from
+    // process.env where it is used, so these tests state it instead of mutating
+    // the process — and so a context that says nothing has no credentials at all.
+    serverEnv: { NEON_API_KEY, DISCOVERY_AB_TARGETS },
     inspector: { count: async () => COUNTS },
     auth: {
       sessions,
@@ -498,6 +520,212 @@ describe("launch with overrides", () => {
     expect(record.env.EVAL_MODEL_OVERRIDES).toBe(JSON.stringify(PAYLOAD.models));
     expect(record.argv).toContain("--no-save");
     await context.queue.drain();
+  });
+});
+
+describe("resolveHarnessEnvironment", () => {
+  it("gives the scorecard harnesses nothing at all, whatever this server holds", () => {
+    for (const harness of ["matching", "profile", "premise", "opportunity"] as const) {
+      // Not "no credential": nothing. Their runs are spawned with the record's
+      // own environment and this adds no key to it, configured server or not.
+      expect(resolveHarnessEnvironment(harness, { NEON_API_KEY, DISCOVERY_AB_TARGETS })).toEqual({ ok: true, env: {} });
+    }
+  });
+
+  it("gives discovery-ab the two secrets it holds plus the two attestations it makes", () => {
+    expect(resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY, DISCOVERY_AB_TARGETS })).toEqual({
+      ok: true,
+      env: { NEON_API_KEY, DISCOVERY_AB_TARGETS, DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1" },
+    });
+  });
+
+  it("names both variables when a server holds neither, and neither value when it holds one", () => {
+    const empty = resolveHarnessEnvironment("discovery-ab", {});
+    expect(empty.ok).toBe(false);
+    const reason = (empty as { reason: string }).reason;
+    expect(reason).toContain("NEON_API_KEY");
+    expect(reason).toContain("DISCOVERY_AB_TARGETS");
+
+    const half = resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY });
+    expect(half.ok).toBe(false);
+    // The refusal is displayed: it says what is missing, never what is present.
+    expect((half as { reason: string }).reason).not.toContain(NEON_API_KEY);
+  });
+});
+
+describe("launching discovery-ab", () => {
+  const SIDES = { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user_context" } };
+  const AB_BODY = { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 1 }, sides: SIDES };
+
+  /** Everything the run left behind that an operator or a browser can read. */
+  async function readableSurfaces(id: string): Promise<string> {
+    const meta = await readFile(path.join(context.evalDir, ".ops-runs", id, "meta.json"), "utf8");
+    const list = await (await get("/api/runs")).text();
+    const single = JSON.stringify(await store.get(id));
+    return [meta, list, single].join("\n");
+  }
+
+  it("runs it from services/api with the environment its gate demands", async () => {
+    const response = await post("/api/runs", AB_BODY);
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    await context.queue.drain();
+
+    expect(executor.starts).toHaveLength(1);
+    const plan = executor.starts[0].steps;
+    // One step, so the harness exit-code contract still applies to it.
+    expect(plan).toHaveLength(1);
+    const step = plan![0];
+    expect(step.argv).toEqual(record.argv);
+    // `bun run eval:discovery-ab` resolves in services/api and nowhere else.
+    expect(step.cwd).toBe(path.join(root, "services/api"));
+    expect(step.env).toMatchObject({
+      NEON_API_KEY,
+      DISCOVERY_AB_TARGETS,
+      DISCOVERY_AB_CONFIRM: "1",
+      TEST_DATABASE_SAFE: "1",
+    });
+    // The profile's own environment is still injected alongside them.
+    expect(step.env.EVAL_MODEL_OVERRIDES).toBe("");
+  });
+
+  it("names the report with an absolute path, so a cwd of services/api still writes into the run's directory", async () => {
+    const record = (await (await post("/api/runs", AB_BODY)).json()) as RunRecord;
+    await context.queue.drain();
+
+    const step = executor.starts[0].steps![0];
+    const reportPath = step.argv[step.argv.indexOf("--report") + 1];
+    expect(path.isAbsolute(reportPath)).toBe(true);
+    expect(reportPath).toBe(store.reportPath(record.id));
+    // The engine resolves a relative --report against its own cwd; an eval-relative
+    // path would land in services/api/eval/... and the site would never find it.
+    expect(path.resolve(step.cwd, reportPath)).toBe(store.reportPath(record.id));
+  });
+
+  it("keeps every credential out of the response, the stored record and the run list", async () => {
+    const response = await post("/api/runs", AB_BODY);
+    const body = await response.text();
+    const record = JSON.parse(body) as RunRecord;
+    await context.queue.drain();
+
+    const surfaces = `${body}\n${await readableSurfaces(record.id)}`;
+    for (const secret of [NEON_API_KEY, DISCOVERY_AB_TARGETS, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
+      expect(surfaces).not.toContain(secret);
+    }
+    // Not even the names: a record that mentioned them would invite an operator
+    // to paste one in, and would say the run's environment held something it does not.
+    expect(surfaces).not.toContain("NEON_API_KEY");
+    expect(surfaces).not.toContain("DISCOVERY_AB_TARGETS");
+    // What the record does carry is the profile's environment, exactly as before.
+    expect(Object.keys(record.env)).toEqual(["EVAL_MODEL_OVERRIDES"]);
+  });
+
+  it("refuses to launch when the server holds no NEON_API_KEY, naming what an operator must set", async () => {
+    await build({ serverEnv: { DISCOVERY_AB_TARGETS } });
+
+    const response = await post("/api/runs", AB_BODY);
+
+    expect(response.status).toBe(503);
+    const error = (await response.json()).error as string;
+    expect(error).toContain("NEON_API_KEY");
+    expect(error).toContain("DISCOVERY_AB_TARGETS");
+    // Refused before anything exists: no child dying at the gate, and no record
+    // of a run that never ran.
+    expect(executor.starts).toHaveLength(0);
+    expect((await store.list()).records).toHaveLength(0);
+  });
+
+  it("refuses to launch when DISCOVERY_AB_TARGETS is blank rather than absent", async () => {
+    await build({ serverEnv: { NEON_API_KEY, DISCOVERY_AB_TARGETS: "   " } });
+
+    const response = await post("/api/runs", AB_BODY);
+
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toContain("DISCOVERY_AB_TARGETS");
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("refuses a second discovery-ab run while one holds the two branches", async () => {
+    let release!: () => void;
+    executor.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const first = (await (await post("/api/runs", AB_BODY)).json()) as RunRecord;
+    const response = await post("/api/runs", AB_BODY);
+
+    expect(response.status).toBe(409);
+    const error = (await response.json()).error as string;
+    expect(error).toContain(first.id);
+    // Says why, not just no: the two branches are one physical resource.
+    expect(error).toMatch(/Neon/);
+    // Refused before a record existed: run history holds the run that is running
+    // and nothing else. A stranded "interrupted" record would read as a run this
+    // server started and abandoned.
+    expect((await store.list()).records.map((run) => run.id)).toEqual([first.id]);
+    // A scorecard run shares nothing with it and is unaffected.
+    expect((await post("/api/runs", RUN_BODY)).status).toBe(202);
+
+    release();
+    executor.gate = null;
+    await context.queue.drain();
+    // The slot is free again once the run settles.
+    expect((await post("/api/runs", AB_BODY)).status).toBe(202);
+    await context.queue.drain();
+  });
+
+  it("refuses the loser of two launches that raced past the first check", async () => {
+    // Both requests are in flight at once, so both can pass the check that runs
+    // before a record exists; only the re-check immediately before the enqueue
+    // can separate them.
+    let release!: () => void;
+    executor.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const responses = await Promise.all([post("/api/runs", AB_BODY), post("/api/runs", AB_BODY)]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([202, 409]);
+    const refused = responses.find((response) => response.status === 409)!;
+    expect((await refused.json()).error).toContain("Refusing a second discovery-ab run");
+    // Exactly one run survives; a record the server created and then refused is
+    // marked interrupted rather than left claiming to be queued.
+    const records = (await store.list()).records;
+    expect(records.filter((run) => run.status !== "interrupted")).toHaveLength(1);
+
+    release();
+    executor.gate = null;
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(1);
+  });
+
+  it("leaves the scorecard harnesses on the default path, with no step plan and no injected credential", async () => {
+    for (const harness of ["matching", "profile", "premise", "opportunity"]) {
+      expect((await post("/api/runs", { kind: "eval", harness, profile: "default", flags: {} })).status).toBe(202);
+    }
+    await context.queue.drain();
+
+    expect(executor.starts).toHaveLength(4);
+    // No steps means the executor's own cwd (packages/protocol) and the record's
+    // own environment: the four run exactly as they did before this harness existed.
+    for (const call of executor.starts) {
+      expect(call.steps).toBeUndefined();
+      expect(Object.keys(call.record.env)).toEqual(["EVAL_MODEL_OVERRIDES"]);
+    }
+  });
+
+  it("refuses a side that tries to smuggle a credential in, without echoing the value", async () => {
+    const response = await post("/api/runs", {
+      ...AB_BODY,
+      sides: { a: { NEON_API_KEY: "attacker-supplied-key" }, b: { NEON_API_KEY: "another-attacker-key" } },
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain("NEON_API_KEY");
+    expect(body).not.toContain("attacker-supplied-key");
+    expect(executor.starts).toHaveLength(0);
   });
 });
 
