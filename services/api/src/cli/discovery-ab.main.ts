@@ -22,6 +22,7 @@
  * one configuration, so no cross-configuration overlap is possible here.
  */
 import path from 'node:path';
+import { statSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
@@ -384,6 +385,14 @@ function parseAbSideConfig(args: readonly string[], flag: string, sideId: AbSide
  * otherwise be read against whatever `RUNS_DIR` sits under. At most one is
  * accepted: a run writes exactly one report, so two destinations name a
  * mistake rather than a choice.
+ *
+ * An existing *directory* is refused here rather than left to the write plan,
+ * which only asks whether the path exists as a file: `Bun.file(dir).exists()`
+ * is false for a directory, so a mistyped destination would pass pre-flight and
+ * fail at the write — after both branches were reset and both sides ran, which
+ * is a code-4 spend report for a typo. Refusing at parse time keeps it in the
+ * code-2 path the contract promises: nothing reset, nothing spawned, nothing
+ * spent.
  */
 function parseAbReportPath(args: readonly string[]): string | undefined {
   const reports = collectFlagValues(args, '--report');
@@ -391,7 +400,24 @@ function parseAbReportPath(args: readonly string[]): string | undefined {
   const raw = reports[0];
   if (raw === undefined) return undefined;
   if (raw.trim() === '') throw new Error('--report requires a value');
-  return path.resolve(raw);
+  const resolved = path.resolve(raw);
+  if (statSync(resolved, { throwIfNoEntry: false })?.isDirectory() === true) {
+    throw new Error(`--report must name a file to write, but ${resolved} is an existing directory`);
+  }
+  return resolved;
+}
+
+/**
+ * Where this run's report is written: the destination `--report` named, or the
+ * timestamped default under `RUNS_DIR`.
+ *
+ * A one-line choice, but the only line that makes `--report` do anything, so it
+ * is exported and tested on both branches rather than buried in `runAbComparison`
+ * where nothing but a live run could reach it. Whichever it returns is the sole
+ * output declared to the write plan, so `--force` guards both alike.
+ */
+export function abRunReportPath(selection: { reportPath?: string }, stamp: string): string {
+  return selection.reportPath ?? path.resolve(RUNS_DIR, `${stamp}.json`);
 }
 
 /** Parses the operator's run contract: `--case <id>* --runs <n> --a K=V* --b K=V* [--report <path>] [--force]`. */
@@ -815,7 +841,7 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   // timestamped path. Either way the plan below is what guards the write, so an
   // existing destination still needs `--force`.
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const runPath = selection.reportPath ?? path.resolve(RUNS_DIR, `${stamp}.json`);
+  const runPath = abRunReportPath(selection, stamp);
   // No inputs: this harness reads no baseline, so nothing it writes can clobber one.
   await assertEvalWritePlan({ inputs: [], outputs: [runPath], force: selection.force });
 

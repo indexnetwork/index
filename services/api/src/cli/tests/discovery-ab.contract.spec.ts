@@ -126,6 +126,17 @@ describe('abUsage', () => {
     }
   });
 
+  /**
+   * Naming the flag is not stating it: an operator reading `--report <path>`
+   * cannot tell what a relative path resolves against, nor that the overwrite
+   * consent they already know about still applies to a path they chose.
+   */
+  it('states what a relative --report resolves against and that overwriting it still needs --force', () => {
+    expect(usage).toContain('resolved against the working directory this command');
+    expect(usage).toContain('An existing file is replaced only with --force');
+    expect(usage).toContain('existing directory is refused before anything runs');
+  });
+
   it('states the reset-from-base behaviour and the no-baseline property', () => {
     expect(usage).toContain('resets both attested');
     expect(usage).toContain('eval-discovery-base');

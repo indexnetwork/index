@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'bun:test';
 
 import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery-ab.contract';
-import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery-ab.main';
+import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery-ab.main';
 import { buildAbPlan, type AbSide } from '../discovery-ab.plan';
 
 import type { MatrixSlotResult } from '../discovery-env-matrix.main';
@@ -60,6 +60,24 @@ describe('parseAbRunArgs', () => {
       .toBe(path.resolve(process.cwd(), 'runs/out.json'));
   });
 
+  /**
+   * A directory cannot be refused later. The write plan asks only whether the
+   * output exists *as a file*, which a directory does not, so a mistyped
+   * destination would sail through pre-flight and fail at the write — after both
+   * branches were reset and both sides were paid for, reporting a spend (exit 4)
+   * for what is a typo. Refusing it here keeps it in the pre-flight refusal
+   * (exit 2) the contract promises costs nothing.
+   */
+  it('refuses a --report naming an existing directory, since that failure would otherwise land after the spend', () => {
+    expect(() => parseAbRunArgs([...configArgs, '--report', import.meta.dir]))
+      .toThrow(`--report must name a file to write, but ${import.meta.dir} is an existing directory`);
+  });
+
+  it('still accepts a --report naming an existing file, which is the write plan\'s to refuse without --force', () => {
+    const existingFile = path.resolve(import.meta.dir, 'discovery-ab.parent.spec.ts');
+    expect(parseAbRunArgs([...configArgs, '--report', existingFile]).reportPath).toBe(existingFile);
+  });
+
   it('produces sides a plan will accept', () => {
     const selection = parseAbRunArgs(['--runs', '1', ...configArgs]);
     expect(buildAbPlan([testCase('c1')], selection.sides, selection.repetitions)).toHaveLength(2);
@@ -114,6 +132,33 @@ describe('formatAbRunArgs', () => {
     const selection = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']);
     expect(formatAbRunArgs(selection)).not.toContain('--report');
     expect(parseAbRunArgs(formatAbRunArgs(selection)).reportPath).toBeUndefined();
+  });
+});
+
+/**
+ * The single line the flag exists for: without it `--report` parses fine and is
+ * then ignored, which no other test in this file can see, because they all stop
+ * at the parsed selection.
+ */
+describe('abRunReportPath', () => {
+  const stamp = '2026-08-04T00-00-00-000Z';
+
+  it('writes where --report named, verbatim', () => {
+    expect(abRunReportPath({ reportPath: '/srv/eval-ops/.ops-runs/run-7/report.json' }, stamp))
+      .toBe('/srv/eval-ops/.ops-runs/run-7/report.json');
+  });
+
+  it('names its own timestamped file under the runs directory when --report was absent', () => {
+    // Restated from the harness's own layout rather than imported, so moving the
+    // runs directory has to be a deliberate edit here too.
+    expect(abRunReportPath({}, stamp))
+      .toBe(path.resolve(import.meta.dir, '../../../eval/discovery-ab/runs', `${stamp}.json`));
+  });
+
+  it('takes the destination from a real parsed selection, not just a hand-built one', () => {
+    const chosen = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-chosen.json']);
+    expect(abRunReportPath(chosen, stamp)).toBe('/tmp/discovery-ab-chosen.json');
+    expect(abRunReportPath(parseAbRunArgs(configArgs), stamp)).not.toBe('/tmp/discovery-ab-chosen.json');
   });
 });
 
