@@ -163,6 +163,17 @@ export function createIndexApiClient(options = {}) {
       // Turns a chat `intent_proposal` (proposalId + description) into a
       // persisted intent; resolves { intentId }.
       confirm: (body, options = {}) => request('/intents/confirm', { ...options, method: 'POST', body }),
+      // Dismisses a pending proposal row instead of orphaning it.
+      reject: (body, options = {}) => request('/intents/reject', { ...options, method: 'POST', body }),
+      // Fast-intake funnel (FAST_SIGNAL_INTAKE flag): the server is stateless,
+      // so every call resends the answered rounds. Ends in /intents/confirm.
+      intake: {
+        start: (options = {}) => request('/intents/intake/start', { ...options, method: 'POST', body: {} }),
+        question: (body, options = {}) => request('/intents/intake/question', { ...options, method: 'POST', body }),
+        prepare: (body, options = {}) => request('/intents/intake/prepare', { ...options, method: 'POST', body }),
+        proposal: (body, options = {}) => request('/intents/intake/proposal', { ...options, method: 'POST', body }),
+        revise: (body, options = {}) => request('/intents/intake/revise', { ...options, method: 'POST', body }),
+      },
       get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
       archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
       updateStatus: (intentId, status, options = {}) => request(
@@ -216,6 +227,14 @@ export function createIndexApiClient(options = {}) {
       ),
       pendingForIntent: (intentId, filters = {}, options = {}) => request(
         `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
+      answered: (filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'answered', ...filters })}`,
+        options,
+      ),
+      answeredForIntent: (intentId, filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'answered', ...filters, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       answer: (questionId, body, options = {}) => request(

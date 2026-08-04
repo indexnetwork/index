@@ -324,7 +324,6 @@
     const freeTextState = React.useState("");
     const freeText = freeTextState[0];
     const setFreeText = freeTextState[1];
-    const submitting = props.submittingId === question.id;
     const showFreeText = otherSelected || !hasOptions;
     const canSubmit = hasOptions
       ? selected.length > 0 || (otherSelected && freeText.trim().length > 0)
@@ -352,7 +351,7 @@
 
     function submit(event) {
       event.preventDefault();
-      if (!canSubmit || submitting) return;
+      if (!canSubmit) return;
       const sendOther = otherSelected || !hasOptions;
       props.onSubmit(question, sendOther ? [] : selected, sendOther ? freeText : "");
     }
@@ -391,29 +390,57 @@
         })
         : null,
       React.createElement("div", { className: "index-dashboard__question-actions" },
-        React.createElement(Button, { type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md", disabled: submitting, onClick: function () { props.onSkip(question); } }, "Skip"),
-        React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit || submitting }, submitting ? "Saving…" : "Submit"),
+        React.createElement(Button, { type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md", onClick: function () { props.onSkip(question); } }, "Skip"),
+        React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit }, "Submit"),
+      ),
+    );
+  }
+
+  // Mac-app parity: an answered question stays visible as a settled record —
+  // hairline frame, muted prompt, and the given answer quoted under a strong
+  // rule — instead of vanishing (a dismissed one fades and keeps no quote).
+  function AnsweredQuestionCard(props) {
+    const record = props.record;
+    const question = record.question || {};
+    return React.createElement("div", {
+      className: "index-dashboard__question index-dashboard__question--done"
+        + (record.dismissed ? " index-dashboard__question--dismissed" : ""),
+    },
+      React.createElement("div", { className: "index-dashboard__qdone-status" }, record.dismissed ? "dismissed" : "✓ answered"),
+      React.createElement("p", { className: "index-dashboard__question-prompt" }, question.prompt || question.title || "Question"),
+      record.dismissed ? null : React.createElement("div", { className: "index-dashboard__qdone-answer" },
+        React.createElement("span", { className: "index-dashboard__qdone-label" }, "you said"),
+        React.createElement("span", { className: "index-dashboard__qdone-text" }, record.choice),
       ),
     );
   }
 
   function QuestionList(props) {
     const section = props.section || {};
-    const questions = Array.isArray(section.items) ? section.items : [];
+    const answered = Array.isArray(props.answered) ? props.answered : [];
+    const answeredIds = {};
+    answered.forEach(function (record) { answeredIds[record.question.id] = true; });
+    // A stale summary can still list an already-answered question as pending;
+    // the local record wins so the form never resurfaces.
+    const questions = (Array.isArray(section.items) ? section.items : []).filter(function (question) {
+      return !answeredIds[question.id];
+    });
     if (section.error) {
       return React.createElement("div", { className: "index-dashboard__error" }, section.error);
     }
     const cards = questions.map(function (question) {
-      return React.createElement(QuestionCard, { key: question.id, question: question, onSubmit: props.onSubmit, onSkip: props.onSkip, submittingId: props.submittingId });
-    });
+      return React.createElement(QuestionCard, { key: question.id, question: question, onSubmit: props.onSubmit, onSkip: props.onSkip });
+    }).concat(answered.map(function (record) {
+      return React.createElement(AnsweredQuestionCard, { key: record.question.id, record: record });
+    }));
     if (props.actionError) {
       return React.createElement("div", { className: "index-dashboard__stack" },
         React.createElement("div", { className: "index-dashboard__error" }, props.actionError),
-        questions.length === 0 ? React.createElement(EmptyState, null, "No pending questions right now.") : null,
+        cards.length === 0 ? React.createElement(EmptyState, null, "No pending questions right now.") : null,
         cards,
       );
     }
-    if (questions.length === 0) {
+    if (cards.length === 0) {
       return React.createElement(EmptyState, null, "No pending questions right now.");
     }
     return React.createElement("div", { className: "index-dashboard__stack" }, cards);
@@ -907,7 +934,7 @@
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+        React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
@@ -1825,9 +1852,11 @@
     const actionErrorState = useState(null);
     const actionError = actionErrorState[0];
     const setActionError = actionErrorState[1];
-    const submittingState = useState(null);
-    const submittingId = submittingState[0];
-    const setSubmittingId = submittingState[1];
+    // Question id -> settled record ({ question, choice, dismissed, intentId }).
+    // Session-local, like the Mac app's answered clarifiers in the feed.
+    const answeredState = useState({});
+    const answeredMap = answeredState[0];
+    const setAnsweredMap = answeredState[1];
     const actingState = useState(null);
     const actingId = actingState[0];
     const setActingId = actingState[1];
@@ -1922,9 +1951,31 @@
       ctl.messages.classList.toggle("index-dashboard__hdr-account--dot", !!hasUnread);
     }, [hasUnread]);
 
-    function submitQuestion(question, selectedOptions, freeText) {
-      setSubmittingId(question.id);
+    // Mac-app parity: the card flips into a settled record immediately (the
+    // Mac app updates its feed before the API call returns); a failed write
+    // restores the form and surfaces the error.
+    function recordAnswer(question, extra) {
       setActionError(null);
+      setAnsweredMap(function (prev) {
+        const next = Object.assign({}, prev);
+        next[question.id] = Object.assign({ question: question, intentId: selectedId }, extra);
+        return next;
+      });
+    }
+
+    function unrecordAnswer(questionId) {
+      setAnsweredMap(function (prev) {
+        const next = Object.assign({}, prev);
+        delete next[questionId];
+        return next;
+      });
+    }
+
+    function submitQuestion(question, selectedOptions, freeText) {
+      const choice = (selectedOptions && selectedOptions.length
+        ? selectedOptions.join(", ")
+        : String(freeText || "")).trim() || "answered";
+      recordAnswer(question, { choice: choice, dismissed: false });
       fetchPluginJSON(API + "/questions/" + encodeURIComponent(question.id) + "/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1937,16 +1988,13 @@
           load();
         })
         .catch(function (err) {
+          unrecordAnswer(question.id);
           setActionError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setSubmittingId(null);
         });
     }
 
     function skipQuestion(question) {
-      setSubmittingId(question.id);
-      setActionError(null);
+      recordAnswer(question, { choice: "", dismissed: true });
       fetchPluginJSON(API + "/questions/" + encodeURIComponent(question.id) + "/dismiss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1959,10 +2007,8 @@
           load();
         })
         .catch(function (err) {
+          unrecordAnswer(question.id);
           setActionError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setSubmittingId(null);
         });
     }
 
@@ -2277,8 +2323,26 @@
       ? intents.filter(function (intent) { return intent.id === selectedId; })[0]
       : null;
 
+    // Settled records = the server-backed answered questions from the summary
+    // (server-scoped per intent, oldest first — identical to the Mac app),
+    // then this session's local flips the summary hasn't caught up with yet
+    // (skips and just-given answers), appended as the newest records.
+    const answeredForSelected = (function () {
+      if (!selectedIntent) return [];
+      const server = (selectedIntent.answeredQuestions || []).map(function (question) {
+        return { question: question, choice: question.answerText || "answered", dismissed: false };
+      });
+      const seen = {};
+      server.forEach(function (record) { seen[record.question.id] = true; });
+      const local = Object.keys(answeredMap).map(function (id) { return answeredMap[id]; })
+        .filter(function (record) {
+          return record.intentId === selectedIntent.id && !seen[record.question.id];
+        });
+      return server.concat(local);
+    })();
+
     const intentsView = selectedIntent
-      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },

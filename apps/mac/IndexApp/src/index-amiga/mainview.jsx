@@ -216,6 +216,25 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation((prev) => [...prev, ...items]);
   }, [setConversation]);
 
+  // Server-answered questions rise into the scrollback as settled records, so
+  // given answers survive app restarts and include answers from other surfaces.
+  const injectAnsweredClarifiers = React.useCallback((questions) => {
+    const fresh = (questions || []).filter((q) => q && q.id && !seenQuestionIds.current.has(q.id));
+    if (fresh.length === 0) return;
+    fresh.forEach((q) => seenQuestionIds.current.add(q.id));
+    fresh.sort((a, b) => String((a.answer || {}).answeredAt || "").localeCompare(String((b.answer || {}).answeredAt || "")));
+    const items = window.IndexApi.mapClarifiers(fresh).map((c) => {
+      const answer = (c.apiQuestion && c.apiQuestion.answer) || {};
+      const chosen = (Array.isArray(answer.selectedOptions) ? answer.selectedOptions : []).filter(Boolean);
+      return {
+        kind: "clarifier", id: c.id, clarifierId: c.id,
+        source: c.source, sourceMeta: c.sourceMeta, effect: "neutral",
+        text: c.text, answered: true, choice: chosen.join(", ") || answer.freeText || "answered", t: now(),
+      };
+    });
+    setConversation((prev) => [...items, ...prev]);
+  }, [setConversation]);
+
   const refreshRadar = React.useCallback(async () => {
     if (!live || !client) return;
     // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
@@ -224,9 +243,10 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
-    const [radarR, qR] = await Promise.all([
+    const [radarR, qR, answeredR] = await Promise.all([
       (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
+      (intentId ? client.questions.answeredForIntent(intentId) : client.questions.answered()).catch(() => null),
     ]);
     if (radarR) {
       const items = window.IndexApp.normalizeList(radarR, "items");
@@ -235,8 +255,9 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       }));
       setPeople(mapped);
     }
+    if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
     if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
-  }, [live, client, intentId, setPeople, injectClarifiers]);
+  }, [live, client, intentId, setPeople, injectClarifiers, injectAnsweredClarifiers]);
 
   useEffect(() => {
     if (!live) return;
