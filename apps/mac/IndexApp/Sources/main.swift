@@ -14,8 +14,11 @@ enum AppConfig {
 
     static var deepLinkHosts: [String] {
         let host = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
-        return [host?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .flatMap { $0.isEmpty ? nil : $0 } ?? "index.network"]
+        let configuredHost = host?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let configuredHost, !configuredHost.isEmpty {
+            return [configuredHost]
+        }
+        return ["index.network"]
     }
 
     /// The REST base including the `/api` prefix applied in services/api main.ts.
