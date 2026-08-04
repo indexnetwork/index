@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { renderRun, RunSpecSchema } from "../ops.argv.js";
+import { resolveProfile } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 import type { OpsHarness } from "../ops.types.js";
 
@@ -33,11 +35,12 @@ describe("HARNESS_REGISTRY", () => {
     }
   });
 
-  it("offers discovery-ab only the two flags its parser accepts", () => {
-    // The engine's argument parser accepts --case, --runs, --a, --b, --report
-    // and --force and nothing else. --a/--b are per-side configuration (not a
-    // HarnessFlag), and --report/--force are supplied by the server, so a
-    // selectable flag beyond these two would be a control that does nothing.
+  it("offers discovery-ab only the two flags its parser reads", () => {
+    // The engine's parser reads --case, --runs, --a, --b, --report and --force.
+    // It does not refuse the rest: it scans for the flags it knows and ignores
+    // everything else, so a selectable flag beyond these two would be dropped in
+    // silence rather than failing loudly. --a/--b are per-side configuration
+    // (not a HarnessFlag) and --report/--force are supplied by the server.
     expect(HARNESS_REGISTRY["discovery-ab"].flags.map((f) => f.cli)).toEqual(["--runs", "--case"]);
   });
 
@@ -58,8 +61,20 @@ describe("HARNESS_REGISTRY", () => {
     expect(HARNESS_REGISTRY["discovery-ab"].defaultRuns).toBe(constantOf("AB_DEFAULT_REPETITIONS"));
   });
 
-  it("gives discovery-ab no overridable agent, because its sides differ in env, not models", () => {
-    expect(HARNESS_REGISTRY["discovery-ab"].agents).toEqual([]);
+  it("refuses to render a flag discovery-ab does not accept", () => {
+    // The engine ignores what it does not recognise, so nothing downstream would
+    // report a flag this entry offered by mistake: the run would simply not be
+    // the run the operator configured. renderRun is the last place that can
+    // refuse, and it refuses against this entry's flag list — so widening the
+    // list widens what argv can carry, and this fails the moment it does.
+    const resolved = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
+    expect(() =>
+      renderRun(
+        { kind: "eval", harness: "discovery-ab", profile: "default", flags: { tier: 1 } },
+        resolved,
+        "/tmp/.ops-runs/run-1/report.json",
+      ),
+    ).toThrow(/does not accept --tier/);
   });
 
   it("never exposes a destructive flag", () => {
@@ -78,10 +93,7 @@ describe("HARNESS_REGISTRY", () => {
     expect(hasTier("premise")).toBe(false);
   });
 
-  it("declared numeric flag bounds are accepted by RunSpecSchema", async () => {
-    // Import dynamically to avoid eager evaluation issues with the schema
-    const { RunSpecSchema } = await import("../ops.argv.js");
-
+  it("declared numeric flag bounds are accepted by RunSpecSchema", () => {
     // Every (harness, numeric flag) pair, not one representative per flag name:
     // discovery-ab narrows --runs to its own ceiling, so a per-name check would
     // never look at it.

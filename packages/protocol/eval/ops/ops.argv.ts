@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
-import type { EvalRunSpec, RunFlags } from "./ops.types.js";
+import type { EvalRunSpec, OpsHarness, RunFlags } from "./ops.types.js";
 
 /**
  * A selection-flag value becomes its own argv element, so a value like
@@ -74,11 +74,28 @@ export interface RenderedRun {
   env: Record<string, string>;
   /** False when any selection flag narrows the corpus. */
   fullCorpus: boolean;
-  /** cases x runs, for the pre-launch workload confirmation. */
+  /** What this one run costs: cases x runs x sides. Recorded on the run record. */
   workload: number;
 }
 
 const SELECTION_FLAGS: readonly (keyof RunFlags)[] = ["case", "rule", "tier"];
+
+/**
+ * How many times one launched run passes over the selected corpus.
+ *
+ * discovery-ab is not two launches: a single invocation runs every case on both
+ * sides (its own contract prices its ceiling as "5 cases x 10 repetitions x
+ * 2 sides"), so counting one side would record half of what the run spends.
+ * Exhaustive by type, so a new harness has to state its number here rather than
+ * inherit an understated one.
+ */
+const SIDES_PER_RUN: Readonly<Record<OpsHarness, number>> = Object.freeze({
+  matching: 1,
+  profile: 1,
+  premise: 1,
+  opportunity: 1,
+  "discovery-ab": 2,
+});
 
 /**
  * Renders a validated RunSpec into an argv array and a child environment.
@@ -151,5 +168,5 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   const runs = spec.flags.runs ?? descriptor.defaultRuns;
   const cases = fullCorpus ? descriptor.caseCount : 1;
 
-  return { argv, env, fullCorpus, workload: cases * runs };
+  return { argv, env, fullCorpus, workload: cases * runs * SIDES_PER_RUN[spec.harness] };
 }

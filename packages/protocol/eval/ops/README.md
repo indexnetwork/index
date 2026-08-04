@@ -56,16 +56,19 @@ one.
 ## `HARNESS_REGISTRY`: the single source of launchable capability
 
 ```ts
-matching:    40 cases, + --tier
-profile:      8 cases
-premise:     10 cases
-opportunity:  8 cases
+matching:     40 cases, + --tier
+profile:       8 cases
+premise:      10 cases
+opportunity:   8 cases
+discovery-ab:  5 cases, only --runs (max 10) and --case; runs in services/api
 // common flags: --runs --case --rule --no-judge --alpha --attempt-timeout-ms --strict-evidence
 ```
 
-The launch form, the workload estimate (`cases × runs`) and `renderRun`'s argv rendering
-all read this one table, so the UI cannot offer a flag the CLI does not accept, and the
-form's numeric bounds are the same bounds `RunSpecSchema` enforces server-side.
+The launch form, the workload estimate and `renderRun`'s argv rendering all read this one
+table, so the UI cannot offer a flag the CLI does not accept, and the form's numeric
+bounds are the same bounds `RunSpecSchema` enforces server-side. Workload is `cases ×
+runs` for the scorecard harnesses; `renderRun` doubles it for `discovery-ab`, whose single
+run evaluates every case on both sides (`SIDES_PER_RUN` in `ops.argv.ts`).
 
 **Destructive flags are structurally unreachable.** `--update-baseline`, `--force` and
 `--reason` are absent from the registry *and* from `RunFlags`/`RunSpecSchema`. There is no

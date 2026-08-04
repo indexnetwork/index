@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { renderRun, RunSpecSchema } from "../ops.argv.js";
 import { resolveProfile } from "../ops.profiles.js";
+import { HARNESS_REGISTRY } from "../ops.registry.js";
 
 const DEFAULT = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
 const EXPERIMENT = resolveProfile({
@@ -100,10 +101,33 @@ describe("renderRun", () => {
     expect(rendered.argv).not.toContain("--no-save");
   });
 
-  it("computes workload as cases x runs", () => {
+  it("computes workload as cases x runs for a harness that passes over the corpus once", () => {
     const rendered = renderRun({ kind: "eval", harness: "matching", profile: "default", flags: { runs: 7 } }, DEFAULT, REPORT);
     expect(rendered.workload).toBeGreaterThan(0);
     expect(rendered.workload % 7).toBe(0);
+    expect(rendered.workload).toBe(HARNESS_REGISTRY.matching.caseCount * 7);
+  });
+
+  it("counts both sides for the harness whose single run evaluates every case twice", () => {
+    // A discovery-ab run is one process that runs the corpus on side a and on
+    // side b. Recording cases x runs would report half of what it spent, on the
+    // one harness here that costs real branch resets and live graph calls.
+    const rendered = renderRun(
+      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4 } },
+      DEFAULT,
+      REPORT,
+    );
+    expect(rendered.workload).toBe(HARNESS_REGISTRY["discovery-ab"].caseCount * 4 * 2);
+
+    // Narrowing the corpus narrows the count but not the doubling: both sides
+    // still run the case that survived the filter.
+    const oneCase = renderRun(
+      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" } },
+      DEFAULT,
+      REPORT,
+    );
+    expect(oneCase.fullCorpus).toBe(false);
+    expect(oneCase.workload).toBe(1 * 4 * 2);
   });
 
   it("refuses a spec whose profile name does not match the resolved profile", () => {

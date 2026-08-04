@@ -322,6 +322,16 @@ export function Launch() {
   const fullCorpus = isFullCorpus();
   const runs = state.selection.runs ?? state.selectedHarness?.defaultRuns ?? 0;
   const cases = state.selectedHarness === null ? 0 : fullCorpus ? state.selectedHarness.caseCount : 1;
+  // `state.ab` is this form's own mode: two separate runs, one per column. It is
+  // not the discovery-ab harness, which runs both sides inside a single run.
+  //
+  // TODO(Task 5 — launch form): THIS LINE UNDERSTATES discovery-ab BY HALF.
+  // Selecting that harness costs cases × runs × 2 whether or not the A/B box is
+  // ticked, because one of its runs evaluates every case on side a and side b
+  // (contract: "5 cases x 10 repetitions x 2 sides"). The server already records
+  // the doubled figure — SIDES_PER_RUN in packages/protocol/eval/ops/ops.argv.ts
+  // — but the confirmation an operator authorises is the number below, so the
+  // form must double for this harness too and say "× 2 sides" while doing it.
   const workload = cases * runs * (state.ab ? 2 : 1);
 
   // Scoring differences are legitimate to compare but change what a verdict
@@ -622,6 +632,15 @@ function ConfigColumn(props: {
   } = props;
   const overridesAllowed = profile === 'default';
   // The config picker only earns its space once there is something to pick.
+  //
+  // TODO(Task 5 — launch form): this gate asks about saved configs, never about
+  // the harness's `agents`. discovery-ab declares no overridable agent — and so
+  // gets no model editors — yet it still gets this picker, and a saved config
+  // chosen here injects EVAL_MODEL_OVERRIDES that really do change the models
+  // inside the discovery graph. That is a live control with nothing on the page
+  // explaining it. It is unreachable out of the box (only default.json ships,
+  // and it overrides no models), which is why it is recorded here rather than
+  // fixed in the commit that registered the harness.
   const showProfilePicker = savedConfigs.length > 0 || profiles.length > 1;
 
   return (

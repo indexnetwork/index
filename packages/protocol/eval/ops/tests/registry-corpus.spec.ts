@@ -26,9 +26,10 @@ const CORPORA: Record<OpsHarness, readonly unknown[]> = {
   profile: PROFILE_CASES,
   premise: PREMISE_CASES,
   opportunity: OPPORTUNITY_CASES,
-  // discovery-ab runs the historical matrix corpus once per side, so the launch
-  // form's workload is cases x runs x 2 — the doubling makes an understated
-  // caseCount twice as expensive here as it is for a scorecard harness.
+  // discovery-ab runs the historical matrix corpus once per side, so one run
+  // costs cases x runs x 2 — renderRun doubles it (SIDES_PER_RUN in
+  // ops.argv.ts), which makes an understated caseCount twice as expensive here
+  // as it is for a scorecard harness.
   "discovery-ab": HISTORICAL_MATRIX_CASES,
 };
 
