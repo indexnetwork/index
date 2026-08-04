@@ -80,7 +80,7 @@ function claimedPath(rawUrl, options) {
   const raw = rawUrl.trim();
   if (!raw) return null;
 
-  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/.exec(raw);
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(raw);
   if (!schemeMatch) return null;
   const scheme = schemeMatch[1].toLowerCase();
 
@@ -97,7 +97,7 @@ function claimedPath(rawUrl, options) {
   let url;
   try {
     url = new URL(raw);
-  } catch (error) {
+  } catch {
     return null;
   }
 
@@ -148,7 +148,7 @@ function routeFromPath(path) {
 function safeDecode(segment) {
   try {
     return decodeURIComponent(segment);
-  } catch (error) {
+  } catch {
     return segment;
   }
 }

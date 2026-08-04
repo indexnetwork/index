@@ -14,8 +14,7 @@ describe('mac link-host profile', () => {
     expect(result.stdout.toString().trim()).toBe(host);
   });
 
-  test.each(['', 'http://index.network', 'staging.index.network', 'index.network,evil.example'])
-    ('rejects invalid host %s', (host) => {
+  test.each(['', 'http://index.network', 'staging.index.network', 'index.network,evil.example'])('rejects invalid host %s', (host) => {
       expect(run('--resolve', host).exitCode).not.toBe(0);
     });
 

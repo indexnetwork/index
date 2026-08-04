@@ -113,12 +113,15 @@ are a `hosts` argument, not a code change.
 ### Known limitation: universal links need a real signature
 
 The `https://` half only works in a **Developer ID-signed, notarized** build.
-macOS verifies the `com.apple.developer.associated-domains` entitlement in
-`IndexApp/IndexApp.entitlements` (`applinks:index.network`) against the
-`apple-app-site-association` served by `index.network`, which lists
-`<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
-`APPLE_TEAM_ID` set. An ad-hoc dev build has no team, so macOS never hands it a
-universal link and `build.sh` says so.
+`build.sh` generates the `com.apple.developer.associated-domains` entitlement
+for the selected `INDEX_LINK_HOST` and passes that generated plist to
+`codesign`; `IndexApp/IndexApp.entitlements` is not the signed build input.
+macOS verifies the resulting signed-app entitlement (for the default profile,
+`applinks:index.network`) against the host's `apple-app-site-association`,
+which lists `<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
+`APPLE_TEAM_ID` set. Inspect the built artifact with
+`codesign -d --entitlements :- dist/index.app`. An ad-hoc dev build has no team,
+so macOS never hands it a universal link and `build.sh` says so.
 
 The `index://` scheme (registered via `CFBundleURLTypes` in `Info.plist`) has no
 such requirement and is the way to exercise deep links locally:
