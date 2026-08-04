@@ -46,7 +46,7 @@ Three gaps: it varies 2 of the 16 flags in 5 combinations chosen at authoring ti
 **Non-goals.**
 
 - **No baseline.** Arbitrary env configurations have no committed baseline and never will; the pair is the result. This harness is comparison-native, not regression-gated.
-- **No queue-worker flags.** Seven of the sixteen (`POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_RANKING`, `POOL_QUESTIONS_MINING`, `OUTCOME_QUESTIONS_MODE`, `NEGOTIATION_EVIDENCE_QUESTIONS_MODE`, `INTRODUCER_DISCOVERY_ENABLED`) are read by API queue workers. A graph harness cannot exercise them, so it must not offer them.
+- **No flags outside the graph's reach.** Seven of the sixteen (`POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`, `POOL_QUESTIONS_RANKING`, `POOL_QUESTIONS_MINING`, `OUTCOME_QUESTIONS_MODE`, `NEGOTIATION_EVIDENCE_QUESTIONS_MODE`, `INTRODUCER_DISCOVERY_ENABLED`) gate subsystems the discovery graph never invokes, so this harness cannot exercise them and must not offer them. That is **not** the same as saying they are untestable — see appendix A and IND-630.
 - **No eval-ops UI.** That is IND-628, specced once this engine has produced a real artifact.
 - **No model overrides.** The graph composes its own agents; model selection stays as configured. Adding it later is additive.
 
@@ -172,3 +172,27 @@ Live validation is one 1-case × 1-repetition smoke per side (~2 minutes, 4 invo
 ## 12. Open question deferred on purpose
 
 What the comparison should *show* an operator — rank of the expected user, surfaced/excluded counts, judge verdicts, or a blend — is not settled here. The artifact records all of it; choosing the headline number is IND-628's job, made with a real artifact in hand rather than an imagined one.
+
+## Appendix A — the other seven flags (IND-630)
+
+Shipping this engine fixes 9 of 16 and would leave 7 in exactly the state that caused this project: configurable, unmeasured, easy to believe in. They are recorded here so the omission stays visible and gets a decision.
+
+Calling them "API-side flags" would be wrong, and the distinction decides the work. For nearly all of them the **behavior lives in `packages/protocol`**; the API queue only decides *when* to run it. The entire API-side contribution for two of them is `services/api/src/queues/pool/mining.shared.ts:93`:
+
+```ts
+return poolQuestionsMiningMode() === 'shadow' || poolQuestionsMode() === 'on';
+```
+
+…where the miner, the shadow runner and the selection logic are all imported from `@indexnetwork/protocol`. The accurate statement is **"not reachable from the discovery graph"**, not "not reachable at all".
+
+| Flag | Protocol reader (behavior) | API reader (orchestration) | Testable without the API? |
+|---|---|---|---|
+| `POOL_QUESTIONS_PUSH` | `discriminator.env.ts` | — | **Yes** — protocol only |
+| `INTRODUCER_DISCOVERY_ENABLED` | `opportunity.introducer-feature.ts`, facade, `maintenance.graph.ts` | — | **Yes** — protocol only |
+| `POOL_QUESTIONS_MINING` | `discriminator.env.ts`, miner/shadow runner | `queues/pool/mining.shared.ts` | Likely — mining behavior is protocol |
+| `POOL_QUESTIONS_MODE` | `discriminator.env.ts` | `mining.shared.ts`, `visitmining.queue.ts` | Partly — selection is protocol, enqueue is API |
+| `POOL_QUESTIONS_RANKING` | `discriminator.env.ts`, `radar.graph.ts` | `opportunity.database.adapter.ts`, `answer.shared.ts` | Partly — ranking is protocol, ordering is in the adapter |
+| `OUTCOME_QUESTIONS_MODE` | `outcome.env.ts`, `outcome.shadow.ts`, `outcome.hypotheses.ts` | `outcome-feedback.recorder.ts`, schema | Partly |
+| `NEGOTIATION_EVIDENCE_QUESTIONS_MODE` | `negotiation-evidence.env.ts` | `negotiation-evidence.shadow.ts` | Partly |
+
+Two of these need no database, no branches and no live spend — a protocol-level harness would cover them far more cheaply than this engine covers its nine. That is the likely first move, but the decision per flag belongs to IND-630, not to this spec.
