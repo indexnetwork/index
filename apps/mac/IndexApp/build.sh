@@ -24,6 +24,14 @@ swiftc -O \
 echo "==> Copying resources"
 cp Info.plist "${CONTENTS}/Info.plist"
 cp Resources/index.html "${CONTENTS}/Resources/index.html"
+# Dock/Finder icon. Assets.car carries the macOS 26 Liquid Glass icon
+# (CFBundleIconName=AppIcon, shadow/specular disabled); AppIcon.icns is the
+# pre-26 fallback (CFBundleIconFile). Both are compiled from AppIcon.icon/
+# via: xcrun actool AppIcon.icon --compile Resources --app-icon AppIcon \
+#      --include-all-app-icons --platform macosx --minimum-deployment-target 26.0 \
+#      --output-partial-info-plist /dev/null
+cp Resources/AppIcon.icns "${CONTENTS}/Resources/AppIcon.icns"
+cp Resources/Assets.car "${CONTENTS}/Resources/Assets.car"
 
 # Signing identity. An ad-hoc signature (`--sign -`) has no stable identity: the
 # app's code requirement is its exact binary hash, so every rebuild looks like a

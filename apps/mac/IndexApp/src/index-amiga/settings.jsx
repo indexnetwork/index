@@ -2,6 +2,9 @@
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
+// Longest introduction the profile editor accepts, in characters.
+const INTRO_MAX = 500;
+
 /* ---------- shared field chrome ---------- */
 
 function FieldLabel({ children, required, right }) {
@@ -146,7 +149,6 @@ function PhotoPicker({ me, name, photo, onPick }) {
 }
 
 function ProfilePane({ me, form, set, profileOnly = false }) {
-  const { INTRO_MAX } = window.INDEX_DATA;
   const over = form.intro.length > INTRO_MAX;
 
   return (
@@ -495,20 +497,21 @@ function ApiKeysPane() {
 // onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
 function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
-  const { ME } = window.INDEX_DATA;
   const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
+  // The signed-in user, mirrored onto INDEX_DATA.ME once the snapshot loads.
+  // Live-only: empty when nothing has loaded yet, never a demo identity.
+  const ME = env.me || window.INDEX_DATA.ME || {};
   const live = !!(env.live && window.IndexApp && window.IndexApp.isAuthed());
   const client = live && window.IndexApp ? window.IndexApp.getClient() : null;
   const [tab, setTab] = useState(initialTab);
   // What the agent assembled, the baseline "reset" restores to.
-  // Socials are normalized on the way in so the fields hold a bare username
-  // whatever the source stored: the demo record keeps {id, prefix, handle},
+  // Socials are normalized on the way in so the fields hold a bare username:
   // the API returns {label, value} with value as a whole URL.
   const assembled = useRef({
-    name: ME.name, email: ME.email, location: ME.location,
-    intro: ME.intro,
+    name: ME.name || "", email: ME.email || "", location: ME.location || "",
+    intro: ME.intro || "",
     socials: (ME.socials || []).map(normalizeSocial),
-    websites: ME.websites,
+    websites: ME.websites || [],
     photo: ME.photo || null,
   });
   const [form, setForm] = useState(assembled.current);

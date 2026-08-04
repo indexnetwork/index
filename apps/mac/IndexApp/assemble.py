@@ -68,7 +68,7 @@ def build_index_api() -> str:
     return f"<script>\n(function(){{\n{body}\n}})();\n</script>"
 
 
-anchor = '<script type="text/babel" src="index-amiga/data.jsx"></script>'
+anchor = '<script type="text/babel" src="index-amiga/primitives.jsx"></script>'
 if anchor not in html:
     raise SystemExit("could not find the first babel script tag to inject IndexApi before")
 html = html.replace(anchor, build_index_api() + "\n" + anchor, 1)

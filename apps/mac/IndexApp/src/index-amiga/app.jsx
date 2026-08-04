@@ -4,8 +4,13 @@
 // credential the app shows sign-in; INDEX_DATA is only a signed-out demo
 // fallback for browser preview where the Swift bridge is absent.
 
+// Live-only: there is no static demo data. window.INDEX_DATA starts empty and is
+// filled with the signed-in user's ME/NETWORKS/INTENTS by applyLoaded once the
+// snapshot loads; side screens (settings/networks) read that live mirror.
+window.INDEX_DATA = window.INDEX_DATA || {};
+
 // Live data (mapped snapshot + ME/NETWORKS) is threaded through this context so
-// screens can prefer live data and fall back to the demo INDEX_DATA.
+// screens can read it; everything is empty until the snapshot loads.
 const IndexDataContext = React.createContext(null);
 function useIndexData() {
   const ctx = React.useContext(IndexDataContext);
@@ -78,8 +83,8 @@ function App() {
   const [networks, setNetworks] = useState(null);
   const [features, setFeatures] = useState({});
   const live = snapshot !== null;
-  const data = snapshot || window.INDEX_DATA;
-  const { PEOPLE, POOL, FIELD_EVENTS, INTENTS } = data;
+  const data = snapshot || {};
+  const { PEOPLE = [], POOL = [], FIELD_EVENTS = [], INTENTS = [] } = data;
   const [people, setPeople] = useState([]);
   const [conversation, setConversation] = useState([]);
   const [field, setField] = useState([]);
@@ -286,8 +291,8 @@ function App() {
     setScreen("main");
     seedField();
   };
-  const goOnboarding = () => setScreen("onboarding");
-  const finishOnboarding = async (answers, created) => {
+  const goNewIntent = () => setScreen("new-intent");
+  const finishNewIntent = async (answers, created) => {
     setConversation([]);
     setField([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
@@ -339,8 +344,8 @@ function App() {
       // Native bridge present: wait for __indexAuthChanged; Login shows waiting.
       return true;
     }
-    // No native bridge (browser preview), drop into the demo flow.
-    setScreen("building");
+    // No native bridge (browser preview): live-only, so there is nothing to
+    // show without a real session. Stay on the sign-in screen.
     return false;
   };
 
@@ -368,9 +373,10 @@ function App() {
         {screen === "intents"     && <Intents
                                        fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
-                                       onNew={goOnboarding}
+                                       onNew={goNewIntent}
                                        onSignOut={signOut}/>}
-        {screen === "onboarding"  && <Onboarding onDone={finishOnboarding} onBack={() => setScreen("intents")}/>}
+        {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
+        {screen === "onboarding"  && <Onboarding onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
         {/* A deep-linked card floats over whatever screen is showing: the link
             can land on the hub, where the radar's selection state doesn't
             exist. */}
@@ -422,7 +428,7 @@ function MacMenubar({ screen, signals = [], chatGroups = {}, onOpenChat }) {
       <span className="right">
         <span className="m subtle">
           { screen === "intents"    ? "index · your signals"
-          : screen === "onboarding" ? "index · calibrating"
+          : screen === "new-intent" ? "index · calibrating"
           : "" }
         </span>
         <span className="clock">{clock}</span>

@@ -22,7 +22,7 @@ const BASELINE_PATH = path.resolve(import.meta.dir, '../../eval/discovery-env-ma
 const HARNESS = 'discovery-env-matrix';
 // Candidate policy now scores final evaluator outcomes, with raw retrieval retained separately.
 const HARNESS_VERSION = '2';
-const ATTEMPT_TIMEOUT_MS = 180_000;
+export const ATTEMPT_TIMEOUT_MS = 180_000;
 // A child owns five sequential slots. Each may exhaust three 180s attempts plus
 // 1s/2s retry backoff (45m15s total), so leave bounded startup/cleanup headroom.
 export const DEFAULT_CHILD_TIMEOUT_MS = 50 * 60_000;
@@ -412,7 +412,7 @@ const protocolSourcePath = (relativePath: string): string => path.resolve(import
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const loadModule = (modulePath: string): Promise<any> => import(modulePath);
 
-async function loadMatrixEval() {
+export async function loadMatrixEval() {
   const [cases, policy, reporter, shared] = await Promise.all([
     loadModule(protocolEvalPath('discovery-env-matrix/historical-matrix.cases.js')),
     loadModule(protocolEvalPath('discovery-env-matrix/historical-matrix.policy.js')),
@@ -422,7 +422,7 @@ async function loadMatrixEval() {
   return { ...cases, ...policy, ...reporter, ...shared };
 }
 
-async function loadJudge(): Promise<(output: unknown, criteria: string) => Promise<void>> {
+export async function loadJudge(): Promise<(output: unknown, criteria: string) => Promise<void>> {
   return (await loadModule(protocolSourcePath('shared/agent/tests/llm-assert.js'))).assertLLM;
 }
 
@@ -487,7 +487,7 @@ Canary (never baselineable):
 }
 
 /** Rewrites audit fixture participant IDs to the deterministic IDs seeded in the protected base. */
-function databaseCase(matrixCase: HistoricalMatrixFixture): DatabaseCase {
+export function databaseCase(matrixCase: HistoricalMatrixFixture): DatabaseCase {
   const seeded = baseSeedPayload([matrixCase]);
   const idsByProfile = new Map(seeded.users.map((user) => [user.intro, user.id]));
   const mapId = (id: string): string => {
@@ -702,7 +702,7 @@ export function collectEvaluatorTraces(
   });
 }
 
-async function createChildDependencies() {
+export async function createChildDependencies() {
   const [adapterModule, embedderModule, cacheModule] = await Promise.all([
     import('../adapters/database.adapter'),
     import('../adapters/embedder.adapter'),
@@ -719,7 +719,7 @@ async function createChildDependencies() {
 }
 
 /** Closes process-global clients created by the child composition, even after partial initialization. */
-async function closeChildResources(): Promise<void> {
+export async function closeChildResources(): Promise<void> {
   const [drizzleModule, cacheModule] = await Promise.all([
     import('../lib/drizzle/drizzle'),
     import('../adapters/cache.adapter'),
@@ -729,7 +729,7 @@ async function closeChildResources(): Promise<void> {
   if (failure) throw failure.reason;
 }
 
-async function composeCaseRuntime(
+export async function composeCaseRuntime(
   deps: Awaited<ReturnType<typeof createChildDependencies>>,
   matrixCase: DatabaseCase,
   network: { id: string; title: string; prompt: string },

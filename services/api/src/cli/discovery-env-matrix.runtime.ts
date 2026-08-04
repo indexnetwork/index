@@ -1,3 +1,4 @@
+import { assertAbEnvConfig, type AbEnvConfig } from './discovery-ab.flags';
 import type { HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 
 export const MATRIX_REPETITIONS = 3;
@@ -63,20 +64,36 @@ export function buildCanaryPlan<TCase, TRow extends MatrixRowEnvironment>(
   return rows.map((row) => ({ matrixCase, row, repetition: 0, childKey: matrixChildKey(row.id, 0) }));
 }
 
-/** Restores both graph gates even when provider execution throws or times out. */
-export async function withMatrixEnvironment<T>(row: MatrixRowEnvironment, run: () => Promise<T>): Promise<T> {
-  const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
-  const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
-  process.env.DISCOVERY_ALLOWED_TYPES = row.allowedTypes;
-  process.env.DISCOVERY_PROFILE_SOURCE = row.profileSource;
+/**
+ * Applies an environment configuration for exactly one run and restores the
+ * previous state, including deleting keys that were previously unset. Values
+ * are applied to `process.env` because the graph reads them there at call
+ * time; the child process running this is single-purpose, so no other work is
+ * observing these keys.
+ */
+export async function withDiscoveryEnvironment<T>(config: AbEnvConfig, run: () => Promise<T>): Promise<T> {
+  assertAbEnvConfig(config);
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(config)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
   try {
     return await run();
   } finally {
-    if (previousAllowedTypes === undefined) delete process.env.DISCOVERY_ALLOWED_TYPES;
-    else process.env.DISCOVERY_ALLOWED_TYPES = previousAllowedTypes;
-    if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
-    else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
+}
+
+/** Restores both graph gates even when provider execution throws or times out. */
+export async function withMatrixEnvironment<T>(row: MatrixRowEnvironment, run: () => Promise<T>): Promise<T> {
+  return withDiscoveryEnvironment(
+    { DISCOVERY_ALLOWED_TYPES: row.allowedTypes, DISCOVERY_PROFILE_SOURCE: row.profileSource },
+    run,
+  );
 }
 
 /** Baselines are valid only when every requested matrix slot completed successfully. */

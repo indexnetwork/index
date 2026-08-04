@@ -34,7 +34,9 @@ function RetentionNote({ retention, onChange }) {
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
                     onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled }) {
-  const { EVENT, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES } = window.INDEX_DATA;
+  // Live-only: these demo sim feeds no longer exist, so they default to empty.
+  // The simulation loops below stay wired but idle on empty arrays.
+  const { CLARIFIERS = [], FIELD_EVENTS = [], AMBIENT_NOTES = [] } = window.INDEX_DATA;
   // "awaiting you" is the default tab: it is the only stage the user can act
   // on, so the radar opens on the decisions rather than the whole field.
   const [tab, setTab] = useState("awaiting you");
@@ -90,7 +92,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   /* ----- ambient sim: append field events + maybe bump scores (demo only) ----- */
   useInterval(() => {
-    if (paused) return;
+    if (paused || !FIELD_EVENTS.length) return;
     const ev = FIELD_EVENTS[Math.floor(Math.random() * FIELD_EVENTS.length)];
     setField(prev => [{ ...ev, id: Math.random().toString(36).slice(2), t: now() }, ...prev].slice(0, 50));
     if (Math.random() < 0.4) {
@@ -109,7 +111,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   /* ----- seed feed with the first batch of clarifiers (max 4 open) ----- */
   useEffect(() => {
-    if (live) return;
+    if (live || !CLARIFIERS.length) return;
     if (queuedRef.current) return;
     queuedRef.current = true;
     const timers = [];
@@ -120,6 +122,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   }, []);
 
   const makeClarifier = () => {
+    if (!CLARIFIERS.length) return null;
     const c = CLARIFIERS[clarifierCursor.current % CLARIFIERS.length];
     clarifierCursor.current += 1;
     return {
@@ -141,10 +144,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation(prev => {
       const open = prev.filter(it => it.kind === "clarifier" && !it.answered).length;
       if (open >= MAX_OPEN) return prev;
-      return [...prev, makeClarifier()];
+      const c = makeClarifier();
+      return c ? [...prev, c] : prev;
     });
   };
   const pushAmbientNote = () => {
+    if (!AMBIENT_NOTES.length) return;
     const n = AMBIENT_NOTES[Math.floor(Math.random() * AMBIENT_NOTES.length)];
     setConversation(prev => [
       ...prev,
@@ -1000,7 +1005,6 @@ function applyGenericEffect(effect, setPeople) {
 
 /* =================== TOP BAR (mac menubar styling) =================== */
 function TopBar({ paused, setPaused, simRate, setSimRate }) {
-  const { EVENT } = window.INDEX_DATA;
   return (
     <div style={{
       display:"grid", gridTemplateColumns:"auto 1fr auto",
@@ -1014,7 +1018,7 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
         <LiveDot size={7}/>
         <span style={{ letterSpacing:3, textTransform:"uppercase", fontWeight:700 }}>index</span>
         <span>/</span>
-        <span>always on · {EVENT.arrived} online</span>
+        <span>always on</span>
       </div>
       <div/>
       <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
