@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { inArray } from 'drizzle-orm/sql';
+import { and, eq, inArray } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 
 import db from '../../lib/drizzle/drizzle';
@@ -488,10 +488,17 @@ describe('network discovery adapter isolation', () => {
 
     const good = await makeOpportunity(ids.activeCandidate, 'good');
     const leaked = await makeOpportunity(ids.removedCandidate, 'removed');
-    // Anchored on a live network with live memberships that is not in the
-    // intent's current network assignment: discovery-time anchors stay valid
-    // after reassignment, so this must remain visible in the scoped radar.
+    // Model a real reassignment: discovery occurs while this network belongs
+    // to the intent, then the assignment is removed before the Radar read.
+    await db.insert(intentNetworks).values({
+      intentId: ids.selectedIntent,
+      networkId: ids.reassignedNetwork,
+    });
     const offAssignment = await makeOpportunity(ids.activeCandidate, 'off-assignment', ids.reassignedNetwork);
+    await db.delete(intentNetworks).where(and(
+      eq(intentNetworks.intentId, ids.selectedIntent),
+      eq(intentNetworks.networkId, ids.reassignedNetwork),
+    ));
     createdOpportunityIds.push(good.id, leaked.id, offAssignment.id);
 
     const radar = await opportunity.getOpportunitiesForUser(ids.viewer, {
