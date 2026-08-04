@@ -4,15 +4,15 @@ import db from '../lib/drizzle/drizzle';
 import { hashMasterKey } from '../lib/experiment/master-key';
 import * as schema from '../schemas/database.schema';
 
-export interface ExperimentNetwork {
+export interface MasterKeyNetwork {
   id: string;
   title: string;
 }
 
-export async function ExperimentMasterKeyGuard(
+export async function MasterKeyGuard(
   req: Request,
   params: Record<string, string>,
-): Promise<ExperimentNetwork> {
+): Promise<MasterKeyNetwork> {
   const networkId = params.id;
   if (!networkId) {
     throw new Response(JSON.stringify({ error: 'Network ID is required' }), {
@@ -33,8 +33,7 @@ export async function ExperimentMasterKeyGuard(
     .select({
       id: schema.networks.id,
       title: schema.networks.title,
-      isExperiment: schema.networks.isExperiment,
-      experimentMasterKeyHash: schema.networks.experimentMasterKeyHash,
+      masterKeyHash: schema.networks.masterKeyHash,
     })
     .from(schema.networks)
     .where(and(
@@ -43,7 +42,7 @@ export async function ExperimentMasterKeyGuard(
     ))
     .limit(1);
 
-  if (!network || !network.isExperiment || !network.experimentMasterKeyHash) {
+  if (!network || !network.masterKeyHash) {
     throw new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
@@ -51,7 +50,7 @@ export async function ExperimentMasterKeyGuard(
   }
 
   const hashedKey = await hashMasterKey(apiKey);
-  if (hashedKey !== network.experimentMasterKeyHash) {
+  if (hashedKey !== network.masterKeyHash) {
     throw new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
