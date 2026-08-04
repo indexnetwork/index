@@ -33,59 +33,68 @@ function resolveSpecifier(fromFile: string, specifier: string): string | null {
 }
 
 /**
- * Removes comments so a commented-out read cannot pass for a live one. Quotes
- * and template literals are honoured; regular-expression literals are not
- * parsed, which at worst hides a real read behind a `//` inside a regex and so
- * fails the derivation test loudly rather than passing it silently.
+ * Drops comments (and type-only imports) by running the file through Bun's own
+ * TypeScript parser, so a commented-out read cannot pass for a live one.
+ *
+ * A hand-rolled stripper was tried first and was unsound: it tracked string
+ * state character by character and desynced on the `'` inside the regex literal
+ * at `opportunity.presentation.ts:160`, leaving hundreds of lines in four
+ * closure files un-stripped. The dangerous direction there is *silent* — a
+ * commented-out `process.env.SOME_FLAG` on an un-stripped line counts as a real
+ * read and the derivation test stays green on fiction. Only a real parser gets
+ * regex literals, nested quotes and template substitutions right.
+ *
+ * Falls back to the raw source if the transform throws, so an unparseable file
+ * still contributes its reads and imports rather than vanishing from the scan.
+ *
+ * One quirk to know: the transpiler constant-folds `process.env.NODE_ENV`, so
+ * that one key would never be seen as a read. It is not in the profile
+ * allowlist, so nothing here depends on it — but do not add it.
  */
-function stripComments(source: string): string {
-  let out = '';
-  let i = 0;
-  while (i < source.length) {
-    const ch = source[i]!;
-    if (ch === '/' && source[i + 1] === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1;
-      continue;
-    }
-    if (ch === '/' && source[i + 1] === '*') {
-      i += 2;
-      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
-      i += 2;
-      continue;
-    }
-    out += ch;
-    i += 1;
-    if (ch !== '"' && ch !== "'" && ch !== '`') continue;
-    while (i < source.length) {
-      const inner = source[i]!;
-      out += inner;
-      i += 1;
-      if (inner === '\\' && i < source.length) {
-        out += source[i];
-        i += 1;
-        continue;
-      }
-      if (inner === ch) break;
-    }
+function parseAwayComments(transpiler: Bun.Transpiler, source: string): string {
+  try {
+    return transpiler.transformSync(source);
+  } catch {
+    return source;
   }
-  return out;
 }
 
 /**
- * Matches an actual read of `key` from the environment — `process.env.KEY`,
- * `process.env['KEY']` or `process.env["KEY"]` — and nothing else. A plain
- * substring match would count a comment or a log message as a read (the graph
- * names several of these flags in both), so deleting the last real read would
- * leave the flag in `AB_FLAGS` as fiction with every test still green.
+ * Matches an actual read of `key` from the environment. Recognised forms are
+ * exactly: `process.env.KEY`, `process.env?.KEY`, `process.env['KEY']`,
+ * `process.env["KEY"]`, `` process.env[`KEY`] `` and their `process.env?.[...]`
+ * variants. Nothing else counts — a plain substring match would treat a comment
+ * or a log message as a read (the graph names several of these flags in both),
+ * so deleting the last real read would leave the flag in `AB_FLAGS` as fiction
+ * with every test still green.
+ *
+ * Deliberately *not* recognised, because they need real data-flow analysis:
+ * destructuring (`const { KEY } = process.env`) and computed access through a
+ * variable (`process.env[name]`). Both fail in the loud direction — the key
+ * drops out of the derived set and the derivation test breaks — so a future
+ * read written that way announces itself instead of passing silently.
  */
 function envReadPattern(key: string): RegExp {
   const escaped = key.replace(/[^A-Za-z0-9_]/g, '\\$&');
-  return new RegExp(`process\\.env(?:\\.${escaped}\\b|\\[\\s*(['"\`])${escaped}\\1\\s*\\])`);
+  return new RegExp(
+    `process\\.env(?:\\??\\.${escaped}\\b|(?:\\?\\.)?\\[\\s*(['"\`])${escaped}\\1\\s*\\])`,
+  );
 }
 
-/** Every candidate key actually read from `process.env` somewhere in the entry file's transitive import closure. */
+/**
+ * Every candidate key actually read from `process.env` somewhere in the entry
+ * file's transitive import closure.
+ *
+ * The closure is walked over transpiled output, so type-only imports are gone:
+ * a module reached only for its types cannot execute and cannot read anything,
+ * which is why it is right to drop it. The same erasure also drops a value
+ * import whose bindings go unused, so a read living in a side-effect-only
+ * position of such a module would be missed — loudly, by shrinking the derived
+ * set, never by inflating it.
+ */
 export function reachableEnvKeys(entryFile: string, candidateKeys: readonly string[]): Set<string> {
   const patterns = candidateKeys.map((key) => [key, envReadPattern(key)] as const);
+  const transpiler = new Bun.Transpiler({ loader: 'ts' });
   const seen = new Set<string>();
   const found = new Set<string>();
   const stack = [path.resolve(entryFile)];
@@ -93,7 +102,7 @@ export function reachableEnvKeys(entryFile: string, candidateKeys: readonly stri
     const file = stack.pop()!;
     if (seen.has(file) || !existsSync(file)) continue;
     seen.add(file);
-    const source = stripComments(readFileSync(file, 'utf8'));
+    const source = parseAwayComments(transpiler, readFileSync(file, 'utf8'));
     for (const [key, pattern] of patterns) if (pattern.test(source)) found.add(key);
     for (const match of source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
       const resolved = resolveSpecifier(file, match[1]!);
