@@ -532,6 +532,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// the oldest entries are dropped first, the user's latest click survives.
     private let maxPendingDeepLinks = 8
     private var webViewReady = false
+    /// A failed initial navigation has no document to receive queued events.
+    /// Once a page has finished, a later failed reload can safely use it.
+    private var hasLoadedDocument = false
 
     /// Smallest window the web layout renders correctly at. See the note where
     /// it's applied, the screens clip below roughly 860x600. The width is held
@@ -706,12 +709,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     /// didStartProvisionalNavigation clears `webViewReady` so links are not
-    /// dispatched into a document about to be replaced. If that navigation then
-    /// fails, nothing else would ever restore readiness and every later link
-    /// would queue forever, so restore it against whatever document is still
-    /// loaded and flush what is queued.
+    /// dispatched into a document about to be replaced. A failed reload can
+    /// restore readiness against the previously loaded document; the initial
+    /// load cannot, because flushing into about:blank silently loses events.
     private func deepLinkNavigationFailed() {
-        guard webView != nil else { return }
+        guard webView != nil, hasLoadedDocument else { return }
         webViewReady = true
         flushPendingDeepLinks()
     }
@@ -769,6 +771,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        hasLoadedDocument = true
         webViewReady = true
         flushPendingDeepLinks()
     }

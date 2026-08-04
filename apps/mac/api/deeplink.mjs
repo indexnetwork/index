@@ -76,6 +76,7 @@ export function isIndexDeepLink(rawUrl, options = {}) {
  */
 function claimedPath(rawUrl, options) {
   if (typeof rawUrl !== 'string') return null;
+  const opts = options || {};
   const raw = rawUrl.trim();
   if (!raw) return null;
 
@@ -100,8 +101,8 @@ function claimedPath(rawUrl, options) {
     return null;
   }
 
-  const hosts = Array.isArray(options.hosts) && options.hosts.length
-    ? options.hosts
+  const hosts = Array.isArray(opts.hosts) && opts.hosts.length
+    ? opts.hosts
     : DEFAULT_HOSTS;
   const hostname = url.hostname.toLowerCase();
   const allowed = hosts.some(
