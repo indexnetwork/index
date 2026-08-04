@@ -120,7 +120,7 @@ describe('resetAbBranch', () => {
       manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
       fetchImpl: (async (url: string, init?: RequestInit) => {
         if ((init?.method ?? 'GET') === 'POST') bodies.push(JSON.parse(String(init?.body ?? 'null')));
-        return send(url as unknown as RequestInfo, init);
+        return send(url, init);
       }) as unknown as typeof fetch,
     });
     expect(calls).toEqual([`POST ${RESTORE_URL}`, `GET ${OPERATION_URL('op-1')}`, `GET ${OPERATION_URL('op-1')}`]);

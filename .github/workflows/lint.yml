@@ -90,6 +90,15 @@ jobs:
       - name: Type check API
         run: cd services/api && bun run build
 
+      # `bun run build` compiles services/api/tsconfig.json, which excludes
+      # `src/**/*.spec.ts`, so no spec is type-checked by the step above. That
+      # matters for the discovery A/B CLI specs, where one assertion *is* a type
+      # assertion: `discovery-ab.neon.spec.ts` proves `resetAbBranch` refuses an
+      # unattested manifest with a `@ts-expect-error`, and a directive nobody
+      # compiles proves nothing. See services/api/tsconfig.spec.json.
+      - name: Type check the discovery A/B CLI specs
+        run: cd services/api && bun run typecheck:cli-specs
+
   test:
     # Runs the hermetic pinning/characterization specs that mock all external
     # systems (Redis/LLM/DB), so they need no services, secrets, or built

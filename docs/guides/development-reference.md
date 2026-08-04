@@ -31,6 +31,10 @@ bun test --watch                            # Run tests in watch mode
 
 # Code quality
 bun run lint                                # Run ESLint
+bun run typecheck:cli-specs                 # Type-check the discovery A/B CLI specs (see tsconfig.spec.json)
+
+# Evals (gated, mutating, cost tokens — see ### Discovery A/B Eval)
+bun run eval:discovery-ab -- --help         # Discovery A/B: contract and exit codes, no credentials needed
 
 # Maintenance/CLI tools
 bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
@@ -111,6 +115,203 @@ bun run eval:matching -- --runs 3           # Run a harness (costs tokens)
 
 Harness exit codes: `0` pass, `1` regression, `2` execution error, `3`
 insufficient evidence.
+
+### Discovery A/B Eval
+
+Lives in `services/api` (not `packages/protocol`) because it drives the real
+discovery graph against real Neon databases.
+
+```bash
+cd services/api
+bun run eval:discovery-ab -- --help          # The whole contract, no credentials needed
+bun run eval:discovery-ab -- \
+  --a DISCOVERY_ALLOWED_TYPES=intent \
+  --b DISCOVERY_ALLOWED_TYPES=intent,profile  # A default run (costs tokens and ~13 minutes)
+```
+
+**What it compares.** Two operator-chosen environment configurations over the
+same cases. Selection (`--case`, `--runs`) is shared; configuration is not. Each
+side runs in its own child process — `withDiscoveryEnvironment` mutates the real
+`process.env`, so two configurations in one process would read each other's
+flags — and each child is composed against its own Neon branch (`eval-ab-a`,
+`eval-ab-b`), which the parent resets from the protected `eval-discovery-base`
+branch before it spawns anything. Both resets must succeed first: a
+half-isolated comparison is not a comparison. The command never creates or
+deletes Neon branches.
+
+**The gate.** Every A/B process, parent included, refuses to start without all
+four of these, and refuses before it imports anything that can compose a
+database:
+
+| Variable | Why |
+| --- | --- |
+| `DISCOVERY_AB_CONFIRM=1` | Explicit consent to a mutating, paid run. |
+| `TEST_DATABASE_SAFE=1` | The disposable-database marker; the graph writes opportunities and negotiation tasks. |
+| `NEON_API_KEY` | Required up front, because every process attests its targets against the control plane before it loads the graph. |
+| `DISCOVERY_AB_TARGETS` | The manifest below, attested against the Neon control plane on every invocation. |
+
+```json
+{
+  "projectId": "...",
+  "baseBranchId": "br-...",
+  "targets": [
+    { "sideId": "a", "branchId": "br-...", "endpointId": "ep-...", "databaseUrl": "postgres://...neon.tech/protocol_eval" },
+    { "sideId": "b", "branchId": "br-...", "endpointId": "ep-...", "databaseUrl": "postgres://...neon.tech/protocol_eval" }
+  ]
+}
+```
+
+Attestation checks each side is the exactly-named designated branch, is not
+primary, is parented on a base branch named `eval-discovery-base`, and has an
+endpoint whose host matches its `databaseUrl`. A failed attestation prints one
+fixed message and never the control plane's own — control-plane responses and
+`DATABASE_URL`s carry credentials — so do not expect the specific mismatch to be
+named.
+
+**The nine flags it can offer.** `AB_FLAGS` in
+`services/api/src/cli/discovery-ab.flags.ts`, asserted by
+`discovery-ab.flags.spec.ts` against a fresh scan of the discovery graph's own
+import closure rather than hand-maintained:
+
+```
+DISCOVERY_ALLOWED_TYPES            DISCOVERY_CONTEXT_TO_INTENT
+DISCOVERY_PROFILE_SOURCE           DISCOVERY_REJECTION_COOLDOWN_DAYS
+DISCOVERY_SOURCE_PREMISE_LIMIT     NEGOTIATION_INCLUDE_OTHER_INTENTS
+NEGOTIATION_MAX_TURNS_AMBIENT      NEGOTIATION_MAX_TURNS_CHAT
+RUN_OPPORTUNITY_EVAL_IN_PARALLEL
+```
+
+**The seven it cannot.** `PROFILE_ENV_ALLOWLIST`
+(`packages/protocol/eval/ops/ops.allowlist.ts`) has sixteen entries. The other
+seven are **not reachable from the discovery graph**, so this harness refuses
+them by name rather than pretending to test them:
+
+```
+POOL_QUESTIONS_MODE       POOL_QUESTIONS_PUSH      POOL_QUESTIONS_RANKING
+POOL_QUESTIONS_MINING     OUTCOME_QUESTIONS_MODE   INTRODUCER_DISCOVERY_ENABLED
+NEGOTIATION_EVIDENCE_QUESTIONS_MODE
+```
+
+"Not reachable from the discovery graph" is the whole claim, and it is not the
+same as "untestable". For most of them the behaviour lives in
+`packages/protocol` and only the scheduling is in the API queues; they need a
+different harness, not no harness. Deciding where that home is, is tracked as
+**IND-630**. Do not assume the A/B editor covers all sixteen.
+
+**Both sides must declare the same key set.** Explicit value versus explicit
+value. `buildAbPlan` refuses an asymmetric pair, because an omitted key does not
+mean "neutral" — it means the graph's own default, and that default can coincide
+with the other side's explicit value. `{}` against
+`{ DISCOVERY_ALLOWED_TYPES: 'intent,profile' }` is the worst case: the default
+*is* `intent,profile`
+(`packages/protocol/src/opportunity/discovery.env.ts`), so both sides behave
+identically, the run measures nothing but noise, and the artifact attributes
+that noise to the flag. Identical configurations are refused for the same
+reason.
+
+**A value-level trap the symmetry check cannot catch.**
+`DISCOVERY_CONTEXT_TO_INTENT` only changes behaviour when
+`DISCOVERY_PROFILE_SOURCE` is `user_context`
+(`opportunity.graph.ts:388` and `:1202-1204`; the same lines also require
+`profile` to be in `DISCOVERY_ALLOWED_TYPES`). Comparing it alone, under the
+default `premise` profile source, measures noise on both sides. The harness will
+accept that run — it is a legal, symmetric, differing pair — so this one is on
+the operator.
+
+**Cost.** The corpus is five cases (`HISTORICAL_MATRIX_CASES`), so a default run
+is 5 cases × 3 repetitions × 2 sides = **30 graph invocations**: 15 slots per
+side, run sequentially within a side, with the two sides running concurrently.
+At the ~52s per invocation recorded in `discovery-ab.contract.ts` that is
+roughly **13 minutes** of wall clock, plus one judge call per scored slot.
+`--runs` defaults to 3 (one observation cannot separate a difference from noise)
+and is capped at 10, which is 100 invocations.
+
+**Exit codes**, for the parent invocation an operator runs:
+
+| Code | Conclude |
+| --- | --- |
+| `0` | Both sides completed and the artifact holds the comparison. Read it. |
+| `2` | Refused before anything happened — gate, arguments, manifest or attestation. No branch was reset, no side spawned, nothing spent. Fix what the message names and re-run; you lost seconds. |
+| `3` | The run happened and was paid for and the artifact on disk is real, but a side did not score every slot, so there is **no verdict**. Do not read one side's numbers as a comparison. |
+| `4` | Failed after the branches began being reset and/or a side was spawned. The branches were mutated and a live run may already be spent; re-running costs that again. The message, not the code, says what was overwritten and whether an artifact or any child artifacts survived. |
+
+The distinction that matters is `2` versus `4`: both are failures, but one costs
+nothing and the other costs a live run.
+
+**There is no baseline, and there will not be one.** Arbitrary operator-chosen
+configurations have no committed baseline, so the pair *is* the result. The
+harness reads, writes and compares no baseline and emits no regression verdict.
+
+**`configs`/`configDiff` are deliberately not in the artifact.** The shared
+envelope and scorecard payload schemas are both zod `.strict()`
+(`packages/protocol/eval/shared/artifact.ts`), so a run-level configuration
+rollup has no legal home in them, and widening a contract shared by every
+harness and every committed baseline for a convenience copy is a bad trade.
+Nothing is lost: every case row carries `configDeltas` naming that side's
+complete configuration (the case schema is the sanctioned `.passthrough()`
+extension point), `assertAbConfigProvenance` refuses to write an artifact where
+that is missing or wrong, and the diff is printed to the console at the end of
+every run. The run-level pair is a rollup of the rows, derivable by grouping
+them by rule.
+
+Artifacts land in `services/api/eval/discovery-ab/runs/<timestamp>.json`
+(gitignored). `payload.rules` are the two sides (`a`, `b`); case ids are
+`<caseId>/<side>/r<repetition>`.
+
+#### Operator runbook: first-time setup and smoke
+
+These steps need `NEON_API_KEY` and Neon project access, so they are an operator
+procedure, not something CI or a local checkout can do. Run them in order.
+
+1. **Create and seed the protected base (IND-626).** `eval-discovery-base` must
+   exist in the Neon project with an endpoint on database `protocol_eval`, and
+   must carry the seeded historical fixture corpus. Seed and verify it with the
+   existing protected-base command, whose own gate is
+   `DISCOVERY_ENV_MATRIX_BASE_CONFIRM=1`, `TEST_DATABASE_SAFE=1`,
+   `DISCOVERY_ENV_MATRIX_BASE_BRANCH=eval-discovery-base` and a `DATABASE_URL`
+   matching the attested base target:
+
+   ```bash
+   cd services/api
+   bun run eval:discovery-env-matrix-base           # seed
+   bun run eval:discovery-env-matrix-base:verify    # metadata + fixture-structure reads only
+   ```
+
+   Nothing below works until this branch exists and verifies: every A/B run
+   attests that its base branch is named `eval-discovery-base`, and every A/B
+   child re-verifies the base metadata and fixture integrity on its own branch
+   before it spends anything.
+
+2. **Branch `eval-ab-a` and `eval-ab-b` from it.** Both must be children of
+   `eval-discovery-base`, non-primary, named exactly that, and each must have its
+   own endpoint on database `protocol_eval`. Create them in the Neon console or
+   via the API, then record the project id, the base branch id, and each side's
+   branch id, endpoint id and `DATABASE_URL` in the manifest above. Attestation
+   fails on any of those being wrong, and the failure is deliberately
+   non-specific.
+
+3. **Smoke it: one case, one repetition.**
+
+   ```bash
+   cd services/api
+   DISCOVERY_AB_CONFIRM=1 TEST_DATABASE_SAFE=1 \
+   NEON_API_KEY=<key> DISCOVERY_AB_TARGETS='<manifest>' \
+     bun run eval:discovery-ab -- \
+       --case historical/builder-and-operator --runs 1 \
+       --a DISCOVERY_ALLOWED_TYPES=intent \
+       --b DISCOVERY_ALLOWED_TYPES=intent,profile
+   ```
+
+   That is 2 graph invocations (1 case × 1 repetition × 2 sides) plus 2 judge
+   calls — a couple of minutes, not forty. Expect exit `0`, a reset line per
+   side, the printed configuration diff, and one artifact in
+   `eval/discovery-ab/runs/`. In the artifact, check:
+   `harness === "discovery-ab"`; `completeness.complete === true`;
+   `payload.rules` is exactly the two sides `a` and `b`; and both case rows
+   (`historical/builder-and-operator/a/r1` and `.../b/r1`) carry a `configDeltas`
+   naming that side's configuration. If `completeness.complete` is `false` the
+   exit code is `3` and the run supports no comparison, however good the numbers
+   look.
 
 ### Eval Ops Site
 
