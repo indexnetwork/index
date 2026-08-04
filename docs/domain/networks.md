@@ -51,14 +51,14 @@ Optional metadata:
 - **location**: Venue or city.
 - **venue**: Specific venue name.
 - **themes**: Array of topic tags.
-- **events**: Array of schedule items (synced from external calendars or manually added). Each event has `externalId`, `title`, `startTime`, `endTime`, `location`, `description`, `tags`, `syncedAt`.
+- **events**: Array of schedule items (free-form metadata; nothing currently syncs them). Each event has `externalId`, `title`, `startTime`, `endTime`, `location`, `description`, `tags`, `syncedAt`.
 
 Event-type networks receive special treatment in AI agents: the `IntentIndexer` factors temporal relevance when scoring intents, and the `OpportunityEvaluator` considers co-attendance signals and theme alignment.
 
 ### Integrations
 
 Networks can be linked to external services via `network_integrations`. Currently supported:
-- **google_calendar**: A BullMQ repeatable worker syncs calendar events into `metadata.events[]` on a configurable interval. Sync configuration (calendarId, intervalMs, status) is stored in `network_integrations.syncConfig`.
+- **gmail / slack**: Linking a user's Composio connection to a network enables contact import into that network. Link records are owner-managed via `POST/DELETE /api/integrations/:toolkit/link`.
 
 ---
 
