@@ -66,7 +66,6 @@ import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeou
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
-import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
 import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
@@ -455,7 +454,6 @@ negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-integrationSyncQueue.startWorker();
 if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
