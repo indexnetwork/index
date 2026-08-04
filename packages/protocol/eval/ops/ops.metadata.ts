@@ -20,11 +20,84 @@ export interface EnvFlagMeta {
   label: string;
   /** What the flag changes in the live pipeline, one or two sentences. */
   description: string;
-  kind: "enum" | "boolean" | "integer" | "number" | "string";
-  /** Allowed values for enum/boolean flags (mirrors startup.env.ts schemas). */
+  /**
+   * The shape the flag's own read site accepts — not the shape startup.env.ts
+   * happens to declare. Several flags are declared there as free text and
+   * parsed as an enum at the use site; describing those as `string` here would
+   * let an operator configure a value that silently falls back at runtime,
+   * which is a measurement of nothing dressed up as a difference.
+   *
+   * `csv-enum` is a comma-separated list drawn from `values`, mirroring
+   * DISCOVERY_ALLOWED_TYPES (src/opportunity/discovery.env.ts).
+   */
+  kind: "enum" | "boolean" | "csv-enum" | "integer" | "number" | "string";
+  /** Allowed values (or allowed tokens, for csv-enum) — mirrors the read site. */
   values?: readonly string[];
+  /** Smallest value the read site honours; below it the flag silently falls back. */
+  min?: number;
   /** Human-readable default, e.g. "off" or "7 days". */
   defaultDescription: string;
+}
+
+/**
+ * The problem with `value` for this flag, or null when the live service will
+ * honour it as written.
+ *
+ * The single definition of "is this value real", shared by every place a value
+ * can be chosen: `validateProfileEnv` (saved configs and ad-hoc launches),
+ * `abSideIssues` (the two sides of an A/B run) and the browser app's guided
+ * editor. Duplicating it is how a form and a server come to disagree about what
+ * a flag accepts.
+ *
+ * The bar is deliberately "what the read site honours", not "what startup.env.ts
+ * parses": a value the reader does not recognise is not refused at runtime, it
+ * falls back — `DISCOVERY_PROFILE_SOURCE=user-context` warns once and runs
+ * `premise`. Accepting it here would let an A/B run spend two branch resets and
+ * a full corpus to report a configuration difference that never existed.
+ *
+ * Unknown keys are not this function's business: membership is checked against
+ * PROFILE_ENV_ALLOWLIST / DISCOVERY_AB_ENV_KEYS by the caller, so each problem
+ * is reported exactly once.
+ */
+export function envFlagValueIssue(meta: EnvFlagMeta, value: string): string | null {
+  switch (meta.kind) {
+    case "enum":
+    case "boolean":
+      return meta.values?.includes(value) === true
+        ? null
+        : `must be one of: ${meta.values?.join(", ") ?? "(no values defined)"}`;
+    case "csv-enum": {
+      // Mirrors discoveryAllowedTypes: tokens are trimmed and lower-cased, and a
+      // list with no valid token falls back to "everything allowed" — so an
+      // unknown token must be refused here rather than silently ignored.
+      const allowed = meta.values ?? [];
+      const tokens = value.split(",").map((token) => token.trim().toLowerCase()).filter((token) => token !== "");
+      const legal = tokens.length > 0 && tokens.every((token) => allowed.includes(token));
+      return legal ? null : `must be a comma-separated list of: ${allowed.join(", ") || "(no values defined)"}`;
+    }
+    case "integer":
+      // Non-negative digits only, mirroring optionalInt in services/api/src/startup.env.ts.
+      if (!/^\d+$/.test(value)) return "must be an integer";
+      if (meta.min !== undefined && Number(value) < meta.min) return `must be an integer of at least ${meta.min}`;
+      return null;
+    case "number": {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return "must be a positive number";
+      if (meta.min !== undefined && parsed < meta.min) return `must be at least ${meta.min}`;
+      return null;
+    }
+    case "string":
+      return null;
+  }
+}
+
+/**
+ * `envFlagValueIssue` for a key named at runtime. Null for a key with no
+ * metadata: whether the key may be set at all is the caller's allowlist check.
+ */
+export function envValueIssueForKey(key: string, value: string): string | null {
+  const meta = ENV_FLAG_METADATA.find((flag) => flag.key === key);
+  return meta === undefined ? null : envFlagValueIssue(meta, value);
 }
 
 /**
@@ -39,7 +112,8 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     label: "Discovery allowed types",
     description:
       "Comma-separated list (`intent`, `profile`) gating which data types may participate in opportunity matching. Unknown tokens are ignored with a warning; if nothing valid remains, both stay allowed so a typo never disables discovery (src/opportunity/discovery.env.ts).",
-    kind: "string",
+    kind: "csv-enum",
+    values: ["intent", "profile"],
     defaultDescription: "both intent and profile",
   },
   {
@@ -47,7 +121,8 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     label: "Discovery profile source",
     description:
       "Selects how profiles participate in matching: `premise` (atomic premises as the profile corpus) or `user_context` (synthesized context paragraphs). Unknown values warn once and fall back so discovery keeps running (src/opportunity/discovery.env.ts).",
-    kind: "string",
+    kind: "enum",
+    values: ["premise", "user_context"],
     defaultDescription: "premise",
   },
   {
@@ -106,16 +181,18 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_MAX_TURNS_CHAT",
     label: "Max negotiation turns (chat)",
     description:
-      "Turn cap for negotiations started from a chat conversation (src/opportunity/application/opportunity.graph.ts).",
+      "Turn cap for negotiations started from a chat conversation. Read as `Number(...) || 4`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunity/application/opportunity.graph.ts).",
     kind: "integer",
+    min: 1,
     defaultDescription: "4",
   },
   {
     key: "NEGOTIATION_MAX_TURNS_AMBIENT",
     label: "Max negotiation turns (ambient)",
     description:
-      "Turn cap for negotiations without a chat conversation (src/opportunity/application/opportunity.graph.ts).",
+      "Turn cap for negotiations without a chat conversation. Read as `Number(...) || 6`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunity/application/opportunity.graph.ts).",
     kind: "integer",
+    min: 1,
     defaultDescription: "6",
   },
   {

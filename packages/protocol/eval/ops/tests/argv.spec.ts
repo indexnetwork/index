@@ -29,6 +29,23 @@ const AB_FLAGS_SOURCE = path.join(
   "services", "api", "src", "cli", "discovery-ab.flags.ts",
 );
 
+const AB_MAIN_SOURCE = path.join(
+  import.meta.dir, "..", "..", "..", "..", "..",
+  "services", "api", "src", "cli", "discovery-ab.main.ts",
+);
+
+/**
+ * The engine's own KEY=VALUE pattern, read from its source rather than retyped.
+ * `parseAbSideConfig` throws "--a expects KEY=VALUE" on anything it does not
+ * match, and that throw happens after the site has queued and displayed the run.
+ */
+function engineAssignmentPattern(): RegExp {
+  const source = readFileSync(AB_MAIN_SOURCE, "utf8");
+  const literal = source.match(/const AB_ENV_ASSIGNMENT = \/(.+)\/;/);
+  if (!literal) throw new Error("AB_ENV_ASSIGNMENT not found in discovery-ab.main.ts");
+  return new RegExp(literal[1]!);
+}
+
 function abSpec(extra: Record<string, unknown> = {}): Record<string, unknown> {
   return { kind: "eval", harness: "discovery-ab", profile: "default", flags: {}, sides: SIDES, ...extra };
 }
@@ -306,7 +323,11 @@ describe("RunSpecSchema sides", () => {
   });
 
   it("refuses a side with no configuration at all", () => {
-    expect(refusal(abSpec({ sides: { a: {}, b: { DISCOVERY_PROFILE_SOURCE: "premise" } } }))).toMatch(/side a/i);
+    // Asserts the rule's own message, not merely that side a is mentioned: the
+    // asymmetry refusal names side a too, so a laxer assertion passed with this
+    // rule deleted.
+    expect(refusal(abSpec({ sides: { a: {}, b: { DISCOVERY_PROFILE_SOURCE: "premise" } } })))
+      .toMatch(/Side a has no configuration/);
   });
 
   it("refuses an empty or whitespace value", () => {
@@ -320,6 +341,92 @@ describe("RunSpecSchema sides", () => {
 
   it("accepts a symmetric pair that differs in one value", () => {
     expect(RunSpecSchema.safeParse(abSpec({ flags: { runs: 2, case: "historical/songwriting-duo" } })).success).toBe(true);
+  });
+
+  it("refuses a value the discovery graph would silently replace with its default", () => {
+    // The expensive failure this rule exists for: `user-context` (hyphen) is not
+    // a value discoveryProfileSource knows, so it warns once and runs `premise`
+    // — the same thing side a runs. Both sides would execute the identical
+    // configuration and the artifact would report `configDiff: premise vs
+    // user-context`, a difference that never existed, after two Neon branch
+    // resets and a full corpus of live provider calls.
+    const message = refusal(abSpec({
+      sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user-context" } },
+    }));
+    expect(message).toContain("DISCOVERY_PROFILE_SOURCE");
+    expect(message).toContain("user-context");
+    expect(message).toMatch(/side b/);
+    expect(message).toContain("user_context");
+
+    // The underscore spelling — the one the graph actually reads — is accepted.
+    expect(RunSpecSchema.safeParse(abSpec({
+      sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user_context" } },
+    })).success).toBe(true);
+  });
+
+  it("applies the same value rules the saved-config path uses, to every kind", () => {
+    // One definition (envFlagValueIssue), three callers. A value refused for a
+    // saved config must not be accepted for a side of a run that costs more.
+    const refused: [string, string][] = [
+      ["DISCOVERY_ALLOWED_TYPES", "intnet"],          // ignored token -> the default corpus
+      ["DISCOVERY_SOURCE_PREMISE_LIMIT", "-5"],       // negative -> falls back to 40
+      ["DISCOVERY_SOURCE_PREMISE_LIMIT", "banana"],
+      ["NEGOTIATION_MAX_TURNS_CHAT", "0"],            // `Number(x) || 4` -> the default
+      ["RUN_OPPORTUNITY_EVAL_IN_PARALLEL", "yes"],    // read as `=== 'true'` -> false
+      ["DISCOVERY_REJECTION_COOLDOWN_DAYS", "0"],     // not positive -> falls back to 7 days
+      ["DISCOVERY_CONTEXT_TO_INTENT", "2"],
+    ];
+    for (const [key, value] of refused) {
+      const message = refusal(abSpec({ sides: { a: { [key]: value }, b: { [key]: "1" } } }));
+      expect(message, `${key}=${value} was accepted`).toContain(key);
+      expect(message, `${key}=${value} refusal does not quote the value`).toContain(value);
+    }
+
+    const accepted: [string, string, string][] = [
+      ["DISCOVERY_ALLOWED_TYPES", "intent", "intent,profile"],
+      ["DISCOVERY_SOURCE_PREMISE_LIMIT", "0", "40"],
+      ["NEGOTIATION_MAX_TURNS_CHAT", "1", "4"],
+      ["RUN_OPPORTUNITY_EVAL_IN_PARALLEL", "true", "false"],
+      ["DISCOVERY_REJECTION_COOLDOWN_DAYS", "0.5", "7"],
+      ["DISCOVERY_CONTEXT_TO_INTENT", "0", "1"],
+    ];
+    for (const [key, a, b] of accepted) {
+      const result = RunSpecSchema.safeParse(abSpec({ sides: { a: { [key]: a }, b: { [key]: b } } }));
+      expect(result.success, `${key}: ${a} vs ${b} was refused`).toBe(true);
+    }
+  });
+
+  it("refuses a value carrying a line break, which the engine's parser would reject", () => {
+    const message = refusal(abSpec({
+      sides: { a: { DISCOVERY_ALLOWED_TYPES: "intent\nprofile" }, b: { DISCOVERY_ALLOWED_TYPES: "profile" } },
+    }));
+    expect(message).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(message).toMatch(/side a/);
+    expect(message).toMatch(/line break/);
+    // Not a hypothetical: the engine's pattern really does refuse it.
+    expect(engineAssignmentPattern().test("DISCOVERY_ALLOWED_TYPES=intent\nprofile")).toBe(false);
+  });
+
+  it("refuses an oversized value rather than storing it and failing at spawn", () => {
+    const message = refusal(abSpec({
+      sides: {
+        a: { DISCOVERY_ALLOWED_TYPES: "intent".padEnd(5_000, "x") },
+        b: { DISCOVERY_ALLOWED_TYPES: "profile" },
+      },
+    }));
+    expect(message).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(message).toMatch(/side a/);
+    expect(message).toMatch(/5000 characters/);
+  });
+
+  it("refuses __proto__ instead of letting the record silently drop it", () => {
+    // zod's record copies entries with assignment, so a `__proto__` key vanishes
+    // rather than being refused: the spec would be accepted while missing what
+    // the operator sent. The engine dodges the same hazard with a Map
+    // (parseAbSideConfig). Built through JSON.parse because that is how it
+    // arrives — an object literal would set the prototype instead.
+    const sides = JSON.parse('{"a":{"__proto__":"x","DISCOVERY_PROFILE_SOURCE":"premise"},"b":{"DISCOVERY_PROFILE_SOURCE":"user_context"}}');
+    expect(refusal(abSpec({ sides }))).toContain("__proto__");
   });
 });
 
@@ -368,6 +475,40 @@ describe("renderRun sides", () => {
     expect(() =>
       renderRun({ kind: "eval", harness: "matching", profile: "default", flags: {}, sides: SIDES }, DEFAULT, REPORT),
     ).toThrow(/matching/);
+  });
+
+  it("emits only assignments the engine's own parser accepts", () => {
+    // The round trip the site depends on and cannot see: every `--a`/`--b` value
+    // must match AB_ENV_ASSIGNMENT, read from discovery-ab.main.ts. Without this,
+    // either side could change its half of the contract and nothing would fail
+    // until an operator paid for a run the parser refused.
+    const pattern = engineAssignmentPattern();
+    expect(pattern.test("DISCOVERY_PROFILE_SOURCE=premise")).toBe(true);
+    expect(pattern.test("not an assignment")).toBe(false);
+
+    const sides = {
+      a: { DISCOVERY_ALLOWED_TYPES: "intent,profile", DISCOVERY_SOURCE_PREMISE_LIMIT: "0", DISCOVERY_PROFILE_SOURCE: "premise" },
+      b: { DISCOVERY_ALLOWED_TYPES: "intent", DISCOVERY_SOURCE_PREMISE_LIMIT: "40", DISCOVERY_PROFILE_SOURCE: "user_context" },
+    };
+    const rendered = renderRun(
+      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 2 }, sides },
+      DEFAULT,
+      REPORT,
+    );
+
+    let checked = 0;
+    for (const [index, token] of rendered.argv.entries()) {
+      if (token !== "--a" && token !== "--b") continue;
+      const assignment = rendered.argv[index + 1]!;
+      const match = pattern.exec(assignment);
+      expect(match, `${assignment} is not a KEY=VALUE the engine accepts`).not.toBeNull();
+      const side = token === "--a" ? sides.a : sides.b;
+      // What the engine would parse is what the operator asked for.
+      expect(side[match![1] as keyof typeof side]).toBe(match![2]);
+      checked += 1;
+    }
+    // Guards the guard: six assignments, or the loop pinned nothing.
+    expect(checked).toBe(6);
   });
 
   it("refuses to render a pair the engine would refuse", () => {

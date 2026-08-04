@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DISCOVERY_AB_ENV_KEYS } from "./ops.allowlist.js";
+import { envValueIssueForKey } from "./ops.metadata.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
 import type { AbSides, EvalRunSpec, OpsHarness, RunFlags } from "./ops.types.js";
@@ -49,6 +50,32 @@ const REQUIRES_SIDES: Readonly<Record<OpsHarness, boolean>> = Object.freeze({
 
 const SIDE_IDS = ["a", "b"] as const;
 
+/**
+ * Longest value a side may give a flag.
+ *
+ * None of the nine needs more than a few characters (the longest legitimate
+ * value is "intent,profile"), and the value is not merely stored: it is recorded
+ * on the run record, rendered on every page that shows the spec, and passed to
+ * Bun.spawn as an argv element — where a megabyte-scale value would fail the
+ * whole exec with E2BIG rather than being refused with a message. Matches the
+ * cap SelectionValueSchema already puts on the other operator-supplied strings.
+ */
+const AB_SIDE_VALUE_MAX_LENGTH = 200;
+
+/**
+ * Characters that would make the engine's own parser refuse the assignment this
+ * value renders into.
+ *
+ * `AB_ENV_ASSIGNMENT` in services/api/src/cli/discovery-ab.main.ts is
+ * /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/ — no `s` flag, so `.` matches no line
+ * terminator and `$` (no `m` flag) anchors at the very end of the string. A
+ * value carrying one of these therefore renders argv the engine rejects with
+ * "--a expects KEY=VALUE", after the run has been queued and displayed. The
+ * keys need no equivalent check: DISCOVERY_AB_ENV_KEYS membership is asserted
+ * first, and every one of the nine matches the key half by construction.
+ */
+const LINE_TERMINATORS = /[\n\r\u2028\u2029]/;
+
 /** One refusal, with the path inside `sides` it belongs to. */
 export interface AbSideIssue {
   /** Relative to `sides`: `[]`, `[sideId]` or `[sideId, key]`. */
@@ -71,6 +98,14 @@ export interface AbSideIssue {
  * does not recognise, and `buildAbPlan` runs only after the harness has loaded
  * its eval modules, so an unmirrored refusal costs the operator a run that dies
  * seconds in with nothing rendered on the page they launched from.
+ *
+ * Stricter than the engine in one direction, deliberately: `assertAbEnvConfig`
+ * checks that a value is non-blank and nothing more, so it accepts a value the
+ * discovery graph will not honour — every read site there falls back rather than
+ * failing. A fallback on one side turns the artifact's `configDiff` into a
+ * difference that did not exist at runtime, which is the one outcome an A/B run
+ * must never produce, so the value is checked against the flag's real read site
+ * here (`envValueIssueForKey`) before the run is queued.
  *
  * Deliberately NOT mirrored, because they are not expressible here: side
  * ordering (`assertOrderedDistinctSides`) cannot be violated by an `AbSides`
@@ -96,8 +131,41 @@ export function abSideIssues(sides: AbSides): AbSideIssue[] {
         issues.push({ path: [id, key], message: `${key} is not readable by the discovery graph; this harness cannot test it` });
         continue;
       }
-      if (config[key]!.trim() === "") {
+      const value = config[key]!;
+      if (value.trim() === "") {
         issues.push({ path: [id, key], message: `${key} has an empty value on side ${id}; unset it on both sides instead of blanking it` });
+        continue;
+      }
+      if (value.length > AB_SIDE_VALUE_MAX_LENGTH) {
+        issues.push({
+          path: [id, key],
+          message: `${key} on side ${id} is ${value.length} characters; no flag this harness offers takes a value longer than ${AB_SIDE_VALUE_MAX_LENGTH}`,
+        });
+        continue;
+      }
+      if (LINE_TERMINATORS.test(value)) {
+        issues.push({
+          path: [id, key],
+          message:
+            `${key} on side ${id} contains a line break; the engine's KEY=VALUE parser would refuse the argv `
+            + `this renders, after the run had been queued`,
+        });
+        continue;
+      }
+      // The value's meaning, not just its shape. Every read site in the discovery
+      // graph falls back rather than failing on a value it does not recognise, so
+      // an unchecked typo does not stop the run: it runs the DEFAULT on that side
+      // and reports a difference that never existed. Same rule the saved-config
+      // and ad-hoc paths use (validateProfileEnv), by construction — both call
+      // envValueIssueForKey.
+      const unreal = envValueIssueForKey(key, value);
+      if (unreal !== null) {
+        issues.push({
+          path: [id, key],
+          message:
+            `${key}="${value}" on side ${id} ${unreal}. The discovery graph falls back to its own default for a `
+            + `value it does not recognise, so this side would run the default while the report named your value`,
+        });
       }
     }
   }
@@ -129,6 +197,28 @@ export function abSideIssues(sides: AbSides): AbSideIssue[] {
 }
 
 /**
+ * One side's configuration as it arrives on the wire.
+ *
+ * The `__proto__` check runs before `z.record`, because it is the only place it
+ * can: `JSON.parse` gives the key as an ordinary own property, and zod's record
+ * copies entries onto a fresh object with assignment, which for `__proto__`
+ * hits Object.prototype's setter and DROPS it. The key would then vanish
+ * silently — the operator's spec would be accepted while missing the thing they
+ * sent. The engine avoids the same hazard by building each side in a `Map`
+ * (parseAbSideConfig, discovery-ab.main.ts); here it is a refusal, since
+ * `__proto__` is not one of the nine and could not be honoured anyway.
+ */
+const SideConfigSchema = z.preprocess((raw, context) => {
+  if (typeof raw === "object" && raw !== null && Object.getOwnPropertyNames(raw).includes("__proto__")) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "__proto__ is not readable by the discovery graph; this harness cannot test it",
+    });
+  }
+  return raw;
+}, z.record(z.string()));
+
+/**
  * The only shape the API accepts from a client. Destructive flags are not
  * expressible here and are absent from HARNESS_REGISTRY, so no request can
  * produce them, and the fixture-reset variant of RunSpec is deliberately not
@@ -148,7 +238,7 @@ export const RunSpecSchema = z
     // confined to DISCOVERY_AB_ENV_KEYS below, and the whole object is recorded
     // on the run record so the artifact and the site agree on what was compared.
     sides: z
-      .object({ a: z.record(z.string()), b: z.record(z.string()) })
+      .object({ a: SideConfigSchema, b: SideConfigSchema })
       .strict()
       .optional(),
   })

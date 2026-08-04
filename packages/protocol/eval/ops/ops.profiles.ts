@@ -16,9 +16,9 @@ import { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 
 // Guided-editing metadata is likewise dependency-free (ops.metadata.ts) so the
 // browser app imports it directly; re-exported here for server-side consumers.
-export { ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA } from "./ops.metadata.js";
+export { ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, envFlagValueIssue, envValueIssueForKey } from "./ops.metadata.js";
 export type { AgentMeta, EnvFlagMeta, FlagMeta, ModelMeta } from "./ops.metadata.js";
-import { ENV_FLAG_METADATA } from "./ops.metadata.js";
+import { envValueIssueForKey } from "./ops.metadata.js";
 
 export const ConfigProfileSchema = z
   .object({
@@ -109,34 +109,18 @@ function overridableAgents(): ReadonlySet<string> {
  * Returns human-readable issues; empty means valid. Allowlist membership is
  * checked separately by validateConfigOverrides — unknown keys are skipped
  * here so each problem is reported exactly once.
+ *
+ * The per-value rule itself lives in ops.metadata.ts (`envFlagValueIssue`), not
+ * here: ops.argv.ts validates the two sides of an A/B run with the same rule
+ * and cannot import this module (node:fs, node:crypto — the browser bundle
+ * imports ops.argv.ts's neighbours). Two validators would be two answers to
+ * "is this value real".
  */
 export function validateProfileEnv(env: Record<string, string>): string[] {
   const issues: string[] = [];
   for (const [key, value] of Object.entries(env)) {
-    const meta = ENV_FLAG_METADATA.find((flag) => flag.key === key);
-    if (meta === undefined) continue;
-    switch (meta.kind) {
-      case "enum":
-      case "boolean":
-        if (!meta.values?.includes(value)) {
-          const expected = meta.values?.join(", ") ?? "(no values defined)";
-          issues.push(`env ${key} value "${value}" is not valid. Expected one of: ${expected}`);
-        }
-        break;
-      case "integer":
-        // Non-negative digits only, mirroring optionalInt in services/api/src/startup.env.ts.
-        if (!/^\d+$/.test(value)) {
-          issues.push(`env ${key} value "${value}" is not a valid integer`);
-        }
-        break;
-      case "number":
-        if (!Number.isFinite(Number(value)) || Number(value) <= 0) {
-          issues.push(`env ${key} value "${value}" must be a positive number`);
-        }
-        break;
-      case "string":
-        break;
-    }
+    const problem = envValueIssueForKey(key, value);
+    if (problem !== null) issues.push(`env ${key} value "${value}" ${problem}`);
   }
   return issues;
 }

@@ -82,6 +82,18 @@ empty values. The engine *ignores* argv it does not recognise and only reaches t
 after loading its eval modules, so mirroring them here is what turns a late, paid failure
 into a 400.
 
+Values are checked too, and this is stricter than the engine on purpose. `assertAbEnvConfig`
+only refuses a blank value, and every read site in the discovery graph *falls back* rather
+than failing on a value it does not recognise — `DISCOVERY_PROFILE_SOURCE=user-context`
+(hyphen) warns once and runs `premise`. Both sides would then run the same configuration
+while the artifact reported a `configDiff` that never existed at runtime, after two Neon
+branch resets and a full corpus of live calls. So each value is checked against its flag's
+real read site through `envFlagValueIssue` ([`ops.metadata.ts`](./ops.metadata.ts)) — the
+same function that validates saved configs, ad-hoc launches and the browser app's guided
+editor — plus a length cap, a refusal of line breaks (the engine's `AB_ENV_ASSIGNMENT`
+pattern, pinned in `tests/argv.spec.ts`, would reject that argv) and an explicit refusal of
+`__proto__`, which zod's record would otherwise drop in silence.
+
 **Destructive flags are structurally unreachable.** `--update-baseline`, `--force` and
 `--reason` are absent from the registry *and* from `RunFlags`/`RunSpecSchema`. There is no
 flag to toggle and no allowlist to keep in sync: a `RunSpec` that could produce them does
@@ -335,7 +347,8 @@ handled ahead of the gate because it is the request that establishes one.
 - The one environment a client may name is `sides` on a `discovery-ab` spec: values for
   the nine `DISCOVERY_AB_ENV_KEYS` flags, which are protocol feature flags and nothing
   else. They reach the child as `--a`/`--b` argv, never as the run's injected env, and any
-  other key **fails with 400**.
+  other key **fails with 400** — as does any value the flag's own read site would not
+  honour, or one longer than 200 characters, or one carrying a line break.
 - The `fixture-reset` variant of `RunSpec` is deliberately not parseable by
   `RunSpecSchema`. A reset is not constructible through `/api/runs`; it exists only behind
   the guarded fixture route.

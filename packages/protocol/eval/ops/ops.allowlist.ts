@@ -32,13 +32,29 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
  * The environment keys a discovery-ab side may set: the nine the discovery
  * graph actually reads.
  *
- * A copy, and deliberately so. The engine's list is `AB_FLAGS`
- * (services/api/src/cli/discovery-ab.flags.ts), which is derived from a scan of
- * the graph's import closure — but that module imports node:fs, and this one is
- * imported by the browser app, so importing it here would break the Vite
- * bundle. The copy is therefore pinned against the engine's source text in
- * eval/ops/tests/argv.spec.ts: a key added, removed or renamed there fails that
- * test rather than drifting.
+ * A copy, and deliberately so — after both directions of a real import were
+ * tried and refused by the toolchain:
+ *
+ * - This module cannot import the engine's `AB_FLAGS`
+ *   (services/api/src/cli/discovery-ab.flags.ts): that module imports node:fs to
+ *   derive its list from a scan of the graph's import closure, and this one is
+ *   imported by the browser app, so the Vite bundle would break.
+ * - The engine cannot import this list either. A relative import from
+ *   services/api/src is `TS6059: not under rootDir` (services/api/tsconfig.json
+ *   sets `rootDir: ./src`), and `@indexnetwork/protocol/eval/ops/ops.allowlist`
+ *   resolves at neither type-check nor runtime, because the package exports
+ *   exactly one entry, its built root. Publishing a subpath for eval/ops would
+ *   make an eval-only module part of a versioned SDK contract that explicitly
+ *   excludes deep imports (STABILITY.md), and would not even work for an
+ *   installed consumer, since the published files are dist alone.
+ *
+ * So the list is a copy with two guards, one from each side, and neither is a
+ * source-text substring match on the values themselves: eval/ops/tests/argv.spec.ts
+ * parses the engine's `Object.freeze([...])` literal and compares the sets, and
+ * services/api/src/cli/tests/discovery-ab.flags.spec.ts — a spec file, which
+ * tsconfig excludes and which may therefore import across — compares the two
+ * lists as real imported values. A key added, removed or renamed on either side
+ * fails both.
  *
  * Drift matters more here than for a normal allowlist, because the engine does
  * not reject an unreadable key at the CLI boundary — `parseAbRunArgs` scans for
