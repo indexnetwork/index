@@ -1,26 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import path from 'node:path';
 
+// The allowlist is imported, never re-typed: a hand-kept copy would silently
+// stop noticing a seventeenth flag added at the source of truth, which is the
+// same drift this module exists to prevent. Imported by path because
+// @indexnetwork/protocol only exports its built `dist` entry point, and
+// ops.allowlist.ts is deliberately dependency-free so any consumer can read it.
+import { PROFILE_ENV_ALLOWLIST } from '../../../../../packages/protocol/eval/ops/ops.allowlist';
 import { AB_FLAGS, assertAbEnvConfig, reachableEnvKeys } from '../discovery-ab.flags';
-
-const PROFILE_ENV_ALLOWLIST = [
-  'DISCOVERY_ALLOWED_TYPES',
-  'DISCOVERY_CONTEXT_TO_INTENT',
-  'DISCOVERY_PROFILE_SOURCE',
-  'DISCOVERY_REJECTION_COOLDOWN_DAYS',
-  'DISCOVERY_SOURCE_PREMISE_LIMIT',
-  'INTRODUCER_DISCOVERY_ENABLED',
-  'NEGOTIATION_EVIDENCE_QUESTIONS_MODE',
-  'NEGOTIATION_INCLUDE_OTHER_INTENTS',
-  'NEGOTIATION_MAX_TURNS_AMBIENT',
-  'NEGOTIATION_MAX_TURNS_CHAT',
-  'OUTCOME_QUESTIONS_MODE',
-  'POOL_QUESTIONS_MINING',
-  'POOL_QUESTIONS_MODE',
-  'POOL_QUESTIONS_PUSH',
-  'POOL_QUESTIONS_RANKING',
-  'RUN_OPPORTUNITY_EVAL_IN_PARALLEL',
-];
 
 const GRAPH_ENTRY = path.resolve(
   import.meta.dir,
