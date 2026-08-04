@@ -92,11 +92,16 @@ Run:
 
 ```bash
 curl -sS -D /tmp/dev-aasa.headers https://dev.index.network/.well-known/apple-app-site-association -o /tmp/dev-aasa.json
-awk 'NR == 1 || tolower($0) ~ /^content-type:/' /tmp/dev-aasa.headers
+status=$(awk 'NR == 1 { print $2; exit }' /tmp/dev-aasa.headers)
+content_type=$(awk 'BEGIN { IGNORECASE=1 } /^content-type:/ { print tolower($0); exit }' /tmp/dev-aasa.headers)
+location=$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { print; exit }' /tmp/dev-aasa.headers)
+test "$status" = 200
+printf '%s\n' "$content_type" | grep -Eq '^content-type:[[:space:]]*application/json([;[:space:]]|$)'
+test -z "$location"
 jq -e '.applinks.details[0].appIDs == ["LMQ3XNXLAD.network.index.system6"]' /tmp/dev-aasa.json
 ```
 
-Expected: `HTTP/2 200`, `Content-Type: application/json`, and `true`. The command does not follow redirects, so a 3xx response fails validation.
+Expected: `HTTP/2 200`, `Content-Type: application/json`, no `Location` header, and `true`. The explicit assertions fail on a redirect, a non-200 response, or a non-JSON content type.
 
 - [ ] **Step 3: Confirm the startup warning is absent**
 

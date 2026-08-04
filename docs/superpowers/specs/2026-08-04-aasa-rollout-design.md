@@ -8,7 +8,7 @@ Enable Apple universal links for the macOS bundle `network.index.system6` withou
 
 - `apps/web/server.ts` renders `/.well-known/apple-app-site-association` from `APPLE_TEAM_ID`; when absent it serves `TEAMIDPLACEHOLDER.network.index.system6`.
 - The approved Apple Developer Team ID is `LMQ3XNXLAD`.
-- Railway `dev` frontend already serves the AASA route but currently contains the placeholder.
+- Railway `dev` frontend serves the AASA route with `LMQ3XNXLAD.network.index.system6` after the completed dev configuration rollout.
 - Railway `main` frontend serves `index.network` but currently deploys a pre-deep-link revision, so its AASA route returns HTTP 404.
 
 ## Rollout
