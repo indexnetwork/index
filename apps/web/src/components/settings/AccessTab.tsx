@@ -208,7 +208,7 @@ export default function AccessTab({
   };
 
   const handleAddMember = async (memberUser: Member) => {
-    if (network.isExperiment) {
+    if (network.hasMasterKey) {
       await handleInviteMember(memberUser.email);
       return;
     }
@@ -363,8 +363,8 @@ export default function AccessTab({
     <>
       <div className="space-y-8">
 
-        {/* Who can join — experiment networks are always private */}
-        {!network.isPersonal && !network.isExperiment && (
+        {/* Who can join — master-key networks are always private */}
+        {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
             <div className="grid grid-cols-2 gap-2">
@@ -418,16 +418,16 @@ export default function AccessTab({
                 );
               })}
             </div>
-            {network.isExperiment && profileEnrichmentPolicy !== 'consent_required' && (
+            {network.hasMasterKey && profileEnrichmentPolicy !== 'consent_required' && (
               <p className="text-xs text-amber-600 mt-2">
-                Consent is recommended for experiment signup networks so attendee profile data is staged until members verify it.
+                Consent is recommended for master-key signup networks so attendee profile data is staged until members verify it.
               </p>
             )}
           </div>
         )}
 
-        {/* Share link — not applicable for experiment networks */}
-        {!network.isPersonal && !network.isExperiment && (
+        {/* Share link — not applicable for master-key networks */}
+        {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
               {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
@@ -470,7 +470,7 @@ export default function AccessTab({
                   className="pl-9"
                 />
               </div>
-              {network.isExperiment && (
+              {network.hasMasterKey && (
                 <>
                   <input
                     ref={csvInputRef}
@@ -513,14 +513,14 @@ export default function AccessTab({
                 {memberSearchQuery.includes('@') ? (
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                    onClick={() => network.isExperiment ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
+                    onClick={() => network.hasMasterKey ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
                     disabled={isAddingMember}
                   >
                     <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                       <Plus className="h-3.5 w-3.5 text-gray-500" />
                     </div>
                     <span className="text-sm text-black flex-1 truncate">
-                      {network.isExperiment ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
+                      {network.hasMasterKey ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
                     </span>
                   </button>
                 ) : (
@@ -596,7 +596,7 @@ export default function AccessTab({
                     </button>
                   </Tooltip>
                 )}
-                {network.isExperiment && (
+                {network.hasMasterKey && (
                   <Tooltip content="Resend invitation · expires old key">
                     <button
                       onClick={() => setResendTarget(member)}

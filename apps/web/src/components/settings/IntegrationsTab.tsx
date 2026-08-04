@@ -7,54 +7,27 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
+import { createIndexesService } from '@/services/networks';
 import CopyableBox from '@/components/CopyableBox';
 import MasterKeyDialog from '@/components/MasterKeyDialog';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('IntegrationsTab');
 
-/** Toolkits available for connection, keyed by network type. */
-const COMMUNITY_TOOLKITS = ['gmail', 'slack'] as const;
-const EVENT_TOOLKITS = ['gmail', 'slack', 'google_calendar'] as const;
+/** Toolkits available for connection. */
+const TOOLKITS = ['gmail', 'slack'] as const;
 
 const TOOLKIT_LABELS: Record<string, string> = {
   gmail: 'Gmail',
   slack: 'Slack',
-  google_calendar: 'Google Calendar',
 };
 
 const TOOLKIT_DESCRIPTIONS: Record<string, string> = {
   gmail: 'Import contacts and monitor conversations',
   slack: 'Import contacts and monitor channels',
-  google_calendar: 'Sync event schedule and sessions',
 };
 
 const toolkitLabel = (t: string) => TOOLKIT_LABELS[t] ?? t;
-
-/** Format a date string as relative time (e.g. "2 minutes ago"). */
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  if (!Number.isFinite(then)) return 'Unknown';
-  const diffMs = now - then;
-  if (diffMs < 0) return 'just now';
-  const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-/** Format a millisecond interval to a human label. */
-function formatInterval(ms: number): string {
-  const minutes = Math.round(ms / 60000);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  return `${hours}h`;
-}
 
 interface IntegrationsTabProps {
   network: Network;
@@ -84,10 +57,12 @@ export default function IntegrationsTab({
   const [rotateConfirmationText, setRotateConfirmationText] = useState('');
   const [isRotating, setIsRotating] = useState(false);
   const [rotatedMasterKey, setRotatedMasterKey] = useState<string | null>(null);
-
-  const availableToolkits = network.type === 'event'
-    ? EVENT_TOOLKITS
-    : COMMUNITY_TOOLKITS;
+  const [isEnablingMasterKey, setIsEnablingMasterKey] = useState(false);
+  const [enabledMasterKey, setEnabledMasterKey] = useState<string | null>(null);
+  const [masterKeyEnabled, setMasterKeyEnabled] = useState(false);
+  // Until the parent refetches the network after enabling, treat the local
+  // enable as authoritative.
+  const hasMasterKey = network.hasMasterKey || masterKeyEnabled;
 
   const loadConnections = useCallback(async () => {
     try {
@@ -107,9 +82,6 @@ export default function IntegrationsTab({
   }, [loadConnections]);
 
   const autoImportContacts = async (toolkit: string) => {
-    // google_calendar syncs events, not contacts
-    if (toolkit === 'google_calendar') return;
-
     const svc = createIntegrationsService(api);
     info(`Importing contacts from ${toolkitLabel(toolkit)}...`, undefined, 30000);
     try {
@@ -226,8 +198,7 @@ export default function IntegrationsTab({
     if (rotateConfirmationText !== network.title) return;
     setIsRotating(true);
     try {
-      // rotateMasterKey is on the network service, but we call it via a simple API call here
-      const result = await api.post<{ masterKey: string }>(`/networks/${networkId}/rotate-master-key`, {});
+      const result = await createIndexesService(api).rotateMasterKey(networkId);
       setShowRotateConfirm(false);
       setRotateConfirmationText('');
       setRotatedMasterKey(result.masterKey);
@@ -240,16 +211,28 @@ export default function IntegrationsTab({
     }
   };
 
-  // Calendar sync status from the google_calendar connection
-  const calendarConn = connections.find(c => c.toolkit === 'google_calendar');
-  const syncConfig = calendarConn?.syncConfig;
+  const handleEnableMasterKey = async () => {
+    if (isEnablingMasterKey) return;
+    setIsEnablingMasterKey(true);
+    try {
+      const result = await createIndexesService(api).enableMasterKey(networkId);
+      setEnabledMasterKey(result.masterKey);
+      setMasterKeyEnabled(true);
+      success('Master key enabled — copy it now, it will not be shown again');
+    } catch (err) {
+      logger.error('Master key enable failed', { error: err });
+      error('Failed to enable master key');
+    } finally {
+      setIsEnablingMasterKey(false);
+    }
+  };
 
   return (
     <>
       <div className="space-y-4">
 
         <div className="space-y-2">
-          {availableToolkits.map((toolkit) => {
+          {TOOLKITS.map((toolkit) => {
             const conn = connections.find((c) => c.toolkit === toolkit);
             const isConnected = !!conn;
             const isPending = pendingToolkit === toolkit;
@@ -287,64 +270,54 @@ export default function IntegrationsTab({
           })}
         </div>
 
-        {/* Calendar Sync Status */}
-        {calendarConn && syncConfig && (
-          <div className="bg-gray-50 border border-gray-200 rounded-sm p-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">Calendar Sync Status</p>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-gray-500">Status</span>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className={`inline-block h-2 w-2 rounded-full ${syncConfig.status === 'active' ? 'bg-green-500' : syncConfig.status === 'error' ? 'bg-red-500' : 'bg-gray-400'}`} />
-                  <span className={`capitalize ${syncConfig.status === 'error' ? 'text-red-600' : 'text-black'}`}>{syncConfig.status}</span>
-                </div>
-              </div>
-              <div>
-                <span className="text-gray-500">Calendar ID</span>
-                <p className="text-black truncate mt-0.5">{syncConfig.calendarId || 'primary'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Sync interval</span>
-                <p className="text-black mt-0.5">{syncConfig.intervalMs ? formatInterval(syncConfig.intervalMs) : '15 min'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Last synced</span>
-                <p className="text-black mt-0.5">{syncConfig.lastSyncAt ? formatRelativeTime(syncConfig.lastSyncAt) : 'Never'}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Experiment signup section */}
-        {network.isExperiment && (
+        {/* Master-key signup section */}
+        {!network.isPersonal && (
           <div className="pt-2">
             <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-sm">
               <div className="flex-1 min-w-0 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-black">Experiment Signup</div>
-                    <div className="text-xs text-gray-500">Server-side signup for experiment attendees</div>
+                    <div className="text-sm font-medium text-black">Master-Key Signup</div>
+                    <div className="text-xs text-gray-500">Server-side signup via shared master key</div>
                   </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowRotateConfirm(true)}
-                    disabled={isRotating}
-                  >
-                    <RotateCw className="h-3.5 w-3.5 mr-1.5" />
-                    Rotate key
-                  </Button>
+                  {hasMasterKey ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowRotateConfirm(true)}
+                      disabled={isRotating}
+                    >
+                      <RotateCw className="h-3.5 w-3.5 mr-1.5" />
+                      Rotate key
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={handleEnableMasterKey}
+                      disabled={isEnablingMasterKey}
+                    >
+                      {isEnablingMasterKey ? 'Enabling...' : 'Enable master key'}
+                    </Button>
+                  )}
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-1.5">Signup endpoint</div>
-                  <CopyableBox value={typeof window !== 'undefined' ? `${window.location.origin}/api/networks/${networkId}/signup` : `/api/networks/${networkId}/signup`} />
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-1.5">Master key</div>
-                  <CopyableBox value={'•••••••• (shown once at creation — rotate for a new one)'} />
-                </div>
-                <p className="text-xs text-gray-500">
-                  Used server-side by external integrators. Never expose in user-facing apps.
-                </p>
+                {hasMasterKey ? (
+                  <>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-1.5">Signup endpoint</div>
+                      <CopyableBox value={typeof window !== 'undefined' ? `${window.location.origin}/api/networks/${networkId}/signup` : `/api/networks/${networkId}/signup`} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-1.5">Master key</div>
+                      <CopyableBox value={'•••••••• (shown once at creation — rotate for a new one)'} />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Used server-side by external integrators. Never expose in user-facing apps.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    Enable a master key to let external integrators sign members up server-side. The key is shown once.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -381,12 +354,12 @@ export default function IntegrationsTab({
         </AlertDialog.Portal>
       </AlertDialog.Root>
 
-      {/* Rotated master key display */}
-      {rotatedMasterKey && (
+      {/* Revealed master key display (enable or rotate) */}
+      {(rotatedMasterKey || enabledMasterKey) && (
         <MasterKeyDialog
-          open={!!rotatedMasterKey}
-          masterKey={rotatedMasterKey}
-          onClose={() => setRotatedMasterKey(null)}
+          open={!!(rotatedMasterKey || enabledMasterKey)}
+          masterKey={(rotatedMasterKey ?? enabledMasterKey) as string}
+          onClose={() => { setRotatedMasterKey(null); setEnabledMasterKey(null); }}
         />
       )}
     </>
