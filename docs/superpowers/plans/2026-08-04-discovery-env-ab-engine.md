@@ -37,8 +37,11 @@
 | `src/cli/discovery-ab.neon.ts` | A/B target attestation + the single mutating reset call. |
 | `src/cli/tests/discovery-ab.neon.spec.ts` | Attestation and reset tests against a fake control plane. |
 | `src/cli/discovery-ab.main.ts` | Parent: gate → reset → spawn two children → aggregate → artifact. Child: run assigned slots. |
+| `src/cli/discovery-ab.contract.ts` | Operator contract: help text, exit codes, and the classification that picks between them. Dependency-free, so `--help` needs no credentials. |
+| `src/cli/discovery-ab.gate.ts` | The four-variable gate and `AbGateError`, read before anything that can compose a database. |
 | `src/cli/discovery-ab.ts` | Dependency-free attesting bootstrap (mirrors `discovery-env-matrix.ts`). |
 | `src/cli/tests/discovery-ab.artifact.spec.ts` | Artifact shape: two rules, per-side configs, diff, no baseline. |
+| `src/cli/tests/discovery-ab.{contract,gate,child,parent,env}.spec.ts` | Contract and exit-code classification, gate refusals, the child's slot execution, the parent's supervision and outcome, and env application/restoration. |
 | `services/api/package.json` *(modify)* | `eval:discovery-ab` script. |
 
 ---

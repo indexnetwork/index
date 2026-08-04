@@ -97,12 +97,14 @@ One process per side is not stylistic: the API composes its database singleton o
 | Unit | Responsibility | Depends on |
 |---|---|---|
 | `discovery-ab.plan.ts` | Turn (cases, reps, two configs) into slots; validate configs against the nine-flag set | nothing (pure) |
-| `discovery-ab.env.ts` | Apply a config around one graph invocation, restore prior values in `finally` | nothing (pure) |
-| `discovery-ab.branches.ts` | Resolve the two side URLs, assert they are designated A/B branches, reset both from base | Neon control plane |
+| `discovery-env-matrix.runtime.ts` *(shipped there, not in a new module)* | Apply a config around one graph invocation, restore prior values in `finally` | nothing (pure) |
+| `discovery-ab.neon.ts` *(shipped there, not in a new module)* | Resolve the two side URLs, assert they are designated A/B branches, reset both from base | Neon control plane |
+| `discovery-ab.contract.ts` | The operator contract: help text, exit codes, and the classification that picks between them | nothing (dependency-free) |
+| `discovery-ab.gate.ts` | The four-variable gate, read before anything that can compose a database | nothing (pure) |
 | `discovery-ab.ts` (child) | Run assigned slots against one branch under one config | graph, policy |
 | `discovery-ab.main.ts` (parent) | Gate, reset, spawn, aggregate, write artifact | all of the above |
 
-`discovery-ab.env.ts` generalizes today's `withMatrixEnvironment`, which hard-codes two keys and restores them in a `finally`. The generalized version takes a `Record<string, string>`, applies only allowlisted keys, and restores every key it touched — including deleting keys that were previously unset.
+Env application shipped as `withDiscoveryEnvironment` in `discovery-env-matrix.runtime.ts` rather than a new `discovery-ab.env.ts`, because it generalizes today's `withMatrixEnvironment`, which lives there and hard-codes two keys and restores them in a `finally`. The generalized version takes a `Record<string, string>`, applies only allowlisted keys, and restores every key it touched — including deleting keys that were previously unset. Branch handling shipped in `discovery-ab.neon.ts` (attestation and the single mutating reset together) rather than a separate `discovery-ab.branches.ts`.
 
 **Why clone rather than re-seed.** Seeding the corpus is not a pure SQL insert: `seedProtectedBase` embeds every fixture intent and builds HyDE documents with vectors, and `verifyBaseFixtureIntegrity` refuses a base whose intents are unembedded or whose vectors are malformed. Re-seeding per run would mean re-embedding per run — provider spend and non-determinism on every comparison. Cloning a pre-embedded protected base gives an identical, already-embedded corpus in seconds, which is why the existing matrix works this way.
 

@@ -32,8 +32,9 @@ export const AB_BASE_BRANCH = 'eval-discovery-base';
 export const AB_DEFAULT_REPETITIONS = 3;
 /**
  * A ceiling on `--runs`, because a mistyped one costs real money and hours: at
- * the observed ~52s per invocation, ten repetitions over the full corpus is
- * already 300 graph invocations. Nothing above this is a considered choice.
+ * the observed ~52s per invocation, ten repetitions over the full five-case
+ * corpus is already 100 graph invocations (5 cases x 10 repetitions x 2 sides).
+ * Nothing above this is a considered choice.
  */
 export const AB_MAX_REPETITIONS = 10;
 

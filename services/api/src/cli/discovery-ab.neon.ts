@@ -172,8 +172,20 @@ export async function attestAbTargets(input: { manifest: AbManifest; controlPlan
 /** Neon's `OperationStatus` enum. Anything else is treated as unrecognized. */
 const OPERATION_STATUSES = ['scheduling', 'running', 'finished', 'failed', 'error', 'cancelling', 'cancelled', 'skipped'] as const;
 type OperationStatus = (typeof OPERATION_STATUSES)[number];
-/** States that may still become `finished`; every other state is terminal. */
+/** States that may still become terminal; every other state is terminal. */
 const PENDING_STATUSES: ReadonlySet<OperationStatus> = new Set<OperationStatus>(['scheduling', 'running', 'cancelling']);
+/**
+ * Terminal states that mean the step did not fail.
+ *
+ * `skipped` is here because restore replies with the whole operation chain, not
+ * just the restore: Neon schedules compute suspend/start alongside it and
+ * reports `skipped` for a step it did not need to perform (a compute that was
+ * already suspended, say). That is a successful reset, so treating it as fatal
+ * would abort a run whose branches were in fact reset correctly — and print a
+ * warning saying the branches may have been overwritten and it cannot say
+ * which, which would be false. `failed`, `error` and `cancelled` stay fatal.
+ */
+const SUCCESS_STATUSES: ReadonlySet<OperationStatus> = new Set<OperationStatus>(['finished', 'skipped']);
 
 function isOperationStatus(value: unknown): value is OperationStatus {
   return typeof value === 'string' && (OPERATION_STATUSES as readonly string[]).includes(value);
@@ -189,8 +201,9 @@ async function readJson(response: Response, context: string): Promise<unknown> {
 }
 
 /**
- * Restore replies with `BranchOperations`; the operation ids are the only thing
- * taken from the body, and they are never echoed anywhere.
+ * Restore replies with `BranchOperations` — the restore plus whatever compute
+ * operations Neon schedules alongside it — and the operation ids are the only
+ * thing taken from the body, and they are never echoed anywhere.
  */
 function readOperationIds(body: unknown): string[] {
   const root = asRecord(body, 'Neon control-plane restore response is not an object');
@@ -238,7 +251,7 @@ async function awaitOperations(input: {
   for (const operationId of input.operationIds) {
     for (;;) {
       const status = await readOperationStatus({ projectId: input.projectId, operationId, apiKey: input.apiKey, send: input.send });
-      if (status === 'finished') break;
+      if (SUCCESS_STATUSES.has(status)) break;
       if (!PENDING_STATUSES.has(status)) throw new Error(`Neon control-plane reset operation ended with status ${status}`);
       if (Date.now() >= deadline) {
         throw new Error(`Neon control-plane reset did not finish within ${input.pollTimeoutMs}ms`);
@@ -259,7 +272,8 @@ async function awaitOperations(input: {
  *
  * The manifest must be an `AttestedAbManifest`: the branch is proven to be a
  * designated A/B branch by construction, not by call order. It resolves only
- * after every reported operation reaches `finished`, so nothing connects to a
+ * after every reported operation is terminal and not a failure (`finished`, or
+ * `skipped` for a step Neon did not need to perform), so nothing connects to a
  * branch that is still being overwritten. Poll interval and timeout are
  * injectable so tests do not sleep.
  */

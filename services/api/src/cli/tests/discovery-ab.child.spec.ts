@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 import { AB_ALLOWED_EVIDENCE, abConfigDeltas, abSlotCaseId, buildAbSlotScoreInput, invokeAbDiscoveryGraph, parseAbChildArgs, selectAbSideSlots } from '../discovery-ab.main';
 import { buildAbPlan, type AbSide, type AbSlot } from '../discovery-ab.plan';
 
@@ -115,6 +116,16 @@ describe('parseAbChildArgs', () => {
 describe('AB_ALLOWED_EVIDENCE', () => {
   it('lists every evidence kind, which is what makes it a relaxation of the row gate', () => {
     expect([...AB_ALLOWED_EVIDENCE].sort()).toEqual(['intent', 'premise', 'user_context']);
+  });
+
+  // The seam `scoreMatrixSlot` takes this through is `any`-typed, so a fourth
+  // evidence kind added to MATRIX_ROWS would not fail to compile here; it would
+  // fail `allowed_evidence` on every A/B slot citing it, 40 minutes into a live
+  // run. Fail in a second here instead.
+  it('covers every evidence kind the matrix rows allow, or a new kind would fail every slot citing it', () => {
+    const matrixEvidence = new Set<string>(MATRIX_ROWS.flatMap((row) => [...row.allowedEvidence]));
+    const allowed = new Set<string>(AB_ALLOWED_EVIDENCE);
+    expect([...matrixEvidence].filter((kind) => !allowed.has(kind))).toEqual([]);
   });
 });
 

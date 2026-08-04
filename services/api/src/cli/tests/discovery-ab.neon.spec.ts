@@ -144,12 +144,47 @@ describe('resetAbBranch', () => {
     })).rejects.toThrow(/reset operation ended with status failed/);
   });
 
-  it.each(['error', 'cancelled', 'skipped'])('throws when an operation ends in %s', async (status) => {
+  it.each(['error', 'cancelled'])('throws when an operation ends in %s', async (status) => {
     const calls: string[] = [];
     await expect(resetAbBranch({
       manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
       fetchImpl: restoreFetch({ operationIds: ['op-1'], statuses: [status], calls }),
     })).rejects.toThrow(new RegExp(`reset operation ended with status ${status}`));
+  });
+
+  // Restore reports the whole operation chain, and Neon marks a step it did not
+  // need to perform `skipped`. Treating that as fatal aborted a reset that had
+  // in fact succeeded, and said the branches might have been overwritten.
+  it('accepts a skipped operation, because skipped means the step was unnecessary, not failed', async () => {
+    const calls: string[] = [];
+    await resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-1'], statuses: ['skipped'], calls }),
+    });
+    expect(calls).toEqual([`POST ${RESTORE_URL}`, `GET ${OPERATION_URL('op-1')}`]);
+  });
+
+  it('completes a restore whose compute sub-operation is skipped and whose restore finishes', async () => {
+    const statusById: Record<string, string> = { 'op-restore': 'finished', 'op-suspend': 'skipped' };
+    const calls: string[] = [];
+    await resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: (async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? 'GET'} ${url}`);
+        if ((init?.method ?? 'GET') === 'POST') {
+          return new Response(JSON.stringify({
+            branch: { id: 'br-a' },
+            operations: [
+              { id: 'op-restore', status: 'running', action: 'restore_branch' },
+              { id: 'op-suspend', status: 'running', action: 'suspend_compute' },
+            ],
+          }), { status: 200 });
+        }
+        const id = url.slice(url.lastIndexOf('/') + 1);
+        return new Response(JSON.stringify({ operation: { id, status: statusById[id] } }), { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(calls).toEqual([`POST ${RESTORE_URL}`, `GET ${OPERATION_URL('op-restore')}`, `GET ${OPERATION_URL('op-suspend')}`]);
   });
 
   it('never puts the operation body in the failure error, because it can carry credentials', async () => {

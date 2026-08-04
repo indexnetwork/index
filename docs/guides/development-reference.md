@@ -124,9 +124,14 @@ discovery graph against real Neon databases.
 ```bash
 cd services/api
 bun run eval:discovery-ab -- --help          # The whole contract, no credentials needed
-bun run eval:discovery-ab -- \
-  --a DISCOVERY_ALLOWED_TYPES=intent \
-  --b DISCOVERY_ALLOWED_TYPES=intent,profile  # A default run (costs tokens and ~13 minutes)
+
+# A default run (costs tokens and ~13 minutes). Every A/B invocation but --help
+# needs all four gate variables; see **The gate** below.
+DISCOVERY_AB_CONFIRM=1 TEST_DATABASE_SAFE=1 \
+NEON_API_KEY=<key> DISCOVERY_AB_TARGETS='<manifest>' \
+  bun run eval:discovery-ab -- \
+    --a DISCOVERY_ALLOWED_TYPES=intent \
+    --b DISCOVERY_ALLOWED_TYPES=intent,profile
 ```
 
 **What it compares.** Two operator-chosen environment configurations over the
@@ -218,6 +223,14 @@ default `premise` profile source, measures noise on both sides. The harness will
 accept that run — it is a legal, symmetric, differing pair — so this one is on
 the operator.
 
+**A/B does not enforce per-row evidence gating**, so a passing A/B slot is not
+evidence that the configuration's evidence restriction held: every slot is
+scored against all three evidence kinds (`AB_ALLOWED_EVIDENCE` in
+`discovery-ab.main.ts`). That is deliberate — which evidence a given arbitrary
+configuration should be allowed to cite is the fixed matrix's question, not
+this harness's. Every other deterministic assertion still applies, including
+the non-empty evidence check.
+
 **Cost.** The corpus is five cases (`HISTORICAL_MATRIX_CASES`), so a default run
 is 5 cases × 3 repetitions × 2 sides = **30 graph invocations**: 15 slots per
 side, run sequentially within a side, with the two sides running concurrently.
@@ -248,11 +261,14 @@ envelope and scorecard payload schemas are both zod `.strict()`
 rollup has no legal home in them, and widening a contract shared by every
 harness and every committed baseline for a convenience copy is a bad trade.
 Nothing is lost: every case row carries `configDeltas` naming that side's
-complete configuration (the case schema is the sanctioned `.passthrough()`
+specified overrides (the case schema is the sanctioned `.passthrough()`
 extension point), `assertAbConfigProvenance` refuses to write an artifact where
 that is missing or wrong, and the diff is printed to the console at the end of
 every run. The run-level pair is a rollup of the rows, derivable by grouping
-them by rule.
+them by rule. Only the keys the operator passed on `--a`/`--b` are recorded:
+any other flag value that comes from the env file the command loads (for
+example `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` in `.env.test`) is inherited
+identically by both sides and is not recorded per case.
 
 Artifacts land in `services/api/eval/discovery-ab/runs/<timestamp>.json`
 (gitignored). `payload.rules` are the two sides (`a`, `b`); case ids are
@@ -260,19 +276,39 @@ Artifacts land in `services/api/eval/discovery-ab/runs/<timestamp>.json`
 
 #### Operator runbook: first-time setup and smoke
 
-These steps need `NEON_API_KEY` and Neon project access, so they are an operator
-procedure, not something CI or a local checkout can do. Run them in order.
+Every step but the first needs `NEON_API_KEY` and Neon project access, so this
+is an operator procedure, not something CI or a local checkout can do. Run the
+steps in order.
 
-1. **Create and seed the protected base (IND-626).** `eval-discovery-base` must
+1. **Build `packages/protocol` first.** The A/B parent statically imports
+   `@indexnetwork/protocol`, which resolves to `packages/protocol/dist` — a
+   gitignored build output that a fresh checkout does not have. The parent dies
+   inside that import, and the failure message is deliberately generic, so a
+   missing build is not named as the cause:
+
+   ```bash
+   cd services/api
+   bun run --cwd ../../packages/protocol build
+   ```
+
+2. **Create and seed the protected base (IND-626).** `eval-discovery-base` must
    exist in the Neon project with an endpoint on database `protocol_eval`, and
    must carry the seeded historical fixture corpus. Seed and verify it with the
    existing protected-base command, whose own gate is
    `DISCOVERY_ENV_MATRIX_BASE_CONFIRM=1`, `TEST_DATABASE_SAFE=1`,
    `DISCOVERY_ENV_MATRIX_BASE_BRANCH=eval-discovery-base` and a `DATABASE_URL`
-   matching the attested base target:
+   matching the attested base target. That command attests its target the same
+   way the matrix does, so it also needs `NEON_API_KEY` and the matrix manifest
+   `DISCOVERY_ENV_MATRIX_CHILDREN` (a different manifest from
+   `DISCOVERY_AB_TARGETS`); it refuses without them:
 
    ```bash
    cd services/api
+   export DISCOVERY_ENV_MATRIX_BASE_CONFIRM=1 TEST_DATABASE_SAFE=1
+   export DISCOVERY_ENV_MATRIX_BASE_BRANCH=eval-discovery-base
+   export NEON_API_KEY=<key>
+   export DISCOVERY_ENV_MATRIX_CHILDREN='<matrix manifest>'
+   export DATABASE_URL='<the attested base target databaseUrl>'
    bun run eval:discovery-env-matrix-base           # seed
    bun run eval:discovery-env-matrix-base:verify    # metadata + fixture-structure reads only
    ```
@@ -282,7 +318,7 @@ procedure, not something CI or a local checkout can do. Run them in order.
    child re-verifies the base metadata and fixture integrity on its own branch
    before it spends anything.
 
-2. **Branch `eval-ab-a` and `eval-ab-b` from it.** Both must be children of
+3. **Branch `eval-ab-a` and `eval-ab-b` from it.** Both must be children of
    `eval-discovery-base`, non-primary, named exactly that, and each must have its
    own endpoint on database `protocol_eval`. Create them in the Neon console or
    via the API, then record the project id, the base branch id, and each side's
@@ -290,7 +326,7 @@ procedure, not something CI or a local checkout can do. Run them in order.
    fails on any of those being wrong, and the failure is deliberately
    non-specific.
 
-3. **Smoke it: one case, one repetition.**
+4. **Smoke it: one case, one repetition.**
 
    ```bash
    cd services/api
