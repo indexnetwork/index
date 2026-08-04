@@ -67,8 +67,10 @@ discovery-ab:  5 cases, only --runs (max 10) and --case; runs in services/api
 The launch form, the workload estimate and `renderRun`'s argv rendering all read this one
 table, so the UI cannot offer a flag the CLI does not accept, and the form's numeric
 bounds are the same bounds `RunSpecSchema` enforces server-side. Workload is `cases ×
-runs` for the scorecard harnesses; `renderRun` doubles it for `discovery-ab`, whose single
-run evaluates every case on both sides (`SIDES_PER_RUN` in `ops.argv.ts`).
+runs` for the scorecard harnesses and doubles for `discovery-ab`, whose single run
+evaluates every case on both sides. `renderRun` and the launch form both multiply by the
+same `SIDES_PER_RUN` ([`ops.sides.ts`](./ops.sides.ts)), so the number an operator confirms
+before spending and the number recorded on the run cannot drift apart.
 
 **`discovery-ab` also carries two configurations.** Its spec has a `sides: { a, b }`
 object of environment values, rendered as `--a KEY=VALUE` / `--b KEY=VALUE` with keys
@@ -76,11 +78,18 @@ sorted. It is required for that harness and refused for every other (a scorecard
 scores one configuration against a baseline, so a second has nothing to mean). Keys are
 confined to `DISCOVERY_AB_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the nine
 flags the discovery graph actually reads, pinned in `tests/argv.spec.ts` against the
-engine's own `AB_FLAGS` — and `abSideIssues` in [`ops.argv.ts`](./ops.argv.ts) mirrors the
+engine's own `AB_FLAGS` — and `abSideIssues` in [`ops.sides.ts`](./ops.sides.ts) mirrors the
 engine's `buildAbPlan` rules: same key set on both sides, at least one differing value, no
 empty values. The engine *ignores* argv it does not recognise and only reaches those rules
 after loading its eval modules, so mirroring them here is what turns a late, paid failure
 into a 400.
+
+`ops.sides.ts` is a module of its own, and dependency-free like `ops.allowlist.ts`, because
+the launch form imports these same rules and renders each refusal beside the control that
+produced it. Leaving them in `ops.argv.ts` would have made that import pull zod and
+`RunSpecSchema`'s module-level schema construction into the browser bundle (measured: +67 kB,
+against +13 kB for the rules and their metadata). `ops.argv.ts` re-exports them, so the
+server still reads them from where it validates.
 
 Values are checked too, and this is stricter than the engine on purpose. `assertAbEnvConfig`
 only refuses a blank value, and every read site in the discovery graph *falls back* rather

@@ -16,6 +16,7 @@
  * itself. There is now exactly one definition and the compiler enforces it.
  */
 export type {
+  AbSides,
   ArtifactRef,
   EvalRunSpec,
   FixtureResetSpec,

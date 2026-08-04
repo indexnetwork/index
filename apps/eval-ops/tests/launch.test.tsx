@@ -3,6 +3,7 @@ import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
 
+import { abSideIssues } from '../../../packages/protocol/eval/ops/ops.sides';
 import { Launch } from '../src/routes/Launch';
 
 const HARNESSES = {
@@ -32,9 +33,26 @@ const HARNESSES = {
       agents: ['premiseDecomposer', 'premiseAnalyzer'],
       flags: [{ name: 'runs', cli: '--runs', kind: 'number' }],
     },
+    {
+      harness: 'discovery-ab',
+      script: 'eval:discovery-ab',
+      caseCount: 5,
+      defaultRuns: 3,
+      question: 'What pass rate does each of two discovery configurations reach on the same cases?',
+      detail: 'Runs the real discovery graph once per operator-chosen environment configuration.',
+      agents: [],
+      flags: [
+        { name: 'runs', cli: '--runs', kind: 'number', min: 1, max: 10, step: 1 },
+        { name: 'case', cli: '--case', kind: 'string' },
+      ],
+    },
   ],
 };
 
+// Env copy is the server's ENV_FLAG_METADATA. The three discovery keys here are
+// verbatim (key, kind, values): the form validates through the same
+// abSideIssues the server does, which resolves values against the real table,
+// so a fixture that invented a kind would test a form nobody can launch from.
 const METADATA = {
   env: [
     {
@@ -44,6 +62,30 @@ const METADATA = {
       kind: 'enum',
       values: ['off', 'on'],
       defaultDescription: 'off',
+    },
+    {
+      key: 'DISCOVERY_PROFILE_SOURCE',
+      label: 'Discovery profile source',
+      description: 'Selects how profiles participate in matching.',
+      kind: 'enum',
+      values: ['premise', 'user_context'],
+      defaultDescription: 'premise',
+    },
+    {
+      key: 'DISCOVERY_CONTEXT_TO_INTENT',
+      label: 'Context-to-intent discovery',
+      description: 'Also match contexts against intents.',
+      kind: 'enum',
+      values: ['0', '1'],
+      defaultDescription: '1',
+    },
+    {
+      key: 'NEGOTIATION_MAX_TURNS_CHAT',
+      label: 'Max negotiation turns (chat)',
+      description: 'Turn cap for negotiations started from a chat conversation.',
+      kind: 'integer',
+      min: 1,
+      defaultDescription: '4',
     },
   ],
   models: [
@@ -58,6 +100,8 @@ const METADATA = {
       { id: 'premiseDecomposer', label: 'Premise decomposer', role: 'Breaks a request into candidate premises.' },
       { id: 'premiseAnalyzer', label: 'Premise analyzer', role: 'Scores each candidate premise.' },
     ],
+    // Empty on the server too: the two sides never differ in models.
+    'discovery-ab': [],
   },
   flags: [
     { name: 'runs', label: 'Runs per case', description: 'How many times every case is executed.', scope: 'selection', defaultLabel: '3' },
@@ -116,6 +160,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  // A deep-link test navigates; every other test reads the harness from the form.
+  window.history.pushState({}, '', '/launch');
 });
 
 const renderLaunch = () =>
@@ -381,5 +427,221 @@ describe('Launch', () => {
 
     expect(judgeA).toBeChecked();
     expect(judgeB).not.toBeChecked();
+  });
+});
+
+/** Selects the one harness whose run compares two environment configurations. */
+const selectDiscoveryAb = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.selectOptions(await screen.findByLabelText('Harness'), 'discovery-ab');
+  return screen.findByLabelText('side a flag 1');
+};
+
+/** Puts one flag on both sides with the given values. */
+const configureFirstFlag = async (
+  user: ReturnType<typeof userEvent.setup>,
+  key: string,
+  a: string,
+  b: string,
+) => {
+  await user.selectOptions(screen.getByLabelText('side a flag 1'), key);
+  await user.selectOptions(screen.getByLabelText('side a value 1'), a);
+  await user.selectOptions(screen.getByLabelText('side b value 1'), b);
+};
+
+describe('Launch — discovery-ab', () => {
+  it('replaces the per-agent model editors with one env editor per side', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    expect(await screen.findByLabelText(/evaluator/i)).toBeTruthy();
+
+    await selectDiscoveryAb(user);
+
+    expect(screen.queryByLabelText(/evaluator/i)).toBeNull();
+    expect(screen.getByLabelText('side a flag 1')).toBeTruthy();
+    expect(screen.getByLabelText('side b flag 1')).toBeTruthy();
+  });
+
+  it('pins A/B on, because a run of this harness is always both sides', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+
+    const toggle = screen.getByRole('checkbox', { name: 'A/B' });
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText(/always runs both sides/i)).toBeTruthy();
+  });
+
+  it('offers none of the scoring flags this harness does not have', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+
+    for (const absent of [/llm judge/i, /regression threshold/i, /strict evidence/i, /^tier$/i, /^rule$/i]) {
+      expect(screen.queryByLabelText(absent)).toBeNull();
+    }
+    // What it does have: runs and case, shared by both sides.
+    expect(screen.getAllByLabelText('Runs per case')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Case')).toHaveLength(1);
+  });
+
+  it('offers only the flags the discovery graph reads', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    const keys = await selectDiscoveryAb(user);
+    const offered = within(keys).getAllByRole('option').map((option) => option.textContent);
+
+    expect(offered.some((text) => text?.includes('DISCOVERY_PROFILE_SOURCE'))).toBe(true);
+    // In the 16-flag allowlist but not among the nine this harness can test.
+    expect(offered.some((text) => text?.includes('POOL_QUESTIONS_MODE'))).toBe(false);
+  });
+
+  it('adds a flag to both sides at once, because an asymmetric pair is refused', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await user.selectOptions(screen.getByLabelText('side a flag 1'), 'DISCOVERY_PROFILE_SOURCE');
+
+    expect(screen.getByLabelText('side b flag 1')).toHaveValue('DISCOVERY_PROFILE_SOURCE');
+
+    // And a second row added from side b appears on side a too.
+    await user.click(within(screen.getByTestId('side-b')).getByRole('button', { name: /add flag/i }));
+
+    expect(screen.getByLabelText('side a flag 2')).toBeTruthy();
+  });
+
+  it('refuses two identical configurations in the server\u2019s own words', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'premise');
+
+    const refusal = abSideIssues({
+      a: { DISCOVERY_PROFILE_SOURCE: 'premise' },
+      b: { DISCOVERY_PROFILE_SOURCE: 'premise' },
+    })[0]!.message;
+    expect(screen.getByText(refusal)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /run both sides/i })).toBeDisabled();
+
+    // Making them differ clears the refusal and enables the launch.
+    await user.selectOptions(screen.getByLabelText('side b value 1'), 'user_context');
+
+    expect(screen.queryByText(refusal)).toBeNull();
+    expect(screen.getByRole('button', { name: /run both sides/i })).not.toBeDisabled();
+  });
+
+  it('counts both sides in the workload without the operator ticking anything', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+
+    expect(screen.getByText(/5 cases × 3 runs × 2 sides = 30/)).toBeTruthy();
+
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await user.click(screen.getByRole('button', { name: /run both sides/i }));
+
+    expect(screen.getByText(/30 model invocations/)).toBeTruthy();
+  });
+
+  it('launches one run carrying both sides, with no model overrides', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await user.clear(screen.getByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '2');
+    await runAndConfirm(user, /run both sides/i);
+
+    expect(postedRuns).toEqual([
+      {
+        kind: 'eval',
+        harness: 'discovery-ab',
+        profile: 'default',
+        flags: { runs: 2 },
+        sides: {
+          a: { DISCOVERY_PROFILE_SOURCE: 'premise' },
+          b: { DISCOVERY_PROFILE_SOURCE: 'user_context' },
+        },
+      },
+    ]);
+  });
+
+  it('opens ready to configure when the harness arrives from a deep link', async () => {
+    window.history.pushState({}, '', '/launch?harness=discovery-ab');
+    renderLaunch();
+
+    // No dropdown interaction happened, so the first row has to come from the
+    // page's own load path.
+    expect(await screen.findByLabelText('side a flag 1')).toBeTruthy();
+    expect(screen.getByLabelText('side b flag 1')).toBeTruthy();
+    expect(screen.getByText(/5 cases × 3 runs × 2 sides = 30/)).toBeTruthy();
+  });
+
+  it('offers no config picker, and says why the two sides are otherwise identical', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    // The picker is on the page for a scorecard harness: two profiles ship.
+    expect(await screen.findByLabelText('Config')).toBeTruthy();
+
+    await selectDiscoveryAb(user);
+
+    expect(screen.queryByLabelText('Config')).toBeNull();
+    expect(screen.getByText(/same models and the same environment/i)).toBeTruthy();
+  });
+
+  it('restores the model editors and drops sides when a scorecard harness is chosen again', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await user.selectOptions(screen.getByLabelText('Harness'), 'matching');
+
+    expect(await screen.findByLabelText(/evaluator/i)).toBeTruthy();
+    expect(screen.queryByLabelText('side a flag 1')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'A/B' })).not.toBeDisabled();
+
+    await runAndConfirm(user, /^run$/i);
+
+    expect(postedRuns).toEqual([
+      { kind: 'eval', harness: 'matching', profile: 'default', flags: {} },
+    ]);
+  });
+
+  it('shows the server\u2019s refusal when it has no credentials or a run is already in flight', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
+        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+        if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
+        if (String(url).endsWith('/api/configs')) return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
+        if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({ error: 'A discovery-ab run is already in flight; cancel it before launching another.' }),
+            { status: 409 },
+          );
+        }
+        return new Response(JSON.stringify({}));
+      }),
+    );
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await runAndConfirm(user, /run both sides/i);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already in flight/i);
+    // The configuration survives the refusal.
+    expect(screen.getByLabelText('side a value 1')).toHaveValue('premise');
   });
 });

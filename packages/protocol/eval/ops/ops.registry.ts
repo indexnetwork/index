@@ -119,10 +119,11 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
    * that cannot change the comparison it appears to configure. Its per-side
    * surface is AB_FLAGS (services/api/src/cli/discovery-ab.flags.ts).
    *
-   * An empty `agents` list does not mean the Launch page offers no model
-   * control for this harness: its Config picker is gated on saved configs, not
-   * on `agents`, and a saved config's models would reach the discovery graph.
-   * That gap is recorded at the picker itself in apps/eval-ops Launch.tsx.
+   * An empty `agents` list is not on its own enough to keep models off the
+   * page: the Launch form's Config picker is gated on saved configs, not on
+   * `agents`, and a saved config's models WOULD reach the discovery graph. So
+   * the form does not render that picker for a harness that carries sides, and
+   * says on the page why (apps/eval-ops Launch.tsx).
    */
   "discovery-ab": Object.freeze({
     harness: "discovery-ab",
@@ -137,12 +138,10 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
     // contract's own ceiling arithmetic, "5 cases x 10 repetitions x 2 sides"
     // (services/api/src/cli/discovery-ab.contract.ts).
     //
-    // renderRun records that doubled number server-side (SIDES_PER_RUN in
-    // ops.argv.ts). THE LAUNCH FORM STILL DOES NOT: apps/eval-ops Launch.tsx
-    // multiplies caseCount x runs and doubles only when the operator ticks its
-    // own unrelated A/B checkbox, so the pre-launch confirmation understates
-    // this harness's spend by half until Task 5 (launch form) fixes it. A note
-    // sits at that line too.
+    // Both the number recorded on the run record and the number the operator
+    // confirms before launching read one constant: SIDES_PER_RUN in
+    // ops.sides.ts, used by renderRun (ops.argv.ts) and by the launch form
+    // (apps/eval-ops Launch.tsx). They cannot disagree about what a run costs.
     caseCount: 5,
     // What the engine reports is two raw pass rates side by side
     // ("side a 4/15 (26.7%) vs side b 7/15 (46.7%)"), with no significance test
