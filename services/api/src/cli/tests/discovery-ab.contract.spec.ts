@@ -31,7 +31,24 @@ async function staticImportClosure(entry: string): Promise<{ files: string[]; pa
     // because a lone quoted string is also what `export const X = 'y';` looks
     // like. A dynamic `await import(...)` is matched by neither, and deferring
     // the runtime behind one is the point.
-    for (const match of source.matchAll(/^(?:(?:import|export)\b[^;]*?\bfrom\s+|import\s+)['"]([^'"]+)['"]\s*;/gm)) {
+    //
+    // The three tolerances are what an import a linter would not flag can
+    // actually look like, each of which used to slip past this guard entirely:
+    // `^\s*` because leading whitespace is legal (a top-level import is not
+    // required to sit in column 0), `import\s*` because the quote may follow
+    // `import` with no space at all, and no trailing semicolon at all, because
+    // `eslint.config.mjs` sets no `semi` rule — so `import './main'` would have
+    // loaded the runtime with this test still green.
+    //
+    // The bare form is tried *first*, and only that ordering makes the
+    // semicolon optional safely: `[^;]` spans newlines, so against an
+    // unterminated `import './main'` the `from` alternative would otherwise run
+    // on into the *next* statement's `from './plan'` and report that specifier
+    // instead — swallowing the very import this test exists to catch. The
+    // lookahead keeps the quotes in the shared tail so both alternatives share
+    // one capture group, and falls through to the `from` form for everything
+    // that is not a bare side-effect import.
+    for (const match of source.matchAll(/^\s*(?:import\s*(?=['"])|(?:import|export)\b[^;]*?\bfrom\s+)['"]([^'"]+)['"]/gm)) {
       const specifier = match[1]!;
       if (specifier.startsWith('.')) queue.push(path.resolve(path.dirname(file), `${specifier}.ts`));
       else packages.add(specifier);
@@ -181,7 +198,19 @@ describe('classifyAbParentFailure', () => {
     expect(report.message).toContain('after the run artifact was written');
     expect(report.message).toContain('The artifact on disk is real');
     expect(report.message).not.toContain('nothing of this run survives');
-    expect(report.message).not.toContain('No artifact was written');
+    expect(report.message).not.toContain('No run report was written');
+  });
+
+  /**
+   * `runAbChild` writes its output and exits 0 even when every slot failed, so
+   * both sides can complete with `runs: 0` everywhere and the artifact still be
+   * written. Attempts were certainly made; a paid run is not something this
+   * stage can assert, so it hedges like every other stage.
+   */
+  it('hedges the spend at the written stage, since both sides can complete having scored nothing', () => {
+    const report = describeAbFailure(classifyAbParentFailure('written', new Error('EBUSY'), { artifactPath: '/repo/runs/x.json' }));
+    expect(report.message).toContain('a live run may have been spent');
+    expect(report.message).not.toContain('a live run was spent');
   });
 
   it('still reports the written stage honestly when no path was recorded', () => {
@@ -190,13 +219,29 @@ describe('classifyAbParentFailure', () => {
     expect(message).not.toContain('undefined');
   });
 
-  it('reports a failure after a side was spawned as a spend with nothing to show for it', () => {
+  it('reports a failure after a side was spawned as a spend with no run report and no verdict', () => {
     const classified = classifyAbParentFailure('spawned', new Error('child died'));
     const report = describeAbFailure(classified);
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
     expect(report.exitCode).not.toBe(AB_EXIT_PREFLIGHT_REFUSED);
     expect(report.message).toContain('after spawning a side');
-    expect(report.message).toContain('No artifact was written');
+    expect(report.message).toContain('No run report was written');
+    expect(report.message).toContain('there is no verdict');
+  });
+
+  /**
+   * Both sides run in parallel, so side a can finish and write its child
+   * artifact while side b times out. The parent's `finally` then calls
+   * `finalizeAbChildArtifacts(dir, false)`, which retains that directory and
+   * prints what is in it - and this message is printed immediately after it.
+   * "Nothing of this run survives" would deny, in the same console, the scored
+   * slots the harness had just named.
+   */
+  it('does not deny the child artifacts a failed run keeps, which the harness itself has just named', () => {
+    const report = describeAbFailure(classifyAbParentFailure('spawned', new Error('child b timed out')));
+    expect(report.message).not.toContain('nothing of this run survives');
+    expect(report.message).not.toContain('No artifact was written');
+    expect(report.message).toContain('any child artifact this run kept is named above');
   });
 
   /**
@@ -209,7 +254,7 @@ describe('classifyAbParentFailure', () => {
     expect(report.message).not.toContain('wall-clock time are gone');
     // It is still certain about the two things the stage does fix.
     expect(report.message).toContain('both A/B branches were reset');
-    expect(report.message).toContain('nothing of this run survives');
+    expect(report.message).toContain('there is no verdict');
   });
 
   it('keeps the original failure as a cause without ever printing it', () => {

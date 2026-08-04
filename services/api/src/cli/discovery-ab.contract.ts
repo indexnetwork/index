@@ -69,11 +69,11 @@ export const AB_EXIT_INSUFFICIENT_EVIDENCE = 3;
 /**
  * 4 — failed *after* the branches began being reset and/or a side was spawned.
  * Conclude: this run mutated the A/B branches and may have spent a live run
- * (provider calls, graph writes, wall-clock hours). Usually nothing of it
- * survives and re-running costs that again; the one exception is a failure that
- * lands *after* the run report was saved, whose message names the artifact on
- * disk. The code stays 4 there because the run did not complete — what the
- * message says, not the code, is what tells an operator whether anything
+ * (provider calls, graph writes, wall-clock hours). Re-running costs that again,
+ * and what (if anything) survived is named by the message: the run report, when
+ * the failure landed *after* it was saved, or the child artifacts a failed run
+ * kept. The code stays 4 in both cases because the run did not complete — what
+ * the message says, not the code, is what tells an operator whether anything
  * survived. This is the code that keeps a forty-minute loss from looking like a
  * refusal.
  */
@@ -116,15 +116,26 @@ function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
       // side process exists, and a side that died at its own gate spent
       // nothing. What it did spend is bounded only by how far it got, which
       // this process cannot see.
+      //
+      // And it cannot say nothing survived. One side can finish and write its
+      // child artifact while the other times out, and
+      // `finalizeAbChildArtifacts` — which runs in the parent's `finally`,
+      // before this message is printed — keeps that directory and names what is
+      // in it precisely so the scored slots can be read. What is certainly lost
+      // is the run report and the verdict, so that is what this says.
       return 'Discovery A/B failed after spawning a side: both A/B branches were reset and at least one side '
-        + 'process was started, so provider spend and wall-clock time may already be gone. No artifact was '
-        + 'written and there is no verdict — nothing of this run survives, and re-running pays for the whole '
-        + 'comparison again.';
+        + 'process was started, so provider spend and wall-clock time may already be gone. No run report was '
+        + 'written and there is no verdict — any child artifact this run kept is named above — and re-running '
+        + 'pays for the whole comparison again.';
     case 'written':
+      // "may have been spent", like every other stage: a child writes its output
+      // and exits 0 even when every one of its slots failed, so both sides can
+      // complete with nothing scored. Attempts were certainly made; a paid run
+      // is not something this stage can assert.
       return 'Discovery A/B failed after the run artifact was written'
         + `${artifactPath === undefined ? '' : ` (${artifactPath})`}: both A/B branches were reset and a live run `
-        + 'was spent, and the failure came after the artifact was saved. The artifact on disk is real — read it '
-        + 'before re-running, which costs the same again.';
+        + 'may have been spent, and the failure came after the artifact was saved. The artifact on disk is real — '
+        + 'read it before re-running, which costs the same again.';
   }
 }
 

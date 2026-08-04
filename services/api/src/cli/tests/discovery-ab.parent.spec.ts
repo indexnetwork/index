@@ -247,7 +247,7 @@ describe('withAbSpendAccounting', () => {
     expect(describeAbFailure(thrown).message).toContain('after resetting the A/B branches');
   });
 
-  it('reports a failure after a side was spawned as a spend with no artifact', async () => {
+  it('reports a failure after a side was spawned as a spend with no run report', async () => {
     const thrown = await withAbSpendAccounting(async (progress) => {
       progress.stage = 'reset';
       progress.stage = 'spawned';
@@ -259,7 +259,10 @@ describe('withAbSpendAccounting', () => {
     // Hedged: a side that died at its own gate spent nothing, and this process
     // cannot tell that case from a side that ran for forty minutes.
     expect(report.message).toContain('provider spend and wall-clock time may already be gone');
-    expect(report.message).toContain('No artifact was written');
+    expect(report.message).toContain('No run report was written');
+    // The temp directory the `finally` retains is named in the console line
+    // printed just before this one; the message must not deny it.
+    expect(report.message).not.toContain('nothing of this run survives');
     // The underlying failure text is never printed; only kept as a cause.
     expect(report.message).not.toContain('exited with code 1');
   });
