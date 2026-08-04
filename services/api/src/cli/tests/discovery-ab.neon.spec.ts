@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { attestAbTargets, parseAbManifest, resetAbBranch, type AbManifest } from '../discovery-ab.neon';
+import { attestAbTargets, parseAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest } from '../discovery-ab.neon';
 import type { NeonControlPlane } from '../discovery-env-matrix.neon';
 
 const manifest: AbManifest = {
@@ -25,6 +25,33 @@ const controlPlane = (overrides: Record<string, Partial<{ name: string; parentId
     { id: `ep-${branchId.slice(3)}`, branchId, host: `ep-${branchId.slice(3)}.neon.tech` },
   ],
 });
+
+/** The only supported way to obtain the branded manifest `resetAbBranch` takes. */
+const attest = (): Promise<AttestedAbManifest> => attestAbTargets({ manifest, controlPlane: controlPlane() });
+
+const RESTORE_URL = 'https://console.neon.tech/api/v2/projects/proj-1/branches/br-a/restore';
+const OPERATION_URL = (id: string): string => `https://console.neon.tech/api/v2/projects/proj-1/operations/${id}`;
+
+/**
+ * A restore that reports `operationIds`, then answers every poll with the next
+ * status in `statuses` (repeating the last one forever, which is how a stuck
+ * operation looks).
+ */
+const restoreFetch = (input: { operationIds: string[]; statuses: string[]; calls: string[] }): typeof fetch => {
+  let poll = 0;
+  return (async (url: string, init?: RequestInit) => {
+    input.calls.push(`${init?.method ?? 'GET'} ${url}`);
+    if ((init?.method ?? 'GET') === 'POST') {
+      return new Response(JSON.stringify({
+        branch: { id: 'br-a' },
+        operations: input.operationIds.map((id) => ({ id, status: 'running', action: 'apply_config' })),
+      }), { status: 200 });
+    }
+    const status = input.statuses[Math.min(poll, input.statuses.length - 1)] ?? 'finished';
+    poll += 1;
+    return new Response(JSON.stringify({ operation: { id: 'op-1', status, error: 'token sk-secret invalid' } }), { status: 200 });
+  }) as unknown as typeof fetch;
+};
 
 const manifestJson = (overrides: Record<string, unknown> = {}): string => JSON.stringify({
   projectId: 'proj-1',
@@ -81,35 +108,108 @@ describe('attestAbTargets', () => {
 
 describe('resetAbBranch', () => {
   it('refuses to reset a branch that is not in the attested manifest', async () => {
-    await expect(resetAbBranch({ manifest, branchId: 'br-production', apiKey: 'k' }))
+    await expect(resetAbBranch({ manifest: await attest(), branchId: 'br-production', apiKey: 'k' }))
       .rejects.toThrow(/not a designated/i);
   });
 
-  it('posts a restore from the attested base for an attested A/B branch', async () => {
+  it('posts a restore from the attested base and waits for the operation to finish', async () => {
     const calls: string[] = [];
     const bodies: unknown[] = [];
+    const send = restoreFetch({ operationIds: ['op-1'], statuses: ['running', 'finished'], calls });
     await resetAbBranch({
-      manifest, branchId: 'br-a', apiKey: 'k',
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
       fetchImpl: (async (url: string, init?: RequestInit) => {
-        calls.push(`${init?.method ?? 'GET'} ${url}`);
-        bodies.push(JSON.parse(String(init?.body ?? 'null')));
-        return new Response('{}', { status: 200 });
+        if ((init?.method ?? 'GET') === 'POST') bodies.push(JSON.parse(String(init?.body ?? 'null')));
+        return send(url as unknown as RequestInfo, init);
       }) as unknown as typeof fetch,
     });
-    expect(calls).toEqual(['POST https://console.neon.tech/api/v2/projects/proj-1/branches/br-a/restore']);
+    expect(calls).toEqual([`POST ${RESTORE_URL}`, `GET ${OPERATION_URL('op-1')}`, `GET ${OPERATION_URL('op-1')}`]);
     expect(bodies).toEqual([{ source_branch_id: 'br-base' }]);
+  });
+
+  it('waits for every reported operation, not just the first', async () => {
+    const calls: string[] = [];
+    await resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-1', 'op-2'], statuses: ['finished'], calls }),
+    });
+    expect(calls).toEqual([`POST ${RESTORE_URL}`, `GET ${OPERATION_URL('op-1')}`, `GET ${OPERATION_URL('op-2')}`]);
+  });
+
+  it('throws when an operation ends in failed, because the branch was not reset', async () => {
+    const calls: string[] = [];
+    await expect(resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-1'], statuses: ['running', 'failed'], calls }),
+    })).rejects.toThrow(/reset operation ended with status failed/);
+  });
+
+  it.each(['error', 'cancelled', 'skipped'])('throws when an operation ends in %s', async (status) => {
+    const calls: string[] = [];
+    await expect(resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-1'], statuses: [status], calls }),
+    })).rejects.toThrow(new RegExp(`reset operation ended with status ${status}`));
+  });
+
+  it('never puts the operation body in the failure error, because it can carry credentials', async () => {
+    const calls: string[] = [];
+    const error = await resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'neon_api_key_secret', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: restoreFetch({ operationIds: ['op-1'], statuses: ['failed'], calls }),
+    }).catch((caught: Error) => caught);
+    expect((error as Error).message).not.toContain('sk-secret');
+    expect((error as Error).message).not.toContain('neon_api_key_secret');
+  });
+
+  it('gives up within the injected timeout when an operation never finishes', async () => {
+    const calls: string[] = [];
+    const started = Date.now();
+    await expect(resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 1, pollTimeoutMs: 25,
+      fetchImpl: restoreFetch({ operationIds: ['op-1'], statuses: ['running'], calls }),
+    })).rejects.toThrow(/did not finish within 25ms/);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(calls.length).toBeGreaterThan(1);
+  });
+
+  it('refuses a restore that reports no operations, because completion is then unknowable', async () => {
+    await expect(resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch,
+    })).rejects.toThrow(/did not report any operations/);
+  });
+
+  it('reports only a status when an operation poll is refused', async () => {
+    const error = await resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: (async (_url: string, init?: RequestInit) => ((init?.method ?? 'GET') === 'POST'
+        ? new Response(JSON.stringify({ operations: [{ id: 'op-1' }] }), { status: 200 })
+        : new Response('{"message":"token sk-secret invalid"}', { status: 401 }))) as unknown as typeof fetch,
+    }).catch((caught: Error) => caught);
+    expect((error as Error).message).toMatch(/operation poll failed with status 401/);
+    expect((error as Error).message).not.toContain('sk-secret');
+  });
+
+  it('refuses an unrecognized operation status rather than echoing it', async () => {
+    await expect(resetAbBranch({
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k', pollIntervalMs: 0, pollTimeoutMs: 1_000,
+      fetchImpl: (async (_url: string, init?: RequestInit) => ((init?.method ?? 'GET') === 'POST'
+        ? new Response(JSON.stringify({ operations: [{ id: 'op-1' }] }), { status: 200 })
+        : new Response(JSON.stringify({ operation: { status: 'sk-secret' } }), { status: 200 }))) as unknown as typeof fetch,
+    })).rejects.toThrow(/unrecognized status/);
   });
 
   it('raises a sanitized error when the control plane refuses', async () => {
     await expect(resetAbBranch({
-      manifest, branchId: 'br-a', apiKey: 'k',
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k',
       fetchImpl: (async () => new Response('{"message":"token sk-secret invalid"}', { status: 401 })) as unknown as typeof fetch,
     })).rejects.toThrow(/Neon control-plane reset failed/);
   });
 
   it('never puts the response body in the error, because it can carry credentials', async () => {
     const error = await resetAbBranch({
-      manifest, branchId: 'br-a', apiKey: 'k',
+      manifest: await attest(), branchId: 'br-a', apiKey: 'k',
       fetchImpl: (async () => new Response('{"message":"token sk-secret invalid"}', { status: 401 })) as unknown as typeof fetch,
     }).catch((caught: Error) => caught);
     expect((error as Error).message).not.toContain('sk-secret');
@@ -117,10 +217,47 @@ describe('resetAbBranch', () => {
 
   it('never puts the API key in the error either', async () => {
     const error = await resetAbBranch({
-      manifest, branchId: 'br-a', apiKey: 'neon_api_key_secret',
+      manifest: await attest(), branchId: 'br-a', apiKey: 'neon_api_key_secret',
       fetchImpl: (async () => new Response('{}', { status: 403 })) as unknown as typeof fetch,
     }).catch((caught: Error) => caught);
     expect((error as Error).message).not.toContain('neon_api_key_secret');
+  });
+});
+
+describe('resetAbBranch attestation brand', () => {
+  /**
+   * The reviewer's attack: a manifest built through the real `parseAbManifest`
+   * that names production as a side and dev as the base, never attested. It
+   * must not compile, and must still be refused at runtime if the brand is cast
+   * away.
+   */
+  const forged = parseAbManifest(JSON.stringify({
+    projectId: 'shiny-cloud-34341469',
+    baseBranchId: 'br-late-tooth-ahlsfgdb',
+    targets: [
+      { sideId: 'a', branchId: 'br-fragrant-brook-ahexgsek', endpointId: 'ep-prod', databaseUrl: 'postgresql://u:p@ep-prod.neon.tech/protocol_eval' },
+      { sideId: 'b', branchId: 'br-b', endpointId: 'ep-b', databaseUrl: 'postgresql://u:p@ep-b.neon.tech/protocol_eval' },
+    ],
+  }));
+
+  const neverCalled = (async () => {
+    throw new Error('resetAbBranch must not reach the control plane');
+  }) as unknown as typeof fetch;
+
+  it('does not accept an unattested manifest at the type level', async () => {
+    await expect(resetAbBranch({
+      // @ts-expect-error - resetAbBranch takes only an AttestedAbManifest; a parsed
+      // manifest is not one, so the forged-manifest attack cannot be compiled.
+      manifest: forged,
+      branchId: 'br-b', apiKey: 'k', fetchImpl: neverCalled,
+    })).rejects.toThrow();
+  });
+
+  it('still refuses a branch outside the manifest when the brand is cast away', async () => {
+    await expect(resetAbBranch({
+      manifest: forged as AttestedAbManifest,
+      branchId: 'br-production', apiKey: 'k', fetchImpl: neverCalled,
+    })).rejects.toThrow(/not a designated/i);
   });
 });
 
@@ -176,6 +313,27 @@ describe('parseAbManifest', () => {
   it('refuses a databaseUrl that is not a Neon postgres URL', () => {
     expect(() => parseAbManifest(manifestJson({ targets: [{ ...manifest.targets[0], databaseUrl: 'https://evil.example.com/db' }, manifest.targets[1]] })))
       .toThrow(/databaseUrl/);
+  });
+
+  it('refuses a databaseUrl naming a database other than protocol_eval', () => {
+    expect(() => parseAbManifest(manifestJson({ targets: [{ ...manifest.targets[0], databaseUrl: 'postgresql://u:p@ep-a.neon.tech/production' }, manifest.targets[1]] })))
+      .toThrow(/must be exactly protocol_eval/);
+  });
+
+  it('refuses the URL shape the matrix bootstrap would have rejected', () => {
+    expect(() => parseAbManifest(manifestJson({ targets: [{ ...manifest.targets[0], databaseUrl: 'postgresql://u:p@ep-a.neon.tech:6543/production?options=endpoint%3Dep-prod' }, manifest.targets[1]] })))
+      .toThrow(/must be exactly protocol_eval/);
+  });
+
+  it('refuses a port other than 5432', () => {
+    expect(() => parseAbManifest(manifestJson({ targets: [{ ...manifest.targets[0], databaseUrl: 'postgresql://u:p@ep-a.neon.tech:6543/protocol_eval' }, manifest.targets[1]] })))
+      .toThrow(/port must be exactly 5432/);
+  });
+
+  it('accepts the pooled Neon URL shape, which uses the default port', () => {
+    const pooled = 'postgresql://u:p@ep-a-pooler.neon.tech:5432/protocol_eval?sslmode=require';
+    const parsed = parseAbManifest(manifestJson({ targets: [{ ...manifest.targets[0], databaseUrl: pooled }, manifest.targets[1]] }));
+    expect(parsed.targets[0].databaseUrl).toBe(pooled);
   });
 
   it('never echoes a rejected databaseUrl, because it carries a password', () => {
