@@ -967,11 +967,19 @@ async function deleteConfig(context: OpsContext, name: string): Promise<Response
 const RESET_IN_FLIGHT = "A test-database reset is in flight; a run launched now would see a half-seeded database.";
 
 /** What one harness needs from this server's own environment before it can run. */
-interface HarnessCredentialRequirement {
+export interface HarnessCredentialRequirement {
   /** Keys that must be non-blank in the server's environment. Never in a record. */
   keys: readonly string[];
   /** Constants this server asserts on the operator's behalf. Not secrets. */
   asserts: Readonly<Record<string, string>>;
+  /**
+   * Keys **removed** from what the child inherits from this server.
+   *
+   * The counterpart of `asserts`: some variables must be stated by their absence.
+   * A harness whose child tree must not reach a database this server happens to
+   * be pointed at names it here rather than hoping nobody inherits it.
+   */
+  unset: readonly string[];
   /** What an operator must configure, appended to the refusal. Empty when `keys` is. */
   advice: string;
 }
@@ -980,6 +988,7 @@ interface HarnessCredentialRequirement {
 const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
   keys: Object.freeze([]),
   asserts: Object.freeze({}),
+  unset: Object.freeze([]),
   advice: "",
 });
 
@@ -1014,7 +1023,7 @@ const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
  * point of it: "this run received no credential" is then a statement the code
  * makes rather than an omission, and a harness added later has to answer.
  */
-const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialRequirement>> = Object.freeze({
+export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialRequirement>> = Object.freeze({
   matching: NO_CREDENTIALS,
   profile: NO_CREDENTIALS,
   premise: NO_CREDENTIALS,
@@ -1022,6 +1031,27 @@ const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialRequirem
   "discovery-ab": Object.freeze({
     keys: Object.freeze(["NEON_API_KEY", "DISCOVERY_AB_TARGETS"]),
     asserts: Object.freeze({ DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1" }),
+    // Deleted, not pinned, and this is the one variable that decides which
+    // database the child tree can reach — so it is stated rather than inherited.
+    //
+    // There is no value this server could honestly pin. Its own DATABASE_URL is
+    // the eval fixture database, and handing that to a child tree this same
+    // server is asserting TEST_DATABASE_SAFE=1 over is exactly the mistake worth
+    // preventing. Either side's URL out of the manifest would be a lie about the
+    // other side. And the parent A/B process composes no database at all: it
+    // resets two branches through the Neon control plane and spawns one child per
+    // side, each of which sets its own DATABASE_URL from the attested manifest
+    // (discovery-ab.ts) and is then re-checked against that side's branch
+    // (`assertAbSideEnvironment`).
+    //
+    // Deleting hands the decision back to the script, which already made it:
+    // `eval:discovery-ab` is `bun --env-file=../../.env.test ...`, and a parent
+    // environment beats --env-file in Bun, so this server's value was silently
+    // winning a question the script had already answered. With the key removed,
+    // .env.test decides — and where there is no .env.test, nothing does, which is
+    // the fail-closed answer: anything in the child tree that needs a database
+    // before a side is chosen refuses rather than reaching one it was not aimed at.
+    unset: Object.freeze(["DATABASE_URL"]),
     // Returned to a browser: it names variables and what they are for, never a value.
     advice:
       "It resets and runs the real discovery graph against the two designated Neon evaluation branches, so an "
@@ -1032,8 +1062,12 @@ const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialRequirem
 });
 
 export type HarnessEnvironment =
-  /** Merged over the run's own environment when the child is spawned. */
-  | { ok: true; env: Record<string, string> }
+  /**
+   * Merged over the run's own environment when the child is spawned. A key whose
+   * value is `undefined` is deleted from what the child inherits — see
+   * {@link HarnessCredentialRequirement.unset} and `ExecutionStep.env`.
+   */
+  | { ok: true; env: Record<string, string | undefined> }
   /** Names what is missing and what to configure. Safe to display: no value is in it. */
   | { ok: false; reason: string };
 
@@ -1063,7 +1097,8 @@ export function resolveHarnessEnvironment(
     };
   }
 
-  const resolved: Record<string, string> = { ...requirement.asserts };
+  const resolved: Record<string, string | undefined> = { ...requirement.asserts };
+  for (const key of requirement.unset) resolved[key] = undefined;
   for (const key of requirement.keys) resolved[key] = (env[key] as string).trim();
   return { ok: true, env: resolved };
 }
@@ -1095,7 +1130,7 @@ function harnessSteps(
   context: OpsContext,
   record: RunRecord,
   harness: OpsHarness,
-  injected: Record<string, string>,
+  injected: Record<string, string | undefined>,
 ): readonly ExecutionStep[] | undefined {
   const descriptor = HARNESS_REGISTRY[harness];
   if (descriptor.cwd === undefined && Object.keys(injected).length === 0) return undefined;
@@ -1128,12 +1163,18 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
   const harness = parsed.data.harness;
 
-  // Both refusals below happen before a record exists, so a refused launch
-  // leaves nothing behind: a stored run that never ran teaches an operator the
-  // wrong thing about what this server did.
+  // Both refusals below happen before a record exists, so they leave nothing
+  // behind. That is not true of the whole route: the two re-checks immediately
+  // before the enqueue run *after* the record has been written, and mark it
+  // `interrupted`. So run history can contain a record for a run that never
+  // started — one per launch that lost that race, which is what a double-clicked
+  // launch button produces. "Refused before a record exists" describes these two
+  // checks and nothing further down.
 
-  // At most one run of a harness that owns a shared physical resource.
-  const holder = context.queue.exclusiveConflict(harness);
+  // At most one run of a harness that owns a shared physical resource. This check
+  // reads the store as well as this process's queue, so a run left behind by a
+  // server that restarted under it still holds the slot.
+  const holder = await context.queue.exclusiveConflict(harness);
   if (holder !== null) return json({ error: exclusiveRefusal(harness, holder) }, 409);
 
   // The credentials this harness's own gate demands, from this server's
@@ -1201,8 +1242,14 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // The same re-check for the exclusive slot, and for the same reason: two
   // launches that both passed the check above — profile resolution and the
   // record write are awaits, and another request runs during them — must not
-  // both end up holding the same two branches.
-  const raced = context.queue.exclusiveConflict(harness);
+  // both end up holding the same two branches. In-process only, deliberately:
+  // this check must contain no await, or two requests could interleave inside
+  // it and it would decide nothing. The restart case is the earlier check's job.
+  //
+  // A launch refused here has already been written down, so unlike the checks
+  // above it does leave a record — marked `interrupted`, which is what a
+  // double-clicked launch button produces one of.
+  const raced = context.queue.inProcessConflict(harness);
   if (raced !== null) {
     await context.store.update(record.id, { status: "interrupted", endedAt: new Date().toISOString() });
     return json({ error: exclusiveRefusal(harness, raced) }, 409);

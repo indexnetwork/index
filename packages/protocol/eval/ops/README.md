@@ -208,18 +208,40 @@ queue holds in memory and writes nowhere:
   without; the server adds `DISCOVERY_AB_CONFIRM=1` and `TEST_DATABASE_SAFE=1`, which are
   attestations rather than secrets. A launch is refused with **503** naming what an
   operator must configure when either secret is absent or blank — rather than spawning a
-  child that dies at the gate.
+  child that dies at the gate. The same entry `unset`s `DATABASE_URL`, which is *removed*
+  from what the child inherits: the parent A/B process composes no database, both children
+  set their own from the attested manifest, and this server's own value — the eval fixture
+  database — must not be what a child tree it is asserting `TEST_DATABASE_SAFE=1` over can
+  reach. `eval:discovery-ab` runs under `--env-file=../../.env.test`, and a parent
+  environment beats `--env-file` in Bun, so without this the server's value silently won a
+  question the script had already answered.
+  `server.spec.ts` pins the table against `assertAbConfirmation`'s own source, so a fifth
+  variable added to the gate fails here instead of resurfacing as a child that dies at it.
 
 ### One `discovery-ab` run at a time
 
 `EXCLUSIVE_HARNESSES` ([`ops.queue.ts`](./ops.queue.ts)) names the harnesses whose runs may
 never overlap, and why. `discovery-ab` resets and uses the same two designated Neon
 evaluation branches on every run, so two at once would reset each other's databases
-mid-run. A second launch is refused with **409** naming the run that holds the slot —
-before a record exists, so run history never shows a run that was never started. The rule
-is enforced by the queue rather than only by the route: a run whose slot is taken is left
-pending regardless of `EVAL_OPS_MAX_CONCURRENT_RUNS`, and is passed over rather than
-allowed to block the scorecard runs behind it, which share nothing with it.
+mid-run. A second launch is refused with **409** naming the run that holds the slot.
+
+The slot outlives the process holding it. `queue.exclusiveConflict()` asks this process's
+queue **and** the store: a `running` record whose pid is still alive holds the slot even
+though the queue that started it is gone, which is the case a server restart under a
+double-digit-minute run creates (the child keeps running; the queue does not). A record
+whose process *is* gone holds nothing — the other restart, where the container took the
+child with it, must not make the harness unlaunchable. That is the same liveness question
+`reconcile()` asks, answered by the same probe (`isProcessAlive`).
+
+The rule is enforced by the queue rather than only by the route: a run whose slot is taken
+is left pending regardless of `EVAL_OPS_MAX_CONCURRENT_RUNS`, and is passed over rather
+than allowed to block the scorecard runs behind it, which share nothing with it.
+
+Most refusals precede the record: the first check runs before anything is written, so
+nothing is left behind. The re-check immediately before the enqueue cannot — the record
+exists by then, and a launch that loses that race is marked `interrupted`. So run history
+**can** show an `interrupted` record for a run that never started; a double-clicked launch
+button produces one.
 
 ### Exit code → status
 

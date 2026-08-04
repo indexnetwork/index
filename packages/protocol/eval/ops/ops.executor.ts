@@ -10,8 +10,16 @@ export interface ExecutionStep {
   argv: readonly string[];
   /** Absolute working directory for the child. */
   cwd: string;
-  /** Environment merged over the parent process environment. */
-  env: Record<string, string>;
+  /**
+   * Environment merged over the parent process environment.
+   *
+   * A key mapped to `undefined` is **deleted** from what the child inherits,
+   * rather than set to an empty string. That is the only way to say "this child
+   * tree must not see the server's own value" for a variable the server itself
+   * holds: a step that merely omitted the key would inherit it silently, and
+   * setting it blank would be a different, equally invented answer.
+   */
+  env: Record<string, string | undefined>;
 }
 
 export interface RunExecutor {
@@ -104,7 +112,7 @@ export class LocalProcessRunExecutor implements RunExecutor {
         const proc = Bun.spawn({
           cmd: [...step.argv],
           cwd: step.cwd,
-          env: { ...process.env, ...step.env },
+          env: childEnvironment(step.env),
           stdout: logFile.fd,
           stderr: logFile.fd,
           stdin: "ignore",
@@ -161,6 +169,23 @@ export class LocalProcessRunExecutor implements RunExecutor {
     // Wait for the terminal update so the caller sees the effect of the cancel, not a stale read.
     return await entry.settled;
   }
+}
+
+/**
+ * The environment a step's child is spawned with: this process's, with the
+ * step's overrides applied and its deletions removed.
+ *
+ * The deletions are applied by hand rather than left to `Bun.spawn`'s handling
+ * of an `undefined` value, so what the child receives is decided here, in one
+ * readable place, instead of by a spawn detail that could change under us.
+ */
+function childEnvironment(env: Record<string, string | undefined>): Record<string, string> {
+  const merged: Record<string, string> = { ...(process.env as Record<string, string>) };
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete merged[key];
+    else merged[key] = value;
+  }
+  return merged;
 }
 
 /**

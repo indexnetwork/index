@@ -1,5 +1,5 @@
 import type { ExecutionStep, RunExecutor } from "./ops.executor.js";
-import type { RunStore } from "./ops.store.js";
+import { isProcessAlive as defaultIsProcessAlive, isTerminalStatus, type RunStore } from "./ops.store.js";
 import type { OpsHarness, RunRecord } from "./ops.types.js";
 
 /**
@@ -51,6 +51,12 @@ export interface RunQueueOptions {
   executor: RunExecutor;
   store: RunStore;
   concurrency?: number;
+  /**
+   * Injectable liveness probe, matching {@link FsRunStoreOptions.isProcessAlive}.
+   * Defaults to the store's own, so a record cannot be alive to reconcile and
+   * dead to the exclusivity rule.
+   */
+  isProcessAlive?: (pid: number) => boolean;
 }
 
 /** A queued run and the step plan, if any, it must be executed with. */
@@ -68,11 +74,13 @@ export class RunQueue {
   private readonly inFlight = new Set<Promise<void>>();
   /** Records currently inside executor.start(), by id. Drives the exclusivity rule. */
   private readonly executing = new Map<string, RunRecord>();
+  private readonly isProcessAlive: (pid: number) => boolean;
 
   constructor(options: RunQueueOptions) {
     this.executor = options.executor;
     this.store = options.store;
     this.concurrency = options.concurrency ?? resolveConcurrency();
+    this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
   }
 
   get depth(): number {
@@ -94,21 +102,70 @@ export class RunQueue {
   }
 
   /**
-   * The queued or executing run holding `harness`'s exclusive slot, or null.
+   * The run holding `harness`'s exclusive slot — in this process **or** in the
+   * store — or null.
+   *
+   * The store half is the whole point. The maps below are memory, and memory does
+   * not survive a restart: the deployed service restarts on failure, a
+   * discovery-ab run takes double-digit minutes, and a child spawned by the dead
+   * server keeps running (nothing kills it, its parent simply goes away). A queue
+   * rebuilt on the new process knows about none of that, so a memory-only check
+   * would admit a second run that resets `eval-ab-a` and `eval-ab-b` underneath
+   * the first. The record on disk is the only thing that outlived the process, so
+   * the rule reads it.
+   *
+   * A stored record holds the slot only while its process is genuinely alive. The
+   * other restart — the container is replaced, which kills the child too — leaves
+   * a `running` record whose pid is gone, and that must block nothing: a rule that
+   * refused on a dead pid would make the harness unlaunchable until someone
+   * deleted a file. This is the same liveness question `FsRunStore.reconcile`
+   * asks, answered by the same probe, so the two cannot disagree about one record.
    *
    * Always null for a harness that has no slot (see {@link EXCLUSIVE_HARNESSES}),
-   * so a caller can ask about any harness. Executing runs are reported ahead of
-   * queued ones, because that is the run an operator would cancel.
+   * so a caller can ask about any harness. This process's runs are reported ahead
+   * of stored ones, because that is the run an operator would cancel.
+   */
+  async exclusiveConflict(harness: OpsHarness): Promise<RunRecord | null> {
+    if (EXCLUSIVE_HARNESSES[harness] === null) return null;
+    const mine = this.inProcessConflict(harness);
+    if (mine !== null) return mine;
+    const { records } = await this.store.list();
+    return records.find((record) => this.storedRecordHoldsSlot(record, harness)) ?? null;
+  }
+
+  /**
+   * The queued or executing run **in this process** holding `harness`'s slot.
+   *
+   * Synchronous, which is what it is for: {@link exclusiveConflict} reads the
+   * store, and the launch route's last check before enqueuing must have no await
+   * in it at all — two requests that both passed an awaiting check could still
+   * interleave inside it. This half decides that race; the store half decides the
+   * one a restart opens.
    *
    * A *queued* run counts: it has not spent anything yet, but it is spoken for,
    * and admitting a second one would only move the collision a few minutes later.
    */
-  exclusiveConflict(harness: OpsHarness): RunRecord | null {
+  inProcessConflict(harness: OpsHarness): RunRecord | null {
     if (EXCLUSIVE_HARNESSES[harness] === null) return null;
     for (const record of this.executing.values()) {
       if (harnessOf(record) === harness) return record;
     }
     return this.pending.find((entry) => harnessOf(entry.record) === harness)?.record ?? null;
+  }
+
+  /**
+   * Whether a stored record is a run of `harness` that is still going.
+   *
+   * A record with no pid is deliberately not a holder. It is either a run this
+   * process is about to enqueue — already reported by {@link inProcessConflict} a
+   * moment later, and separated from a racing launch by the route's own re-check
+   * — or a `queued` record a dead process left behind, which `reconcile()` marks
+   * `interrupted` at the next start. Neither is a live run holding two branches.
+   */
+  private storedRecordHoldsSlot(record: RunRecord, harness: OpsHarness): boolean {
+    if (harnessOf(record) !== harness) return false;
+    if (isTerminalStatus(record.status)) return false;
+    return record.pid !== null && this.isProcessAlive(record.pid);
   }
 
   /** Resolves when every queued and in-flight run has settled. */
@@ -140,7 +197,14 @@ export class RunQueue {
     }
   }
 
-  /** True when another run already holds this record's exclusive slot. */
+  /**
+   * True when another run **in this process** already holds this record's slot.
+   *
+   * Synchronous because `pump()` is, and sufficient because it is not the only
+   * guard: a run reaches `enqueue` only through the launch route, which has
+   * already asked {@link exclusiveConflict} — the half that reads the store and so
+   * sees a run this process never started.
+   */
   private isBlocked(record: RunRecord): boolean {
     const harness = harnessOf(record);
     if (harness === null || EXCLUSIVE_HARNESSES[harness] === null) return false;

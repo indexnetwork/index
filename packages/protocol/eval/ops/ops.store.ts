@@ -92,7 +92,7 @@ export class FsRunStore implements RunStore {
     // Reports are addressed relative to eval/, so a run root outside it could never
     // produce a usable artifact path. Fail at construction rather than at run time.
     assertInsideEvalDir(this.evalDir, this.rootDir, `Ops run directory escapes the eval directory: ${this.rootDir}`);
-    this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
+    this.isProcessAlive = options.isProcessAlive ?? isProcessAlive;
   }
 
   async create(input: CreateRunInput): Promise<RunRecord> {
@@ -202,7 +202,21 @@ function assertInsideEvalDir(evalDir: string, target: string, message: string): 
   return relative;
 }
 
-function defaultIsProcessAlive(pid: number): boolean {
+/**
+ * Whether a recorded pid still names a live process.
+ *
+ * Exported because two rules depend on the same answer and must not answer it
+ * differently: {@link FsRunStore.reconcile} leaves a `running` record alone while
+ * its child is alive, and `RunQueue.exclusiveConflict` treats exactly those
+ * records as still holding a harness's exclusive slot. A second implementation
+ * would let a record be simultaneously live enough to survive reconcile and dead
+ * enough to be launched over.
+ *
+ * Signal 0 performs the permission and existence checks without delivering
+ * anything. A pid may be reused by an unrelated process, which is the same
+ * bounded imprecision reconcile has always had.
+ */
+export function isProcessAlive(pid: number): boolean {
   if (pid <= 0) return false;
   try {
     process.kill(pid, 0);

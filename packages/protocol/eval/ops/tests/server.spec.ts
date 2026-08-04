@@ -11,13 +11,18 @@ import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
 import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
 import { RunQueue } from "../ops.queue.js";
-import { createDefaultOpsContext, createOpsHandler, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveHarnessEnvironment, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
+import { createDefaultOpsContext, createOpsHandler, HARNESS_CREDENTIALS, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveHarnessEnvironment, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
 import type { RunRecord } from "../ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, buildEvalArtifact, buildScorecard } from "../../shared/index.js";
 import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifact.fixtures.js";
 
 const DATABASE_URL = "postgres://u:p@host/neondb";
+
+/** The engine module whose `parseAbManifest` defines the manifest's shape. */
+const AB_NEON_SOURCE = path.resolve(import.meta.dir, "../../../../../services/api/src/cli/discovery-ab.neon.ts");
+/** The engine module whose `assertAbConfirmation` this server's credential table serves. */
+const AB_GATE_SOURCE = path.resolve(import.meta.dir, "../../../../../services/api/src/cli/discovery-ab.gate.ts");
 
 /**
  * The two credentials discovery-ab's own gate demands, as this server would hold
@@ -26,16 +31,24 @@ const DATABASE_URL = "postgres://u:p@host/neondb";
  * Both are real secrets in production — the manifest carries two `protocol_eval`
  * connection strings, passwords included — so the tests below assert on these
  * exact strings never appearing in anything the server returns, stores or logs.
+ *
+ * The manifest is shaped the way `parseAbManifest` (discovery-ab.neon.ts)
+ * actually requires: `projectId`, `baseBranchId` and a two-element `targets`
+ * array of `{ sideId, branchId, endpointId, databaseUrl }`. This server treats
+ * the value as opaque and would not notice a different shape — which is exactly
+ * why the fixture must be real, since this file is where a reader learns what
+ * the server is holding. "guard parity with the engine" below pins it.
  */
 const NEON_API_KEY = "napi_test_key_that_must_never_leave_the_server";
-const DISCOVERY_AB_TARGETS = JSON.stringify({
-  project: "eval-project",
-  baseBranch: "eval-base",
-  sides: {
-    a: { branch: "eval-ab-a", databaseUrl: "postgres://u:pw-side-a@ep-a.neon.tech/protocol_eval" },
-    b: { branch: "eval-ab-b", databaseUrl: "postgres://u:pw-side-b@ep-b.neon.tech/protocol_eval" },
-  },
-});
+const AB_MANIFEST = {
+  projectId: "eval-project-id",
+  baseBranchId: "br-eval-discovery-base",
+  targets: [
+    { sideId: "a", branchId: "br-eval-ab-a", endpointId: "ep-a", databaseUrl: "postgres://u:pw-side-a@ep-a.neon.tech/protocol_eval" },
+    { sideId: "b", branchId: "br-eval-ab-b", endpointId: "ep-b", databaseUrl: "postgres://u:pw-side-b@ep-b.neon.tech/protocol_eval" },
+  ],
+};
+const DISCOVERY_AB_TARGETS = JSON.stringify(AB_MANIFEST);
 
 interface StartCall {
   record: RunRecord;
@@ -533,10 +546,17 @@ describe("resolveHarnessEnvironment", () => {
   });
 
   it("gives discovery-ab the two secrets it holds plus the two attestations it makes", () => {
-    expect(resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY, DISCOVERY_AB_TARGETS })).toEqual({
+    const resolved = resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY, DISCOVERY_AB_TARGETS });
+    expect(resolved).toEqual({
       ok: true,
-      env: { NEON_API_KEY, DISCOVERY_AB_TARGETS, DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1" },
+      // DATABASE_URL is present and undefined, which is how a deletion is stated;
+      // toEqual ignores undefined properties, so it is asserted explicitly below.
+      env: { NEON_API_KEY, DISCOVERY_AB_TARGETS, DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1", DATABASE_URL: undefined },
     });
+    const env = (resolved as { env: Record<string, string | undefined> }).env;
+    expect(Object.keys(env).sort())
+      .toEqual(["DATABASE_URL", "DISCOVERY_AB_CONFIRM", "DISCOVERY_AB_TARGETS", "NEON_API_KEY", "TEST_DATABASE_SAFE"]);
+    expect(env.DATABASE_URL).toBeUndefined();
   });
 
   it("names both variables when a server holds neither, and neither value when it holds one", () => {
@@ -550,6 +570,76 @@ describe("resolveHarnessEnvironment", () => {
     expect(half.ok).toBe(false);
     // The refusal is displayed: it says what is missing, never what is present.
     expect((half as { reason: string }).reason).not.toContain(NEON_API_KEY);
+  });
+});
+
+/**
+ * HARNESS_CREDENTIALS restates, in this package, what an engine module in
+ * services/api demands. They agree today; nothing but these tests would notice
+ * if they stopped. The failure a drift produces is the one this whole table
+ * exists to remove: a child that dies at its own gate, with a 503 that no longer
+ * covers the reason.
+ *
+ * Read as source text rather than imported, for the same reason argv.spec.ts
+ * reads AB_FLAGS and registry.spec.ts reads AB_MAX_REPETITIONS: these modules
+ * reach node: APIs and the API's own dependency tree, which this provider-free
+ * suite (and the Vite bundle built from these modules) must not load.
+ */
+describe("guard parity with the engine's own gate", () => {
+  /** The environment `assertAbConfirmation` reads, and the constants it compares against. */
+  async function gateDemands(): Promise<{ names: string[]; constants: Record<string, string> }> {
+    const source = await readFile(AB_GATE_SOURCE, "utf8");
+    const body = source.match(/export function assertAbConfirmation\([^)]*\): void \{([\s\S]*?)\n\}/);
+    if (!body) throw new Error(`assertAbConfirmation not found in ${AB_GATE_SOURCE}`);
+    const names = [...new Set([...body[1]!.matchAll(/env\.([A-Z][A-Z0-9_]+)/g)].map((match) => match[1]!))];
+    const constants: Record<string, string> = {};
+    for (const match of body[1]!.matchAll(/env\.([A-Z][A-Z0-9_]+) !== '([^']*)'/g)) constants[match[1]!] = match[2]!;
+    return { names, constants };
+  }
+
+  it("supplies exactly the variables assertAbConfirmation demands, no more and no fewer", async () => {
+    const { names } = await gateDemands();
+    // Vacuity guard: an unparsed body would otherwise agree with an empty table.
+    expect(names.length).toBeGreaterThan(0);
+
+    const requirement = HARNESS_CREDENTIALS["discovery-ab"];
+    const supplied = [...requirement.keys, ...Object.keys(requirement.asserts)];
+    // A fifth variable in the gate fails here, naming it — rather than surfacing
+    // months later as a child that exits at the gate with a 503 that never fired.
+    // A variable dropped from the gate fails here too: this server would still be
+    // demanding a secret from an operator that nothing reads.
+    expect(supplied.sort()).toEqual([...names].sort());
+  });
+
+  it("attests the exact values the gate compares against", async () => {
+    const { constants } = await gateDemands();
+    // Vacuity guard: the parse found the gate's equality checks at all.
+    expect(Object.keys(constants).length).toBeGreaterThan(0);
+    // A gate that started demanding DISCOVERY_AB_CONFIRM=2 would make this
+    // server's attestation a value the child refuses.
+    expect(HARNESS_CREDENTIALS["discovery-ab"].asserts).toEqual(constants);
+  });
+
+  it("holds the manifest in the shape parseAbManifest requires", async () => {
+    // The server treats DISCOVERY_AB_TARGETS as opaque, so a wrong-shaped fixture
+    // would pass every other test in this file while documenting something the
+    // engine would refuse.
+    const source = await readFile(AB_NEON_SOURCE, "utf8");
+    const parser = source.match(/export function parseAbManifest\([\s\S]*?\n\}/);
+    if (!parser) throw new Error(`parseAbManifest not found in ${AB_NEON_SOURCE}`);
+    const target = source.match(/function parseTarget\([\s\S]*?\n\}/);
+    if (!target) throw new Error(`parseTarget not found in ${AB_NEON_SOURCE}`);
+
+    const rootFields = [...new Set([...parser[0].matchAll(/root\.([A-Za-z]+)/g)].map((match) => match[1]!))];
+    const targetFields = [...new Set([...target[0].matchAll(/entry\.([A-Za-z]+)/g)].map((match) => match[1]!))];
+    expect(rootFields.length).toBeGreaterThan(0);
+    expect(targetFields.length).toBeGreaterThan(0);
+
+    expect(Object.keys(AB_MANIFEST).sort()).toEqual([...rootFields].sort());
+    for (const entry of AB_MANIFEST.targets) expect(Object.keys(entry).sort()).toEqual([...targetFields].sort());
+    // The two things parseAbManifest checks beyond field names.
+    expect(AB_MANIFEST.targets.map((entry) => entry.sideId)).toEqual(["a", "b"]);
+    expect(AB_MANIFEST.targets.map((entry) => entry.branchId)).not.toContain(AB_MANIFEST.baseBranchId);
   });
 });
 
@@ -588,6 +678,38 @@ describe("launching discovery-ab", () => {
     });
     // The profile's own environment is still injected alongside them.
     expect(step.env.EVAL_MODEL_OVERRIDES).toBe("");
+  });
+
+  it("deletes DATABASE_URL from the child rather than leaking this server's own", async () => {
+    // This server holds a DATABASE_URL (the eval fixture database) and asserts
+    // TEST_DATABASE_SAFE=1 over the child tree. A parent environment beats
+    // --env-file in Bun, so an inherited value would silently override the one
+    // `eval:discovery-ab`'s own --env-file=../../.env.test was written around —
+    // while this server vouched for its disposability. The step states the key's
+    // absence instead: present, and undefined.
+    expect(context.databaseUrl).toBe(DATABASE_URL);
+
+    await post("/api/runs", AB_BODY);
+    await context.queue.drain();
+
+    const step = executor.starts[0].steps![0];
+    expect("DATABASE_URL" in step.env).toBe(true);
+    expect(step.env.DATABASE_URL).toBeUndefined();
+    // Not blanked, and above all not this server's.
+    expect(step.env.DATABASE_URL).not.toBe("");
+    expect(Object.values(step.env)).not.toContain(DATABASE_URL);
+  });
+
+  it("leaves the scorecard harnesses' DATABASE_URL alone", async () => {
+    // The deletion belongs to one harness. The four scorecard harnesses take the
+    // executor's own path with no step plan at all, so nothing is removed from
+    // what they inherit.
+    await post("/api/runs", RUN_BODY);
+    await context.queue.drain();
+
+    expect(executor.starts[0].steps).toBeUndefined();
+    expect(resolveHarnessEnvironment("matching", { NEON_API_KEY, DISCOVERY_AB_TARGETS }).ok).toBe(true);
+    expect(HARNESS_CREDENTIALS["matching"].unset).toEqual([]);
   });
 
   it("names the report with an absolute path, so a cwd of services/api still writes into the run's directory", async () => {
@@ -673,6 +795,59 @@ describe("launching discovery-ab", () => {
     // The slot is free again once the run settles.
     expect((await post("/api/runs", AB_BODY)).status).toBe(202);
     await context.queue.drain();
+  });
+
+  it("refuses a discovery-ab run that a restart made invisible", async () => {
+    // The scenario a restart creates: the deployed service restarts ON_FAILURE
+    // while a ~13-minute child keeps running — nothing killed it, its parent went
+    // away. Only the record survived, and reconcile() deliberately leaves a
+    // `running` record with a live pid alone.
+    const orphan = await store.create({
+      spec: AB_BODY as never,
+      argv: ["bun", "run", "eval:discovery-ab"],
+      env: {},
+      profileFingerprint: "f",
+      experimental: false,
+      workload: 1,
+    });
+    await store.update(orphan.id, { status: "running", pid: process.pid, startedAt: new Date().toISOString() });
+
+    // A restarted server: a fresh queue and a fresh handler over the same records.
+    await build();
+    expect(context.queue.inProcessConflict("discovery-ab")).toBeNull();
+
+    const response = await post("/api/runs", AB_BODY);
+
+    expect(response.status).toBe(409);
+    const error = (await response.json()).error as string;
+    expect(error).toContain(orphan.id);
+    expect(error).toMatch(/Neon/);
+    // Refused before a record existed, so the restart leaves no second run at all.
+    expect(executor.starts).toHaveLength(0);
+    expect((await store.list()).records.map((run) => run.id)).toEqual([orphan.id]);
+  });
+
+  it("lets discovery-ab launch again once the recorded process is gone", async () => {
+    // The other restart: the container was replaced, taking the child with it.
+    // A `running` record with a dead pid must block nothing, or the harness stays
+    // unlaunchable until someone deletes a file.
+    const proc = Bun.spawn({ cmd: ["true"], stdout: "ignore", stderr: "ignore" });
+    await proc.exited;
+    const orphan = await store.create({
+      spec: AB_BODY as never,
+      argv: ["bun", "run", "eval:discovery-ab"],
+      env: {},
+      profileFingerprint: "f",
+      experimental: false,
+      workload: 1,
+    });
+    await store.update(orphan.id, { status: "running", pid: proc.pid, startedAt: new Date().toISOString() });
+
+    await build();
+
+    expect((await post("/api/runs", AB_BODY)).status).toBe(202);
+    await context.queue.drain();
+    expect(executor.starts).toHaveLength(1);
   });
 
   it("refuses the loser of two launches that raced past the first check", async () => {

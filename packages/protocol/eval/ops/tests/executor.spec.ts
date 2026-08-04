@@ -163,6 +163,43 @@ describe("LocalProcessRunExecutor", () => {
     expect(log).not.toContain("napi-secret-value");
   });
 
+  it("removes a key a step maps to undefined from what the child inherits", async () => {
+    // The A/B harness's step deletes DATABASE_URL: the value this process holds
+    // must not be what a child tree it asserts TEST_DATABASE_SAFE=1 over can
+    // reach. Deleting is not the same as blanking — an empty string is still a
+    // value, and `--env-file` would no longer supply the one the script expects —
+    // so the child is asked whether the key is present at all.
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://u:p@parent-host/parent_db";
+    try {
+      const record = await createRecord([]);
+
+      await executor.start(record, [
+        {
+          label: "discovery-ab",
+          argv: [
+            "bun",
+            "-e",
+            "console.log(`inherited=${'INHERITED_MARKER' in process.env} database=${'DATABASE_URL' in process.env} value=${JSON.stringify(process.env.DATABASE_URL)}`)",
+          ],
+          cwd: dir,
+          env: { DATABASE_URL: undefined, INHERITED_MARKER: "kept" },
+        },
+      ]);
+
+      const log = await Bun.file(store.logPath(record.id)).text();
+      // Everything else this process holds still reaches the child — the deletion
+      // is one key, not a scrubbed environment.
+      expect(log).toContain("inherited=true");
+      expect(log).toContain("database=false");
+      expect(log).toContain("value=undefined");
+      expect(log).not.toContain("parent-host");
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
+  });
+
   it("stops a step sequence at the first failure and reports execution-error", async () => {
     const record = await createRecord([]);
     const steps: ExecutionStep[] = [
