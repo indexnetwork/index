@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { AB_ALLOWED_EVIDENCE, abConfigDeltas, abSlotCaseId, invokeAbDiscoveryGraph, parseAbChildArgs, selectAbSideSlots } from '../discovery-ab.main';
+import { AB_ALLOWED_EVIDENCE, abConfigDeltas, abSlotCaseId, buildAbSlotScoreInput, invokeAbDiscoveryGraph, parseAbChildArgs, selectAbSideSlots } from '../discovery-ab.main';
 import { buildAbPlan, type AbSide, type AbSlot } from '../discovery-ab.plan';
 
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
@@ -8,6 +8,19 @@ import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
 const testCase = (id: string): HistoricalMatrixFixture => ({
   id, description: id, networkContext: 'ctx', sourceUserId: 'u1', expectedUserId: 'u2',
   excludedUserIds: [], participants: [],
+});
+
+/** A fixture complete enough for `databaseCase` to map its participant ids. */
+const seedableCase = (id: string): HistoricalMatrixFixture => ({
+  ...testCase(id),
+  participants: ['u1', 'u2'].map((participantId) => ({
+    id: participantId,
+    profileText: `${id} ${participantId} profile`,
+    location: 'fixture city',
+    interests: [],
+    skills: [],
+    intent: { text: `${id} ${participantId} intent` },
+  })),
 });
 
 const sideA: AbSide = { id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } };
@@ -100,8 +113,75 @@ describe('parseAbChildArgs', () => {
 });
 
 describe('AB_ALLOWED_EVIDENCE', () => {
-  it('states plainly that A/B does not gate evidence per configuration', () => {
+  it('lists every evidence kind, which is what makes it a relaxation of the row gate', () => {
     expect([...AB_ALLOWED_EVIDENCE].sort()).toEqual(['intent', 'premise', 'user_context']);
+  });
+});
+
+describe('buildAbSlotScoreInput', () => {
+  const scored = {
+    candidates: [{ id: 'u2', finalRank: 1, evidenceTypes: ['intent' as const], evidenceIds: {} }],
+    rawCandidates: [{ id: 'u2', retrievalRank: 1, evidenceTypes: ['intent' as const], evidenceIds: {} }],
+    evaluatorTraces: [{ id: 'u2', retrievalRank: 1, evaluatorReturned: true, evaluatorScore: 90, finalIncluded: true, finalRank: 1 }],
+    completed: true,
+  };
+  const failed = { candidates: [], completed: false };
+  const slot = (side: AbSide, repetition = 0): AbSlot => ({ matrixCase: seedableCase('c1'), side, repetition });
+
+  it('states the allowed evidence on a scored slot, without which every candidate-bearing slot throws on an unknown row', () => {
+    expect(buildAbSlotScoreInput(slot(sideA), scored).allowedEvidence).toBe(AB_ALLOWED_EVIDENCE);
+  });
+
+  it('states the allowed evidence on a failed slot too, so the fallback cannot drift from the scored path', () => {
+    expect(buildAbSlotScoreInput(slot(sideB), failed).allowedEvidence).toBe(AB_ALLOWED_EVIDENCE);
+  });
+
+  it('scores the slot against the side, not a matrix row, and names the repetition one-based', () => {
+    const input = buildAbSlotScoreInput(slot(sideB, 2), scored);
+    expect(input.rowId).toBe('b');
+    expect(input.repetition).toBe(2);
+    expect(input.caseId).toBe('c1/b/r3');
+  });
+
+  it('records the side configuration as sorted deltas on a scored slot', () => {
+    const side: AbSide = { id: 'a', config: { NEGOTIATION_MAX_TURNS_CHAT: '6', DISCOVERY_ALLOWED_TYPES: 'intent' } };
+    expect(buildAbSlotScoreInput(slot(side), scored).configDeltas).toEqual([
+      { key: 'DISCOVERY_ALLOWED_TYPES', before: null, after: 'intent' },
+      { key: 'NEGOTIATION_MAX_TURNS_CHAT', before: null, after: '6' },
+    ]);
+  });
+
+  it('records the side configuration on a failed slot too, so a failure says which configuration produced it', () => {
+    const side: AbSide = { id: 'b', config: { NEGOTIATION_MAX_TURNS_CHAT: '6', DISCOVERY_ALLOWED_TYPES: 'intent,profile' } };
+    expect(buildAbSlotScoreInput(slot(side), failed).configDeltas).toEqual([
+      { key: 'DISCOVERY_ALLOWED_TYPES', before: null, after: 'intent,profile' },
+      { key: 'NEGOTIATION_MAX_TURNS_CHAT', before: null, after: '6' },
+    ]);
+  });
+
+  it('still states the allowed evidence when the configuration is empty and there are no deltas', () => {
+    const input = buildAbSlotScoreInput(slot({ id: 'a', config: {} }), scored);
+    expect(input.configDeltas).toEqual([]);
+    expect(input.allowedEvidence).toBe(AB_ALLOWED_EVIDENCE);
+  });
+
+  it('carries the outcome through and maps participant ids to their protected-base ids', () => {
+    const input = buildAbSlotScoreInput(slot(sideA), scored);
+    expect(input.candidates).toBe(scored.candidates);
+    expect(input.rawCandidates).toBe(scored.rawCandidates);
+    expect(input.evaluatorTraces).toBe(scored.evaluatorTraces);
+    expect(input.completed).toBe(true);
+    expect(input.matrixCase.id).toBe('c1');
+    expect(input.matrixCase.sourceUserId).toMatch(/^eval-discovery-matrix-user-/);
+    expect(input.matrixCase.expectedUserId).not.toBe(input.matrixCase.sourceUserId);
+  });
+
+  it('omits the diagnostic fields a failed slot has none of, exactly as the fallback did inline', () => {
+    const input = buildAbSlotScoreInput(slot(sideA), failed);
+    expect(input.candidates).toEqual([]);
+    expect(input.completed).toBe(false);
+    expect(Object.keys(input).includes('rawCandidates')).toBe(false);
+    expect(Object.keys(input).includes('evaluatorTraces')).toBe(false);
   });
 });
 

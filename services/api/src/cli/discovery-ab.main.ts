@@ -16,7 +16,7 @@
  * one configuration, so no cross-configuration overlap is possible here.
  */
 import { expectedBaseMetadata, verifyBaseFixtureIntegrity, verifyProtectedBase } from './discovery-env-matrix-base.main';
-import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixSlotResult } from './discovery-env-matrix.main';
+import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixCandidate, type MatrixEvaluatorTrace, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixRetrievalCandidate, type MatrixSlotResult } from './discovery-env-matrix.main';
 import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
 import { baseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 
@@ -48,6 +48,27 @@ export type AbConfigDelta = { key: string; before: null; after: string };
 export type AbChildOutput = { slots: MatrixSlotResult[]; execution: MatrixExecutionEvidence };
 export interface AbSideSelection { side: AbSide; slots: AbSlot[] }
 
+/** What one attempt produced, or the empty outcome of a slot that exhausted its attempts. */
+export interface AbSlotOutcome {
+  candidates: readonly MatrixCandidate[];
+  rawCandidates?: readonly MatrixRetrievalCandidate[];
+  evaluatorTraces?: readonly MatrixEvaluatorTrace[];
+  completed: boolean;
+}
+
+/**
+ * The `scoreMatrixSlot` input for one A/B slot, minus the judge callback, plus
+ * the `caseId` the child writes over the scored slot afterwards.
+ */
+export interface AbSlotScoreInput extends AbSlotOutcome {
+  caseId: string;
+  matrixCase: HistoricalMatrixFixture;
+  rowId: AbSideId;
+  repetition: number;
+  allowedEvidence: typeof AB_ALLOWED_EVIDENCE;
+  configDeltas: AbConfigDelta[];
+}
+
 /**
  * Repetition is 0-based in the plan and 1-based in the id, matching the matrix
  * harness exactly so the two harnesses' artifacts read the same way.
@@ -66,6 +87,33 @@ export function abSlotCaseId(slot: AbSlot): string {
  */
 export function abConfigDeltas(config: AbEnvConfig): AbConfigDelta[] {
   return Object.keys(config).sort().map((key) => ({ key, before: null, after: config[key]! }));
+}
+
+/**
+ * Builds everything `scoreMatrixSlot` is given for one A/B slot except the judge
+ * callback, so the scored path and the failed-slot fallback cannot drift apart.
+ *
+ * The three A/B-specific fields live here and nowhere else: `rowId` is the side
+ * (not a matrix row), `allowedEvidence` is `AB_ALLOWED_EVIDENCE` — without it
+ * `scoreMatrixSlot` resolves the row through `rowFor` and throws
+ * `Unknown discovery environment matrix row: a` for every candidate-bearing
+ * slot — and `configDeltas` records the side's configuration on the artifact,
+ * including on a failed slot. `caseId` is returned alongside because the child
+ * writes it over the scored slot; `scoreMatrixSlot` itself is not given it.
+ */
+export function buildAbSlotScoreInput(slot: AbSlot, outcome: AbSlotOutcome): AbSlotScoreInput {
+  return {
+    caseId: abSlotCaseId(slot),
+    matrixCase: databaseCase(slot.matrixCase),
+    rowId: slot.side.id,
+    repetition: slot.repetition,
+    candidates: outcome.candidates,
+    ...(outcome.rawCandidates ? { rawCandidates: outcome.rawCandidates } : {}),
+    ...(outcome.evaluatorTraces ? { evaluatorTraces: outcome.evaluatorTraces } : {}),
+    completed: outcome.completed,
+    allowedEvidence: AB_ALLOWED_EVIDENCE,
+    configDeltas: abConfigDeltas(slot.side.config),
+  };
 }
 
 /** Canonical, order-independent identity of a configuration, for comparison only. */
@@ -148,7 +196,6 @@ async function runAbSide(
   const { HISTORICAL_MATRIX_CASES, scoreMatrixSlot, buildExecutionEvidence, executeRuns } = await loadMatrixEval();
   const assertLLM = await loadJudge();
   const { side, slots } = selection;
-  const configDeltas = abConfigDeltas(side.config);
   await verifyAbBranchBase(HISTORICAL_MATRIX_CASES as HistoricalMatrixFixture[]);
 
   const batch = await executeRuns(async ({ runIndex, signal }: { runIndex: number; signal: AbortSignal }) => runMatrixBoundary('matrix_runtime_failure', async () => {
@@ -170,16 +217,9 @@ async function runAbSide(
     const rawCandidates = collectCandidates(graphResult, new Set(matrixCase.participants.map((participant) => participant.id)));
     const candidates = projectFinalCandidates(graphResult, rawCandidates, fixtureCase.sourceUserId, AB_MIN_SCORE);
     const evaluatorTraces = collectEvaluatorTraces(graphResult, rawCandidates, candidates);
+    const { caseId, ...scoreInput } = buildAbSlotScoreInput(slot, { candidates, rawCandidates, evaluatorTraces, completed: true });
     const scored = await runMatrixBoundary('matrix_scoring_failure', async () => scoreMatrixSlot({
-      matrixCase,
-      rowId: side.id,
-      repetition: slot.repetition,
-      candidates,
-      rawCandidates,
-      evaluatorTraces,
-      completed: true,
-      allowedEvidence: AB_ALLOWED_EVIDENCE,
-      configDeltas,
+      ...scoreInput,
       judge: async (input: { candidateIds: string[]; evidenceTypes: string[]; caseDescription: string; rowId: string; sourceText: string; expectedUserId: string; excludedUserIds: string[] }) => {
         try {
           await runMatrixBoundary('matrix_judge_failure', async () => assertLLM({ candidateIds: input.candidateIds, evidenceTypes: input.evidenceTypes }, [
@@ -198,7 +238,7 @@ async function runAbSide(
         }
       },
     }));
-    return { ...scored, caseId: abSlotCaseId(slot) };
+    return { ...scored, caseId };
   }), slots.length, {
     caseId: `${HARNESS}/${side.id}`,
     policy: 'strict',
@@ -208,17 +248,10 @@ async function runAbSide(
 
   // A slot that exhausted its attempts still produces a scored, failed slot, so
   // completeness accounting stays honest rather than silently losing the slot.
-  const scoredSlots: MatrixSlotResult[] = await Promise.all((batch as { runs: Array<{ output?: MatrixSlotResult }> }).runs.map(async (run, index: number) => run.output ?? {
-    ...(await scoreMatrixSlot({
-      matrixCase: databaseCase(slots[index]!.matrixCase),
-      rowId: side.id,
-      repetition: slots[index]!.repetition,
-      candidates: [],
-      completed: false,
-      allowedEvidence: AB_ALLOWED_EVIDENCE,
-      configDeltas,
-    })),
-    caseId: abSlotCaseId(slots[index]!),
+  const scoredSlots: MatrixSlotResult[] = await Promise.all((batch as { runs: Array<{ output?: MatrixSlotResult }> }).runs.map(async (run, index: number) => {
+    if (run.output) return run.output;
+    const { caseId, ...scoreInput } = buildAbSlotScoreInput(slots[index]!, { candidates: [], completed: false });
+    return { ...(await scoreMatrixSlot(scoreInput)), caseId };
   }));
   return buildMatrixArtifactEvidence(
     scoredSlots,
