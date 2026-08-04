@@ -104,7 +104,10 @@ describe('mac deep-link routing contract', () => {
     expect(isIndexDeepLink(null)).toBe(false);
   });
 
-  it('never throws on malformed or non-string input', () => {
+  it('never throws on malformed input or null options', () => {
+    expect(parseDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`, null))
+      .toEqual({ route: 'card', id: OPPORTUNITY_ID });
+    expect(isIndexDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`, null)).toBe(true);
     expect(parseDeepLink('')).toBeNull();
     expect(parseDeepLink('   ')).toBeNull();
     expect(parseDeepLink('not a url')).toBeNull();
