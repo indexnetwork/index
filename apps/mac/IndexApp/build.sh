@@ -16,7 +16,7 @@ rm -rf dist
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
 echo "==> Compiling Swift (host arch)"
-swiftc -O \
+swiftc -Onone \
     -framework Cocoa -framework WebKit \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
     Sources/main.swift
@@ -61,18 +61,7 @@ else
         echo "==> WARNING: CODESIGN_IDENTITY='${IDENTITY}' not found, falling back to ad-hoc"
     fi
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
-    # associated-domains is profile-backed, so codesign can reject it outright
-    # when there is no provisioning profile. Leaving the bundle unsigned is
-    # worse than signing it without the entitlement (on Apple Silicon an
-    # unsigned binary is killed at launch), so retry bare rather than give up.
-    if ! codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign - "${APP}"; then
-        if codesign --force --deep --sign - "${APP}"; then
-            echo "==> WARNING: codesign rejected ${ENTITLEMENTS} (associated-domains needs a"
-            echo "    provisioning profile), so this bundle is signed ad-hoc WITHOUT it."
-        else
-            echo "   (codesign skipped/failed, app still runs locally)"
-        fi
-    fi
+    codesign --force --deep --sign - "${APP}" 2>&1 | grep -v "replacing existing signature" || true
     echo "==> WARNING: universal links (https://index.network/o|u|c/...) will NOT open"
     echo "    this build. They need a Developer ID-signed, notarized app plus an"
     echo "    apple-app-site-association listing <TEAM_ID>.network.index.system6."
