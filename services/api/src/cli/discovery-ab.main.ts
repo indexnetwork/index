@@ -22,14 +22,15 @@
  * one configuration, so no cross-configuration overlap is possible here.
  */
 import path from 'node:path';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
+import { AB_BASE_BRANCH, AB_DEFAULT_REPETITIONS, AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abUsage, classifyAbParentFailure, type AbRunStage } from './discovery-ab.contract';
 import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbSideEnvironment } from './discovery-ab.gate';
 import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, resetAbBranch, type AbTarget } from './discovery-ab.neon';
 import { buildAbPlan, configDiff } from './discovery-ab.plan';
 import { expectedBaseMetadata, verifyBaseFixtureIntegrity, verifyProtectedBase } from './discovery-env-matrix-base.main';
-import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, awaitMatrixChildProcess, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, finalizeMatrixChildArtifacts, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runBoundedChildTasks, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixCandidate, type MatrixEvaluatorTrace, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixRetrievalCandidate, type MatrixSlotResult } from './discovery-env-matrix.main';
+import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, awaitMatrixChildProcess, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runBoundedChildTasks, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixCandidate, type MatrixEvaluatorTrace, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixRetrievalCandidate, type MatrixSlotResult } from './discovery-env-matrix.main';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
 import { baseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
@@ -40,7 +41,6 @@ import type { AbSide, AbSideId, AbSlot } from './discovery-ab.plan';
 const HARNESS = 'discovery-ab';
 const HARNESS_VERSION = '1';
 const RUNS_DIR = path.resolve(import.meta.dir, '../../eval/discovery-ab/runs');
-const AB_BASE_BRANCH = 'eval-discovery-base';
 /** Identical to the matrix child's graph invocation, and to its policy projection. */
 const AB_MIN_SCORE = 50;
 
@@ -294,14 +294,14 @@ export async function runAbChild(sideId: AbSideId, slots: readonly AbSlot[], out
 // ── Parent half ─────────────────────────────────────────────────────────────
 // Gate, attest, reset both branches, spawn one child per side, aggregate.
 
-/** Three repetitions per side; one observation per case cannot separate a difference from noise. */
-export const AB_DEFAULT_REPETITIONS = 3;
 /**
- * A ceiling on `--runs`, because a mistyped one costs real money and hours: at
- * the observed ~52s per invocation, ten repetitions over the full corpus is
- * already 300 graph invocations. Nothing above this is a considered choice.
+ * The operator-facing contract — the repetition bounds and the exit codes —
+ * lives in `discovery-ab.contract.ts`, so the bootstrap can print and act on it
+ * without importing anything that composes a database. These three are
+ * re-exported because they are read as properties of the parent run.
  */
-export const AB_MAX_REPETITIONS = 10;
+export { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS };
+
 /** `executeRuns` gives each slot three attempts, each bounded by ATTEMPT_TIMEOUT_MS. */
 const AB_ATTEMPTS_PER_SLOT = 3;
 /** The 1s + 2s retry backoff `executeRuns` inserts between those attempts. */
@@ -312,12 +312,6 @@ const AB_CHILD_STARTUP_HEADROOM_MS = 5 * 60_000;
 const AB_CHILD_CONCURRENCY = 2;
 /** How long a sibling gets to honour SIGTERM before it is killed, matching the matrix. */
 const AB_CHILD_TERMINATION_GRACE_MS = 5_000;
-/**
- * Insufficient evidence, matching `EVAL_EXIT_INSUFFICIENT_EVIDENCE` in the
- * shared eval CLI. It is restated rather than imported because this package
- * reaches the eval bundle only through the dynamic `loadMatrixEval` seam.
- */
-export const AB_EXIT_INSUFFICIENT_EVIDENCE = 3;
 
 /**
  * The watchdog for one side, derived from what that side may legitimately take
@@ -675,7 +669,7 @@ export function resolveAbRunOutcome(input: {
     sides,
     incompleteSides,
     verdict,
-    exitCode: 0,
+    exitCode: AB_EXIT_COMPARISON,
     summary: `Discovery A/B result: ${verdict.map((entry) => `side ${entry.sideId} ${entry.passes}/${entry.runs} (${(entry.passRate * 100).toFixed(1)}%)`).join('  vs  ')}`,
   };
 }
@@ -692,35 +686,64 @@ function abChildDescriptor(target: AbTarget): { childKey: string; branch: string
 
 type AbChildProcess = { exited: Promise<number>; kill(signal?: NodeJS.Signals): void };
 
-function usage(): string {
-  const manifest = '{"projectId":"...","baseBranchId":"br-...","targets":[{"sideId":"a","branchId":"br-...","endpointId":"ep-...","databaseUrl":"postgres://...neon.tech/protocol_eval"}, ...]}';
-  return [
-    'Discovery A/B eval',
-    '',
-    'Runs the real discovery graph twice - once per operator-chosen environment',
-    'configuration - over the same cases, and emits one artifact holding both sides.',
-    'It never reads, writes or compares a baseline: arbitrary configurations have',
-    'none, so the pair is the result.',
-    '',
-    'Required operator attestation:',
-    '  DISCOVERY_AB_CONFIRM=1',
-    '  TEST_DATABASE_SAFE=1',
-    '  NEON_API_KEY=<neon api key>',
-    `  DISCOVERY_AB_TARGETS='${manifest}'`,
-    '',
-    'This command never creates or deletes Neon branches. It resets both attested',
-    `A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) from ${AB_BASE_BRANCH} before it spawns anything.`,
-    '',
-    'Selection is shared by both sides; configuration is not:',
-    '  --case <id>       Restrict to one case. Repeatable. Default: the full corpus.',
-    `  --runs <n>        Repetitions per side (default ${AB_DEFAULT_REPETITIONS}, maximum ${AB_MAX_REPETITIONS}).`,
-    '  --a KEY=VALUE     A flag for side a. Repeatable.',
-    '  --b KEY=VALUE     A flag for side b. Repeatable.',
-    '  --force           Consent to replacing an existing run artifact.',
-    '',
-    'Both sides must state the same keys with differing values; identical or',
-    'asymmetric configurations are refused before any spend.',
-  ].join('\n');
+/**
+ * Cleans up, or reports honestly what was kept.
+ *
+ * The matrix's `finalizeMatrixChildArtifacts` is not reused because its warning
+ * says "Discovery environment matrix retained child artifacts", which names the
+ * wrong harness during an A/B run, and because it promises artifacts that are
+ * often not there: the failure that retains this directory is usually a dead or
+ * timed-out child, which wrote nothing at all. An operator who goes looking for
+ * the retained evidence of a forty-minute loss and finds an empty directory has
+ * been misled twice. So the directory is read, and the warning says what is
+ * actually in it.
+ */
+export async function finalizeAbChildArtifacts(
+  temporaryDirectory: string,
+  completedSuccessfully: boolean,
+  fs: { readdir: typeof readdir; rm: typeof rm } = { readdir, rm },
+  logger: Pick<Console, 'warn'> = console,
+): Promise<void> {
+  if (completedSuccessfully) {
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
+    return;
+  }
+  const retained = await fs.readdir(temporaryDirectory).catch(() => [] as string[]);
+  if (retained.length === 0) {
+    await fs.rm(temporaryDirectory, { recursive: true, force: true });
+    logger.warn('Discovery A/B kept no child artifacts: neither side wrote one before the run failed');
+    return;
+  }
+  logger.warn(
+    `Discovery A/B retained ${retained.length} child artifact(s) from a failed run in ${temporaryDirectory}: `
+    + `${[...retained].sort().join(', ')}`,
+  );
+}
+
+/**
+ * How far this run has got. It is recorded as the run advances rather than
+ * inferred afterwards, because the one thing a failure cannot tell you about
+ * itself is whether the money was already spent.
+ */
+export interface AbRunProgress { stage: AbRunStage | null }
+
+/**
+ * Runs something that may reset branches and spend money, and turns any failure
+ * into a report of what it cost.
+ *
+ * Everything the operator can act on hangs off this distinction. A failure
+ * before the first reset is a refusal: its own message says what to fix and it
+ * cost nothing. A failure after it is a loss, and the operator has to be told
+ * so rather than left to work out whether "Discovery A/B command failed" meant
+ * a typo or forty minutes and two overwritten branches.
+ */
+export async function withAbSpendAccounting(run: (progress: AbRunProgress) => Promise<void>): Promise<void> {
+  const progress: AbRunProgress = { stage: null };
+  try {
+    await run(progress);
+  } catch (error) {
+    throw classifyAbParentFailure(progress.stage, error);
+  }
 }
 
 /**
@@ -735,7 +758,7 @@ function usage(): string {
  * than by the order two files happen to run in. Six control-plane GETs is a
  * cheap price for that.
  */
-async function runAbParent(args: readonly string[]): Promise<void> {
+async function runAbComparison(args: readonly string[], progress: AbRunProgress): Promise<void> {
   assertAbConfirmation(process.env);
   const apiKey = process.env.NEON_API_KEY ?? '';
   const manifest = parseAbManifest(process.env.DISCOVERY_AB_TARGETS);
@@ -760,6 +783,9 @@ async function runAbParent(args: readonly string[]): Promise<void> {
   // run cleans, where resetting afterwards leaves a window in which a dirty
   // branch looks clean. Both must succeed before anything is spawned - a
   // half-isolated comparison is not a comparison.
+  // Everything from here on can fail with the branches already overwritten,
+  // which is a different thing to report than a refusal.
+  progress.stage = 'reset';
   for (const target of attested.targets) {
     await resetAbBranch({ manifest: attested, branchId: target.branchId, apiKey });
     console.log(`Discovery A/B reset side ${target.sideId} (${AB_BRANCH_NAMES[target.sideId]}) from ${AB_BASE_BRANCH}`);
@@ -799,6 +825,9 @@ async function runAbParent(args: readonly string[]): Promise<void> {
           stdout: 'inherit', stderr: 'inherit',
         });
         activeChildren.add(proc);
+        // A live run now exists: from here a failure costs provider spend and
+        // hours, not just the two resets.
+        progress.stage = 'spawned';
         console.log(`Discovery A/B side ${target.sideId} started against ${AB_BRANCH_NAMES[target.sideId]} (${slotsPerSide} slot(s))`);
         try {
           // Shared supervision: the same watchdog, SIGTERM/SIGKILL escalation
@@ -843,10 +872,15 @@ async function runAbParent(args: readonly string[]): Promise<void> {
     const outcome = resolveAbRunOutcome({ slots, sides: selection.sides, expectedSlotsPerSide: slotsPerSide });
     console.log(outcome.summary);
     process.exitCode = outcome.exitCode;
-    completedSuccessfully = outcome.exitCode === 0;
+    completedSuccessfully = outcome.exitCode === AB_EXIT_COMPARISON;
   } finally {
-    await finalizeMatrixChildArtifacts(temporaryDirectory, completedSuccessfully);
+    await finalizeAbChildArtifacts(temporaryDirectory, completedSuccessfully);
   }
+}
+
+/** The comparison, with every failure after the first reset reported as what it cost. */
+async function runAbParent(args: readonly string[]): Promise<void> {
+  await withAbSpendAccounting(async (progress) => runAbComparison(args, progress));
 }
 
 /**
@@ -857,7 +891,7 @@ async function runAbParent(args: readonly string[]): Promise<void> {
  * Neon host, exactly `protocol_eval`, and the branch label for its own side.
  */
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
-  if (args.includes('--help') || args.includes('-h')) return void console.log(usage());
+  if (args.includes('--help') || args.includes('-h')) return void console.log(abUsage());
   if (!args.includes('--side')) return void await runAbParent(args);
 
   const { sideId, outputPath } = parseAbChildArgs(args);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abSelectionFilters, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome } from '../discovery-ab.main';
+import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery-ab.contract';
+import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery-ab.main';
 import { buildAbPlan, type AbSide } from '../discovery-ab.plan';
 
 import type { MatrixSlotResult } from '../discovery-env-matrix.main';
@@ -191,5 +192,106 @@ describe('resolveAbRunOutcome', () => {
     const outcome = resolveAbRunOutcome({ slots, sides, expectedSlotsPerSide: 2 });
     expect(outcome.sides[0]).toMatchObject({ sideId: 'a', scored: 1, failed: 1, passes: 1 });
     expect(outcome.verdict).toBeNull();
+  });
+
+  it('gives an incomplete run a different code to a failure that wrote nothing at all', () => {
+    const slots = [slot('a', 'c1/a/r1', 1, 1), slot('b', 'c1/b/r1', 0, 0)];
+    const incomplete = resolveAbRunOutcome({ slots, sides, expectedSlotsPerSide: 1 });
+    // 3 says the artifact is on disk and says nothing; 4 says there is no artifact.
+    expect(incomplete.exitCode).toBe(AB_EXIT_INSUFFICIENT_EVIDENCE);
+    expect(incomplete.exitCode).not.toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+  });
+});
+
+/**
+ * This is the wrapper `runAbParent` runs its whole body through, so what it
+ * decides is what the operator's exit code is.
+ */
+describe('withAbSpendAccounting', () => {
+  it('passes a successful run through untouched', async () => {
+    await expect(withAbSpendAccounting(async () => undefined)).resolves.toBeUndefined();
+  });
+
+  it('leaves a failure before the first reset as the pre-flight refusal it is', async () => {
+    const refusal = new Error('--runs must be a positive integer (received 0)');
+    const thrown = await withAbSpendAccounting(async () => { throw refusal; }).catch((error: unknown) => error);
+    expect(thrown).toBe(refusal);
+    expect(describeAbFailure(thrown).exitCode).toBe(AB_EXIT_PREFLIGHT_REFUSED);
+  });
+
+  it('reports a failure after the branches were reset as a mutation, not a refusal', async () => {
+    const thrown = await withAbSpendAccounting(async (progress) => {
+      progress.stage = 'reset';
+      throw new Error('mkdtemp failed');
+    }).catch((error: unknown) => error);
+    expect(thrown).toBeInstanceOf(AbSpentRunError);
+    expect(describeAbFailure(thrown)).toMatchObject({ exitCode: AB_EXIT_SPENT_WITHOUT_ARTIFACT });
+    expect(describeAbFailure(thrown).message).toContain('after resetting the A/B branches');
+  });
+
+  it('reports a failure after a side was spawned as a spend with no artifact', async () => {
+    const thrown = await withAbSpendAccounting(async (progress) => {
+      progress.stage = 'reset';
+      progress.stage = 'spawned';
+      // The dead-child case: supervision aborts and nothing was written.
+      throw new Error('Discovery A/B child exited with code 1');
+    }).catch((error: unknown) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+    expect(report.message).toContain('provider spend and wall-clock time are gone');
+    expect(report.message).toContain('No artifact was written');
+    // The underlying failure text is never printed; only kept as a cause.
+    expect(report.message).not.toContain('exited with code 1');
+  });
+});
+
+describe('finalizeAbChildArtifacts', () => {
+  const fakeFs = (entries: string[] | Error) => {
+    const removed: string[] = [];
+    return {
+      removed,
+      fs: {
+        readdir: (async () => {
+          if (entries instanceof Error) throw entries;
+          return entries;
+        }) as never,
+        rm: (async (target: string) => { removed.push(target); }) as never,
+      },
+    };
+  };
+  const warnings: string[] = [];
+  const logger = { warn: (message: string) => { warnings.push(message); } };
+
+  it('removes the directory when the run succeeded', async () => {
+    const { fs, removed } = fakeFs(['a.json', 'b.json']);
+    warnings.length = 0;
+    await finalizeAbChildArtifacts('/tmp/discovery-ab-x', true, fs, logger);
+    expect(removed).toEqual(['/tmp/discovery-ab-x']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('names this harness, not the matrix, and says how many artifacts it kept', async () => {
+    const { fs, removed } = fakeFs(['b.json', 'a.json']);
+    warnings.length = 0;
+    await finalizeAbChildArtifacts('/tmp/discovery-ab-y', false, fs, logger);
+    expect(removed).toEqual([]);
+    expect(warnings[0]).toContain('Discovery A/B retained 2 child artifact(s)');
+    expect(warnings[0]).toContain('/tmp/discovery-ab-y: a.json, b.json');
+    expect(warnings[0]).not.toContain('matrix');
+  });
+
+  it('does not promise artifacts that are not there, which is the usual dead-child case', async () => {
+    const { fs, removed } = fakeFs([]);
+    warnings.length = 0;
+    await finalizeAbChildArtifacts('/tmp/discovery-ab-z', false, fs, logger);
+    expect(warnings).toEqual(['Discovery A/B kept no child artifacts: neither side wrote one before the run failed']);
+    expect(removed).toEqual(['/tmp/discovery-ab-z']);
+  });
+
+  it('reports rather than throws when the directory cannot be read', async () => {
+    const { fs } = fakeFs(new Error('ENOENT'));
+    warnings.length = 0;
+    await expect(finalizeAbChildArtifacts('/tmp/discovery-ab-gone', false, fs, logger)).resolves.toBeUndefined();
+    expect(warnings[0]).toContain('kept no child artifacts');
   });
 });

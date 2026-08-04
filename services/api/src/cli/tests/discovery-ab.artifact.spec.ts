@@ -28,7 +28,21 @@ const sides: [AbSide, AbSide] = [
 
 const git = { revision: 'abc123', dirty: false };
 const meta = await buildAbArtifactMeta({ sides, cases, repetitions: 3, startedAt: '2026-08-04T00:00:00.000Z', git });
-const { scoreMatrixSlot, buildScorecard, buildEvalArtifact, EVAL_RUN_REPORT_ARTIFACT_TYPE } = await loadMatrixEval();
+const { scoreMatrixSlot, buildScorecard, buildEvalArtifact, EVAL_RUN_REPORT_ARTIFACT_TYPE, resolveEvalJudgeModelId } = await loadMatrixEval();
+const judgeModelId = resolveEvalJudgeModelId() as string;
+
+/** Builds a meta with CHAT_MODEL set to whatever the case under test needs. */
+const metaWithChatModel = async (chatModel: string | undefined): Promise<Record<string, unknown>> => {
+  const previous = process.env.CHAT_MODEL;
+  if (chatModel === undefined) delete process.env.CHAT_MODEL;
+  else process.env.CHAT_MODEL = chatModel;
+  try {
+    return await buildAbArtifactMeta({ sides, cases, repetitions: 3, startedAt: '2026-08-04T00:00:00.000Z', git });
+  } finally {
+    if (previous === undefined) delete process.env.CHAT_MODEL;
+    else process.env.CHAT_MODEL = previous;
+  }
+};
 
 describe('buildAbArtifactMeta', () => {
   it('describes a pair these two sides could actually be planned as', () => {
@@ -92,9 +106,22 @@ describe('buildAbArtifactMeta', () => {
     expect(filtered.selection).toEqual({ fullCorpus: false, filters: { case: 'c1' } });
   });
 
-  it('names distinct models, because the envelope refuses a repeated model ID', () => {
-    const models = meta.models as string[];
-    expect(new Set(models).size).toBe(models.length);
+  /**
+   * The runtime and judge models are configured independently, and an operator
+   * running the judge model as CHAT_MODEL is the case that would otherwise fail
+   * at the write, at the end of a forty-minute paid run. Asserting only that the
+   * list has no duplicates proves nothing here: in a test environment CHAT_MODEL
+   * is unset, so the two entries differ whether or not anything de-duplicates
+   * them. So the collision is set up explicitly.
+   */
+  it('collapses a CHAT_MODEL that equals the judge model, which the envelope would refuse', async () => {
+    const collided = await metaWithChatModel(judgeModelId);
+    expect(collided.models).toEqual([judgeModelId]);
+  });
+
+  it('keeps both models when they differ', async () => {
+    const distinct = await metaWithChatModel('some-other-runtime-model');
+    expect(distinct.models).toEqual(['some-other-runtime-model', judgeModelId]);
   });
 });
 

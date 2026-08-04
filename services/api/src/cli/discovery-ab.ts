@@ -13,9 +13,14 @@
  * carries the same fields for parent and child, so there is no separate
  * attested projection to hand down — the child re-parses `DISCOVERY_AB_TARGETS`
  * and checks its own `DATABASE_URL` against it.
+ *
+ * `--help` is answered above all of it, from `discovery-ab.contract.ts`, which
+ * imports nothing that can compose a database: an operator has to be able to
+ * read what the command requires *before* they have any of it.
  */
 import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery-ab.neon';
 import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation } from './discovery-ab.gate';
+import { abUsage, describeAbFailure } from './discovery-ab.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 
 import type { AbSideId } from './discovery-ab.plan';
@@ -55,9 +60,9 @@ function childSideId(args: readonly string[]): AbSideId | undefined {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--help') || args.includes('-h')) {
-    return void console.log('Discovery A/B eval\n\nRequires DISCOVERY_AB_CONFIRM=1, TEST_DATABASE_SAFE=1, NEON_API_KEY and an attested DISCOVERY_AB_TARGETS manifest.\nRun it with --help through the command itself for the full contract.');
-  }
+  // Before the gate, and before any environment variable is read: the full
+  // contract, printed to anyone who asks for it.
+  if (args.includes('--help') || args.includes('-h')) return void console.log(abUsage());
   // First, and before any network call: an unconfirmed run must not even
   // reach the control plane, let alone a database.
   assertAbConfirmation(process.env);
@@ -77,10 +82,13 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error: unknown) => {
-    // Gate refusals are authored to be read and name only environment variable
-    // names. Everything else is reported generically: provider, database and
-    // control-plane errors can carry credentials and response bodies.
-    console.error(error instanceof AbGateError ? error.message : 'Discovery A/B command failed');
-    process.exitCode = 2;
+    // `describeAbFailure` decides both halves of the report: which authored
+    // message is safe to print (gate refusals name environment variables;
+    // spend reports name stages; everything else is generic, because provider,
+    // database and control-plane errors can carry credentials and response
+    // bodies) and which exit code an operator should act on.
+    const report = describeAbFailure(error);
+    console.error(report.message);
+    process.exitCode = report.exitCode;
   });
 }
