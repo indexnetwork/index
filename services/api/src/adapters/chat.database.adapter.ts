@@ -1840,10 +1840,10 @@ export class ChatDatabaseAdapter {
   async softDeleteProvisionedCohort(networkId: string): Promise<void> {
     const now = new Date();
 
-    // Identify experimentally-onboarded users: those who own at least one
-    // agent with a network-scoped permission on this network. These are the
-    // users provisioned by networkInvitationService.invite() (headless/CSV).
-    const experimentUsers = await db
+    // Identify provisioned users: those who own at least one agent with a
+    // network-scoped permission on this network. These are the users
+    // provisioned by networkInvitationService.invite() (headless/CSV).
+    const provisionedUsers = await db
       .selectDistinct({ id: schema.users.id })
       .from(schema.users)
       .innerJoin(schema.agents, eq(schema.agents.ownerId, schema.users.id))
@@ -1858,7 +1858,7 @@ export class ChatDatabaseAdapter {
         isNull(schema.agents.deletedAt),
       ));
 
-    const userIds = experimentUsers.map(u => u.id);
+    const userIds = provisionedUsers.map(u => u.id);
 
     if (userIds.length > 0) {
       // Soft-delete users
@@ -3214,32 +3214,6 @@ export class ChatDatabaseAdapter {
     })
       .from(schema.networkIntegrations)
       .where(eq(schema.networkIntegrations.networkId, networkId));
-  }
-
-  /**
-   * Read the metadata JSONB for a network.
-   * @param networkId - Target network
-   * @returns The metadata object or null if not found
-   */
-  async getNetworkMetadata(networkId: string): Promise<Record<string, unknown> | null> {
-    const [row] = await db
-      .select({ metadata: schema.networks.metadata })
-      .from(schema.networks)
-      .where(eq(schema.networks.id, networkId))
-      .limit(1);
-    return (row?.metadata as Record<string, unknown>) ?? null;
-  }
-
-  /**
-   * Replace the metadata JSONB for a network.
-   * @param networkId - Target network
-   * @param metadata - New metadata object
-   */
-  async updateNetworkMetadata(networkId: string, metadata: Record<string, unknown>): Promise<void> {
-    await db
-      .update(schema.networks)
-      .set({ metadata, updatedAt: new Date() })
-      .where(eq(schema.networks.id, networkId));
   }
 
   /**

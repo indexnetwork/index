@@ -65,8 +65,8 @@ describe('MasterKeyGuard after rotation', () => {
     );
     expect(before.id).toBe(networkId);
 
-    // Rotate directly in the fixture: networkService.rotateMasterKey is Task 4's
-    // rename and the old rotateExperimentMasterKey references dropped columns.
+    // Rotate directly in the fixture via networkService.rotateMasterKey
+    // (writes only the networks.masterKeyHash column).
     const rotated = await generateMasterKey();
     const newKey = rotated.key;
     await db.update(schema.networks)
