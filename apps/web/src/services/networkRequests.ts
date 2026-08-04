@@ -30,10 +30,10 @@ export const createNetworkRequestsService = (api: ReturnType<typeof useAuthentic
     return res.request;
   },
 
-  // List the caller's own requests
-  listMine: async (): Promise<NetworkRequest[]> => {
-    const res = await api.get<{ requests: NetworkRequest[] }>('/network-requests');
-    return res.requests || [];
+  // List the caller's own requests, plus the server-provided staff capability.
+  listMine: async (): Promise<{ requests: NetworkRequest[]; canReview: boolean }> => {
+    const res = await api.get<{ requests: NetworkRequest[]; canReview?: boolean }>('/network-requests');
+    return { requests: res.requests || [], canReview: res.canReview === true };
   },
 
   // Staff-only: list all open requests awaiting review

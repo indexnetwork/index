@@ -37,12 +37,16 @@ export class NetworkRequestController {
     return Response.json({ request }, { status: 201 });
   }
 
-  /** List the caller's own requests. */
+  /**
+   * List the caller's own requests. Also returns `canReview`, the server-computed
+   * staff capability, so the web UI never has to guess staff status from the email
+   * (which misses STAFF_EMAILS entries and mixed-case @index.network addresses).
+   */
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
   async listMine(_req: Request, user: AuthenticatedUser) {
     const requests = await networkRequestService.listMyRequests(user.id);
-    return Response.json({ requests });
+    return Response.json({ requests, canReview: isStaff(user) });
   }
 
   /** Staff-only: list all open requests awaiting review. */

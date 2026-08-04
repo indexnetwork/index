@@ -27,7 +27,9 @@ export default function NetworksPage() {
   const networkRequestsService = useNetworkRequests();
   const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useNetworksState();
 
-  const isStaff = !!user?.email?.endsWith('@index.network');
+  // Staff capability is decided by the server (covers STAFF_EMAILS and mixed-case
+  // addresses), not inferred from the email on the client.
+  const [canReview, setCanReview] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'my-networks' | 'discover'>('my-networks');
   const [createNetworkModalOpen, setCreateNetworkModalOpen] = useState(false);
@@ -42,16 +44,14 @@ export default function NetworksPage() {
 
   const loadRequests = useCallback(async () => {
     try {
-      const [mine, pending] = await Promise.all([
-        networkRequestsService.listMine(),
-        isStaff ? networkRequestsService.listPending() : Promise.resolve([]),
-      ]);
-      setMyRequests(mine);
-      setPendingRequests(pending);
+      const mine = await networkRequestsService.listMine();
+      setMyRequests(mine.requests);
+      setCanReview(mine.canReview);
+      setPendingRequests(mine.canReview ? await networkRequestsService.listPending() : []);
     } catch (err) {
       logger.error('Error loading network requests', { error: err });
     }
-  }, [networkRequestsService, isStaff]);
+  }, [networkRequestsService]);
 
   useEffect(() => {
     loadRequests();
@@ -164,7 +164,7 @@ export default function NetworksPage() {
               <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">Networks</h1>
               <button
                 onClick={() => {
-                  if (isStaff) {
+                  if (canReview) {
                     setCreateNetworkModalOpen(true);
                   } else {
                     setEditingRequest(null);
@@ -202,7 +202,7 @@ export default function NetworksPage() {
               {/* My Networks */}
               <Tabs.Content value="my-networks">
                 {/* Staff review queue */}
-                {isStaff && pendingRequests.length > 0 && (
+                {canReview && pendingRequests.length > 0 && (
                   <div className="mb-8">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Requests to review</p>
                     <div className="space-y-3">

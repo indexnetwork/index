@@ -33,7 +33,8 @@ describe("NetworkController Integration", () => {
   let testUserId: string;
   let createdIndexId: string;
   const additionalNetworkIds: string[] = [];
-  const testEmail = `test-index-controller-${Date.now()}@example.com`;
+  // Staff domain: direct network creation via the controller is staff-only.
+  const testEmail = `test-index-controller-${Date.now()}@index.network`;
 
   beforeAll(async () => {
     const existingUser = await userAdapter.findByEmail(testEmail);
@@ -154,6 +155,17 @@ describe("NetworkController Integration", () => {
 
       expect(res.status).toBe(400);
       expect(data.error).toBe("Validation failed");
+    });
+
+    test("should return 403 for non-staff users (early access)", async () => {
+      const nonStaff: AuthenticatedUser = { id: testUserId, email: `outsider-${Date.now()}@example.com`, name: "Outsider" };
+      const req = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Should Be Blocked" }),
+      });
+      const res = await controller.create(req, nonStaff);
+      expect(res.status).toBe(403);
     });
   });
 

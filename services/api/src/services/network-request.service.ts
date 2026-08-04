@@ -2,7 +2,7 @@ import { and, eq, isNull, sql, inArray } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { NetworkMembershipEvents } from '../events/network_membership.event';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkRequestApprovedTemplate, networkRequestNeedsChangesTemplate } from '../lib/email/templates';
 import { staffNotificationEmails } from '../lib/staff';
@@ -33,6 +33,7 @@ export interface NetworkRequestDTO {
 }
 
 type NetworkRow = typeof schema.networks.$inferSelect;
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function webBaseUrl(): string {
   return (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
@@ -52,8 +53,6 @@ function readRequest(row: NetworkRow): NetworkRequestDetails | null {
  * is cleared and the requester is added as owner, turning it into a real network.
  */
 export class NetworkRequestService {
-  constructor(private adapter = new ChatDatabaseAdapter()) {}
-
   private toDTO(row: NetworkRow, requestedBy?: NetworkRequestDTO['requestedBy']): NetworkRequestDTO {
     const req = readRequest(row);
     return {
@@ -150,88 +149,121 @@ export class NetworkRequestService {
 
   /** Update the caller's own request and resubmit it for review. */
   async updateRequest(networkId: string, userId: string, input: NetworkRequestInput): Promise<NetworkRequestDTO> {
-    const row = await this.getOwnedRequest(networkId, userId);
-    const prev = readRequest(row);
-    const request: NetworkRequestDetails = {
-      requestedByUserId: userId,
-      ...(input.purpose ? { purpose: input.purpose } : {}),
-      ...(input.audience ? { audience: input.audience } : {}),
-      ...(input.expectedSize ? { expectedSize: input.expectedSize } : {}),
-      ...(input.notes ? { notes: input.notes } : {}),
-      submittedAt: prev?.submittedAt ?? new Date().toISOString(),
-    };
-    const [updated] = await db
-      .update(schema.networks)
-      .set({ title: input.name, prompt: input.purpose ?? null, requestStatus: 'pending', metadata: { request } })
-      .where(eq(schema.networks.id, networkId))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const row = await this.lockOwnedRequest(tx, networkId, userId);
+      const prev = readRequest(row);
+      const request: NetworkRequestDetails = {
+        requestedByUserId: userId,
+        ...(input.purpose ? { purpose: input.purpose } : {}),
+        ...(input.audience ? { audience: input.audience } : {}),
+        ...(input.expectedSize ? { expectedSize: input.expectedSize } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
+        submittedAt: prev?.submittedAt ?? new Date().toISOString(),
+      };
+      const [next] = await tx
+        .update(schema.networks)
+        .set({ title: input.name, prompt: input.purpose ?? null, requestStatus: 'pending', metadata: { request } })
+        .where(eq(schema.networks.id, networkId))
+        .returning();
+      return next;
+    });
     return this.toDTO(updated);
   }
 
   /** Dismiss (soft-delete) the caller's own request. */
   async dismissRequest(networkId: string, userId: string): Promise<void> {
-    await this.getOwnedRequest(networkId, userId);
-    await db
-      .update(schema.networks)
-      .set({ deletedAt: new Date() })
-      .where(eq(schema.networks.id, networkId));
+    await db.transaction(async (tx) => {
+      await this.lockOwnedRequest(tx, networkId, userId);
+      await tx
+        .update(schema.networks)
+        .set({ deletedAt: new Date() })
+        .where(eq(schema.networks.id, networkId));
+    });
   }
 
-  /** Staff decision on a request: approve (create it) or ask for changes. */
+  /**
+   * Staff decision on a request: approve (create it) or ask for changes.
+   *
+   * The read, status flip, and (on approval) owner-membership write happen in a
+   * single serialized transaction with a `FOR UPDATE` row lock, so two staff
+   * reviews — or a requester update/dismiss racing a review — cannot interleave
+   * into contradictory state. Email and the membership event fire only after the
+   * transaction commits.
+   */
   async reviewRequest(
     networkId: string,
     decision: 'approve' | 'needs_changes',
     reviewNote?: string,
   ): Promise<NetworkRequestDTO> {
-    const [row] = await db
-      .select()
-      .from(schema.networks)
-      .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
-      .limit(1);
-    if (!row || !row.requestStatus) {
-      throw new Error('Network request not found');
-    }
-    const req = readRequest(row);
-    if (!req?.requestedByUserId) {
-      throw new Error('Network request has no requester');
-    }
-
-    if (decision === 'approve') {
-      const nextMeta = { request: { ...req, reviewedAt: new Date().toISOString(), reviewNote: undefined } };
-      const [updated] = await db
-        .update(schema.networks)
-        .set({ requestStatus: null, metadata: nextMeta })
-        .where(eq(schema.networks.id, networkId))
-        .returning();
-      await this.adapter.addMemberToNetwork(networkId, req.requestedByUserId, 'owner');
-      this.emailRequester('approve', updated, req.requestedByUserId).catch((err) =>
-        logger.error('Approval email failed', { networkId, error: err }),
-      );
-      return this.toDTO(updated);
-    }
-
-    const note = (reviewNote ?? '').trim();
-    if (!note) {
+    const note = decision === 'needs_changes' ? (reviewNote ?? '').trim() : '';
+    if (decision === 'needs_changes' && !note) {
       throw new Error('reviewNote is required for needs_changes');
     }
-    const nextMeta = { request: { ...req, reviewNote: note, reviewedAt: new Date().toISOString() } };
-    const [updated] = await db
-      .update(schema.networks)
-      .set({ requestStatus: 'needs_changes', metadata: nextMeta })
-      .where(eq(schema.networks.id, networkId))
-      .returning();
-    this.emailRequester('needs_changes', updated, req.requestedByUserId).catch((err) =>
-      logger.error('Needs-changes email failed', { networkId, error: err }),
+
+    const outcome = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(schema.networks)
+        .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
+        .limit(1)
+        .for('update');
+      if (!row || !row.requestStatus) {
+        throw new Error('Network request not found');
+      }
+      const req = readRequest(row);
+      if (!req?.requestedByUserId) {
+        throw new Error('Network request has no requester');
+      }
+      const requesterId = req.requestedByUserId;
+
+      if (decision === 'approve') {
+        const nextMeta = { request: { ...req, reviewedAt: new Date().toISOString(), reviewNote: undefined } };
+        const [updated] = await tx
+          .update(schema.networks)
+          .set({ requestStatus: null, metadata: nextMeta })
+          .where(eq(schema.networks.id, networkId))
+          .returning();
+        const inserted = await tx
+          .insert(schema.networkMembers)
+          .values({ networkId, userId: requesterId, permissions: ['owner'], prompt: updated.prompt, autoAssign: true })
+          .onConflictDoNothing({ target: [schema.networkMembers.networkId, schema.networkMembers.userId] })
+          .returning();
+        return { decision, updated, requesterId, membershipCreated: inserted.length > 0 } as const;
+      }
+
+      const nextMeta = { request: { ...req, reviewNote: note, reviewedAt: new Date().toISOString() } };
+      const [updated] = await tx
+        .update(schema.networks)
+        .set({ requestStatus: 'needs_changes', metadata: nextMeta })
+        .where(eq(schema.networks.id, networkId))
+        .returning();
+      return { decision, updated, requesterId, membershipCreated: false } as const;
+    });
+
+    if (outcome.decision === 'approve' && outcome.membershipCreated) {
+      try {
+        NetworkMembershipEvents.onMemberAdded(outcome.requesterId, networkId);
+      } catch (err) {
+        logger.warn('Member-added hook failed (non-fatal)', {
+          networkId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    this.emailRequester(outcome.decision, outcome.updated, outcome.requesterId).catch((err) =>
+      logger.error('Review email failed', { networkId, decision: outcome.decision, error: err }),
     );
-    return this.toDTO(updated);
+    return this.toDTO(outcome.updated);
   }
 
-  private async getOwnedRequest(networkId: string, userId: string): Promise<NetworkRow> {
-    const [row] = await db
+  /** Lock the caller's own open request row (`FOR UPDATE`) inside a transaction. */
+  private async lockOwnedRequest(tx: Tx, networkId: string, userId: string): Promise<NetworkRow> {
+    const [row] = await tx
       .select()
       .from(schema.networks)
       .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!row || !row.requestStatus) {
       throw new Error('Network request not found');
     }

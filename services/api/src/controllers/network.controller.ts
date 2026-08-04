@@ -6,6 +6,7 @@ import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { isStaff } from '../lib/staff';
 import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
@@ -67,6 +68,17 @@ export class NetworkController {
 
     if (!body.title) {
       return Response.json({ error: 'title is required' }, { status: 400 });
+    }
+
+    // Early access: direct network creation (community and experiment alike) is
+    // staff-only. Everyone else goes through the reviewed request flow
+    // (POST /network-requests). This is the server-side enforcement behind the
+    // web UI's "request a network" gate, so API/CLI clients cannot bypass it.
+    if (!isStaff(user)) {
+      return Response.json(
+        { error: 'Network creation is in early access. Submit a request at POST /network-requests.' },
+        { status: 403 },
+      );
     }
 
     if (body.isExperiment) {

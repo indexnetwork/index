@@ -18,7 +18,8 @@ describe("Invitation Endpoints Integration", () => {
   let createdIndexId: string;
   let invitationCode: string;
 
-  const ownerEmail = `test-invite-owner-${Date.now()}@example.com`;
+  // Staff domain: direct network creation via the controller is staff-only.
+  const ownerEmail = `test-invite-owner-${Date.now()}@index.network`;
   const joinerEmail = `test-invite-joiner-${Date.now()}@example.com`;
 
   beforeAll(async () => {
