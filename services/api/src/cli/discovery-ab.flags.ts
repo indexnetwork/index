@@ -85,12 +85,24 @@ function envReadPattern(key: string): RegExp {
  * Every candidate key actually read from `process.env` somewhere in the entry
  * file's transitive import closure.
  *
- * The closure is walked over transpiled output, so type-only imports are gone:
- * a module reached only for its types cannot execute and cannot read anything,
- * which is why it is right to drop it. The same erasure also drops a value
- * import whose bindings go unused, so a read living in a side-effect-only
- * position of such a module would be missed — loudly, by shrinking the derived
- * set, never by inflating it.
+ * The closure is walked over transpiled output, and the only edges that erasure
+ * removes are `import type`, `export type` and inline `import('...').T` — all
+ * 154 elided edges in today's closure were of exactly that shape, and value
+ * imports (including unused bindings and bare `import './x.js'`) survive
+ * verbatim. That is precisely what the runtime erases too, so a module reached
+ * only through a type-only import genuinely never loads and genuinely never
+ * reads anything.
+ *
+ * So the failure direction is under-offering, never fiction: if a listed flag's
+ * read becomes unreachable the derived set shrinks and the derivation test
+ * fails loudly (verified by retyping the `discovery.env.js` import as
+ * `import type` — two flags dropped, suite red).
+ *
+ * Two narrow holes remain, both with zero occurrences in the closure today:
+ * Bun preserves legal comments — a `//!` or `/*!` banner survives and would
+ * match the read pattern, though an `@license` block comment is stripped — and
+ * a string or template literal spelling out `process.env.SOME_KEY` counts as a
+ * read.
  */
 export function reachableEnvKeys(entryFile: string, candidateKeys: readonly string[]): Set<string> {
   const patterns = candidateKeys.map((key) => [key, envReadPattern(key)] as const);
