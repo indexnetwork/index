@@ -19,7 +19,6 @@ afterAll(() => {
 });
 
 import { NetworkController } from "../network.controller";
-import { NetworkExperimentController } from "../network-experiment.controller";
 import db from "../../lib/drizzle/drizzle";
 import * as schema from "../../schemas/database.schema";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
@@ -28,7 +27,6 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("NetworkController Integration", () => {
   const controller = new NetworkController();
-  const experimentController = new NetworkExperimentController();
   const userAdapter = new UserDatabaseAdapter();
   let testUserId: string;
   let createdIndexId: string;
@@ -100,13 +98,12 @@ describe("NetworkController Integration", () => {
       createdIndexId = data.network!.id;
     });
 
-    test("should return 200 and create event network with valid metadata", async () => {
+    test("should return 200 and pass through metadata on create", async () => {
       const req = new Request("http://localhost/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: "Test Event",
-          type: "event",
           metadata: {
             startDate: "2026-06-01T00:00:00Z",
             endDate: "2026-06-30T23:59:59Z",
@@ -116,44 +113,12 @@ describe("NetworkController Integration", () => {
         }),
       });
       const res = await controller.create(req, mockUser());
-      const data = (await res.json()) as { network?: { id: string; type: string; metadata: Record<string, unknown> } };
+      const data = (await res.json()) as { network?: { id: string; metadata: Record<string, unknown> } };
 
       expect(res.status).toBe(200);
       expect(data.network).toBeDefined();
-      expect(data.network!.type).toBe("event");
       expect(data.network!.metadata.startDate).toBe("2026-06-01T00:00:00Z");
       additionalNetworkIds.push(data.network!.id);
-    });
-
-    test("should return 400 when event network missing required dates", async () => {
-      const req = new Request("http://localhost/networks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Bad Event", type: "event", metadata: {} }),
-      });
-      const res = await controller.create(req, mockUser());
-      const data = (await res.json()) as { error?: string; details?: unknown[] };
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("Validation failed");
-      expect(Array.isArray(data.details)).toBe(true);
-    });
-
-    test("should return 400 when endDate is before startDate", async () => {
-      const req = new Request("http://localhost/networks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "Bad Dates",
-          type: "event",
-          metadata: { startDate: "2026-06-30T00:00:00Z", endDate: "2026-06-01T00:00:00Z" },
-        }),
-      });
-      const res = await controller.create(req, mockUser());
-      const data = (await res.json()) as { error?: string; details?: unknown[] };
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("Validation failed");
     });
   });
 
@@ -217,19 +182,6 @@ describe("NetworkController Integration", () => {
       expect(data.network!.title).toBe("Updated Test Index");
     }, 30_000);
 
-    test("should return 400 when updating with invalid event metadata", async () => {
-      const req = new Request("http://localhost/networks/" + createdIndexId, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "event", metadata: {} }),
-      });
-      const res = await controller.update(req, mockUser(), { id: createdIndexId });
-      const data = (await res.json()) as { error?: string; details?: unknown[] };
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("Validation failed");
-    });
-
     test("should return 200 when updating with valid contextInjection", async () => {
       const req = new Request("http://localhost/networks/" + createdIndexId, {
         method: "PUT",
@@ -266,19 +218,26 @@ describe("NetworkController Integration", () => {
     });
   });
 
-  describe("POST /:id/members/invite (experiment networks)", () => {
-    let experimentNetworkId: string;
+  describe("POST /:id/members/invite (owner-only, any network)", () => {
+    let inviteNetworkId: string;
+    let otherUserId: string;
     const inviteeUserIds: string[] = [];
 
     beforeAll(async () => {
       const req = new Request("http://localhost/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Invite Test Experiment", isExperiment: true }),
+        body: JSON.stringify({ title: "Invite Test Network" }),
       });
       const res = await controller.create(req, mockUser());
       const data = (await res.json()) as { network?: { id: string } };
-      experimentNetworkId = data.network!.id;
+      inviteNetworkId = data.network!.id;
+
+      const other = await userAdapter.create({
+        email: `test-invite-outsider-${Date.now()}@example.com`,
+        name: "Invite Outsider",
+      });
+      otherUserId = other.id;
     });
 
     afterAll(async () => {
@@ -299,16 +258,17 @@ describe("NetworkController Integration", () => {
           await db.delete(schema.networks).where(inArray(schema.networks.id, personalNetworkIds));
         }
       }
-      if (experimentNetworkId) await deleteNetworkAndMembers(experimentNetworkId);
+      if (inviteNetworkId) await deleteNetworkAndMembers(inviteNetworkId);
+      if (otherUserId) await userAdapter.deleteById(otherUserId);
     });
 
     test("returns 400 when email is missing", async () => {
-      const req = new Request(`http://localhost/networks/${experimentNetworkId}/members/invite`, {
+      const req = new Request(`http://localhost/networks/${inviteNetworkId}/members/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const res = await experimentController.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const res = await controller.inviteMember(req, mockUser(), { id: inviteNetworkId });
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(400);
@@ -316,25 +276,30 @@ describe("NetworkController Integration", () => {
     });
 
     test("returns 400 when email format is invalid", async () => {
-      const req = new Request(`http://localhost/networks/${experimentNetworkId}/members/invite`, {
+      const req = new Request(`http://localhost/networks/${inviteNetworkId}/members/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "not-an-email" }),
       });
-      const res = await experimentController.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const res = await controller.inviteMember(req, mockUser(), { id: inviteNetworkId });
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(400);
       expect(data.error).toBe("Invalid email format");
     });
 
-    test("returns 403 when network is not an experiment network", async () => {
-      const req = new Request(`http://localhost/networks/${createdIndexId}/members/invite`, {
+    test("returns 403 when the caller is not the network owner", async () => {
+      const req = new Request(`http://localhost/networks/${inviteNetworkId}/members/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: `target-${Date.now()}@example.com` }),
       });
-      const res = await experimentController.inviteMember(req, mockUser(), { id: createdIndexId });
+      const outsider: AuthenticatedUser = {
+        id: otherUserId,
+        email: `test-invite-outsider-${Date.now()}@example.com`,
+        name: "Invite Outsider",
+      };
+      const res = await controller.inviteMember(req, outsider, { id: inviteNetworkId });
 
       expect(res.status).toBe(403);
     });
@@ -342,12 +307,12 @@ describe("NetworkController Integration", () => {
     test("returns 201 with provisioned flags for a new email", async () => {
       sendEmailSpy.mockClear();
       const inviteeEmail = `invitee-${Date.now()}@example.com`;
-      const req = new Request(`http://localhost/networks/${experimentNetworkId}/members/invite`, {
+      const req = new Request(`http://localhost/networks/${inviteNetworkId}/members/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: inviteeEmail }),
       });
-      const res = await experimentController.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const res = await controller.inviteMember(req, mockUser(), { id: inviteNetworkId });
       const data = (await res.json()) as {
         user?: { id: string; email: string };
         created?: boolean;
@@ -366,18 +331,66 @@ describe("NetworkController Integration", () => {
     }, 45_000);
   });
 
-  describe("POST /:id/rotate-master-key", () => {
-    let rotateNetworkId: string;
+  describe("POST /:id/master-key (enable)", () => {
+    let enableNetworkId: string;
 
     beforeAll(async () => {
       const req = new Request("http://localhost/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Rotate Master Key Test", isExperiment: true }),
+        body: JSON.stringify({ title: "Enable Master Key Test" }),
       });
       const res = await controller.create(req, mockUser());
       const data = (await res.json()) as { network?: { id: string } };
-      rotateNetworkId = data.network!.id;
+      enableNetworkId = data.network!.id;
+    });
+
+    afterAll(async () => {
+      if (enableNetworkId) await deleteNetworkAndMembers(enableNetworkId);
+    });
+
+    test("returns 201 with a plaintext masterKey for the owner", async () => {
+      const req = new Request(`http://localhost/networks/${enableNetworkId}/master-key`, {
+        method: "POST",
+      });
+      const res = await controller.enableMasterKey(req, mockUser(), { id: enableNetworkId });
+      const data = (await res.json()) as { masterKey?: string };
+
+      expect(res.status).toBe(201);
+      expect(data.masterKey).toBeTruthy();
+      expect(data.masterKey!.length).toBe(64);
+    });
+
+    test("returns 403 or 404 when network does not exist", async () => {
+      const fakeId = "00000000-0000-0000-0000-000000000000";
+      const req = new Request(`http://localhost/networks/${fakeId}/master-key`, {
+        method: "POST",
+      });
+      const res = await controller.enableMasterKey(req, mockUser(), { id: fakeId });
+      // assertOwner returns 404 for null networks but 403 for any other access failure → accept either
+      expect([403, 404]).toContain(res.status);
+    });
+  });
+
+  describe("POST /:id/rotate-master-key", () => {
+    let rotateNetworkId: string;
+
+    beforeAll(async () => {
+      const createReq = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Rotate Master Key Test" }),
+      });
+      const createRes = await controller.create(createReq, mockUser());
+      const createData = (await createRes.json()) as { network?: { id: string } };
+      rotateNetworkId = createData.network!.id;
+
+      // Rotation requires an existing master key — enable it first.
+      const enableReq = new Request(`http://localhost/networks/${rotateNetworkId}/master-key`, {
+        method: "POST",
+      });
+      const enableRes = await controller.enableMasterKey(enableReq, mockUser(), { id: rotateNetworkId });
+      expect(enableRes.status).toBe(201);
     });
 
     afterAll(async () => {
@@ -388,7 +401,7 @@ describe("NetworkController Integration", () => {
       const req = new Request(`http://localhost/networks/${rotateNetworkId}/rotate-master-key`, {
         method: "POST",
       });
-      const res = await experimentController.rotateMasterKey(req, mockUser(), { id: rotateNetworkId });
+      const res = await controller.rotateMasterKey(req, mockUser(), { id: rotateNetworkId });
       const data = (await res.json()) as { masterKey?: string };
 
       expect(res.status).toBe(200);
@@ -396,12 +409,12 @@ describe("NetworkController Integration", () => {
       expect(data.masterKey!.length).toBe(64);
     });
 
-    test("returns 403 when network is not an experiment", async () => {
+    test("throws when the network has no master key", async () => {
       const req = new Request(`http://localhost/networks/${createdIndexId}/rotate-master-key`, {
         method: "POST",
       });
-      const res = await experimentController.rotateMasterKey(req, mockUser(), { id: createdIndexId });
-      expect(res.status).toBe(403);
+      await expect(controller.rotateMasterKey(req, mockUser(), { id: createdIndexId }))
+        .rejects.toThrow("Network has no master key");
     });
 
     test("returns 404 when network does not exist", async () => {
@@ -409,8 +422,8 @@ describe("NetworkController Integration", () => {
       const req = new Request(`http://localhost/networks/${fakeId}/rotate-master-key`, {
         method: "POST",
       });
-      const res = await experimentController.rotateMasterKey(req, mockUser(), { id: fakeId });
-      // assertExperimentOwner returns 404 for null networks but 403 for any other access failure → accept either
+      const res = await controller.rotateMasterKey(req, mockUser(), { id: fakeId });
+      // assertOwner returns 404 for null networks but 403 for any other access failure → accept either
       expect([403, 404]).toContain(res.status);
     });
   });

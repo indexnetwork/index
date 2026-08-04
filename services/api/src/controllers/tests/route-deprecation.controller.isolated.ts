@@ -8,13 +8,13 @@ import type { AuthenticatedUser } from '../../guards/auth.guard';
 import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { setDeprecationReporter } from '../../lib/router/deprecated-route';
 
-let NetworkExperimentControllerClass: typeof import('../network-experiment.controller').NetworkExperimentController;
+let NetworkControllerClass: typeof import('../network.controller').NetworkController;
 const warnReporter = mock((_message: string, _metadata: Record<string, unknown>) => {});
 const restoreReporter = setDeprecationReporter(warnReporter);
 
 beforeAll(async () => {
-  const mod = await import('../network-experiment.controller');
-  NetworkExperimentControllerClass = mod.NetworkExperimentController;
+  const mod = await import('../network.controller');
+  NetworkControllerClass = mod.NetworkController;
 });
 
 afterAll(() => {
@@ -38,7 +38,7 @@ describe('deprecated controller routes', () => {
     };
 
     try {
-      const response = await new NetworkExperimentControllerClass().updateKey(req, user, { id: 'example' });
+      const response = await new NetworkControllerClass().updateKey(req, user, { id: 'example' });
       const body = (await response.json()) as { error: string };
 
       expect(response.status).toBe(400);

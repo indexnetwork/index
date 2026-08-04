@@ -77,15 +77,16 @@ export class NetworkService {
       .limit(1);
     if (!existing) throw new Error('Network not found');
 
+    const permissions: schema.NetworkPermissionsState = {
+      ...(existing.permissions as schema.NetworkPermissionsState),
+      allowGuestVibeCheck: false,
+      profileEnrichment: 'consent_required',
+    };
     await db
       .update(schema.networks)
       .set({
         masterKeyHash,
-        permissions: {
-          ...(existing.permissions as Record<string, unknown>),
-          allowGuestVibeCheck: false,
-          profileEnrichment: 'consent_required',
-        },
+        permissions,
       })
       .where(eq(schema.networks.id, networkId));
 
@@ -213,7 +214,13 @@ export class NetworkService {
   }
 
   /**
-   * Soft-delete a network. Owner-only.
+   * Soft-delete a network. Owner-only. Runs the ordinary owner delete first
+   * (membership checks + network soft-delete, byte-identical to the
+   * pre-cascade path), then cascades to any provisioned cohort: only users
+   * provisioned via master-key signup / CSV import own network-scoped
+   * agents, so the cascade no-ops on ordinary networks. The cohort lookup
+   * keys off agents/agent_permissions, not network_members, so it still
+   * resolves after the network is soft-deleted.
    * @throws Error if the index is a personal network.
    */
   async deleteNetwork(networkId: string, userId: string) {
@@ -222,10 +229,8 @@ export class NetworkService {
 
     const isOwner = await this.adapter.isIndexOwner(networkId, userId);
     if (!isOwner) throw new Error('Access denied: Not an owner of this network');
-    // Cascade no-ops on networks without a provisioned cohort: only users
-    // provisioned via master-key signup / CSV import own network-scoped agents.
-    await this.adapter.softDeleteProvisionedCohort(networkId);
     await this.adapter.deleteIndexForOwner(networkId, userId);
+    await this.adapter.softDeleteProvisionedCohort(networkId);
   }
 
   /**
