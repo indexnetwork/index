@@ -20,7 +20,6 @@ src/queues/tests/from-enrichment.queue.isolated.ts
 src/queues/tests/from-intent.queue.isolated.ts
 src/queues/tests/from-introducer.queue.isolated.ts
 src/queues/tests/hyde.queue.isolated.ts
-src/queues/tests/integration.queue.isolated.ts
 src/queues/tests/intent.queue.isolated.ts
 src/queues/tests/notification.queue.isolated.ts
 src/queues/tests/premise.queue.isolated.ts

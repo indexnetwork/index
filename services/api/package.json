@@ -21,8 +21,6 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:audit-experiment-emails": "bun ./src/cli/audit-experiment-email-collisions.ts",
-    "maintenance:audit-agentvillage-onboarding": "bun ./src/cli/audit-agentvillage-onboarding.ts",
-    "maintenance:seed-experiment-network": "bun ./src/cli/seed-experiment-network.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "maintenance:backfill-premises": "bun ./src/cli/backfill-premises.ts",

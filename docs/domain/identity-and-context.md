@@ -57,7 +57,7 @@ When a user connects social accounts or provides URLs (LinkedIn, GitHub, persona
 
 ### Event/import seeds and onboarding drafts
 
-Experiment-network `/signup` and CSV import provision the user, scoped agent, and membership immediately, but rich payloads (`name`, `bio`, `location`, socials) are staged under `users.onboarding.profileSeeds` instead of being written to active identity fields. Privacy-first clients first record two independent consent decisions under `users.onboarding.privacy`: whether event/EdgeOS-provided data may be used, and whether public lookup may run. The onboarding-safe `preview_user_profile` tool can use staged seeds only after EdgeOS/import consent, synthesizes a draft without persisting it, and `confirm_user_profile` saves only the approved draft or approved correction text.
+Master-key `/signup` and CSV import provision the user, scoped agent, and membership immediately, but rich payloads (`name`, `bio`, `location`, socials) are staged under `users.onboarding.profileSeeds` instead of being written to active identity fields. Privacy-first clients first record two independent consent decisions under `users.onboarding.privacy`: whether event/EdgeOS-provided data may be used, and whether public lookup may run. The onboarding-safe `preview_user_profile` tool can use staged seeds only after EdgeOS/import consent, synthesizes a draft without persisting it, and `confirm_user_profile` saves only the approved draft or approved correction text.
 
 ### User-directed updates
 

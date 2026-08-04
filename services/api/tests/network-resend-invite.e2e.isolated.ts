@@ -81,7 +81,7 @@ describe.skipIf(!RUN_LOCAL_API_E2E)('POST /networks/:id/members/:memberId/resend
 
     const createRes = await api('/api/networks', {
       method: 'POST',
-      body: { title: `Net ${randomUUID().slice(0, 6)}`, isExperiment: true },
+      body: { title: `Net ${randomUUID().slice(0, 6)}` },
     });
     if (!createRes.ok) throw new Error(`create network: ${createRes.status} ${await createRes.text()}`);
     const created = await createRes.json() as { network?: { id: string } };
