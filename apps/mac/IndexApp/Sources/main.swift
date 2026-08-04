@@ -12,6 +12,12 @@ enum AppConfig {
     static var apiURL: String { value(for: "API_URL", default: "http://localhost:3001") }
     static var appURL: String { value(for: "APP_URL", default: "http://localhost:3000") }
 
+    static var deepLinkHosts: [String] {
+        let host = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
+        return [host?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .flatMap { $0.isEmpty ? nil : $0 } ?? "index.network"]
+    }
+
     /// The REST base including the `/api` prefix applied in services/api main.ts.
     static var apiBaseURL: String { trimTrailingSlash(apiURL) + "/api" }
 
@@ -892,6 +898,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
             "apiKey": cred?.key ?? NSNull(),
+            "deepLinkHosts": AppConfig.deepLinkHosts,
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

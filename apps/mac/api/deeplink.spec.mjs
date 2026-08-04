@@ -66,6 +66,16 @@ describe('mac deep-link routing contract', () => {
       .toEqual({ route: 'profile', id: USER_ID });
   });
 
+  it('accepts only the injected dev host without widening the default', () => {
+    const dev = { hosts: ['dev.index.network'] };
+    expect(parseDeepLink(`https://dev.index.network/o/${OPPORTUNITY_ID}`, dev))
+      .toEqual({ route: 'card', id: OPPORTUNITY_ID });
+    expect(isIndexDeepLink(`https://dev.index.network/u/${USER_ID}/chat`, dev)).toBe(true);
+    expect(parseDeepLink(`https://dev.index.network/u/${USER_ID}/chat`, dev)).toBeNull();
+    expect(parseDeepLink(`https://dev.index.network/o/${OPPORTUNITY_ID}`)).toBeNull();
+    expect(parseDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`, dev)).toBeNull();
+  });
+
   it('rejects foreign hosts and non-https web schemes', () => {
     expect(parseDeepLink(`https://evil.example/o/${OPPORTUNITY_ID}`)).toBeNull();
     expect(parseDeepLink(`https://index.network.evil.example/o/${OPPORTUNITY_ID}`)).toBeNull();
