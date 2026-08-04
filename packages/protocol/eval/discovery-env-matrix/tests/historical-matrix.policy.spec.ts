@@ -64,6 +64,45 @@ describe("historical discovery environment matrix policy", () => {
     });
   });
 
+  it("scores an arm that is not a matrix row when it states its own allowed evidence", async () => {
+    // Regression: scoring a slot whose rowId is a comparison-arm id (the
+    // discovery A/B harness names its sides "a" and "b") threw
+    // "Unknown discovery environment matrix row: a" for every slot that
+    // returned a candidate, because the allowed-evidence assertion resolved the
+    // row. An arm that supplies its own permitted set must score instead.
+    const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
+    const result = await scoreMatrixSlot({
+      matrixCase,
+      rowId: "a",
+      repetition: 0,
+      completed: true,
+      allowedEvidence: ["intent", "premise", "user_context"],
+      candidates: [{ id: matrixCase.expectedUserId, finalRank: 1, evidenceTypes: ["user_context"], evidenceIds: {} }],
+      judge: async () => ({ passed: true }),
+    });
+
+    expect(result.rowId).toBe("a");
+    expect(result.rule).toBe("a");
+    expect(result.passed).toBe(true);
+    expect(result.assertions.find((assertion) => assertion.kind === "allowed_evidence")).toMatchObject({ passed: true });
+    // The non-empty evidence check still applies to such an arm.
+    expect(assertAllowedEvidence("a", [], ["intent", "premise", "user_context"])).toMatchObject({ passed: false, detail: "missing_evidence" });
+    // And a stated set is still enforced.
+    expect(assertAllowedEvidence("a", ["premise"], ["intent"])).toMatchObject({ passed: false });
+  });
+
+  it("still refuses an unknown row when no allowed evidence is stated", async () => {
+    const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
+    expect(() => assertAllowedEvidence("made-up", ["intent"])).toThrow("Unknown discovery environment matrix row: made-up");
+    await expect(scoreMatrixSlot({
+      matrixCase,
+      rowId: "made-up",
+      repetition: 0,
+      completed: true,
+      candidates: [{ id: matrixCase.expectedUserId, finalRank: 1, evidenceTypes: ["intent"], evidenceIds: {} }],
+    })).rejects.toThrow("Unknown discovery environment matrix row: made-up");
+  });
+
   it("scores only final evaluator candidates when raw retrieval contains an excluded candidate", async () => {
     const matrixCase = HISTORICAL_MATRIX_CASES[0]!;
     const judgeInputs: string[][] = [];

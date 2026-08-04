@@ -13,6 +13,15 @@ export type MatrixRow = typeof MATRIX_ROWS[number];
 export type MatrixRowId = MatrixRow["id"];
 export type MatrixEvidenceType = MatrixRow["allowedEvidence"][number];
 
+/**
+ * The identifier of the arm a slot belongs to. The fixed matrix names one of
+ * `MATRIX_ROWS`; other harnesses that reuse this scoring policy (the discovery
+ * A/B harness names its two sides) supply their own arm identifier and must
+ * then supply `allowedEvidence` explicitly, because no `MATRIX_ROWS` entry
+ * describes their arm.
+ */
+export type MatrixSlotRowId = MatrixRowId | (string & Record<never, never>);
+
 export interface MatrixCandidateEvidenceIds {
   /** Concrete graph evidence IDs retained for run-artifact inspection. */
   candidateIntentId?: string;
@@ -72,7 +81,7 @@ export interface MatrixAssertion {
 /** The exhaustive, model-safe data available to the relationship judge. */
 export interface MatrixJudgeInput {
   sourceText: string;
-  rowId: MatrixRowId;
+  rowId: MatrixSlotRowId;
   candidateIds: string[];
   evidenceTypes: MatrixEvidenceType[];
   caseDescription: string;
@@ -93,8 +102,14 @@ export interface MatrixConfigDelta {
 
 export interface ScoreMatrixSlotInput {
   matrixCase: HistoricalMatrixCase;
-  rowId: MatrixRowId;
+  rowId: MatrixSlotRowId;
   repetition: number;
+  /**
+   * Evidence types this arm may cite. Omit it for the fixed matrix: the row's
+   * own `allowedEvidence` is then the only source, so an unknown matrix row
+   * still throws rather than being scored against a guess.
+   */
+  allowedEvidence?: readonly MatrixEvidenceType[];
   /** Evaluator-approved, graph-ranked candidates used by every policy assertion and judge. */
   candidates: readonly MatrixCandidate[];
   /** Raw retrieval diagnostics retained in run artifacts but never scored or judged. */
@@ -109,7 +124,7 @@ export interface ScoreMatrixSlotInput {
 
 /** Complete, raw run evidence for one case/row/repetition slot. */
 export interface MatrixSlotResult extends CaseResultLike {
-  rowId: MatrixRowId;
+  rowId: MatrixSlotRowId;
   repetition: number;
   passed: boolean;
   targetRank: number | null;
@@ -256,20 +271,27 @@ export function evaluateControlCalibratedGate(
   };
 }
 
-function rowFor(rowId: MatrixRowId): MatrixRow {
+function rowFor(rowId: MatrixSlotRowId): MatrixRow {
   const row = MATRIX_ROWS.find((candidate) => candidate.id === rowId);
   if (!row) throw new Error(`Unknown discovery environment matrix row: ${rowId}`);
   return row;
 }
 
-/** Checks that a returned candidate only cites evidence allowed by this row. */
+/**
+ * Checks that a returned candidate only cites evidence this arm may cite.
+ *
+ * The fixed matrix passes no `allowed` set, so `rowFor` remains the sole source
+ * of a matrix row's permitted evidence and an unknown row id still throws. A
+ * caller scoring an arm that is not a matrix row must state the permitted set
+ * itself rather than have one inferred for it.
+ */
 export function assertAllowedEvidence(
-  rowId: MatrixRowId,
+  rowId: MatrixSlotRowId,
   evidenceTypes: readonly MatrixEvidenceType[],
+  allowed?: readonly MatrixEvidenceType[],
 ): { passed: true } | { passed: false; detail: string } {
-  const row = rowFor(rowId);
+  const allowedEvidence: readonly MatrixEvidenceType[] = allowed ?? rowFor(rowId).allowedEvidence;
   if (evidenceTypes.length === 0) return { passed: false, detail: "missing_evidence" };
-  const allowedEvidence: readonly MatrixEvidenceType[] = row.allowedEvidence;
   const unexpected = evidenceTypes.filter((evidenceType) => !allowedEvidence.includes(evidenceType));
   return unexpected.length === 0
     ? { passed: true }
@@ -307,7 +329,7 @@ function deterministicAssertions(input: ScoreMatrixSlotInput): {
   const excludedCandidate = candidateIds.find((candidateId) => input.matrixCase.excludedUserIds.includes(candidateId));
   const evidenceTypes = [...new Set(input.candidates.flatMap((candidate) => candidate.evidenceTypes))];
   const evidenceFailure = input.candidates
-    .map((candidate) => ({ id: candidate.id, result: assertAllowedEvidence(input.rowId, candidate.evidenceTypes) }))
+    .map((candidate) => ({ id: candidate.id, result: assertAllowedEvidence(input.rowId, candidate.evidenceTypes, input.allowedEvidence) }))
     .find(({ result }) => !result.passed);
 
   return {
