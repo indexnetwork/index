@@ -8,18 +8,76 @@ export const OPS_HARNESSES = [
   "discovery-ab",
 ] as const satisfies readonly OpsHarness[];
 
+/**
+ * Every numeric flag states two things (HarnessFlag in ops.types.ts): the bounds
+ * its CONTROL offers (min/max/step, inclusive because HTML is) and the bounds
+ * the API ENFORCES (`accepts`), with who holds each end.
+ *
+ * They are not the same thing, and conflating them refused runs the engines
+ * accept. `--alpha` is the case that proves it: every engine takes any
+ * 0 < alpha < 1 (`alpha <= 0 || alpha >= 1` in matching.eval.ts and the profile,
+ * premise and opportunity equivalents), while a step-0.001 slider can only offer
+ * 0.001..0.999. Enforcing the slider's approximation refused `--alpha 0.0005`
+ * with the sentence "the harness itself would refuse it" — which the harness
+ * contradicts. So the slider stays 0.001..0.999 and the authority is the real
+ * exclusive 0..1.
+ */
 const COMMON_FLAGS: readonly HarnessFlag[] = Object.freeze([
-  { name: "runs", cli: "--runs", kind: "number", min: 1, max: 25, step: 1 },
+  {
+    name: "runs",
+    cli: "--runs",
+    kind: "number",
+    min: 1,
+    max: 25,
+    step: 1,
+    // The floor is the engines' (`--runs must be a positive integer`); the
+    // ceiling is this site's alone (RunFlagsSchema), because a scorecard harness
+    // has none — so 26 is refused here without claiming the harness would.
+    accepts: { min: { value: 1, heldBy: "harness" }, max: { value: 25, heldBy: "site" } },
+  },
   { name: "case", cli: "--case", kind: "string" },
   { name: "rule", cli: "--rule", kind: "string" },
   { name: "noJudge", cli: "--no-judge", kind: "boolean" },
-  // alpha is gt(0).lt(1) on the server; 0.001..0.999 is the inclusive equivalent at step resolution.
-  { name: "alpha", cli: "--alpha", kind: "number", min: 0.001, max: 0.999, step: 0.001 },
-  { name: "attemptTimeoutMs", cli: "--attempt-timeout-ms", kind: "number", min: 1_000, max: 600_000, step: 1 },
+  {
+    name: "alpha",
+    cli: "--alpha",
+    kind: "number",
+    min: 0.001,
+    max: 0.999,
+    step: 0.001,
+    // Exactly the engines' own check, exclusive ends and all; RunFlagsSchema
+    // says the same (gt(0).lt(1)), so 0 and 1 are refused and everything
+    // strictly between them runs. registry.spec.ts reads the check from the
+    // four harness sources rather than trusting this line.
+    accepts: {
+      min: { value: 0, exclusive: true, heldBy: "harness" },
+      max: { value: 1, exclusive: true, heldBy: "harness" },
+    },
+  },
+  {
+    name: "attemptTimeoutMs",
+    cli: "--attempt-timeout-ms",
+    kind: "number",
+    min: 1_000,
+    max: 600_000,
+    step: 1,
+    // The engines ask only for a positive number, so both ends here are the
+    // site's: 500ms and ten minutes are refusals this site makes on its own.
+    accepts: { min: { value: 1_000, heldBy: "site" }, max: { value: 600_000, heldBy: "site" } },
+  },
   { name: "strictEvidence", cli: "--strict-evidence", kind: "boolean" },
 ]);
 
-const TIER_FLAG: HarnessFlag = { name: "tier", cli: "--tier", kind: "number", min: 1, max: 4, step: 1 };
+const TIER_FLAG: HarnessFlag = {
+  name: "tier",
+  cli: "--tier",
+  kind: "number",
+  min: 1,
+  max: 4,
+  step: 1,
+  // parseTier (matching.selection.ts) throws on anything but 1, 2, 3, 4.
+  accepts: { min: { value: 1, heldBy: "harness" }, max: { value: 4, heldBy: "harness" } },
+};
 
 /**
  * discovery-ab's entire selection surface. Its parser accepts only --case,
@@ -51,7 +109,17 @@ const TIER_FLAG: HarnessFlag = { name: "tier", cli: "--tier", kind: "number", mi
  * gives discovery-ab a save path of its own owes it a real --no-save.
  */
 const DISCOVERY_AB_FLAGS: readonly HarnessFlag[] = Object.freeze([
-  { name: "runs", cli: "--runs", kind: "number", min: 1, max: 10, step: 1 },
+  {
+    name: "runs",
+    cli: "--runs",
+    kind: "number",
+    min: 1,
+    max: 10,
+    step: 1,
+    // Both ends are the engine's: parseAbRunArgs refuses a non-positive count
+    // and anything above AB_MAX_REPETITIONS, before it spends anything.
+    accepts: { min: { value: 1, heldBy: "harness" }, max: { value: 10, heldBy: "harness" } },
+  },
   { name: "case", cli: "--case", kind: "string" },
 ]);
 
@@ -156,6 +224,13 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
     question: "What pass rate does each of two discovery configurations reach on the same cases?",
     detail:
       "Runs the real discovery graph once per operator-chosen environment configuration over the same cases and emits one artifact holding both sides. There is no baseline \u2014 arbitrary configurations have none \u2014 so the pair is the result.",
+    // Every run of this harness resets the two Neon evaluation branches before
+    // each side, filtered or not: --case narrows what is measured, not what is
+    // destroyed. The launch form quotes this in its confirmation, which is the
+    // last moment anyone can decline it — and quotes it from here, because the
+    // form branches on REQUIRES_SIDES and must not attribute this harness's
+    // destruction to some later comparison harness that does not do it.
+    resets: "both Neon evaluation branches",
     agents: Object.freeze([]),
   }),
 });

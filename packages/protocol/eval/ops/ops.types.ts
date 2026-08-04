@@ -19,25 +19,60 @@ export type HarnessFlagName =
   | "attemptTimeoutMs"
   | "strictEvidence";
 
+/**
+ * One end of what a flag value may be, and who refuses a value past it.
+ *
+ * `heldBy` is not decoration: it decides what the refusal is allowed to SAY.
+ * `"harness"` means the engine's own parser refuses the value (matching's
+ * `alpha <= 0 || alpha >= 1`, discovery-ab's `--runs must not exceed 10`), so a
+ * refusal may tell the operator the harness itself would refuse it. `"site"`
+ * means only this site refuses it — RunFlagsSchema's shared ceiling, e.g.
+ * `--runs 26`, which every scorecard harness would happily run — so the refusal
+ * says the site refuses it and claims nothing about the harness. A message that
+ * attributed a site bound to the harness would be false, and an operator who
+ * checked would find the harness contradicting it.
+ */
+export interface FlagBound {
+  value: number;
+  /** True when the bound itself is refused, as in the engines' `0 < alpha < 1`. */
+  exclusive?: boolean;
+  heldBy: "harness" | "site";
+}
+
 export interface HarnessFlag {
   name: HarnessFlagName;
   /** The literal CLI flag, e.g. "--runs". */
   cli: string;
   kind: "number" | "string" | "boolean";
   /**
-   * What this harness accepts for this flag, and the authority on it:
-   * RunSpecSchema enforces these bounds per harness (flagValueIssues,
-   * ops.flags.ts) and the launch form refuses the same values from the same
-   * function, so a form built from this registry cannot mark a server-valid
-   * value invalid, nor offer one the server would refuse. RunFlagsSchema's own
-   * bounds are the union across harnesses and are deliberately wider: one
-   * harness's ceiling is not every harness's. Exclusive server bounds are
-   * expressed as the nearest representable value at `step` resolution, because
-   * HTML min/max are inclusive.
+   * CONTROL bounds: what the launch form puts on the input's min/max/step. They
+   * are inclusive and expressed at `step` resolution because HTML demands both,
+   * so they can be NARROWER than what the API accepts — `--alpha` is offered as
+   * 0.001..0.999 at step 0.001 while every engine accepts any 0 < alpha < 1.
+   *
+   * They are not an authority, and nothing refuses a value for being outside
+   * them: a control that cannot express a legal value must not make it illegal.
+   * `accepts` below is the authority. Control bounds must always be inside it —
+   * an input offering a value the API refuses is a bug, pinned by registry.spec.ts.
    */
   min?: number;
   max?: number;
   step?: number;
+  /**
+   * What the API accepts for this flag on THIS harness, and who holds each end.
+   * `RunSpecSchema` enforces it per harness (flagValueIssues, ops.flags.ts) and
+   * the launch form refuses the same values from the same function, so the form
+   * cannot mark an API-valid value invalid nor offer one the API would refuse.
+   *
+   * Per harness, because the harnesses do not agree: discovery-ab caps `--runs`
+   * at AB_MAX_REPETITIONS (10) where the scorecard harnesses have no ceiling of
+   * their own at all and only the site's 25 applies.
+   *
+   * Absent means the control bounds are also the API bounds, held by the site —
+   * the safe default, since a refusal from `flagValueIssues` IS the site
+   * refusing. Every numeric flag in HARNESS_REGISTRY declares it explicitly.
+   */
+  accepts?: { min?: FlagBound; max?: FlagBound };
 }
 
 export interface HarnessDescriptor {
@@ -62,6 +97,19 @@ export interface HarnessDescriptor {
   question: string;
   /** One sentence on what is actually scored, shown under `question` for context. */
   detail: string;
+  /**
+   * What a run of this harness DESTROYS, named as a noun phrase ("both Neon
+   * evaluation branches"), and shown in the launch form's confirmation because
+   * that is the last moment anyone can decline it.
+   *
+   * Sourced here rather than written into the form, because the form branches on
+   * REQUIRES_SIDES rather than on a harness name: a second comparison harness
+   * would otherwise inherit this one's claim about Neon, which may not be true
+   * of it. Absent means a run destroys nothing outside its own report, which is
+   * the case for every scorecard harness, and the confirmation then speaks only
+   * of the spend.
+   */
+  resets?: string;
   /** Model-overridable agents this harness exercises, in pipeline order. */
   agents: readonly string[];
 }

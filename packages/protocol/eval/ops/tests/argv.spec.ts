@@ -117,14 +117,71 @@ describe("RunSpecSchema flag bounds", () => {
   });
 
   it("enforces a scorecard harness's own bounds the same way", () => {
-    // --alpha is gt(0).lt(1) in the shared schema and 0.001..0.999 in every
-    // harness's registry entry: 0.0005 crosses the second and not the first, so
-    // only a per-harness check can refuse it. This is not discovery-ab's rule
-    // being special-cased; it is every harness's own entry being enforced.
-    const message = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { alpha: 0.0005 } });
-    expect(message).toContain("--alpha");
-    expect(message).toContain("0.001");
-    expect(RunSpecSchema.safeParse({ kind: "eval", harness: "matching", profile: "default", flags: { alpha: 0.05 } }).success).toBe(true);
+    // --tier is 1..4 in matching's own parser (parseTier throws on anything
+    // else), so this is that harness's rule being enforced rather than
+    // discovery-ab's being special-cased.
+    const message = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { tier: 9 } });
+    expect(message).toContain("--tier");
+    expect(message).toContain("between 1 and 4");
+    expect(RunSpecSchema.safeParse({ kind: "eval", harness: "matching", profile: "default", flags: { tier: 4 } }).success).toBe(true);
+  });
+
+  it("never refuses a value the harness accepts, however the control is shaped", () => {
+    // The regression: `--alpha` is offered by a step-0.001 control, so the
+    // registry expressed it as 0.001..0.999 — "the inclusive equivalent at step
+    // resolution", in that entry's own words. Making the control's resolution
+    // the API's authority refused `--alpha 0.0005` with the sentence "and the
+    // harness itself would refuse it", which is false: every engine's check is
+    // `alpha <= 0 || alpha >= 1`, so it would have run it. A control's step is
+    // not a rule, and a refusal must not invent one.
+    for (const harness of ["matching", "profile", "premise", "opportunity"] as const) {
+      for (const alpha of [0.0005, 0.0001, 0.9995]) {
+        const spec = { kind: "eval", harness, profile: "default", flags: { alpha } };
+        expect(RunSpecSchema.safeParse(spec).success, `${harness} --alpha ${alpha}`).toBe(true);
+      }
+      // The ends themselves stay refused, because the engine refuses them.
+      for (const alpha of [0, 1]) {
+        const spec = { kind: "eval", harness, profile: "default", flags: { alpha } };
+        expect(RunSpecSchema.safeParse(spec).success, `${harness} --alpha ${alpha}`).toBe(false);
+      }
+      expect(refusal({ kind: "eval", harness, profile: "default", flags: { alpha: 0 } }))
+        .toContain(`The ${harness} harness accepts --alpha above 0 and below 1`);
+    }
+  });
+
+  it("says who refuses a value, and claims nothing else", () => {
+    // Two bounds on one flag, held by two different parties. The scorecard
+    // engines refuse `--runs 0` themselves (`--runs must be a positive
+    // integer`) and cap nothing above; 26 is this site's own ceiling
+    // (RunFlagsSchema), and the harness would have run it. So only one of these
+    // two refusals may speak for the harness.
+    const floor = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { runs: 0 } });
+    expect(floor).toContain("The matching harness accepts --runs no lower than 1");
+    expect(floor).toContain("the harness itself would refuse it");
+
+    const ceiling = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { runs: 26 } });
+    expect(ceiling).toContain("This site accepts --runs no higher than 25");
+    expect(ceiling).not.toContain("harness itself");
+
+    // Nothing this function can produce claims the harness would refuse a value
+    // unless the registry says the harness holds that bound.
+    for (const harness of OPS_HARNESSES) {
+      for (const flag of HARNESS_REGISTRY[harness].flags) {
+        if (flag.kind !== "number") continue;
+        const step = flag.step ?? 1;
+        const { min, max } = flag.accepts ?? {};
+        const cases: [number, "harness" | "site"][] = [
+          ...(min === undefined ? [] : [[min.exclusive === true ? min.value : min.value - step, min.heldBy] as [number, "harness" | "site"]]),
+          ...(max === undefined ? [] : [[max.exclusive === true ? max.value : max.value + step, max.heldBy] as [number, "harness" | "site"]]),
+        ];
+        for (const [value, heldBy] of cases) {
+          const issue = flagValueIssues(harness, HARNESS_REGISTRY[harness].flags, { [flag.name]: value })[0];
+          expect(issue, `${harness} ${flag.cli} ${value}`).toBeDefined();
+          expect(issue!.message.includes("the harness itself would refuse it"), `${harness} ${flag.cli} ${value}`)
+            .toBe(heldBy === "harness");
+        }
+      }
+    }
   });
 
   it("accepts no value outside any harness's declared bounds", () => {
@@ -671,6 +728,12 @@ describe("renderRun sides", () => {
  * gate green while silently restoring the +67 kB (17 kB gzip) the split was made
  * to avoid — zod plus RunSpecSchema's module-level schema construction, which no
  * bundler can drop. Same guard ops.metadata.ts already carries in metadata.spec.ts.
+ *
+ * EVERY form of import counts, not only the named one. A bare `import "zod";`
+ * has no `from` clause, and a guard that looked for one let it through — while
+ * the bundler does not: a side-effect import pulls the whole package in exactly
+ * as the named one does. `import(...)` and `require(...)` are here for the same
+ * reason: what matters is the specifier, not the syntax that reaches it.
  */
 describe("browser-importable module boundary", () => {
   const DEPENDENCY_FREE = ["ops.sides.ts", "ops.flags.ts"] as const;
@@ -678,7 +741,9 @@ describe("browser-importable module boundary", () => {
   for (const module of DEPENDENCY_FREE) {
     it(`${module} stays dependency-free so the browser bundle can import it`, () => {
       const source = readFileSync(path.join(import.meta.dir, "..", module), "utf8");
-      const importSpecifiers = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+      const importSpecifiers = [...source.matchAll(/\b(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g)].map(
+        (m) => m[1],
+      );
       expect(importSpecifiers.length).toBeGreaterThan(0);
       for (const specifier of importSpecifiers) {
         expect(specifier).not.toMatch(/^node:/);

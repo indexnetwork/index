@@ -91,9 +91,14 @@ export const RunSpecSchema = z
   .superRefine((spec, context) => {
     // Names AND values, against this harness's own registry entry. RunFlagsSchema
     // above bounds each flag by the widest value any harness allows, which is not
-    // what any single harness accepts: discovery-ab caps --runs at 10 and every
-    // harness's --alpha starts at 0.001. Checking only the names is how a spec the
-    // engine refuses got queued, displayed and spent against.
+    // what any single harness accepts: discovery-ab caps --runs at 10 where these
+    // bounds allow 25. Checking only the names is how a spec the engine refuses
+    // got queued, displayed and spent against.
+    //
+    // The entry's `accepts` is what is enforced, never the control bounds beside
+    // it: --alpha is offered by a step-0.001 control as 0.001..0.999 and accepted
+    // as any 0 < alpha < 1, which is the engines' own check. Enforcing the
+    // control's resolution refused runs every engine would have run.
     const harness = spec.harness as EvalRunSpec["harness"];
     for (const issue of flagValueIssues(harness, HARNESS_REGISTRY[harness].flags, spec.flags)) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["flags", issue.name], message: issue.message });

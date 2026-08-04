@@ -8,6 +8,20 @@ import { HARNESS_REGISTRY } from '../../../packages/protocol/eval/ops/ops.regist
 import { abSideIssues } from '../../../packages/protocol/eval/ops/ops.sides';
 import { Launch } from '../src/routes/Launch';
 
+// Flag bounds are the server's, verbatim from HARNESS_REGISTRY: `accepts` is
+// what the API enforces and who holds each end, min/max/step is what the control
+// offers. A fixture carrying only the control bounds would test a form the
+// server does not feed — and would quietly change which sentence a refusal uses.
+const RUNS_FLAG = {
+  name: 'runs',
+  cli: '--runs',
+  kind: 'number',
+  min: 1,
+  max: 25,
+  step: 1,
+  accepts: { min: { value: 1, heldBy: 'harness' }, max: { value: 25, heldBy: 'site' } },
+};
+
 const HARNESSES = {
   harnesses: [
     {
@@ -19,9 +33,17 @@ const HARNESSES = {
       detail: 'Evaluates candidates.',
       agents: ['opportunityEvaluator'],
       flags: [
-        { name: 'runs', cli: '--runs', kind: 'number', min: 1, max: 25, step: 1 },
+        RUNS_FLAG,
         { name: 'case', cli: '--case', kind: 'string' },
-        { name: 'tier', cli: '--tier', kind: 'number', min: 1, max: 4, step: 1 },
+        {
+          name: 'tier',
+          cli: '--tier',
+          kind: 'number',
+          min: 1,
+          max: 4,
+          step: 1,
+          accepts: { min: { value: 1, heldBy: 'harness' }, max: { value: 4, heldBy: 'harness' } },
+        },
         { name: 'noJudge', cli: '--no-judge', kind: 'boolean' },
       ],
     },
@@ -43,8 +65,19 @@ const HARNESSES = {
       question: 'What pass rate does each of two discovery configurations reach on the same cases?',
       detail: 'Runs the real discovery graph once per operator-chosen environment configuration.',
       agents: [],
+      // The confirmation quotes this rather than a sentence written into the
+      // page, because the page branches on REQUIRES_SIDES and not on a name.
+      resets: 'both Neon evaluation branches',
       flags: [
-        { name: 'runs', cli: '--runs', kind: 'number', min: 1, max: 10, step: 1 },
+        {
+          name: 'runs',
+          cli: '--runs',
+          kind: 'number',
+          min: 1,
+          max: 10,
+          step: 1,
+          accepts: { min: { value: 1, heldBy: 'harness' }, max: { value: 10, heldBy: 'harness' } },
+        },
         { name: 'case', cli: '--case', kind: 'string' },
       ],
     },
@@ -806,5 +839,83 @@ describe('Launch — discovery-ab', () => {
     // "Give every flag a value" names controls that are not on the screen.
     expect(screen.getByText(/add a flag to both sides before running/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /run both sides/i })).toBeDisabled();
+  });
+
+  it('names what a run destroys from the harness, not from the branch that shows it', async () => {
+    // The page branches on REQUIRES_SIDES rather than on "discovery-ab", so a
+    // second comparison harness would reach this confirmation too — and must not
+    // inherit a claim about Neon branches it may not reset. The sentence is the
+    // descriptor's: a server that names nothing to reset gets no such sentence,
+    // and the spend is still confirmed.
+    const silent = {
+      harnesses: HARNESSES.harnesses.map(({ resets: _resets, ...rest }) => rest),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(silent));
+        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+        if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
+        if (String(url).endsWith('/api/configs')) {
+          return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
+        }
+        return new Response(JSON.stringify({}));
+      }),
+    );
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await user.click(screen.getByRole('button', { name: /run both sides/i }));
+
+    // Still gated, still priced — and silent about branches nobody declared.
+    expect(screen.getByText(/confirm run: 30 model invocations/i)).toBeTruthy();
+    expect(screen.queryByText(/neon/i)).toBeNull();
+    expect(screen.queryByText(/resets/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /confirm and run/i })).toBeTruthy();
+  });
+
+  it('prices a harness this build has never heard of, rather than saying NaN', async () => {
+    // A server one release ahead names a harness the bundled SPA does not know,
+    // and SIDES_PER_RUN has no entry for it. Without the `?? 1` the multiplier
+    // is undefined and the workload line — the one line whose whole job is to
+    // say what a run costs — reads "= NaN" on every render for that harness.
+    const future = {
+      harnesses: [
+        ...HARNESSES.harnesses,
+        {
+          harness: 'discovery-ab-v2',
+          script: 'eval:discovery-ab-v2',
+          caseCount: 6,
+          defaultRuns: 3,
+          question: 'Which of two configurations wins on the next corpus?',
+          detail: 'A harness this build does not know.',
+          agents: [],
+          flags: [RUNS_FLAG],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(future));
+        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+        if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
+        if (String(url).endsWith('/api/configs')) {
+          return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
+        }
+        return new Response(JSON.stringify({}));
+      }),
+    );
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await user.selectOptions(await screen.findByLabelText('Harness'), 'discovery-ab-v2');
+
+    // 6 cases x 3 runs x one pass, because one pass is all this build can know
+    // about a harness it has never heard of.
+    expect(await screen.findByText(/6 cases × 3 runs = 18/)).toBeTruthy();
+    expect(screen.queryByText(/NaN/)).toBeNull();
   });
 });

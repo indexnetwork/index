@@ -90,9 +90,14 @@ const EMPTY_FLAGS: RunFlags = {};
  * where the scorecard harnesses allow 25. Without this the form would enable a
  * launch, price it, take the operator's confirmation and post it — and the
  * engine would then refuse it, which is the one thing this page exists to
- * prevent. `FlagField` puts the same bounds on the input's min/max, but a typed
- * value is not validated by the browser until a form is submitted, and there is
- * no form here.
+ * prevent.
+ *
+ * `FlagField` puts each flag's CONTROL bounds on the input's min/max, which are
+ * not what this refuses on: a control is offered at a step resolution and the
+ * API accepts more than it can express (`--alpha` at step 0.001 versus the
+ * engines' 0 < alpha < 1). The descriptor's `accepts` is the rule, the input's
+ * min/max is only what the widget offers — and a typed value is not validated by
+ * the browser until a form is submitted, and there is no form here.
  */
 function refusedFlagValues(
   harness: OpsHarness,
@@ -355,11 +360,11 @@ export function Launch() {
   const handleRun = () => {
     if (launchBlocked || state.selectedHarness === null) return;
 
-    // What a confirmation is for is the destruction a launch causes, and for the
-    // harness that resets two database branches that destruction is not
-    // corpus-dependent: --case narrows what is measured, not what is reset. So
-    // the operator confirms every run of it, filtered or not, and the copy names
-    // the resets rather than only counting invocations.
+    // What a confirmation is for is the destruction a launch causes, and a
+    // harness that carries sides destroys the same thing however few cases are
+    // selected: --case narrows what is measured, not what is reset. So the
+    // operator confirms every run of one, filtered or not, and the copy names
+    // what the DESCRIPTOR says is reset rather than only counting invocations.
     if ((isFullCorpus() || requiresSides) && !state.awaitingConfirmation) {
       setState((prev) => ({ ...prev, awaitingConfirmation: true }));
       return;
@@ -539,6 +544,11 @@ export function Launch() {
   // default the workload line reads "= NaN" on a page whose whole job is to say
   // what a run costs.
   const sidesPerRun = harnessId === null ? 1 : (SIDES_PER_RUN[harnessId] ?? 1);
+  // What this run DESTROYS, in the harness's own words, because the branch that
+  // shows it is `requiresSides` and not a harness name: discovery-ab resets two
+  // Neon branches, and a second comparison harness must not inherit that claim
+  // from a sentence written here. A harness that names nothing gets no sentence.
+  const resets = state.selectedHarness?.resets;
   const launches = requiresSides ? 1 : ab ? 2 : 1;
   const passes = sidesPerRun * launches;
   const workload = cases * runs * passes;
@@ -860,7 +870,9 @@ export function Launch() {
               {state.awaitingConfirmation && (
                 <p className="text-term-yellow">
                   {requiresSides
-                    ? `Confirm run: this resets both Neon evaluation branches and spends ${workload} model invocations`
+                    ? resets === undefined
+                      ? `Confirm run: ${workload} model invocations`
+                      : `Confirm run: this resets ${resets} and spends ${workload} model invocations`
                     : `Confirm full-corpus run: ${workload} model invocations`}
                 </p>
               )}

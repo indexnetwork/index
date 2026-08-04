@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { renderRun, RunSpecSchema } from "../ops.argv.js";
+import { flagValueIssues } from "../ops.flags.js";
 import { resolveProfile } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 import type { OpsHarness } from "../ops.types.js";
@@ -28,6 +29,20 @@ const AB_CONTRACT_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
   "services", "api", "src", "cli", "discovery-ab.contract.ts",
 );
+
+/** The four scorecard harnesses' own argument parsers — the authority on what they accept. */
+const SCORECARD_SOURCES: Readonly<Record<"matching" | "profile" | "premise" | "opportunity", string>> = {
+  matching: path.join(import.meta.dir, "..", "..", "matching", "matching.eval.ts"),
+  profile: path.join(import.meta.dir, "..", "..", "profile", "profile.eval.ts"),
+  premise: path.join(import.meta.dir, "..", "..", "premise", "premise.eval.ts"),
+  opportunity: path.join(import.meta.dir, "..", "..", "opportunity", "opportunity.eval.ts"),
+};
+
+function flagOf(harness: OpsHarness, name: string) {
+  const flag = HARNESS_REGISTRY[harness].flags.find((f) => f.name === name);
+  if (flag === undefined) throw new Error(`${harness} has no --${name}`);
+  return flag;
+}
 
 describe("HARNESS_REGISTRY", () => {
   it("covers the four scorecard harnesses plus discovery-ab", () => {
@@ -73,9 +88,100 @@ describe("HARNESS_REGISTRY", () => {
       return Number(match[1]);
     };
 
-    const runs = HARNESS_REGISTRY["discovery-ab"].flags.find((f) => f.name === "runs")!;
+    const runs = flagOf("discovery-ab", "runs");
     expect(runs.max).toBe(constantOf("AB_MAX_REPETITIONS"));
+    // And the bound the API enforces, which is the one a refusal quotes. It is
+    // attributed to the harness because the harness is what holds it: exceeding
+    // it is exit 2 from parseAbRunArgs, not a policy of this site.
+    expect(runs.accepts?.max).toEqual({ value: constantOf("AB_MAX_REPETITIONS"), heldBy: "harness" });
     expect(HARNESS_REGISTRY["discovery-ab"].defaultRuns).toBe(constantOf("AB_DEFAULT_REPETITIONS"));
+  });
+
+  it("pins --alpha to the check the four engines actually run", () => {
+    // The regression this closes, in one sentence: the registry's 0.001..0.999
+    // was authored as a step-resolution approximation for an HTML control, and
+    // making it the API's authority refused `--alpha 0.0005` with the sentence
+    // "the harness itself would refuse it" — which the harness contradicts, since
+    // it runs any 0 < alpha < 1. So the bound is read from the engines, not
+    // copied: if one of them ever narrows its check, this fails instead of the
+    // site quietly accepting a run that engine will reject.
+    for (const [harness, source] of Object.entries(SCORECARD_SOURCES) as [OpsHarness, string][]) {
+      const guard = readFileSync(source, "utf8").match(
+        /alpha\s*<=\s*(\d+(?:\.\d+)?)\s*\|\|\s*alpha\s*>=\s*(\d+(?:\.\d+)?)/,
+      );
+      if (guard === null) throw new Error(`no --alpha guard found in ${source}`);
+      // `alpha <= 0 || alpha >= 1` is exactly an exclusive 0..1, and that is what
+      // the registry must declare — ends included, because the ends are refused.
+      expect(flagOf(harness, "alpha").accepts, harness).toEqual({
+        min: { value: Number(guard[1]), exclusive: true, heldBy: "harness" },
+        max: { value: Number(guard[2]), exclusive: true, heldBy: "harness" },
+      });
+
+      // Both extremes the engine runs, and both ends it refuses, through the
+      // schema the API parses with.
+      for (const alpha of [0.0005, 0.0001, 0.9995]) {
+        expect(RunSpecSchema.safeParse(specFor(harness, { alpha })).success, `${harness} alpha ${alpha}`).toBe(true);
+      }
+      for (const alpha of [Number(guard[1]), Number(guard[2])]) {
+        expect(RunSpecSchema.safeParse(specFor(harness, { alpha })).success, `${harness} alpha ${alpha}`).toBe(false);
+      }
+    }
+  });
+
+  it("attributes a bound to the harness only where the harness holds it", () => {
+    // --runs is the pair that makes the distinction visible. The scorecard
+    // engines refuse a count below 1 and have NO ceiling of their own: 26 runs
+    // is this site's refusal (RunFlagsSchema), and a message claiming the
+    // harness would refuse it would be false. discovery-ab is the opposite — its
+    // ceiling is the engine's, and saying so is the whole value of the refusal.
+    for (const [harness, source] of Object.entries(SCORECARD_SOURCES) as [OpsHarness, string][]) {
+      const text = readFileSync(source, "utf8");
+      expect(text, `${harness} --runs floor`).toMatch(/runs\s*<\s*1/);
+      expect(text.match(/runs\s*>\s*\d/), `${harness} caps --runs itself`).toBeNull();
+      expect(flagOf(harness, "runs").accepts, harness).toEqual({
+        min: { value: 1, heldBy: "harness" },
+        max: { value: 25, heldBy: "site" },
+      });
+    }
+
+    const siteRefusal = flagValueIssues("matching", HARNESS_REGISTRY.matching.flags, { runs: 26 })[0]!.message;
+    expect(siteRefusal).toContain("This site accepts --runs no higher than 25");
+    expect(siteRefusal).not.toContain("harness itself");
+
+    const harnessRefusal = flagValueIssues("discovery-ab", HARNESS_REGISTRY["discovery-ab"].flags, { runs: 25 })[0]!
+      .message;
+    expect(harnessRefusal).toContain("the harness itself would refuse it");
+  });
+
+  it("declares who holds every numeric bound, and offers no control value the API refuses", () => {
+    // A numeric flag with no `accepts` falls back to its control bounds held by
+    // the site — true, but mute about the engine. The registry is where the
+    // engine's own limits are known, so every numeric flag states them here.
+    let checked = 0;
+    for (const harness of OPS_HARNESSES) {
+      for (const flag of HARNESS_REGISTRY[harness].flags) {
+        if (flag.kind !== "number") continue;
+        const accepts = flag.accepts;
+        expect(accepts, `${harness} ${flag.cli}`).toBeDefined();
+        for (const bound of [accepts!.min, accepts!.max]) {
+          if (bound === undefined) continue;
+          expect(["harness", "site"], `${harness} ${flag.cli}`).toContain(bound.heldBy);
+        }
+        // The control never offers what the API refuses: an input whose min is
+        // below the accepted floor would hand the operator an unlaunchable value.
+        if (flag.min !== undefined && accepts!.min !== undefined) {
+          const floor = accepts!.min;
+          expect(floor.exclusive === true ? flag.min > floor.value : flag.min >= floor.value, `${harness} ${flag.cli} min`).toBe(true);
+        }
+        if (flag.max !== undefined && accepts!.max !== undefined) {
+          const ceiling = accepts!.max;
+          expect(ceiling.exclusive === true ? flag.max < ceiling.value : flag.max <= ceiling.value, `${harness} ${flag.cli} max`).toBe(true);
+        }
+        checked += 1;
+      }
+    }
+    // Guards the guard: fourteen numeric flags across the five harnesses.
+    expect(checked).toBe(14);
   });
 
   it("refuses to render a flag discovery-ab does not accept", () => {
@@ -117,39 +223,49 @@ describe("HARNESS_REGISTRY", () => {
     expect(hasTier("premise")).toBe(false);
   });
 
-  it("declared numeric flag bounds are exactly what RunSpecSchema accepts", () => {
+  it("accepts every declared bound and refuses the first value past each one", () => {
     // Every (harness, numeric flag) pair, not one representative per flag name:
     // discovery-ab narrows --runs to its own ceiling, so a per-name check would
     // never look at it.
     //
-    // This used to have two exceptions, both recording a schema that was WIDER
-    // than the registry: --alpha 0.0005 parsed (the schema says gt(0), every
-    // registry entry says 0.001) and discovery-ab --runs 25 parsed (the schema
-    // says 25, that registry entry says 10 — AB_MAX_REPETITIONS). Both were
-    // authorisations of a run the engine refuses, so RunSpecSchema now enforces
-    // each harness's own bounds (flagValueIssues, ops.flags.ts) and there is no
-    // longer a direction to assert instead of a refusal.
-    const numericFlags: { harness: (typeof OPS_HARNESSES)[number]; name: string; min: number; max: number; step: number }[] = [];
-    for (const harness of OPS_HARNESSES) {
-      for (const flag of HARNESS_REGISTRY[harness].flags) {
-        if (flag.kind === "number") {
-          numericFlags.push({ harness, name: flag.name, min: flag.min!, max: flag.max!, step: flag.step ?? 1 });
-        }
+    // This once recorded discovery-ab --runs 25 as an accepted spec the engine
+    // refuses; RunSpecSchema now enforces each harness's own bounds
+    // (flagValueIssues, ops.flags.ts), so there is no direction left to assert
+    // instead of a refusal. What is asserted is both halves of the two-bound
+    // split: every CONTROL bound launches, and the first value past each API
+    // bound does not — which for --alpha's exclusive ends is the ends
+    // themselves, 0 and 1, and not the 0.0005 the engines run.
+    const numericFlags = OPS_HARNESSES.flatMap((harness) =>
+      HARNESS_REGISTRY[harness].flags.filter((flag) => flag.kind === "number").map((flag) => ({ harness, flag })),
+    );
+    expect(numericFlags.length).toBe(14);
+
+    for (const { harness, flag } of numericFlags) {
+      const step = flag.step ?? 1;
+      // Every value the control offers launches: an input whose min the schema
+      // refuses would hand the operator a value that cannot run.
+      for (const value of [flag.min, flag.max]) {
+        if (value === undefined) continue;
+        expect(
+          RunSpecSchema.safeParse(specFor(harness, { [flag.name]: value })).success,
+          `${harness} ${flag.cli} ${value}`,
+        ).toBe(true);
       }
-    }
-    expect(numericFlags.length).toBeGreaterThan(0);
 
-    for (const { harness, name, ...bounds } of numericFlags) {
-      // The declared bounds are inside: a form built from this registry puts them
-      // on its inputs, so a refused bound would offer a value that cannot launch.
-      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.min })), `${harness} ${name} min`).not.toThrow();
-      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.max })), `${harness} ${name} max`).not.toThrow();
-
-      // And one step outside either bound is refused, at the step resolution the
-      // registry declares — which is how --alpha's exclusive server bounds are
-      // expressed as inclusive ones.
-      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.min - bounds.step })), `${harness} ${name} below min`).toThrow();
-      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.max + bounds.step })), `${harness} ${name} above max`).toThrow();
+      // And the first value past each API bound is refused: an exclusive bound
+      // refuses its own value (--alpha 0 and 1), an inclusive one refuses the
+      // next step beyond it (--runs 0 and 26).
+      const { min, max } = flag.accepts ?? {};
+      const past = [
+        ...(min === undefined ? [] : [min.exclusive === true ? min.value : min.value - step]),
+        ...(max === undefined ? [] : [max.exclusive === true ? max.value : max.value + step]),
+      ];
+      for (const value of past) {
+        expect(
+          RunSpecSchema.safeParse(specFor(harness, { [flag.name]: value })).success,
+          `${harness} accepted ${flag.cli} ${value}`,
+        ).toBe(false);
+      }
     }
 
     // The pair that motivated the change, stated once in full: this harness's
