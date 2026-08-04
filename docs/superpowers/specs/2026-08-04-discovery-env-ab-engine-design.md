@@ -32,10 +32,10 @@ So `DISCOVERY_SOURCE_PREMISE_LIMIT=5` and `=50` produce byte-identical behavior 
 
 `discovery-env-matrix` does exactly that, for a fixed set of strategies:
 
-- **Cases and scoring** in `packages/protocol/eval/discovery-env-matrix/` — `HISTORICAL_MATRIX_CASES` (15 seeded networks), `historical-matrix.policy.ts` (deterministic assertions plus a relationship judge), a reporter.
+- **Cases and scoring** in `packages/protocol/eval/discovery-env-matrix/` — `HISTORICAL_MATRIX_CASES` (5 seeded networks), `historical-matrix.policy.ts` (deterministic assertions plus a relationship judge), a reporter.
 - **Runner** in `services/api/src/cli/discovery-env-matrix*.ts` — composes the real `OpportunityGraphFactory` against a Neon child branch, one child process per branch, and aggregates slots into a governed artifact.
 - **Five hard-coded rows** varying `DISCOVERY_ALLOWED_TYPES` × `DISCOVERY_PROFILE_SOURCE`: `intent-only`, `profile-premise`, `profile-context`, `both-premise`, `both-context`.
-- **Proven**: a committed baseline from 2026-07-30 records 15 cases × 5 rows × 3 repetitions = 75 slots, aggregate pass rate 93.3%, wall clock 14 minutes across 15 parallel children. Per-slot duration ~52s.
+- **Proven**: a committed baseline from 2026-07-30 records 5 cases × 5 rows × 3 repetitions = 75 slots, aggregate pass rate 93.3%, wall clock 14 minutes across 15 parallel children. Per-slot duration ~52s.
 
 Three gaps: it varies 2 of the 16 flags in 5 combinations chosen at authoring time; it is invisible from eval-ops; and its base branch `eval-discovery-base` no longer exists in the Neon project (confirmed 2026-08-04 — only `production`, `dev`, `local-dev`, `eval-ops-fixtures*` and dated backups remain).
 
@@ -115,9 +115,9 @@ One process per side is not stylistic: the API composes its database singleton o
 | **Selection** | cases, repetitions | Shared by both sides. Two sides that ran different cases are not comparable, so this is one control, not two. |
 | **Configuration** | the nine env flags | Per side. This is the thing being compared. |
 
-Defaults: all 15 cases, 3 repetitions per side — 90 graph invocations, ~40 minutes at the observed ~52s per invocation. `--runs 1` is the quick look (30 invocations, ~13 minutes) and cannot mark anything flaky, since one observation per case cannot separate a difference from noise.
+Defaults: all 5 cases, 3 repetitions per side — 30 graph invocations, ~13 minutes with the two sides running in parallel at the observed ~52s per invocation. `--runs 1` is the quick look (10 invocations, ~4 minutes) and cannot mark anything flaky, since one observation per case cannot separate a difference from noise.
 
-If the two configurations are identical the run is refused: it would spend ~90 graph invocations to measure noise. The refusal names the flags that would have to differ.
+If the two configurations are identical the run is refused: it would spend a full run of graph invocations to measure noise. The refusal names the flags that would have to differ.
 
 ## 7. Scoring and artifact
 
@@ -126,7 +126,7 @@ Scoring is reused unchanged from `historical-matrix.policy.ts` — deterministic
 The artifact keeps the established envelope (`artifactType`, `harness`, `harnessVersion`, `corpusFingerprint`, `configFingerprint`, `git`, `completeness`, `execution`, `payload`) so existing viewer tooling can read it. Two departures, both deliberate:
 
 - `payload.rules` holds exactly two entries, the two sides, rather than five fixed strategy rows.
-- A new `payload.configs` block records each side's exact env map and the diff between them. Without it the artifact would show that A beat B while omitting what A and B were.
+- ~~A new `payload.configs` block records each side's exact env map and the diff between them.~~ **Amended during implementation.** `EvalScorecardPayloadV2Schema` and the envelope are both zod `.strict()`, and `buildEvalArtifact` copies only named meta fields — so a top-level rollup either gets silently dropped on write or makes the file unreadable to `parseEvalArtifact`. Widening a governed schema shared by every harness and every committed baseline, for a rollup that is derivable, was the wrong trade. The requirement's intent is met instead through the sanctioned extension point: `caseResultSchema` is `.passthrough()`, and every case row carries that side's complete configuration as `configDeltas`. The artifact still cannot show that A beat B while omitting what A and B were — the answer is per case rather than rolled up, and the diff is printed to the console at the end of a run. An explicit, tested projection (`toGovernedRunMeta`) makes the omission deliberate rather than accidental.
 
 Per case the artifact records passes/runs per side and a flaky marker, so a 3/3 vs 1/3 difference is distinguishable from 2/3 vs 3/3 noise. That distinction is the reason repetitions default to 3.
 
@@ -160,7 +160,7 @@ Provider-free, following the repo's targeted-validation policy:
 - **Safety gate** — a non-designated URL is refused; a missing confirm variable is refused; production and dev URLs are refused explicitly.
 - **Artifact shape** — two rules, per-side config recorded, diff correct, no baseline comparison attempted.
 
-Live validation is one 1-case × 1-repetition smoke per side (~2 minutes, 4 invocations) before any full run.
+Live validation is one 1-case × 1-repetition smoke per side (~2 minutes, 2 graph invocations plus judge calls) before any full run.
 
 ## 11. Sequencing
 

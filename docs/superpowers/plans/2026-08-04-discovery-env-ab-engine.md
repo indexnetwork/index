@@ -1022,11 +1022,11 @@ DISCOVERY_AB_CONFIRM=1 DISCOVERY_AB_TARGETS='<manifest>' \
   --b DISCOVERY_ALLOWED_TYPES=intent,profile
 ```
 
-Expected: 4 graph invocations (1 case × 1 rep × 2 sides, plus judge), ~2 minutes, one artifact under `eval/discovery-ab/runs/`. Inspect it: two rules, both configs recorded, diff present, `completeness.complete === true`.
+Expected: 2 graph invocations (1 case × 1 rep × 2 sides) plus judge calls, ~2 minutes, one artifact under `eval/discovery-ab/runs/`. Inspect it: two rules, both configs recorded, diff present, `completeness.complete === true`.
 
 - [ ] **Step 6: Document the command**
 
-Add to `docs/guides/development-reference.md` beside the existing matrix entry: what it compares, the required gate and manifest, the nine offerable flags, and the cost of a default run (15 cases × 3 reps × 2 sides ≈ 90 invocations, ~40 min). State plainly that the other seven allowlisted flags are not readable by this harness and link IND-630.
+Add to `docs/guides/development-reference.md` beside the existing matrix entry: what it compares, the required gate and manifest, the nine offerable flags, and the cost of a default run (5 cases × 3 reps × 2 sides = 30 invocations, ~13 min). State plainly that the other seven allowlisted flags are not readable by this harness and link IND-630.
 
 - [ ] **Step 7: Full suite, then commit**
 
