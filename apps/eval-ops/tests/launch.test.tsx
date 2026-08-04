@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter, MemoryRouter } from 'react-router';
+import { BrowserRouter } from 'react-router';
 
 import { Launch } from '../src/routes/Launch';
 
@@ -35,8 +35,6 @@ const HARNESSES = {
   ],
 };
 
-const CONFIG_MODELS = { models: ['google/gemini-2.5-flash', 'anthropic/claude-sonnet-4'] };
-
 const METADATA = {
   env: [
     {
@@ -46,13 +44,6 @@ const METADATA = {
       kind: 'enum',
       values: ['off', 'on'],
       defaultDescription: 'off',
-    },
-    {
-      key: 'NEGOTIATION_MAX_TURNS_CHAT',
-      label: 'Chat turn cap',
-      description: 'Maximum negotiation turns in chat mode.',
-      kind: 'integer',
-      defaultDescription: 'server default',
     },
   ],
   models: [
@@ -68,11 +59,17 @@ const METADATA = {
       { id: 'premiseAnalyzer', label: 'Premise analyzer', role: 'Scores each candidate premise.' },
     ],
   },
+  flags: [
+    { name: 'runs', label: 'Runs per case', description: 'How many times every case is executed.', scope: 'selection', defaultLabel: '3' },
+    { name: 'case', label: 'Case', description: 'Run only cases whose id contains this text.', scope: 'selection', defaultLabel: 'all cases' },
+    { name: 'tier', label: 'Tier', description: 'Run only one difficulty tier.', scope: 'selection', defaultLabel: 'all tiers' },
+    { name: 'noJudge', label: 'LLM judge', description: 'The judge runs reasoning checks.', scope: 'scoring', defaultLabel: 'on' },
+  ],
 };
 
 const PROFILES = {
   profiles: [
-    { name: 'default', description: 'no overrides', models: {}, env: {} },
+    { name: 'default', description: 'no overrides', models: { opportunityEvaluator: 'google/gemini-2.5-flash' }, env: {} },
     {
       name: 'claude-evaluator',
       description: 'claude',
@@ -82,7 +79,6 @@ const PROFILES = {
   ],
 };
 
-let launched: unknown = null;
 let postedRuns: unknown[] = [];
 let postedConfigs: unknown[] = [];
 let runCounter = 0;
@@ -91,7 +87,6 @@ const stubFetch = ({ withMetadata = true }: { withMetadata?: boolean } = {}) =>
   vi.fn(async (url: string, init?: RequestInit) => {
     if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
     if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
-    if (String(url).endsWith('/api/configs/models')) return new Response(JSON.stringify(CONFIG_MODELS));
     if (String(url).endsWith('/api/configs/metadata')) {
       return withMetadata ? new Response(JSON.stringify(METADATA)) : new Response(JSON.stringify({}));
     }
@@ -104,7 +99,6 @@ const stubFetch = ({ withMetadata = true }: { withMetadata?: boolean } = {}) =>
     }
     if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
       const body = JSON.parse(String(init.body));
-      launched = body;
       postedRuns.push(body);
       runCounter += 1;
       return new Response(JSON.stringify({ id: `run-${runCounter}` }), { status: 202 });
@@ -113,7 +107,6 @@ const stubFetch = ({ withMetadata = true }: { withMetadata?: boolean } = {}) =>
   });
 
 beforeEach(() => {
-  launched = null;
   postedRuns = [];
   postedConfigs = [];
   runCounter = 0;
@@ -125,451 +118,268 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const renderLaunch = () => render(
-  <BrowserRouter>
-    <Launch />
-  </BrowserRouter>,
-);
+const renderLaunch = () =>
+  render(
+    <BrowserRouter>
+      <Launch />
+    </BrowserRouter>,
+  );
 
-/** The runner knobs live behind a collapsed disclosure; jsdom lets us open it directly. */
-const openAdvancedOptions = () => {
-  const summary = screen.getByText(/advanced options/i);
-  const details = summary.closest('details');
-  expect(details).not.toBeNull();
-  details!.open = true;
-  return details!;
-};
-
-const openEnvFlags = (scope: HTMLElement | typeof screen = screen) => {
-  const queries = 'getByText' in scope ? (scope as typeof screen) : within(scope as HTMLElement);
-  const summary = queries.getByText(/live-pipeline flags/i);
-  const details = summary.closest('details');
-  expect(details).not.toBeNull();
-  details!.open = true;
-  return details!;
+/** Full-corpus runs ask for confirmation first; this completes that handshake. */
+const runAndConfirm = async (user: ReturnType<typeof userEvent.setup>, label: RegExp) => {
+  await user.click(await screen.findByRole('button', { name: label }));
+  await user.click(await screen.findByRole('button', { name: /confirm and run/i }));
 };
 
 describe('Launch', () => {
+  it('shows the harness it will run and its agents, with nothing collapsed', async () => {
+    renderLaunch();
+
+    // The model that decides this harness's results is on screen immediately.
+    expect(await screen.findByLabelText(/evaluator/i)).toBeTruthy();
+    expect(screen.getByText(/decides accept or reject/i)).toBeTruthy();
+    // No disclosure widgets at all: the page is flat.
+    expect(document.querySelectorAll('details')).toHaveLength(0);
+  });
+
+  it('shows only the agents the selected harness exercises', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    expect(await screen.findByLabelText(/evaluator/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/premise decomposer/i)).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText('Harness'), 'premise');
+
+    expect(await screen.findByLabelText(/premise decomposer/i)).toBeTruthy();
+    expect(screen.getByLabelText(/premise analyzer/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/^evaluator$/i)).toBeNull();
+  });
+
+  it('shows what gets tested directly, without an advanced disclosure', async () => {
+    renderLaunch();
+
+    expect(await screen.findByLabelText('Runs per case')).toBeTruthy();
+    expect(screen.getByLabelText('Case')).toBeTruthy();
+    expect(screen.getByLabelText('Tier')).toBeTruthy();
+    expect(screen.getByText(/what gets tested/i)).toBeTruthy();
+  });
+
+  it('never offers live-pipeline env flags: they do not affect these harnesses', async () => {
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    expect(screen.queryByText(/live-pipeline/i)).toBeNull();
+    expect(screen.queryByText(/POOL_QUESTIONS_MODE/)).toBeNull();
+    expect(screen.queryByText(/pool questions/i)).toBeNull();
+  });
+
   it('offers only the flags the selected harness supports', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openAdvancedOptions();
-    await userEvent.selectOptions(screen.getByLabelText(/harness/i), 'premise');
-    expect(screen.queryByLabelText(/tier filter/i)).toBeNull();
+
+    expect(await screen.findByLabelText('Tier')).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText('Harness'), 'premise');
+
+    // premise declares runs only: tier and the judge toggle must disappear.
+    expect(await screen.findByLabelText('Runs per case')).toBeTruthy();
+    expect(screen.queryByLabelText('Tier')).toBeNull();
+    expect(screen.queryByLabelText(/llm judge/i)).toBeNull();
   });
 
-  it('shows the computed workload before launching', async () => {
+  it('launches with the selected model override and the shared selection flags', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    expect(await screen.findByText(/40 cases × 3 runs = 120/)).toBeInTheDocument();
+
+    await user.selectOptions(await screen.findByLabelText(/evaluator/i), 'anthropic/claude-sonnet-4');
+    await user.clear(screen.getByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '5');
+    await runAndConfirm(user, /^run$/i);
+
+    expect(postedRuns).toHaveLength(1);
+    expect(postedRuns[0]).toEqual({
+      kind: 'eval',
+      harness: 'matching',
+      profile: 'default',
+      flags: { runs: 5 },
+      overrides: { models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' }, env: {} },
+    });
   });
 
-  it('requires confirmation for a full-corpus run', async () => {
+  it('puts the two A/B configurations side by side and shares what gets tested', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByRole('button', { name: /run/i }));
-    expect(await screen.findByRole('button', { name: /confirm/i })).toBeInTheDocument();
-    expect(launched).toBeNull();
+
+    await user.click(await screen.findByRole('checkbox', { name: 'A/B' }));
+
+    const headingA = await screen.findByText(/A · reference/);
+    const headingB = screen.getByText(/B · candidate/);
+    // Side by side, not stacked: both columns are cells of one 2-column grid.
+    const grid = headingA.parentElement!.parentElement!;
+    expect(grid.className).toMatch(/grid-cols-2/);
+    expect(grid).toBe(headingB.parentElement!.parentElement!);
+    // One shared selection control, not one per side.
+    expect(screen.getAllByLabelText('Runs per case')).toHaveLength(1);
+    expect(screen.getByText(/shared by both sides/i)).toBeTruthy();
+    // Each side carries its own model choice.
+    expect(screen.getAllByLabelText(/evaluator/i)).toHaveLength(2);
   });
 
-  it('posts only harness, profile and flags — never env or argv', async () => {
+  it('launches both A/B sides with shared selection and per-side models', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByRole('button', { name: /run/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /confirm/i }));
 
-    expect(Object.keys(launched as object).sort()).toEqual(['flags', 'harness', 'kind', 'profile']);
+    await user.click(await screen.findByRole('checkbox', { name: 'A/B' }));
+    const evaluators = await screen.findAllByLabelText(/evaluator/i);
+    await user.selectOptions(evaluators[1]!, 'anthropic/claude-sonnet-4');
+    await user.clear(screen.getByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '2');
+    await runAndConfirm(user, /run a\/b/i);
+
+    expect(postedRuns).toHaveLength(2);
+    expect(postedRuns[0]).toEqual({
+      kind: 'eval',
+      harness: 'matching',
+      profile: 'default',
+      flags: { runs: 2 },
+    });
+    expect(postedRuns[1]).toEqual({
+      kind: 'eval',
+      harness: 'matching',
+      profile: 'default',
+      flags: { runs: 2 },
+      overrides: { models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' }, env: {} },
+    });
   });
 
-  it('shows the narrowed workload when a selection flag filters the corpus', async () => {
+  it('says so when the two sides score differently, because the results are not like-for-like', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    expect(await screen.findByText(/1 case \(filtered\) × 3 runs = 3/)).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('checkbox', { name: 'A/B' }));
+    const judges = await screen.findAllByLabelText(/llm judge/i);
+    expect(judges).toHaveLength(2);
+    expect(screen.queryByText(/not like-for-like/i)).toBeNull();
+
+    await user.click(judges[1]!);
+
+    expect(screen.getByText(/not like-for-like/i)).toBeTruthy();
+  });
+
+  it('counts both sides in the workload', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    expect(await screen.findByText(/40 cases × 3 runs = 120/)).toBeTruthy();
+
+    await user.click(screen.getByRole('checkbox', { name: 'A/B' }));
+
+    expect(screen.getByText(/40 cases × 3 runs × 2 sides = 240/)).toBeTruthy();
   });
 
   it('explains a selection value beginning with "-" and refuses to launch it', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/case filter/i), '-foo');
 
-    expect(screen.getByLabelText(/case filter/i)).toHaveValue('-foo');
-    expect(await screen.findByText(/--case values may not begin with/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+    await user.type(await screen.findByLabelText('Case'), '--force');
+
+    expect(screen.getByText(/fix --case before running/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
   });
 
-  it('keeps the entered flags and explains a refused launch inline', async () => {
+  it('keeps the entered values and explains a refused launch inline', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
         if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
-        if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
-          return new Response(JSON.stringify({ error: 'flags.tier: too big' }), { status: 400 });
-        }
-        return new Response(JSON.stringify({}));
-      }),
-    );
-
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/flags\.tier: too big/);
-    expect(screen.getByLabelText(/tier filter/i)).toHaveValue(2);
-  });
-
-  it('warns that a non-default profile produces an experimental run', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/profile/i);
-    await userEvent.selectOptions(screen.getByLabelText(/profile/i), 'claude-evaluator');
-    expect(await screen.findByText(/experimental/i)).toBeInTheDocument();
-  });
-
-  it('scopes model overrides to the agents the harness exercises', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    // matching exercises only the evaluator — no premise agents on offer.
-    expect(await screen.findByLabelText('model for Evaluator')).toBeInTheDocument();
-    expect(screen.queryByLabelText('model for Premise decomposer')).toBeNull();
-
-    await userEvent.selectOptions(screen.getByLabelText(/harness/i), 'premise');
-    expect(await screen.findByLabelText('model for Premise decomposer')).toBeInTheDocument();
-    expect(screen.getByLabelText('model for Premise analyzer')).toBeInTheDocument();
-    expect(screen.queryByLabelText('model for Evaluator')).toBeNull();
-  });
-
-  it('keeps the runner knobs behind advanced options, explained in plain English', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    const details = screen.getByText(/advanced options/i).closest('details');
-    expect(details).not.toBeNull();
-    expect(details).not.toHaveAttribute('open');
-
-    openAdvancedOptions();
-    expect(
-      await screen.findByText(/How many times every case is executed; 3 lets flaky behavior show up/i),
-    ).toBeInTheDocument();
-  });
-
-  it('renders Advanced options before the live-pipeline flags disclosure (spec order)', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    const advanced = screen.getByText(/^advanced options$/i);
-    const envFlags = screen.getByText(/advanced: live-pipeline flags/i);
-    expect(
-      advanced.compareDocumentPosition(envFlags) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('keeps live-pipeline flags behind a disclosure with the honesty note', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    const details = screen.getByText(/live-pipeline flags/i).closest('details');
-    expect(details).not.toBeNull();
-    expect(details).not.toHaveAttribute('open');
-
-    openEnvFlags();
-    expect(
-      await screen.findByText(/This scorecard harness does not read them/i),
-    ).toBeInTheDocument();
-  });
-
-  it('hides the guided sections when configuration metadata is unavailable', async () => {
-    vi.stubGlobal('fetch', stubFetch({ withMetadata: false }));
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    // No guided model rows, no env-flag disclosure — but the form still launches.
-    expect(screen.queryByLabelText('model for Evaluator')).toBeNull();
-    expect(screen.queryByText(/live-pipeline flags/i)).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: /run/i }));
-    expect(await screen.findByRole('button', { name: /confirm/i })).toBeInTheDocument();
-  });
-
-  it('blocks launch while an env override is invalid', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openEnvFlags();
-    await userEvent.click(screen.getByRole('button', { name: /add flag override/i }));
-    await userEvent.selectOptions(screen.getByLabelText('flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
-    await userEvent.type(screen.getByLabelText('value 1'), 'lots');
-
-    expect(await screen.findByText(/must be an integer/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
-    // The disclosure may be collapsed — a page-level hint must say why launch is blocked.
-    expect(screen.getByText(/finish or fix the flag override above to launch/i)).toBeInTheDocument();
-
-    await userEvent.clear(screen.getByLabelText('value 1'));
-    await userEvent.type(screen.getByLabelText('value 1'), '4');
-    expect(screen.getByRole('button', { name: 'Run' })).toBeEnabled();
-    expect(screen.queryByText(/finish or fix the flag override above to launch/i)).toBeNull();
-  });
-
-  it('shows the same blocking hint for a merely incomplete override row', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openEnvFlags();
-    // A fresh row is incomplete, not invalid: no inline issue, but launch is blocked.
-    await userEvent.click(screen.getByRole('button', { name: /add flag override/i }));
-
-    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
-    expect(screen.getByText(/finish or fix the flag override above to launch/i)).toBeInTheDocument();
-  });
-
-  it('submits ad-hoc model and env overrides with profile default', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.selectOptions(
-      await screen.findByLabelText('model for Evaluator'),
-      'anthropic/claude-sonnet-4',
-    );
-    openEnvFlags();
-    await userEvent.click(screen.getByRole('button', { name: /add flag override/i }));
-    await userEvent.selectOptions(screen.getByLabelText('flag 1'), 'POOL_QUESTIONS_MODE');
-    await userEvent.selectOptions(screen.getByLabelText('value 1'), 'on');
-
-    // Narrow the corpus so no full-corpus confirmation stands in the way.
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(1));
-    const spec = postedRuns[0] as {
-      profile: string;
-      overrides?: { models: Record<string, string>; env: Record<string, string> };
-    };
-    expect(spec.profile).toBe('default');
-    expect(spec.overrides?.models).toEqual({ opportunityEvaluator: 'anthropic/claude-sonnet-4' });
-    expect(spec.overrides?.env).toEqual({ POOL_QUESTIONS_MODE: 'on' });
-  });
-
-  it('omits the overrides key entirely when nothing is overridden', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(1));
-    expect(Object.keys(postedRuns[0] as object).sort()).toEqual(['flags', 'harness', 'kind', 'profile']);
-  });
-
-  it('saves the current overrides as a named config', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.selectOptions(
-      await screen.findByLabelText('model for Evaluator'),
-      'anthropic/claude-sonnet-4',
-    );
-    await userEvent.click(screen.getByRole('button', { name: /save as config/i }));
-    await userEvent.type(screen.getByLabelText(/config name/i), 'sonnet-evaluator');
-    await userEvent.type(screen.getByLabelText(/config description/i), 'evaluator on sonnet');
-    await userEvent.click(screen.getByRole('button', { name: 'Save config' }));
-
-    await vi.waitFor(() => expect(postedConfigs).toHaveLength(1));
-    expect(postedConfigs[0]).toEqual({
-      name: 'sonnet-evaluator',
-      description: 'evaluator on sonnet',
-      models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
-      env: {},
-    });
-    // The form switches to the freshly saved config.
-    await vi.waitFor(() =>
-      expect(screen.getByLabelText<HTMLSelectElement>(/profile/i).value).toBe('sonnet-evaluator'),
-    );
-  });
-
-  it('blocks “save as config” while an env override is invalid, like it blocks launch', async () => {
-    // Save posted the same invalid env Run refuses, so the server 400'd on a
-    // value the UI had already flagged inline.
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    openEnvFlags();
-    await userEvent.click(screen.getByRole('button', { name: /add flag override/i }));
-    await userEvent.selectOptions(screen.getByLabelText('flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
-    await userEvent.type(screen.getByLabelText('value 1'), 'lots');
-
-    await userEvent.click(screen.getByRole('button', { name: /save as config/i }));
-    await userEvent.type(screen.getByLabelText(/config name/i), 'bad-flag');
-    await userEvent.type(screen.getByLabelText(/config description/i), 'invalid value');
-
-    expect(screen.getByRole('button', { name: 'Save config' })).toBeDisabled();
-    expect(postedConfigs).toHaveLength(0);
-
-    await userEvent.clear(screen.getByLabelText('value 1'));
-    await userEvent.type(screen.getByLabelText('value 1'), '4');
-    expect(screen.getByRole('button', { name: 'Save config' })).toBeEnabled();
-  });
-
-  it('A/B mode fires two launches and navigates to the pair URL', async () => {
-    renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByLabelText(/a\/b/i));
-    const candidate = await screen.findByRole('group', { name: 'candidate' });
-    await userEvent.selectOptions(
-      within(candidate).getByLabelText('model for Evaluator'),
-      'anthropic/claude-sonnet-4',
-    );
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
-    const reference = postedRuns[0] as { overrides?: unknown };
-    const candidateSpec = postedRuns[1] as { overrides?: { models: Record<string, string> } };
-    expect('overrides' in reference).toBe(false);
-    expect(candidateSpec.overrides?.models).toEqual({ opportunityEvaluator: 'anthropic/claude-sonnet-4' });
-    await vi.waitFor(() =>
-      expect(window.location.search).toBe('?referenceRun=run-1&subjectRun=run-2'),
-    );
-  });
-
-  it('A/B mode lets each side pick its own profile independently', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string, init?: RequestInit) => {
-        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
-        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
-        if (String(url).endsWith('/api/configs/models')) return new Response(JSON.stringify(CONFIG_MODELS));
         if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
-        if (String(url).endsWith('/api/configs')) {
-          return new Response(
-            JSON.stringify({
-              repo: PROFILES.profiles,
-              saved: [
-                {
-                  name: 'sonnet-evaluator',
-                  description: 'evaluator on sonnet',
-                  models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
-                  env: {},
-                },
-              ],
-            }),
-          );
-        }
+        if (String(url).endsWith('/api/configs')) return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
         if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
-          postedRuns.push(JSON.parse(String(init.body)));
-          runCounter += 1;
-          return new Response(JSON.stringify({ id: `run-${runCounter}` }), { status: 202 });
+          return new Response(JSON.stringify({ error: 'queue is full' }), { status: 429 });
         }
         return new Response(JSON.stringify({}));
       }),
     );
-
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByLabelText(/a\/b/i));
 
-    const reference = await screen.findByRole('group', { name: 'reference' });
-    const candidate = screen.getByRole('group', { name: 'candidate' });
-    await userEvent.selectOptions(within(reference).getByLabelText('profile'), 'claude-evaluator');
-    await userEvent.selectOptions(within(candidate).getByLabelText('profile'), 'sonnet-evaluator');
+    await user.clear(await screen.findByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '7');
+    await runAndConfirm(user, /^run$/i);
 
-    // A named profile leaves no model editor on that side.
-    expect(within(reference).queryByLabelText('model for Evaluator')).toBeNull();
-    expect(within(reference).getByText(/edit it on the configs page/i)).toBeInTheDocument();
-    expect(within(candidate).queryByLabelText('model for Evaluator')).toBeNull();
-
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
-    expect((postedRuns[0] as { profile: string }).profile).toBe('claude-evaluator');
-    expect((postedRuns[1] as { profile: string }).profile).toBe('sonnet-evaluator');
-    for (const spec of postedRuns as { overrides?: unknown }[]) {
-      expect('overrides' in spec).toBe(false);
-    }
-    // Shared flags still apply to both sides.
-    for (const spec of postedRuns as { flags: { tier?: number } }[]) {
-      expect(spec.flags.tier).toBe(2);
-    }
+    expect(await screen.findByRole('alert')).toHaveTextContent(/launch refused/i);
+    expect(screen.getByLabelText('Runs per case')).toHaveValue(7);
   });
 
-  it('A/B posts overrides only on the side whose profile is default', async () => {
+  it('hides model overrides for a saved config and points at the configs page', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByLabelText(/a\/b/i));
 
-    const reference = await screen.findByRole('group', { name: 'reference' });
-    const candidate = screen.getByRole('group', { name: 'candidate' });
-    await userEvent.selectOptions(within(reference).getByLabelText('profile'), 'claude-evaluator');
-    await userEvent.selectOptions(
-      within(candidate).getByLabelText('model for Evaluator'),
-      'anthropic/claude-sonnet-4',
-    );
+    await user.selectOptions(await screen.findByLabelText('Config'), 'claude-evaluator');
 
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
-    const referenceSpec = postedRuns[0] as { profile: string; overrides?: unknown };
-    const candidateSpec = postedRuns[1] as { profile: string; overrides?: { models: Record<string, string> } };
-    expect(referenceSpec.profile).toBe('claude-evaluator');
-    expect('overrides' in referenceSpec).toBe(false);
-    expect(candidateSpec.profile).toBe('default');
-    expect(candidateSpec.overrides?.models).toEqual({ opportunityEvaluator: 'anthropic/claude-sonnet-4' });
+    expect(screen.queryByLabelText(/evaluator model/i)).toBeNull();
+    expect(screen.getByRole('link', { name: /edit this config/i })).toBeTruthy();
   });
 
-  it('A/B mode defaults both sides to the same profile and shares flags', async () => {
+  it('saves the chosen models as a named config', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByLabelText(/a\/b/i));
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
 
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
-    for (const spec of postedRuns as { profile: string; flags: { tier?: number } }[]) {
-      expect(spec.profile).toBe('default');
-      expect(spec.flags.tier).toBe(2);
-    }
+    await user.selectOptions(await screen.findByLabelText(/evaluator/i), 'anthropic/claude-sonnet-4');
+    await user.click(screen.getByRole('button', { name: /save as config/i }));
+    await user.type(screen.getByLabelText('config name'), 'claude-eval');
+    await user.type(screen.getByLabelText('config description'), 'evaluator on claude');
+    await user.click(screen.getByRole('button', { name: /^save config$/i }));
+
+    expect(postedConfigs).toEqual([
+      {
+        name: 'claude-eval',
+        description: 'evaluator on claude',
+        models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
+        env: {},
+      },
+    ]);
   });
 
-  it('A/B gives each side its own env-flag disclosure', async () => {
+  it('still launches when the metadata endpoint is unreachable', async () => {
+    vi.stubGlobal('fetch', stubFetch({ withMetadata: false }));
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/harness/i);
-    await userEvent.click(screen.getByLabelText(/a\/b/i));
-    const candidate = await screen.findByRole('group', { name: 'candidate' });
 
-    openEnvFlags(candidate);
-    await userEvent.click(within(candidate).getByRole('button', { name: /add flag override/i }));
-    await userEvent.selectOptions(within(candidate).getByLabelText('flag 1'), 'POOL_QUESTIONS_MODE');
-    await userEvent.selectOptions(within(candidate).getByLabelText('value 1'), 'on');
+    // Falls back to the CLI spelling rather than rendering an empty form.
+    const runs = await screen.findByLabelText('--runs');
+    await user.clear(runs);
+    await user.type(runs, '1');
+    await runAndConfirm(user, /^run$/i);
 
-    openAdvancedOptions();
-    await userEvent.type(screen.getByLabelText(/tier filter/i), '2');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-
-    await vi.waitFor(() => expect(postedRuns).toHaveLength(2));
-    const referenceSpec = postedRuns[0] as { overrides?: { env?: Record<string, string> } };
-    const candidateSpec = postedRuns[1] as { overrides?: { env?: Record<string, string> } };
-    expect('overrides' in referenceSpec).toBe(false);
-    expect(candidateSpec.overrides?.env).toEqual({ POOL_QUESTIONS_MODE: 'on' });
+    expect(postedRuns).toEqual([
+      { kind: 'eval', harness: 'matching', profile: 'default', flags: { runs: 1 } },
+    ]);
   });
 
-  it('disables overrides when a named profile is selected and points to configs', async () => {
+  it('narrows the workload when a selection flag filters the corpus', async () => {
+    const user = userEvent.setup();
     renderLaunch();
-    await screen.findByLabelText(/profile/i);
-    await userEvent.selectOptions(screen.getByLabelText(/profile/i), 'claude-evaluator');
 
-    expect(screen.queryByLabelText('model for Evaluator')).toBeNull();
-    expect(screen.queryByText(/live-pipeline flags/i)).toBeNull();
-    expect(await screen.findByText(/edit it on the configs page/i)).toBeInTheDocument();
+    await user.type(await screen.findByLabelText('Case'), 'is_a_identity');
+
+    expect(screen.getByText(/1 case \(filtered\) × 3 runs = 3/)).toBeTruthy();
   });
 
-  it('preselects the profile named by the ?profile= search param', async () => {
-    render(
-      <MemoryRouter initialEntries={['/launch?profile=claude-evaluator']}>
-        <Launch />
-      </MemoryRouter>,
-    );
-    await screen.findByLabelText(/harness/i);
-    expect(screen.getByLabelText(/profile/i)).toHaveValue('claude-evaluator');
+  it('scopes A/B scoring controls to their own side', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await user.click(await screen.findByRole('checkbox', { name: 'A/B' }));
+    const columns = screen.getAllByText(/· (reference|candidate)/).map((el) => el.parentElement!);
+    const judgeA = within(columns[0]!).getByLabelText(/llm judge/i);
+    const judgeB = within(columns[1]!).getByLabelText(/llm judge/i);
+
+    await user.click(judgeA);
+
+    expect(judgeA).toBeChecked();
+    expect(judgeB).not.toBeChecked();
   });
 });
