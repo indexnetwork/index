@@ -60,19 +60,33 @@ ENTITLEMENTS="$(mktemp "${TMPDIR:-/tmp}/index-entitlements.XXXXXX.plist")"
 trap 'rm -f "$ENTITLEMENTS"' EXIT
 write_associated_domains_entitlements "$LINK_HOST" "$ENTITLEMENTS"
 
-if [ -n "${IDENTITY}" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "${IDENTITY}"; then
-    echo "==> Code signing as '${IDENTITY}'"
-    codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign "${IDENTITY}" "${APP}"
-else
-    if [ -n "${IDENTITY}" ]; then
-        echo "==> WARNING: CODESIGN_IDENTITY='${IDENTITY}' not found, falling back to ad-hoc"
-    fi
+sign_ad_hoc() {
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
+    # The associated-domains entitlement is profile-backed. Keep the dev
+    # fallback entitlement-free so an ad-hoc bundle still launches locally.
     codesign --force --deep --sign - "${APP}" 2>&1 | grep -v "replacing existing signature" || true
-    echo "==> WARNING: universal links (https://index.network/o|u|c/...) will NOT open"
+    echo "==> WARNING: universal links (https://${LINK_HOST}/o|u|c/...) will NOT open"
     echo "    this build. They need a Developer ID-signed, notarized app plus an"
     echo "    apple-app-site-association listing <TEAM_ID>.network.index.system6."
     echo "    Use 'open index://o/<id>' to exercise deep links locally."
+}
+
+if [ -n "${IDENTITY}" ]; then
+    # CODESIGN_IDENTITY must name a Developer ID Application: certificate.
+    if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "${IDENTITY}"; then
+        echo "==> ERROR: requested CODESIGN_IDENTITY was not found" >&2
+        exit 1
+    fi
+    if [[ "${IDENTITY}" != Developer\ ID\ Application:* ]]; then
+        echo "==> ERROR: CODESIGN_IDENTITY must be a Developer ID Application identity" >&2
+        exit 1
+    fi
+    echo "==> Code signing as '${IDENTITY}' for ${LINK_HOST}"
+    codesign --force --deep --options runtime --entitlements "${ENTITLEMENTS}" --sign "${IDENTITY}" "${APP}"
+else
+    # Preserve the existing ad-hoc local-development path only here.
+    # It may retry without associated-domains when codesign rejects that entitlement.
+    sign_ad_hoc
 fi
 
 echo "==> Done: ${APP}"
