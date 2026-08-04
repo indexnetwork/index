@@ -131,6 +131,50 @@ open "index://c/<code>"            # expect the "no longer supported" notice
 open "https://index.network/o/<opportunity-id>"
 ```
 
+### Developer ID dev handoff
+
+This is an operator-only handoff for the `dev.index.network` universal-link
+profile. It must run on **macOS** with an operator-owned Developer ID Application
+identity and local notarytool keychain profile. Any existing API or app URL
+overrides must name the dev environment; do not put endpoint credentials in the
+bundle or substitute production URLs.
+
+Before building, confirm the dev host serves
+`/.well-known/apple-app-site-association` directly (HTTP 200, JSON, no redirect)
+for the Developer ID team's `network.index.system6` app ID. Its components must
+exclude `/u/*/*` before the broader `/u/*` entry so chat URLs remain browser-only.
+The signed artifact must contain exactly `applinks:dev.index.network` in its
+associated-domains entitlement.
+
+```bash
+cd apps/mac/IndexApp
+INDEX_LINK_HOST=dev.index.network \
+CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
+./build.sh
+NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
+codesign -d --entitlements :- dist/index.app
+open dist/index.app
+```
+
+Supply real dev IDs only at execution time. After the entitlement inspection,
+exercise this seven-row matrix; stop and report a failed row rather than falling
+back to a production host.
+
+| URL / condition | Expected outcome |
+| --- | --- |
+| `https://dev.index.network/o/<id>` with the notarized app installed | opens that opportunity card in the app |
+| `https://dev.index.network/u/<id>` with the notarized app installed | opens that user's profile in the app |
+| `https://dev.index.network/u/<id>/chat` | stays in the browser; it must not open the app |
+| `index://o/<id>` | opens that opportunity card in the app |
+| `index://c/<code>` | opens the retired-connect one-line notice |
+| Quit the app, then open `index://u/<id>` | cold-launches the app to that user's profile |
+| `https://dev.index.network/u/<id>` in a separate browser profile with no app installed | remains on the dev landing page in the browser |
+
+PR evidence must be **redacted**: record only commands and pass/fail statuses,
+never real IDs, API keys, a certificate subject, or a notary profile name.
+Production HTTPS rows are deferred until the web release; this dev handoff does
+not validate or replace them.
+
 ## Running
 
 ### From Build Output
