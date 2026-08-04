@@ -16,8 +16,8 @@ import { PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 
 // Guided-editing metadata is likewise dependency-free (ops.metadata.ts) so the
 // browser app imports it directly; re-exported here for server-side consumers.
-export { ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA } from "./ops.metadata.js";
-export type { AgentMeta, EnvFlagMeta, ModelMeta } from "./ops.metadata.js";
+export { ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA } from "./ops.metadata.js";
+export type { AgentMeta, EnvFlagMeta, FlagMeta, ModelMeta } from "./ops.metadata.js";
 import { ENV_FLAG_METADATA } from "./ops.metadata.js";
 
 export const ConfigProfileSchema = z

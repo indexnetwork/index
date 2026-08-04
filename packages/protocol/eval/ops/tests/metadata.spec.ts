@@ -5,7 +5,7 @@ import path from "node:path";
 import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
 import { ALLOWED_CONFIG_MODELS } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
-import { ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, type EnvFlagMeta } from "../ops.metadata.js";
+import { FLAG_METADATA, ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, type EnvFlagMeta } from "../ops.metadata.js";
 
 describe("ENV_FLAG_METADATA", () => {
   it("covers exactly the allowlisted keys, once each, in allowlist order", () => {
@@ -109,6 +109,35 @@ describe("ENV_FLAG_METADATA", () => {
     // Guard the guard: if the regexes stop matching, this test must not silently
     // pass having pinned nothing.
     expect(pinnedFromSchema).toBe(PROFILE_ENV_ALLOWLIST.length - Object.keys(USE_SITE_ONLY_FLAGS).length);
+  });
+});
+
+describe("FLAG_METADATA", () => {
+  it("covers exactly the flags the registry can expose, with no extras", () => {
+    const registryFlags = new Set(
+      Object.values(HARNESS_REGISTRY).flatMap((descriptor) => descriptor.flags.map((flag) => flag.name)),
+    );
+    const documented = new Set(FLAG_METADATA.map((flag) => flag.name));
+    expect([...documented].sort()).toEqual([...registryFlags].sort());
+  });
+
+  it("classifies every flag that decides which cases run as selection", () => {
+    // A selection difference makes two runs incomparable (compareArtifacts
+    // refuses), so these must never become per-side controls in the A/B form.
+    for (const name of ["runs", "case", "rule", "tier"]) {
+      expect(FLAG_METADATA.find((flag) => flag.name === name)?.scope, `${name} scope`).toBe("selection");
+    }
+    for (const name of ["noJudge", "alpha", "strictEvidence", "attemptTimeoutMs"]) {
+      expect(FLAG_METADATA.find((flag) => flag.name === name)?.scope, `${name} scope`).toBe("scoring");
+    }
+  });
+
+  it("gives every flag non-empty copy", () => {
+    for (const flag of FLAG_METADATA) {
+      expect(flag.label.length, `${flag.name} label`).toBeGreaterThan(0);
+      expect(flag.description.length, `${flag.name} description`).toBeGreaterThan(20);
+      expect(flag.defaultLabel.length, `${flag.name} defaultLabel`).toBeGreaterThan(0);
+    }
   });
 });
 
