@@ -19,9 +19,9 @@ function databaseTest(name: string, callback: () => Promise<void>): void {
   test(name, callback, 30_000);
 }
 
-describe('networkService.rotateExperimentMasterKey', () => {
+describe('networkService.rotateMasterKey', () => {
   let networkId: string;
-  let nonExperimentNetworkId: string;
+  let noMasterKeyNetworkId: string;
   let ownerId: string;
   let coOwnerId: string;
   let nonOwnerId: string;
@@ -47,10 +47,9 @@ describe('networkService.rotateExperimentMasterKey', () => {
     const initialHash = await hashMasterKey('initial-plaintext-for-test');
     const [n] = await db.insert(schema.networks)
       .values({
-        title: 'Rotate Test Experiment',
+        title: 'Rotate Test Master Key',
         isPersonal: false,
-        isExperiment: true,
-        experimentMasterKeyHash: initialHash,
+        masterKeyHash: initialHash,
         permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false },
       })
       .returning({ id: schema.networks.id });
@@ -64,11 +63,11 @@ describe('networkService.rotateExperimentMasterKey', () => {
     ]);
 
     const [nx] = await db.insert(schema.networks)
-      .values({ title: 'Rotate Test Non-Experiment', isPersonal: false, isExperiment: false })
+      .values({ title: 'Rotate Test No Master Key', isPersonal: false })
       .returning({ id: schema.networks.id });
-    nonExperimentNetworkId = nx.id;
-    cleanupNetworkIds.push(nonExperimentNetworkId);
-    await db.insert(schema.networkMembers).values({ networkId: nonExperimentNetworkId, userId: ownerId, permissions: ['owner'] });
+    noMasterKeyNetworkId = nx.id;
+    cleanupNetworkIds.push(noMasterKeyNetworkId);
+    await db.insert(schema.networkMembers).values({ networkId: noMasterKeyNetworkId, userId: ownerId, permissions: ['owner'] });
   }, 30_000);
 
   afterAll(async () => {
@@ -85,17 +84,17 @@ describe('networkService.rotateExperimentMasterKey', () => {
     sendSpy.mockClear();
 
     const [before] = await db
-      .select({ hash: schema.networks.experimentMasterKeyHash })
+      .select({ hash: schema.networks.masterKeyHash })
       .from(schema.networks)
       .where(eq(schema.networks.id, networkId));
 
-    const result = await networkService.rotateExperimentMasterKey(networkId, ownerId);
+    const result = await networkService.rotateMasterKey(networkId, ownerId);
 
     expect(result.masterKey).toBeTruthy();
     expect(result.masterKey.length).toBe(64);
 
     const [after] = await db
-      .select({ hash: schema.networks.experimentMasterKeyHash })
+      .select({ hash: schema.networks.masterKeyHash })
       .from(schema.networks)
       .where(eq(schema.networks.id, networkId));
     expect(after.hash).not.toBe(before.hash);
@@ -108,7 +107,7 @@ describe('networkService.rotateExperimentMasterKey', () => {
 
   databaseTest('emails every owner of the network', async () => {
     sendSpy.mockClear();
-    await networkService.rotateExperimentMasterKey(networkId, ownerId);
+    await networkService.rotateMasterKey(networkId, ownerId);
 
     // Email dispatch is fire-and-forget; await a microtask flush.
     await new Promise((r) => setTimeout(r, 50));
@@ -121,15 +120,15 @@ describe('networkService.rotateExperimentMasterKey', () => {
     ]);
   });
 
-  databaseTest('throws when the network is not an experiment', async () => {
+  databaseTest('throws when the network has no master key', async () => {
     await expect(
-      networkService.rotateExperimentMasterKey(nonExperimentNetworkId, ownerId),
-    ).rejects.toThrow(/not an experiment/i);
+      networkService.rotateMasterKey(noMasterKeyNetworkId, ownerId),
+    ).rejects.toThrow(/no master key/i);
   });
 
   databaseTest('throws when the caller is not an owner', async () => {
     await expect(
-      networkService.rotateExperimentMasterKey(networkId, nonOwnerId),
+      networkService.rotateMasterKey(networkId, nonOwnerId),
     ).rejects.toThrow(/owner/i);
   });
 });

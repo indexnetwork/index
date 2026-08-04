@@ -46,14 +46,13 @@ async function cleanupFixtures(): Promise<void> {
 
 afterAll(cleanupFixtures, 30_000);
 
-async function setupExperimentNetwork(): Promise<{ networkId: string }> {
+async function setupMasterKeyNetwork(): Promise<{ networkId: string }> {
   const [network] = await db
     .insert(networks)
     .values({
-      title: `Experiment Signup Test ${randomUUID().slice(0, 6)}`,
-      isExperiment: true,
+      title: `Master-Key Signup Test ${randomUUID().slice(0, 6)}`,
       isPersonal: false,
-      experimentMasterKeyHash: 'test-hash-not-verified-at-service-layer',
+      masterKeyHash: 'test-hash-not-verified-at-service-layer',
     })
     .returning({ id: networks.id });
   fixtureNetworkIds.add(network.id);
@@ -62,7 +61,7 @@ async function setupExperimentNetwork(): Promise<{ networkId: string }> {
 
 describe('experimentService.signup', () => {
   it('creates a new user and returns apiKey + mcpServer with minimal payload', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `minimal-${randomUUID()}@example.com`;
 
     const result = await experimentService.signup(networkId, { email });
@@ -79,7 +78,7 @@ describe('experimentService.signup', () => {
   }, 15_000);
 
   it('stages name, bio, location, and socials from rich payload for consented onboarding', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `rich-${randomUUID()}@example.com`;
 
     const result = await experimentService.signup(networkId, {
@@ -113,7 +112,7 @@ describe('experimentService.signup', () => {
   }, 15_000);
 
   it('re-signup mints a new key on the same agent without revoking the old key', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `resig-${randomUUID()}@example.com`;
 
     const first = await experimentService.signup(networkId, { email });
@@ -145,7 +144,7 @@ describe('experimentService.signup', () => {
   }, 15_000);
 
   it('returns created=false for an existing user', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `existing-${randomUUID()}@example.com`;
 
     const first = await experimentService.signup(networkId, { email });

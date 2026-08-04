@@ -247,10 +247,8 @@ async function buildNetworkContexts(
     const injection = perms.contextInjection as { discovery?: boolean } | undefined;
     if (injection?.discovery === false) continue;
     contexts[nid] = renderNetworkContext({
-      type: network.type ?? 'community',
       title: network.title,
       prompt: network.prompt,
-      metadata: network.metadata ?? {},
     });
   }
   return contexts;
