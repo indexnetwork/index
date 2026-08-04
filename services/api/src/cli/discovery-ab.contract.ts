@@ -278,6 +278,8 @@ export function abUsage(): string {
     `  --runs <n>        Repetitions per side (default ${AB_DEFAULT_REPETITIONS}, maximum ${AB_MAX_REPETITIONS}).`,
     '  --a KEY=VALUE     A flag for side a. Repeatable.',
     '  --b KEY=VALUE     A flag for side b. Repeatable.',
+    '  --report <path>   Write the run artifact here. Given at most once. Default: a',
+    '                    timestamped file under eval/discovery-ab/runs.',
     '  --force           Consent to replacing an existing run artifact.',
     '',
     'Both sides must state the same keys with differing values; identical or',

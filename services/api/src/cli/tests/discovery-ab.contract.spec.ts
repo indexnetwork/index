@@ -121,7 +121,7 @@ describe('abUsage', () => {
   });
 
   it('states every flag', () => {
-    for (const flag of ['--case', '--runs', '--a KEY=VALUE', '--b KEY=VALUE', '--force']) {
+    for (const flag of ['--case', '--runs', '--a KEY=VALUE', '--b KEY=VALUE', '--report <path>', '--force']) {
       expect(usage).toContain(flag);
     }
   });

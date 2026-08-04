@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { describe, expect, it } from 'bun:test';
 
 import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery-ab.contract';
@@ -47,6 +49,17 @@ describe('parseAbRunArgs', () => {
     expect(parseAbRunArgs([...configArgs, '--force']).force).toBe(true);
   });
 
+  it('reads --report as the artifact destination, and leaves it unset otherwise', () => {
+    expect(parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']).reportPath)
+      .toBe('/tmp/discovery-ab-report.json');
+    expect(parseAbRunArgs(configArgs).reportPath).toBeUndefined();
+  });
+
+  it('resolves a relative --report against the working directory, since the run report is written later', () => {
+    expect(parseAbRunArgs([...configArgs, '--report', 'runs/out.json']).reportPath)
+      .toBe(path.resolve(process.cwd(), 'runs/out.json'));
+  });
+
   it('produces sides a plan will accept', () => {
     const selection = parseAbRunArgs(['--runs', '1', ...configArgs]);
     expect(buildAbPlan([testCase('c1')], selection.sides, selection.repetitions)).toHaveLength(2);
@@ -66,6 +79,9 @@ describe('parseAbRunArgs', () => {
     [['--a', 'DISCOVERY_ALLOWED_TYPES', '--b', 'DISCOVERY_ALLOWED_TYPES=x'], /--a expects KEY=VALUE/],
     [['--a', 'X=1', '--a', 'X=2', '--b', 'X=3'], /--a sets X twice/],
     [['--a', '--b', 'X=1'], /--a requires a value/],
+    [[...configArgs, '--report'], /--report requires a value/],
+    [[...configArgs, '--report', '   '], /--report requires a value/],
+    [[...configArgs, '--report', '/tmp/a.json', '--report', '/tmp/b.json'], /--report may be given at most once/],
   ])('refuses %p', (args, message) => {
     expect(() => parseAbRunArgs(args)).toThrow(message);
   });
@@ -92,6 +108,12 @@ describe('formatAbRunArgs', () => {
 
   it('states the repetition count explicitly, so a default change cannot split the two children', () => {
     expect(formatAbRunArgs(parseAbRunArgs(configArgs))).toContain('--runs');
+  });
+
+  it('does not forward --report: a child writes its own --child-output, never the run report', () => {
+    const selection = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']);
+    expect(formatAbRunArgs(selection)).not.toContain('--report');
+    expect(parseAbRunArgs(formatAbRunArgs(selection)).reportPath).toBeUndefined();
   });
 });
 
