@@ -24,6 +24,19 @@ const isTest = runtimeEnvironment === 'test';
 const isDeployment =
   runtimeEnvironment === 'production' ||
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
+
+// EVAL_MODEL_OVERRIDES is an eval-only hook. Gated on `isDeployment`, not on
+// NODE_ENV alone: a deployment may not set NODE_ENV (railway.toml runs the
+// `start` script, which does not), and in that case the protocol's own
+// NODE_ENV=production guard goes inert and the override would actually be
+// honoured. A value present in a deployed environment means someone believes
+// it is doing something. Fail loudly rather than ignore it silently.
+if (isDeployment && process.env.EVAL_MODEL_OVERRIDES) {
+  throw new Error(
+    'EVAL_MODEL_OVERRIDES must not be set in a deployed environment. It is an eval-only model override; remove it from the deployment environment.',
+  );
+}
+
 const requiredUnlessTest = isTest ? z.string().optional() : z.string().trim().min(1);
 const requiredInProduction = isTest || runtimeEnvironment !== 'production' ? z.string().optional() : z.string().trim().min(1);
 const optionalUrl = z.union([z.literal(''), z.string().url()]).optional();
@@ -60,6 +73,9 @@ const envSchema = z.object({
   EMBEDDING_DIMENSIONS: optionalInt,
   SMARTEST_VERIFIER_MODEL: z.string().optional(),
   SMARTEST_GENERATOR_MODEL: z.string().optional(),
+  // Eval-only per-agent model overrides (JSON). Ignored by the protocol in
+  // production, and rejected outright above when NODE_ENV=production.
+  EVAL_MODEL_OVERRIDES: z.string().optional(),
 
   // 4. Redis
   REDIS_URL: z.string().optional(),
@@ -119,6 +135,8 @@ const envSchema = z.object({
   CHAT_SESSION_GAP_MS: optionalPositiveInt,
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
   FAST_SIGNAL_INTAKE: optionalBoolean,
+  SIGNAL_INTAKE_MAX_QUESTIONS: z.string().optional(),
+  SIGNAL_INTAKE_QUESTION_MODE: z.string().optional(),
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),

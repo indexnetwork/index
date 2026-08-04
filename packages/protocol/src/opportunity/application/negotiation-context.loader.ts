@@ -1,6 +1,6 @@
 /**
  * Negotiation context loader: given an opportunity, fetches the attached
- * negotiation task's transcript and outcome so the home-card presenter can
+ * negotiation task's transcript and outcome so the card presenter can
  * explain *why* the opportunity surfaced.
  *
  * For `draft`, `latent`, and `expired` opportunities, no negotiation has

@@ -127,6 +127,31 @@ INDEX_AGENT_ME = {
     },
 }
 
+INDEX_OPEN_APP = {
+    "name": "index_open_app",
+    "description": (
+        "Open an Index Network universal link (https://index.network/...) with the "
+        "operating system's default handler. Use this when the user asks to open "
+        "Index, an opportunity, or a profile on this machine — for example with the "
+        "appUrl returned on opportunities by index_list_opportunities. The link "
+        "opens the Index macOS app when it is installed and the Index web page "
+        "otherwise; only index.network URLs are accepted."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "target": {
+                "type": "string",
+                "description": (
+                    "Optional https://index.network URL to open, such as an "
+                    "opportunity appUrl. Defaults to https://index.network."
+                ),
+            },
+        },
+        "required": [],
+    },
+}
+
 INDEX_PICKUP_NEGOTIATION = {
     "name": "index_pickup_negotiation",
     "description": (

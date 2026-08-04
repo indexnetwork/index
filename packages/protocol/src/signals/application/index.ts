@@ -41,6 +41,9 @@ export {
   FALLBACK_WHO_QUESTION,
   FALLBACK_BRING_QUESTION,
   type IntakeAnswer,
+  type IntakeRound,
+  type FollowUpPlan,
+  type FollowUpPlanInput,
   type SynthesisInput,
   type SynthesisResult,
 } from "./intake.orchestrator.js";

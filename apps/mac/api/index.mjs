@@ -5,6 +5,8 @@ export {
   toQueryString,
 } from './client.mjs';
 
+export { parseDeepLink } from './deeplink.mjs';
+
 export {
   mapClarifier,
   mapClarifiers,
@@ -13,7 +15,7 @@ export {
   mapIntent,
   mapIntents,
   mapOpportunityStatusToPrototype,
-  mapPeopleFromHomeSections,
   mapPeopleFromOpportunities,
-  mapPersonFromHomeCard,
+  mapPeopleFromRadarItems,
+  mapPersonFromRadarCard,
 } from './mappers.mjs';

@@ -107,7 +107,7 @@ export const POOL_QUESTION_PUSH_DAILY_CAP = 2;
 export type PoolQuestionsRankingMode = "off" | "on";
 
 /**
- * Current POOL_QUESTIONS_RANKING (default off). When "on", the home feed
+ * Current POOL_QUESTIONS_RANKING (default off). When "on", the radar view
  * orders by adjusted confidence (confidence × Π poolAdjustments.factor,
  * floor {@link POOL_ADJUSTMENT_FLOOR}). Adjustments are WRITTEN regardless of
  * this flag — it only gates whether ordering reads them, so the apply path

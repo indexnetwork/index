@@ -208,13 +208,14 @@ function UserMenu({ me, onSelect }) {
 
 function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const env = useIndexEnv();
-  const demo = window.INDEX_DATA;
-  // ME/NETWORKS/AGENTS prefer live data; AGENTS has no live snapshot yet.
-  const ME = env.me || demo.ME;
-  const NETWORKS = env.networks || demo.NETWORKS;
-  const AGENTS = demo.AGENTS;
-  const joinedCount = (NETWORKS || []).filter(n => n.joined !== false).length;
-  const agentCount  = (AGENTS || []).filter(a => a.state === "connected").length;
+  // Live-only: empty until the snapshot loads. AGENTS has no live snapshot in
+  // this view yet, so the count is the builtin Index (always on) until the
+  // agents pane loads the registered runtimes.
+  const ME = env.me || {};
+  const NETWORKS = env.networks || [];
+  const AGENTS = [];
+  const joinedCount = NETWORKS.filter(n => n.joined !== false).length;
+  const agentCount  = 1 + AGENTS.filter(a => a.state === "connected").length;
 
   // A just-onboarded user has no signals yet, the hub opens empty.
   const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));
@@ -436,7 +437,11 @@ function signalStatus(intent) {
 /* ---------- Single intent row ---------- */
 function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
   const isPaused = intent.status === "paused";
-  const hasQ = intent.questions > 0;
+  // Consolidated count: pending questions + awaiting opportunities (same
+  // number as the Hermes and web dashboards). Demo data carries only
+  // `questions`, hence the fallback.
+  const pending = intent.pending ?? intent.questions ?? 0;
+  const hasQ = pending > 0;
   const statusLabel = signalStatus(intent);
   // the blink is the signal working. only the states that are actually running
   // get it, so a shelf of closed and matched rows stays still
@@ -487,24 +492,25 @@ function IntentRow({ intent, hovered, onHover, onLeave, onPick }) {
         </span>
       </div>
 
-      {/* questions, the hero */}
-      <QCount n={intent.questions} muted={!hasQ}/>
+      {/* pending questions + awaiting opportunities, the hero */}
+      <QCount n={pending} muted={!hasQ}/>
     </button>
   );
 }
 
-/* ---------- Inbound-questions hero count ---------- */
-// A bare number left you to guess what it counted. These are questions holding
-// on your answer, so the badge says pending and the number keeps its weight.
+/* ---------- Pending hero count ---------- */
+// One consolidated, unlabeled number: pending questions + awaiting
+// opportunities, matching the Hermes and web dashboards. The tooltip carries
+// the explanation the label used to.
 function QCount({ n, muted }) {
   if (muted) {
     return null;
   }
   return (
     <span
-      title={`${n} question${n === 1 ? "" : "s"} waiting on you`}
+      title={`${n} waiting on you — pending questions and opportunities`}
       style={{
-        display:"flex", alignItems:"baseline", justifyContent:"center", gap:4,
+        display:"flex", alignItems:"baseline", justifyContent:"center",
         padding:"3px 8px",
         border:"1px solid #000",
         background:"#FF8A00",
@@ -515,9 +521,6 @@ function QCount({ n, muted }) {
         fontFamily:"var(--mac-sans)", fontSize:14, fontWeight:700,
         lineHeight:1, color:"#000", letterSpacing:-0.3,
       }}>{n}</span>
-      <span style={{
-        fontFamily:"var(--mac-mono)", fontSize:10, lineHeight:1, color:"#000",
-      }}>pending</span>
     </span>
   );
 }

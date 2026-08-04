@@ -184,7 +184,6 @@ export class EnrichmentRunQueue {
         : {}),
       isMcp: false,
       ...(run.agentId ? { agentId: run.agentId } : {}),
-      ...(run.context.clientSurface ? { clientSurface: run.context.clientSurface } : {}),
     };
     const allowedNetworkIds = deriveAllowedNetworkIds({
       memberships: context.userNetworks,

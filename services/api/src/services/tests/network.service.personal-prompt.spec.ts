@@ -53,4 +53,21 @@ describe('networkService.updateNetwork on a personal network', () => {
     ).rejects.toThrow(/rejected: imageUrl, joinPolicy/);
     expect(updateIndexSettings).not.toHaveBeenCalled();
   });
+
+  test('rejects hidden on a personal network (non-prompt field)', async () => {
+    const { service, updateIndexSettings } = makeService();
+    await expect(
+      service.updateNetwork(PERSONAL_ID, USER_ID, { hidden: true }),
+    ).rejects.toThrow(/rejected: hidden/);
+    expect(updateIndexSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe('networkService.updateNetwork on a regular network', () => {
+  test('passes hidden through to the adapter', async () => {
+    const { service, updateIndexSettings } = makeService();
+    await service.updateNetwork('regular-net-1', USER_ID, { hidden: true });
+    expect(updateIndexSettings).toHaveBeenCalled();
+    expect(updateIndexSettings.mock.calls[0][2]).toMatchObject({ hidden: true });
+  });
 });

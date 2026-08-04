@@ -1,13 +1,12 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, Users, Loader2, Calendar } from 'lucide-react';
+import { Plus, Users, Loader2 } from 'lucide-react';
 import NetworkAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
-import MasterKeyDialog from '@/components/MasterKeyDialog';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks } from '@/contexts/APIContext';
@@ -29,7 +28,6 @@ export default function NetworksPage() {
   const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
-  const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
 
   const allNetworks = (rawIndexes || []).filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
@@ -68,25 +66,17 @@ export default function NetworksPage() {
     }
   };
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
       const newIndex = await indexesService.createNetwork({
         title: indexData.name,
         prompt: indexData.prompt,
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
-        isExperiment: indexData.isExperiment,
-        type: indexData.type,
-        metadata: indexData.metadata,
       });
-      const { masterKey, ...network } = newIndex;
-      addIndex(network);
+      addIndex(newIndex);
       setCreateNetworkModalOpen(false);
-      if (masterKey) {
-        setMasterKeyModal({ networkId: network.id, masterKey });
-      } else {
-        navigate(`/networks/${network.id}`);
-      }
+      navigate(`/networks/${newIndex.id}`);
       success('Network created successfully');
     } catch (err) {
       logger.error('Error creating network', { error: err });
@@ -162,12 +152,6 @@ export default function NetworksPage() {
                               {network._count?.members || 0} members
                             </p>
                           </div>
-                          {network.type === 'event' && (
-                            <span className="flex items-center gap-1 text-xs text-gray-500 flex-shrink-0">
-                              <Calendar className="w-3 h-3" />
-                              Event
-                            </span>
-                          )}
                           <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 ml-3 ${
                             isOwner ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'
                           }`}>
@@ -205,12 +189,6 @@ export default function NetworksPage() {
                             {network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members
                           </p>
                         </div>
-                        {network.type === 'event' && (
-                          <span className="flex items-center gap-1 text-xs text-gray-500 flex-shrink-0">
-                            <Calendar className="w-3 h-3" />
-                            Event
-                          </span>
-                        )}
                         {network.isMember ? (
                           <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-sm font-medium flex-shrink-0 ml-3">
                             Joined
@@ -246,16 +224,6 @@ export default function NetworksPage() {
         onOpenChange={setCreateNetworkModalOpen}
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
-      />
-
-      <MasterKeyDialog
-        open={!!masterKeyModal}
-        masterKey={masterKeyModal?.masterKey ?? ''}
-        onClose={() => {
-          const networkId = masterKeyModal?.networkId;
-          setMasterKeyModal(null);
-          if (networkId) navigate(`/networks/${networkId}`);
-        }}
       />
     </ClientLayout>
   );

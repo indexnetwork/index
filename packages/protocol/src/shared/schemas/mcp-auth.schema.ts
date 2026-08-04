@@ -6,7 +6,6 @@ import { z } from 'zod';
 export const McpAuthInputSchema = z.object({
   bearerToken: z.string().min(1).optional(),
   apiKey: z.string().min(1).optional(),
-  clientSurface: z.enum(['telegram', 'web']).optional(),
   telegramHandle: z.string().min(1).optional(),
   telegramUsername: z.string().min(1).optional(),
 }).strict();
@@ -37,7 +36,6 @@ export const McpResolvedIdentitySchema = z.object({
   enrollmentCapable: z.boolean().optional(),
   isDeliveryAgent: z.boolean().optional(),
   networkScopeId: z.string().min(1).nullable().optional(),
-  clientSurface: z.enum(['telegram', 'web']).optional(),
 }).strict().superRefine((identity, ctx) => {
   if (identity.isSessionAuth === true && identity.agentId) {
     ctx.addIssue({

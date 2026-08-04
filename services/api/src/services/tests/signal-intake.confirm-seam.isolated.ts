@@ -66,10 +66,10 @@ const question = {
   multiSelect: false,
 };
 
-const answers = {
-  whoAnswer: { selectedOptions: ['A design partner'] },
-  bringAnswer: { selectedOptions: ['Engineering depth'] },
-};
+const rounds = [
+  { prompt: 'Who do you want to meet?', answer: { selectedOptions: ['A design partner'] } },
+  { prompt: 'What do you bring?', answer: { selectedOptions: ['Engineering depth'] } },
+];
 
 interface Row {
   id: string;
@@ -170,7 +170,7 @@ function makeSeam(options: { runStatus?: 'pending' | 'failed' } = {}) {
     proposalStore: store,
     isNetworkMember: async (networkId: string, userId: string) => members.has(`${networkId}:${userId}`),
     orchestrator: {
-      nextQuestion: async () => question,
+      generateFollowUps: async () => ({ questions: [question], plannedFollowUpCount: 1 }),
       synthesize: async () => ({
         description: 'Looking for a design partner.',
         lookingFor: 'A design partner',
@@ -217,7 +217,7 @@ function makeSeam(options: { runStatus?: 'pending' | 'failed' } = {}) {
  * `prepare` deliberately does not await synthesis, so drain it here.
  */
 async function speculate(seam: ReturnType<typeof makeSeam>) {
-  await seam.intake.prepare(USER_ID, answers);
+  await seam.intake.prepare(USER_ID, { rounds });
   await new Promise((resolve) => setTimeout(resolve, 5));
 }
 
@@ -228,7 +228,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     expect(seam.store.rows.get(seam.run.proposalId as string)?.networkId).toBeNull();
 
     const proposal = await seam.intake.resolveProposal(USER_ID, {
-      runId: 'run-1', networkId: NETWORK_ID, answers,
+      runId: 'run-1', networkId: NETWORK_ID, rounds,
     });
 
     // Exactly what FastSignalIntake posts to /intents/confirm.
@@ -256,7 +256,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     const seam = makeSeam();
     await speculate(seam);
 
-    const proposal = await seam.intake.resolveProposal(USER_ID, { runId: 'run-1', answers });
+    const proposal = await seam.intake.resolveProposal(USER_ID, { runId: 'run-1', rounds });
     const created = await seam.confirm.createFromProposal(
       USER_ID, proposal.description, proposal.proposalId, undefined,
     );
@@ -270,7 +270,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     await speculate(seam);
 
     const proposal = await seam.intake.resolveProposal(USER_ID, {
-      runId: 'run-1', networkId: NETWORK_ID, whereText: 'Berlin only', answers,
+      runId: 'run-1', networkId: NETWORK_ID, whereText: 'Berlin only', rounds,
     });
     const created = await seam.confirm.createFromProposal(
       USER_ID, proposal.description, proposal.proposalId, NETWORK_ID,
@@ -283,7 +283,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     const seam = makeSeam({ runStatus: 'failed' });
 
     const proposal = await seam.intake.resolveProposal(USER_ID, {
-      runId: 'run-1', networkId: NETWORK_ID, answers,
+      runId: 'run-1', networkId: NETWORK_ID, rounds,
     });
     const created = await seam.confirm.createFromProposal(
       USER_ID, proposal.description, proposal.proposalId, NETWORK_ID,
@@ -298,7 +298,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     const speculativeId = seam.run.proposalId as string;
 
     const revised = await seam.intake.revise(USER_ID, {
-      runId: 'run-1', feedback: 'make it about hardware, not software', networkId: NETWORK_ID, answers,
+      runId: 'run-1', feedback: 'make it about hardware, not software', networkId: NETWORK_ID, rounds,
     });
     expect(revised.proposalId).not.toBe(speculativeId);
 
@@ -314,7 +314,7 @@ describe('fast intake -> /intents/confirm seam', () => {
 
     await speculate(seam);
     const first = await seam.intake.resolveProposal(USER_ID, {
-      runId: 'run-1', networkId: NETWORK_ID, answers,
+      runId: 'run-1', networkId: NETWORK_ID, rounds,
     });
     const firstIntent = await seam.confirm.createFromProposal(
       USER_ID, first.description, first.proposalId, NETWORK_ID,
@@ -325,7 +325,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     // they believed a second signal had been created.
     await speculate(seam);
     const second = await seam.intake.resolveProposal(USER_ID, {
-      runId: 'run-1', networkId: NETWORK_ID, answers,
+      runId: 'run-1', networkId: NETWORK_ID, rounds,
     });
     expect(second.proposalId).not.toBe(first.proposalId);
 
@@ -342,7 +342,7 @@ describe('fast intake -> /intents/confirm seam', () => {
     const foreignNetwork = '44444444-4444-4444-8444-444444444444';
 
     await expect(seam.intake.resolveProposal(USER_ID, {
-      runId: 'run-1', networkId: foreignNetwork, answers,
+      runId: 'run-1', networkId: foreignNetwork, rounds,
     })).rejects.toThrow('network_membership_required');
     expect(seam.store.rows.get(seam.run.proposalId as string)?.networkId).toBeNull();
   });

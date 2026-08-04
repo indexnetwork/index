@@ -1,0 +1,19 @@
+# Railway eval ops service configuration.
+#
+# This file exists because the root railway.toml is the API's config, and a
+# service without its own config inherits it — including
+# `preDeployCommand = "cd services/api && bun run db:migrate"`. That ran
+# drizzle-kit against this service on every deploy and failed only because no
+# DATABASE_URL was set. A migration is not this service's job.
+#
+# There is deliberately no healthcheckPath: every route on the ops server is
+# behind the Host allowlist, so a probe arriving with an internal hostname is
+# refused with 403 and would fail an otherwise healthy container.
+[build]
+watchPatterns = ["/apps/eval-ops/**", "/packages/protocol/eval/ops/**", "/bun.lock", "/package.json", "/apps/eval-ops/railway.toml"]
+buildCommand = "bun run build:package:protocol && cd apps/eval-ops && bun run build"
+
+[deploy]
+startCommand = "cd apps/eval-ops && bun server.ts"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

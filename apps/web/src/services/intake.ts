@@ -24,10 +24,16 @@ export interface IntakeVerificationRejection {
   clarification: QuestionPayload;
 }
 
-/** Both answers travel with every call: the server holds no funnel state. */
-interface IntakeAnswers {
-  whoAnswer: IntakeAnswerBody;
-  bringAnswer: IntakeAnswerBody;
+/** One answered intake round, in order (round 1 first). */
+export interface IntakeRound {
+  prompt: string;
+  answer: IntakeAnswerBody;
+}
+
+/** Follow-up batch plus the locked total interview length (round 1 included). */
+export interface IntakeFollowUpResponse {
+  questions: QuestionPayload[];
+  total: number;
 }
 
 /**
@@ -50,16 +56,23 @@ export const intakeService = {
   /** Round 1 from the precomputed pack. */
   start: () => apiClient.post<IntakeQuestionResponse>("/intents/intake/start", {}),
 
-  /** Round 2, grounded by the round-1 answer. */
-  question: (whoAnswer: IntakeAnswerBody) =>
-    apiClient.post<IntakeQuestionResponse>("/intents/intake/question", { whoAnswer }),
+  /**
+   * Next follow-up batch. `plannedTotal` echoes the locked total on
+   * continuation calls; both answers and prompts travel with every call —
+   * the server holds no funnel state.
+   */
+  question: (rounds: IntakeRound[], plannedTotal?: number) =>
+    apiClient.post<IntakeFollowUpResponse>("/intents/intake/question", {
+      rounds,
+      ...(plannedTotal !== undefined ? { plannedTotal } : {}),
+    }),
 
   /** Kick off speculative synthesis; returns immediately. */
-  prepare: (input: IntakeAnswers & { round2Prompt?: string }) =>
+  prepare: (input: { rounds: IntakeRound[] }) =>
     apiClient.post<{ runId: string }>("/intents/intake/prepare", input),
 
   /** Resolve the proposal once the user has chosen where to look. */
-  proposal: (input: IntakeAnswers & { runId: string; networkId?: string; whereText?: string }) =>
+  proposal: (input: { runId: string; rounds: IntakeRound[]; networkId?: string; whereText?: string }) =>
     apiClient.post<IntakeProposalResponse>("/intents/intake/proposal", input)
       .catch(unwrapVerificationRejection),
 
@@ -70,7 +83,7 @@ export const intakeService = {
    * proposal row: `/intents/confirm` compares the posted network against the
    * stored one, so a revision that dropped it would 409 at confirm.
    */
-  revise: (input: IntakeAnswers & { runId: string; feedback: string; networkId?: string }) =>
+  revise: (input: { runId: string; rounds: IntakeRound[]; feedback: string; networkId?: string }) =>
     apiClient.post<IntakeProposalResponse>("/intents/intake/revise", input)
       .catch(unwrapVerificationRejection),
 };

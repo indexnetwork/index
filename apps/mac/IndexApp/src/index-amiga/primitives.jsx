@@ -315,13 +315,10 @@ const AGENT_FACES = [
    yours and a single picture. The runtimes on the agents page (hermes, claude
    code) are where it *runs*, not who it is, they keep their vendor tiles.
    Everything the negotiator says anywhere in the app wears this picture. */
-/* The record for whoever is signed in. Signing in replaces
-   window.INDEX_DATA.ME wholesale with the live user, while the demo `ME` const
-   stays as it was, so reading the const directly would keep naming the agent
-   after the demo profile. */
+/* The record for whoever is signed in. applyLoaded sets window.INDEX_DATA.ME to
+   the live user once the snapshot loads; live-only, so it is empty until then. */
 function currentMe() {
-  const live = (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || null;
-  return live || (typeof ME !== "undefined" && ME) || {};
+  return (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || {};
 }
 
 /* Where a shuffled face is kept.
@@ -1139,6 +1136,35 @@ function MacSegmented({ value, onChange, options, size }) {
   );
 }
 
+/* ---------- one-line, non-blocking notice ---------- */
+// For the things the app can only report, not fix: a retired /c/ link, a deep
+// link to a card this account cannot see. It sits at the foot of the desktop,
+// times out on its own, and never takes the keyboard, so whatever the user was
+// doing keeps working. Anything that needs a decision still gets a MacWindow.
+function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
+  useEffect(() => {
+    if (!onDismiss) return;
+    const t = setTimeout(onDismiss, timeoutMs);
+    return () => clearTimeout(t);
+  }, [text, timeoutMs]);
+  if (!text) return null;
+  return (
+    <div
+      onClick={onDismiss}
+      role="status"
+      title="dismiss"
+      style={{
+        position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)",
+        maxWidth:"min(560px, calc(100% - 36px))",
+        padding:"8px 14px", cursor:"default",
+        background: A.paper, color: A.fg,
+        border:`2px solid ${A.fg}`, boxShadow: bevel("out"),
+        fontFamily:"var(--mac-mono)", fontSize:11.5, lineHeight:1.5,
+        zIndex:1200,
+      }}>{text}</div>
+  );
+}
+
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
@@ -1147,6 +1173,6 @@ Object.assign(window, {
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval,
   PipelineFunnel, SourceBadge, ModeBadge,
-  MacWindow, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
+  MacWindow, MacNotice, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
   AMIGA_PALETTE: A,
 });

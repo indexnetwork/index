@@ -729,31 +729,25 @@ export class OpportunityDatabaseAdapter {
     userId: string,
     options?: { status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
-    let intentScopeNetworkIds: string[] | null = null;
+    let intentScopeValid = false;
     if (options?.scopeType === 'intent' && options.scopeId) {
-      const scopeRows = await db
-        .select({ networkId: schema.intentNetworks.networkId })
+      // Scope validity is ownership, not current network assignment: an
+      // intent's assigned networks can change after discovery, and gating the
+      // scoped read on the *current* assignment orphaned every opportunity
+      // anchored on a since-removed network — while countsByIntent (linkage
+      // only) still counted them, so badges said N and the intent radar said 0.
+      // The scoped view must be a pure narrowing of the unscoped view:
+      // unscoped visibility ∩ intent linkage (+ the live-anchor guard below).
+      const owned = await db
+        .select({ id: schema.intents.id })
         .from(schema.intents)
-        .innerJoin(
-          schema.intentNetworks,
-          eq(schema.intentNetworks.intentId, schema.intents.id),
-        )
-        .innerJoin(
-          schema.networkMembers,
-          and(
-            eq(schema.networkMembers.userId, userId),
-            eq(schema.networkMembers.networkId, schema.intentNetworks.networkId),
-          ),
-        )
-        .innerJoin(schema.networks, eq(schema.networks.id, schema.intentNetworks.networkId))
         .where(and(
           eq(schema.intents.id, options.scopeId),
           eq(schema.intents.userId, userId),
-          isNull(schema.networkMembers.deletedAt),
-          isNull(schema.networks.deletedAt),
-        ));
-      intentScopeNetworkIds = [...new Set(scopeRows.map((row) => row.networkId))].sort();
-      if (intentScopeNetworkIds.length === 0) return [];
+        ))
+        .limit(1);
+      if (owned.length === 0) return [];
+      intentScopeValid = true;
     }
 
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
@@ -817,10 +811,10 @@ export class OpportunityDatabaseAdapter {
         )
       )`);
     }
-    if (options?.scopeType === 'intent' && options.scopeId && intentScopeNetworkIds) {
-      // Selected-intent Radar keeps the historical linkage predicate, but the
-      // selected intent must be viewer-owned and its scope is authoritative:
-      // assigned networks intersect live viewer memberships and live networks.
+    if (options?.scopeType === 'intent' && options.scopeId && intentScopeValid) {
+      // Selected-intent Radar: the historical linkage predicate. From-intent
+      // discovery records `detection.triggeredBy`; older or manually linked
+      // rows are selected via the viewer's own actor `intent` stamp.
       conditions.push(sql`(
         ${opportunities.detection}->>'triggeredBy' = ${options.scopeId}
         OR EXISTS (
@@ -830,10 +824,12 @@ export class OpportunityDatabaseAdapter {
         )
       )`);
       // Participant-safe rather than row-strict: every distinct actor user must
-      // have at least one actor anchor inside the intent's valid scope, and that
-      // exact user/network pair must still be active. This blocks candidate
-      // membership leaks while tolerating harmless duplicate actor stamps for
-      // the same participant on another network.
+      // still hold a live membership on at least one network they are anchored
+      // on in this opportunity. This blocks removed-candidate membership leaks
+      // while tolerating harmless duplicate actor stamps for the same
+      // participant on another network. Anchors are the discovery-time
+      // networks stamped on the row — deliberately not the intent's *current*
+      // network assignment, which can change after discovery.
       conditions.push(sql`NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS participant
         WHERE NOT EXISTS (
@@ -843,14 +839,7 @@ export class OpportunityDatabaseAdapter {
             ON nm.user_id = anchor->>'userId'
            AND nm.network_id = anchor->>'networkId'
           JOIN ${schema.networks} n ON n.id = nm.network_id
-          JOIN ${schema.intentNetworks} scoped_intent_network
-            ON scoped_intent_network.network_id = anchor->>'networkId'
-           AND scoped_intent_network.intent_id = ${options.scopeId}
-          JOIN ${schema.intents} scoped_intent
-            ON scoped_intent.id = scoped_intent_network.intent_id
-           AND scoped_intent.user_id = ${userId}
           WHERE anchor->>'userId' = participant->>'userId'
-            AND anchor->>'networkId' = ANY(ARRAY[${sql.join(intentScopeNetworkIds.map((id) => sql`${id}`), sql`, `)}]::text[])
             AND nm.deleted_at IS NULL
             AND n.deleted_at IS NULL
         )

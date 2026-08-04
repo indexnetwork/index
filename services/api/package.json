@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.69.2",
+  "version": "0.73.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "bun run --cwd ../../packages/protocol build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
+    "typecheck:cli-specs": "tsc -p tsconfig.spec.json",
     "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
     "test:all": "NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test",
     "db:generate": "drizzle-kit generate",
@@ -20,8 +21,6 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:audit-experiment-emails": "bun ./src/cli/audit-experiment-email-collisions.ts",
-    "maintenance:audit-agentvillage-onboarding": "bun ./src/cli/audit-agentvillage-onboarding.ts",
-    "maintenance:seed-experiment-network": "bun ./src/cli/seed-experiment-network.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "maintenance:backfill-premises": "bun ./src/cli/backfill-premises.ts",
@@ -37,6 +36,7 @@
     "eval:discovery-env-matrix-base": "bun ./src/cli/discovery-env-matrix-base.ts",
     "eval:discovery-env-matrix-base:verify": "bun ./src/cli/discovery-env-matrix-base.ts --verify",
     "eval:discovery-env-matrix": "bun --env-file=../../.env.test ./src/cli/discovery-env-matrix.ts",
+    "eval:discovery-ab": "bun --env-file=../../.env.test ./src/cli/discovery-ab.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
   },

@@ -11,8 +11,15 @@
 (function () {
   "use strict";
 
-  const SDK = window.__HERMES_PLUGIN_SDK__;
-  if (!SDK || !window.__HERMES_PLUGINS__) {
+  // Desktop seam: the generated desktop plugin (desktop/build.mjs) sets this
+  // global before evaluating this file, providing a dashboard-SDK-compatible
+  // `sdk` ({ React, fetchJSON, components }), an `assets` map (blob URLs
+  // fetched over the plugin REST bridge), and an `onComponent` sink instead of
+  // window.__HERMES_PLUGINS__.register. When absent we are in the web
+  // dashboard host and behave exactly as before.
+  const DESKTOP_ENV = window.__INDEX_NETWORK_DESKTOP_ENV__ || null;
+  const SDK = DESKTOP_ENV ? DESKTOP_ENV.sdk : window.__HERMES_PLUGIN_SDK__;
+  if (!SDK || !SDK.React || (!DESKTOP_ENV && !window.__HERMES_PLUGINS__)) {
     console.warn("[index-network] Hermes dashboard plugin SDK is unavailable.");
     return;
   }
@@ -44,9 +51,15 @@
     } catch (e) { /* no-op */ }
     return "";
   })();
-  const PITCH_IMAGE = ASSET_BASE + "loading-white.webp";
-  const RADAR_IMAGE = ASSET_BASE + "eye-white.webp";
-  const LOADING_IMAGE = ASSET_BASE + "loading2.png";
+  // In the desktop host, assets arrive async as blob URLs (DESKTOP_ENV.assets)
+  // — resolve lazily and let callers skip the <img> while empty.
+  function assetSrc(key, file) {
+    if (DESKTOP_ENV) return (DESKTOP_ENV.assets && DESKTOP_ENV.assets[key]) || "";
+    return ASSET_BASE + file;
+  }
+  function PITCH_IMAGE() { return assetSrc("pitch", "loading-white.webp"); }
+  function RADAR_IMAGE() { return assetSrc("radar", "eye-white.webp"); }
+  function LOADING_IMAGE() { return assetSrc("loading", "loading2.png"); }
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -76,7 +89,7 @@
   // scheduled cron job (green success tag).
   function statusTone(status) {
     const s = String(status || "").toLowerCase();
-    if (["running", "active", "enabled", "scheduled", "accepted", "connected"].indexOf(s) >= 0) return "success";
+    if (["running", "active", "enabled", "scheduled", "accepted", "connected", "live", "matched"].indexOf(s) >= 0) return "success";
     if (["paused", "pending", "negotiating", "stalled"].indexOf(s) >= 0) return "warning";
     if (["error", "failed", "completed", "rejected", "declined"].indexOf(s) >= 0) return "destructive";
     return "outline";
@@ -136,28 +149,11 @@
     ]);
   }
 
-  function brandIcon(d) {
-    return React.createElement("svg", {
-      xmlns: "http://www.w3.org/2000/svg", width: 16, height: 16, viewBox: "0 0 24 24",
-      fill: "currentColor", "aria-hidden": "true",
-    }, React.createElement("path", { d: d }));
-  }
-  function ICON_TWITTER() { return brandIcon("M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"); }
-  function ICON_LINKEDIN() { return brandIcon("M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"); }
-  function ICON_GITHUB() { return brandIcon("M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"); }
-  function ICON_TELEGRAM() { return brandIcon("M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"); }
-  const SOCIAL_ICONS = { twitter: ICON_TWITTER, linkedin: ICON_LINKEDIN, github: ICON_GITHUB, telegram: ICON_TELEGRAM };
-
   // The blinking eye, sized to sit inline next to the "Radar" title.
   function RADAR_EYE() {
-    return React.createElement("img", { className: "index-dashboard__radar-eye", src: RADAR_IMAGE, alt: "", "aria-hidden": "true", loading: "lazy" });
-  }
-
-  function ICON_PENCIL() {
-    return svgIcon("", [
-      svgPath("M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"),
-      svgPath("m15 5 4 4"),
-    ]);
+    const src = RADAR_IMAGE();
+    if (!src) return null;
+    return React.createElement("img", { className: "index-dashboard__radar-eye", src: src, alt: "", "aria-hidden": "true", loading: "lazy" });
   }
 
   function ICON_TRASH() {
@@ -186,7 +182,52 @@
     return React.createElement("span", { key: key, className: "index-dashboard__tip", "data-tip": label }, child);
   }
 
+  // React twin of the DOM controls injected into the web dashboard's banner
+  // header — rendered inline when no such header exists (desktop host).
+  function InlineHeaderControls(props) {
+    return React.createElement("div", { className: "index-dashboard__hdr index-dashboard__hdr--inline" },
+      React.createElement("span", { className: "index-dashboard__hdr-label" }, "AUTO-REFRESH"),
+      React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__switch" + (props.autoRefresh ? " index-dashboard__switch--on" : ""),
+        role: "switch",
+        "aria-checked": props.autoRefresh ? "true" : "false",
+        "aria-label": "Auto-refresh",
+        onClick: props.onToggle,
+      }, React.createElement("span", { className: "index-dashboard__switch-knob" })),
+      props.autoRefresh ? null : React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__header-refresh",
+        "aria-label": "Refresh",
+        title: "Refresh",
+        disabled: props.loading,
+        "data-busy": props.loading ? "true" : undefined,
+        onClick: props.onRefresh,
+        dangerouslySetInnerHTML: { __html: REFRESH_ICON_SVG },
+      }),
+      React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__hdr-account" + (props.hasUnread ? " index-dashboard__hdr-account--dot" : ""),
+        "aria-label": "Messages",
+        title: "Messages",
+        onClick: props.onMessages,
+        dangerouslySetInnerHTML: { __html: MESSAGES_ICON_SVG },
+      }),
+      React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__hdr-account",
+        "aria-label": "Profile & settings",
+        title: "Profile & settings",
+        onClick: props.onAccount,
+        dangerouslySetInnerHTML: { __html: ACCOUNT_ICON_SVG },
+      }),
+    );
+  }
+
   function parseHash() {
+    // The desktop app owns window.location.hash (its router routes on it) —
+    // keep intent selection purely in component state there.
+    if (DESKTOP_ENV) return { intentId: null };
     const raw = (window.location.hash || "").replace(/^#/, "");
     const params = {};
     raw.split("&").forEach(function (pair) {
@@ -200,6 +241,7 @@
   }
 
   function writeHash(intentId) {
+    if (DESKTOP_ENV) return;
     const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
@@ -282,7 +324,6 @@
     const freeTextState = React.useState("");
     const freeText = freeTextState[0];
     const setFreeText = freeTextState[1];
-    const submitting = props.submittingId === question.id;
     const showFreeText = otherSelected || !hasOptions;
     const canSubmit = hasOptions
       ? selected.length > 0 || (otherSelected && freeText.trim().length > 0)
@@ -310,7 +351,7 @@
 
     function submit(event) {
       event.preventDefault();
-      if (!canSubmit || submitting) return;
+      if (!canSubmit) return;
       const sendOther = otherSelected || !hasOptions;
       props.onSubmit(question, sendOther ? [] : selected, sendOther ? freeText : "");
     }
@@ -349,35 +390,65 @@
         })
         : null,
       React.createElement("div", { className: "index-dashboard__question-actions" },
-        React.createElement(Button, { type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md", disabled: submitting, onClick: function () { props.onSkip(question); } }, "Skip"),
-        React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit || submitting }, submitting ? "Saving…" : "Submit"),
+        React.createElement(Button, { type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md", onClick: function () { props.onSkip(question); } }, "Skip"),
+        React.createElement(Button, { type: "submit", size: "sm", className: "index-dashboard__btn-md", disabled: !canSubmit }, "Submit"),
+      ),
+    );
+  }
+
+  // Mac-app parity: an answered question stays visible as a settled record —
+  // hairline frame, muted prompt, and the given answer quoted under a strong
+  // rule — instead of vanishing (a dismissed one fades and keeps no quote).
+  function AnsweredQuestionCard(props) {
+    const record = props.record;
+    const question = record.question || {};
+    return React.createElement("div", {
+      className: "index-dashboard__question index-dashboard__question--done"
+        + (record.dismissed ? " index-dashboard__question--dismissed" : ""),
+    },
+      React.createElement("div", { className: "index-dashboard__qdone-status" }, record.dismissed ? "dismissed" : "✓ answered"),
+      React.createElement("p", { className: "index-dashboard__question-prompt" }, question.prompt || question.title || "Question"),
+      record.dismissed ? null : React.createElement("div", { className: "index-dashboard__qdone-answer" },
+        React.createElement("span", { className: "index-dashboard__qdone-label" }, "you said"),
+        React.createElement("span", { className: "index-dashboard__qdone-text" }, record.choice),
       ),
     );
   }
 
   function QuestionList(props) {
     const section = props.section || {};
-    const questions = Array.isArray(section.items) ? section.items : [];
+    const answered = Array.isArray(props.answered) ? props.answered : [];
+    const answeredIds = {};
+    answered.forEach(function (record) { answeredIds[record.question.id] = true; });
+    // A stale summary can still list an already-answered question as pending;
+    // the local record wins so the form never resurfaces.
+    const questions = (Array.isArray(section.items) ? section.items : []).filter(function (question) {
+      return !answeredIds[question.id];
+    });
     if (section.error) {
       return React.createElement("div", { className: "index-dashboard__error" }, section.error);
     }
     const cards = questions.map(function (question) {
-      return React.createElement(QuestionCard, { key: question.id, question: question, onSubmit: props.onSubmit, onSkip: props.onSkip, submittingId: props.submittingId });
-    });
+      return React.createElement(QuestionCard, { key: question.id, question: question, onSubmit: props.onSubmit, onSkip: props.onSkip });
+    }).concat(answered.map(function (record) {
+      return React.createElement(AnsweredQuestionCard, { key: record.question.id, record: record });
+    }));
     if (props.actionError) {
       return React.createElement("div", { className: "index-dashboard__stack" },
         React.createElement("div", { className: "index-dashboard__error" }, props.actionError),
-        questions.length === 0 ? React.createElement(EmptyState, null, "No pending questions right now.") : null,
+        cards.length === 0 ? React.createElement(EmptyState, null, "No pending questions right now.") : null,
         cards,
       );
     }
-    if (questions.length === 0) {
+    if (cards.length === 0) {
       return React.createElement(EmptyState, null, "No pending questions right now.");
     }
     return React.createElement("div", { className: "index-dashboard__stack" }, cards);
   }
 
   // Mirrors plugin_api.py _STATUS_BUCKET: raw status -> display bucket.
+  // Rejected is hidden (null bucket), matching the mac app: those are mostly
+  // agent-side filtering decisions, and listing them reads as user rejection.
   const STATUS_BUCKET = {
     latent: "pending",
     draft: "pending",
@@ -385,7 +456,7 @@
     negotiating: "negotiating",
     stalled: "negotiating",
     accepted: "accepted",
-    rejected: "rejected",
+    rejected: null,
     expired: "expired",
   };
 
@@ -393,12 +464,12 @@
     { key: "pending", label: "Awaiting you" },
     { key: "negotiating", label: "negotiating" },
     { key: "accepted", label: "accepted" },
-    { key: "rejected", label: "rejected" },
     { key: "expired", label: "Missed" },
   ];
 
   function bucketForStatus(status) {
-    return STATUS_BUCKET[String(status || "")] || "pending";
+    const key = String(status || "");
+    return key in STATUS_BUCKET ? STATUS_BUCKET[key] : "pending";
   }
 
   function RadarStrip(props) {
@@ -416,7 +487,7 @@
     );
   }
 
-  const OPP_RESOLVED_LABEL = { accepted: "Connected", rejected: "Declined", expired: "Missed" };
+  const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
 
   function initialsFor(name) {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -429,21 +500,20 @@
     const opportunity = props.opportunity;
     const status = opportunity.status || "";
     const resolved = OPP_RESOLVED_LABEL[status];
-    const networks = Array.isArray(opportunity.networks) ? opportunity.networks : [];
     const acting = !!props.actingId && props.actingId === opportunity.opportunityId;
     let actionButtons = null;
     if (props.onAccept && bucketForStatus(status) === "pending") {
       actionButtons = [
         React.createElement(Button, {
-          key: "skip", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
+          key: "accept", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
-          onClick: function () { if (props.onSkip) props.onSkip(opportunity.opportunityId); },
-        }, "Skip"),
+          onClick: function () { props.onAccept(opportunity); },
+        }, acting ? "Working…" : "Accept"),
         React.createElement(Button, {
-          key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
+          key: "pass", type: "button", ghost: true, size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
-          onClick: function () { props.onAccept(opportunity.opportunityId); },
-        }, acting ? "Working…" : "Start chat"),
+          onClick: function () { if (props.onSkip) props.onSkip(opportunity); },
+        }, "Pass"),
       ];
     } else if (status === "accepted") {
       if (props.onStartChat && opportunity.counterpartUserId) {
@@ -451,7 +521,7 @@
           key: "chat", type: "button", size: "sm", className: "index-dashboard__btn-md",
           disabled: acting,
           onClick: function () { props.onStartChat(opportunity); },
-        }, acting ? "Working…" : "Start chat")];
+        }, acting ? "Working…" : "Open chat ›")];
       } else if (opportunity.chatUrl) {
         actionButtons = [React.createElement("a", {
           key: "open", className: "index-dashboard__opp-openchat",
@@ -459,28 +529,6 @@
         }, "Open chat ↗")];
       }
     }
-
-    const socialsArr = Array.isArray(opportunity.socials) ? opportunity.socials : [];
-    const socialIcons = socialsArr
-      .filter(function (s) { return s && SOCIAL_ICONS[s.label] && s.value; })
-      .map(function (s) {
-        return React.createElement("a", {
-          key: s.label,
-          className: "index-dashboard__opp-social",
-          href: socialUrl(s.label, s.value),
-          target: "_blank",
-          rel: "noopener noreferrer",
-          title: s.label,
-          "aria-label": s.label,
-          onClick: function (e) { e.stopPropagation(); },
-        }, SOCIAL_ICONS[s.label]());
-      });
-    const footer = (socialIcons.length || actionButtons)
-      ? React.createElement("div", { className: "index-dashboard__opp-actions" },
-        React.createElement("div", { className: "index-dashboard__opp-socials" }, socialIcons),
-        actionButtons ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons) : React.createElement("span", null),
-      )
-      : null;
     const clickable = !!props.onOpenUser && !!opportunity.counterpartUserId;
     const idProps = clickable
       ? {
@@ -512,27 +560,15 @@
             React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
           ),
         ),
-        resolved
-          ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
-          : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
+        // Mac-app parity: the head's right column shows the action buttons when
+        // the card is actionable, otherwise the status label — never both.
+        actionButtons
+          ? React.createElement("div", { className: "index-dashboard__opp-btns" }, actionButtons)
+          : resolved
+            ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, resolved)
+            : status ? React.createElement(BadgeText, { tone: statusTone(status), className: "index-dashboard__opp-status" }, String(status).replace(/_/g, " ")) : null,
       ),
       opportunity.mainText ? React.createElement("p", { className: "index-dashboard__opp-text" }, opportunity.mainText) : null,
-      networks.length > 0 || (typeof opportunity.score === "number" && opportunity.score > 0)
-        ? React.createElement("div", { className: "index-dashboard__opp-foot" },
-          networks.length > 0
-            ? React.createElement("div", { className: "index-dashboard__item-networks" },
-              React.createElement("span", null, "Surfaced in"),
-              networks.map(function (network) {
-                return React.createElement(BadgeText, { key: String(network), variant: "outline" }, network);
-              }),
-            )
-            : React.createElement("span", null),
-          typeof opportunity.score === "number" && opportunity.score > 0
-            ? React.createElement("span", { className: "index-dashboard__opp-score" }, Math.round(opportunity.score * 100) + "% match")
-            : null,
-        )
-        : null,
-      footer,
     );
   }
 
@@ -563,41 +599,42 @@
   function IntentRow(props) {
     const intent = props.intent;
     const className = props.selected ? "index-dashboard__intent-row index-dashboard__intent-row--selected" : "index-dashboard__intent-row";
+    // Mirrors the mac app's signal rows: the beacon blinks while the signal
+    // is live (real mac rows are only ever live or paused).
+    const running = intent.status === "live";
     return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect(intent.id); } },
       React.createElement("div", { className: "index-dashboard__intent-main" },
         React.createElement("span", { className: "index-dashboard__intent-title" }, intent.title || "Untitled intent"),
-        intent.status ? React.createElement(BadgeText, { tone: statusTone(intent.status) }, intent.status) : null,
+        intent.status
+          ? React.createElement(BadgeText, { tone: statusTone(intent.status) },
+            running ? React.createElement("span", { className: "index-dashboard__live-dot" }) : null,
+            intent.status,
+          )
+          : null,
       ),
       React.createElement("div", { className: "index-dashboard__intent-counts" },
-        React.createElement(BadgeText, null, formatCount(intent.opportunityCount) + " opps"),
-        intent.questionCount ? React.createElement(BadgeText, { variant: "default" }, formatCount(intent.questionCount) + " Q") : null,
+        PendingBadge(intent.pendingCount),
       ),
     );
   }
 
-  function GeneralRow(props) {
-    const className = props.selected ? "index-dashboard__intent-row index-dashboard__intent-row--selected" : "index-dashboard__intent-row";
-    return React.createElement("button", { type: "button", className: className, onClick: function () { props.onSelect("general"); } },
-      React.createElement("div", { className: "index-dashboard__intent-main" },
-        React.createElement("span", { className: "index-dashboard__intent-title" }, "General"),
-        React.createElement("span", { className: "index-dashboard__intent-sub" }, "Not tied to an intent"),
-      ),
-      React.createElement("div", { className: "index-dashboard__intent-counts" },
-        props.opportunityCount ? React.createElement(BadgeText, null, formatCount(props.opportunityCount) + " opps") : null,
-        props.questionCount ? React.createElement(BadgeText, { variant: "default" }, formatCount(props.questionCount) + " Q") : null,
-      ),
-    );
+  // One consolidated, unlabeled number per row: pending questions + awaiting
+  // opportunities. Every surface (Hermes web/desktop, mac app) shows this same
+  // sum so counts stay consistent.
+  function PendingBadge(count) {
+    if (!count) return null;
+    return React.createElement(BadgeText, null, formatCount(count));
   }
 
   function IntentPitch() {
     return React.createElement("aside", { className: "index-dashboard__pitch" },
-      React.createElement("img", {
+      PITCH_IMAGE() ? React.createElement("img", {
         className: "index-dashboard__pitch-media",
-        src: PITCH_IMAGE,
+        src: PITCH_IMAGE(),
         alt: "",
         "aria-hidden": "true",
         loading: "lazy",
-      }),
+      }) : null,
       React.createElement("div", { className: "index-dashboard__pitch-body" },
         React.createElement("h2", { className: "index-dashboard__pitch-title" },
           "meet the person your agent is already looking for.",
@@ -694,9 +731,8 @@
   function NetworkMiniRow(props) {
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
-    const isEvent = network.type === "event";
     const isOwner = network.role === "owner";
-    return React.createElement("button", { type: "button", className: "index-dashboard__net-row", onClick: function () { if (props.onOpen) props.onOpen(network); } },
+    return React.createElement("div", { className: "index-dashboard__net-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -709,7 +745,6 @@
           (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
         ),
       ),
-      isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
       isOwner
         ? React.createElement(BadgeText, null, "Owner")
         : React.createElement(BadgeText, { tone: "secondary" }, "Member"),
@@ -719,9 +754,8 @@
   function NetworkDiscoverRow(props) {
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
-    const isEvent = network.type === "event";
     const joining = props.joiningId === network.id;
-    return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-row--static" },
+    return React.createElement("div", { className: "index-dashboard__net-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -734,7 +768,6 @@
           (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
         ),
       ),
-      isEvent ? React.createElement("span", { className: "index-dashboard__net-event" }, "Event") : null,
       React.createElement(Button, {
         type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md",
         disabled: joining, onClick: function () { if (props.onJoin) props.onJoin(network.id); },
@@ -754,7 +787,7 @@
       items.map(function (network, index) {
         return props.discover
           ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
-          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
       }),
     );
   }
@@ -791,7 +824,7 @@
       React.createElement("div", { className: "index-dashboard__net-head" },
         React.createElement("h2", { className: "index-dashboard__net-heading" }, ICON_NETWORK(), "Networks (" + formatCount(networks.count || items.length) + ")"),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
-          React.createElement(Button, { size: "sm", outlined: true, className: "uppercase", prefix: ICON_COMPASS(), onClick: function () { setOpen(true); } }, "Discover"),
+          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { setOpen(true); } }, ICON_COMPASS(), "Discover"),
         ),
       ),
       networks.error
@@ -800,7 +833,7 @@
           ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
           : React.createElement("div", { className: "index-dashboard__net-list" },
             items.map(function (network, index) {
-              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
+              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
             }),
           ),
       open ? React.createElement(NetworkDiscoverModal, { discover: discover, error: networks.error, onJoin: props.onJoin, joiningId: props.joiningId, onClose: function () { setOpen(false); } }) : null,
@@ -809,12 +842,7 @@
 
   function IntentList(props) {
     const intents = Array.isArray(props.intents) ? props.intents : [];
-    const general = props.general || {};
-    const generalCount = general.count || 0;
     return React.createElement("div", { className: "index-dashboard__intent-list" },
-      generalCount > 0
-        ? React.createElement(GeneralRow, { questionCount: general.questionCount, opportunityCount: general.opportunityCount, selected: props.selectedId === "general", onSelect: props.onSelect })
-        : null,
       intents.length === 0
         ? React.createElement(EmptyState, null, "No active intents yet.")
         : intents.map(function (intent) {
@@ -825,21 +853,21 @@
 
   function DetailHead(props) {
     return React.createElement("div", { className: "index-dashboard__detail-head" },
-      props.onBack ? React.createElement(Button, { type: "button", ghost: true, size: "sm", prefix: ICON_ARROW_LEFT(), onClick: props.onBack }, "Back") : null,
+      props.onBack ? React.createElement("button", { type: "button", className: "index-dashboard__back-pill", onClick: props.onBack }, ICON_ARROW_LEFT(), "Back") : null,
       React.createElement("div", { className: "index-dashboard__detail-card" },
         React.createElement("div", { className: "index-dashboard__detail-title-row" },
           React.createElement("h2", { className: "index-dashboard__detail-title" }, props.title),
           props.actions ? React.createElement("div", { className: "flex items-center gap-1 shrink-0" }, props.actions) : null,
         ),
-        props.live
-          ? React.createElement("div", { className: "index-dashboard__detail-live" },
-            React.createElement("span", { className: "index-dashboard__live" },
-              React.createElement("span", { className: "index-dashboard__live-dot" }),
-              "live",
-            ),
-            React.createElement("span", { className: "index-dashboard__detail-live-text" }, "agent is looking in the background"),
-          )
-          : null,
+      props.live
+        ? React.createElement("div", { className: "index-dashboard__detail-live" },
+          React.createElement("span", { className: "index-dashboard__live" + (props.paused ? " index-dashboard__live--paused" : "") },
+            React.createElement("span", { className: "index-dashboard__live-dot" }),
+            props.paused ? "paused" : "live",
+          ),
+          React.createElement("span", { className: "index-dashboard__detail-live-text" }, props.paused ? "agent on hold" : "agent is looking in the background"),
+        )
+        : null,
       ),
     );
   }
@@ -849,11 +877,23 @@
     const bucketState = React.useState("pending");
     const selectedBucket = bucketState[0];
     const setSelectedBucket = bucketState[1];
+    // Armed archive: the first click arms the segment ("sure?"), the second
+    // commits. Disarms itself after a few seconds, like the Mac app — this
+    // replaces window.confirm, which the desktop host doesn't provide.
+    const armedState = React.useState(false);
+    const armed = armedState[0];
+    const setArmed = armedState[1];
+    React.useEffect(function () {
+      if (!armed) return undefined;
+      const timer = setTimeout(function () { setArmed(false); }, 4000);
+      return function () { clearTimeout(timer); };
+    }, [armed]);
     if (!intent) {
       return React.createElement("div", { className: "index-dashboard__detail" },
         React.createElement(EmptyState, null, "Select an intent to see its questions and radar."),
       );
     }
+    const paused = String(intent.lifecycleStatus || "").toLowerCase() === "paused";
     const questionSection = { items: intent.questions || [] };
     const allOpps = Array.isArray(intent.opportunities) ? intent.opportunities : [];
     const visibleOpps = allOpps.filter(function (opp) {
@@ -864,62 +904,41 @@
       React.createElement(DetailHead, {
         title: intent.title || "Untitled intent",
         live: true,
+        paused: paused,
         onBack: props.onBack,
         actions: (function () {
-          const paused = String(intent.status || "").toLowerCase() === "paused";
           const archiving = props.archivingId === intent.id;
-          return [
-            Tip("pause", paused ? "Resume" : "Pause", React.createElement(Button, {
-              ghost: true, size: "icon",
+          return React.createElement("span", { className: "index-dashboard__action-group" },
+            Tip("pause", paused ? "Resume" : "Pause", React.createElement("button", {
+              type: "button",
               "aria-label": paused ? "Resume" : "Pause",
-              className: paused ? "text-success" : "text-warning",
-              onClick: props.onPause ? function () { props.onPause(intent.id, paused); } : undefined,
+              className: "index-dashboard__action-seg "
+                + (paused ? "index-dashboard__action-seg--resume index-dashboard__action-seg--filled" : "index-dashboard__action-seg--pause"),
+              onClick: props.onPause ? function () { setArmed(false); props.onPause(intent.id, paused); } : undefined,
             }, paused ? ICON_PLAY() : ICON_PAUSE())),
-            Tip("edit", "Edit", React.createElement(Button, {
-              ghost: true, size: "icon",
-              "aria-label": "Edit",
-              onClick: props.onEdit ? function () { props.onEdit(intent.id); } : undefined,
-            }, ICON_PENCIL())),
-            Tip("archive", archiving ? "Archiving…" : "Archive", React.createElement(Button, {
-              ghost: true, destructive: true, size: "icon",
-              "aria-label": "Archive",
+            React.createElement("span", { key: "sep", className: "index-dashboard__action-sep", "aria-hidden": "true" }),
+            Tip("archive", archiving ? "Archiving…" : armed ? "Confirm archive" : "Archive", React.createElement("button", {
+              type: "button",
+              "aria-label": armed ? "Confirm archive" : "Archive",
+              className: "index-dashboard__action-seg index-dashboard__action-seg--archive"
+                + (armed || archiving ? " index-dashboard__action-seg--filled" : ""),
               disabled: archiving,
-              onClick: archiving ? undefined : function () { if (props.onArchive) props.onArchive(intent.id); },
-            }, ICON_TRASH())),
-          ];
+              onClick: archiving ? undefined : function () {
+                if (!armed) { setArmed(true); return; }
+                setArmed(false);
+                if (props.onArchive) props.onArchive(intent.id);
+              },
+            }, ICON_TRASH(), armed ? "sure?" : null)),
+          );
         })(),
       }),
       React.createElement("div", { className: "index-dashboard__detail-cols" },
       React.createElement(Panel, { primary: true, title: "Questions", count: intent.questionCount, description: "Answer pending follow-ups for this intent." },
-        React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
+        React.createElement(QuestionList, { section: questionSection, answered: props.answered, actionError: props.actionError, onSubmit: props.onSubmit, onSkip: props.onSkip }),
       ),
         React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People the network surfaced for this intent." },
           React.createElement(RadarStrip, { counts: intent.statusCounts, selected: selectedBucket, onSelect: setSelectedBucket }),
           React.createElement(RadarList, { items: visibleOpps, empty: radarEmpty, onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
-        ),
-      ),
-    );
-  }
-
-  function GeneralDetail(props) {
-    const general = props.general || { questions: [], opportunities: [] };
-    const bucketState = React.useState("pending");
-    const selectedBucket = bucketState[0];
-    const setSelectedBucket = bucketState[1];
-    const questionSection = { items: general.questions || [] };
-    const allOpps = Array.isArray(general.opportunities) ? general.opportunities : [];
-    const visibleOpps = allOpps.filter(function (opp) {
-      return bucketForStatus(opp.status) === selectedBucket;
-    });
-    return React.createElement("div", { className: "index-dashboard__detail" },
-      React.createElement(DetailHead, { title: "General", onBack: props.onBack }),
-      React.createElement("div", { className: "index-dashboard__detail-cols" },
-        React.createElement(Panel, { primary: true, title: "Questions", count: questionSection.items.length, description: "Onboarding and follow-ups not tied to an intent." },
-          React.createElement(QuestionList, { section: questionSection, actionError: props.actionError, submittingId: props.submittingId, onSubmit: props.onSubmit, onSkip: props.onSkip }),
-        ),
-        React.createElement(Panel, { title: "Radar", count: allOpps.length, titleAfter: RADAR_EYE(), description: "People surfaced outside a specific intent." },
-          React.createElement(RadarStrip, { counts: general.statusCounts || {}, selected: selectedBucket, onSelect: setSelectedBucket }),
-          React.createElement(RadarList, { items: visibleOpps, empty: "No general matches here yet.", onOpenUser: props.onOpenUser, onAccept: props.onAccept, onSkip: props.onSkipOpportunity, onStartChat: props.onStartChat, actingId: props.actingId, webUrl: props.webUrl }),
         ),
       ),
     );
@@ -1561,6 +1580,27 @@
     }
 
     useEffect(function () {
+      // Desktop host: the REST bridge buffers whole responses, so the SSE
+      // relay can't stream — poll the list and the open thread instead.
+      if (DESKTOP_ENV) {
+        const pollId = setInterval(function () {
+          refreshList();
+          const active = activeIdRef.current;
+          if (!active) return;
+          fetchPluginJSON(API + "/conversations/" + encodeURIComponent(active) + "/messages")
+            .then(function (payload) {
+              if (!payload || payload.success === false) return;
+              const uid = payload.currentUserId || userIdRef.current || "";
+              const list = (payload.messages || [])
+                .map(function (m) { return normalizeMessage(m, uid); })
+                .filter(Boolean);
+              if (activeIdRef.current === active) setMessages(list);
+            })
+            .catch(function () { /* transient poll errors */ });
+        }, 15000);
+        return function () { clearInterval(pollId); };
+      }
+
       let retryTimer = null;
       let retries = 0;
       let stopped = false;
@@ -1795,55 +1835,6 @@
     );
   }
 
-  // DEBUG: seed fixture questions so the Questions panel renders without waiting
-  // on the backend question generator. Only fills intents / General that have no
-  // real questions; real questions are never overwritten. Answer/Skip still POST
-  // to the backend (fixture ids will 404) — this is UI-render debugging only.
-  // Remove this function and its call in the /summary handler before merging.
-  function injectDebugQuestions(payload) {
-    if (!payload) return;
-    function fixtures(scopeId) {
-      return [
-        {
-          id: "debug-question-" + scopeId + "-scope",
-          prompt: "Which angle do you most want feedback on?",
-          multiSelect: false,
-          options: [
-            { label: "Technical architecture", description: "Protocol, data model, tradeoffs." },
-            { label: "Design / UX", description: "Flows, surfaces, ergonomics." },
-            { label: "Go-to-market", description: "Positioning and early users." },
-          ],
-        },
-        {
-          id: "debug-question-" + scopeId + "-audience",
-          prompt: "Who would you most want in these discussions? (pick any)",
-          multiSelect: true,
-          options: [
-            { label: "Protocol designers", description: "People shaping the underlying spec." },
-            { label: "Applied researchers", description: "Deep technical counterparts." },
-            { label: "Product / design", description: "Turning primitives into UX." },
-          ],
-        },
-      ];
-    }
-    const intents = Array.isArray(payload.intents) ? payload.intents : [];
-    intents.forEach(function (intent) {
-      if (!intent) return;
-      const existing = Array.isArray(intent.questions) ? intent.questions : [];
-      if (existing.length === 0) {
-        intent.questions = fixtures(intent.id || "intent");
-        intent.questionCount = intent.questions.length;
-      }
-    });
-    if (payload.general) {
-      const generalQuestions = Array.isArray(payload.general.questions) ? payload.general.questions : [];
-      if (generalQuestions.length === 0) {
-        payload.general.questions = fixtures("general");
-        payload.general.questionCount = payload.general.questions.length;
-      }
-    }
-  }
-
   function IndexNetworkDashboard() {
     const useState = React.useState;
     const useEffect = React.useEffect;
@@ -1861,9 +1852,11 @@
     const actionErrorState = useState(null);
     const actionError = actionErrorState[0];
     const setActionError = actionErrorState[1];
-    const submittingState = useState(null);
-    const submittingId = submittingState[0];
-    const setSubmittingId = submittingState[1];
+    // Question id -> settled record ({ question, choice, dismissed, intentId }).
+    // Session-local, like the Mac app's answered clarifiers in the feed.
+    const answeredState = useState({});
+    const answeredMap = answeredState[0];
+    const setAnsweredMap = answeredState[1];
     const actingState = useState(null);
     const actingId = actingState[0];
     const setActingId = actingState[1];
@@ -1894,6 +1887,9 @@
     const unreadState = useState(false);
     const hasUnread = unreadState[0];
     const setHasUnread = unreadState[1];
+    const inlineHdrState = useState(false);
+    const inlineHdr = inlineHdrState[0];
+    const setInlineHdr = inlineHdrState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
@@ -1912,7 +1908,6 @@
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
           }
-          injectDebugQuestions(payload); // DEBUG: remove before merging
           setSummary(payload);
         })
         .catch(function (err) {
@@ -1956,9 +1951,31 @@
       ctl.messages.classList.toggle("index-dashboard__hdr-account--dot", !!hasUnread);
     }, [hasUnread]);
 
-    function submitQuestion(question, selectedOptions, freeText) {
-      setSubmittingId(question.id);
+    // Mac-app parity: the card flips into a settled record immediately (the
+    // Mac app updates its feed before the API call returns); a failed write
+    // restores the form and surfaces the error.
+    function recordAnswer(question, extra) {
       setActionError(null);
+      setAnsweredMap(function (prev) {
+        const next = Object.assign({}, prev);
+        next[question.id] = Object.assign({ question: question, intentId: selectedId }, extra);
+        return next;
+      });
+    }
+
+    function unrecordAnswer(questionId) {
+      setAnsweredMap(function (prev) {
+        const next = Object.assign({}, prev);
+        delete next[questionId];
+        return next;
+      });
+    }
+
+    function submitQuestion(question, selectedOptions, freeText) {
+      const choice = (selectedOptions && selectedOptions.length
+        ? selectedOptions.join(", ")
+        : String(freeText || "")).trim() || "answered";
+      recordAnswer(question, { choice: choice, dismissed: false });
       fetchPluginJSON(API + "/questions/" + encodeURIComponent(question.id) + "/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1971,16 +1988,13 @@
           load();
         })
         .catch(function (err) {
+          unrecordAnswer(question.id);
           setActionError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setSubmittingId(null);
         });
     }
 
     function skipQuestion(question) {
-      setSubmittingId(question.id);
-      setActionError(null);
+      recordAnswer(question, { choice: "", dismissed: true });
       fetchPluginJSON(API + "/questions/" + encodeURIComponent(question.id) + "/dismiss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1993,23 +2007,48 @@
           load();
         })
         .catch(function (err) {
+          unrecordAnswer(question.id);
           setActionError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setSubmittingId(null);
         });
     }
 
-    function opportunityAction(opportunityId, action, onPayload, acknowledgedIds) {
+    // Open (or resolve) the in-dashboard DM for an opportunity via the same
+    // start-chat endpoint the Mac app uses; the backend resolves the counterpart.
+    function openOpportunityChat(opportunity) {
+      const opportunityId = opportunity && opportunity.opportunityId;
       if (!opportunityId) return;
+      const body = {};
+      if (opportunity.intentScopeId) { body.scopeType = "intent"; body.scopeId = opportunity.intentScopeId; }
+      setActingId(opportunityId);
+      setActionError(null);
+      fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/start-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false || !payload.conversationId) {
+            throw new Error((payload && payload.error) || "That chat could not be opened.");
+          }
+          setMessagesTarget(payload.conversationId);
+          setMessagesOpen(true);
+        })
+        .catch(function (err) { setActionError(err && err.message ? err.message : String(err)); })
+        .finally(function () { setActingId(null); });
+    }
+
+    function opportunityAction(opportunity, action, onPayload, acknowledgedIds) {
+      const opportunityId = opportunity && opportunity.opportunityId;
+      if (!opportunityId) return;
+      const body = {};
+      if (opportunity.intentScopeId) { body.scopeType = "intent"; body.scopeId = opportunity.intentScopeId; }
+      if (acknowledgedIds && acknowledgedIds.length) body.acknowledgedUptakeQuestionIds = acknowledgedIds;
       setActingId(opportunityId);
       setActionError(null);
       fetchPluginJSON(API + "/opportunities/" + encodeURIComponent(opportunityId) + "/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(acknowledgedIds && acknowledgedIds.length
-          ? { acknowledgedUptakeQuestionIds: acknowledgedIds }
-          : {}),
+        body: JSON.stringify(body),
       })
         .then(function (payload) {
           if (payload && payload.success === false && payload.advisory && payload.advisory.code === "unresolved_uptake_questions") {
@@ -2022,7 +2061,7 @@
               "\n\nContinue anyway without answering?"
             );
             if (proceed) {
-              opportunityAction(opportunityId, action, onPayload, questions.map(function (question) { return question.id; }));
+              opportunityAction(opportunity, action, onPayload, questions.map(function (question) { return question.id; }));
             } else {
               setActionError("Acceptance is still pending. Answer or dismiss the listed questions, or choose Continue anyway.");
             }
@@ -2042,48 +2081,64 @@
         });
     }
 
-    function acceptOpportunity(opportunityId) {
-      opportunityAction(opportunityId, "accept", function (payload) {
-        if (payload.conversationId) {
-          setMessagesTarget(payload.conversationId);
-          setMessagesOpen(true);
-        } else if (payload.chatUrl) {
-          try { window.open(payload.chatUrl, "_blank", "noopener"); } catch (e) { /* popup blocked */ }
-        }
+    function acceptOpportunity(opportunity) {
+      opportunityAction(opportunity, "accept", function () {
+        openOpportunityChat(opportunity);
       });
     }
 
-    function skipOpportunity(opportunityId) {
-      opportunityAction(opportunityId, "skip");
+    function skipOpportunity(opportunity) {
+      opportunityAction(opportunity, "skip");
     }
 
-    // Open the in-dashboard DM for an already-accepted opportunity, resolving
-    // (or creating) the H2H conversation with the counterpart, mirroring the
-    // in-dashboard chat that pending accept opens.
     function startChatWithOpportunity(opportunity) {
-      const counterpartId = opportunity && opportunity.counterpartUserId;
-      if (!counterpartId) return;
-      setActingId(opportunity.opportunityId);
+      openOpportunityChat(opportunity);
+    }
+
+    // Optimistic lifecycle flip: rewrite the intent's lifecycleStatus and the
+    // derived row status in place (same derivation the plugin API uses), so the
+    // pause button, badge and list tag react instantly; load() reconciles order.
+    function applyIntentLifecycle(intentId, lifecycle) {
+      setSummary(function (prev) {
+        if (!prev || !Array.isArray(prev.intents)) return prev;
+        return Object.assign({}, prev, {
+          intents: prev.intents.map(function (intent) {
+            if (intent.id !== intentId) return intent;
+            const counts = intent.statusCounts || {};
+            const status = lifecycle === "PAUSED" ? "paused"
+              : counts.accepted ? "matched"
+                : counts.negotiating ? "negotiating" : "live";
+            return Object.assign({}, intent, { lifecycleStatus: lifecycle, status: status });
+          }),
+        });
+      });
+    }
+
+    function togglePauseIntent(intentId, paused) {
+      if (!intentId) return;
       setActionError(null);
-      fetchPluginJSON(API + "/conversations/dm", {
+      applyIntentLifecycle(intentId, paused ? "ACTIVE" : "PAUSED");
+      fetchPluginJSON(API + "/intents/" + encodeURIComponent(intentId) + "/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ peerUserId: counterpartId }),
+        body: JSON.stringify({ status: paused ? "ACTIVE" : "PAUSED" }),
       })
         .then(function (payload) {
-          if (!payload || payload.success === false || !payload.conversation || !payload.conversation.id) {
-            throw new Error((payload && payload.error) || "That chat could not be opened.");
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Intent status could not be updated.");
           }
-          setMessagesTarget(payload.conversation.id);
-          setMessagesOpen(true);
+          load();
         })
-        .catch(function (err) { setActionError(err && err.message ? err.message : String(err)); })
-        .finally(function () { setActingId(null); });
+        .catch(function (err) {
+          applyIntentLifecycle(intentId, paused ? "PAUSED" : "ACTIVE");
+          setActionError(err && err.message ? err.message : String(err));
+        });
     }
 
+    // No confirm dialog here: the archive segment in IntentDetail arms on the
+    // first click and only calls this on the confirming second click.
     function archiveIntent(intentId) {
       if (!intentId) return;
-      if (typeof window.confirm === "function" && !window.confirm("Archive this intent? It will stop matching.")) return;
       setArchivingId(intentId);
       setActionError(null);
       fetchPluginJSON(API + "/intents/" + encodeURIComponent(intentId) + "/archive", {
@@ -2129,13 +2184,6 @@
         });
     }
 
-    function openNetworkInWeb(network) {
-      const base = summary && summary.webUrl;
-      if (base && network && network.id) {
-        try { window.open(base + "/networks/" + encodeURIComponent(network.id), "_blank", "noopener"); } catch (e) { /* popup blocked */ }
-      }
-    }
-
     loadRef.current = load;
 
     useEffect(function () {
@@ -2144,7 +2192,10 @@
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');
-      if (!header) return undefined;
+      if (!header) {
+        setInlineHdr(true);
+        return undefined;
+      }
       const container = header.querySelector("div") || header;
 
       const wrap = document.createElement("div");
@@ -2236,6 +2287,7 @@
     }, [autoRefresh]);
 
     useEffect(function () {
+      if (DESKTOP_ENV) return undefined;
       function onHashChange() {
         setSelectedId(parseHash().intentId);
       }
@@ -2246,7 +2298,6 @@
     }, []);
 
     const intents = (summary && summary.intents) || [];
-    const general = (summary && summary.general) || { count: 0, questions: [] };
 
     function selectIntent(id) {
       setSelectedId(id);
@@ -2268,28 +2319,54 @@
       writeHash(null);
     }
 
-    const selectedIntent = selectedId && selectedId !== "general"
+    const selectedIntent = selectedId
       ? intents.filter(function (intent) { return intent.id === selectedId; })[0]
       : null;
-    const showDetail = selectedId === "general" || !!selectedIntent;
 
-    const intentsView = showDetail
-      ? (selectedId === "general"
-        ? React.createElement(GeneralDetail, { general: general, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl })
-        : React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, actionError: actionError, submittingId: submittingId, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId }))
+    // Settled records = the server-backed answered questions from the summary
+    // (server-scoped per intent, oldest first — identical to the Mac app),
+    // then this session's local flips the summary hasn't caught up with yet
+    // (skips and just-given answers), appended as the newest records.
+    const answeredForSelected = (function () {
+      if (!selectedIntent) return [];
+      const server = (selectedIntent.answeredQuestions || []).map(function (question) {
+        return { question: question, choice: question.answerText || "answered", dismissed: false };
+      });
+      const seen = {};
+      server.forEach(function (record) { seen[record.question.id] = true; });
+      const local = Object.keys(answeredMap).map(function (id) { return answeredMap[id]; })
+        .filter(function (record) {
+          return record.intentId === selectedIntent.id && !seen[record.question.id];
+        });
+      return server.concat(local);
+    })();
+
+    const intentsView = selectedIntent
+      ? React.createElement(IntentDetail, { key: selectedIntent.id, intent: selectedIntent, answered: answeredForSelected, actionError: actionError, onSubmit: submitQuestion, onSkip: skipQuestion, onBack: goBack, onOpenUser: openUser, onAccept: acceptOpportunity, onSkipOpportunity: skipOpportunity, onStartChat: startChatWithOpportunity, actingId: actingId, webUrl: summary && summary.webUrl, onArchive: archiveIntent, archivingId: archivingId, onPause: togglePauseIntent })
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
           React.createElement(Panel, { icon: ICON_TARGET(), title: "Intents", count: intents.length },
-            React.createElement(IntentList, { intents: intents, general: general, selectedId: selectedId, onSelect: selectIntent }),
+            React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, onOpen: openNetworkInWeb, onJoin: joinNetwork, joiningId: joiningId }),
+            React.createElement(NetworksMini, { networks: summary && summary.networks, onJoin: joinNetwork, joiningId: joiningId }),
           ),
         ),
       );
 
     return React.createElement("div", { className: "index-dashboard" },
+      inlineHdr
+        ? React.createElement(InlineHeaderControls, {
+          autoRefresh: autoRefresh,
+          loading: loading,
+          hasUnread: hasUnread,
+          onToggle: function () { setAutoRefresh(function (v) { return !v; }); },
+          onRefresh: function () { if (loadRef.current) loadRef.current(); },
+          onMessages: function () { if (openMessagesRef.current) openMessagesRef.current(null); },
+          onAccount: function () { if (toggleProfileRef.current) toggleProfileRef.current(); },
+        })
+        : null,
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
@@ -2302,11 +2379,14 @@
 
       loading && !summary
         ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-          React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE, alt: "Loading", loading: "eager" }),
+          LOADING_IMAGE()
+            ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+            : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
         )
         : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
     );
   }
 
-  window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
+  if (DESKTOP_ENV) DESKTOP_ENV.onComponent(IndexNetworkDashboard);
+  else window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
 })();

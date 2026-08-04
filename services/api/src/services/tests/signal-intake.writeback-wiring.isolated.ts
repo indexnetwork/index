@@ -7,12 +7,13 @@
  * questioner adapter module is asserted against, since that is the seam
  * under test.
  *
- * The `who` and `bring` fixtures are deliberately made to diverge: round-1's
- * real question offers two options but the user only picks one, while
- * round-2 has no real question available to the recorder at all. This lets
- * the two tests below tell a genuine "offered menu" apart from a fabricated
- * one — the current suite (pre-fix) could not, since both stages persisted
- * only the user's own selection reformatted as a fake menu.
+ * The round-1 and follow-up fixtures are deliberately made to diverge:
+ * round-1's real question offers two options but the user only picks one,
+ * while follow-up rounds carry only their client-sent prompt, never the full
+ * question object. This lets the two tests below tell a genuine "offered
+ * menu" apart from a fabricated one — the current suite (pre-fix) could not,
+ * since both stages persisted only the user's own selection reformatted as a
+ * fake menu.
  */
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
@@ -28,7 +29,7 @@ const round1Question = {
 };
 
 /** Round-2's question as produced by the (mocked) orchestrator; irrelevant to
- * the `bring` write-back, which never receives a real question object. */
+ * the follow-up write-back, which receives only the client-sent prompt. */
 const round2Question = {
   title: 'What would you bring?',
   prompt: 'What would you bring?',
@@ -75,7 +76,7 @@ mock.module('../../queues/intent.queue', () => ({ intentQueue: {} }));
 mock.module('../../queues/questioner.queue', () => ({ questionerEnqueueIfEnabled: () => undefined }));
 
 // Stubs the LLM-backed orchestrator/pack-generator/intent-graph collaborators
-// so `nextQuestion()` can run end to end (through the real `record()` call
+// so `followUpQuestions()` can run end to end (through the real `record()` call
 // site) without ever reaching the network.
 mock.module('@indexnetwork/protocol', () => ({
   FALLBACK_WHO_QUESTION: { title: 'Fallback', prompt: 'fallback', options: [], multiSelect: false },
@@ -86,8 +87,8 @@ mock.module('@indexnetwork/protocol', () => ({
     }
   },
   SignalIntakeOrchestrator: class SignalIntakeOrchestrator {
-    async nextQuestion() {
-      return round2Question;
+    async generateFollowUps() {
+      return { questions: [round2Question], plannedFollowUpCount: 1 };
     }
     async synthesize() {
       return { description: 'd', lookingFor: 'l', youBring: 'y' };
@@ -115,7 +116,9 @@ describe('production intake recorder wiring', () => {
   });
 
   it('mirrors the real round-1 menu for the "who" stage, including the option the user did not select', async () => {
-    await signalIntakeService.nextQuestion('u1', { selectedOptions: ['A design partner'] });
+    await signalIntakeService.followUpQuestions('u1', {
+      rounds: [{ prompt: round1Question.prompt, answer: { selectedOptions: ['A design partner'] } }],
+    });
 
     // The recorder is fire-and-forget; give its microtask chain a tick to run.
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -139,15 +142,16 @@ describe('production intake recorder wiring', () => {
     expect(answer.mock.calls[0][2]).toMatchObject({ selectedOptions: ['A design partner'] });
   });
 
-  it('persists and answers a chat-mode question row through the shared questioner adapter, falling back to the documented proxy for "bring"', async () => {
-    // `prepare` is used (not `nextQuestion`) so this stays clear of the real
+  it('persists and answers a chat-mode question row through the shared questioner adapter, falling back to the documented proxy for follow-up rounds', async () => {
+    // `prepare` is used (not `followUpQuestions`) so this stays clear of the real
     // `SignalIntakeOrchestrator`/intent-graph LLM calls: the run store mock
     // reports `claimed: false`, so speculative synthesis never fires and the
     // only production collaborator exercised is the questioner adapter.
     await signalIntakeService.prepare('u1', {
-      whoAnswer: { selectedOptions: ['A design partner'] },
-      bringAnswer: { selectedOptions: ['Engineering depth'] },
-      round2Prompt: 'What would you bring?',
+      rounds: [
+        { prompt: round1Question.prompt, answer: { selectedOptions: ['A design partner'] } },
+        { prompt: round2Question.prompt, answer: { selectedOptions: ['Engineering depth'] } },
+      ],
     });
 
     // The recorder is fire-and-forget; give its microtask chain a tick to run.
@@ -156,16 +160,16 @@ describe('production intake recorder wiring', () => {
     expect(persist).toHaveBeenCalledTimes(1);
     const [batch] = persist.mock.calls[0] as [Array<Record<string, unknown>>];
     expect(batch[0]).toMatchObject({
-      detection: { mode: 'chat', sourceType: 'conversation', sourceId: 'intake:bring' },
+      detection: { mode: 'chat', sourceType: 'conversation', sourceId: 'intake:followup-2' },
       actors: [{ userId: 'u1', role: 'subject' }],
     });
 
-    // No real round-2 question reaches the recorder (documented gap: it would
-    // require editing the forbidden `PrepareSchema`), so the proxy fallback
-    // fires: `payload.options` mirrors only what the user selected, unlike
-    // the "who" case above which mirrors the full offered menu.
+    // No real question object travels with a follow-up round (only its
+    // prompt), so the proxy fallback fires: `payload.options` mirrors only
+    // what the user selected, unlike the "who" case above which mirrors the
+    // full offered menu.
     const payload = batch[0].payload as { title: string; options: Array<{ label: string; description: string }>; multiSelect: boolean };
-    expect(payload.title).toBe('Bring');
+    expect(payload.title).toBe('Follow-up');
     expect(payload.options).toEqual([{ label: 'Engineering depth', description: 'Engineering depth' }]);
 
     expect(answer).toHaveBeenCalledTimes(1);

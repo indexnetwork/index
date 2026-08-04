@@ -26,39 +26,10 @@ A network can represent:
 
 Each network has:
 - **Title**: Human-readable name
-- **Type**: `community` (default) or `event`. Determines which metadata fields are required and how AI agents evaluate intents.
 - **Prompt**: A natural-language description of the network's purpose. This is used by AI agents to evaluate whether intents belong in this network.
-- **Metadata**: Type-specific JSONB properties (see Network Types below).
+- **Metadata**: Freeform JSONB properties — no required fields.
 - **Image URL**: Optional visual identifier
 - **Permissions**: Access and join policy configuration
-
----
-
-## Network Types
-
-Networks have a polymorphic `type` field that drives validation, context rendering, and agent behavior.
-
-### Community (default)
-
-Standard networks for ongoing communities. Metadata is freeform — no required fields.
-
-### Event
-
-Time-bound networks for conferences, popup villages, and gatherings. Required metadata:
-- **startDate** / **endDate**: ISO 8601 date strings defining the event window.
-
-Optional metadata:
-- **location**: Venue or city.
-- **venue**: Specific venue name.
-- **themes**: Array of topic tags.
-- **events**: Array of schedule items (synced from external calendars or manually added). Each event has `externalId`, `title`, `startTime`, `endTime`, `location`, `description`, `tags`, `syncedAt`.
-
-Event-type networks receive special treatment in AI agents: the `IntentIndexer` factors temporal relevance when scoring intents, and the `OpportunityEvaluator` considers co-attendance signals and theme alignment.
-
-### Integrations
-
-Networks can be linked to external services via `network_integrations`. Currently supported:
-- **google_calendar**: A BullMQ repeatable worker syncs calendar events into `metadata.events[]` on a configurable interval. Sync configuration (calendarId, intervalMs, status) is stored in `network_integrations.syncConfig`.
 
 ---
 
@@ -155,6 +126,8 @@ An opportunity's relationship to a network is recorded per-actor: each entry in 
 ## Network Integrations
 
 Networks can be connected to external services (Slack channels, Notion workspaces, Gmail) through the `network_integrations` table. Each integration links a network to a connected account and toolkit identifier. Intents generated from integration sync are tagged with `sourceType: 'integration'` and the corresponding `sourceId`.
+
+Linking a user's Composio connection (**gmail** / **slack**) to a network enables contact import into that network. Link records are owner-managed via `POST/DELETE /api/integrations/:toolkit/link`.
 
 ---
 

@@ -49,7 +49,7 @@ export type {
   OpportunityGraphDatabase,
   OpportunityControllerDatabase,
   OutcomeOutbox,
-  HomeGraphDatabase,
+  RadarGraphDatabase,
   IntentGraphDatabase,
   HydeGraphDatabase,
   EnrichmentGraphDatabase,
@@ -142,7 +142,7 @@ export {
   filterOnboardingTools,
   narrowOnboardingTools,
 } from "./capabilities/participant-agents.facade.js";
-export { HomeGraphFactory } from "./capabilities/opportunities.facade.js";
+export { RadarGraphFactory } from "./capabilities/opportunities.facade.js";
 export { HydeGraphFactory } from "./capabilities/participant-context.facade.js";
 export { NetworkGraphFactory } from "./capabilities/communities.facade.js";
 export { NetworkMembershipGraphFactory } from "./capabilities/communities.facade.js";
@@ -196,6 +196,9 @@ export {
 } from "./capabilities/signals.facade.js";
 export type {
   IntakeAnswer,
+  IntakeRound,
+  FollowUpPlan,
+  FollowUpPlanInput,
   SynthesisInput,
   SynthesisResult,
 } from "./capabilities/signals.facade.js";
@@ -263,10 +266,10 @@ export type { PresenterDatabase } from "./capabilities/opportunities.facade.js";
 
 // ─── Support utilities ────────────────────────────────────────────────────────
 
-export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, FEED_SOFT_TARGETS } from "./capabilities/opportunities.facade.js";
+export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "./capabilities/opportunities.facade.js";
 export { getPrimaryActionLabel } from "./capabilities/opportunities.facade.js";
-export { computeFeedHealth } from "./capabilities/opportunities.facade.js";
-export type { FeedHealthInput } from "./capabilities/opportunities.facade.js";
+export { computeRadarHealth } from "./capabilities/opportunities.facade.js";
+export type { RadarHealthInput } from "./capabilities/opportunities.facade.js";
 export { isIntroducerDiscoveryEnabled } from "./capabilities/opportunities.facade.js";
 export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./capabilities/opportunities.facade.js";
 export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./capabilities/opportunities.facade.js";
@@ -276,7 +279,7 @@ export type { UserInfo } from "./capabilities/opportunities.facade.js";
 export { stripUuids, truncateAtBoundary } from "./capabilities/opportunities.facade.js";
 export { stripUnsupportedOpportunityClaims } from "./capabilities/opportunities.facade.js";
 export { safeFallbackSummary } from "./capabilities/opportunities.facade.js";
-export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildHomeCardPresentationCacheKey } from "./capabilities/opportunities.facade.js";
+export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./capabilities/opportunities.facade.js";
 export { getOrCreateDeliveryCardBatch } from "./capabilities/opportunities.facade.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────

@@ -6,10 +6,10 @@ import { WherePicker } from "@/components/signals/WherePicker";
 import { useNetworksState } from "@/contexts/IndexesContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient } from "@/lib/api";
-import { intakeService, type IntakeAnswerBody, type IntakeProposalResponse } from "@/services/intake";
+import { intakeService, type IntakeAnswerBody, type IntakeProposalResponse, type IntakeRound } from "@/services/intake";
 import type { PendingQuestion, QuestionPayload } from "@/services/questions";
 
-type Stage = "who" | "bring" | "where" | "clarify" | "proposal";
+type Stage = "who" | "followup" | "where" | "clarify" | "proposal";
 
 interface AnsweredStep {
   prompt: string;
@@ -48,9 +48,10 @@ export interface FastSignalIntakeProps {
 }
 
 /**
- * Deterministic four-round intake: a precomputed round 1, one model call for
- * round 2, a client-side community picker for round 3, and a proposal that
- * synthesis has usually already prepared speculatively in the background.
+ * Deterministic intake: a precomputed round 1, a locked plan of up to n-1
+ * generated follow-ups (served one per turn or as one batch), a client-side
+ * community picker, and a proposal that synthesis has usually already
+ * prepared speculatively in the background.
  */
 export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalIntakeProps) {
   const { indexes } = useNetworksState();
@@ -59,11 +60,12 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   const [stage, setStage] = useState<Stage>("who");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [whoQuestion, setWhoQuestion] = useState<QuestionPayload | null>(null);
-  const [bringQuestion, setBringQuestion] = useState<QuestionPayload | null>(null);
+  const [rounds, setRounds] = useState<IntakeRound[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<QuestionPayload | null>(null);
+  const [queue, setQueue] = useState<QuestionPayload[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
   const [clarification, setClarification] = useState<QuestionPayload | null>(null);
   const [answeredSteps, setAnsweredSteps] = useState<AnsweredStep[]>([]);
-  const [whoAnswer, setWhoAnswer] = useState<IntakeAnswerBody | null>(null);
-  const [bringAnswer, setBringAnswer] = useState<IntakeAnswerBody | null>(null);
   const [pendingChoice, setPendingChoice] = useState<WhereChoice | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | undefined>(undefined);
@@ -77,7 +79,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   const prepareRef = useRef<Promise<{ runId: string }> | null>(null);
   const resumeAttemptedRef = useRef(false);
 
-  // Round 3 offers communities, and a personal network is not one: it is the
+  // The community picker offers communities, and a personal network is not one: it is the
   // user's own private space. Mirrors NetworksPanel's `!i.isPersonal` filter and
   // the server-side brief, which is built from `getNonPersonalNetworkIds`.
   const communities = useMemo(() => indexes.filter((item) => !item.isPersonal), [indexes]);
@@ -127,44 +129,70 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     void attemptResumeCompletion();
   }, [attemptResumeCompletion, resumeIntentId]);
 
-  const handleWhoAnswer = useCallback(async (answer: IntakeAnswerBody) => {
-    if (!whoQuestion) return;
-    setError(null);
+  // Fires speculation and advances to the community picker once the question
+  // budget is spent. Shared by the who-answer and follow-up-answer paths.
+  const startPrepare = useCallback((allRounds: IntakeRound[]) => {
+    setStage("where");
+    const prepared = intakeService.prepare({ rounds: allRounds });
+    prepareRef.current = prepared;
+    prepared
+      .then(({ runId: preparedRunId }) => setRunId(preparedRunId))
+      .catch(() => setError("Couldn't prepare your signal. Please try again."));
+  }, []);
+
+  // Consumes the queued batch; refetches only when the queue is empty and the
+  // locked total says more rounds remain.
+  const advance = useCallback(async (nextRounds: IntakeRound[], queueAfter: QuestionPayload[], knownTotal: number | null) => {
+    if (queueAfter.length > 0) {
+      setCurrentQuestion(queueAfter[0]);
+      setQueue(queueAfter.slice(1));
+      return;
+    }
+    if (knownTotal !== null && nextRounds.length >= knownTotal) {
+      startPrepare(nextRounds);
+      return;
+    }
     try {
-      const { question } = await intakeService.question(answer);
-      setWhoAnswer(answer);
-      setAnsweredSteps((current) => [...current, { prompt: whoQuestion.prompt, answer }]);
-      setBringQuestion(question);
-      setStage("bring");
+      const { questions, total: planTotal } = await intakeService.question(
+        nextRounds,
+        knownTotal ?? undefined,
+      );
+      setTotal(planTotal);
+      if (questions.length === 0 || nextRounds.length >= planTotal) {
+        startPrepare(nextRounds);
+        return;
+      }
+      setCurrentQuestion(questions[0]);
+      setQueue(questions.slice(1));
+      setStage("followup");
     } catch {
       setError("Couldn't load the next question. Please try again.");
     }
-  }, [whoQuestion]);
+  }, [startPrepare]);
 
-  // Round 2's answer starts speculation, then immediately advances to the
-  // picker: the overlap between round 3 and synthesis is the entire point.
-  const handleBringAnswer = useCallback(async (answer: IntakeAnswerBody) => {
-    if (!bringQuestion || !whoAnswer) return;
-    setBringAnswer(answer);
-    setAnsweredSteps((current) => [...current, { prompt: bringQuestion.prompt, answer }]);
-    setStage("where");
-    const prepared = intakeService.prepare({
-      whoAnswer, bringAnswer: answer, round2Prompt: bringQuestion.prompt,
-    });
-    prepareRef.current = prepared;
-    try {
-      const { runId: preparedRunId } = await prepared;
-      setRunId(preparedRunId);
-    } catch {
-      setError("Couldn't prepare your signal. Please try again.");
-    }
-  }, [bringQuestion, whoAnswer]);
+  const handleWhoAnswer = useCallback(async (answer: IntakeAnswerBody) => {
+    if (!whoQuestion) return;
+    setError(null);
+    const nextRounds = [{ prompt: whoQuestion.prompt, answer }];
+    setRounds(nextRounds);
+    setAnsweredSteps([{ prompt: whoQuestion.prompt, answer }]);
+    await advance(nextRounds, [], null);
+  }, [whoQuestion, advance]);
+
+  const handleFollowupAnswer = useCallback(async (answer: IntakeAnswerBody) => {
+    if (!currentQuestion) return;
+    setError(null);
+    const nextRounds = [...rounds, { prompt: currentQuestion.prompt, answer }];
+    setRounds(nextRounds);
+    setAnsweredSteps((current) => [...current, { prompt: currentQuestion.prompt, answer }]);
+    await advance(nextRounds, queue, total);
+  }, [currentQuestion, rounds, queue, total, advance]);
 
   // A rejected verification is recoverable: show the clarification, then retry
   // the same choice once it is answered.
-  const resolve = useCallback(async (choice: WhereChoice, bringOverride?: IntakeAnswerBody) => {
-    const effectiveBring = bringOverride ?? bringAnswer;
-    if (!whoAnswer || !effectiveBring) return;
+  const resolve = useCallback(async (choice: WhereChoice, roundsOverride?: IntakeRound[]) => {
+    const effectiveRounds = roundsOverride ?? rounds;
+    if (effectiveRounds.length === 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -174,7 +202,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
       }
       if (!effectiveRunId) throw new Error("Signal preparation is unavailable.");
       const result = await intakeService.proposal({
-        runId: effectiveRunId, whoAnswer, bringAnswer: effectiveBring, ...choice,
+        runId: effectiveRunId, rounds: effectiveRounds, ...choice,
       });
       setSelectedNetworkId(choice.networkId);
       setProposal(result);
@@ -191,26 +219,30 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     } finally {
       setBusy(false);
     }
-  }, [bringAnswer, runId, whoAnswer]);
+  }, [rounds, runId]);
 
   const handleWhereSelect = useCallback((choice: WhereChoice) => {
     void resolve(choice);
   }, [resolve]);
 
+  // Clarification merges into the LAST round's answer; it does not start a new
+  // round and does not count toward the locked total.
   const handleClarificationAnswer = useCallback(async (answer: IntakeAnswerBody) => {
     if (!clarification) return;
     const clarificationText = answerLabel(answer);
-    const merged: IntakeAnswerBody = {
-      selectedOptions: bringAnswer?.selectedOptions ?? [],
-      ...((bringAnswer?.freeText || clarificationText)
-        ? { freeText: [bringAnswer?.freeText, clarificationText].filter(Boolean).join(" — ") }
-        : {}),
-    };
+    const mergedRounds = rounds.map((round, index) => index === rounds.length - 1
+      ? { ...round, answer: {
+          selectedOptions: round.answer.selectedOptions,
+          ...((round.answer.freeText || clarificationText)
+            ? { freeText: [round.answer.freeText, clarificationText].filter(Boolean).join(" — ") }
+            : {}),
+        } }
+      : round);
+    setRounds(mergedRounds);
     setAnsweredSteps((current) => [...current, { prompt: clarification.prompt, answer }]);
-    setBringAnswer(merged);
     setClarification(null);
-    await resolve(pendingChoice ?? {}, merged);
-  }, [bringAnswer, clarification, pendingChoice, resolve]);
+    await resolve(pendingChoice ?? {}, mergedRounds);
+  }, [rounds, clarification, pendingChoice, resolve]);
 
   // Controller resolution 1: a non-empty server value must win over the raw
   // option-label join, so the explicit prop is only supplied as a fallback
@@ -218,8 +250,8 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   // branch). ProposalCard resolves `lookingFor ?? proposal.lookingFor ??
   // proposal.description`, so leaving these `undefined` lets the richer
   // server copy carried on `proposalForCard` win instead of being shadowed.
-  const lookingFor = proposal?.lookingFor?.trim() ? undefined : (whoAnswer ? answerLabel(whoAnswer) : undefined);
-  const youBring = proposal?.youBring?.trim() ? undefined : (bringAnswer ? answerLabel(bringAnswer) : undefined);
+  const lookingFor = proposal?.lookingFor?.trim() ? undefined : (rounds[0] ? answerLabel(rounds[0].answer) : undefined);
+  const youBring = proposal?.youBring?.trim() ? undefined : (rounds[1] ? answerLabel(rounds[1].answer) : undefined);
 
   const proposalForCard: GuidedProposal | null = useMemo(() => (proposal ? {
     proposalId: proposal.proposalId,
@@ -253,7 +285,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   }, [confirming, networkTitle, onConfirmed, proposalForCard, selectedNetworkId]);
 
   const handleFeedback = useCallback(async (feedback: string) => {
-    if (!runId || !whoAnswer || !bringAnswer) return;
+    if (!runId || rounds.length === 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -261,7 +293,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
       // community has to travel with it or the confirm below would 409 on the
       // proposal/network equality check.
       const result = await intakeService.revise({
-        runId, whoAnswer, bringAnswer, feedback,
+        runId, rounds, feedback,
         ...(selectedNetworkId ? { networkId: selectedNetworkId } : {}),
       });
       setProposal(result);
@@ -270,7 +302,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     } finally {
       setBusy(false);
     }
-  }, [bringAnswer, runId, selectedNetworkId, whoAnswer]);
+  }, [rounds, runId, selectedNetworkId]);
 
   // Mirrors the legacy chat path: skipping rejects the durable proposal
   // server-side before landing on a terminal "nothing saved" state, rather
@@ -290,11 +322,12 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     setStage("who");
     setLoadError(null);
     setWhoQuestion(null);
-    setBringQuestion(null);
+    setRounds([]);
+    setCurrentQuestion(null);
+    setQueue([]);
+    setTotal(null);
     setClarification(null);
     setAnsweredSteps([]);
-    setWhoAnswer(null);
-    setBringAnswer(null);
     setPendingChoice(null);
     setRunId(null);
     setSelectedNetworkId(undefined);
@@ -305,7 +338,10 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
     loadStart();
   }, [loadStart]);
 
-  const progressSteps = Math.max(4, answeredSteps.length + (stage === "proposal" ? 0 : 1));
+  // The Math.max guard covers clarification steps, which do not count toward `total`.
+  const progressSteps = total === null
+    ? Math.max(4, answeredSteps.length + (stage === "proposal" ? 0 : 1))
+    : Math.max(total + 2, answeredSteps.length + (stage === "proposal" ? 0 : 1));
 
   if (resumeIntentId) {
     return (
@@ -378,10 +414,10 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
           onAnswer={handleClarificationAnswer}
           disabled={busy}
         />
-      ) : stage === "bring" && bringQuestion ? (
+      ) : stage === "followup" && currentQuestion ? (
         <GuidedQuestion
-          question={toPendingQuestion("bring", bringQuestion)}
-          onAnswer={handleBringAnswer}
+          question={toPendingQuestion(`followup-${rounds.length}`, currentQuestion)}
+          onAnswer={handleFollowupAnswer}
           disabled={busy}
         />
       ) : stage === "who" && whoQuestion ? (

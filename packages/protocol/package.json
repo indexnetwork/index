@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "8.2.0",
+  "version": "9.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -43,6 +43,7 @@
     "eval:canary": "bun --env-file=../../.env.test ./eval/canary/canary.eval.ts",
     "eval:stance": "bun --env-file=../../.env.test ./eval/stance/stance.eval.ts",
     "eval:view": "bun ./eval/viewer/viewer.eval.ts",
+    "eval:web": "bun --env-file=../../.env.test ./eval/ops/ops.serve.ts",
     "eval:verify": "bun ./eval/verify.ts"
   },
   "dependencies": {

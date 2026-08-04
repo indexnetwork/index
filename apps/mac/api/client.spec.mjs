@@ -52,15 +52,22 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('intents.list', (client) => client.intents.list({ page: 1 }), { path: '/intents/list', method: 'POST', body: { page: 1 } });
     await expectCall('intents.get', (client) => client.intents.get('intent/1'), { path: '/intents/intent%2F1' });
     await expectCall('intents.archive', (client) => client.intents.archive('intent/1'), { path: '/intents/intent%2F1/archive', method: 'PATCH' });
+    await expectCall('intents.confirm', (client) => client.intents.confirm({ proposalId: 'p1', description: 'd' }), { path: '/intents/confirm', method: 'POST', body: { proposalId: 'p1', description: 'd' } });
+    await expectCall('intents.reject', (client) => client.intents.reject({ proposalId: 'p1' }), { path: '/intents/reject', method: 'POST', body: { proposalId: 'p1' } });
+    await expectCall('intents.intake.start', (client) => client.intents.intake.start(), { path: '/intents/intake/start', method: 'POST', body: {} });
+    await expectCall('intents.intake.question', (client) => client.intents.intake.question({ rounds: [], plannedTotal: 2 }), { path: '/intents/intake/question', method: 'POST', body: { rounds: [], plannedTotal: 2 } });
+    await expectCall('intents.intake.prepare', (client) => client.intents.intake.prepare({ rounds: [] }), { path: '/intents/intake/prepare', method: 'POST', body: { rounds: [] } });
+    await expectCall('intents.intake.proposal', (client) => client.intents.intake.proposal({ runId: 'r1', rounds: [] }), { path: '/intents/intake/proposal', method: 'POST', body: { runId: 'r1', rounds: [] } });
+    await expectCall('intents.intake.revise', (client) => client.intents.intake.revise({ runId: 'r1', rounds: [], feedback: 'f' }), { path: '/intents/intake/revise', method: 'POST', body: { runId: 'r1', rounds: [], feedback: 'f' } });
   });
 
   it('uses controller-backed opportunity endpoints', async () => {
     await expectCall('opportunities.list', (client) => client.opportunities.list({ status: 'pending', limit: 10 }), { path: '/opportunities?status=pending&limit=10' });
     await expectCall('opportunities.list scoped intent', (client) => client.opportunities.list({ status: 'pending', scopeType: 'intent', scopeId: SELECTED_INTENT_ID, limit: 10 }), { path: `/opportunities?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}&limit=10` });
     await expectCall('opportunities.listForIntent', (client) => client.opportunities.listForIntent(SELECTED_INTENT_ID, { status: 'pending', limit: 10 }), { path: `/opportunities?status=pending&limit=10&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
-    await expectCall('opportunities.home', (client) => client.opportunities.home({ noCache: true }), { path: '/opportunities/home?noCache=true' });
-    await expectCall('opportunities.home scoped intent', (client) => client.opportunities.home({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/home?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
-    await expectCall('opportunities.homeForIntent', (client) => client.opportunities.homeForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/home?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('opportunities.radar', (client) => client.opportunities.radar({ noCache: true }), { path: '/opportunities/radar?noCache=true' });
+    await expectCall('opportunities.radar scoped intent', (client) => client.opportunities.radar({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/radar?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
+    await expectCall('opportunities.radarForIntent', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/radar?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('opportunities.chatContext', (client) => client.opportunities.chatContext('user/1'), { path: '/opportunities/chat-context?peerUserId=user%2F1' });
     await expectCall('opportunities.get', (client) => client.opportunities.get('opp/1'), { path: '/opportunities/opp%2F1' });
     await expectCall('opportunities.inviteMessage', (client) => client.opportunities.inviteMessage('opp/1'), { path: '/opportunities/opp%2F1/invite-message' });
@@ -74,6 +81,8 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('questions.pending', (client) => client.questions.pending({ sourceId: 'intent/1' }), { path: '/questions?status=pending&sourceId=intent%2F1' });
     await expectCall('questions.pending scoped intent', (client) => client.questions.pending({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID }), { path: `/questions?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('questions.pendingForIntent', (client) => client.questions.pendingForIntent(SELECTED_INTENT_ID), { path: `/questions?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('questions.answered', (client) => client.questions.answered(), { path: '/questions?status=answered' });
+    await expectCall('questions.answeredForIntent', (client) => client.questions.answeredForIntent(SELECTED_INTENT_ID), { path: `/questions?status=answered&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('questions.answer', (client) => client.questions.answer('question/1', { selectedOptions: ['yes'] }), { path: '/questions/question%2F1/answer', method: 'POST', body: { selectedOptions: ['yes'] } });
     await expectCall('questions.dismiss', (client) => client.questions.dismiss('question/1'), { path: '/questions/question%2F1/dismiss', method: 'POST', body: {} });
 

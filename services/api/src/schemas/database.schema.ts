@@ -14,7 +14,6 @@ export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'syst
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
-export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
@@ -786,9 +785,8 @@ export const networks = pgTable('networks', {
   prompt: text('prompt'),
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
-  isExperiment: boolean('is_experiment').default(false).notNull(),
-  experimentMasterKeyHash: text('experiment_master_key_hash'),
-  type: networkTypeEnum('type').default('community').notNull(),
+  masterKeyHash: text('master_key_hash'),
+  hidden: boolean('hidden').default(false).notNull(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',

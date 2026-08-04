@@ -161,4 +161,23 @@ describe('AuthProvider onboarding routing', () => {
     expect(typeof lastCall?.callbackURL).toBe('string');
     expect(lastCall?.callbackURL).toBeTruthy();
   });
+
+  // Universal-link landing routes are only ever seen by visitors WITHOUT the
+  // app (and typically logged out), so the guard must not bounce them to home
+  // or open the login modal. Renders the real AuthProvider with a mocked
+  // logged-out session — regression coverage for the /o download funnel.
+  test.each(['/c/aB3xY9zQ2w', '/o/opp-123'])(
+    'treats deep-link landing route %s as public for logged-out visitors',
+    async (route) => {
+      mocks.useSession.mockReturnValue({ data: null, isPending: false });
+
+      renderAuthProviderAt(route);
+
+      expect((await screen.findByTestId('location')).textContent).toBe(route);
+      const openedModal = mocks.authModal.mock.calls.some(
+        (call) => (call[0] as { isOpen: boolean }).isOpen === true,
+      );
+      expect(openedModal).toBe(false);
+    },
+  );
 });

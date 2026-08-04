@@ -682,7 +682,7 @@ export class OpportunityDeliveryService {
       );
       presenterInput.opportunityStatus = 'pending';
 
-      const presented = await this.getPresenter().presentHomeCard(presenterInput);
+      const presented = await this.getPresenter().presentCard(presenterInput);
       return {
         headline: presented.headline,
         personalizedSummary: presented.personalizedSummary,

@@ -95,6 +95,30 @@ window.IndexApp = (function () {
     return () => authSubscribers.delete(cb);
   }
 
+  // ---- deep links ---------------------------------------------------------
+
+  // Swift hands over a URL (an index:// open or a verified universal link) by
+  // dispatching an `index-deeplink` CustomEvent carrying the raw string; it
+  // makes no routing decision, window.IndexApi.parseDeepLink does that.
+  //
+  // This listener is registered while the bundle evaluates, before React's
+  // first effects run, because on a cold launch the queued link is dispatched
+  // as soon as the page finishes loading. Anything that arrives before the app
+  // subscribes waits here instead of being dropped on the floor.
+  const deepLinkBuffer = [];
+  let deepLinkSubscriber = null;
+  window.addEventListener("index-deeplink", (event) => {
+    const url = event && event.detail && event.detail.url;
+    if (!url) return;
+    if (deepLinkSubscriber) deepLinkSubscriber(url);
+    else deepLinkBuffer.push(url);
+  });
+  function onDeepLink(cb) {
+    deepLinkSubscriber = cb;
+    while (deepLinkBuffer.length) cb(deepLinkBuffer.shift());
+    return () => { if (deepLinkSubscriber === cb) deepLinkSubscriber = null; };
+  }
+
   // ---- snapshot -----------------------------------------------------------
 
   // Resolve a promise into a {ok,value} pair so one failing endpoint (e.g. a
@@ -113,12 +137,12 @@ window.IndexApp = (function () {
   async function loadSnapshot() {
     const c = getClient();
     if (!c) return null;
-    const [meR, netR, intentR, questionR, homeR] = await Promise.all([
+    const [meR, netR, intentR, questionR, radarR] = await Promise.all([
       settle(c.auth.me()),
       settle(c.networks.list()),
       settle(c.intents.list({})),
       settle(c.questions.pending()),
-      settle(c.opportunities.home()),
+      settle(c.opportunities.radar()),
     ]);
 
     const user = meR.ok ? (meR.value.user || meR.value) : null;
@@ -126,33 +150,36 @@ window.IndexApp = (function () {
     const networks = netR.ok ? normalizeList(netR.value, "networks") : [];
     const intents = intentR.ok ? normalizeList(intentR.value, "intents") : [];
     const questions = questionR.ok ? normalizeList(questionR.value, "questions") : [];
-    const homeSections = homeR.ok ? normalizeList(homeR.value, "sections") : [];
+    const radarItems = radarR.ok ? normalizeList(radarR.value, "items") : [];
 
-    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, homeSections });
+    const snapshot = window.IndexApi.mapIndexSnapshot({ user, networks, intents, questions, radarItems });
     return {
       snapshot,
       me: mapMe(user),
       networks: mapNetworks(networks),
       features,
-      raw: { user, features, networks, intents, questions, homeSections },
+      raw: { user, features, networks, intents, questions, radarItems },
     };
   }
 
+  // Map an API user onto the shape the UI's ME expects. Live-only: there is no
+  // demo fallback, so missing fields become empty rather than borrowing another
+  // identity's values.
   function mapMe(user) {
-    const base = (window.INDEX_DATA && window.INDEX_DATA.ME) || {};
-    if (!user) return base;
+    if (!user) return {};
     const socials = Array.isArray(user.socials)
       ? user.socials.map((s) => ({ id: s.label || s.id || "", prefix: "", handle: s.value || s.handle || "" }))
-      : base.socials;
+      : [];
     return {
-      ...base,
-      id: user.id || base.id,
-      name: user.name || base.name,
-      handle: user.username ? `@${user.username}` : base.handle,
-      email: user.email || base.email,
-      location: user.location || base.location,
-      intro: user.intro || user.bio || base.intro,
+      id: user.id || "",
+      name: user.name || "",
+      handle: user.username ? `@${user.username}` : "",
+      email: user.email || "",
+      location: user.location || "",
+      intro: user.intro || user.bio || "",
+      photo: user.avatar || null,
       socials,
+      websites: [],
       source: user,
     };
   }
@@ -162,7 +189,6 @@ window.IndexApp = (function () {
       id: n.id,
       name: n.title || n.name || "untitled",
       members: (n._count && n._count.members) || n.memberCount || 0,
-      kind: n.type === "event" ? "event" : undefined,
       role: n.isPersonal ? "personal" : (n.role || "member"),
       joined: true,
       isPersonal: n.isPersonal === true,
@@ -201,17 +227,19 @@ window.IndexApp = (function () {
     }
   }
 
-  // POST /chat/stream (orchestrator persona for api-key callers). Resolves with
+  // POST /chat/stream. `persona` selects the server persona (e.g. "negotiator");
+  // api-key callers fall back to the orchestrator when omitted. Resolves with
   // the session id (from the X-Session-Id response header) once the stream ends.
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
+  async function streamChat({ message, sessionId, scopeType, scopeId, persona, onEvent, onSession, signal }) {
     const headers = { "Content-Type": "application/json" };
     const key = apiKey();
     if (key) headers["x-api-key"] = key;
     const body = { message };
     if (sessionId) body.sessionId = sessionId;
     if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
+    if (persona) body.persona = persona;
 
     const response = await fetch(`${apiBaseUrl()}/chat/stream`, {
       method: "POST",
@@ -341,6 +369,7 @@ window.IndexApp = (function () {
     setupHermes,
     teardownHermes,
     onAuthChanged,
+    onDeepLink,
     createIntent,
     parseIntentProposals,
     streamChat,

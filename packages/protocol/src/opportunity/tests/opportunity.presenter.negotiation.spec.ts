@@ -4,14 +4,14 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it, mock } from "bun:test";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter.js";
+import { OpportunityPresenter, type CardPresenterInput } from "../opportunity.presenter.js";
 import type { NegotiationContext } from "../negotiation-context.loader.js";
 
 type PresenterWithInvokeOverride = {
   invokeWithTimeout: (...args: unknown[]) => unknown;
 };
 
-const BASE_INPUT: HomeCardPresenterInput = {
+const BASE_INPUT: CardPresenterInput = {
   viewerContext: "Name: Alice\nBio: Engineer",
   otherPartyContext: "Name: Bob\nBio: Designer",
   matchReasoning: "Both interested in AI tooling and design systems.",
@@ -105,7 +105,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("returns templated chip without invoking the LLM for status `negotiating`", async () => {
     const { presenter, getCallCount } = capturingPresenter();
 
-    const result = await presenter.presentHomeCard({
+    const result = await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "negotiating",
       negotiationContext: makeNegotiatingContext(3, 8),
@@ -118,7 +118,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
 
   it("drops the `of N` when turnCap is 0 (unlimited)", async () => {
     const { presenter } = capturingPresenter();
-    const result = await presenter.presentHomeCard({
+    const result = await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "negotiating",
       negotiationContext: makeNegotiatingContext(1, 0),
@@ -129,7 +129,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("injects NEGOTIATION CONTEXT block into the prompt for `pending`", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
-    await presenter.presentHomeCard({
+    await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "pending",
       negotiationContext: makeCompletedContext("pending", { hasOpportunity: true }),
@@ -147,7 +147,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("includes `agents hit the turn cap` phrasing for stalled/turn_cap", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
-    await presenter.presentHomeCard({
+    await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "stalled",
       negotiationContext: makeCompletedContext("stalled", {
@@ -164,7 +164,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("includes `counterpart went silent` phrasing for stalled/timeout", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
-    await presenter.presentHomeCard({
+    await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "stalled",
       negotiationContext: makeCompletedContext("stalled", {
@@ -180,7 +180,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("does NOT include NEGOTIATION CONTEXT block when negotiationContext is absent", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
-    await presenter.presentHomeCard({
+    await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "pending",
     });
@@ -192,7 +192,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("flags outcome `declined` for `rejected`", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
-    await presenter.presentHomeCard({
+    await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "rejected",
       negotiationContext: makeCompletedContext("rejected", { hasOpportunity: false }),
@@ -205,7 +205,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
   it("includes `agreed` outcome for `accepted`", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
-    await presenter.presentHomeCard({
+    await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "accepted",
       negotiationContext: makeCompletedContext("accepted", { hasOpportunity: true }),

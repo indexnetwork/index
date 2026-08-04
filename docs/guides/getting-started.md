@@ -68,6 +68,7 @@ bun install
 index/
 ├── apps/
 │   ├── web/             # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+│   ├── eval-ops/        # Internal, local-only eval ops console (not deployed)
 │   └── mac/             # Native Apple client subtree
 ├── services/
 │   └── api/             # Backend API and agent engine (Bun, TypeScript)
@@ -358,6 +359,37 @@ bun run db:flush        # Flush all data (development only)
 
 After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `services/api/drizzle/meta/_journal.json` to match.
 
+### Eval ops site (internal, local-only)
+
+A local web console over the protocol's eval harnesses: browse committed baselines and run
+reports, launch a run and watch its log stream live, compare two artifacts, and reset the
+test-database fixture. Two commands, two terminals:
+
+```bash
+# Terminal 1: the ops API (127.0.0.1:4321)
+cd packages/protocol && bun run eval:web
+
+# Terminal 2: the UI (http://127.0.0.1:5174)
+bun run dev:eval-ops
+```
+
+`eval:web` loads the repo-root `.env.test`, so it uses that file's `OPENROUTER_API_KEY` and
+that file's `DATABASE_URL` as the fixture target.
+
+Only the four scorecard harnesses (`matching`, `profile`, `premise`, `opportunity`) are
+supported. It **binds loopback and requires a verified `@index.network` Index account** —
+signing in opens the same browser-auth bridge the CLI uses, and every route but the two
+that make signing in possible needs that session. The authentication is defence in depth,
+not permission to expose the site: the loopback bind, the `Host` check and the `Origin`
+allowlist are what keep it local, so do not change `EVAL_OPS_BIND`. `WEB_APP_URL` and
+`API_URL` must name the same environment — the first mints the sign-in key and the second
+verifies it, and the server refuses to start on a mismatched pair. The app is deliberately
+excluded from the production build and from Railway.
+
+See [`packages/protocol/eval/ops/README.md`](../../packages/protocol/eval/ops/README.md)
+for the security model and [`apps/eval-ops/README.md`](../../apps/eval-ops/README.md) for
+the app itself.
+
 ### Queue monitoring
 
 When the API service is running, Bull Board is available at:
@@ -454,7 +486,9 @@ The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in the root `
 TRUSTED_ORIGINS=http://localhost:3000
 ```
 
-Restart the API service after changing this value.
+Restart the API service after changing this value. The origin must be listed
+exactly (scheme, host and port) — an unlisted browser origin receives no CORS
+grant at all, which also surfaces as a CORS error in the browser console.
 
 ### pgvector extension missing
 

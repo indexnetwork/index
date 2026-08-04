@@ -267,19 +267,18 @@ The `assign` node has two sub-paths:
 
 **Dependencies:** `IntentNetworkGraphDatabase`
 
-### 3.9 Home (Feed) Graph
+### 3.9 Radar Graph
 
-**File:** `opportunity/feed/feed.graph.ts`
-**Purpose:** Build the opportunity home feed view with dynamic sections.
-**Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `checkCategorizerCache`, `categorizeDynamically`, `cacheCategorizerResults`, `normalizeAndSort`
-**State:** `HomeGraphState` (userId, indexId, limit, opportunities, cards, sections, cachedCards, sectionProposals, etc.)
+**File:** `opportunity/radar/radar.graph.ts`
+**Purpose:** Build the opportunity radar view — a flat, presenter-texted card list, optionally scoped to one intent.
+**Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `normalizeItems`
+**State:** `RadarGraphState` (userId, scopeType/scopeId, limit, opportunities, cards, items, cachedCards, uncachedOpportunities, etc.)
 **Conditional edges:**
 - After `checkPresenterCache`: routes to `generateCardText` (cache misses) or `cachePresenterResults` (all cached)
-- After `checkCategorizerCache`: routes to `categorizeDynamically` (cache miss) or `normalizeAndSort` (cached)
 
-This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text and `HomeCategorizerAgent` for dynamic section grouping, with versioned cache support for both layers. Cache TTL is 24 hours; claim-safety or presenter fallback cards are returned only for the current request and are not cached. Pool adjustments affect ordering and deprioritization copy only when their `recipientUserId + intentId` provenance exactly matches the graph's viewer and selected intent; global Home, other viewers/intents, and legacy unscoped entries ignore them.
+This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text with a versioned cache (24h TTL); claim-safety or presenter fallback cards are returned only for the current request and are not cached. Responses are a flat `items` array — clients bucket by lifecycle status. Pool adjustments affect ordering and deprioritization copy only when their `recipientUserId + intentId` provenance exactly matches the graph's viewer and selected intent; global Radar, other viewers/intents, and legacy unscoped entries ignore them.
 
-**Dependencies:** `HomeGraphDatabase`, `OpportunityCache`
+**Dependencies:** `RadarGraphDatabase`, `OpportunityCache`
 
 ### 3.10 Maintenance Graph
 
@@ -778,7 +777,7 @@ When enabled, high-scoring candidates enter bilateral negotiation via the Negoti
 
 ### Persistence
 
-Surviving background opportunities are persisted with status `latent`; ambient negotiation and explicit lifecycle actions determine later states. Persisted opportunities are presented through the home feed and can be reviewed from a later chat turn or chat history. The full lifecycle, including retained `draft` compatibility and introducer reactivation, is documented in [Opportunity Status Lifecycle](./opportunity-status-lifecycle.md).
+Surviving background opportunities are persisted with status `latent`; ambient negotiation and explicit lifecycle actions determine later states. Persisted opportunities are presented through the radar view and can be reviewed from a later chat turn or chat history. The full lifecycle, including retained `draft` compatibility and introducer reactivation, is documented in [Opportunity Status Lifecycle](./opportunity-status-lifecycle.md).
 
 ## 8. Intent Lifecycle
 

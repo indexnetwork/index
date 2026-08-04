@@ -73,8 +73,12 @@ function assertLocalTarget(url: URL): void {
   if (!url.hostname.endsWith('.neon.tech')) throw new Error('Discovery environment matrix target must use a Neon host');
 }
 
-/** Accept precisely Neon's canonical endpoint host or its one pooled counterpart. */
-function isEndpointHost(urlHost: string, endpointHost: string): boolean {
+/**
+ * Accept precisely Neon's canonical endpoint host or its one pooled counterpart.
+ * Exported so `discovery-ab.neon.ts` attests hosts by the same rule rather than
+ * keeping a second, looser copy of it.
+ */
+export function isEndpointHost(urlHost: string, endpointHost: string): boolean {
   const firstDot = endpointHost.indexOf('.');
   if (firstDot <= 0) return false;
   const pooledHost = `${endpointHost.slice(0, firstDot)}-pooler${endpointHost.slice(firstDot)}`;
