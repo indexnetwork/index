@@ -1,17 +1,20 @@
 import { z } from "zod";
 
+import { flagValueIssues } from "./ops.flags.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
 import { REQUIRES_SIDES, SIDES_PER_RUN, SIDE_IDS, abSideIssues } from "./ops.sides.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
 import type { EvalRunSpec, RunFlags } from "./ops.types.js";
 
 /**
- * The per-side rules live in ops.sides.ts, which is dependency-free so the
- * launch form can import the very same definitions (this module's zod schemas
- * cannot be tree-shaken out of a browser bundle). Re-exported here because this
- * is where the server reads them from.
+ * The per-side rules live in ops.sides.ts and the per-harness flag bounds in
+ * ops.flags.ts, both dependency-free so the launch form can import the very
+ * same definitions (this module's zod schemas cannot be tree-shaken out of a
+ * browser bundle). Re-exported here because this is where the server reads them
+ * from.
  */
 export { REQUIRES_SIDES, SIDES_PER_RUN, abSideIssues, type AbSideIssue } from "./ops.sides.js";
+export { flagValueIssues, type FlagValueIssue } from "./ops.flags.js";
 
 /**
  * A selection-flag value becomes its own argv element, so a value like
@@ -86,15 +89,14 @@ export const RunSpecSchema = z
   })
   .strict()
   .superRefine((spec, context) => {
-    const supported = new Set(HARNESS_REGISTRY[spec.harness as EvalRunSpec["harness"]].flags.map((f) => f.name));
-    for (const name of Object.keys(spec.flags) as (keyof RunFlags)[]) {
-      if (!supported.has(name)) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["flags", name],
-          message: `The ${spec.harness} harness does not accept --${name}`,
-        });
-      }
+    // Names AND values, against this harness's own registry entry. RunFlagsSchema
+    // above bounds each flag by the widest value any harness allows, which is not
+    // what any single harness accepts: discovery-ab caps --runs at 10 and every
+    // harness's --alpha starts at 0.001. Checking only the names is how a spec the
+    // engine refuses got queued, displayed and spent against.
+    const harness = spec.harness as EvalRunSpec["harness"];
+    for (const issue of flagValueIssues(harness, HARNESS_REGISTRY[harness].flags, spec.flags)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["flags", issue.name], message: issue.message });
     }
     // Ad-hoc overrides ARE the profile: combining them with a named profile
     // would make the run's provenance ambiguous, so the pair is inexpressible.
@@ -122,6 +124,39 @@ export const RunSpecSchema = z
         code: z.ZodIssueCode.custom,
         path: ["sides"],
         message: `The ${spec.harness} harness scores one configuration against a committed baseline and does not accept "sides"`,
+      });
+    }
+    // A pair of sides is the whole configuration of the run that carries it.
+    //
+    // The launch form states on the page that both sides run the same models and
+    // the same environment and differ only in the flags below, and this is what
+    // makes that statement true of the API and not merely of the form. A named
+    // config or an ad-hoc override alongside `sides` would change the models
+    // under BOTH sides at once — moving both pass rates without changing the
+    // difference the run measures — and its `env` block would set a shared
+    // baseline for the OTHER allowlisted keys, unrecorded in the artifact's
+    // configDiff, which names only the per-side keys. (A profile env value for a
+    // key that IS being A/B-ed is harmless: withDiscoveryEnvironment applies the
+    // side's keys last. It is the keys nobody is comparing that would silently
+    // move.) So the pair is inexpressible rather than explained after the fact.
+    if (spec.sides !== undefined && spec.profile !== "default") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profile"],
+        message:
+          `The ${spec.harness} harness compares two environment configurations under one shared baseline, so it `
+          + `runs under profile "default"; a named config would change the models and the unpaired env keys under `
+          + `both sides at once, unrecorded in the artifact`,
+      });
+    }
+    if (spec.sides !== undefined && spec.overrides !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["overrides"],
+        message:
+          `The ${spec.harness} harness compares two environment configurations, which are its whole configuration; `
+          + `ad-hoc overrides would apply to both sides at once, moving both results without changing the `
+          + `difference the run measures`,
       });
     }
     if (spec.sides !== undefined) {
@@ -167,6 +202,13 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   const descriptor = HARNESS_REGISTRY[spec.harness];
   const byName = new Map(descriptor.flags.map((flag) => [flag.name, flag]));
 
+  // Names and bounds, re-checked here rather than trusted from RunSpecSchema for
+  // the same reason the flag list always was: the engine ignores argv it does
+  // not recognise and enforces its own caps only after loading its eval modules,
+  // so anything wrong that reaches this point is spent, not reported.
+  const refusedFlag = flagValueIssues(spec.harness, descriptor.flags, spec.flags)[0];
+  if (refusedFlag !== undefined) throw new Error(refusedFlag.message);
+
   const argv = ["bun", "run", descriptor.script, "--"];
   for (const [name, value] of Object.entries(spec.flags) as [keyof RunFlags, unknown][]) {
     const flag = byName.get(name);
@@ -189,6 +231,15 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   if (REQUIRES_SIDES[spec.harness]) {
     if (spec.sides === undefined) {
       throw new Error(`The ${spec.harness} harness compares two environment configurations; a run without "sides" has nothing to compare`);
+    }
+    // The sides are the whole configuration: nothing else may differ between
+    // them or sit under both of them unrecorded. RunSpecSchema refuses the pair
+    // too; this is the layer that would otherwise SPEND on it.
+    if (spec.profile !== "default" || spec.overrides !== undefined) {
+      throw new Error(
+        `The ${spec.harness} harness compares two environment configurations under one shared baseline; `
+        + `a named config or ad-hoc override would change both sides at once, unrecorded in the artifact`,
+      );
     }
     const refusal = abSideIssues(spec.sides)[0];
     if (refusal !== undefined) throw new Error(refusal.message);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { DISCOVERY_AB_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.allowlist';
+import { flagValueIssues } from '../../../../packages/protocol/eval/ops/ops.flags';
 import { REQUIRES_SIDES, SIDES_PER_RUN, abSideIssues } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
 import { ModelOverrideEditor } from '../components/ModelOverrideEditor';
@@ -77,6 +78,33 @@ interface LaunchState {
 }
 
 const EMPTY_FLAGS: RunFlags = {};
+
+/**
+ * Every flag value this harness itself would refuse, deduplicated across the
+ * specs this page would post.
+ *
+ * Not derived here: `flagValueIssues` is the function `RunSpecSchema` and
+ * `renderRun` call, applied to the descriptor the server sent. It matters
+ * because the shared schema bounds a flag by the widest value ANY harness
+ * allows, while each harness declares its own: discovery-ab caps `--runs` at 10
+ * where the scorecard harnesses allow 25. Without this the form would enable a
+ * launch, price it, take the operator's confirmation and post it — and the
+ * engine would then refuse it, which is the one thing this page exists to
+ * prevent. `FlagField` puts the same bounds on the input's min/max, but a typed
+ * value is not validated by the browser until a form is submitted, and there is
+ * no form here.
+ */
+function refusedFlagValues(
+  harness: OpsHarness,
+  flags: readonly HarnessFlag[],
+  specs: readonly RunFlags[],
+): string[] {
+  const messages = new Set<string>();
+  for (const spec of specs) {
+    for (const issue of flagValueIssues(harness, flags, spec)) messages.add(issue.message);
+  }
+  return [...messages];
+}
 
 export function Launch() {
   const navigate = useNavigate();
@@ -327,7 +355,12 @@ export function Launch() {
   const handleRun = () => {
     if (launchBlocked || state.selectedHarness === null) return;
 
-    if (isFullCorpus() && !state.awaitingConfirmation) {
+    // What a confirmation is for is the destruction a launch causes, and for the
+    // harness that resets two database branches that destruction is not
+    // corpus-dependent: --case narrows what is measured, not what is reset. So
+    // the operator confirms every run of it, filtered or not, and the copy names
+    // the resets rather than only counting invocations.
+    if ((isFullCorpus() || requiresSides) && !state.awaitingConfirmation) {
       setState((prev) => ({ ...prev, awaitingConfirmation: true }));
       return;
     }
@@ -501,7 +534,11 @@ export function Launch() {
   // renderRun records the run's workload from, so the number confirmed here and
   // the number stored on the record cannot drift. `launches` is the form's own
   // A/B mode: two runs of a scorecard harness, queued back to back.
-  const sidesPerRun = harnessId === null ? 1 : SIDES_PER_RUN[harnessId];
+  // `?? 1` is not decoration: SIDES_PER_RUN is keyed by the harnesses this build
+  // knows, and a server one release ahead can name one it does not. Without the
+  // default the workload line reads "= NaN" on a page whose whole job is to say
+  // what a run costs.
+  const sidesPerRun = harnessId === null ? 1 : (SIDES_PER_RUN[harnessId] ?? 1);
   const launches = requiresSides ? 1 : ab ? 2 : 1;
   const passes = sidesPerRun * launches;
   const workload = cases * runs * passes;
@@ -524,7 +561,27 @@ export function Launch() {
       || state.sides.some((row) => row.key === '' || row.a.trim() === '' || row.b.trim() === ''));
   const abGeneralIssues = abIncomplete ? [] : abIssues.filter((issue) => issue.path.length < 2);
 
-  const launchBlocked = invalidSelectionFlags.length > 0 || abIncomplete || abIssues.length > 0;
+  // The specs this page would post, so a value is checked exactly where it would
+  // be sent: shared selection alone for the harness that carries sides, and
+  // selection plus each column's scoring flags otherwise.
+  const flagIssues =
+    state.selectedHarness === null
+      ? []
+      : refusedFlagValues(
+          state.selectedHarness.harness,
+          state.selectedHarness.flags,
+          requiresSides
+            ? [state.selection]
+            : ab
+              ? [
+                  { ...state.selection, ...state.scoring.reference },
+                  { ...state.selection, ...state.scoring.candidate },
+                ]
+              : [{ ...state.selection, ...state.scoring.reference }],
+        );
+
+  const launchBlocked =
+    invalidSelectionFlags.length > 0 || flagIssues.length > 0 || abIncomplete || abIssues.length > 0;
   const saveConfigBlocked =
     state.configName.trim() === '' ||
     state.configDescription.trim() === '' ||
@@ -778,9 +835,16 @@ export function Launch() {
               {invalidSelectionFlags.length > 0 && (
                 <p className="text-term-red">Fix {invalidSelectionFlags.join(', ')} before running.</p>
               )}
+              {flagIssues.map((message) => (
+                <p key={message} className="text-term-red">
+                  {message}
+                </p>
+              ))}
               {abIncomplete && (
                 <p className="text-term-red">
-                  Give every flag a value on both sides before running.
+                  {state.sides.length === 0
+                    ? 'Add a flag to both sides before running.'
+                    : 'Give every flag a value on both sides before running.'}
                 </p>
               )}
               {abGeneralIssues.map((issue) => (
@@ -795,7 +859,9 @@ export function Launch() {
               )}
               {state.awaitingConfirmation && (
                 <p className="text-term-yellow">
-                  Confirm full-corpus run: {workload} model invocations
+                  {requiresSides
+                    ? `Confirm run: this resets both Neon evaluation branches and spends ${workload} model invocations`
+                    : `Confirm full-corpus run: ${workload} model invocations`}
                 </p>
               )}
             </div>

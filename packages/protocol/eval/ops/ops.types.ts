@@ -25,10 +25,15 @@ export interface HarnessFlag {
   cli: string;
   kind: "number" | "string" | "boolean";
   /**
-   * Numeric bounds mirroring RunFlagsSchema in ops.argv.ts, so a form built from
-   * this registry cannot mark a server-valid value invalid (or vice versa).
-   * Exclusive server bounds are expressed as the nearest representable value at
-   * `step` resolution, because HTML min/max are inclusive.
+   * What this harness accepts for this flag, and the authority on it:
+   * RunSpecSchema enforces these bounds per harness (flagValueIssues,
+   * ops.flags.ts) and the launch form refuses the same values from the same
+   * function, so a form built from this registry cannot mark a server-valid
+   * value invalid, nor offer one the server would refuse. RunFlagsSchema's own
+   * bounds are the union across harnesses and are deliberately wider: one
+   * harness's ceiling is not every harness's. Exclusive server bounds are
+   * expressed as the nearest representable value at `step` resolution, because
+   * HTML min/max are inclusive.
    */
   min?: number;
   max?: number;

@@ -3,6 +3,8 @@ import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
 
+import { flagValueIssues } from '../../../packages/protocol/eval/ops/ops.flags';
+import { HARNESS_REGISTRY } from '../../../packages/protocol/eval/ops/ops.registry';
 import { abSideIssues } from '../../../packages/protocol/eval/ops/ops.sides';
 import { Launch } from '../src/routes/Launch';
 
@@ -146,6 +148,25 @@ const stubFetch = ({ withMetadata = true }: { withMetadata?: boolean } = {}) =>
       postedRuns.push(body);
       runCounter += 1;
       return new Response(JSON.stringify({ id: `run-${runCounter}` }), { status: 202 });
+    }
+    return new Response(JSON.stringify({}));
+  });
+
+/**
+ * The page as it behaves when every request but the launch succeeds. Used by the
+ * tests that assert what the operator sees when the SERVER refuses — which is a
+ * different thing from what the form refuses before posting anything.
+ */
+const stubFetchRefusingLaunch = (status: number, error: string) =>
+  vi.fn(async (url: string, init?: RequestInit) => {
+    if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
+    if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+    if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
+    if (String(url).endsWith('/api/configs')) {
+      return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
+    }
+    if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
+      return new Response(JSON.stringify({ error }), { status });
     }
     return new Response(JSON.stringify({}));
   });
@@ -459,6 +480,12 @@ describe('Launch — discovery-ab', () => {
     expect(screen.queryByLabelText(/evaluator/i)).toBeNull();
     expect(screen.getByLabelText('side a flag 1')).toBeTruthy();
     expect(screen.getByLabelText('side b flag 1')).toBeTruthy();
+    // The absence above is guaranteed by this harness declaring no agents, which
+    // the FIXTURE decides; the config column's own control is not. Two profiles
+    // ship, so a scorecard column rendered here would put a Config picker on the
+    // page — this asserts the page's branch, not the fixture's agent list.
+    expect(screen.queryByLabelText('Config')).toBeNull();
+    expect(screen.queryByText(/runs as saved/i)).toBeNull();
   });
 
   it('pins A/B on, because a run of this harness is always both sides', async () => {
@@ -482,6 +509,11 @@ describe('Launch — discovery-ab', () => {
     for (const absent of [/llm judge/i, /regression threshold/i, /strict evidence/i, /^tier$/i, /^rule$/i]) {
       expect(screen.queryByLabelText(absent)).toBeNull();
     }
+    // Those absences follow from this harness declaring no scoring flags, which
+    // the fixture decides. The config column that would have HELD them is the
+    // page's own branch, and it announces itself with a Config picker whatever
+    // the harness's flag list says.
+    expect(screen.queryByLabelText('Config')).toBeNull();
     // What it does have: runs and case, shared by both sides.
     expect(screen.getAllByLabelText('Runs per case')).toHaveLength(1);
     expect(screen.getAllByLabelText('Case')).toHaveLength(1);
@@ -616,22 +648,10 @@ describe('Launch — discovery-ab', () => {
     ]);
   });
 
-  it('shows the server\u2019s refusal when it has no credentials or a run is already in flight', async () => {
+  it('shows the server\u2019s refusal when a run is already in flight', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string, init?: RequestInit) => {
-        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
-        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
-        if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
-        if (String(url).endsWith('/api/configs')) return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
-        if (String(url).endsWith('/api/runs') && init?.method === 'POST') {
-          return new Response(
-            JSON.stringify({ error: 'A discovery-ab run is already in flight; cancel it before launching another.' }),
-            { status: 409 },
-          );
-        }
-        return new Response(JSON.stringify({}));
-      }),
+      stubFetchRefusingLaunch(409, 'A discovery-ab run is already in flight; cancel it before launching another.'),
     );
     const user = userEvent.setup();
     renderLaunch();
@@ -643,5 +663,148 @@ describe('Launch — discovery-ab', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/already in flight/i);
     // The configuration survives the refusal.
     expect(screen.getByLabelText('side a value 1')).toHaveValue('premise');
+  });
+
+  it('shows the server\u2019s refusal when it holds no credentials for this harness', async () => {
+    // A different status and a different cause from the in-flight refusal: 503,
+    // because the request is valid and it is the server that cannot serve it.
+    // The operator's configuration has to survive this one too — the fix is on
+    // the server, and they will launch the same run again once it is applied.
+    vi.stubGlobal(
+      'fetch',
+      stubFetchRefusingLaunch(
+        503,
+        'This server holds no Neon control-plane key, so it cannot reset the two evaluation branches this harness needs.',
+      ),
+    );
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await runAndConfirm(user, /run both sides/i);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no Neon control-plane key/i);
+    expect(screen.getByLabelText('side b value 1')).toHaveValue('user_context');
+  });
+
+  it('refuses a run count this harness caps lower than the shared schema does', async () => {
+    // The failure this prevents, proven end to end before the fix: the form took
+    // --runs 25, priced it at 250 invocations, took the confirmation and posted
+    // it; the engine then died on "--runs must not exceed 10", after the
+    // operator had committed. The refusal is the server's own sentence, from the
+    // same function RunSpecSchema calls.
+    const refusal = flagValueIssues('discovery-ab', HARNESS_REGISTRY['discovery-ab'].flags, { runs: 25 })[0]!
+      .message;
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await user.clear(screen.getByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '25');
+
+    expect(screen.getByText(refusal)).toBeTruthy();
+    expect(refusal).toMatch(/--runs/);
+    expect(refusal).toMatch(/10/);
+    expect(screen.getByRole('button', { name: /run both sides/i })).toBeDisabled();
+
+    // Nothing was posted, and the harness's own maximum clears the refusal.
+    await user.clear(screen.getByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '10');
+
+    expect(screen.queryByText(refusal)).toBeNull();
+    expect(screen.getByRole('button', { name: /run both sides/i })).not.toBeDisabled();
+    expect(postedRuns).toEqual([]);
+  });
+
+  it('enforces each harness\u2019s own bounds, not one shared cap', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    // 25 runs is this scorecard harness's declared maximum, so it is accepted
+    // here and refused on discovery-ab: the bound is per harness, not global.
+    await user.clear(await screen.findByLabelText('Runs per case'));
+    await user.type(screen.getByLabelText('Runs per case'), '25');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+
+    // And a scorecard harness's own bound bites the same way: --tier is 1..4.
+    const tierRefusal = flagValueIssues('matching', HARNESS_REGISTRY.matching.flags, { tier: 9 })[0]!.message;
+    await user.type(screen.getByLabelText('Tier'), '9');
+
+    expect(screen.getByText(tierRefusal)).toBeTruthy();
+    expect(tierRefusal).toMatch(/--tier/);
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+  });
+
+  it('shows the server\u2019s per-value refusal under the control that produced it', async () => {
+    // A trailing space is invisible on the page and fatal in meaning: the
+    // discovery graph does not parse "6 " as an integer, falls back to its own
+    // default, and the artifact would report a difference that never ran. The
+    // message belongs to one side's one field, so it is rendered there.
+    const refusal = abSideIssues({
+      a: { NEGOTIATION_MAX_TURNS_CHAT: '4' },
+      b: { NEGOTIATION_MAX_TURNS_CHAT: '6 ' },
+    })[0]!.message;
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await user.selectOptions(screen.getByLabelText('side a flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
+    await user.type(screen.getByLabelText('side a value 1'), '4');
+    await user.type(screen.getByLabelText('side b value 1'), '6 ');
+
+    const message = within(screen.getByTestId('side-b')).getByText(refusal);
+    // Under the offending control, not merely somewhere on the page: same row,
+    // and the input is marked invalid.
+    const field = screen.getByLabelText('side b value 1');
+    expect(field.closest('div')!.contains(message)).toBe(true);
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    // Side a gave the same flag a value the graph honours, so it says nothing.
+    expect(within(screen.getByTestId('side-a')).queryByText(refusal)).toBeNull();
+    expect(screen.getByLabelText('side a value 1')).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByRole('button', { name: /run both sides/i })).toBeDisabled();
+  });
+
+  it('confirms a filtered run too, because the branch resets are not filtered', async () => {
+    // --case narrows what is MEASURED. It does not narrow what is destroyed:
+    // every run of this harness resets both Neon evaluation branches. So the
+    // only spend gate on the page must fire here, and say what it is confirming.
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+    await user.type(screen.getByLabelText('Case'), 'historical/songwriting-duo');
+
+    expect(screen.getByText(/1 case \(filtered\) × 3 runs × 2 sides = 6/)).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /run both sides/i }));
+
+    expect(screen.getByText(/resets both Neon evaluation branches/i)).toBeTruthy();
+    expect(screen.getByText(/6 model invocations/)).toBeTruthy();
+    // Nothing is posted until the operator confirms.
+    expect(postedRuns).toEqual([]);
+
+    await user.click(screen.getByRole('button', { name: /confirm and run/i }));
+
+    expect(postedRuns).toHaveLength(1);
+  });
+
+  it('asks for a flag, not for values, when every row has been removed', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscoveryAb(user);
+    // Removing is a pair-level operation, so either column's button does it.
+    await user.click(
+      within(screen.getByTestId('side-a')).getByRole('button', { name: /remove flag 1 from both sides/i }),
+    );
+
+    expect(screen.queryByLabelText('side a flag 1')).toBeNull();
+    // "Give every flag a value" names controls that are not on the screen.
+    expect(screen.getByText(/add a flag to both sides before running/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /run both sides/i })).toBeDisabled();
   });
 });

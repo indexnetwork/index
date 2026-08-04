@@ -4,9 +4,10 @@ import path from "node:path";
 
 import { DISCOVERY_AB_ENV_KEYS } from "../ops.allowlist.js";
 import { renderRun, RunSpecSchema } from "../ops.argv.js";
+import { flagValueIssues } from "../ops.flags.js";
 import { ENV_FLAG_METADATA } from "../ops.metadata.js";
 import { resolveProfile } from "../ops.profiles.js";
-import { HARNESS_REGISTRY } from "../ops.registry.js";
+import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 
 const DEFAULT = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
 const EXPERIMENT = resolveProfile({
@@ -97,6 +98,76 @@ describe("RunSpecSchema", () => {
 
   it("rejects a non-positive run count", () => {
     expect(RunSpecSchema.safeParse({ kind: "eval", harness: "matching", profile: "default", flags: { runs: 0 } }).success).toBe(false);
+  });
+});
+
+describe("RunSpecSchema flag bounds", () => {
+  it("refuses a run count this harness caps below the shared schema's, naming the bound", () => {
+    // The failure this closes: RunFlagsSchema allows 1..25 because the scorecard
+    // harnesses do, discovery-ab's registry entry caps --runs at 10
+    // (AB_MAX_REPETITIONS), and the schema used to check only flag NAMES. So
+    // `--runs 25` parsed, was queued, was priced at 250 model invocations on the
+    // launch page and then died on the engine's own "--runs must not exceed 10"
+    // — a refusal after the operator had committed to the spend.
+    const message = refusal(abSpec({ flags: { runs: 25 } }));
+    expect(message).toContain("--runs");
+    expect(message).toContain(String(HARNESS_REGISTRY["discovery-ab"].flags.find((f) => f.name === "runs")!.max));
+    // The harness's own maximum is still accepted.
+    expect(RunSpecSchema.safeParse(abSpec({ flags: { runs: 10 } })).success).toBe(true);
+  });
+
+  it("enforces a scorecard harness's own bounds the same way", () => {
+    // --alpha is gt(0).lt(1) in the shared schema and 0.001..0.999 in every
+    // harness's registry entry: 0.0005 crosses the second and not the first, so
+    // only a per-harness check can refuse it. This is not discovery-ab's rule
+    // being special-cased; it is every harness's own entry being enforced.
+    const message = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { alpha: 0.0005 } });
+    expect(message).toContain("--alpha");
+    expect(message).toContain("0.001");
+    expect(RunSpecSchema.safeParse({ kind: "eval", harness: "matching", profile: "default", flags: { alpha: 0.05 } }).success).toBe(true);
+  });
+
+  it("accepts no value outside any harness's declared bounds", () => {
+    // Registry-driven, so a harness added later is covered without being listed
+    // here, and a bound tightened later cannot be enforced by the form alone.
+    let checked = 0;
+    for (const harness of OPS_HARNESSES) {
+      const base = harness === "discovery-ab"
+        ? abSpec()
+        : { kind: "eval", harness, profile: "default", flags: {} };
+      for (const flag of HARNESS_REGISTRY[harness].flags) {
+        if (flag.kind !== "number") continue;
+        const step = flag.step ?? 1;
+        const outside = [
+          ...(flag.min === undefined ? [] : [flag.min - step]),
+          ...(flag.max === undefined ? [] : [flag.max + step]),
+        ];
+        for (const value of outside) {
+          const spec = { ...base, flags: { [flag.name]: value } };
+          expect(RunSpecSchema.safeParse(spec).success, `${harness} accepted ${flag.cli} ${value}`).toBe(false);
+          checked += 1;
+        }
+        // And the bounds themselves are inside, or the form's min/max attributes
+        // would offer values the schema refuses.
+        for (const value of [flag.min, flag.max]) {
+          if (value === undefined) continue;
+          const spec = { ...base, flags: { [flag.name]: value } };
+          expect(RunSpecSchema.safeParse(spec).success, `${harness} refused ${flag.cli} ${value}`).toBe(true);
+        }
+      }
+    }
+    // Guards the guard: fourteen bounded numeric flags across the five
+    // harnesses, probed just outside each bound.
+    expect(checked).toBe(28);
+  });
+
+  it("reports an unsupported flag through the same function the form calls", () => {
+    // One definition of "would this harness accept these flags", so the page and
+    // the schema cannot come to disagree about it.
+    const issues = flagValueIssues("discovery-ab", HARNESS_REGISTRY["discovery-ab"].flags, { tier: 2 });
+    expect(issues.map((issue) => issue.name)).toEqual(["tier"]);
+    expect(refusal({ kind: "eval", harness: "discovery-ab", profile: "default", flags: { tier: 2 }, sides: SIDES }))
+      .toContain(issues[0]!.message);
   });
 });
 
@@ -419,6 +490,32 @@ describe("RunSpecSchema sides", () => {
     expect(message).toMatch(/5000 characters/);
   });
 
+  it("refuses a named config alongside sides, because the page says both sides run one baseline", () => {
+    // The launch page states that both sides run the same models and the same
+    // environment and differ only in the flags below. A named config makes that
+    // false: its models move both pass rates without changing the difference the
+    // run measures, and its env block sets a shared baseline for the keys nobody
+    // is comparing — unrecorded, because the artifact's configDiff names only
+    // the per-side keys. (A profile value for a key that IS paired is harmless:
+    // withDiscoveryEnvironment applies the side's keys last.)
+    const message = refusal(abSpec({ profile: "claude-evaluator" }));
+    expect(message).toMatch(/default/);
+    expect(message).toMatch(/both sides/);
+  });
+
+  it("refuses ad-hoc overrides alongside sides", () => {
+    const message = refusal(abSpec({ overrides: { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} } }));
+    expect(message).toMatch(/both sides/);
+    // Still accepted for a harness that scores one configuration.
+    expect(RunSpecSchema.safeParse({
+      kind: "eval",
+      harness: "matching",
+      profile: "default",
+      flags: {},
+      overrides: { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} },
+    }).success).toBe(true);
+  });
+
   it("refuses __proto__ instead of letting the record silently drop it", () => {
     // zod's record copies entries with assignment, so a `__proto__` key vanishes
     // rather than being refused: the spec would be accepted while missing what
@@ -511,6 +608,43 @@ describe("renderRun sides", () => {
     expect(checked).toBe(6);
   });
 
+  it("refuses to render a run count above this harness's own cap", () => {
+    // RunSpecSchema refuses it too; this is the layer that would otherwise SPEND
+    // on it, and the engine's own check runs only after the child has loaded its
+    // eval modules and reset two branches.
+    expect(() =>
+      renderRun(
+        { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 25 }, sides: SIDES },
+        DEFAULT,
+        REPORT,
+      ),
+    ).toThrow(/--runs/);
+  });
+
+  it("refuses to render sides under anything but the shared default baseline", () => {
+    expect(() =>
+      renderRun(
+        { kind: "eval", harness: "discovery-ab", profile: "claude-evaluator", flags: {}, sides: SIDES },
+        EXPERIMENT,
+        REPORT,
+      ),
+    ).toThrow(/both sides at once/);
+    expect(() =>
+      renderRun(
+        {
+          kind: "eval",
+          harness: "discovery-ab",
+          profile: "default",
+          flags: {},
+          overrides: { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} },
+          sides: SIDES,
+        },
+        DEFAULT,
+        REPORT,
+      ),
+    ).toThrow(/both sides at once/);
+  });
+
   it("refuses to render a pair the engine would refuse", () => {
     expect(() =>
       renderRun(
@@ -526,4 +660,36 @@ describe("renderRun sides", () => {
       ),
     ).toThrow(/identical/i);
   });
+});
+
+/**
+ * The modules ops.argv.ts re-exports so the SPA can import the server's own
+ * rules without importing the server.
+ *
+ * Their headers say they must stay dependency-free, and nothing but this
+ * enforced it: adding `import { z } from "zod"` to ops.sides.ts would keep every
+ * gate green while silently restoring the +67 kB (17 kB gzip) the split was made
+ * to avoid — zod plus RunSpecSchema's module-level schema construction, which no
+ * bundler can drop. Same guard ops.metadata.ts already carries in metadata.spec.ts.
+ */
+describe("browser-importable module boundary", () => {
+  const DEPENDENCY_FREE = ["ops.sides.ts", "ops.flags.ts"] as const;
+
+  for (const module of DEPENDENCY_FREE) {
+    it(`${module} stays dependency-free so the browser bundle can import it`, () => {
+      const source = readFileSync(path.join(import.meta.dir, "..", module), "utf8");
+      const importSpecifiers = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+      expect(importSpecifiers.length).toBeGreaterThan(0);
+      for (const specifier of importSpecifiers) {
+        expect(specifier).not.toMatch(/^node:/);
+        expect(specifier).not.toMatch(/^(fs|crypto|path|os|util|stream)$/);
+        // Every import is a relative one of another dependency-free ops module:
+        // a bare specifier is a package, and a package is the thing this file
+        // exists not to pull into the SPA.
+        expect(specifier, `${module} imports ${specifier}`).toMatch(
+          /^\.\/ops\.(allowlist|flags|metadata|registry|sides|types)\.js$/,
+        );
+      }
+    });
+  }
 });

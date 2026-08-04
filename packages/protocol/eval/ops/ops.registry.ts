@@ -30,7 +30,11 @@ const TIER_FLAG: HarnessFlag = { name: "tier", cli: "--tier", kind: "number", mi
  *
  * --runs is capped at AB_MAX_REPETITIONS (10), not the 25 the scorecard
  * harnesses allow, because the engine refuses anything higher before it spends
- * anything. registry.spec.ts pins the number against that constant's source.
+ * anything. registry.spec.ts pins the number against that constant's source,
+ * and RunSpecSchema enforces it: the shared RunFlagsSchema bound is the union
+ * across harnesses, so checking only flag NAMES against this list once let a
+ * spec through that the form priced at 250 invocations and the engine then
+ * refused with "--runs must not exceed 10" (flagValueIssues, ops.flags.ts).
  *
  * The engine does not *reject* a flag outside that set: parseAbRunArgs
  * (services/api/src/cli/discovery-ab.main.ts) scans argv for the flags it knows

@@ -117,56 +117,46 @@ describe("HARNESS_REGISTRY", () => {
     expect(hasTier("premise")).toBe(false);
   });
 
-  it("declared numeric flag bounds are accepted by RunSpecSchema", () => {
+  it("declared numeric flag bounds are exactly what RunSpecSchema accepts", () => {
     // Every (harness, numeric flag) pair, not one representative per flag name:
     // discovery-ab narrows --runs to its own ceiling, so a per-name check would
     // never look at it.
-    const numericFlags: { harness: (typeof OPS_HARNESSES)[number]; name: string; min: number; max: number }[] = [];
+    //
+    // This used to have two exceptions, both recording a schema that was WIDER
+    // than the registry: --alpha 0.0005 parsed (the schema says gt(0), every
+    // registry entry says 0.001) and discovery-ab --runs 25 parsed (the schema
+    // says 25, that registry entry says 10 — AB_MAX_REPETITIONS). Both were
+    // authorisations of a run the engine refuses, so RunSpecSchema now enforces
+    // each harness's own bounds (flagValueIssues, ops.flags.ts) and there is no
+    // longer a direction to assert instead of a refusal.
+    const numericFlags: { harness: (typeof OPS_HARNESSES)[number]; name: string; min: number; max: number; step: number }[] = [];
     for (const harness of OPS_HARNESSES) {
       for (const flag of HARNESS_REGISTRY[harness].flags) {
         if (flag.kind === "number") {
-          numericFlags.push({ harness, name: flag.name, min: flag.min!, max: flag.max! });
+          numericFlags.push({ harness, name: flag.name, min: flag.min!, max: flag.max!, step: flag.step ?? 1 });
         }
       }
     }
+    expect(numericFlags.length).toBeGreaterThan(0);
 
-    // Test each numeric flag's bounds
     for (const { harness, name, ...bounds } of numericFlags) {
-      // Schema should ACCEPT the declared min and max
-      const atMin = specFor(harness, { [name]: bounds.min });
-      const atMax = specFor(harness, { [name]: bounds.max });
-      expect(() => RunSpecSchema.parse(atMin)).not.toThrow();
-      expect(() => RunSpecSchema.parse(atMax)).not.toThrow();
+      // The declared bounds are inside: a form built from this registry puts them
+      // on its inputs, so a refused bound would offer a value that cannot launch.
+      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.min })), `${harness} ${name} min`).not.toThrow();
+      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.max })), `${harness} ${name} max`).not.toThrow();
 
-      // Schema should REJECT just outside the declared bounds
-      // For alpha (0.001..0.999), test that the server's gt(0).lt(1) would accept
-      // slightly outside but the registry bounds are deliberately narrower.
-      if (name === "alpha") {
-        // 0.0005 and 0.9995 would pass the server's gt(0).lt(1) but should fail
-        // the registry's narrower 0.001..0.999 bounds at step resolution.
-        const belowMin = specFor(harness, { alpha: 0.0005 });
-        const aboveMax = specFor(harness, { alpha: 0.9995 });
-        // The schema uses gt(0).lt(1), so these actually pass the schema.
-        // What we're asserting is that the REGISTRY bounds are narrower (safer).
-        expect(() => RunSpecSchema.parse(belowMin)).not.toThrow();
-        expect(() => RunSpecSchema.parse(aboveMax)).not.toThrow();
-        // But 0 and 1 fail the schema:
-        expect(() => RunSpecSchema.parse(specFor(harness, { alpha: 0 }))).toThrow();
-        expect(() => RunSpecSchema.parse(specFor(harness, { alpha: 1 }))).toThrow();
-      } else if (name === "runs" && harness === "discovery-ab") {
-        // The registry ceiling here (AB_MAX_REPETITIONS) is deliberately below
-        // the schema's 25, so the form refuses what the engine would refuse.
-        // The schema still accepts up to 25 for this harness today; assert the
-        // direction rather than pretending otherwise.
-        expect(bounds.max).toBeLessThan(25);
-        expect(() => RunSpecSchema.parse(specFor(harness, { runs: 26 }))).toThrow();
-      } else {
-        // For runs, tier, attemptTimeoutMs: test just outside the bounds
-        const belowMin = specFor(harness, { [name]: bounds.min - 1 });
-        const aboveMax = specFor(harness, { [name]: bounds.max + 1 });
-        expect(() => RunSpecSchema.parse(belowMin)).toThrow();
-        expect(() => RunSpecSchema.parse(aboveMax)).toThrow();
-      }
+      // And one step outside either bound is refused, at the step resolution the
+      // registry declares — which is how --alpha's exclusive server bounds are
+      // expressed as inclusive ones.
+      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.min - bounds.step })), `${harness} ${name} below min`).toThrow();
+      expect(() => RunSpecSchema.parse(specFor(harness, { [name]: bounds.max + bounds.step })), `${harness} ${name} above max`).toThrow();
     }
+
+    // The pair that motivated the change, stated once in full: this harness's
+    // ceiling is below the shared schema's, and the schema now honours it.
+    const abRuns = HARNESS_REGISTRY["discovery-ab"].flags.find((flag) => flag.name === "runs")!;
+    expect(abRuns.max).toBeLessThan(25);
+    expect(() => RunSpecSchema.parse(specFor("discovery-ab", { runs: 25 }))).toThrow(/--runs/);
+    expect(() => RunSpecSchema.parse(specFor("matching", { runs: 25 }))).not.toThrow();
   });
 });
