@@ -219,6 +219,24 @@ describe('withAbSpendAccounting', () => {
     expect(describeAbFailure(thrown).exitCode).toBe(AB_EXIT_PREFLIGHT_REFUSED);
   });
 
+  /**
+   * The reset loop is the likeliest place to fail after attestation, and inside
+   * it nothing may have been overwritten yet. The stage that reports it must
+   * not claim both branches were.
+   */
+  it('hedges a failure inside the reset loop, which may have overwritten nothing at all', async () => {
+    const thrown = await withAbSpendAccounting(async (progress) => {
+      progress.stage = 'resetting';
+      // The first restore refused: side b was never even requested.
+      throw new Error('Neon control-plane reset failed with status 500');
+    }).catch((error: unknown) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+    expect(report.message).toContain('one or both branches may have been overwritten');
+    expect(report.message).not.toContain('both branches were overwritten');
+    expect(report.message).not.toContain('status 500');
+  });
+
   it('reports a failure after the branches were reset as a mutation, not a refusal', async () => {
     const thrown = await withAbSpendAccounting(async (progress) => {
       progress.stage = 'reset';
@@ -238,10 +256,34 @@ describe('withAbSpendAccounting', () => {
     }).catch((error: unknown) => error);
     const report = describeAbFailure(thrown);
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
-    expect(report.message).toContain('provider spend and wall-clock time are gone');
+    // Hedged: a side that died at its own gate spent nothing, and this process
+    // cannot tell that case from a side that ran for forty minutes.
+    expect(report.message).toContain('provider spend and wall-clock time may already be gone');
     expect(report.message).toContain('No artifact was written');
     // The underlying failure text is never printed; only kept as a cause.
     expect(report.message).not.toContain('exited with code 1');
+  });
+
+  /**
+   * The console formatting and the temp-directory cleanup both run after
+   * `writeRunReport`. A run whose artifact is on disk - including a wholly
+   * successful one whose cleanup hit EBUSY - must not be told nothing survived.
+   */
+  it('names the artifact when the failure came after it was written', async () => {
+    const runPath = '/repo/eval/discovery-ab/runs/2026-08-04T00-00-00-000Z.json';
+    const thrown = await withAbSpendAccounting(async (progress) => {
+      progress.stage = 'reset';
+      progress.stage = 'spawned';
+      progress.artifactPath = runPath;
+      progress.stage = 'written';
+      throw new Error('EBUSY: resource busy or locked, rm /tmp/discovery-ab-x');
+    }).catch((error: unknown) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+    expect(report.message).toContain(runPath);
+    expect(report.message).toContain('The artifact on disk is real');
+    expect(report.message).not.toContain('nothing of this run survives');
+    expect(report.message).not.toContain('EBUSY');
   });
 });
 

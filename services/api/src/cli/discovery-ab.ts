@@ -19,8 +19,8 @@
  * read what the command requires *before* they have any of it.
  */
 import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery-ab.neon';
-import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation } from './discovery-ab.gate';
-import { abUsage, describeAbFailure } from './discovery-ab.contract';
+import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery-ab.gate';
+import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery-ab.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 
 import type { AbSideId } from './discovery-ab.plan';
@@ -29,23 +29,28 @@ import type { AbSideId } from './discovery-ab.plan';
  * Attests both targets, reporting a refusal an operator can act on without
  * echoing anything the control plane said.
  *
- * The underlying errors are already authored to carry only status codes and
- * field names, but they reach this boundary through `response.json()`, whose
- * own parse failures can quote response text. So the refusal is a fixed string:
- * it names what was refused (attestation) and what would satisfy it, and keeps
- * the original as `cause` for anyone holding the error rather than printing it.
+ * The refusal itself is authored in `discovery-ab.contract.ts`, per role: the
+ * same attestation runs in the parent and in every child, and a child is
+ * attesting *after* the parent already reset both branches and spawned it, so
+ * the two cannot truthfully say the same thing about cost.
  */
-async function attestOrRefuse(manifest: AbManifest): Promise<void> {
+async function attestOrRefuse(manifest: AbManifest, role: AbInvocationRole): Promise<void> {
   try {
     await attestAbTargets({ manifest, controlPlane: createNeonControlPlane(process.env.NEON_API_KEY ?? '') });
   } catch (error) {
-    throw new AbGateError(
-      `Refusing to run: DISCOVERY_AB_TARGETS was not attested as the two designated A/B branches `
-      + `(${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) parented on eval-discovery-base. `
-      + 'Nothing was reset and nothing was spawned.',
-      { cause: error },
-    );
+    throw abAttestationRefusal(role, { cause: error });
   }
+}
+
+/**
+ * Parent or child, decided by the presence of `--side` alone.
+ *
+ * Deliberately not `childSideId`: a malformed `--side` value still names a
+ * child invocation, and reporting one as a parent would print a run-level cost
+ * claim from a process that has no idea what the run cost.
+ */
+function abInvocationRole(args: readonly string[]): AbInvocationRole {
+  return args.includes('--side') ? 'child' : 'parent';
 }
 
 /** The side this process runs, or undefined for the parent invocation. */
@@ -67,7 +72,7 @@ async function main(): Promise<void> {
   // reach the control plane, let alone a database.
   assertAbConfirmation(process.env);
   const manifest = parseAbManifest(process.env.DISCOVERY_AB_TARGETS);
-  await attestOrRefuse(manifest);
+  await attestOrRefuse(manifest, abInvocationRole(args));
   const sideId = childSideId(args);
   if (sideId !== undefined) {
     const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
@@ -86,8 +91,10 @@ if (import.meta.main) {
     // message is safe to print (gate refusals name environment variables;
     // spend reports name stages; everything else is generic, because provider,
     // database and control-plane errors can carry credentials and response
-    // bodies) and which exit code an operator should act on.
-    const report = describeAbFailure(error);
+    // bodies) and which exit code an operator should act on. The role is passed
+    // because a child that failed after running the graph has already spent the
+    // run, and must not print the parent's "nothing was spent" line.
+    const report = describeAbFailure(error, abInvocationRole(process.argv.slice(2)));
     console.error(report.message);
     process.exitCode = report.exitCode;
   });

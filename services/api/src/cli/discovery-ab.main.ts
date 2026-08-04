@@ -724,8 +724,17 @@ export async function finalizeAbChildArtifacts(
  * How far this run has got. It is recorded as the run advances rather than
  * inferred afterwards, because the one thing a failure cannot tell you about
  * itself is whether the money was already spent.
+ *
+ * Each stage is set at the moment its claim becomes true and not before: the
+ * message authored from it is read by an operator deciding whether they just
+ * lost forty minutes, so a stage that runs slightly ahead of the run is a
+ * message that asserts something that did not happen.
  */
-export interface AbRunProgress { stage: AbRunStage | null }
+export interface AbRunProgress {
+  stage: AbRunStage | null;
+  /** Set with the `'written'` stage, so the failure report can name the artifact. */
+  artifactPath?: string;
+}
 
 /**
  * Runs something that may reset branches and spend money, and turns any failure
@@ -742,7 +751,7 @@ export async function withAbSpendAccounting(run: (progress: AbRunProgress) => Pr
   try {
     await run(progress);
   } catch (error) {
-    throw classifyAbParentFailure(progress.stage, error);
+    throw classifyAbParentFailure(progress.stage, error, { artifactPath: progress.artifactPath });
   }
 }
 
@@ -783,13 +792,16 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   // run cleans, where resetting afterwards leaves a window in which a dirty
   // branch looks clean. Both must succeed before anything is spawned - a
   // half-isolated comparison is not a comparison.
-  // Everything from here on can fail with the branches already overwritten,
-  // which is a different thing to report than a refusal.
-  progress.stage = 'reset';
+  // Everything from here on can fail with a branch already overwritten, which is
+  // a different thing to report than a refusal. Inside the loop only "one or
+  // both" is true - a restore refused on side a overwrites nothing at all - so
+  // 'reset', which claims both, is not set until the loop has finished.
+  progress.stage = 'resetting';
   for (const target of attested.targets) {
     await resetAbBranch({ manifest: attested, branchId: target.branchId, apiKey });
     console.log(`Discovery A/B reset side ${target.sideId} (${AB_BRANCH_NAMES[target.sideId]}) from ${AB_BASE_BRANCH}`);
   }
+  progress.stage = 'reset';
 
   const startedAt = new Date().toISOString();
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'discovery-ab-'));
@@ -865,6 +877,11 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
       meta: toGovernedRunMeta(meta, { completedAt: new Date().toISOString(), execution }),
       force: selection.force,
     });
+    // The artifact exists from here: a failure below (console formatting, or the
+    // finally's temp-directory cleanup) must not tell an operator that nothing
+    // of this run survived when the run report is on disk.
+    progress.artifactPath = runPath;
+    progress.stage = 'written';
 
     console.log(formatConsole(scorecard, [], [], { title: 'Discovery A/B scorecard', execution }));
     console.log(formatAbConfigDiff(meta));

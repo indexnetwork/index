@@ -45,10 +45,16 @@ export const AB_MAX_REPETITIONS = 10;
 /** 0 — both sides completed and the artifact holds the comparison. */
 export const AB_EXIT_COMPARISON = 0;
 /**
- * 2 — refused before anything happened: the gate, the arguments, the manifest
- * or the attestation. No branch was reset, no child was spawned, no provider
- * call was made. Conclude: fix what the message names and re-run; you have lost
- * nothing but the seconds it took to refuse.
+ * 2 — for a *parent* run: refused before anything happened — the gate, the
+ * arguments, the manifest or the attestation. No branch was reset, no child was
+ * spawned, no provider call was made. Conclude: fix what the message names and
+ * re-run; you have lost nothing but the seconds it took to refuse.
+ *
+ * A `--side` child also exits 2 for failures that are *not* pre-flight, because
+ * a child cannot know what the run as a whole cost — it did not reset the
+ * branches and did not start the other side. That is why a child's message
+ * makes no cost claim and why its exit code is consumed by the parent's
+ * supervision rather than read by an operator.
  */
 export const AB_EXIT_PREFLIGHT_REFUSED = 2;
 /**
@@ -61,45 +67,91 @@ export const AB_EXIT_PREFLIGHT_REFUSED = 2;
  */
 export const AB_EXIT_INSUFFICIENT_EVIDENCE = 3;
 /**
- * 4 — failed *after* the branches were reset and/or a side was spawned, and no
- * artifact exists. Conclude: this run mutated the A/B branches and may have
- * spent a live run (provider calls, graph writes, wall-clock hours) and nothing
- * of it survives. Re-running costs that again. This is the code that keeps a
- * forty-minute loss from looking like a refusal.
+ * 4 — failed *after* the branches began being reset and/or a side was spawned.
+ * Conclude: this run mutated the A/B branches and may have spent a live run
+ * (provider calls, graph writes, wall-clock hours). Usually nothing of it
+ * survives and re-running costs that again; the one exception is a failure that
+ * lands *after* the run report was saved, whose message names the artifact on
+ * disk. The code stays 4 there because the run did not complete — what the
+ * message says, not the code, is what tells an operator whether anything
+ * survived. This is the code that keeps a forty-minute loss from looking like a
+ * refusal.
  */
 export const AB_EXIT_SPENT_WITHOUT_ARTIFACT = 4;
 
 /**
- * How far a parent run got before it failed. `null` — the third case — is
+ * How far a parent run got before it failed. `null` — the fifth case — is
  * pre-flight, and is deliberately not a member: it is the absence of any
  * mutation, not a stage of one.
+ *
+ * `'resetting'` and `'reset'` are separate stages because the difference
+ * between them is a claim the operator cannot check: inside the loop, one
+ * branch may have been overwritten and the other never touched, and a refused
+ * restore is the most likely post-attestation failure there is. Only the
+ * completed loop licenses "both branches were overwritten".
  */
-export type AbRunStage = 'reset' | 'spawned';
+export type AbRunStage = 'resetting' | 'reset' | 'spawned' | 'written';
 
-const AB_SPENT_MESSAGES: Record<AbRunStage, string> = {
-  reset: `Discovery A/B failed after resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
-    + `from ${AB_BASE_BRANCH} and before spawning any side: both branches were overwritten, no run was spent, `
-    + 'and no artifact was written.',
-  spawned: 'Discovery A/B failed after spawning a side: both A/B branches were reset and a live run was started, '
-    + 'so provider spend and wall-clock time are gone. No artifact was written and there is no verdict — '
-    + 'nothing of this run survives, and re-running costs the same again.',
-};
+/**
+ * What a failure at each stage may truthfully assert.
+ *
+ * Every clause here has to hold in *every* situation that can reach it. Where
+ * the stage cannot distinguish two situations — a restore that failed on side a
+ * versus one that failed on side b — the message hedges rather than reporting
+ * the common case as fact.
+ */
+function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
+  switch (stage) {
+    case 'resetting':
+      return `Discovery A/B failed while resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
+        + `from ${AB_BASE_BRANCH}: one or both branches may have been overwritten — the reset was still in `
+        + 'progress, so this run cannot say which. No side was spawned, no run was spent, and no artifact was '
+        + 'written. Treat both branches as dirty; the next run resets them again.';
+    case 'reset':
+      return `Discovery A/B failed after resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
+        + `from ${AB_BASE_BRANCH} and before spawning any side: both branches were overwritten, no run was spent, `
+        + 'and no artifact was written.';
+    case 'spawned':
+      // "may already be gone", not "are gone": the stage is set the moment a
+      // side process exists, and a side that died at its own gate spent
+      // nothing. What it did spend is bounded only by how far it got, which
+      // this process cannot see.
+      return 'Discovery A/B failed after spawning a side: both A/B branches were reset and at least one side '
+        + 'process was started, so provider spend and wall-clock time may already be gone. No artifact was '
+        + 'written and there is no verdict — nothing of this run survives, and re-running pays for the whole '
+        + 'comparison again.';
+    case 'written':
+      return 'Discovery A/B failed after the run artifact was written'
+        + `${artifactPath === undefined ? '' : ` (${artifactPath})`}: both A/B branches were reset and a live run `
+        + 'was spent, and the failure came after the artifact was saved. The artifact on disk is real — read it '
+        + 'before re-running, which costs the same again.';
+  }
+}
+
+/** What a spend report knows beyond the stage. */
+export interface AbSpentRunDetail {
+  /** The run report's path, known only once it has been written. */
+  artifactPath?: string;
+}
 
 /**
  * A failure that happened after this run began mutating or spending.
  *
- * Its message is authored here from the stage alone and never from the
- * underlying error, which may carry a `DATABASE_URL` password or a
- * control-plane response body. The original is kept as `cause` for anyone
- * holding the error rather than printing it.
+ * Its message is authored here from the stage (and, at `'written'`, the path
+ * this harness itself chose) and never from the underlying error, which may
+ * carry a `DATABASE_URL` password or a control-plane response body. The
+ * original is kept as `cause` for anyone holding the error rather than printing
+ * it.
  */
 export class AbSpentRunError extends Error {
   readonly stage: AbRunStage;
+  readonly artifactPath?: string;
 
-  constructor(stage: AbRunStage, options?: ErrorOptions) {
-    super(AB_SPENT_MESSAGES[stage], options);
+  constructor(stage: AbRunStage, options?: ErrorOptions & AbSpentRunDetail) {
+    super(abSpentMessage(stage, options?.artifactPath), options);
     this.name = 'AbSpentRunError';
     this.stage = stage;
+    if (options?.artifactPath !== undefined) this.artifactPath = options.artifactPath;
   }
 }
 
@@ -113,11 +165,17 @@ export class AbSpentRunError extends Error {
  * `AbSpentRunError`, because the one thing the operator cannot work out from a
  * generic failure is whether they just paid for it.
  */
-export function classifyAbParentFailure(stage: AbRunStage | null, error: unknown): unknown {
-  return stage === null ? error : new AbSpentRunError(stage, { cause: error });
+export function classifyAbParentFailure(stage: AbRunStage | null, error: unknown, detail?: AbSpentRunDetail): unknown {
+  return stage === null ? error : new AbSpentRunError(stage, { cause: error, ...detail });
 }
 
 export interface AbFailureReport { exitCode: number; message: string }
+
+/**
+ * Which invocation is reporting. A parent owns the run-level cost report; a
+ * child owns nothing but its own outcome.
+ */
+export type AbInvocationRole = 'parent' | 'child';
 
 /**
  * What to print and what to exit with, for any failure reaching the bootstrap.
@@ -126,8 +184,17 @@ export interface AbFailureReport { exitCode: number; message: string }
  * environment variables; spend reports name stages. Everything else prints a
  * fixed line, because provider, database and control-plane errors can carry
  * credentials and response bodies.
+ *
+ * The fixed line depends on who is printing it. In a parent, an unclassified
+ * failure really did escape before the first reset — `withAbSpendAccounting`
+ * wraps everything after it — so "nothing was mutated or spent" is true. In a
+ * `--side` child it is not: a child runs the graph, writes to its branch and
+ * pays providers, and any failure after that (the child-artifact write, closing
+ * its resources, assembling its evidence) reaches this same fallback. So a
+ * child says only that it failed, and leaves every cost claim to the parent,
+ * which is the process that knows.
  */
-export function describeAbFailure(error: unknown): AbFailureReport {
+export function describeAbFailure(error: unknown, role: AbInvocationRole = 'parent'): AbFailureReport {
   if (error instanceof AbSpentRunError) {
     return { exitCode: AB_EXIT_SPENT_WITHOUT_ARTIFACT, message: error.message };
   }
@@ -136,9 +203,39 @@ export function describeAbFailure(error: unknown): AbFailureReport {
   }
   return {
     exitCode: AB_EXIT_PREFLIGHT_REFUSED,
-    message: 'Discovery A/B command failed before anything was reset or spawned: '
-      + 'no branch was mutated and no run was spent.',
+    message: role === 'child'
+      ? 'Discovery A/B side process failed. A child makes no claim about what this run cost: whether the '
+        + 'branches were reset, a side was spawned or a live run was spent is reported by the parent '
+        + "invocation, and the parent's exit code is the one to act on."
+      : 'Discovery A/B command failed before anything was reset or spawned: '
+        + 'no branch was mutated and no run was spent.',
   };
+}
+
+/**
+ * The refusal printed when the two targets cannot be attested, authored for
+ * whichever invocation is refusing.
+ *
+ * The same attestation runs in the parent and in every child, and the two are
+ * at different points in the run. "Nothing was reset and nothing was spawned"
+ * is true of a parent refusing before its first reset; a child attests *after*
+ * the parent has already reset both branches and spawned it, so the same
+ * sentence printed from a child is simply false. A child speaks only for
+ * itself.
+ *
+ * The underlying control-plane error is never included: it reaches the caller
+ * through `response.json()`, whose parse failures can quote response text. It
+ * is kept as `cause` for anyone holding the error rather than printing it.
+ */
+export function abAttestationRefusal(role: AbInvocationRole, options?: ErrorOptions): AbGateError {
+  return new AbGateError(
+    'Refusing to run: DISCOVERY_AB_TARGETS was not attested as the two designated A/B branches '
+    + `(${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) parented on ${AB_BASE_BRANCH}. `
+    + (role === 'child'
+      ? 'This side did not run; what the run reset or spawned is reported by the parent invocation.'
+      : 'Nothing was reset and nothing was spawned.'),
+    options,
+  );
 }
 
 /**
@@ -174,13 +271,15 @@ export function abUsage(): string {
     'Both sides must state the same keys with differing values; identical or',
     'asymmetric configurations are refused before any spend.',
     '',
-    'Exit codes:',
+    'Exit codes, for the parent invocation an operator runs (a --side child\'s code',
+    "is consumed by the parent's supervision, which reports the run-level code):",
     `  ${AB_EXIT_COMPARISON}   Both sides completed; the artifact holds the comparison.`,
     `  ${AB_EXIT_PREFLIGHT_REFUSED}   Refused before anything ran (gate, arguments, manifest, attestation).`,
     '      Nothing was reset, nothing was spawned, nothing was spent.',
     `  ${AB_EXIT_INSUFFICIENT_EVIDENCE}   The artifact was written but a side did not score every slot, so there is no`,
     '      verdict. The run was spent and the artifact on disk is real.',
-    `  ${AB_EXIT_SPENT_WITHOUT_ARTIFACT}   Failed after the branches were reset and/or a side was spawned, and no artifact`,
-    '      was written. The branches were mutated and a live run may have been spent.',
+    `  ${AB_EXIT_SPENT_WITHOUT_ARTIFACT}   Failed after the branches began being reset and/or a side was spawned. The`,
+    '      branches were mutated and a live run may have been spent; the message says what',
+    '      was overwritten and whether an artifact survived.',
   ].join('\n');
 }
