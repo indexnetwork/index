@@ -70,6 +70,18 @@ bounds are the same bounds `RunSpecSchema` enforces server-side. Workload is `ca
 runs` for the scorecard harnesses; `renderRun` doubles it for `discovery-ab`, whose single
 run evaluates every case on both sides (`SIDES_PER_RUN` in `ops.argv.ts`).
 
+**`discovery-ab` also carries two configurations.** Its spec has a `sides: { a, b }`
+object of environment values, rendered as `--a KEY=VALUE` / `--b KEY=VALUE` with keys
+sorted. It is required for that harness and refused for every other (a scorecard harness
+scores one configuration against a baseline, so a second has nothing to mean). Keys are
+confined to `DISCOVERY_AB_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the nine
+flags the discovery graph actually reads, pinned in `tests/argv.spec.ts` against the
+engine's own `AB_FLAGS` — and `abSideIssues` in [`ops.argv.ts`](./ops.argv.ts) mirrors the
+engine's `buildAbPlan` rules: same key set on both sides, at least one differing value, no
+empty values. The engine *ignores* argv it does not recognise and only reaches those rules
+after loading its eval modules, so mirroring them here is what turns a late, paid failure
+into a 400.
+
 **Destructive flags are structurally unreachable.** `--update-baseline`, `--force` and
 `--reason` are absent from the registry *and* from `RunFlags`/`RunSpecSchema`. There is no
 flag to toggle and no allowlist to keep in sync: a `RunSpec` that could produce them does
@@ -317,9 +329,13 @@ handled ahead of the gate because it is the request that establishes one.
 `ops.server.ts` is the trust boundary, and it is narrow by construction:
 
 - **The only thing a client may send is a typed `RunSpec` plus a profile NAME.** Never
-  argv, never environment, never a database URL. `RunSpecSchema` is `.strict()`, so a
+  argv, never a database URL. `RunSpecSchema` is `.strict()`, so a
   request carrying `env`, `argv` or any other unknown key **fails with 400** rather than
   being silently ignored.
+- The one environment a client may name is `sides` on a `discovery-ab` spec: values for
+  the nine `DISCOVERY_AB_ENV_KEYS` flags, which are protocol feature flags and nothing
+  else. They reach the child as `--a`/`--b` argv, never as the run's injected env, and any
+  other key **fails with 400**.
 - The `fixture-reset` variant of `RunSpec` is deliberately not parseable by
   `RunSpecSchema`. A reset is not constructible through `/api/runs`; it exists only behind
   the guarded fixture route.

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
+import { DISCOVERY_AB_ENV_KEYS } from "../ops.allowlist.js";
 import { renderRun, RunSpecSchema } from "../ops.argv.js";
+import { ENV_FLAG_METADATA } from "../ops.metadata.js";
 import { resolveProfile } from "../ops.profiles.js";
 import { HARNESS_REGISTRY } from "../ops.registry.js";
 
@@ -13,6 +17,28 @@ const EXPERIMENT = resolveProfile({
 });
 
 const REPORT = "/tmp/.ops-runs/run-1/report.json";
+
+/** A minimal valid pair: same key set, one differing value. */
+const SIDES = {
+  a: { DISCOVERY_PROFILE_SOURCE: "premise" },
+  b: { DISCOVERY_PROFILE_SOURCE: "user_context" },
+};
+
+const AB_FLAGS_SOURCE = path.join(
+  import.meta.dir, "..", "..", "..", "..", "..",
+  "services", "api", "src", "cli", "discovery-ab.flags.ts",
+);
+
+function abSpec(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { kind: "eval", harness: "discovery-ab", profile: "default", flags: {}, sides: SIDES, ...extra };
+}
+
+/** Every refusal message of a failed parse, joined; the messages are the point here. */
+function refusal(spec: Record<string, unknown>): string {
+  const result = RunSpecSchema.safeParse(spec);
+  if (result.success) throw new Error(`Expected a refusal, got a valid spec: ${JSON.stringify(spec)}`);
+  return result.error.issues.map((issue) => issue.message).join(" | ");
+}
 
 describe("RunSpecSchema", () => {
   it("rejects an unknown harness", () => {
@@ -113,7 +139,7 @@ describe("renderRun", () => {
     // side b. Recording cases x runs would report half of what it spent, on the
     // one harness here that costs real branch resets and live graph calls.
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4 } },
+      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4 }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
@@ -122,7 +148,7 @@ describe("renderRun", () => {
     // Narrowing the corpus narrows the count but not the doubling: both sides
     // still run the case that survived the filter.
     const oneCase = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" } },
+      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
@@ -214,5 +240,149 @@ describe("renderRun", () => {
 
     // Pre-existing value should be preserved (not overwritten with "none")
     expect(rendered.env.OPENROUTER_FALLBACK_MODEL).toBe("openai/gpt-4o");
+  });
+});
+
+describe("RunSpecSchema sides", () => {
+  it("keeps the site's nine offerable keys identical to the engine's AB_FLAGS", () => {
+    // Read, never retyped: discovery-ab.flags.ts imports node:fs, so ops.argv.ts
+    // cannot import AB_FLAGS without breaking the Vite bundle the app builds from
+    // these modules. Pinning the list as source text is the same technique
+    // registry.spec.ts uses for AB_MAX_REPETITIONS: a key added, removed or
+    // renamed in the engine fails here instead of being silently dropped by a
+    // parser that ignores what it does not recognise.
+    const source = readFileSync(AB_FLAGS_SOURCE, "utf8");
+    const literal = source.match(/export const AB_FLAGS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
+    if (!literal) throw new Error("AB_FLAGS not found in discovery-ab.flags.ts");
+    const engineKeys = [...literal[1]!.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]!);
+
+    // Guards the pin against passing vacuously on an empty or unparsed match.
+    expect(engineKeys.length).toBe(9);
+    expect([...DISCOVERY_AB_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
+  });
+
+  it("can describe every key it offers", () => {
+    // The launch form labels each key from ENV_FLAG_METADATA, so a key the site
+    // may offer but cannot describe would render as a bare identifier.
+    const described = new Set(ENV_FLAG_METADATA.map((meta) => meta.key));
+    for (const key of DISCOVERY_AB_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
+  });
+
+  it("refuses a discovery-ab run that names no configurations", () => {
+    expect(refusal({ kind: "eval", harness: "discovery-ab", profile: "default", flags: {} })).toMatch(/sides/i);
+  });
+
+  it("refuses sides on a harness that scores against a baseline", () => {
+    expect(refusal({ kind: "eval", harness: "matching", profile: "default", flags: {}, sides: SIDES })).toMatch(/matching/);
+  });
+
+  it("refuses a key the discovery graph does not read, naming it", () => {
+    const message = refusal(abSpec({
+      sides: { a: { POOL_QUESTIONS_MODE: "on" }, b: { POOL_QUESTIONS_MODE: "off" } },
+    }));
+    expect(message).toContain("POOL_QUESTIONS_MODE");
+  });
+
+  it("refuses an asymmetric key set, naming the key and both sides", () => {
+    // Mirrors assertSymmetricKeySets in discovery-ab.plan.ts: an omitted flag
+    // takes the graph's own default, which may equal the other side's value —
+    // so the run would measure nothing while attributing noise to that flag.
+    const message = refusal(abSpec({
+      sides: {
+        a: { DISCOVERY_PROFILE_SOURCE: "premise", DISCOVERY_SOURCE_PREMISE_LIMIT: "10" },
+        b: { DISCOVERY_PROFILE_SOURCE: "user_context" },
+      },
+    }));
+    expect(message).toContain("DISCOVERY_SOURCE_PREMISE_LIMIT");
+    expect(message).toMatch(/side a/);
+    expect(message).toMatch(/side b/);
+  });
+
+  it("refuses two identical configurations", () => {
+    const message = refusal(abSpec({
+      sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "premise" } },
+    }));
+    expect(message).toMatch(/identical/i);
+  });
+
+  it("refuses a side with no configuration at all", () => {
+    expect(refusal(abSpec({ sides: { a: {}, b: { DISCOVERY_PROFILE_SOURCE: "premise" } } }))).toMatch(/side a/i);
+  });
+
+  it("refuses an empty or whitespace value", () => {
+    for (const value of ["", "   "]) {
+      const message = refusal(abSpec({
+        sides: { a: { DISCOVERY_PROFILE_SOURCE: value }, b: { DISCOVERY_PROFILE_SOURCE: "premise" } },
+      }));
+      expect(message).toContain("DISCOVERY_PROFILE_SOURCE");
+    }
+  });
+
+  it("accepts a symmetric pair that differs in one value", () => {
+    expect(RunSpecSchema.safeParse(abSpec({ flags: { runs: 2, case: "historical/songwriting-duo" } })).success).toBe(true);
+  });
+});
+
+describe("renderRun sides", () => {
+  it("renders --a/--b pairs in a stable order alongside the shared selection", () => {
+    const rendered = renderRun(
+      {
+        kind: "eval",
+        harness: "discovery-ab",
+        profile: "default",
+        flags: { runs: 2, case: "historical/songwriting-duo" },
+        sides: {
+          // Deliberately unsorted, and the same keys on both sides: the engine
+          // sorts (abConfigDeltas), so two launches of one configuration must
+          // produce byte-identical argv regardless of the order the form built it in.
+          a: { DISCOVERY_SOURCE_PREMISE_LIMIT: "10", DISCOVERY_PROFILE_SOURCE: "premise" },
+          b: { DISCOVERY_PROFILE_SOURCE: "user_context", DISCOVERY_SOURCE_PREMISE_LIMIT: "10" },
+        },
+      },
+      DEFAULT,
+      REPORT,
+    );
+
+    expect(rendered.argv).toEqual([
+      "bun", "run", "eval:discovery-ab", "--",
+      "--runs", "2",
+      "--case", "historical/songwriting-duo",
+      "--a", "DISCOVERY_PROFILE_SOURCE=premise",
+      "--a", "DISCOVERY_SOURCE_PREMISE_LIMIT=10",
+      "--b", "DISCOVERY_PROFILE_SOURCE=user_context",
+      "--b", "DISCOVERY_SOURCE_PREMISE_LIMIT=10",
+      "--report", REPORT,
+    ]);
+  });
+
+  it("refuses to render a discovery-ab run without sides", () => {
+    // The engine ignores what it does not recognise and would refuse a sideless
+    // run only after loading its eval modules, so renderRun is the last place
+    // that can refuse before a run is queued.
+    expect(() =>
+      renderRun({ kind: "eval", harness: "discovery-ab", profile: "default", flags: {} }, DEFAULT, REPORT),
+    ).toThrow(/sides/i);
+  });
+
+  it("refuses to render sides for a harness that takes one configuration", () => {
+    expect(() =>
+      renderRun({ kind: "eval", harness: "matching", profile: "default", flags: {}, sides: SIDES }, DEFAULT, REPORT),
+    ).toThrow(/matching/);
+  });
+
+  it("refuses to render a pair the engine would refuse", () => {
+    expect(() =>
+      renderRun(
+        {
+          kind: "eval",
+          harness: "discovery-ab",
+          profile: "default",
+          flags: {},
+          sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "premise" } },
+        },
+        DEFAULT,
+        REPORT,
+      ),
+    ).toThrow(/identical/i);
   });
 });

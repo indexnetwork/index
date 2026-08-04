@@ -106,6 +106,21 @@ export interface RunFlags {
   strictEvidence?: boolean;
 }
 
+/**
+ * The two environment configurations a discovery-ab run compares, rendered as
+ * `--a KEY=VALUE` / `--b KEY=VALUE`.
+ *
+ * `a` and `b` are named rather than a list because the engine requires exactly
+ * two sides in that order (`assertOrderedDistinctSides` in
+ * services/api/src/cli/discovery-ab.plan.ts: a reversed pair reports side b's
+ * values under the artifact's a column). Both sides must declare the same key
+ * set and differ in at least one value; RunSpecSchema enforces both.
+ */
+export interface AbSides {
+  a: Record<string, string>;
+  b: Record<string, string>;
+}
+
 export interface EvalRunSpec {
   kind: "eval";
   harness: OpsHarness;
@@ -114,6 +129,12 @@ export interface EvalRunSpec {
   /** Ad-hoc overrides; only valid with profile "default". Never credentials. */
   overrides?: { models: Record<string, string>; env: Record<string, string> };
   flags: RunFlags;
+  /**
+   * Required for discovery-ab and invalid for every other harness: the
+   * scorecard harnesses score one configuration against a committed baseline,
+   * so a second configuration would have nothing to mean.
+   */
+  sides?: AbSides;
 }
 
 /**

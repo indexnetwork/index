@@ -7,6 +7,23 @@ import { resolveProfile } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 import type { OpsHarness } from "../ops.types.js";
 
+/**
+ * discovery-ab is the one harness whose spec is invalid without per-side
+ * configuration, so a spec built for it here carries a valid minimal pair;
+ * otherwise every parse below would fail for a reason the test is not about.
+ */
+function specFor(harness: OpsHarness, flags: Record<string, unknown>): Record<string, unknown> {
+  return {
+    kind: "eval" as const,
+    harness,
+    profile: "default",
+    flags,
+    ...(harness === "discovery-ab"
+      ? { sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user_context" } } }
+      : {}),
+  };
+}
+
 const AB_CONTRACT_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
   "services", "api", "src", "cli", "discovery-ab.contract.ts",
@@ -70,7 +87,14 @@ describe("HARNESS_REGISTRY", () => {
     const resolved = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "default", flags: { tier: 1 } },
+        {
+          kind: "eval",
+          harness: "discovery-ab",
+          profile: "default",
+          flags: { tier: 1 },
+          // Valid sides, so the only thing wrong with this spec is the flag.
+          sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user_context" } },
+        },
         resolved,
         "/tmp/.ops-runs/run-1/report.json",
       ),
@@ -109,8 +133,8 @@ describe("HARNESS_REGISTRY", () => {
     // Test each numeric flag's bounds
     for (const { harness, name, ...bounds } of numericFlags) {
       // Schema should ACCEPT the declared min and max
-      const atMin = { kind: "eval" as const, harness, profile: "default", flags: { [name]: bounds.min } };
-      const atMax = { kind: "eval" as const, harness, profile: "default", flags: { [name]: bounds.max } };
+      const atMin = specFor(harness, { [name]: bounds.min });
+      const atMax = specFor(harness, { [name]: bounds.max });
       expect(() => RunSpecSchema.parse(atMin)).not.toThrow();
       expect(() => RunSpecSchema.parse(atMax)).not.toThrow();
 
@@ -120,28 +144,26 @@ describe("HARNESS_REGISTRY", () => {
       if (name === "alpha") {
         // 0.0005 and 0.9995 would pass the server's gt(0).lt(1) but should fail
         // the registry's narrower 0.001..0.999 bounds at step resolution.
-        const belowMin = { kind: "eval" as const, harness, profile: "default", flags: { alpha: 0.0005 } };
-        const aboveMax = { kind: "eval" as const, harness, profile: "default", flags: { alpha: 0.9995 } };
+        const belowMin = specFor(harness, { alpha: 0.0005 });
+        const aboveMax = specFor(harness, { alpha: 0.9995 });
         // The schema uses gt(0).lt(1), so these actually pass the schema.
         // What we're asserting is that the REGISTRY bounds are narrower (safer).
         expect(() => RunSpecSchema.parse(belowMin)).not.toThrow();
         expect(() => RunSpecSchema.parse(aboveMax)).not.toThrow();
         // But 0 and 1 fail the schema:
-        expect(() => RunSpecSchema.parse({ kind: "eval" as const, harness, profile: "default", flags: { alpha: 0 } })).toThrow();
-        expect(() => RunSpecSchema.parse({ kind: "eval" as const, harness, profile: "default", flags: { alpha: 1 } })).toThrow();
+        expect(() => RunSpecSchema.parse(specFor(harness, { alpha: 0 }))).toThrow();
+        expect(() => RunSpecSchema.parse(specFor(harness, { alpha: 1 }))).toThrow();
       } else if (name === "runs" && harness === "discovery-ab") {
         // The registry ceiling here (AB_MAX_REPETITIONS) is deliberately below
         // the schema's 25, so the form refuses what the engine would refuse.
         // The schema still accepts up to 25 for this harness today; assert the
         // direction rather than pretending otherwise.
         expect(bounds.max).toBeLessThan(25);
-        expect(() =>
-          RunSpecSchema.parse({ kind: "eval" as const, harness, profile: "default", flags: { runs: 26 } }),
-        ).toThrow();
+        expect(() => RunSpecSchema.parse(specFor(harness, { runs: 26 }))).toThrow();
       } else {
         // For runs, tier, attemptTimeoutMs: test just outside the bounds
-        const belowMin = { kind: "eval" as const, harness, profile: "default", flags: { [name]: bounds.min - 1 } };
-        const aboveMax = { kind: "eval" as const, harness, profile: "default", flags: { [name]: bounds.max + 1 } };
+        const belowMin = specFor(harness, { [name]: bounds.min - 1 });
+        const aboveMax = specFor(harness, { [name]: bounds.max + 1 });
         expect(() => RunSpecSchema.parse(belowMin)).toThrow();
         expect(() => RunSpecSchema.parse(aboveMax)).toThrow();
       }

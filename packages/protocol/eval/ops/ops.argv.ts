@@ -1,8 +1,9 @@
 import { z } from "zod";
 
+import { DISCOVERY_AB_ENV_KEYS } from "./ops.allowlist.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
-import type { EvalRunSpec, OpsHarness, RunFlags } from "./ops.types.js";
+import type { AbSides, EvalRunSpec, OpsHarness, RunFlags } from "./ops.types.js";
 
 /**
  * A selection-flag value becomes its own argv element, so a value like
@@ -30,6 +31,104 @@ const RunFlagsSchema = z
   .strict();
 
 /**
+ * Whether one run of this harness compares two operator-supplied environment
+ * configurations.
+ *
+ * Exhaustive by type, so a second comparison harness has to state its answer
+ * here rather than inherit "no" and silently accept a spec with nothing to
+ * compare. The four scorecard harnesses score one configuration against a
+ * committed baseline, so a second configuration would have nothing to mean.
+ */
+const REQUIRES_SIDES: Readonly<Record<OpsHarness, boolean>> = Object.freeze({
+  matching: false,
+  profile: false,
+  premise: false,
+  opportunity: false,
+  "discovery-ab": true,
+});
+
+const SIDE_IDS = ["a", "b"] as const;
+
+/** One refusal, with the path inside `sides` it belongs to. */
+export interface AbSideIssue {
+  /** Relative to `sides`: `[]`, `[sideId]` or `[sideId, key]`. */
+  path: ("a" | "b" | string)[];
+  message: string;
+}
+
+/**
+ * Every reason the engine would refuse this pair, checked before a run is queued.
+ *
+ * A mirror of `buildAbPlan` and `assertAbEnvConfig`
+ * (services/api/src/cli/discovery-ab.plan.ts, discovery-ab.flags.ts), and the
+ * single definition of those rules on this side of the boundary: `RunSpecSchema`
+ * turns each issue into a validation error and `renderRun` throws the first, so
+ * the two cannot disagree.
+ *
+ * Mirroring rather than delegating is forced — the engine's modules import
+ * node:fs and this one is bundled for the browser — and the reason it is worth
+ * doing is that the engine refuses these late: `parseAbRunArgs` ignores what it
+ * does not recognise, and `buildAbPlan` runs only after the harness has loaded
+ * its eval modules, so an unmirrored refusal costs the operator a run that dies
+ * seconds in with nothing rendered on the page they launched from.
+ *
+ * Deliberately NOT mirrored, because they are not expressible here: side
+ * ordering (`assertOrderedDistinctSides`) cannot be violated by an `AbSides`
+ * object, which has exactly one `a` and one `b`; and the engine's
+ * "at least one case" and repetition-count checks belong to the selection
+ * flags, which `RunFlagsSchema` and HARNESS_REGISTRY already bound.
+ */
+export function abSideIssues(sides: AbSides): AbSideIssue[] {
+  const issues: AbSideIssue[] = [];
+
+  for (const id of SIDE_IDS) {
+    const config = sides[id];
+    const keys = Object.keys(config).sort();
+    if (keys.length === 0) {
+      issues.push({
+        path: [id],
+        message: `Side ${id} has no configuration; each side must set at least one flag the discovery graph reads`,
+      });
+      continue;
+    }
+    for (const key of keys) {
+      if (!DISCOVERY_AB_ENV_KEYS.includes(key)) {
+        issues.push({ path: [id, key], message: `${key} is not readable by the discovery graph; this harness cannot test it` });
+        continue;
+      }
+      if (config[key]!.trim() === "") {
+        issues.push({ path: [id, key], message: `${key} has an empty value on side ${id}; unset it on both sides instead of blanking it` });
+      }
+    }
+  }
+
+  // Symmetry. An omitted flag takes the graph's own default, and that default can
+  // equal the other side's explicit value — so an asymmetric pair can measure
+  // nothing at all while attributing whatever noise it finds to that flag.
+  for (const [id, other] of [["a", "b"], ["b", "a"]] as const) {
+    for (const key of Object.keys(sides[id]).sort()) {
+      if (Object.prototype.hasOwnProperty.call(sides[other], key)) continue;
+      issues.push({
+        path: [id, key],
+        message:
+          `${key} is set on side ${id} but omitted on side ${other}; an omitted flag takes the graph's own `
+          + `default, which may equal side ${id}'s value and make the run measure nothing. State ${key} `
+          + `explicitly on both sides so the comparison is explicit versus explicit`,
+      });
+    }
+  }
+
+  // Distinctness. Identical sides spend real branch resets and live graph calls
+  // to measure noise.
+  const keys = new Set([...Object.keys(sides.a), ...Object.keys(sides.b)]);
+  if (![...keys].some((key) => sides.a[key] !== sides.b[key])) {
+    issues.push({ path: [], message: "Both sides have identical configurations; the run would measure noise, not a difference" });
+  }
+
+  return issues;
+}
+
+/**
  * The only shape the API accepts from a client. Destructive flags are not
  * expressible here and are absent from HARNESS_REGISTRY, so no request can
  * produce them, and the fixture-reset variant of RunSpec is deliberately not
@@ -45,6 +144,13 @@ export const RunSpecSchema = z
       .strict()
       .optional(),
     flags: RunFlagsSchema,
+    // Values are operator-chosen flag values, never credentials: the keys are
+    // confined to DISCOVERY_AB_ENV_KEYS below, and the whole object is recorded
+    // on the run record so the artifact and the site agree on what was compared.
+    sides: z
+      .object({ a: z.record(z.string()), b: z.record(z.string()) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((spec, context) => {
@@ -66,6 +172,30 @@ export const RunSpecSchema = z
         path: ["overrides"],
         message: 'ad-hoc overrides require profile "default"; launch a named config and tweak it from the Configs page instead',
       });
+    }
+    // Per-side configuration is required by exactly the harness that compares two
+    // of them, and inexpressible for every other. Both directions are refusals:
+    // a discovery-ab run without `sides` has nothing to compare, and `sides` on a
+    // scorecard harness would be a control the engine never reads.
+    const requiresSides = REQUIRES_SIDES[spec.harness as EvalRunSpec["harness"]];
+    if (requiresSides && spec.sides === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sides"],
+        message: `The ${spec.harness} harness compares two environment configurations; a run without "sides" has nothing to compare`,
+      });
+    }
+    if (!requiresSides && spec.sides !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sides"],
+        message: `The ${spec.harness} harness scores one configuration against a committed baseline and does not accept "sides"`,
+      });
+    }
+    if (spec.sides !== undefined) {
+      for (const issue of abSideIssues(spec.sides)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["sides", ...issue.path], message: issue.message });
+      }
     }
   }) as unknown as z.ZodType<EvalRunSpec>;
 
@@ -132,6 +262,30 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
     }
     argv.push(flag.cli, String(value));
   }
+
+  // Per-side configuration, sorted by key so two launches of one configuration
+  // render identical argv regardless of the order the form built it in — the
+  // engine sorts the same way when it re-serializes for its children
+  // (abConfigDeltas in services/api/src/cli/discovery-ab.main.ts).
+  //
+  // Checked again here rather than trusted from RunSpecSchema, exactly as the
+  // flag list above is: the engine ignores unrecognised argv, so anything wrong
+  // that reaches this point is spent, not reported.
+  if (REQUIRES_SIDES[spec.harness]) {
+    if (spec.sides === undefined) {
+      throw new Error(`The ${spec.harness} harness compares two environment configurations; a run without "sides" has nothing to compare`);
+    }
+    const refusal = abSideIssues(spec.sides)[0];
+    if (refusal !== undefined) throw new Error(refusal.message);
+    for (const id of SIDE_IDS) {
+      for (const key of Object.keys(spec.sides[id]).sort()) {
+        argv.push(`--${id}`, `${key}=${spec.sides[id][key]!}`);
+      }
+    }
+  } else if (spec.sides !== undefined) {
+    throw new Error(`The ${spec.harness} harness scores one configuration against a committed baseline and does not accept "sides"`);
+  }
+
   argv.push("--report", reportPath);
   if (resolved.experimental) argv.push("--no-save");
 
