@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 
 import { Run } from '../src/routes/Run';
-import type { RunRecord } from '../src/api/client';
+import type { Artifact, ArtifactCase, RunRecord } from '../src/api/client';
+import { DISCOVERY_AB_RUN_REPORT } from './fixtures/discovery-ab-run-report';
 
 const RUN: RunRecord = {
   id: 'run-1',
@@ -288,5 +289,295 @@ describe('Run', () => {
     renderRun(corrupt);
     expect(await screen.findByText(/run-1/)).toBeInTheDocument();
     expect(screen.getByText(/EVAL_MODEL_OVERRIDES \(unparseable\)/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The finished discovery-ab run, read.
+ *
+ * Every fixture below starts from the real artifact in
+ * tests/fixtures/discovery-ab-run-report.ts and changes only outcome fields, so
+ * what these tests render is the shape the browser really receives — including
+ * the absence of any run-level configuration block, which is why the view has to
+ * derive the difference from the case rows.
+ */
+const AB_RUN: RunRecord = {
+  id: 'run-1',
+  status: 'passed',
+  spec: {
+    kind: 'eval',
+    harness: 'discovery-ab',
+    profile: 'default',
+    flags: { runs: 1, case: 'historical/builder-and-operator' },
+    sides: {
+      a: { DISCOVERY_ALLOWED_TYPES: 'intent' },
+      b: { DISCOVERY_ALLOWED_TYPES: 'intent,profile' },
+    },
+  },
+  argv: [
+    'bun', 'run', 'eval:discovery-ab', '--',
+    '--case', 'historical/builder-and-operator', '--runs', '1',
+    '--a', 'DISCOVERY_ALLOWED_TYPES=intent',
+    '--b', 'DISCOVERY_ALLOWED_TYPES=intent,profile',
+  ],
+  env: {},
+  profileFingerprint: 'abc',
+  experimental: false,
+  workload: 2,
+  exitCode: 0,
+  artifactPath: '.ops-runs/run-1/report.json',
+  createdAt: '2026-08-04T18:17:55.461Z',
+  startedAt: '2026-08-04T18:18:02.406Z',
+  endedAt: '2026-08-04T18:19:06.257Z',
+  pid: 4242,
+};
+
+/** Serves the run's artifact and 404s everything else, as an unknown route does. */
+function stubArtifactFetch(report: unknown) {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (String(url).startsWith('/api/artifacts/')) return new Response(JSON.stringify(report));
+    return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function abReport(): Artifact {
+  return structuredClone(DISCOVERY_AB_RUN_REPORT);
+}
+
+const CASE_A = 'historical/builder-and-operator/a/r1';
+const CASE_B = 'historical/builder-and-operator/b/r1';
+
+function caseRow(report: Artifact, caseId: string): ArtifactCase {
+  const row = report.payload.cases.find((entry) => entry.caseId === caseId);
+  if (row === undefined) throw new Error(`fixture has no case ${caseId}`);
+  return row;
+}
+
+/**
+ * A repetition row, copied from a real one.
+ *
+ * A repetition is a case row of its own — `<case>/<side>/r<n>` with exactly one
+ * successful run, because the schema defines a row's `runs` as the number of
+ * successful terminal runs for that id and `buildAbArtifactMeta` pins the
+ * envelope's `runs` at 1 whatever `--runs` was. That is why no row in a
+ * discovery-ab artifact can ever carry `flaky: true`.
+ */
+function repetitionRow(source: ArtifactCase, caseId: string, side: string, repetition: number, passed: boolean): ArtifactCase {
+  const id = `${caseId}/${side}/r${repetition}`;
+  const row: ArtifactCase = {
+    ...structuredClone(source),
+    caseId: id,
+    runs: 1,
+    passes: passed ? 1 : 0,
+    passRate: passed ? 1 : 0,
+    flaky: false,
+  };
+  Object.assign(row, { scoredRunIds: [`${encodeURIComponent(id)}::run:1`], repetition: repetition - 1 });
+  if (passed) return row;
+  // Exactly what scoreMatrixSlot writes for a slot that completed and returned
+  // nothing: the target is absent, every candidate-dependent check passes
+  // vacuously, and the judge is never invoked.
+  Object.assign(row, {
+    passed: false,
+    targetRank: null,
+    evidenceTypes: [],
+    candidates: [],
+    rawCandidates: [],
+    evaluatorTraces: [],
+    judge: null,
+    assertions: [
+      { kind: 'target_returned', passed: false, detail: 'expected_target_not_returned: eval-discovery-matrix-user-fe7f5c1b5049fb5467759af4' },
+      { kind: 'excluded_absent', passed: true, detail: 'excluded targets absent' },
+      { kind: 'fixture_ownership', passed: true, detail: 'all candidates are fixture-owned' },
+      { kind: 'allowed_evidence', passed: true, detail: 'all evidence types are allowed' },
+      { kind: 'completion', passed: true, detail: 'slot completed' },
+      { kind: 'judge', passed: false, detail: 'not_run: deterministic assertions failed' },
+    ],
+  });
+  return row;
+}
+
+/**
+ * The same run with `--runs 3` and a second case, as the engine would file it:
+ * one row per case per side per repetition.
+ *
+ * `historical/builder-and-operator` is where the sides part — side a passes all
+ * three repetitions, side b passes one of the three, which is what makes side b
+ * flaky on it. `historical/co-researchers-structure` is where they agree.
+ */
+function withRepetitions(report: Artifact): Artifact {
+  const sourceA = caseRow(report, CASE_A);
+  const sourceB = caseRow(report, CASE_B);
+  report.payload.cases = [
+    ...[1, 2, 3].map((r) => repetitionRow(sourceA, 'historical/builder-and-operator', 'a', r, true)),
+    ...[1, 2, 3].map((r) => repetitionRow(sourceB, 'historical/builder-and-operator', 'b', r, r === 1)),
+    ...[1, 2, 3].map((r) => repetitionRow(sourceA, 'historical/co-researchers-structure', 'a', r, true)),
+    ...[1, 2, 3].map((r) => repetitionRow(sourceB, 'historical/co-researchers-structure', 'b', r, true)),
+  ];
+  // Rules are the mean over the rows a side owns (`buildScorecard`), which for
+  // one-run rows is that side's pass count over its row count.
+  report.payload.rules = [
+    { rule: 'a', caseCount: 6, passRate: 1 },
+    { rule: 'b', caseCount: 6, passRate: 4 / 6 },
+  ];
+  report.payload.aggregatePassRate = 10 / 12;
+  return report;
+}
+
+/**
+ * The engine's exit-3 outcome: the artifact is on disk and real, but side b's
+ * slot exhausted its attempts.
+ *
+ * Its execution run is a failure, so the row counts no runs at all — the schema
+ * requires a case's `runs` to count only successful terminal runs and its
+ * `scoredRunIds` to be exactly those runs — and `summarizeExecution` records
+ * `completedRuns` short of `requestedRuns`, which is what makes
+ * `completeness.complete` false. The row's own contents are what
+ * `scoreMatrixSlot` writes for a slot that did not complete.
+ */
+function incompleteReport(): Artifact {
+  const report = abReport();
+  const failed = caseRow(report, CASE_B);
+  failed.runs = 0;
+  failed.passes = 0;
+  failed.passRate = 0;
+  Object.assign(failed, {
+    scoredRunIds: [],
+    passed: false,
+    targetRank: null,
+    evidenceTypes: [],
+    candidates: [],
+    rawCandidates: [],
+    evaluatorTraces: [],
+    judge: null,
+    assertions: [
+      { kind: 'target_returned', passed: false, detail: 'expected_target_not_returned: eval-discovery-matrix-user-fe7f5c1b5049fb5467759af4' },
+      { kind: 'excluded_absent', passed: true, detail: 'excluded targets absent' },
+      { kind: 'fixture_ownership', passed: true, detail: 'all candidates are fixture-owned' },
+      { kind: 'allowed_evidence', passed: true, detail: 'all evidence types are allowed' },
+      { kind: 'completion', passed: false, detail: 'slot_incomplete' },
+      { kind: 'judge', passed: false, detail: 'not_run: deterministic assertions failed' },
+    ],
+  });
+  const execution = (report as unknown as { execution: { runs: Array<Record<string, unknown>> } }).execution;
+  const failedRun = execution.runs[1]!;
+  failedRun.outcome = 'failed';
+  (failedRun.attempts as Array<Record<string, unknown>>)[0]!.outcome = 'failure';
+  report.payload.rules = [
+    { rule: 'a', caseCount: 1, passRate: 1 },
+    { rule: 'b', caseCount: 1, passRate: 0 },
+  ];
+  report.payload.aggregatePassRate = 0.5;
+  report.completeness = {
+    ...report.completeness!,
+    totalRuns: 1,
+    totalPasses: 1,
+    completedRuns: 1,
+    failedRuns: 1,
+    complete: false,
+  };
+  return report;
+}
+
+describe('Run · discovery-ab', () => {
+  it('shows both sides with their pass rates, saying which is read against which', async () => {
+    stubArtifactFetch(withRepetitions(abReport()));
+    renderRun(AB_RUN);
+
+    const sideA = await screen.findByTestId('ab-side-a');
+    expect(sideA.textContent).toContain('side a');
+    expect(sideA.textContent).toContain('reference');
+    expect(sideA.textContent).toContain('100.0%');
+
+    const sideB = screen.getByTestId('ab-side-b');
+    expect(sideB.textContent).toContain('side b');
+    expect(sideB.textContent).toContain('candidate');
+    expect(sideB.textContent).toContain('66.7%');
+    // Repetitions are rows, not cases: 12 rows over 2 cases.
+    expect(sideB.textContent).toContain('4/6 case-runs passed across 2 case(s)');
+
+    // The gap between the two, in the direction the engine reads them.
+    expect(screen.getByText(/difference \(B − A\)/)).toBeInTheDocument();
+    expect(screen.getByText('-33.3%')).toHaveClass('text-term-red');
+  });
+
+  it('derives the configuration difference from the two sides’ case rows', async () => {
+    // The artifact carries no run-level configuration: the strict schemas leave
+    // it nowhere to live, so per-case configDeltas is the only record.
+    expect(Object.keys(DISCOVERY_AB_RUN_REPORT)).not.toContain('configDiff');
+    expect(Object.keys(DISCOVERY_AB_RUN_REPORT)).not.toContain('configs');
+
+    stubArtifactFetch(abReport());
+    renderRun(AB_RUN);
+
+    const row = await screen.findByTestId('ab-config-DISCOVERY_ALLOWED_TYPES');
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[0]!.textContent).toBe('DISCOVERY_ALLOWED_TYPES');
+    expect(cells[1]!.textContent).toBe('intent');
+    expect(cells[2]!.textContent).toBe('intent,profile');
+  });
+
+  it('tells a case the sides scored differently from one they agreed on', async () => {
+    stubArtifactFetch(withRepetitions(abReport()));
+    renderRun(AB_RUN);
+
+    const differing = await screen.findByTestId('ab-case-historical/builder-and-operator');
+    expect(differing.textContent).toContain('100.0% (3/3)');
+    expect(differing.textContent).toContain('33.3% (1/3)');
+    expect(within(differing).getByText(/B lower/)).toHaveClass('text-term-red');
+
+    const agreeing = screen.getByTestId('ab-case-historical/co-researchers-structure');
+    expect(within(agreeing).getByText('same')).toBeInTheDocument();
+    expect(within(agreeing).queryByText(/B (higher|lower)/)).toBeNull();
+  });
+
+  it('marks a case a side was flaky on, which no single row can say', async () => {
+    const report = withRepetitions(abReport());
+    // The artifact itself calls nothing flaky: a repetition row has one run, and
+    // the schema defines flaky as passing some runs and failing others. The mark
+    // is only there if the view derives it across the repetitions.
+    expect(report.payload.cases.some((row) => row.flaky)).toBe(false);
+
+    stubArtifactFetch(report);
+    renderRun(AB_RUN);
+
+    const flaky = await screen.findByTestId('ab-case-historical/builder-and-operator');
+    expect(within(flaky).getByText(/flaky on B/)).toBeInTheDocument();
+
+    const steady = screen.getByTestId('ab-case-historical/co-researchers-structure');
+    expect(within(steady).queryByText(/flaky/)).toBeNull();
+  });
+
+  it('reports no verdict, not a comparison, when the run did not complete', async () => {
+    stubArtifactFetch(incompleteReport());
+    renderRun({ ...AB_RUN, status: 'insufficient-evidence', exitCode: 3 });
+
+    expect(await screen.findByText(/No verdict/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 case-run\(s\) completed and 1 failed/)).toBeInTheDocument();
+
+    // Side b scored 0% and side a scored 100%, and neither number is presented:
+    // half a comparison is not a comparison.
+    expect(screen.queryByTestId('ab-side-a')).toBeNull();
+    expect(screen.queryByTestId('ab-side-b')).toBeNull();
+    expect(screen.queryByTestId('ab-case-historical/builder-and-operator')).toBeNull();
+    expect(screen.queryByText(/difference \(B − A\)/)).toBeNull();
+
+    // What was configured is still a fact of the run.
+    expect(screen.getByTestId('ab-config-DISCOVERY_ALLOWED_TYPES')).toBeInTheDocument();
+  });
+
+  it('never compares this harness to a baseline, and never asks for one', async () => {
+    const fetchMock = stubArtifactFetch(withRepetitions(abReport()));
+    renderRun(AB_RUN);
+    await screen.findByTestId('ab-side-a');
+
+    // Two arbitrary configurations have no committed baseline and never will.
+    const requested = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(requested.filter((url) => url === '/api/artifacts')).toEqual([]);
+    expect(requested.filter((url) => url.startsWith('/api/compare'))).toEqual([]);
+    expect(screen.queryByText(/baseline diff/)).toBeNull();
+    expect(screen.queryByText(/aggregate pass rate/)).toBeNull();
   });
 });
