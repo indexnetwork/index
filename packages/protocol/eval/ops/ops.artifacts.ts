@@ -73,6 +73,12 @@ export class FsArtifactSource implements ArtifactSource {
 
   private async candidateFiles(): Promise<string[]> {
     const files: string[] = [];
+    // Not every registered harness keeps artifacts here. A harness that has
+    // never been run has no runs/ directory yet, one that has no baseline (and
+    // never will, like discovery-ab) has no baselines/ directory, and
+    // discovery-ab's CLI writes under services/api/eval entirely — its
+    // site-launched runs arrive through .ops-runs below. jsonFilesIn treats
+    // every one of those as "nothing to index" rather than as a failure.
     for (const harness of OPS_HARNESSES) {
       for (const dir of ["baselines", "runs"]) {
         files.push(...(await jsonFilesIn(path.join(this.evalDir, harness, dir))));
@@ -128,6 +134,12 @@ export class FsArtifactSource implements ArtifactSource {
   }
 }
 
+/**
+ * JSON files directly in `dir`, or none when the directory cannot be read at
+ * all — most often because it does not exist. An absent directory is a normal
+ * state here, not an error, so it contributes nothing instead of failing the
+ * whole index.
+ */
 async function jsonFilesIn(dir: string): Promise<string[]> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });

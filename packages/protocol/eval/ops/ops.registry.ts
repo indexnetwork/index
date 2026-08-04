@@ -1,6 +1,12 @@
 import type { HarnessDescriptor, HarnessFlag, OpsHarness } from "./ops.types.js";
 
-export const OPS_HARNESSES = ["matching", "profile", "premise", "opportunity"] as const satisfies readonly OpsHarness[];
+export const OPS_HARNESSES = [
+  "matching",
+  "profile",
+  "premise",
+  "opportunity",
+  "discovery-ab",
+] as const satisfies readonly OpsHarness[];
 
 const COMMON_FLAGS: readonly HarnessFlag[] = Object.freeze([
   { name: "runs", cli: "--runs", kind: "number", min: 1, max: 25, step: 1 },
@@ -14,6 +20,22 @@ const COMMON_FLAGS: readonly HarnessFlag[] = Object.freeze([
 ]);
 
 const TIER_FLAG: HarnessFlag = { name: "tier", cli: "--tier", kind: "number", min: 1, max: 4, step: 1 };
+
+/**
+ * discovery-ab's entire selection surface. Its parser accepts only --case,
+ * --runs, --a, --b, --report and --force (services/api/src/cli/discovery-ab.ts
+ * --help), so --rule, --tier, --no-judge, --alpha, --attempt-timeout-ms and
+ * --strict-evidence are absent: offering a control the engine would reject is
+ * the exact failure this harness exists to make visible.
+ *
+ * --runs is capped at AB_MAX_REPETITIONS (10), not the 25 the scorecard
+ * harnesses allow, because the engine refuses anything higher before it spends
+ * anything. registry.spec.ts pins the number against that constant's source.
+ */
+const DISCOVERY_AB_FLAGS: readonly HarnessFlag[] = Object.freeze([
+  { name: "runs", cli: "--runs", kind: "number", min: 1, max: 10, step: 1 },
+  { name: "case", cli: "--case", kind: "string" },
+]);
 
 function descriptor(
   harness: OpsHarness,
@@ -71,4 +93,29 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
     "Scores the write-up shown to users: grounding, framing, tone, and no leaked evaluator reasoning.",
     ["opportunityPresenter"],
   ),
+  /**
+   * The one harness that is not a scorecard against a baseline, and the only
+   * one that reads the environment flags this site can edit.
+   *
+   * `agents` is empty on purpose: the two sides differ in environment
+   * configuration, never in models, so this harness offers no model to
+   * override. Its configuration surface is AB_FLAGS
+   * (services/api/src/cli/discovery-ab.flags.ts).
+   */
+  "discovery-ab": Object.freeze({
+    harness: "discovery-ab",
+    script: "eval:discovery-ab",
+    // Its CLI and its package script both live in services/api, not here.
+    cwd: "services/api",
+    flags: DISCOVERY_AB_FLAGS,
+    defaultRuns: 3,
+    // HISTORICAL_MATRIX_CASES; pinned against the real corpus by
+    // registry-corpus.spec.ts. Both sides run every case, so the launch form's
+    // workload is this x runs x 2.
+    caseCount: 5,
+    question: "Which of two discovery configurations finds the right person more often?",
+    detail:
+      "Runs the real discovery graph once per operator-chosen environment configuration over the same cases and emits one artifact holding both sides. There is no baseline \u2014 arbitrary configurations have none \u2014 so the pair is the result.",
+    agents: Object.freeze([]),
+  }),
 });

@@ -1,5 +1,13 @@
-/** The four harnesses that emit the shared scorecard artifact envelope. */
-export type OpsHarness = "matching" | "profile" | "premise" | "opportunity";
+/**
+ * Every harness the site can launch.
+ *
+ * The first four emit the shared scorecard artifact envelope and are scored
+ * against a committed baseline. `discovery-ab` emits the same envelope but has
+ * no baseline and never will: it compares two operator-chosen environment
+ * configurations against each other, and arbitrary configurations have nothing
+ * to be a baseline of.
+ */
+export type OpsHarness = "matching" | "profile" | "premise" | "opportunity" | "discovery-ab";
 
 export type HarnessFlagName =
   | "runs"
@@ -29,8 +37,14 @@ export interface HarnessFlag {
 
 export interface HarnessDescriptor {
   harness: OpsHarness;
-  /** Package script name in packages/protocol/package.json, e.g. "eval:matching". */
+  /** Package script name, e.g. "eval:matching". Resolved in `cwd`. */
   script: string;
+  /**
+   * Repository-relative directory the script is run from. Absent means
+   * packages/protocol, where every scorecard harness lives; discovery-ab
+   * declares "services/api" because its CLI and script live there.
+   */
+  cwd?: string;
   flags: readonly HarnessFlag[];
   defaultRuns: number;
   /** Corpus size, used to show workload (cases x runs) before launching. */

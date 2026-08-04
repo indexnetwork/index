@@ -216,11 +216,16 @@ describe("ops API", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.harnesses.map((h: { harness: string }) => h.harness).sort()).toEqual([
+      "discovery-ab",
       "matching",
       "opportunity",
       "premise",
       "profile",
     ]);
+    // The descriptor carries the cwd the executor needs, so a client listing
+    // harnesses sees where each one actually runs.
+    const byHarness = new Map(body.harnesses.map((h: { harness: string }) => [h.harness, h]));
+    expect((byHarness.get("discovery-ab") as { cwd?: string }).cwd).toBe("services/api");
   });
 
   it("lists the committed profiles", async () => {

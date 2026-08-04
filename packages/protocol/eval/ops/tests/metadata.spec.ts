@@ -168,7 +168,7 @@ describe("MODEL_METADATA", () => {
 });
 
 describe("HARNESS_AGENT_METADATA", () => {
-  it("keys are exactly the four ops harnesses", () => {
+  it("keys are exactly the registered harnesses", () => {
     expect(Object.keys(HARNESS_AGENT_METADATA).sort()).toEqual([...OPS_HARNESSES].sort());
   });
 
