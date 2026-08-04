@@ -298,16 +298,20 @@ steps in order.
    `DISCOVERY_ENV_MATRIX_BASE_CONFIRM=1`, `TEST_DATABASE_SAFE=1`,
    `DISCOVERY_ENV_MATRIX_BASE_BRANCH=eval-discovery-base` and a `DATABASE_URL`
    matching the attested base target. That command attests its target the same
-   way the matrix does, so it also needs `NEON_API_KEY` and the matrix manifest
-   `DISCOVERY_ENV_MATRIX_CHILDREN` (a different manifest from
-   `DISCOVERY_AB_TARGETS`); it refuses without them:
+   way the matrix does, so it also needs `NEON_API_KEY` and a
+   `DISCOVERY_ENV_MATRIX_CHILDREN` manifest (a different manifest from
+   `DISCOVERY_AB_TARGETS`); it refuses without them. That manifest must be
+   base-only: the base command parses it with no expected child keys
+   (`discovery-env-matrix-base.ts:74`), so `children` has to be `[]` — pasting
+   the matrix's own five-child manifest is refused with `Manifest must contain
+   exactly the expected children`:
 
    ```bash
    cd services/api
    export DISCOVERY_ENV_MATRIX_BASE_CONFIRM=1 TEST_DATABASE_SAFE=1
    export DISCOVERY_ENV_MATRIX_BASE_BRANCH=eval-discovery-base
    export NEON_API_KEY=<key>
-   export DISCOVERY_ENV_MATRIX_CHILDREN='<matrix manifest>'
+   export DISCOVERY_ENV_MATRIX_CHILDREN='{"version":1,"base":{"projectId":"...","branchId":"br-...","endpointId":"ep-...","databaseName":"protocol_eval","databaseUrl":"postgres://...neon.tech/protocol_eval"},"children":[]}'
    export DATABASE_URL='<the attested base target databaseUrl>'
    bun run eval:discovery-env-matrix-base           # seed
    bun run eval:discovery-env-matrix-base:verify    # metadata + fixture-structure reads only
