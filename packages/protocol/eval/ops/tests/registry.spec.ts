@@ -9,7 +9,7 @@ import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 import type { OpsHarness } from "../ops.types.js";
 
 /**
- * discovery-ab is the one harness whose spec is invalid without per-side
+ * discovery is the one harness whose spec is invalid without per-side
  * configuration, so a spec built for it here carries a valid minimal pair;
  * otherwise every parse below would fail for a reason the test is not about.
  */
@@ -19,7 +19,7 @@ function specFor(harness: OpsHarness, flags: Record<string, unknown>): Record<st
     harness,
     profile: "default",
     flags,
-    ...(harness === "discovery-ab"
+    ...(harness === "discovery"
       ? { sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user_context" } } }
       : {}),
   };
@@ -27,7 +27,7 @@ function specFor(harness: OpsHarness, flags: Record<string, unknown>): Record<st
 
 const AB_CONTRACT_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
-  "services", "api", "src", "cli", "discovery-ab.contract.ts",
+  "services", "api", "src", "cli", "discovery.contract.ts",
 );
 
 /** The four scorecard harnesses' own argument parsers — the authority on what they accept. */
@@ -45,8 +45,8 @@ function flagOf(harness: OpsHarness, name: string) {
 }
 
 describe("HARNESS_REGISTRY", () => {
-  it("covers the four scorecard harnesses plus discovery-ab", () => {
-    const expected: OpsHarness[] = ["discovery-ab", "matching", "opportunity", "premise", "profile"];
+  it("covers the four scorecard harnesses plus discovery", () => {
+    const expected: OpsHarness[] = ["discovery", "matching", "opportunity", "premise", "profile"];
     expect([...OPS_HARNESSES].sort()).toEqual(expected);
     expect(Object.keys(HARNESS_REGISTRY).sort()).toEqual(expected);
   });
@@ -58,25 +58,25 @@ describe("HARNESS_REGISTRY", () => {
   });
 
   it("declares a cwd only for the harness whose script is not in packages/protocol", () => {
-    // An unset cwd means packages/protocol. discovery-ab's script lives in
+    // An unset cwd means packages/protocol. discovery's script lives in
     // services/api/package.json, so running it from the default directory would
     // fail with "script not found" rather than doing anything.
-    expect(HARNESS_REGISTRY["discovery-ab"].cwd).toBe("services/api");
-    for (const harness of OPS_HARNESSES.filter((h) => h !== "discovery-ab")) {
+    expect(HARNESS_REGISTRY["discovery"].cwd).toBe("services/api");
+    for (const harness of OPS_HARNESSES.filter((h) => h !== "discovery")) {
       expect(HARNESS_REGISTRY[harness].cwd).toBeUndefined();
     }
   });
 
-  it("offers discovery-ab only the two flags its parser reads", () => {
+  it("offers discovery only the two flags its parser reads", () => {
     // The engine's parser reads --case, --runs, --a, --b, --report and --force.
     // It does not refuse the rest: it scans for the flags it knows and ignores
     // everything else, so a selectable flag beyond these two would be dropped in
     // silence rather than failing loudly. --a/--b are per-side configuration
     // (not a HarnessFlag) and --report/--force are supplied by the server.
-    expect(HARNESS_REGISTRY["discovery-ab"].flags.map((f) => f.cli)).toEqual(["--runs", "--case"]);
+    expect(HARNESS_REGISTRY["discovery"].flags.map((f) => f.cli)).toEqual(["--runs", "--case"]);
   });
 
-  it("pins discovery-ab's run bounds to the engine's own constants", () => {
+  it("pins discovery's run bounds to the engine's own constants", () => {
     // Hand-copied bounds drift. Read the real constants: if the engine lowers
     // its ceiling, a form built from this registry must not keep offering the
     // old one, because the engine refuses it (exit 2) after the operator has
@@ -84,17 +84,17 @@ describe("HARNESS_REGISTRY", () => {
     const source = readFileSync(AB_CONTRACT_SOURCE, "utf8");
     const constantOf = (name: string): number => {
       const match = source.match(new RegExp(`export const ${name} = (\\d+);`));
-      if (!match) throw new Error(`${name} not found in discovery-ab.contract.ts`);
+      if (!match) throw new Error(`${name} not found in discovery.contract.ts`);
       return Number(match[1]);
     };
 
-    const runs = flagOf("discovery-ab", "runs");
+    const runs = flagOf("discovery", "runs");
     expect(runs.max).toBe(constantOf("AB_MAX_REPETITIONS"));
     // And the bound the API enforces, which is the one a refusal quotes. It is
     // attributed to the harness because the harness is what holds it: exceeding
     // it is exit 2 from parseAbRunArgs, not a policy of this site.
     expect(runs.accepts?.max).toEqual({ value: constantOf("AB_MAX_REPETITIONS"), heldBy: "harness" });
-    expect(HARNESS_REGISTRY["discovery-ab"].defaultRuns).toBe(constantOf("AB_DEFAULT_REPETITIONS"));
+    expect(HARNESS_REGISTRY["discovery"].defaultRuns).toBe(constantOf("AB_DEFAULT_REPETITIONS"));
   });
 
   it("pins --alpha to the check the four engines actually run", () => {
@@ -132,7 +132,7 @@ describe("HARNESS_REGISTRY", () => {
     // --runs is the pair that makes the distinction visible. The scorecard
     // engines refuse a count below 1 and have NO ceiling of their own: 26 runs
     // is this site's refusal (RunFlagsSchema), and a message claiming the
-    // harness would refuse it would be false. discovery-ab is the opposite — its
+    // harness would refuse it would be false. discovery is the opposite — its
     // ceiling is the engine's, and saying so is the whole value of the refusal.
     for (const [harness, source] of Object.entries(SCORECARD_SOURCES) as [OpsHarness, string][]) {
       const text = readFileSync(source, "utf8");
@@ -148,7 +148,7 @@ describe("HARNESS_REGISTRY", () => {
     expect(siteRefusal).toContain("This site accepts --runs no higher than 25");
     expect(siteRefusal).not.toContain("harness itself");
 
-    const harnessRefusal = flagValueIssues("discovery-ab", HARNESS_REGISTRY["discovery-ab"].flags, { runs: 25 })[0]!
+    const harnessRefusal = flagValueIssues("discovery", HARNESS_REGISTRY["discovery"].flags, { runs: 25 })[0]!
       .message;
     expect(harnessRefusal).toContain("the harness itself would refuse it");
   });
@@ -184,7 +184,7 @@ describe("HARNESS_REGISTRY", () => {
     expect(checked).toBe(14);
   });
 
-  it("refuses to render a flag discovery-ab does not accept", () => {
+  it("refuses to render a flag discovery does not accept", () => {
     // The engine ignores what it does not recognise, so nothing downstream would
     // report a flag this entry offered by mistake: the run would simply not be
     // the run the operator configured. renderRun is the last place that can
@@ -195,7 +195,7 @@ describe("HARNESS_REGISTRY", () => {
       renderRun(
         {
           kind: "eval",
-          harness: "discovery-ab",
+          harness: "discovery",
           profile: "default",
           flags: { tier: 1 },
           // Valid sides, so the only thing wrong with this spec is the flag.
@@ -225,10 +225,10 @@ describe("HARNESS_REGISTRY", () => {
 
   it("accepts every declared bound and refuses the first value past each one", () => {
     // Every (harness, numeric flag) pair, not one representative per flag name:
-    // discovery-ab narrows --runs to its own ceiling, so a per-name check would
+    // discovery narrows --runs to its own ceiling, so a per-name check would
     // never look at it.
     //
-    // This once recorded discovery-ab --runs 25 as an accepted spec the engine
+    // This once recorded discovery --runs 25 as an accepted spec the engine
     // refuses; RunSpecSchema now enforces each harness's own bounds
     // (flagValueIssues, ops.flags.ts), so there is no direction left to assert
     // instead of a refusal. What is asserted is both halves of the two-bound
@@ -270,9 +270,9 @@ describe("HARNESS_REGISTRY", () => {
 
     // The pair that motivated the change, stated once in full: this harness's
     // ceiling is below the shared schema's, and the schema now honours it.
-    const abRuns = HARNESS_REGISTRY["discovery-ab"].flags.find((flag) => flag.name === "runs")!;
+    const abRuns = HARNESS_REGISTRY["discovery"].flags.find((flag) => flag.name === "runs")!;
     expect(abRuns.max).toBeLessThan(25);
-    expect(() => RunSpecSchema.parse(specFor("discovery-ab", { runs: 25 }))).toThrow(/--runs/);
+    expect(() => RunSpecSchema.parse(specFor("discovery", { runs: 25 }))).toThrow(/--runs/);
     expect(() => RunSpecSchema.parse(specFor("matching", { runs: 25 }))).not.toThrow();
   });
 });

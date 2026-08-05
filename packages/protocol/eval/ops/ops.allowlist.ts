@@ -29,14 +29,14 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
 ]);
 
 /**
- * The environment keys a discovery-ab side may set: the nine the discovery
+ * The environment keys a discovery side may set: the nine the discovery
  * graph actually reads.
  *
  * A copy, and deliberately so — after both directions of a real import were
  * tried and refused by the toolchain:
  *
  * - This module cannot import the engine's `AB_FLAGS`
- *   (services/api/src/cli/discovery-ab.flags.ts): that module imports node:fs to
+ *   (services/api/src/cli/discovery.flags.ts): that module imports node:fs to
  *   derive its list from a scan of the graph's import closure, and this one is
  *   imported by the browser app, so the Vite bundle would break.
  * - The engine cannot import this list either. A relative import from
@@ -51,7 +51,7 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
  * So the list is a copy with two guards, one from each side, and neither is a
  * source-text substring match on the values themselves: eval/ops/tests/argv.spec.ts
  * parses the engine's `Object.freeze([...])` literal and compares the sets, and
- * services/api/src/cli/tests/discovery-ab.flags.spec.ts — a spec file, which
+ * services/api/src/cli/tests/discovery.flags.spec.ts — a spec file, which
  * tsconfig excludes and which may therefore import across — compares the two
  * lists as real imported values. A key added, removed or renamed on either side
  * fails both.
@@ -65,7 +65,7 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
  * Every key is also in PROFILE_ENV_ALLOWLIST above, so ENV_FLAG_METADATA can
  * describe all nine to the launch form.
  */
-export const DISCOVERY_AB_ENV_KEYS: readonly string[] = Object.freeze([
+export const DISCOVERY_ENV_KEYS: readonly string[] = Object.freeze([
   "DISCOVERY_ALLOWED_TYPES",
   "DISCOVERY_CONTEXT_TO_INTENT",
   "DISCOVERY_PROFILE_SOURCE",

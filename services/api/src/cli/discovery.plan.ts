@@ -4,7 +4,7 @@
  * Selection is shared: two sides that ran different cases or different
  * repetition counts are not comparable, so it is one input, not two.
  */
-import { assertAbEnvConfig, type AbEnvConfig } from './discovery-ab.flags';
+import { assertAbEnvConfig, type AbEnvConfig } from './discovery.flags';
 import type { HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 
 export type AbSideId = 'a' | 'b';
@@ -37,7 +37,7 @@ export function configDiff(a: AbEnvConfig, b: AbEnvConfig): Array<{ key: string;
 function assertOrderedDistinctSides(sides: readonly [AbSide, AbSide]): void {
   if (sides[0].id !== 'a' || sides[1].id !== 'b') {
     throw new Error(
-      `A discovery A/B run requires side 'a' first and side 'b' second `
+      `A discovery run requires side 'a' first and side 'b' second `
       + `(received '${sides[0].id}' then '${sides[1].id}'); two sides sharing an id collapse into one row `
       + `downstream, and a reversed pair reports side b's values under the artifact's a column`,
     );
@@ -86,9 +86,9 @@ export function buildAbPlan(
   repetitions: number,
 ): AbSlot[] {
   assertOrderedDistinctSides(sides);
-  if (cases.length === 0) throw new Error('A discovery A/B run requires at least one case');
+  if (cases.length === 0) throw new Error('A discovery run requires at least one case');
   if (!Number.isInteger(repetitions) || repetitions < 1) {
-    throw new Error(`A discovery A/B run requires a positive repetition count (received ${repetitions})`);
+    throw new Error(`A discovery run requires a positive repetition count (received ${repetitions})`);
   }
   for (const side of sides) assertAbEnvConfig(side.config);
   assertSymmetricKeySets(sides);

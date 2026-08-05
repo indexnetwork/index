@@ -2,9 +2,9 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
-import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery-ab.contract';
-import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery-ab.main';
-import { buildAbPlan, type AbSide } from '../discovery-ab.plan';
+import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery.contract';
+import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery.main';
+import { buildAbPlan, type AbSide } from '../discovery.plan';
 
 import type { MatrixSlotResult } from '../discovery-env-matrix.main';
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
@@ -50,8 +50,8 @@ describe('parseAbRunArgs', () => {
   });
 
   it('reads --report as the artifact destination, and leaves it unset otherwise', () => {
-    expect(parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']).reportPath)
-      .toBe('/tmp/discovery-ab-report.json');
+    expect(parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-report.json']).reportPath)
+      .toBe('/tmp/discovery-report.json');
     expect(parseAbRunArgs(configArgs).reportPath).toBeUndefined();
   });
 
@@ -74,7 +74,7 @@ describe('parseAbRunArgs', () => {
   });
 
   it('still accepts a --report naming an existing file, which is the write plan\'s to refuse without --force', () => {
-    const existingFile = path.resolve(import.meta.dir, 'discovery-ab.parent.spec.ts');
+    const existingFile = path.resolve(import.meta.dir, 'discovery.parent.spec.ts');
     expect(parseAbRunArgs([...configArgs, '--report', existingFile]).reportPath).toBe(existingFile);
   });
 
@@ -129,7 +129,7 @@ describe('formatAbRunArgs', () => {
   });
 
   it('does not forward --report: a child writes its own --child-output, never the run report', () => {
-    const selection = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']);
+    const selection = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-report.json']);
     expect(formatAbRunArgs(selection)).not.toContain('--report');
     expect(parseAbRunArgs(formatAbRunArgs(selection)).reportPath).toBeUndefined();
   });
@@ -152,13 +152,13 @@ describe('abRunReportPath', () => {
     // Restated from the harness's own layout rather than imported, so moving the
     // runs directory has to be a deliberate edit here too.
     expect(abRunReportPath({}, stamp))
-      .toBe(path.resolve(import.meta.dir, '../../../eval/discovery-ab/runs', `${stamp}.json`));
+      .toBe(path.resolve(import.meta.dir, '../../../eval/discovery/runs', `${stamp}.json`));
   });
 
   it('takes the destination from a real parsed selection, not just a hand-built one', () => {
-    const chosen = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-chosen.json']);
-    expect(abRunReportPath(chosen, stamp)).toBe('/tmp/discovery-ab-chosen.json');
-    expect(abRunReportPath(parseAbRunArgs(configArgs), stamp)).not.toBe('/tmp/discovery-ab-chosen.json');
+    const chosen = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-chosen.json']);
+    expect(abRunReportPath(chosen, stamp)).toBe('/tmp/discovery-chosen.json');
+    expect(abRunReportPath(parseAbRunArgs(configArgs), stamp)).not.toBe('/tmp/discovery-chosen.json');
   });
 });
 
@@ -172,7 +172,7 @@ describe('resolveAbCases', () => {
   });
 
   it('refuses an unknown case rather than silently running fewer', () => {
-    expect(() => resolveAbCases(corpus, ['c9'])).toThrow(/Unknown discovery A\/B case: c9/);
+    expect(() => resolveAbCases(corpus, ['c9'])).toThrow(/Unknown discovery case: c9/);
   });
 });
 
@@ -319,7 +319,7 @@ describe('withAbSpendAccounting', () => {
       progress.stage = 'reset';
       progress.stage = 'spawned';
       // The dead-child case: supervision aborts and nothing was written.
-      throw new Error('Discovery A/B child exited with code 1');
+      throw new Error('Discovery child exited with code 1');
     }).catch((error: unknown) => error);
     const report = describeAbFailure(thrown);
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
@@ -340,13 +340,13 @@ describe('withAbSpendAccounting', () => {
    * successful one whose cleanup hit EBUSY - must not be told nothing survived.
    */
   it('names the artifact when the failure came after it was written', async () => {
-    const runPath = '/repo/eval/discovery-ab/runs/2026-08-04T00-00-00-000Z.json';
+    const runPath = '/repo/eval/discovery/runs/2026-08-04T00-00-00-000Z.json';
     const thrown = await withAbSpendAccounting(async (progress) => {
       progress.stage = 'reset';
       progress.stage = 'spawned';
       progress.artifactPath = runPath;
       progress.stage = 'written';
-      throw new Error('EBUSY: resource busy or locked, rm /tmp/discovery-ab-x');
+      throw new Error('EBUSY: resource busy or locked, rm /tmp/discovery-x');
     }).catch((error: unknown) => error);
     const report = describeAbFailure(thrown);
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
@@ -377,33 +377,33 @@ describe('finalizeAbChildArtifacts', () => {
   it('removes the directory when the run succeeded', async () => {
     const { fs, removed } = fakeFs(['a.json', 'b.json']);
     warnings.length = 0;
-    await finalizeAbChildArtifacts('/tmp/discovery-ab-x', true, fs, logger);
-    expect(removed).toEqual(['/tmp/discovery-ab-x']);
+    await finalizeAbChildArtifacts('/tmp/discovery-x', true, fs, logger);
+    expect(removed).toEqual(['/tmp/discovery-x']);
     expect(warnings).toEqual([]);
   });
 
   it('names this harness, not the matrix, and says how many artifacts it kept', async () => {
     const { fs, removed } = fakeFs(['b.json', 'a.json']);
     warnings.length = 0;
-    await finalizeAbChildArtifacts('/tmp/discovery-ab-y', false, fs, logger);
+    await finalizeAbChildArtifacts('/tmp/discovery-y', false, fs, logger);
     expect(removed).toEqual([]);
-    expect(warnings[0]).toContain('Discovery A/B retained 2 child artifact(s)');
-    expect(warnings[0]).toContain('/tmp/discovery-ab-y: a.json, b.json');
+    expect(warnings[0]).toContain('Discovery retained 2 child artifact(s)');
+    expect(warnings[0]).toContain('/tmp/discovery-y: a.json, b.json');
     expect(warnings[0]).not.toContain('matrix');
   });
 
   it('does not promise artifacts that are not there, which is the usual dead-child case', async () => {
     const { fs, removed } = fakeFs([]);
     warnings.length = 0;
-    await finalizeAbChildArtifacts('/tmp/discovery-ab-z', false, fs, logger);
-    expect(warnings).toEqual(['Discovery A/B kept no child artifacts: neither side wrote one before the run failed']);
-    expect(removed).toEqual(['/tmp/discovery-ab-z']);
+    await finalizeAbChildArtifacts('/tmp/discovery-z', false, fs, logger);
+    expect(warnings).toEqual(['Discovery kept no child artifacts: neither side wrote one before the run failed']);
+    expect(removed).toEqual(['/tmp/discovery-z']);
   });
 
   it('reports rather than throws when the directory cannot be read', async () => {
     const { fs } = fakeFs(new Error('ENOENT'));
     warnings.length = 0;
-    await expect(finalizeAbChildArtifacts('/tmp/discovery-ab-gone', false, fs, logger)).resolves.toBeUndefined();
+    await expect(finalizeAbChildArtifacts('/tmp/discovery-gone', false, fs, logger)).resolves.toBeUndefined();
     expect(warnings[0]).toContain('kept no child artifacts');
   });
 });

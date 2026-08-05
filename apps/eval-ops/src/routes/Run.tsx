@@ -154,7 +154,7 @@ function RunDetail({ runId }: { runId: string }) {
 
         // Only compare if non-experimental, and never for a harness that
         // compares two operator-chosen configurations: it has no committed
-        // baseline and never will (`discovery-ab --help`: "It never reads,
+        // baseline and never will (`discovery --help`: "It never reads,
         // writes or compares a baseline"), so asking for one would at best
         // find nothing and at worst diff this run against another harness's
         // artifact. The pair the run itself measured is the whole result.

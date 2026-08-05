@@ -44,7 +44,7 @@ const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
 };
 
 /**
- * One of the two environment configurations a discovery-ab run compares.
+ * One of the two environment configurations a discovery run compares.
  *
  * The key column is the same on both sides by construction — the parent holds
  * one row per flag and hands each side its own value — so the form cannot build

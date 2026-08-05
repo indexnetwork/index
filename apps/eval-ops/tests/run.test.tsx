@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { parseEvalArtifact } from '../../../packages/protocol/eval/shared/artifact';
 import { Run } from '../src/routes/Run';
 import type { Artifact, ArtifactCase, ArtifactConfigDelta, ArtifactRule, RunRecord } from '../src/api/client';
-import { DISCOVERY_AB_RUN_REPORT } from './fixtures/discovery-ab-run-report';
+import { DISCOVERY_RUN_REPORT } from './fixtures/discovery-run-report';
 
 const RUN: RunRecord = {
   id: 'run-1',
@@ -294,10 +294,10 @@ describe('Run', () => {
 });
 
 /**
- * The finished discovery-ab run, read.
+ * The finished discovery run, read.
  *
  * Every fixture below is assembled by `buildAbReport` from the rows of the real
- * artifact in tests/fixtures/discovery-ab-run-report.ts, and every one of them is
+ * artifact in tests/fixtures/discovery-run-report.ts, and every one of them is
  * asserted to survive the ops server's own `parseEvalArtifact` (the last test in
  * this file). That assertion is the point: a fixture the server would reject is
  * a page designed against output that cannot exist, which is the failure this
@@ -311,7 +311,7 @@ const AB_RUN: RunRecord = {
   status: 'passed',
   spec: {
     kind: 'eval',
-    harness: 'discovery-ab',
+    harness: 'discovery',
     profile: 'default',
     flags: { runs: 1, case: 'historical/builder-and-operator' },
     sides: {
@@ -320,7 +320,7 @@ const AB_RUN: RunRecord = {
     },
   },
   argv: [
-    'bun', 'run', 'eval:discovery-ab', '--',
+    'bun', 'run', 'eval:discovery', '--',
     '--case', 'historical/builder-and-operator', '--runs', '1',
     '--a', 'DISCOVERY_ALLOWED_TYPES=intent',
     '--b', 'DISCOVERY_ALLOWED_TYPES=intent,profile',
@@ -348,7 +348,7 @@ function stubArtifactFetch(report: unknown) {
 }
 
 function abReport(): Artifact {
-  return structuredClone(DISCOVERY_AB_RUN_REPORT);
+  return structuredClone(DISCOVERY_RUN_REPORT);
 }
 
 const BUILDER = 'historical/builder-and-operator';
@@ -453,7 +453,7 @@ function missedSlot(completed: boolean): Record<string, unknown> {
 }
 
 /**
- * Builds a discovery-ab artifact from a list of case rows.
+ * Builds a discovery artifact from a list of case rows.
  *
  * Row *contents* are the real artifact's — assertions, candidates, evaluator
  * traces, configDeltas and retrieval outcomes are copied from the side's own row
@@ -516,7 +516,7 @@ function buildAbReport(specs: readonly AbRowSpec[]): Artifact {
     if (!scored) {
       Object.assign(attempt, {
         outcome: 'failure',
-        error: { class: 'Error', message: 'discovery A/B slot did not complete' },
+        error: { class: 'Error', message: 'discovery slot did not complete' },
       });
     }
     runs.push({
@@ -605,7 +605,7 @@ function incompleteReport(): Artifact {
  * The launch form refuses this pair (`abSideIssues` requires the two sides to
  * name the same keys), but the engine's own CLI does not — `assertAbEnvConfig`
  * only checks each value is non-blank — so an artifact written by a direct
- * `bun run eval:discovery-ab` invocation can hold it.
+ * `bun run eval:discovery` invocation can hold it.
  */
 function asymmetricConfigReport(): Artifact {
   return buildAbReport([
@@ -700,7 +700,7 @@ function unpairedRowsReport(): Artifact {
   ]);
 }
 
-describe('Run · discovery-ab', () => {
+describe('Run · discovery', () => {
   it('shows both sides with their pass rates, saying which is read against which', async () => {
     stubArtifactFetch(withRepetitions());
     renderRun(AB_RUN);
@@ -725,8 +725,8 @@ describe('Run · discovery-ab', () => {
   it('derives the configuration difference from the two sides’ case rows', async () => {
     // The artifact carries no run-level configuration: the strict schemas leave
     // it nowhere to live, so per-case configDeltas is the only record.
-    expect(Object.keys(DISCOVERY_AB_RUN_REPORT)).not.toContain('configDiff');
-    expect(Object.keys(DISCOVERY_AB_RUN_REPORT)).not.toContain('configs');
+    expect(Object.keys(DISCOVERY_RUN_REPORT)).not.toContain('configDiff');
+    expect(Object.keys(DISCOVERY_RUN_REPORT)).not.toContain('configs');
 
     stubArtifactFetch(abReport());
     renderRun(AB_RUN);
@@ -957,7 +957,7 @@ describe('Run · discovery-ab', () => {
   });
 });
 
-describe('Run · discovery-ab fixtures', () => {
+describe('Run · discovery fixtures', () => {
   /**
    * Every fixture this file renders, read back through the ops server's own
    * parser.

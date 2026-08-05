@@ -31,10 +31,10 @@ bun test --watch                            # Run tests in watch mode
 
 # Code quality
 bun run lint                                # Run ESLint
-bun run typecheck:cli-specs                 # Type-check the discovery A/B CLI specs (see tsconfig.spec.json)
+bun run typecheck:cli-specs                 # Type-check the discovery CLI specs (see tsconfig.spec.json)
 
-# Evals (gated, mutating, cost tokens — see ### Discovery A/B Eval)
-bun run eval:discovery-ab -- --help         # Discovery A/B: contract and exit codes, no credentials needed
+# Evals (gated, mutating, cost tokens — see ### Discovery Eval)
+bun run eval:discovery -- --help            # Discovery: contract and exit codes, no credentials needed
 
 # Maintenance/CLI tools
 bun run maintenance:backfill-premises       # Backfill: enqueue enrichment for users in a network
@@ -116,20 +116,20 @@ bun run eval:matching -- --runs 3           # Run a harness (costs tokens)
 Harness exit codes: `0` pass, `1` regression, `2` execution error, `3`
 insufficient evidence.
 
-### Discovery A/B Eval
+### Discovery Eval
 
 Lives in `services/api` (not `packages/protocol`) because it drives the real
 discovery graph against real Neon databases.
 
 ```bash
 cd services/api
-bun run eval:discovery-ab -- --help          # The whole contract, no credentials needed
+bun run eval:discovery -- --help          # The whole contract, no credentials needed
 
 # A default run (costs tokens and ~13 minutes). Every A/B invocation but --help
 # needs all four gate variables; see **The gate** below.
-DISCOVERY_AB_CONFIRM=1 TEST_DATABASE_SAFE=1 \
-NEON_API_KEY=<key> DISCOVERY_AB_TARGETS='<manifest>' \
-  bun run eval:discovery-ab -- \
+DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 \
+NEON_API_KEY=<key> DISCOVERY_TARGETS='<manifest>' \
+  bun run eval:discovery -- \
     --a DISCOVERY_ALLOWED_TYPES=intent \
     --b DISCOVERY_ALLOWED_TYPES=intent,profile
 ```
@@ -150,10 +150,10 @@ database:
 
 | Variable | Why |
 | --- | --- |
-| `DISCOVERY_AB_CONFIRM=1` | Explicit consent to a mutating, paid run. |
+| `DISCOVERY_CONFIRM=1` | Explicit consent to a mutating, paid run. |
 | `TEST_DATABASE_SAFE=1` | The disposable-database marker; the graph writes opportunities and negotiation tasks. |
 | `NEON_API_KEY` | Required up front, because every process attests its targets against the control plane before it loads the graph. |
-| `DISCOVERY_AB_TARGETS` | The manifest below, attested against the Neon control plane on every invocation. |
+| `DISCOVERY_TARGETS` | The manifest below, attested against the Neon control plane on every invocation. |
 
 ```json
 {
@@ -174,8 +174,8 @@ fixed message and never the control plane's own — control-plane responses and
 named.
 
 **The nine flags it can offer.** `AB_FLAGS` in
-`services/api/src/cli/discovery-ab.flags.ts`, asserted by
-`discovery-ab.flags.spec.ts` against a fresh scan of the discovery graph's own
+`services/api/src/cli/discovery.flags.ts`, asserted by
+`discovery.flags.spec.ts` against a fresh scan of the discovery graph's own
 import closure rather than hand-maintained:
 
 ```
@@ -226,7 +226,7 @@ the operator.
 **A/B does not enforce per-row evidence gating**, so a passing A/B slot is not
 evidence that the configuration's evidence restriction held: every slot is
 scored against all three evidence kinds (`AB_ALLOWED_EVIDENCE` in
-`discovery-ab.main.ts`). That is deliberate — which evidence a given arbitrary
+`discovery.main.ts`). That is deliberate — which evidence a given arbitrary
 configuration should be allowed to cite is the fixed matrix's question, not
 this harness's. Every other deterministic assertion still applies, including
 the non-empty evidence check.
@@ -234,7 +234,7 @@ the non-empty evidence check.
 **Cost.** The corpus is five cases (`HISTORICAL_MATRIX_CASES`), so a default run
 is 5 cases × 3 repetitions × 2 sides = **30 graph invocations**: 15 slots per
 side, run sequentially within a side, with the two sides running concurrently.
-At the ~52s per invocation recorded in `discovery-ab.contract.ts` that is
+At the ~52s per invocation recorded in `discovery.contract.ts` that is
 roughly **13 minutes** of wall clock, plus one judge call per scored slot.
 `--runs` defaults to 3 (one observation cannot separate a difference from noise)
 and is capped at 10, which is 100 invocations.
@@ -270,7 +270,7 @@ any other flag value that comes from the env file the command loads (for
 example `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` in `.env.test`) is inherited
 identically by both sides and is not recorded per case.
 
-Artifacts land in `services/api/eval/discovery-ab/runs/<timestamp>.json`
+Artifacts land in `services/api/eval/discovery/runs/<timestamp>.json`
 (gitignored). `payload.rules` are the two sides (`a`, `b`); case ids are
 `<caseId>/<side>/r<repetition>`.
 
@@ -300,7 +300,7 @@ steps in order.
    matching the attested base target. That command attests its target the same
    way the matrix does, so it also needs `NEON_API_KEY` and a
    `DISCOVERY_ENV_MATRIX_CHILDREN` manifest (a different manifest from
-   `DISCOVERY_AB_TARGETS`); it refuses without them. That manifest must be
+   `DISCOVERY_TARGETS`); it refuses without them. That manifest must be
    base-only: the base command parses it with no expected child keys
    (`discovery-env-matrix-base.ts:74`), so `children` has to be `[]` — pasting
    the matrix's own five-child manifest is refused with `Manifest must contain
@@ -336,9 +336,9 @@ steps in order.
 
    ```bash
    cd services/api
-   DISCOVERY_AB_CONFIRM=1 TEST_DATABASE_SAFE=1 \
-   NEON_API_KEY=<key> DISCOVERY_AB_TARGETS='<manifest>' \
-     bun run eval:discovery-ab -- \
+   DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 \
+   NEON_API_KEY=<key> DISCOVERY_TARGETS='<manifest>' \
+     bun run eval:discovery -- \
        --case historical/builder-and-operator --runs 1 \
        --a DISCOVERY_ALLOWED_TYPES=intent \
        --b DISCOVERY_ALLOWED_TYPES=intent,profile
@@ -347,8 +347,8 @@ steps in order.
    That is 2 graph invocations (1 case × 1 repetition × 2 sides) plus 2 judge
    calls — a couple of minutes, not forty. Expect exit `0`, a reset line per
    side, the printed configuration diff, and one artifact in
-   `eval/discovery-ab/runs/`. In the artifact, check:
-   `harness === "discovery-ab"`; `completeness.complete === true`;
+   `eval/discovery/runs/`. In the artifact, check:
+   `harness === "discovery"`; `completeness.complete === true`;
    `payload.rules` is exactly the two sides `a` and `b`; and both case rows
    (`historical/builder-and-operator/a/r1` and `.../b/r1`) carry a `configDeltas`
    naming that side's configuration. If `completeness.complete` is `false` the
@@ -357,25 +357,25 @@ steps in order.
 
 #### Launching it from the eval-ops site
 
-The eval-ops console lists `discovery-ab` as a fifth harness and can launch it:
+The eval-ops console lists `discovery` as a fifth harness and can launch it:
 it is in `OPS_HARNESSES` (`packages/protocol/eval/ops/ops.registry.ts:8`) with a
 descriptor at `ops.registry.ts:190-243`. That descriptor is the only one carrying
-`cwd: "services/api"` (`ops.registry.ts:212`), because `bun run eval:discovery-ab`
+`cwd: "services/api"` (`ops.registry.ts:212`), because `bun run eval:discovery`
 resolves nowhere else; the server turns that into a step plan
 (`harnessSteps`, `ops.server.ts:1200-1224`). Everything below is the site's
 behaviour, not the CLI's.
 
 **What the server must have configured.** Credentials never come from the
-browser. `HARNESS_CREDENTIALS["discovery-ab"]` (`ops.server.ts:1053-1117`) names
+browser. `HARNESS_CREDENTIALS["discovery"]` (`ops.server.ts:1053-1117`) names
 three different kinds of thing:
 
 | Variable | Where it comes from |
 | --- | --- |
 | `NEON_API_KEY` | **The ops server's own environment** — `keys`, `ops.server.ts:1054`. |
-| `DISCOVERY_AB_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys`, `ops.server.ts:1054`. |
+| `DISCOVERY_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys`, `ops.server.ts:1054`. |
 | `OPENROUTER_API_KEY` | **The ops server's own environment** — `runtimeKeys`, `ops.server.ts:1087`. No gate asks for it; the child cannot run a model or an embedding without it. |
 | `REDIS_URL` | **The ops server's own environment** — `runtimeKeys`, `ops.server.ts:1087`. No gate asks for it; the HyDE cache write is uncaught, so an unreachable Redis fails the graph. |
-| `DISCOVERY_AB_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`, `ops.server.ts:1088`). |
+| `DISCOVERY_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`, `ops.server.ts:1088`). |
 | `TEST_DATABASE_SAFE=1` | Same: asserted, not required (`asserts`, `ops.server.ts:1088`). |
 
 So four variables have to be set and two do not — setting the two attestations in
@@ -416,7 +416,7 @@ loads (`packages/protocol/package.json:46`); a deployed one reads its own proces
 environment (`serverEnv: process.env`, `ops.server.ts:1994`).
 
 Without any of the four the launch route answers **503**, naming exactly what is
-missing: `Refusing to launch discovery-ab: this server has no REDIS_URL
+missing: `Refusing to launch discovery: this server has no REDIS_URL
 configured. …` (`resolveHarnessEnvironment`, `ops.server.ts:1152-1160`), returned
 at `ops.server.ts:1257-1258`. 503 and not a 4xx on purpose — the request is valid
 and it is the server that is not configured to serve it. A blank value counts as
@@ -424,7 +424,7 @@ absent (`ops.server.ts:1154`). The message names variables, never values.
 
 **One run in flight, ever — including after a restart.** The two Neon branches
 are a shared resource, so `EXCLUSIVE_HARNESSES` (`ops.queue.ts:35-43`) gives
-`discovery-ab`, and only it, an exclusive slot. A second launch is refused with
+`discovery`, and only it, an exclusive slot. A second launch is refused with
 **409** naming the run that holds it (`exclusiveRefusal`,
 `ops.server.ts:1180-1187`; returned at `ops.server.ts:1249`, and again at
 `ops.server.ts:1327` for two launches that raced past the first check).
@@ -446,7 +446,7 @@ container is replaced and the child dies with it — unblocks the harness instea
 of stranding it behind a file nobody can delete.
 
 **Both sides always run, so the workload is cases × runs × 2.**
-`SIDES_PER_RUN["discovery-ab"]` is 2 (`ops.sides.ts:54-60`) and is the single
+`SIDES_PER_RUN["discovery"]` is 2 (`ops.sides.ts:54-60`) and is the single
 source for both the workload recorded on the run record (`renderRun`,
 `ops.argv.ts:296`) and the number the launch form prices and displays
 (`Launch.tsx:546,554`, rendered at `Launch.tsx:840-843`), so the two cannot
@@ -484,11 +484,11 @@ configuration provenance is the per-case `configDeltas` naming only the per-side
 keys. The form therefore renders no Config picker for this harness and states
 that on the page (`Launch.tsx:666-671`).
 
-**The nine keys a side may set** are `DISCOVERY_AB_ENV_KEYS`
+**The nine keys a side may set** are `DISCOVERY_ENV_KEYS`
 (`packages/protocol/eval/ops/ops.allowlist.ts:68-78`) — the same nine as the
 CLI's `AB_FLAGS`, which is a copy the two sides keep honest from both ends:
 `eval/ops/tests/argv.spec.ts:392-406` parses the engine's literal and compares
-the sets, and `services/api/src/cli/tests/discovery-ab.flags.spec.ts:32` compares
+the sets, and `services/api/src/cli/tests/discovery.flags.spec.ts:32` compares
 them as imported values. The launch form's per-side key picker offers exactly
 these nine and nothing else (`Launch.tsx:447-451`):
 
@@ -515,7 +515,7 @@ POOL_QUESTIONS_MINING     OUTCOME_QUESTIONS_MODE   INTRODUCER_DISCOVERY_ENABLED
 NEGOTIATION_EVIDENCE_QUESTIONS_MODE
 ```
 
-Putting `discovery-ab` on the site therefore covers nine of the sixteen editable
+Putting `discovery` on the site therefore covers nine of the sixteen editable
 flags and no more. Finding these seven a harness is tracked as **IND-630**; until
 then, editing one on the Configs page still moves nothing any harness reads.
 
@@ -523,7 +523,7 @@ then, editing one on the Configs page still moves nothing any harness reads.
 
 A local-first web console over the eval artifacts: browse baselines and runs,
 launch the four scorecard harnesses (`matching`, `profile`, `premise`,
-`opportunity`) and the `discovery-ab` comparison harness (see **Launching it
+`opportunity`) and the `discovery` comparison harness (see **Launching it
 from the eval-ops site** above) with live streaming output, compare runs A/B, and
 control the seeded test database. The headless core is `packages/protocol/eval/ops/` (the
 `ops` eval suite); the UI is the `apps/eval-ops/` workspace.
@@ -852,7 +852,7 @@ Two Neon projects exist:
    - **`production`** (`br-fragrant-brook-ahexgsek`) — production data. **Never touch.**
    - **`dev`** (`br-late-tooth-ahlsfgdb`) — used by the Railway `dev` environment. Database name: `protocol_prod`.
    - **`eval-discovery-base`** (`br-wispy-queen-ahmxwx1s`) — the **protected** seeded fixture base for the discovery evals. Database name: `protocol_eval`. Seeded and verified by `eval:discovery-env-matrix-base`; never used by a run directly.
-   - **`eval-ab-a`** (`br-old-meadow-ahw6rnu1`) and **`eval-ab-b`** (`br-snowy-math-ahnnrwew`) — children of `eval-discovery-base`, one per A/B side, each with its own endpoint on `protocol_eval`. **Every discovery-ab run resets both from the base before it spawns anything**, so they hold no data worth keeping and only one run may use them at a time. Their ids, endpoint ids and connection strings are what `DISCOVERY_AB_TARGETS` attests; see **Discovery A/B Eval** above.
+   - **`eval-ab-a`** (`br-old-meadow-ahw6rnu1`) and **`eval-ab-b`** (`br-snowy-math-ahnnrwew`) — children of `eval-discovery-base`, one per A/B side, each with its own endpoint on `protocol_eval`. **Every discovery run resets both from the base before it spawns anything**, so they hold no data worth keeping and only one run may use them at a time. Their ids, endpoint ids and connection strings are what `DISCOVERY_TARGETS` attests; see **Discovery Eval** above.
 
 Railway dev deployments run `db:migrate` against the `dev` branch of the Protocol project.
 

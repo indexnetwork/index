@@ -50,7 +50,7 @@ const RunFlagsSchema = z
  * hits Object.prototype's setter and DROPS it. The key would then vanish
  * silently — the operator's spec would be accepted while missing the thing they
  * sent. The engine avoids the same hazard by building each side in a `Map`
- * (parseAbSideConfig, discovery-ab.main.ts); here it is a refusal, since
+ * (parseAbSideConfig, discovery.main.ts); here it is a refusal, since
  * `__proto__` is not one of the nine and could not be honoured anyway.
  */
 const SideConfigSchema = z.preprocess((raw, context) => {
@@ -80,7 +80,7 @@ export const RunSpecSchema = z
       .optional(),
     flags: RunFlagsSchema,
     // Values are operator-chosen flag values, never credentials: the keys are
-    // confined to DISCOVERY_AB_ENV_KEYS below, and the whole object is recorded
+    // confined to DISCOVERY_ENV_KEYS below, and the whole object is recorded
     // on the run record so the artifact and the site agree on what was compared.
     sides: z
       .object({ a: SideConfigSchema, b: SideConfigSchema })
@@ -91,7 +91,7 @@ export const RunSpecSchema = z
   .superRefine((spec, context) => {
     // Names AND values, against this harness's own registry entry. RunFlagsSchema
     // above bounds each flag by the widest value any harness allows, which is not
-    // what any single harness accepts: discovery-ab caps --runs at 10 where these
+    // what any single harness accepts: discovery caps --runs at 10 where these
     // bounds allow 25. Checking only the names is how a spec the engine refuses
     // got queued, displayed and spent against.
     //
@@ -114,7 +114,7 @@ export const RunSpecSchema = z
     }
     // Per-side configuration is required by exactly the harness that compares two
     // of them, and inexpressible for every other. Both directions are refusals:
-    // a discovery-ab run without `sides` has nothing to compare, and `sides` on a
+    // a discovery run without `sides` has nothing to compare, and `sides` on a
     // scorecard harness would be a control the engine never reads.
     const requiresSides = REQUIRES_SIDES[spec.harness as EvalRunSpec["harness"]];
     if (requiresSides && spec.sides === undefined) {
@@ -228,7 +228,7 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   // Per-side configuration, sorted by key so two launches of one configuration
   // render identical argv regardless of the order the form built it in — the
   // engine sorts the same way when it re-serializes for its children
-  // (abConfigDeltas in services/api/src/cli/discovery-ab.main.ts).
+  // (abConfigDeltas in services/api/src/cli/discovery.main.ts).
   //
   // Checked again here rather than trusted from RunSpecSchema, exactly as the
   // flag list above is: the engine ignores unrecognised argv, so anything wrong

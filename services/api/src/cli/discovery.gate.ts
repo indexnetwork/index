@@ -1,5 +1,5 @@
 /**
- * The discovery A/B harness's fail-closed environment gate.
+ * The discovery harness's fail-closed environment gate.
  *
  * It is the A/B counterpart of `assertMatrixEnvironment`, and it checks the
  * same five things: an explicit confirm variable, the disposable-database
@@ -8,18 +8,18 @@
  * negotiation tasks, so nothing here is advisory.
  *
  * It lives in its own dependency-free module rather than in
- * `discovery-ab.main.ts` because the bootstrap must refuse an unconfirmed run
+ * `discovery.main.ts` because the bootstrap must refuse an unconfirmed run
  * *before* importing anything that could compose a database singleton, and
- * `discovery-ab.main.ts` reaches `@indexnetwork/protocol` through its very
+ * `discovery.main.ts` reaches `@indexnetwork/protocol` through its very
  * first import. A gate you can only reach after loading the graph is not a
  * gate.
  *
  * Errors never echo `DATABASE_URL`, which carries a password; only the hostname
  * and the offending field name are reported, exactly as the matrix gate does.
  */
-import { AB_BRANCH_NAMES } from './discovery-ab.neon';
+import { AB_BRANCH_NAMES } from './discovery.neon';
 
-import type { AbSideId } from './discovery-ab.plan';
+import type { AbSideId } from './discovery.plan';
 
 /**
  * A refusal the operator is meant to read.
@@ -28,7 +28,7 @@ import type { AbSideId } from './discovery-ab.plan';
  * because provider and control-plane errors can carry credentials. Gate
  * refusals are authored here in full and name only environment variable names,
  * so they are safe to print and useless unless printed: "set
- * DISCOVERY_AB_CONFIRM=1" is the whole point of the gate.
+ * DISCOVERY_CONFIRM=1" is the whole point of the gate.
  */
 export class AbGateError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -38,7 +38,7 @@ export class AbGateError extends Error {
 }
 
 /** The branch label the bootstrap derives from the attested manifest for a child. */
-export const AB_SIDE_BRANCH_ENV = 'DISCOVERY_AB_SIDE_BRANCH';
+export const AB_SIDE_BRANCH_ENV = 'DISCOVERY_SIDE_BRANCH';
 
 export interface AbSideEnvironment {
   databaseUrl: URL;
@@ -56,8 +56,8 @@ export interface AbSideEnvironment {
  * otherwise surface as an attestation refusal that says nothing about the key.
  */
 export function assertAbConfirmation(env: NodeJS.ProcessEnv): void {
-  if (env.DISCOVERY_AB_CONFIRM !== '1') {
-    throw new AbGateError('Refusing to mutate: set DISCOVERY_AB_CONFIRM=1');
+  if (env.DISCOVERY_CONFIRM !== '1') {
+    throw new AbGateError('Refusing to mutate: set DISCOVERY_CONFIRM=1');
   }
   if (env.TEST_DATABASE_SAFE !== '1') {
     throw new AbGateError('Refusing to mutate: set TEST_DATABASE_SAFE=1 only for a disposable evaluation branch');
@@ -67,8 +67,8 @@ export function assertAbConfirmation(env: NodeJS.ProcessEnv): void {
   }
   // Presence only. What a manifest must contain is `parseAbManifest`'s contract,
   // and restating any of it here would be a second copy to drift from.
-  if ((env.DISCOVERY_AB_TARGETS ?? '').trim() === '') {
-    throw new AbGateError('Refusing to run: DISCOVERY_AB_TARGETS must declare the two designated A/B branches');
+  if ((env.DISCOVERY_TARGETS ?? '').trim() === '') {
+    throw new AbGateError('Refusing to run: DISCOVERY_TARGETS must declare the two designated A/B branches');
   }
 }
 

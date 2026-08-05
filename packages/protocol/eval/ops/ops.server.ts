@@ -1009,7 +1009,7 @@ export interface HarnessCredentialRequirement {
  * destroyed before that key is read — they take the executor's own single-command
  * path with no step plan, and a missing key surfaces as their first model
  * construction throwing, with nothing reset and nothing spent. A pre-check there
- * would move a message earlier; for discovery-ab it prevents a destruction.
+ * would move a message earlier; for discovery it prevents a destruction.
  */
 const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
   keys: Object.freeze([]),
@@ -1022,18 +1022,18 @@ const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
 /**
  * What each harness needs from this server's own environment, and nowhere else.
  *
- * discovery-ab's bootstrap refuses to run without four variables
- * (`assertAbConfirmation`, services/api/src/cli/discovery-ab.gate.ts), and they
+ * discovery's bootstrap refuses to run without four variables
+ * (`assertAbConfirmation`, services/api/src/cli/discovery.gate.ts), and they
  * are two different kinds of thing. A third kind is below them: variables no
  * gate mentions that the child cannot run without (`runtimeKeys`).
  *
- * `NEON_API_KEY` and `DISCOVERY_AB_TARGETS` are secrets an operator configures
+ * `NEON_API_KEY` and `DISCOVERY_TARGETS` are secrets an operator configures
  * once — a control-plane key that can create and delete branches, and an
  * attested manifest carrying two `protocol_eval` connection strings, passwords
  * included. They are `keys`: resolved at launch, handed to the child, written
  * nowhere.
  *
- * `DISCOVERY_AB_CONFIRM=1` and `TEST_DATABASE_SAFE=1` are attestations that the
+ * `DISCOVERY_CONFIRM=1` and `TEST_DATABASE_SAFE=1` are attestations that the
  * databases about to be mutated are disposable, and they are `asserts` because
  * this server is in a position to make them. That decision has already been made
  * by an operator, twice: once when they configured the manifest — which names
@@ -1056,8 +1056,8 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
   profile: NO_CREDENTIALS,
   premise: NO_CREDENTIALS,
   opportunity: NO_CREDENTIALS,
-  "discovery-ab": Object.freeze({
-    keys: Object.freeze(["NEON_API_KEY", "DISCOVERY_AB_TARGETS"]),
+  discovery: Object.freeze({
+    keys: Object.freeze(["NEON_API_KEY", "DISCOVERY_TARGETS"]),
     /**
      * The two variables the child composition needs and no gate asks for.
      *
@@ -1068,7 +1068,7 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
      * half of the run already spent on a configuration that could never finish.
      *
      * They arrive by inheritance rather than by gate, which is why nothing else
-     * catches them: `eval:discovery-ab` is `bun --env-file=../../.env.test ...`
+     * catches them: `eval:discovery` is `bun --env-file=../../.env.test ...`
      * (services/api/package.json), `.env.test` is gitignored, and Bun exits 0
      * with no warning when an --env-file is missing. So a container that has
      * neither the file nor the variable reads them as absent, silently.
@@ -1091,7 +1091,7 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
      * setting REDIS_URL, rather than two reset branches and a failed run.
      */
     runtimeKeys: Object.freeze(["OPENROUTER_API_KEY", "REDIS_URL"]),
-    asserts: Object.freeze({ DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1" }),
+    asserts: Object.freeze({ DISCOVERY_CONFIRM: "1", TEST_DATABASE_SAFE: "1" }),
     // Deleted, not pinned, and this is the one variable that decides which
     // database the child tree can reach — so it is stated rather than inherited.
     //
@@ -1102,11 +1102,11 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
     // other side. And the parent A/B process composes no database at all: it
     // resets two branches through the Neon control plane and spawns one child per
     // side, each of which sets its own DATABASE_URL from the attested manifest
-    // (discovery-ab.ts) and is then re-checked against that side's branch
+    // (discovery.ts) and is then re-checked against that side's branch
     // (`assertAbSideEnvironment`).
     //
     // Deleting hands the decision back to the script, which already made it:
-    // `eval:discovery-ab` is `bun --env-file=../../.env.test ...`, and a parent
+    // `eval:discovery` is `bun --env-file=../../.env.test ...`, and a parent
     // environment beats --env-file in Bun, so this server's value was silently
     // winning a question the script had already answered. With the key removed,
     // .env.test decides — and where there is no .env.test, nothing does, which is
@@ -1116,7 +1116,7 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
     // Returned to a browser: it names variables and what they are for, never a value.
     advice:
       "It resets the two designated Neon evaluation branches and then runs the real discovery graph against them, "
-      + "so this server's own environment must hold NEON_API_KEY (a Neon control-plane key), DISCOVERY_AB_TARGETS "
+      + "so this server's own environment must hold NEON_API_KEY (a Neon control-plane key), DISCOVERY_TARGETS "
       + "(the attested manifest naming the project, the base branch, and both side branches with their "
       + "protocol_eval databases), OPENROUTER_API_KEY (every model and embedding the graph runs on) and REDIS_URL "
       + "(the HyDE cache the graph writes through). None of them is ever sent from a browser.",
@@ -1197,8 +1197,8 @@ function exclusiveRefusal(harness: OpsHarness, holder: RunRecord): string {
  * path is exactly right.
  *
  * A plan exists only for a run that needs something the record cannot express: a
- * working directory other than packages/protocol — discovery-ab's script and CLI
- * live in services/api, and `bun run eval:discovery-ab` resolves nowhere else —
+ * working directory other than packages/protocol — discovery's script and CLI
+ * live in services/api, and `bun run eval:discovery` resolves nowhere else —
  * or an environment that must not be written down. The four scorecard harnesses
  * need neither, so they keep the executor's own cwd and the record's own
  * environment, unchanged by this harness existing.

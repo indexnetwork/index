@@ -9,7 +9,7 @@ import type { OpsHarness, RunRecord, RunStatus } from "../ops.types.js";
 /** The engine module that designates the two branches every A/B run shares. */
 const AB_NEON_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
-  "services", "api", "src", "cli", "discovery-ab.neon.ts",
+  "services", "api", "src", "cli", "discovery.neon.ts",
 );
 
 const QUEUE_SOURCE = path.join(import.meta.dir, "..", "ops.queue.ts");
@@ -18,7 +18,7 @@ function record(id: string, harness: OpsHarness = "matching"): RunRecord {
   return {
     id,
     spec:
-      harness === "discovery-ab"
+      harness === "discovery"
         ? {
             kind: "eval",
             harness,
@@ -163,17 +163,17 @@ function storeHolding(...records: RunRecord[]): never {
 }
 
 /** A record as a *previous* process left it behind: a status and the pid it was running as. */
-function orphan(id: string, status: RunStatus, pid: number | null, harness: OpsHarness = "discovery-ab"): RunRecord {
+function orphan(id: string, status: RunStatus, pid: number | null, harness: OpsHarness = "discovery"): RunRecord {
   return { ...record(id, harness), status, pid, startedAt: new Date().toISOString() };
 }
 
-describe("the single discovery-ab slot", () => {
+describe("the single discovery slot", () => {
   it("names the harnesses whose runs may never overlap", () => {
     // The scorecard harnesses read a fixture and write their own artifact, so a
-    // second run of one of them corrupts nothing; discovery-ab resets two shared
+    // second run of one of them corrupts nothing; discovery resets two shared
     // branches. A harness added later must answer here rather than inherit "safe".
     const exclusive = Object.entries(EXCLUSIVE_HARNESSES).filter(([, reason]) => reason !== null);
-    expect(exclusive.map(([harness]) => harness)).toEqual(["discovery-ab"]);
+    expect(exclusive.map(([harness]) => harness)).toEqual(["discovery"]);
   });
 
   it("pins the branches the rule is about to the ones the engine actually designates", () => {
@@ -181,7 +181,7 @@ describe("the single discovery-ab slot", () => {
     // Which pair is AB_BRANCH_NAMES' answer, not this module's, and the comment
     // that explains the rule names them — so a rename in the engine must fail
     // here rather than leave this file explaining a rule about branches that no
-    // longer exist. Read from source rather than imported: discovery-ab.neon.ts
+    // longer exist. Read from source rather than imported: discovery.neon.ts
     // reaches node: APIs that this provider-free suite must not load, which is the
     // same reason argv.spec.ts reads AB_FLAGS and registry.spec.ts reads
     // AB_MAX_REPETITIONS as text.
@@ -199,18 +199,18 @@ describe("the single discovery-ab slot", () => {
 
     // And the refusal an operator reads must say what is shared, since it is the
     // only explanation they get for a 409 on a harness they just launched once.
-    expect(EXCLUSIVE_HARNESSES["discovery-ab"]).toMatch(/Neon/);
-    expect(EXCLUSIVE_HARNESSES["discovery-ab"]).toMatch(/reset/);
+    expect(EXCLUSIVE_HARNESSES["discovery"]).toMatch(/Neon/);
+    expect(EXCLUSIVE_HARNESSES["discovery"]).toMatch(/reset/);
   });
 
-  it("runs one discovery-ab at a time even when the queue is allowed three", async () => {
+  it("runs one discovery at a time even when the queue is allowed three", async () => {
     const first = deferred();
     const second = deferred();
     const executor = spyExecutor(new Map([["ab-1", first.promise], ["ab-2", second.promise]]));
     const queue = new RunQueue({ executor, store: STORE, concurrency: 3 });
 
-    queue.enqueue(record("ab-1", "discovery-ab"));
-    queue.enqueue(record("ab-2", "discovery-ab"));
+    queue.enqueue(record("ab-1", "discovery"));
+    queue.enqueue(record("ab-2", "discovery"));
     await Bun.sleep(10);
 
     expect(executor.active).toEqual(["ab-1"]);
@@ -223,17 +223,17 @@ describe("the single discovery-ab slot", () => {
     expect(executor.started).toEqual(["ab-1", "ab-2"]);
   });
 
-  it("lets a scorecard run proceed while a discovery-ab run holds the slot", async () => {
+  it("lets a scorecard run proceed while a discovery run holds the slot", async () => {
     const held = deferred();
     const executor = spyExecutor(new Map([["ab-1", held.promise]]));
     const queue = new RunQueue({ executor, store: STORE, concurrency: 2 });
 
-    queue.enqueue(record("ab-1", "discovery-ab"));
-    queue.enqueue(record("ab-2", "discovery-ab"));
+    queue.enqueue(record("ab-1", "discovery"));
+    queue.enqueue(record("ab-2", "discovery"));
     queue.enqueue(record("matching-1", "matching"));
     await Bun.sleep(10);
 
-    // The blocked discovery-ab run does not stall the queue behind it: the
+    // The blocked discovery run does not stall the queue behind it: the
     // scorecard run shares nothing with it and runs alongside.
     expect(executor.started).toEqual(["ab-1", "matching-1"]);
     expect(executor.active).toEqual(["ab-1"]);
@@ -248,37 +248,37 @@ describe("the single discovery-ab slot", () => {
     const executor = spyExecutor(new Map([["ab-1", held.promise], ["matching-1", held.promise]]));
     const queue = new RunQueue({ executor, store: STORE, concurrency: 2 });
 
-    expect(await queue.exclusiveConflict("discovery-ab")).toBeNull();
+    expect(await queue.exclusiveConflict("discovery")).toBeNull();
 
-    queue.enqueue(record("ab-1", "discovery-ab"));
+    queue.enqueue(record("ab-1", "discovery"));
     queue.enqueue(record("matching-1", "matching"));
     await Bun.sleep(10);
 
-    expect((await queue.exclusiveConflict("discovery-ab"))?.id).toBe("ab-1");
+    expect((await queue.exclusiveConflict("discovery"))?.id).toBe("ab-1");
     // A second scorecard run of a harness already running is ordinary, not a conflict.
     expect(await queue.exclusiveConflict("matching")).toBeNull();
 
     held.release();
     await queue.drain();
-    expect(await queue.exclusiveConflict("discovery-ab")).toBeNull();
+    expect(await queue.exclusiveConflict("discovery")).toBeNull();
   });
 
-  it("still reports a queued discovery-ab run as holding the slot before it starts", async () => {
+  it("still reports a queued discovery run as holding the slot before it starts", async () => {
     const held = deferred();
     const executor = spyExecutor(new Map([["matching-1", held.promise]]));
     const queue = new RunQueue({ executor, store: STORE, concurrency: 1 });
 
     queue.enqueue(record("matching-1", "matching"));
-    queue.enqueue(record("ab-1", "discovery-ab"));
+    queue.enqueue(record("ab-1", "discovery"));
     await Bun.sleep(10);
 
     // Not started yet, but it is spoken for: a launch route that ignored a
     // pending run would admit a second one that then ran back to back.
     expect(executor.started).toEqual(["matching-1"]);
-    expect((await queue.exclusiveConflict("discovery-ab"))?.id).toBe("ab-1");
+    expect((await queue.exclusiveConflict("discovery"))?.id).toBe("ab-1");
     // The same run, seen without touching the store: this is the check the launch
     // route makes with no await in it, immediately before enqueuing.
-    expect(queue.inProcessConflict("discovery-ab")?.id).toBe("ab-1");
+    expect(queue.inProcessConflict("discovery")?.id).toBe("ab-1");
 
     held.release();
     await queue.drain();
@@ -292,22 +292,22 @@ describe("the single discovery-ab slot", () => {
     const running = orphan("ab-before-restart", "running", process.pid);
     const rebuilt = new RunQueue({ executor: spyExecutor(), store: storeHolding(running), concurrency: 3 });
 
-    expect((await rebuilt.exclusiveConflict("discovery-ab"))?.id).toBe("ab-before-restart");
+    expect((await rebuilt.exclusiveConflict("discovery"))?.id).toBe("ab-before-restart");
     // Memory alone — what the rule used to consult — sees nothing at all, which is
     // precisely how a second launch used to be admitted.
-    expect(rebuilt.inProcessConflict("discovery-ab")).toBeNull();
+    expect(rebuilt.inProcessConflict("discovery")).toBeNull();
   });
 
   it("does not let a record whose process is gone block the harness forever", async () => {
     // The other restart: the container was replaced, so the child died with it.
     // A `running` record with a dead pid is what that leaves, and refusing on it
-    // would make discovery-ab unlaunchable until someone deleted a file.
+    // would make discovery unlaunchable until someone deleted a file.
     const proc = Bun.spawn({ cmd: ["true"], stdout: "ignore", stderr: "ignore" });
     await proc.exited;
     const dead = orphan("ab-killed-with-its-container", "running", proc.pid);
     const rebuilt = new RunQueue({ executor: spyExecutor(), store: storeHolding(dead) });
 
-    expect(await rebuilt.exclusiveConflict("discovery-ab")).toBeNull();
+    expect(await rebuilt.exclusiveConflict("discovery")).toBeNull();
   });
 
   it("ignores stored records that are finished, pidless, or another harness's", async () => {
@@ -330,7 +330,7 @@ describe("the single discovery-ab slot", () => {
       ),
     });
 
-    expect(await rebuilt.exclusiveConflict("discovery-ab")).toBeNull();
+    expect(await rebuilt.exclusiveConflict("discovery")).toBeNull();
     expect(await rebuilt.exclusiveConflict("matching")).toBeNull();
   });
 
@@ -348,7 +348,7 @@ describe("the single discovery-ab slot", () => {
       },
     });
 
-    expect((await rebuilt.exclusiveConflict("discovery-ab"))?.id).toBe("ab-live");
+    expect((await rebuilt.exclusiveConflict("discovery"))?.id).toBe("ab-live");
     // The pid it consulted is the record's own, not a stand-in.
     expect(asked).toEqual([LIVE_PID]);
   });
@@ -365,7 +365,7 @@ describe("the single discovery-ab slot", () => {
 
     expect(await rebuilt.exclusiveConflict("matching")).toBeNull();
     expect(listed).toBe(0);
-    expect(await rebuilt.exclusiveConflict("discovery-ab")).toBeNull();
+    expect(await rebuilt.exclusiveConflict("discovery")).toBeNull();
     expect(listed).toBe(1);
   });
 
@@ -373,11 +373,11 @@ describe("the single discovery-ab slot", () => {
     const executor = spyExecutor();
     const queue = new RunQueue({ executor, store: STORE, concurrency: 1 });
     const steps: ExecutionStep[] = [
-      { label: "discovery-ab", argv: ["bun", "run", "eval:discovery-ab"], cwd: "/repo/services/api", env: { NEON_API_KEY: "k" } },
+      { label: "discovery", argv: ["bun", "run", "eval:discovery"], cwd: "/repo/services/api", env: { NEON_API_KEY: "k" } },
     ];
 
     queue.enqueue(record("matching-1", "matching"));
-    queue.enqueue(record("ab-1", "discovery-ab"), steps);
+    queue.enqueue(record("ab-1", "discovery"), steps);
     await queue.drain();
 
     expect(executor.plans[0]).toBeUndefined();

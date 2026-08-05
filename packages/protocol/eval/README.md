@@ -98,7 +98,7 @@ It is **not** the public artifact viewer above, and the two are not interchangea
 Five harnesses are launchable from the ops site (`OPS_HARNESSES`,
 [`ops/ops.registry.ts`](./ops/ops.registry.ts)). Four are the baseline-backed scorecard
 harnesses (`matching`, `profile`, `premise`, `opportunity`) — they emit the shared artifact
-envelope and are diffed against their committed baseline. `discovery-ab` is the fifth and a
+envelope and are diffed against their committed baseline. `discovery` is the fifth and a
 different shape: it carries two configurations rather than one, runs in `services/api`, and
 has no baseline and never will, so its site-launched runs are indexed from `.ops-runs` like
 any other run but are never diffed or compared against a baseline. Every other harness

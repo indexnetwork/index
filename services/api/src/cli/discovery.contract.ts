@@ -1,5 +1,5 @@
 /**
- * The discovery A/B harness's operator-facing contract: what the command
+ * The discovery harness's operator-facing contract: what the command
  * promises, and what each of its exit codes means.
  *
  * It lives in its own dependency-free module for two reasons, both of them
@@ -14,7 +14,7 @@
  *    reads a single environment variable, and its "attest before importing the
  *    runtime" ordering is untouched.
  * 2. **The exit codes must be visible in one place.** The bootstrap decides the
- *    process exit code and cannot import `discovery-ab.main.ts` (that module
+ *    process exit code and cannot import `discovery.main.ts` (that module
  *    reaches `@indexnetwork/protocol` on its first import), so the codes and
  *    the classification that picks between them have to live somewhere both
  *    halves can reach.
@@ -23,8 +23,8 @@
  * runs. A `--side` child's exit code is consumed by the parent's supervision,
  * which then reports the run-level code for the whole comparison.
  */
-import { AB_BRANCH_NAMES } from './discovery-ab.neon';
-import { AbGateError } from './discovery-ab.gate';
+import { AB_BRANCH_NAMES } from './discovery.neon';
+import { AbGateError } from './discovery.gate';
 
 /** The protected branch both A/B branches are reset from before every run. */
 export const AB_BASE_BRANCH = 'eval-discovery-base';
@@ -104,12 +104,12 @@ export type AbRunStage = 'resetting' | 'reset' | 'spawned' | 'written';
 function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
   switch (stage) {
     case 'resetting':
-      return `Discovery A/B failed while resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
+      return `Discovery failed while resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
         + `from ${AB_BASE_BRANCH}: one or both branches may have been overwritten — the reset was still in `
         + 'progress, so this run cannot say which. No side was spawned, no run was spent, and no artifact was '
         + 'written. Treat both branches as dirty; the next run resets them again.';
     case 'reset':
-      return `Discovery A/B failed after resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
+      return `Discovery failed after resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
         + `from ${AB_BASE_BRANCH} and before spawning any side: both branches were overwritten, no run was spent, `
         + 'and no artifact was written.';
     case 'spawned':
@@ -124,7 +124,7 @@ function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
       // before this message is printed — keeps that directory and names what is
       // in it precisely so the scored slots can be read. What is certainly lost
       // is the run report and the verdict, so that is what this says.
-      return 'Discovery A/B failed after spawning a side: both A/B branches were reset and at least one side '
+      return 'Discovery failed after spawning a side: both A/B branches were reset and at least one side '
         + 'process was started, so provider spend and wall-clock time may already be gone. No run report was '
         + 'written and there is no verdict — any child artifact this run kept is named above — and re-running '
         + 'pays for the whole comparison again.';
@@ -133,7 +133,7 @@ function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
       // and exits 0 even when every one of its slots failed, so both sides can
       // complete with nothing scored. Attempts were certainly made; a paid run
       // is not something this stage can assert.
-      return 'Discovery A/B failed after the run artifact was written'
+      return 'Discovery failed after the run artifact was written'
         + `${artifactPath === undefined ? '' : ` (${artifactPath})`}: both A/B branches were reset and a live run `
         + 'may have been spent, and the failure came after the artifact was saved. The artifact on disk is real — '
         + 'read it before re-running, which costs the same again.';
@@ -216,10 +216,10 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
   return {
     exitCode: AB_EXIT_PREFLIGHT_REFUSED,
     message: role === 'child'
-      ? 'Discovery A/B side process failed. A child makes no claim about what this run cost: whether the '
+      ? 'Discovery side process failed. A child makes no claim about what this run cost: whether the '
         + 'branches were reset, a side was spawned or a live run was spent is reported by the parent '
         + "invocation, and the parent's exit code is the one to act on."
-      : 'Discovery A/B command failed before anything was reset or spawned: '
+      : 'Discovery command failed before anything was reset or spawned: '
         + 'no branch was mutated and no run was spent.',
   };
 }
@@ -241,7 +241,7 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
  */
 export function abAttestationRefusal(role: AbInvocationRole, options?: ErrorOptions): AbGateError {
   return new AbGateError(
-    'Refusing to run: DISCOVERY_AB_TARGETS was not attested as the two designated A/B branches '
+    'Refusing to run: DISCOVERY_TARGETS was not attested as the two designated A/B branches '
     + `(${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) parented on ${AB_BASE_BRANCH}. `
     + (role === 'child'
       ? 'This side did not run; what the run reset or spawned is reported by the parent invocation.'
@@ -257,7 +257,7 @@ export function abAttestationRefusal(role: AbInvocationRole, options?: ErrorOpti
 export function abUsage(): string {
   const manifest = '{"projectId":"...","baseBranchId":"br-...","targets":[{"sideId":"a","branchId":"br-...","endpointId":"ep-...","databaseUrl":"postgres://...neon.tech/protocol_eval"}, ...]}';
   return [
-    'Discovery A/B eval',
+    'Discovery eval',
     '',
     'Runs the real discovery graph twice - once per operator-chosen environment',
     'configuration - over the same cases, and emits one artifact holding both sides.',
@@ -265,10 +265,10 @@ export function abUsage(): string {
     'none, so the pair is the result.',
     '',
     'Required operator attestation:',
-    '  DISCOVERY_AB_CONFIRM=1',
+    '  DISCOVERY_CONFIRM=1',
     '  TEST_DATABASE_SAFE=1',
     '  NEON_API_KEY=<neon api key>',
-    `  DISCOVERY_AB_TARGETS='${manifest}'`,
+    `  DISCOVERY_TARGETS='${manifest}'`,
     '',
     'This command never creates or deletes Neon branches. It resets both attested',
     `A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) from ${AB_BASE_BRANCH} before it spawns anything.`,
@@ -280,10 +280,10 @@ export function abUsage(): string {
     '  --b KEY=VALUE     A flag for side b. Repeatable.',
     '  --report <path>   Write the run artifact here. Given at most once. A relative',
     '                    path is resolved against the working directory this command',
-    '                    was invoked from, not against eval/discovery-ab/runs.',
+    '                    was invoked from, not against eval/discovery/runs.',
     '                    An existing file is replaced only with --force, and an',
     '                    existing directory is refused before anything runs.',
-    '                    Default: a timestamped file under eval/discovery-ab/runs.',
+    '                    Default: a timestamped file under eval/discovery/runs.',
     '  --force           Consent to replacing an existing run artifact.',
     '',
     'Both sides must state the same keys with differing values; identical or',

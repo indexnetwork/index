@@ -75,8 +75,8 @@ export class FsArtifactSource implements ArtifactSource {
     const files: string[] = [];
     // Not every registered harness keeps artifacts here. A harness that has
     // never been run has no runs/ directory yet, one that has no baseline (and
-    // never will, like discovery-ab) has no baselines/ directory, and
-    // discovery-ab's CLI writes under services/api/eval entirely — its
+    // never will, like discovery) has no baselines/ directory, and
+    // discovery's CLI writes under services/api/eval entirely — its
     // site-launched runs arrive through .ops-runs below. jsonFilesIn treats
     // every one of those as "nothing to index" rather than as a failure.
     for (const harness of OPS_HARNESSES) {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
-import { AB_ALLOWED_EVIDENCE, abConfigDeltas, abSlotCaseId, buildAbSlotScoreInput, invokeAbDiscoveryGraph, parseAbChildArgs, selectAbSideSlots } from '../discovery-ab.main';
-import { buildAbPlan, type AbSide, type AbSlot } from '../discovery-ab.plan';
+import { AB_ALLOWED_EVIDENCE, abConfigDeltas, abSlotCaseId, buildAbSlotScoreInput, invokeAbDiscoveryGraph, parseAbChildArgs, selectAbSideSlots } from '../discovery.main';
+import { buildAbPlan, type AbSide, type AbSlot } from '../discovery.plan';
 
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
 

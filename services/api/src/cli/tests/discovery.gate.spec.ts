@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 
-import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbSideEnvironment } from '../discovery-ab.gate';
+import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbSideEnvironment } from '../discovery.gate';
 
 const SIDE_A_URL = 'postgresql://evaluser:hunter2secret@ep-side-a-123456.eu-central-1.aws.neon.tech/protocol_eval';
 const SIDE_B_URL = 'postgresql://evaluser:hunter2secret@ep-side-b-123456.eu-central-1.aws.neon.tech/protocol_eval';
 
 const env = (overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
-  DISCOVERY_AB_CONFIRM: '1',
+  DISCOVERY_CONFIRM: '1',
   TEST_DATABASE_SAFE: '1',
   NEON_API_KEY: 'neon-api-key',
-  DISCOVERY_AB_TARGETS: '{"projectId":"p"}',
+  DISCOVERY_TARGETS: '{"projectId":"p"}',
   DATABASE_URL: SIDE_A_URL,
   [AB_SIDE_BRANCH_ENV]: 'eval-ab-a',
   ...overrides,
@@ -21,11 +21,11 @@ describe('assertAbConfirmation', () => {
   });
 
   it('refuses without the confirm variable, naming it', () => {
-    expect(() => assertAbConfirmation(env({ DISCOVERY_AB_CONFIRM: undefined }))).toThrow(/set DISCOVERY_AB_CONFIRM=1/);
+    expect(() => assertAbConfirmation(env({ DISCOVERY_CONFIRM: undefined }))).toThrow(/set DISCOVERY_CONFIRM=1/);
   });
 
-  it.each(['0', 'true', 'yes', ''])('refuses DISCOVERY_AB_CONFIRM=%p, because only an exact 1 is consent', (value) => {
-    expect(() => assertAbConfirmation(env({ DISCOVERY_AB_CONFIRM: value }))).toThrow(/DISCOVERY_AB_CONFIRM=1/);
+  it.each(['0', 'true', 'yes', ''])('refuses DISCOVERY_CONFIRM=%p, because only an exact 1 is consent', (value) => {
+    expect(() => assertAbConfirmation(env({ DISCOVERY_CONFIRM: value }))).toThrow(/DISCOVERY_CONFIRM=1/);
   });
 
   it('refuses without the disposable-database marker', () => {
@@ -38,8 +38,8 @@ describe('assertAbConfirmation', () => {
   });
 
   it('refuses without a targets manifest, naming the variable rather than restating its contract', () => {
-    expect(() => assertAbConfirmation(env({ DISCOVERY_AB_TARGETS: undefined }))).toThrow(/DISCOVERY_AB_TARGETS must declare/);
-    expect(() => assertAbConfirmation(env({ DISCOVERY_AB_TARGETS: '  ' }))).toThrow(/DISCOVERY_AB_TARGETS must declare/);
+    expect(() => assertAbConfirmation(env({ DISCOVERY_TARGETS: undefined }))).toThrow(/DISCOVERY_TARGETS must declare/);
+    expect(() => assertAbConfirmation(env({ DISCOVERY_TARGETS: '  ' }))).toThrow(/DISCOVERY_TARGETS must declare/);
   });
 
   it('raises a refusal the bootstrap is allowed to print', () => {
@@ -55,7 +55,7 @@ describe('assertAbSideEnvironment', () => {
   });
 
   it('applies the confirmation gate first, so an unconfirmed child never reaches a URL check', () => {
-    expect(() => assertAbSideEnvironment(env({ DISCOVERY_AB_CONFIRM: undefined }), 'a')).toThrow(/DISCOVERY_AB_CONFIRM=1/);
+    expect(() => assertAbSideEnvironment(env({ DISCOVERY_CONFIRM: undefined }), 'a')).toThrow(/DISCOVERY_CONFIRM=1/);
   });
 
   it('refuses a missing or unparseable DATABASE_URL', () => {
@@ -85,7 +85,7 @@ describe('assertAbSideEnvironment', () => {
 
   it('refuses a missing branch label', () => {
     expect(() => assertAbSideEnvironment(env({ [AB_SIDE_BRANCH_ENV]: undefined }), 'a'))
-      .toThrow(/DISCOVERY_AB_SIDE_BRANCH must be exactly eval-ab-a/);
+      .toThrow(/DISCOVERY_SIDE_BRANCH must be exactly eval-ab-a/);
   });
 
   it('refuses a branch that is not a designated A/B branch', () => {

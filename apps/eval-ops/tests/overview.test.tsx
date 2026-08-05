@@ -97,7 +97,7 @@ describe('Overview', () => {
           return new Response(
             JSON.stringify({
               harnesses: [
-                { harness: 'discovery-ab', script: 'eval:discovery-ab', caseCount: 5, defaultRuns: 1, flags: [] },
+                { harness: 'discovery', script: 'eval:discovery', caseCount: 5, defaultRuns: 1, flags: [] },
               ],
             }),
           );
@@ -107,14 +107,14 @@ describe('Overview', () => {
               refs: [
                 {
                   id: 'ab',
-                  harness: 'discovery-ab',
+                  harness: 'discovery',
                   kind: 'run',
                   aggregatePassRate: 1,
                   createdAt: '2026-08-04T18:19:06.257Z',
                   models: ['google/gemini-3-flash-preview'],
                   runs: 1,
                   caseCount: 2,
-                  path: 'discovery-ab/runs/2026-08-04T18-17-55-461Z.json',
+                  path: 'discovery/runs/2026-08-04T18-17-55-461Z.json',
                 },
               ],
               issues: [],
@@ -134,7 +134,7 @@ describe('Overview', () => {
       </BrowserRouter>,
     );
 
-    expect(await screen.findByTestId('harness-sides-discovery-ab')).toBeInTheDocument();
+    expect(await screen.findByTestId('harness-sides-discovery')).toBeInTheDocument();
     expect(screen.queryByText('baseline:')).toBeNull();
     expect(screen.queryByText('latest:')).toBeNull();
     // 100.0% is the artifact's aggregate: the mean across both sides.

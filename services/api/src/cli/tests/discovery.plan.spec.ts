@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { buildAbPlan, configDiff, type AbSide } from '../discovery-ab.plan';
+import { buildAbPlan, configDiff, type AbSide } from '../discovery.plan';
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
 
 const testCase = (id: string): HistoricalMatrixFixture => ({

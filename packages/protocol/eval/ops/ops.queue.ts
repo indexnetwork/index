@@ -21,9 +21,9 @@ export function resolveConcurrency(env: Record<string, string | undefined> = pro
  * (see `exclusiveRefusal` in ops.server.ts), so the two cannot drift.
  *
  * `EVAL_OPS_MAX_CONCURRENT_RUNS` is the operator's answer to "how much may this
- * machine spend at once", and it is the wrong instrument here: discovery-ab
+ * machine spend at once", and it is the wrong instrument here: discovery
  * resets and then runs against two *named* Neon branches (`eval-ab-a` and
- * `eval-ab-b`, AB_BRANCH_NAMES in services/api/src/cli/discovery-ab.neon.ts),
+ * `eval-ab-b`, AB_BRANCH_NAMES in services/api/src/cli/discovery.neon.ts),
  * which every run of it shares. Two at once would reset each other's databases
  * mid-run. No setting may make that reachable.
  *
@@ -37,7 +37,7 @@ export const EXCLUSIVE_HARNESSES: Readonly<Record<OpsHarness, string | null>> = 
   profile: null,
   premise: null,
   opportunity: null,
-  "discovery-ab":
+  discovery:
     "Every run of this harness resets and uses the same two designated Neon evaluation branches, so two at once "
     + "would reset each other's databases mid-run and both reports would describe a graph reading the other run's data.",
 });
@@ -107,7 +107,7 @@ export class RunQueue {
    *
    * The store half is the whole point. The maps below are memory, and memory does
    * not survive a restart: the deployed service restarts on failure, a
-   * discovery-ab run takes double-digit minutes, and a child spawned by the dead
+   * discovery run takes double-digit minutes, and a child spawned by the dead
    * server keeps running (nothing kills it, its parent simply goes away). A queue
    * rebuilt on the new process knows about none of that, so a memory-only check
    * would admit a second run that resets `eval-ab-a` and `eval-ab-b` underneath
@@ -179,7 +179,7 @@ export class RunQueue {
     while (this.inFlight.size < this.concurrency) {
       // FIFO, with one deliberate exception: a run whose exclusive slot is taken
       // is passed over rather than allowed to block the queue behind it. Without
-      // that, a queued discovery-ab run would stall every scorecard run for as
+      // that, a queued discovery run would stall every scorecard run for as
       // long as the run ahead of it takes, and those share nothing with it.
       //
       // This cannot stall: a run is blocked only while another run is executing,

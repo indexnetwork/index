@@ -75,7 +75,7 @@ function assertLocalTarget(url: URL): void {
 
 /**
  * Accept precisely Neon's canonical endpoint host or its one pooled counterpart.
- * Exported so `discovery-ab.neon.ts` attests hosts by the same rule rather than
+ * Exported so `discovery.neon.ts` attests hosts by the same rule rather than
  * keeping a second, looser copy of it.
  */
 export function isEndpointHost(urlHost: string, endpointHost: string): boolean {

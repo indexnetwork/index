@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
-import { DISCOVERY_AB_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.allowlist';
+import { DISCOVERY_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.allowlist';
 import { flagValueIssues } from '../../../../packages/protocol/eval/ops/ops.flags';
 import { REQUIRES_SIDES, SIDES_PER_RUN, abSideIssues } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
@@ -86,7 +86,7 @@ const EMPTY_FLAGS: RunFlags = {};
  * Not derived here: `flagValueIssues` is the function `RunSpecSchema` and
  * `renderRun` call, applied to the descriptor the server sent. It matters
  * because the shared schema bounds a flag by the widest value ANY harness
- * allows, while each harness declares its own: discovery-ab caps `--runs` at 10
+ * allows, while each harness declares its own: discovery caps `--runs` at 10
  * where the scorecard harnesses allow 25. Without this the form would enable a
  * launch, price it, take the operator's confirmation and post it — and the
  * engine would then refuse it, which is the one thing this page exists to
@@ -446,7 +446,7 @@ export function Launch() {
 
   /** The nine keys this harness can test, with the server's copy for each. */
   const abFlags: readonly EnvFlagMeta[] = useMemo(
-    () => (state.metadata?.env ?? []).filter((flag) => DISCOVERY_AB_ENV_KEYS.includes(flag.key)),
+    () => (state.metadata?.env ?? []).filter((flag) => DISCOVERY_ENV_KEYS.includes(flag.key)),
     [state.metadata],
   );
 
@@ -533,7 +533,7 @@ export function Launch() {
 
   // Two independent multipliers, and conflating them is what understated this
   // page by half. SIDES_PER_RUN is how many times ONE run passes over the
-  // corpus — 2 for discovery-ab, whether or not any box is ticked, because it
+  // corpus — 2 for discovery, whether or not any box is ticked, because it
   // evaluates every case under configuration a and configuration b (contract:
   // "5 cases x 10 repetitions x 2 sides"). It is imported from the same module
   // renderRun records the run's workload from, so the number confirmed here and
@@ -545,7 +545,7 @@ export function Launch() {
   // what a run costs.
   const sidesPerRun = harnessId === null ? 1 : (SIDES_PER_RUN[harnessId] ?? 1);
   // What this run DESTROYS, in the harness's own words, because the branch that
-  // shows it is `requiresSides` and not a harness name: discovery-ab resets two
+  // shows it is `requiresSides` and not a harness name: discovery resets two
   // Neon branches, and a second comparison harness must not inherit that claim
   // from a sentence written here. A harness that names nothing gets no sentence.
   const resets = state.selectedHarness?.resets;
@@ -957,7 +957,7 @@ function ConfigColumn(props: {
   // This gate asks about saved configs, never about the harness's `agents` — and
   // it cannot: a saved config's models reach any harness, including one that
   // declares no overridable agent and therefore gets no model editors. For
-  // discovery-ab that would have been a live control with nothing on the page
+  // discovery that would have been a live control with nothing on the page
   // explaining it: the config's EVAL_MODEL_OVERRIDES really do change the models
   // inside the discovery graph, under both sides at once. The fix is not a
   // fourth condition here but the absence of this whole column: Launch renders

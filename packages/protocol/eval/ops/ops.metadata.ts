@@ -56,7 +56,7 @@ export interface EnvFlagMeta {
  * a full corpus to report a configuration difference that never existed.
  *
  * Unknown keys are not this function's business: membership is checked against
- * PROFILE_ENV_ALLOWLIST / DISCOVERY_AB_ENV_KEYS by the caller, so each problem
+ * PROFILE_ENV_ALLOWLIST / DISCOVERY_ENV_KEYS by the caller, so each problem
  * is reported exactly once.
  */
 export function envFlagValueIssue(meta: EnvFlagMeta, value: string): string | null {
@@ -290,14 +290,14 @@ export const HARNESS_AGENT_METADATA: Readonly<Record<OpsHarness, readonly AgentM
       role: "Synthesizes the structured user profile — identity, bio, location, skills, interests — from raw data or applies a user request to an existing profile, under privacy rules (src/enrichment/enrichment.generator.ts).",
     },
   ],
-  // Deliberately empty, mirroring HARNESS_REGISTRY["discovery-ab"].agents.
+  // Deliberately empty, mirroring HARNESS_REGISTRY["discovery"].agents.
   // Not because the harness runs no model — it invokes the real discovery graph
   // and an LLM judge, all overridable through EVAL_MODEL_OVERRIDES — but because
   // the two sides of an A/B run differ in environment configuration and never in
   // models, so a per-side model editor could not change the comparison it looked
   // like it configured. The launch form edits the AB_FLAGS environment instead
-  // (services/api/src/cli/discovery-ab.flags.ts).
-  "discovery-ab": [],
+  // (services/api/src/cli/discovery.flags.ts).
+  discovery: [],
   premise: [
     {
       id: "premiseDecomposer",

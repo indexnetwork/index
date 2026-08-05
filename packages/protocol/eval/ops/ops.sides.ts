@@ -17,7 +17,7 @@
  * so the server side keeps one import site.
  */
 
-import { DISCOVERY_AB_ENV_KEYS } from "./ops.allowlist.js";
+import { DISCOVERY_ENV_KEYS } from "./ops.allowlist.js";
 import { envValueIssueForKey } from "./ops.metadata.js";
 import type { AbSides, OpsHarness } from "./ops.types.js";
 
@@ -35,13 +35,13 @@ export const REQUIRES_SIDES: Readonly<Record<OpsHarness, boolean>> = Object.free
   profile: false,
   premise: false,
   opportunity: false,
-  "discovery-ab": true,
+  discovery: true,
 });
 
 /**
  * How many times one launched run passes over the selected corpus.
  *
- * discovery-ab is not two launches: a single invocation runs every case on both
+ * discovery is not two launches: a single invocation runs every case on both
  * sides (its own contract prices its ceiling as "5 cases x 10 repetitions x
  * 2 sides"), so counting one side would record half of what the run spends.
  * Exhaustive by type, so a new harness has to state its number here rather than
@@ -56,7 +56,7 @@ export const SIDES_PER_RUN: Readonly<Record<OpsHarness, number>> = Object.freeze
   profile: 1,
   premise: 1,
   opportunity: 1,
-  "discovery-ab": 2,
+  discovery: 2,
 });
 
 export const SIDE_IDS = ["a", "b"] as const;
@@ -77,12 +77,12 @@ const AB_SIDE_VALUE_MAX_LENGTH = 200;
  * Characters that would make the engine's own parser refuse the assignment this
  * value renders into.
  *
- * `AB_ENV_ASSIGNMENT` in services/api/src/cli/discovery-ab.main.ts is
+ * `AB_ENV_ASSIGNMENT` in services/api/src/cli/discovery.main.ts is
  * /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/ — no `s` flag, so `.` matches no line
  * terminator and `$` (no `m` flag) anchors at the very end of the string. A
  * value carrying one of these therefore renders argv the engine rejects with
  * "--a expects KEY=VALUE", after the run has been queued and displayed. The
- * keys need no equivalent check: DISCOVERY_AB_ENV_KEYS membership is asserted
+ * keys need no equivalent check: DISCOVERY_ENV_KEYS membership is asserted
  * first, and every one of the nine matches the key half by construction.
  */
 const LINE_TERMINATORS = /[\n\r\u2028\u2029]/;
@@ -98,7 +98,7 @@ export interface AbSideIssue {
  * Every reason the engine would refuse this pair, checked before a run is queued.
  *
  * A mirror of `buildAbPlan` and `assertAbEnvConfig`
- * (services/api/src/cli/discovery-ab.plan.ts, discovery-ab.flags.ts), and the
+ * (services/api/src/cli/discovery.plan.ts, discovery.flags.ts), and the
  * single definition of those rules on this side of the boundary: `RunSpecSchema`
  * turns each issue into a validation error, `renderRun` throws the first, and the
  * launch form renders them beside the controls that produced them, so none of
@@ -139,7 +139,7 @@ export function abSideIssues(sides: AbSides): AbSideIssue[] {
       continue;
     }
     for (const key of keys) {
-      if (!DISCOVERY_AB_ENV_KEYS.includes(key)) {
+      if (!DISCOVERY_ENV_KEYS.includes(key)) {
         issues.push({ path: [id, key], message: `${key} is not readable by the discovery graph; this harness cannot test it` });
         continue;
       }

@@ -1,7 +1,7 @@
 /**
  * The only environment flags this harness may offer: those the discovery graph
  * actually reads. The list is asserted against a fresh scan of the graph's
- * import closure (discovery-ab.flags.spec.ts) rather than trusted, because a
+ * import closure (discovery.flags.spec.ts) rather than trusted, because a
  * hand-maintained copy is exactly how sixteen editable flags came to move
  * nothing at all.
  */

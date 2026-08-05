@@ -5,7 +5,7 @@ export const OPS_HARNESSES = [
   "profile",
   "premise",
   "opportunity",
-  "discovery-ab",
+  "discovery",
 ] as const satisfies readonly OpsHarness[];
 
 /**
@@ -80,8 +80,8 @@ const TIER_FLAG: HarnessFlag = {
 };
 
 /**
- * discovery-ab's entire selection surface. Its parser accepts only --case,
- * --runs, --a, --b, --report and --force (services/api/src/cli/discovery-ab.ts
+ * discovery's entire selection surface. Its parser accepts only --case,
+ * --runs, --a, --b, --report and --force (services/api/src/cli/discovery.ts
  * --help), so --rule, --tier, --no-judge, --alpha, --attempt-timeout-ms and
  * --strict-evidence are absent: offering a control the engine would reject is
  * the exact failure this harness exists to make visible.
@@ -95,7 +95,7 @@ const TIER_FLAG: HarnessFlag = {
  * refused with "--runs must not exceed 10" (flagValueIssues, ops.flags.ts).
  *
  * The engine does not *reject* a flag outside that set: parseAbRunArgs
- * (services/api/src/cli/discovery-ab.main.ts) scans argv for the flags it knows
+ * (services/api/src/cli/discovery.main.ts) scans argv for the flags it knows
  * and drops everything else. So a flag added to this list by mistake would not
  * fail the run — it would vanish, and the operator would get a run they did not
  * configure. renderRun is the last thing that can refuse it, and it refuses on
@@ -108,15 +108,15 @@ const TIER_FLAG: HarnessFlag = {
  * Both are refused alongside `sides` by RunSpecSchema (ops.argv.ts:147-166) and
  * again by renderRun before anything is spent (ops.argv.ts:243-248), while
  * `sides` is mandatory here (REQUIRES_SIDES, ops.argv.ts:236-239). So no
- * discovery-ab run reaches line 261 with `experimental` true, and the site never
+ * discovery run reaches line 261 with `experimental` true, and the site never
  * sends this engine a flag it would drop.
  *
  * That is the only reason it does not matter that parseAbRunArgs would drop one:
  * the harness saves where --report says and nowhere else, so whoever later gives
- * discovery-ab a rolling run history, or lets it run under a config, owes it a
+ * discovery a rolling run history, or lets it run under a config, owes it a
  * real --no-save first.
  */
-const DISCOVERY_AB_FLAGS: readonly HarnessFlag[] = Object.freeze([
+const DISCOVERY_FLAGS: readonly HarnessFlag[] = Object.freeze([
   {
     name: "runs",
     cli: "--runs",
@@ -197,7 +197,7 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
    * true is narrower — the two SIDES never differ in models, only in
    * environment configuration — so a per-side model editor would be a control
    * that cannot change the comparison it appears to configure. Its per-side
-   * surface is AB_FLAGS (services/api/src/cli/discovery-ab.flags.ts).
+   * surface is AB_FLAGS (services/api/src/cli/discovery.flags.ts).
    *
    * An empty `agents` list is not on its own enough to keep models off the
    * page: the Launch form's Config picker is gated on saved configs, not on
@@ -205,18 +205,18 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
    * the form does not render that picker for a harness that carries sides, and
    * says on the page why (apps/eval-ops Launch.tsx).
    */
-  "discovery-ab": Object.freeze({
-    harness: "discovery-ab",
-    script: "eval:discovery-ab",
+  discovery: Object.freeze({
+    harness: "discovery",
+    script: "eval:discovery",
     // Its CLI and its package script both live in services/api, not here.
     cwd: "services/api",
-    flags: DISCOVERY_AB_FLAGS,
+    flags: DISCOVERY_FLAGS,
     defaultRuns: 3,
     // HISTORICAL_MATRIX_CASES; pinned against the real corpus by
     // registry-corpus.spec.ts. One launched run executes every case on both
     // sides, so a run costs caseCount x runs x 2 graph invocations — see the
     // contract's own ceiling arithmetic, "5 cases x 10 repetitions x 2 sides"
-    // (services/api/src/cli/discovery-ab.contract.ts).
+    // (services/api/src/cli/discovery.contract.ts).
     //
     // Both the number recorded on the run record and the number the operator
     // confirms before launching read one constant: SIDES_PER_RUN in

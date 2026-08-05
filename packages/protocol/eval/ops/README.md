@@ -19,19 +19,19 @@ Everything in this directory is provider-free and covered by `bun run eval:verif
 ## Scope: four scorecard harnesses and one comparison harness
 
 `OPS_HARNESSES` ([`ops.registry.ts`](./ops.registry.ts)) is `matching`, `profile`,
-`premise`, `opportunity`, `discovery-ab` — and nothing else.
+`premise`, `opportunity`, `discovery` — and nothing else.
 
 The **four scorecard harnesses** emit the shared scorecard artifact envelope
 (`index-eval/baseline` / `index-eval/run-report`), which is what artifact indexing,
 baseline diffing and comparison all read.
 
-**`discovery-ab` is the fifth, and it is a different shape.** It scores no single
+**`discovery` is the fifth, and it is a different shape.** It scores no single
 configuration against a baseline: it carries two (`sides`), has no baseline and never will,
 runs in `services/api` rather than here, and resets two Neon branches on entry. It is
 therefore launchable, and its site-launched runs are indexed from `.ops-runs` like any
 other run — but it is never diffed or compared against a baseline, and the launch form
 refuses the configuration surface that would make its two sides differ in anything but the
-pair (see [the `discovery-ab` sections below](#one-discovery-ab-run-at-a-time)).
+pair (see [the `discovery` sections below](#one-discovery-run-at-a-time)).
 
 `hyde`, `clarification`, `discovery-retrieval`, `discovery-env-matrix`, `stance` and the
 canary are **not** launchable, indexable or comparable here; they use different evidence
@@ -50,7 +50,7 @@ change.
 | [`ops.compare.ts`](./ops.compare.ts) | `compareArtifacts` — refuses incomparable artifacts, no new statistics. |
 | [`ops.store.ts`](./ops.store.ts) | `RunStore` — run records, logs, report paths, exit-code mapping, restart reconciliation. |
 | [`ops.executor.ts`](./ops.executor.ts) | `RunExecutor` — the one `Bun.spawn` path, log streaming, cancel. |
-| [`ops.queue.ts`](./ops.queue.ts) | FIFO queue, concurrency 1 by default; the single `discovery-ab` slot. |
+| [`ops.queue.ts`](./ops.queue.ts) | FIFO queue, concurrency 1 by default; the single `discovery` slot. |
 | [`ops.fixture.ts`](./ops.fixture.ts) | The fixture guard, credential redaction, read-only inspector, reset pipeline. |
 | [`ops.server.ts`](./ops.server.ts) | The HTTP + SSE API and the default wiring. |
 | [`ops.serve.ts`](./ops.serve.ts) | Standalone entrypoint (`bun run eval:web`). |
@@ -72,23 +72,23 @@ matching:     40 cases, + --tier
 profile:       8 cases
 premise:      10 cases
 opportunity:   8 cases
-discovery-ab:  5 cases, only --runs (max 10) and --case; runs in services/api
+discovery:     5 cases, only --runs (max 10) and --case; runs in services/api
 // common flags: --runs --case --rule --no-judge --alpha --attempt-timeout-ms --strict-evidence
 ```
 
 The launch form, the workload estimate and `renderRun`'s argv rendering all read this one
 table, so the UI cannot offer a flag the CLI does not accept, and the form's numeric
 bounds are the same bounds `RunSpecSchema` enforces server-side. Workload is `cases ×
-runs` for the scorecard harnesses and doubles for `discovery-ab`, whose single run
+runs` for the scorecard harnesses and doubles for `discovery`, whose single run
 evaluates every case on both sides. `renderRun` and the launch form both multiply by the
 same `SIDES_PER_RUN` ([`ops.sides.ts`](./ops.sides.ts)), so the number an operator confirms
 before spending and the number recorded on the run cannot drift apart.
 
-**`discovery-ab` also carries two configurations.** Its spec has a `sides: { a, b }`
+**`discovery` also carries two configurations.** Its spec has a `sides: { a, b }`
 object of environment values, rendered as `--a KEY=VALUE` / `--b KEY=VALUE` with keys
 sorted. It is required for that harness and refused for every other (a scorecard harness
 scores one configuration against a baseline, so a second has nothing to mean). Keys are
-confined to `DISCOVERY_AB_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the nine
+confined to `DISCOVERY_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the nine
 flags the discovery graph actually reads, pinned in `tests/argv.spec.ts` against the
 engine's own `AB_FLAGS` — and `abSideIssues` in [`ops.sides.ts`](./ops.sides.ts) mirrors the
 engine's `buildAbPlan` rules: same key set on both sides, at least one differing value, no
@@ -216,20 +216,20 @@ A run that needs more is enqueued with a one-step **plan** (`ExecutionStep`), wh
 queue holds in memory and writes nowhere:
 
 - **its own working directory**, from the registry's repository-relative `cwd` resolved
-  against the repository root. `discovery-ab` declares `services/api`, because its package
-  script and CLI live there and `bun run eval:discovery-ab` resolves nowhere else. The
+  against the repository root. `discovery` declares `services/api`, because its package
+  script and CLI live there and `bun run eval:discovery` resolves nowhere else. The
   `--report` path is absolute (`store.reportPath`), so the working directory does not move
   the artifact; `store.artifactPathFor` — the eval-relative form — is what the record
   stores, after the fact.
 - **credentials the run record must not carry.** `HARNESS_CREDENTIALS` in
   [`ops.server.ts`](./ops.server.ts) states, per harness, what must come from this server's
   own environment. The four scorecard harnesses have nothing pre-checked, and say so.
-  `discovery-ab` names four keys in two groups. `keys` is what its own gate
-  (`assertAbConfirmation`, services/api/src/cli/discovery-ab.gate.ts) refuses to run
-  without: `NEON_API_KEY` and `DISCOVERY_AB_TARGETS`. `runtimeKeys` is what no gate
+  `discovery` names four keys in two groups. `keys` is what its own gate
+  (`assertAbConfirmation`, services/api/src/cli/discovery.gate.ts) refuses to run
+  without: `NEON_API_KEY` and `DISCOVERY_TARGETS`. `runtimeKeys` is what no gate
   mentions and the child cannot finish without: `OPENROUTER_API_KEY` (every model and
   embedding the discovery graph runs on) and `REDIS_URL` (the HyDE cache the graph writes
-  through, uncaught on the write path). The server adds `DISCOVERY_AB_CONFIRM=1` and
+  through, uncaught on the write path). The server adds `DISCOVERY_CONFIRM=1` and
   `TEST_DATABASE_SAFE=1`, which are attestations rather than secrets. Any of the four
   absent or blank is refused with **503** naming it — and the second group matters most
   for the same reason it is easiest to miss: it arrives only by inheritance from
@@ -240,16 +240,16 @@ queue holds in memory and writes nowhere:
   from what the child inherits: the parent A/B process composes no database, both children
   set their own from the attested manifest, and this server's own value — the eval fixture
   database — must not be what a child tree it is asserting `TEST_DATABASE_SAFE=1` over can
-  reach. `eval:discovery-ab` runs under `--env-file=../../.env.test`, and a parent
+  reach. `eval:discovery` runs under `--env-file=../../.env.test`, and a parent
   environment beats `--env-file` in Bun, so without this the server's value silently won a
   question the script had already answered.
   `server.spec.ts` pins the table against `assertAbConfirmation`'s own source, so a fifth
   variable added to the gate fails here instead of resurfacing as a child that dies at it.
 
-### One `discovery-ab` run at a time
+### One `discovery` run at a time
 
 `EXCLUSIVE_HARNESSES` ([`ops.queue.ts`](./ops.queue.ts)) names the harnesses whose runs may
-never overlap, and why. `discovery-ab` resets and uses the same two designated Neon
+never overlap, and why. `discovery` resets and uses the same two designated Neon
 evaluation branches on every run, so two at once would reset each other's databases
 mid-run. A second launch is refused with **409** naming the run that holds the slot.
 
@@ -433,8 +433,8 @@ handled ahead of the gate because it is the request that establishes one.
   argv, never a database URL. `RunSpecSchema` is `.strict()`, so a
   request carrying `env`, `argv` or any other unknown key **fails with 400** rather than
   being silently ignored.
-- The one environment a client may name is `sides` on a `discovery-ab` spec: values for
-  the nine `DISCOVERY_AB_ENV_KEYS` flags, which are protocol feature flags and nothing
+- The one environment a client may name is `sides` on a `discovery` spec: values for
+  the nine `DISCOVERY_ENV_KEYS` flags, which are protocol feature flags and nothing
   else. They reach the child as `--a`/`--b` argv, never as the run's injected env, and any
   other key **fails with 400** — as does any value the flag's own read site would not
   honour, or one longer than 200 characters, or one carrying a line break.

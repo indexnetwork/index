@@ -58,8 +58,8 @@ const HARNESSES = {
       flags: [{ name: 'runs', cli: '--runs', kind: 'number' }],
     },
     {
-      harness: 'discovery-ab',
-      script: 'eval:discovery-ab',
+      harness: 'discovery',
+      script: 'eval:discovery',
       caseCount: 5,
       defaultRuns: 3,
       question: 'What pass rate does each of two discovery configurations reach on the same cases?',
@@ -136,7 +136,7 @@ const METADATA = {
       { id: 'premiseAnalyzer', label: 'Premise analyzer', role: 'Scores each candidate premise.' },
     ],
     // Empty on the server too: the two sides never differ in models.
-    'discovery-ab': [],
+    'discovery': [],
   },
   flags: [
     { name: 'runs', label: 'Runs per case', description: 'How many times every case is executed.', scope: 'selection', defaultLabel: '3' },
@@ -485,8 +485,8 @@ describe('Launch', () => {
 });
 
 /** Selects the one harness whose run compares two environment configurations. */
-const selectDiscoveryAb = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.selectOptions(await screen.findByLabelText('Harness'), 'discovery-ab');
+const selectDiscovery = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.selectOptions(await screen.findByLabelText('Harness'), 'discovery');
   return screen.findByLabelText('side a flag 1');
 };
 
@@ -502,13 +502,13 @@ const configureFirstFlag = async (
   await user.selectOptions(screen.getByLabelText('side b value 1'), b);
 };
 
-describe('Launch — discovery-ab', () => {
+describe('Launch — discovery', () => {
   it('replaces the per-agent model editors with one env editor per side', async () => {
     const user = userEvent.setup();
     renderLaunch();
     expect(await screen.findByLabelText(/evaluator/i)).toBeTruthy();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
 
     expect(screen.queryByLabelText(/evaluator/i)).toBeNull();
     expect(screen.getByLabelText('side a flag 1')).toBeTruthy();
@@ -525,7 +525,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
 
     const toggle = screen.getByRole('checkbox', { name: 'A/B' });
     expect(toggle).toBeChecked();
@@ -537,7 +537,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
 
     for (const absent of [/llm judge/i, /regression threshold/i, /strict evidence/i, /^tier$/i, /^rule$/i]) {
       expect(screen.queryByLabelText(absent)).toBeNull();
@@ -556,7 +556,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    const keys = await selectDiscoveryAb(user);
+    const keys = await selectDiscovery(user);
     const offered = within(keys).getAllByRole('option').map((option) => option.textContent);
 
     expect(offered.some((text) => text?.includes('DISCOVERY_PROFILE_SOURCE'))).toBe(true);
@@ -568,7 +568,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await user.selectOptions(screen.getByLabelText('side a flag 1'), 'DISCOVERY_PROFILE_SOURCE');
 
     expect(screen.getByLabelText('side b flag 1')).toHaveValue('DISCOVERY_PROFILE_SOURCE');
@@ -583,7 +583,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'premise');
 
     const refusal = abSideIssues({
@@ -604,7 +604,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
 
     expect(screen.getByText(/5 cases × 3 runs × 2 sides = 30/)).toBeTruthy();
 
@@ -618,7 +618,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await user.clear(screen.getByLabelText('Runs per case'));
     await user.type(screen.getByLabelText('Runs per case'), '2');
@@ -627,7 +627,7 @@ describe('Launch — discovery-ab', () => {
     expect(postedRuns).toEqual([
       {
         kind: 'eval',
-        harness: 'discovery-ab',
+        harness: 'discovery',
         profile: 'default',
         flags: { runs: 2 },
         sides: {
@@ -639,7 +639,7 @@ describe('Launch — discovery-ab', () => {
   });
 
   it('opens ready to configure when the harness arrives from a deep link', async () => {
-    window.history.pushState({}, '', '/launch?harness=discovery-ab');
+    window.history.pushState({}, '', '/launch?harness=discovery');
     renderLaunch();
 
     // No dropdown interaction happened, so the first row has to come from the
@@ -656,7 +656,7 @@ describe('Launch — discovery-ab', () => {
     // The picker is on the page for a scorecard harness: two profiles ship.
     expect(await screen.findByLabelText('Config')).toBeTruthy();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
 
     expect(screen.queryByLabelText('Config')).toBeNull();
     expect(screen.getByText(/same models and the same environment/i)).toBeTruthy();
@@ -666,7 +666,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await user.selectOptions(screen.getByLabelText('Harness'), 'matching');
 
@@ -684,12 +684,12 @@ describe('Launch — discovery-ab', () => {
   it('shows the server\u2019s refusal when a run is already in flight', async () => {
     vi.stubGlobal(
       'fetch',
-      stubFetchRefusingLaunch(409, 'A discovery-ab run is already in flight; cancel it before launching another.'),
+      stubFetchRefusingLaunch(409, 'A discovery run is already in flight; cancel it before launching another.'),
     );
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await runAndConfirm(user, /run both sides/i);
 
@@ -713,7 +713,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await runAndConfirm(user, /run both sides/i);
 
@@ -727,12 +727,12 @@ describe('Launch — discovery-ab', () => {
     // it; the engine then died on "--runs must not exceed 10", after the
     // operator had committed. The refusal is the server's own sentence, from the
     // same function RunSpecSchema calls.
-    const refusal = flagValueIssues('discovery-ab', HARNESS_REGISTRY['discovery-ab'].flags, { runs: 25 })[0]!
+    const refusal = flagValueIssues('discovery', HARNESS_REGISTRY['discovery'].flags, { runs: 25 })[0]!
       .message;
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await user.clear(screen.getByLabelText('Runs per case'));
     await user.type(screen.getByLabelText('Runs per case'), '25');
@@ -756,7 +756,7 @@ describe('Launch — discovery-ab', () => {
     renderLaunch();
 
     // 25 runs is this scorecard harness's declared maximum, so it is accepted
-    // here and refused on discovery-ab: the bound is per harness, not global.
+    // here and refused on discovery: the bound is per harness, not global.
     await user.clear(await screen.findByLabelText('Runs per case'));
     await user.type(screen.getByLabelText('Runs per case'), '25');
 
@@ -783,7 +783,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await user.selectOptions(screen.getByLabelText('side a flag 1'), 'NEGOTIATION_MAX_TURNS_CHAT');
     await user.type(screen.getByLabelText('side a value 1'), '4');
     await user.type(screen.getByLabelText('side b value 1'), '6 ');
@@ -807,7 +807,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await user.type(screen.getByLabelText('Case'), 'historical/songwriting-duo');
 
@@ -829,7 +829,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     // Removing is a pair-level operation, so either column's button does it.
     await user.click(
       within(screen.getByTestId('side-a')).getByRole('button', { name: /remove flag 1 from both sides/i }),
@@ -842,7 +842,7 @@ describe('Launch — discovery-ab', () => {
   });
 
   it('names what a run destroys from the harness, not from the branch that shows it', async () => {
-    // The page branches on REQUIRES_SIDES rather than on "discovery-ab", so a
+    // The page branches on REQUIRES_SIDES rather than on "discovery", so a
     // second comparison harness would reach this confirmation too — and must not
     // inherit a claim about Neon branches it may not reset. The sentence is the
     // descriptor's: a server that names nothing to reset gets no such sentence,
@@ -865,7 +865,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await selectDiscoveryAb(user);
+    await selectDiscovery(user);
     await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
     await user.click(screen.getByRole('button', { name: /run both sides/i }));
 
@@ -885,8 +885,8 @@ describe('Launch — discovery-ab', () => {
       harnesses: [
         ...HARNESSES.harnesses,
         {
-          harness: 'discovery-ab-v2',
-          script: 'eval:discovery-ab-v2',
+          harness: 'discovery-v2',
+          script: 'eval:discovery-v2',
           caseCount: 6,
           defaultRuns: 3,
           question: 'Which of two configurations wins on the next corpus?',
@@ -911,7 +911,7 @@ describe('Launch — discovery-ab', () => {
     const user = userEvent.setup();
     renderLaunch();
 
-    await user.selectOptions(await screen.findByLabelText('Harness'), 'discovery-ab-v2');
+    await user.selectOptions(await screen.findByLabelText('Harness'), 'discovery-v2');
 
     // 6 cases x 3 runs x one pass, because one pass is all this build can know
     // about a harness it has never heard of.

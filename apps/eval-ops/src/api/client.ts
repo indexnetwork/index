@@ -76,8 +76,8 @@ export interface RunsResult {
  * One configuration value recorded on a case row.
  *
  * `before` is null when the configuration was applied around the call rather
- * than replacing an established value, which is what discovery-ab does
- * (`abConfigDeltas`, services/api/src/cli/discovery-ab.main.ts). For that
+ * than replacing an established value, which is what discovery does
+ * (`abConfigDeltas`, services/api/src/cli/discovery.main.ts). For that
  * harness this is the ONLY on-disk record of what each side was: the governed
  * envelope and scorecard schemas are `.strict()`, so a run-level configuration
  * block has no legal home in them.
@@ -107,7 +107,7 @@ export interface ArtifactCase {
    * did not come back at all.
    *
    * Not a trace: this and `evidenceTypes` are the outcome measures of retrieval
-   * itself, which is exactly what a discovery A/B run varies. A configuration
+   * itself, which is exactly what a discovery run varies. A configuration
    * that keeps every case passing while pushing the target from rank 1 to rank 4
    * changed the retrieval outcome, and pass rates alone cannot say so.
    *
@@ -120,7 +120,7 @@ export interface ArtifactCase {
 }
 
 /**
- * One rule's roll-up. For discovery-ab a "rule" is a SIDE (`a` or `b`), because
+ * One rule's roll-up. For discovery a "rule" is a SIDE (`a` or `b`), because
  * the engine files each side as the row id every slot is aggregated under.
  */
 export interface ArtifactRule {

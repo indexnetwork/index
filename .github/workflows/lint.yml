@@ -92,11 +92,11 @@ jobs:
 
       # `bun run build` compiles services/api/tsconfig.json, which excludes
       # `src/**/*.spec.ts`, so no spec is type-checked by the step above. That
-      # matters for the discovery A/B CLI specs, where one assertion *is* a type
-      # assertion: `discovery-ab.neon.spec.ts` proves `resetAbBranch` refuses an
+      # matters for the discovery CLI specs, where one assertion *is* a type
+      # assertion: `discovery.neon.spec.ts` proves `resetAbBranch` refuses an
       # unattested manifest with a `@ts-expect-error`, and a directive nobody
       # compiles proves nothing. See services/api/tsconfig.spec.json.
-      - name: Type check the discovery A/B CLI specs
+      - name: Type check the discovery CLI specs
         run: cd services/api && bun run typecheck:cli-specs
 
   test:
@@ -144,7 +144,7 @@ jobs:
     # the configuration it was produced under.
     #
     # Separate from the `test` job above because these are not dist-free: the
-    # A/B artifact and child specs import `discovery-ab.main.ts`, which imports
+    # discovery artifact and child specs import `discovery.main.ts`, which imports
     # `@indexnetwork/protocol` (that is, `packages/protocol/dist`, gitignored).
     # Hence the explicit build step. No secrets and no database: every spec here
     # fakes the control plane, the graph and the judge, and provider
@@ -166,7 +166,7 @@ jobs:
       - name: Build packages/protocol
         run: cd packages/protocol && bun run build
 
-      - name: Run the eval CLI specs (discovery A/B and env matrix)
+      - name: Run the eval CLI specs (discovery and env matrix)
         run: |
           unset OPENROUTER_API_KEY OPENAI_API_KEY
           cd services/api

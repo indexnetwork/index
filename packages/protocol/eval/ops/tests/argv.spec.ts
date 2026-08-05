@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { DISCOVERY_AB_ENV_KEYS } from "../ops.allowlist.js";
+import { DISCOVERY_ENV_KEYS } from "../ops.allowlist.js";
 import { renderRun, RunSpecSchema } from "../ops.argv.js";
 import { flagValueIssues } from "../ops.flags.js";
 import { ENV_FLAG_METADATA } from "../ops.metadata.js";
@@ -27,12 +27,12 @@ const SIDES = {
 
 const AB_FLAGS_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
-  "services", "api", "src", "cli", "discovery-ab.flags.ts",
+  "services", "api", "src", "cli", "discovery.flags.ts",
 );
 
 const AB_MAIN_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
-  "services", "api", "src", "cli", "discovery-ab.main.ts",
+  "services", "api", "src", "cli", "discovery.main.ts",
 );
 
 /**
@@ -43,12 +43,12 @@ const AB_MAIN_SOURCE = path.join(
 function engineAssignmentPattern(): RegExp {
   const source = readFileSync(AB_MAIN_SOURCE, "utf8");
   const literal = source.match(/const AB_ENV_ASSIGNMENT = \/(.+)\/;/);
-  if (!literal) throw new Error("AB_ENV_ASSIGNMENT not found in discovery-ab.main.ts");
+  if (!literal) throw new Error("AB_ENV_ASSIGNMENT not found in discovery.main.ts");
   return new RegExp(literal[1]!);
 }
 
 function abSpec(extra: Record<string, unknown> = {}): Record<string, unknown> {
-  return { kind: "eval", harness: "discovery-ab", profile: "default", flags: {}, sides: SIDES, ...extra };
+  return { kind: "eval", harness: "discovery", profile: "default", flags: {}, sides: SIDES, ...extra };
 }
 
 /** Every refusal message of a failed parse, joined; the messages are the point here. */
@@ -104,14 +104,14 @@ describe("RunSpecSchema", () => {
 describe("RunSpecSchema flag bounds", () => {
   it("refuses a run count this harness caps below the shared schema's, naming the bound", () => {
     // The failure this closes: RunFlagsSchema allows 1..25 because the scorecard
-    // harnesses do, discovery-ab's registry entry caps --runs at 10
+    // harnesses do, discovery's registry entry caps --runs at 10
     // (AB_MAX_REPETITIONS), and the schema used to check only flag NAMES. So
     // `--runs 25` parsed, was queued, was priced at 250 model invocations on the
     // launch page and then died on the engine's own "--runs must not exceed 10"
     // — a refusal after the operator had committed to the spend.
     const message = refusal(abSpec({ flags: { runs: 25 } }));
     expect(message).toContain("--runs");
-    expect(message).toContain(String(HARNESS_REGISTRY["discovery-ab"].flags.find((f) => f.name === "runs")!.max));
+    expect(message).toContain(String(HARNESS_REGISTRY["discovery"].flags.find((f) => f.name === "runs")!.max));
     // The harness's own maximum is still accepted.
     expect(RunSpecSchema.safeParse(abSpec({ flags: { runs: 10 } })).success).toBe(true);
   });
@@ -119,7 +119,7 @@ describe("RunSpecSchema flag bounds", () => {
   it("enforces a scorecard harness's own bounds the same way", () => {
     // --tier is 1..4 in matching's own parser (parseTier throws on anything
     // else), so this is that harness's rule being enforced rather than
-    // discovery-ab's being special-cased.
+    // discovery's being special-cased.
     const message = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { tier: 9 } });
     expect(message).toContain("--tier");
     expect(message).toContain("between 1 and 4");
@@ -189,7 +189,7 @@ describe("RunSpecSchema flag bounds", () => {
     // here, and a bound tightened later cannot be enforced by the form alone.
     let checked = 0;
     for (const harness of OPS_HARNESSES) {
-      const base = harness === "discovery-ab"
+      const base = harness === "discovery"
         ? abSpec()
         : { kind: "eval", harness, profile: "default", flags: {} };
       for (const flag of HARNESS_REGISTRY[harness].flags) {
@@ -221,9 +221,9 @@ describe("RunSpecSchema flag bounds", () => {
   it("reports an unsupported flag through the same function the form calls", () => {
     // One definition of "would this harness accept these flags", so the page and
     // the schema cannot come to disagree about it.
-    const issues = flagValueIssues("discovery-ab", HARNESS_REGISTRY["discovery-ab"].flags, { tier: 2 });
+    const issues = flagValueIssues("discovery", HARNESS_REGISTRY["discovery"].flags, { tier: 2 });
     expect(issues.map((issue) => issue.name)).toEqual(["tier"]);
-    expect(refusal({ kind: "eval", harness: "discovery-ab", profile: "default", flags: { tier: 2 }, sides: SIDES }))
+    expect(refusal({ kind: "eval", harness: "discovery", profile: "default", flags: { tier: 2 }, sides: SIDES }))
       .toContain(issues[0]!.message);
   });
 });
@@ -280,20 +280,20 @@ describe("renderRun", () => {
   });
 
   it("counts both sides for the harness whose single run evaluates every case twice", () => {
-    // A discovery-ab run is one process that runs the corpus on side a and on
+    // A discovery run is one process that runs the corpus on side a and on
     // side b. Recording cases x runs would report half of what it spent, on the
     // one harness here that costs real branch resets and live graph calls.
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4 }, sides: SIDES },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 4 }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
-    expect(rendered.workload).toBe(HARNESS_REGISTRY["discovery-ab"].caseCount * 4 * 2);
+    expect(rendered.workload).toBe(HARNESS_REGISTRY["discovery"].caseCount * 4 * 2);
 
     // Narrowing the corpus narrows the count but not the doubling: both sides
     // still run the case that survived the filter.
     const oneCase = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" }, sides: SIDES },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
@@ -390,7 +390,7 @@ describe("renderRun", () => {
 
 describe("RunSpecSchema sides", () => {
   it("keeps the site's nine offerable keys identical to the engine's AB_FLAGS", () => {
-    // Read, never retyped: discovery-ab.flags.ts imports node:fs, so ops.argv.ts
+    // Read, never retyped: discovery.flags.ts imports node:fs, so ops.argv.ts
     // cannot import AB_FLAGS without breaking the Vite bundle the app builds from
     // these modules. Pinning the list as source text is the same technique
     // registry.spec.ts uses for AB_MAX_REPETITIONS: a key added, removed or
@@ -398,23 +398,23 @@ describe("RunSpecSchema sides", () => {
     // parser that ignores what it does not recognise.
     const source = readFileSync(AB_FLAGS_SOURCE, "utf8");
     const literal = source.match(/export const AB_FLAGS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
-    if (!literal) throw new Error("AB_FLAGS not found in discovery-ab.flags.ts");
+    if (!literal) throw new Error("AB_FLAGS not found in discovery.flags.ts");
     const engineKeys = [...literal[1]!.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]!);
 
     // Guards the pin against passing vacuously on an empty or unparsed match.
     expect(engineKeys.length).toBe(9);
-    expect([...DISCOVERY_AB_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
+    expect([...DISCOVERY_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
   });
 
   it("can describe every key it offers", () => {
     // The launch form labels each key from ENV_FLAG_METADATA, so a key the site
     // may offer but cannot describe would render as a bare identifier.
     const described = new Set(ENV_FLAG_METADATA.map((meta) => meta.key));
-    for (const key of DISCOVERY_AB_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
+    for (const key of DISCOVERY_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
   });
 
-  it("refuses a discovery-ab run that names no configurations", () => {
-    expect(refusal({ kind: "eval", harness: "discovery-ab", profile: "default", flags: {} })).toMatch(/sides/i);
+  it("refuses a discovery run that names no configurations", () => {
+    expect(refusal({ kind: "eval", harness: "discovery", profile: "default", flags: {} })).toMatch(/sides/i);
   });
 
   it("refuses sides on a harness that scores against a baseline", () => {
@@ -429,7 +429,7 @@ describe("RunSpecSchema sides", () => {
   });
 
   it("refuses an asymmetric key set, naming the key and both sides", () => {
-    // Mirrors assertSymmetricKeySets in discovery-ab.plan.ts: an omitted flag
+    // Mirrors assertSymmetricKeySets in discovery.plan.ts: an omitted flag
     // takes the graph's own default, which may equal the other side's value —
     // so the run would measure nothing while attributing noise to that flag.
     const message = refusal(abSpec({
@@ -589,7 +589,7 @@ describe("renderRun sides", () => {
     const rendered = renderRun(
       {
         kind: "eval",
-        harness: "discovery-ab",
+        harness: "discovery",
         profile: "default",
         flags: { runs: 2, case: "historical/songwriting-duo" },
         sides: {
@@ -605,7 +605,7 @@ describe("renderRun sides", () => {
     );
 
     expect(rendered.argv).toEqual([
-      "bun", "run", "eval:discovery-ab", "--",
+      "bun", "run", "eval:discovery", "--",
       "--runs", "2",
       "--case", "historical/songwriting-duo",
       "--a", "DISCOVERY_PROFILE_SOURCE=premise",
@@ -616,12 +616,12 @@ describe("renderRun sides", () => {
     ]);
   });
 
-  it("refuses to render a discovery-ab run without sides", () => {
+  it("refuses to render a discovery run without sides", () => {
     // The engine ignores what it does not recognise and would refuse a sideless
     // run only after loading its eval modules, so renderRun is the last place
     // that can refuse before a run is queued.
     expect(() =>
-      renderRun({ kind: "eval", harness: "discovery-ab", profile: "default", flags: {} }, DEFAULT, REPORT),
+      renderRun({ kind: "eval", harness: "discovery", profile: "default", flags: {} }, DEFAULT, REPORT),
     ).toThrow(/sides/i);
   });
 
@@ -633,7 +633,7 @@ describe("renderRun sides", () => {
 
   it("emits only assignments the engine's own parser accepts", () => {
     // The round trip the site depends on and cannot see: every `--a`/`--b` value
-    // must match AB_ENV_ASSIGNMENT, read from discovery-ab.main.ts. Without this,
+    // must match AB_ENV_ASSIGNMENT, read from discovery.main.ts. Without this,
     // either side could change its half of the contract and nothing would fail
     // until an operator paid for a run the parser refused.
     const pattern = engineAssignmentPattern();
@@ -645,7 +645,7 @@ describe("renderRun sides", () => {
       b: { DISCOVERY_ALLOWED_TYPES: "intent", DISCOVERY_SOURCE_PREMISE_LIMIT: "40", DISCOVERY_PROFILE_SOURCE: "user_context" },
     };
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 2 }, sides },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, sides },
       DEFAULT,
       REPORT,
     );
@@ -671,7 +671,7 @@ describe("renderRun sides", () => {
     // eval modules and reset two branches.
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 25 }, sides: SIDES },
+        { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 25 }, sides: SIDES },
         DEFAULT,
         REPORT,
       ),
@@ -681,7 +681,7 @@ describe("renderRun sides", () => {
   it("refuses to render sides under anything but the shared default baseline", () => {
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "claude-evaluator", flags: {}, sides: SIDES },
+        { kind: "eval", harness: "discovery", profile: "claude-evaluator", flags: {}, sides: SIDES },
         EXPERIMENT,
         REPORT,
       ),
@@ -690,7 +690,7 @@ describe("renderRun sides", () => {
       renderRun(
         {
           kind: "eval",
-          harness: "discovery-ab",
+          harness: "discovery",
           profile: "default",
           flags: {},
           overrides: { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} },
@@ -703,7 +703,7 @@ describe("renderRun sides", () => {
   });
 
   /**
-   * What DISCOVERY_AB_FLAGS' comment in ops.registry.ts rests on. `--no-save` is
+   * What DISCOVERY_FLAGS' comment in ops.registry.ts rests on. `--no-save` is
    * the one argv that list does not cover, and the engine would silently drop it
    * (parseAbRunArgs keeps only the flags it knows) — so the claim that the site
    * never sends it has to be checked rather than assumed. renderRun appends it
@@ -711,9 +711,9 @@ describe("renderRun sides", () => {
    * non-default profile, ad-hoc overrides) are both refused alongside `sides` by
    * the test above, while `sides` is mandatory here.
    */
-  it("never renders --no-save for discovery-ab, because no run of it can be experimental", () => {
+  it("never renders --no-save for discovery, because no run of it can be experimental", () => {
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 2 }, sides: SIDES },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
@@ -727,7 +727,7 @@ describe("renderRun sides", () => {
     // And a sides run under that same experimental profile never renders at all.
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "claude-evaluator", flags: {}, sides: SIDES },
+        { kind: "eval", harness: "discovery", profile: "claude-evaluator", flags: {}, sides: SIDES },
         EXPERIMENT,
         REPORT,
       ),
@@ -739,7 +739,7 @@ describe("renderRun sides", () => {
       renderRun(
         {
           kind: "eval",
-          harness: "discovery-ab",
+          harness: "discovery",
           profile: "default",
           flags: {},
           sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "premise" } },

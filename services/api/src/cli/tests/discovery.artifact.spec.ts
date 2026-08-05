@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { assertAbConfigProvenance, buildAbArtifactMeta, buildAbSlotScoreInput, formatAbConfigDiff, toGovernedRunMeta } from '../discovery-ab.main';
-import { buildAbPlan, type AbSide } from '../discovery-ab.plan';
+import { assertAbConfigProvenance, buildAbArtifactMeta, buildAbSlotScoreInput, formatAbConfigDiff, toGovernedRunMeta } from '../discovery.main';
+import { buildAbPlan, type AbSide } from '../discovery.plan';
 import { buildMatrixArtifactEvidence, loadMatrixEval, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
 
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
@@ -50,7 +50,7 @@ describe('buildAbArtifactMeta', () => {
   });
 
   it('names the harness and does not claim a baseline', () => {
-    expect(meta.harness).toBe('discovery-ab');
+    expect(meta.harness).toBe('discovery');
     expect(meta).not.toHaveProperty('baselinePath');
     expect(meta.selection).toMatchObject({ fullCorpus: true, filters: {} });
   });
@@ -131,7 +131,7 @@ describe('toGovernedRunMeta', () => {
 
   it('carries every field the governed envelope requires', () => {
     expect(governed).toMatchObject({
-      harness: 'discovery-ab',
+      harness: 'discovery',
       runs: 1,
       corpusFingerprint: meta.corpusFingerprint,
       configFingerprint: meta.configFingerprint,
@@ -271,7 +271,7 @@ describe('the artifact the parent writes', () => {
   };
 
   it('is accepted by the strict governed envelope, projection and all', async () => {
-    expect((await buildArtifact(true)).harness).toBe('discovery-ab');
+    expect((await buildArtifact(true)).harness).toBe('discovery');
   });
 
   it('holds both sides as its two rules', async () => {
