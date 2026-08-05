@@ -18,7 +18,7 @@
  */
 
 import { DISCOVERY_ENV_KEYS } from "./ops.allowlist.js";
-import { envValueIssueForKey } from "./ops.metadata.js";
+import { envValueIssueForKey, modelMapBounds } from "./ops.metadata.js";
 import type { AbSides, OpsHarness } from "./ops.types.js";
 
 /**
@@ -149,8 +149,9 @@ function sideConfigIssues(config: Record<string, string>, id: string, label: str
     // an unchecked typo does not stop the run: it runs the DEFAULT and reports
     // results under the value the operator named. Same rule the saved-config and
     // ad-hoc paths use (validateProfileEnv), by construction — both call
-    // envValueIssueForKey.
-    const unreal = envValueIssueForKey(key, value);
+    // envValueIssueForKey WITH the same bounds. Passing none would silence the
+    // whole check for EVAL_MODEL_OVERRIDES, whose bounds are its entire rule.
+    const unreal = envValueIssueForKey(key, value, modelMapBounds());
     if (unreal !== null) {
       issues.push({
         path: [id, key],

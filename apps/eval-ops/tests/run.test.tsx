@@ -291,6 +291,42 @@ describe('Run', () => {
     expect(await screen.findByText(/run-1/)).toBeInTheDocument();
     expect(screen.getByText(/EVAL_MODEL_OVERRIDES \(unparseable\)/)).toBeInTheDocument();
   });
+
+  it('reads an empty EVAL_MODEL_OVERRIDES as no overrides, not as a parse failure', async () => {
+    // renderRun writes EVAL_MODEL_OVERRIDES="" onto EVERY record to neutralise a
+    // value inherited from .env.test (ops.argv.ts:308-318), and readModelOverrides
+    // — the code that consumes it — trims and treats empty as "no overrides"
+    // (src/shared/agent/model.config.ts:45-46). JSON.parse("") throws, so reading
+    // it as a parse failure printed "EVAL_MODEL_OVERRIDES (unparseable)" at the
+    // front of every single run's summary, including the line this page labels as
+    // the configuration the run measured.
+    const neutralised: RunRecord = {
+      ...RUN,
+      env: { EVAL_MODEL_OVERRIDES: '', DISCOVERY_ALLOWED_TYPES: 'intent' },
+    };
+    renderRun(neutralised);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+    expect(screen.getByText(/DISCOVERY_ALLOWED_TYPES=intent/)).toBeInTheDocument();
+  });
+
+  it('shows nothing at all when the neutraliser is the only env entry', async () => {
+    // The whole-summary consequence: a default run carries exactly this one key,
+    // so treating it as a parse failure gave every default run a spurious
+    // "overrides:" line reporting corruption that was not there.
+    const defaultRun: RunRecord = { ...RUN, env: { EVAL_MODEL_OVERRIDES: '' } };
+    renderRun(defaultRun);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/overrides:/)).toBeNull();
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+  });
+
+  it('still reports a whitespace-only value as no overrides, matching the trim at the read site', async () => {
+    const padded: RunRecord = { ...RUN, env: { EVAL_MODEL_OVERRIDES: '   ' } };
+    renderRun(padded);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+  });
 });
 
 /**
@@ -732,9 +768,12 @@ describe('Run · discovery', () => {
     // it the page reports a pass rate for a configuration it never names, and a
     // run whose entire subject is one environment is unreadable.
     //
-    // "environment:", not "overrides:": an override is a deviation from a
-    // committed baseline, and a discovery run has none — the configuration IS
-    // the measurement.
+    // "environment:", not "overrides:", and the reason is the SUBJECT of the
+    // result, not the absence of defaults: a single discovery run's pass rate IS
+    // the pass rate of the configuration on this line, whereas a scorecard
+    // harness's result is a corpus score that its env modifies. Discovery has 26
+    // committed defaults of its own (ops.sides.ts, ops.server.ts), so "it has no
+    // baseline" would be false.
     const singleRun: RunRecord = {
       ...AB_RUN,
       spec: {
@@ -758,8 +797,37 @@ describe('Run · discovery', () => {
     // Scoped to the row the label heads: the argv line below also spells the
     // assignment out, and matching that would pass even if this row vanished.
     const label = await screen.findByText('environment:');
-    expect(label.parentElement!.textContent).toContain('DISCOVERY_ALLOWED_TYPES=intent');
+    // Exact, not toContain: the fixture carries the EVAL_MODEL_OVERRIDES=""
+    // neutraliser that renderRun writes onto every record, and a containment
+    // assertion passed straight over the "EVAL_MODEL_OVERRIDES (unparseable)"
+    // this row used to lead with — on the very line the label calls the
+    // configuration the run measured.
+    expect(label.parentElement!.textContent).toBe('environment:DISCOVERY_ALLOWED_TYPES=intent');
     expect(screen.queryByText('overrides:')).toBeNull();
+  });
+
+  it('calls a discovery PAIR’s shared env an override, not the thing it measured', async () => {
+    // The row holds the env shared by both sides; the two configurations under
+    // comparison live in the A/B panels below. Labelling this "the configuration
+    // it measured" would point at the one part of the page that is NOT the
+    // subject of the comparison — which is exactly what keying the label on the
+    // harness rather than the spec's shape did.
+    const pairRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'discovery',
+        profile: 'default',
+        flags: { runs: 1 },
+        sides: { a: { DISCOVERY_ALLOWED_TYPES: 'intent' }, b: { DISCOVERY_ALLOWED_TYPES: 'intent,profile' } },
+      },
+      env: { OPENROUTER_MAX_RETRIES: '5', EVAL_MODEL_OVERRIDES: '' },
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(pairRun);
+
+    expect(await screen.findByText('overrides:')).toBeTruthy();
+    expect(screen.queryByText('environment:')).toBeNull();
   });
 
   it('still calls a scorecard harness’s env an override, because it deviates from a baseline', async () => {

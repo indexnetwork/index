@@ -31,6 +31,13 @@ interface EnvConfigEditorProps {
    * `flags` array but not the same message.
    */
   metadataLoaded: boolean;
+  /**
+   * Whether THIS build's generated catalogue knows the selected harness. False
+   * when the server offers one the bundle predates — a third way to reach an
+   * empty `flags`, and the only one where "reads no environment variables"
+   * would be a claim about code this build has never seen.
+   */
+  knownHarness: boolean;
   rows: readonly EnvFlagRow[];
   /** The server's refusal for this column's value of `key`, if it has one. */
   issueFor: (column: string, key: string) => string | undefined;
@@ -82,6 +89,7 @@ export function EnvConfigEditor({
   columnLabels,
   flags,
   metadataLoaded,
+  knownHarness,
   rows,
   issueFor,
   onKeyChange,
@@ -96,15 +104,23 @@ export function EnvConfigEditor({
   if (flags.length === 0) {
     return (
       <div data-testid="env-editor" className="border border-term-rule p-3">
-        {/* Two different causes, and telling them apart matters: the operator can
-            act on the first and cannot on the second. "Reload the page" was
-            printed for both, which is false advice for a harness whose catalogue
-            is genuinely empty — the descriptions loaded fine, and reloading will
-            produce the same empty list forever. */}
+        {/* Three different causes, and telling them apart matters: the operator
+            can act on two of them and cannot on the third. "Reload the page" was
+            printed for both of the first two, which is false advice for a
+            harness whose catalogue is genuinely empty — the descriptions loaded
+            fine, and reloading will produce the same empty list forever.
+
+            `knownHarness` is the third: this BUILD has no catalogue entry for the
+            selected harness, because the server is offering one the bundle
+            predates. Claiming it "reads no environment variables" would be a
+            statement about code this build has never seen, and here reloading is
+            exactly the right advice — the opposite of the empty-catalogue case. */}
         <p className="text-term-red">
-          {metadataLoaded
-            ? 'This harness reads no environment variables, so there is nothing to configure here.'
-            : 'The flag descriptions could not be loaded, so there is nothing safe to offer here. Reload the page to configure this run.'}
+          {!knownHarness
+            ? 'This build does not know this harness, so it cannot say which environment variables it reads. Reload the page to pick up a newer build.'
+            : metadataLoaded
+              ? 'This harness reads no environment variables, so there is nothing to configure here.'
+              : 'The flag descriptions could not be loaded, so there is nothing safe to offer here. Reload the page to configure this run.'}
         </p>
       </div>
     );

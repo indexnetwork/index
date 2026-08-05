@@ -6,7 +6,7 @@ import { DISCOVERY_ENV_KEYS } from "../ops.allowlist.js";
 import { renderRun, RunSpecSchema, singleConfigIssues } from "../ops.argv.js";
 import { flagValueIssues } from "../ops.flags.js";
 import { ALLOWED_CONFIG_MODEL_IDS, ENV_FLAG_METADATA } from "../ops.metadata.js";
-import { resolveAdHoc, resolveProfile } from "../ops.profiles.js";
+import { resolveAdHoc, resolveProfile, validateConfigOverrides } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 
 const DEFAULT = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
@@ -434,11 +434,19 @@ describe("RunSpecSchema sides", () => {
     // discovery graph reads" while launchRun accepted the same selection and
     // rendered `--env EVAL_MODEL_OVERRIDES={...}`. The refusal was false in its
     // own terms, and the accepted path is the proof.
+    // The agent must be one validateConfigOverrides accepts — the registry's
+    // overridable set. This fixture named "negotiator", which that validator
+    // refuses as an unknown agent on this very path, so the run it describes
+    // could never have been launched; it passed here only because
+    // singleConfigIssues was checking the folded value without bounds, and so
+    // could not see the same problem.
     const spec = {
       kind: "eval" as const, harness: "discovery" as const, profile: "default", flags: {},
-      overrides: { models: { negotiator: ALLOWED_CONFIG_MODEL_IDS[0]! }, env: {} },
+      overrides: { models: { opportunityEvaluator: ALLOWED_CONFIG_MODEL_IDS[0]! }, env: {} },
     };
     expect(RunSpecSchema.safeParse(spec).success).toBe(true);
+    // Both layers agree the selection is launchable, which is the claim.
+    expect(validateConfigOverrides(spec.overrides, "discovery")).toEqual([]);
 
     // The other layer, on the same input: what launchRun checks after resolving.
     const resolved = resolveAdHoc(spec.overrides);

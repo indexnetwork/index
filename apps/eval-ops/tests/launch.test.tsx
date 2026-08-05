@@ -1461,6 +1461,94 @@ describe('Launch — refusing what the server would refuse', () => {
     expect(screen.queryByText(/A · reference runs under the saved config/)).toBeNull();
   });
 
+  it('does not block a discovery pair over a config the sides spec never reads', async () => {
+    // BLOCKER 2. Reachable with clicks alone: choose a config, then tick A/B.
+    // The picker disappears but state.profile keeps the stale name, and
+    // handleHarnessChange resets models, scoring, selection and env — not
+    // profile. The guard asked "is a picker on screen", so it fired here.
+    //
+    // Three things were wrong at once. The server ACCEPTS this run
+    // (launch-server-parity.test.ts proves it against RunSpecSchema itself);
+    // the message was false, because buildSidesSpec pins profile to "default"
+    // and never reads state.profile, so nothing would be dropped; and its
+    // instruction named a control that is not rendered, leaving the operator no
+    // way on screen to obey it — they had to untick A/B, reset the picker and
+    // tick it again.
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.selectOptions(await screen.findByLabelText('Config'), 'claude-evaluator');
+    await selectDiscovery(user);
+    await configureFirstFlag(user, 'DISCOVERY_PROFILE_SOURCE', 'premise', 'user_context');
+
+    // No config picker is rendered for a sides run — which is exactly why a
+    // refusal naming one would be unobeyable.
+    expect(screen.queryByLabelText('Config')).toBeNull();
+    expect(screen.queryByText(/would be dropped/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /^run both sides$/i })).not.toBeDisabled();
+  });
+
+  it('refuses typed models that a chosen config would silently drop', async () => {
+    // CONCERN 7, the model sibling of the env conflict above. buildSpec sends
+    // `overrides` only when the profile is "default", so models typed before a
+    // config was picked are dropped from the posted spec — and the editor is
+    // hidden the moment the config is chosen, so the operator cannot see the
+    // values still held, cannot clear them, and gets no refusal. The run spends
+    // real money under the config's models while the page last showed theirs.
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await user.selectOptions(await screen.findByLabelText(/evaluator/i), 'anthropic/claude-sonnet-4');
+    await user.selectOptions(await screen.findByLabelText('Config'), 'claude-evaluator');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+    expect(screen.getByText(/models are set here and.*claude-evaluator/i)).toBeTruthy();
+    // The remedy names the control that IS on screen. "Clear them" would name
+    // the model editor, which this state has hidden.
+    expect(screen.getByText(/switch that column back to/i)).toBeTruthy();
+
+    // Resolving it re-enables the run, so the refusal is not a dead end.
+    await user.selectOptions(screen.getByLabelText('Config'), 'default');
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+  });
+
+  it('checks EVAL_MODEL_OVERRIDES with the bounds that are its whole rule', async () => {
+    // BLOCKER 3. The form called envValueIssueForKey WITHOUT bounds while
+    // validateProfileEnv called it WITH them. For kind 'json-model-map' the
+    // bounds ARE the rule, so the form returned null for a value naming an agent
+    // that does not exist: enabled, priced, confirmed, POSTED, then 400.
+    // EVAL_MODEL_OVERRIDES is in every harness's catalogue and renders as free
+    // text, so this was reachable on all five.
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'EVAL_MODEL_OVERRIDES');
+    await user.type(screen.getByLabelText('value 1'), '{{"notAnAgent":"not/a-model"}');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+    expect(screen.getByText(/names an unknown agent "notAnAgent"/)).toBeTruthy();
+  });
+
+  it('tells a scorecard operator the server refuses the value, not that it falls back', async () => {
+    // SUGGESTION 10. The discovery sibling says the graph "falls back to its own
+    // default", which is true there and FALSE here: for a scorecard harness the
+    // consequence is a 400, so the run does not start at all. Copying the
+    // discovery sentence would have been a checkable falsehood.
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'OPENROUTER_MAX_RETRIES');
+    await user.type(screen.getByLabelText('value 1'), 'lots');
+
+    expect(screen.getByText(/the server refuses this value, so the run would not start/i)).toBeTruthy();
+    expect(screen.queryByText(/falls back to its own default/i)).toBeNull();
+  });
+
   /**
    * CONCERN 4. `envIssues` was gated on `supportsSides`, so the four scorecard
    * harnesses' values were never checked here — the server 400'd after the
@@ -1582,9 +1670,17 @@ describe('EnvConfigEditor — an empty offer has two different causes', () => {
     expect(screen.getByText(/reload the page/i)).toBeTruthy();
   });
 
-  it('says the harness reads nothing when its catalogue is empty', async () => {
-    // A harness the server names whose generated catalogue holds no keys: the
-    // metadata loaded perfectly, and there is simply nothing to configure.
+  it('says the BUILD does not know the harness when the server offers one it predates', async () => {
+    // This is the case the fixture below actually stages: 'reads-nothing' is
+    // absent from the generated HARNESS_ENV_KEYS, so this bundle has no
+    // catalogue entry for it at all. That happens when the server is one release
+    // ahead of the bundle the browser is holding.
+    //
+    // It previously printed "this harness reads no environment variables", which
+    // is a claim about code this build has never seen — and it suppressed the
+    // one remedy that works here, reloading to pick up the newer bundle. The old
+    // test pinned that false message against this very fixture, so the assertion
+    // could not tell the true reading from the false one.
     const future = {
       harnesses: [
         {
@@ -1614,8 +1710,48 @@ describe('EnvConfigEditor — an empty offer has two different causes', () => {
     renderLaunch();
     await screen.findByLabelText('Runs per case');
 
+    expect(screen.getByText(/this build does not know this harness/i)).toBeTruthy();
+    // Here reloading IS the remedy — the opposite of the empty-catalogue case.
+    expect(screen.getByText(/reload the page to pick up a newer build/i)).toBeTruthy();
+    expect(screen.queryByText(/reads no environment variables/i)).toBeNull();
+  });
+
+  it('says the harness reads nothing when its catalogue is genuinely empty', async () => {
+    // The other cause of an empty editor, and the one the message above was
+    // written for: a harness THIS build knows, whose catalogue holds no key the
+    // server also described. Staged with a real harness so HARNESS_ENV_KEYS has
+    // an entry for it, and metadata that describes none of its keys.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(HARNESSES));
+        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+        if (String(url).endsWith('/api/configs/metadata')) {
+          // Copy for a key no harness's catalogue contains: metadata loaded
+          // fine, so this is not the failure case, but nothing intersects.
+          return new Response(JSON.stringify({
+            ...METADATA,
+            env: [{
+              key: 'A_KEY_NO_HARNESS_READS',
+              label: 'Unread',
+              description: 'Described but read by nothing.',
+              kind: 'string',
+              defaultDescription: 'unset',
+            }],
+          }));
+        }
+        if (String(url).endsWith('/api/configs')) {
+          return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
+        }
+        return new Response(JSON.stringify({}));
+      }),
+    );
+    renderLaunch();
+    await screen.findByLabelText('Runs per case');
+
     expect(screen.getByText(/this harness reads no environment variables/i)).toBeTruthy();
     // The false advice is gone: there is nothing to reload.
     expect(screen.queryByText(/reload the page/i)).toBeNull();
+    expect(screen.queryByText(/does not know this harness/i)).toBeNull();
   });
 });

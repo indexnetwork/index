@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EnvFlagMeta } from '../api/client';
 
@@ -169,8 +169,13 @@ export function FlagListbox({ flags, takenKeys, value, label, onChange }: FlagLi
    * the list does not jump on every keypress. Guarded because happy-dom does not
    * implement scrollIntoView — which is also why this behaviour is reasoned from
    * the API contract rather than asserted in a test that cannot observe it.
+   *
+   * useLayoutEffect, not useEffect: this is a visual correction to a frame that
+   * has been laid out but not yet painted. A passive effect runs after paint, so
+   * the operator could see one frame of the list at its old scroll position
+   * before it jumps — exactly the flicker the correction exists to prevent.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     const active = document.getElementById(optionId(activeIndex));
     active?.scrollIntoView?.({ block: 'nearest' });

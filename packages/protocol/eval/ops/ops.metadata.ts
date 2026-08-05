@@ -12,6 +12,7 @@
  * write plausible-sounding text that the code does not back.
  */
 
+import { HARNESS_REGISTRY } from "./ops.registry.js";
 import type { OpsHarness } from "./ops.types.js";
 
 export interface EnvFlagMeta {
@@ -206,10 +207,45 @@ export function envFlagValueIssue(meta: EnvFlagMeta, value: string, bounds?: Mod
 /**
  * `envFlagValueIssue` for a key named at runtime. Null for a key with no
  * metadata: whether the key may be set at all is the caller's allowlist check.
+ *
+ * `bounds` is optional in the TYPE and mandatory in PRACTICE for the one kind
+ * that has them. Omitting them does not weaken the check a little — for
+ * `json-model-map` the bounds ARE the rule, so a call without them returns null
+ * for a value naming an agent that does not exist and a model nobody may run.
+ * The launch form called it without bounds while `validateProfileEnv` called it
+ * with them, so the button was enabled, priced, confirmed and POSTED for a value
+ * the server then refused with a 400. Callers that have no bounds to give should
+ * pass {@link modelMapBounds}, not nothing.
  */
 export function envValueIssueForKey(key: string, value: string, bounds?: ModelMapBounds): string | null {
   const meta = ENV_FLAG_METADATA.find((flag) => flag.key === key);
   return meta === undefined ? null : envFlagValueIssue(meta, value, bounds);
+}
+
+/**
+ * Bounds for a `json-model-map` value (EVAL_MODEL_OVERRIDES).
+ *
+ * Agents are the registry's overridable set, not every key `getBaseModelConfig`
+ * defines: that list is a function-local object literal in
+ * src/shared/agent/model.config.ts with no runtime export, and copying thirty
+ * names here would be a second source of truth that drifts. Scoping to the
+ * registry's agents is also the stricter and more coherent bar — it is exactly
+ * the set the per-agent model pickers already accept, so the two ways of naming
+ * an agent agree.
+ *
+ * Lives HERE, beside the rule it feeds, rather than in ops.profiles.ts where it
+ * began: that module imports node:fs and node:crypto, so the browser bundle
+ * cannot reach it, and the launch form was left calling `envValueIssueForKey`
+ * with no bounds at all. Both inputs are dependency-free (HARNESS_REGISTRY is
+ * type-only imports, ALLOWED_CONFIG_MODEL_IDS is declared in this module), so
+ * one definition now serves the form and the server instead of the server
+ * having the only copy.
+ */
+export function modelMapBounds(): ModelMapBounds {
+  return {
+    agents: [...new Set(Object.values(HARNESS_REGISTRY).flatMap((descriptor) => descriptor.agents))],
+    models: [...ALLOWED_CONFIG_MODEL_IDS],
+  };
 }
 
 /**

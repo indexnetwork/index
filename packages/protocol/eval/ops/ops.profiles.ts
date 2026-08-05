@@ -24,7 +24,7 @@ import { harnessesReading, unreadEnvKeys } from "./ops.envreach.js";
 // browser app imports it directly; re-exported here for server-side consumers.
 export { ALLOWED_CONFIG_MODEL_IDS, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, envFlagValueIssue, envValueIssueForKey } from "./ops.metadata.js";
 export type { AgentMeta, EnvFlagMeta, FlagMeta, ModelMapBounds, ModelMeta } from "./ops.metadata.js";
-import { ALLOWED_CONFIG_MODEL_IDS, envValueIssueForKey } from "./ops.metadata.js";
+import { ALLOWED_CONFIG_MODEL_IDS, envValueIssueForKey, modelMapBounds } from "./ops.metadata.js";
 
 export const ConfigProfileSchema = z
   .object({
@@ -129,25 +129,6 @@ export function validateProfileEnv(env: Record<string, string>): string[] {
   return issues;
 }
 
-/**
- * Bounds for a `json-model-map` value (EVAL_MODEL_OVERRIDES).
- *
- * Agents are the registry's overridable set, not every key
- * `getBaseModelConfig` defines: that list is a function-local object literal in
- * src/shared/agent/model.config.ts with no runtime export, and copying thirty
- * names here would be a second source of truth that drifts. Scoping to the
- * registry's agents is also the stricter and more coherent bar — it is exactly
- * the set the per-agent model pickers already accept, so the two ways of
- * naming an agent agree.
- */
-function modelMapBounds(): ModelMapBoundsShape {
-  return { agents: [...overridableAgents()], models: [...ALLOWED_CONFIG_MODEL_IDS] };
-}
-
-interface ModelMapBoundsShape {
-  agents: readonly string[];
-  models: readonly string[];
-}
 
 /**
  * Validates client-originated overrides. Returns human-readable issues;
