@@ -125,28 +125,39 @@ discovery graph against real Neon databases.
 cd services/api
 bun run eval:discovery -- --help          # The whole contract, no credentials needed
 
-# A default run (costs tokens and ~13 minutes). Every A/B invocation but --help
-# needs all four gate variables; see **The gate** below.
+# A default comparison (costs tokens and ~13 minutes). Every invocation but
+# --help needs all four gate variables; see **The gate** below.
 DISCOVERY_CONFIRM=1 TEST_DATABASE_SAFE=1 \
 NEON_API_KEY=<key> DISCOVERY_TARGETS='<manifest>' \
   bun run eval:discovery -- \
     --a DISCOVERY_ALLOWED_TYPES=intent \
     --b DISCOVERY_ALLOWED_TYPES=intent,profile
+
+# Measuring ONE configuration instead: --env, which resets one branch and emits
+# an ordinary scorecard. --env and --a/--b are mutually exclusive. The same four
+# gate variables are required.
+bun run eval:discovery -- --env DISCOVERY_ALLOWED_TYPES=intent
 ```
 
-**What it compares.** Two operator-chosen environment configurations over the
-same cases. Selection (`--case`, `--runs`) is shared; configuration is not. Each
-side runs in its own child process — `withDiscoveryEnvironment` mutates the real
-`process.env`, so two configurations in one process would read each other's
-flags — and each child is composed against its own Neon branch (`eval-ab-a`,
-`eval-ab-b`), which the parent resets from the protected `eval-discovery-base`
-branch before it spawns anything. Both resets must succeed first: a
-half-isolated comparison is not a comparison. The command never creates or
-deletes Neon branches.
+**Two shapes.** `--a`/`--b` compares two operator-chosen environment
+configurations over the same cases; `--env` measures a single one. Passing both
+shapes is refused rather than resolved — they reset a different number of
+branches and produce a different artifact (`discovery.main.ts`, `parseAbShape`).
+Passing neither is refused too: a run needs a configuration.
 
-**The gate.** Every A/B process, parent included, refuses to start without all
-four of these, and refuses before it imports anything that can compose a
-database:
+**What a comparison compares.** Selection (`--case`, `--runs`) is shared;
+configuration is not. Each side runs in its own child process —
+`withDiscoveryEnvironment` mutates the real `process.env`, so two configurations
+in one process would read each other's flags — and each child is composed
+against its own Neon branch (`eval-ab-a`, `eval-ab-b`), which the parent resets
+from the protected `eval-discovery-base` branch before it spawns anything. Every
+reset the run needs must succeed first: a half-isolated comparison is not a
+comparison. A single-configuration run uses side a alone, so it resets
+`eval-ab-a` only. The command never creates or deletes Neon branches.
+
+**The gate.** Every discovery process, parent included and in either shape,
+refuses to start without all four of these, and refuses before it imports
+anything that can compose a database:
 
 | Variable | Why |
 | --- | --- |
@@ -165,6 +176,10 @@ database:
   ]
 }
 ```
+
+The manifest must name **exactly two** sides even for a single-configuration
+run (`parseAbManifest`): both are attested up front, and the run then resets
+and uses only the branches its shape needs (`abRunningTargets`).
 
 Attestation checks each side is the exactly-named designated branch, is not
 primary, is parented on a base branch named `eval-discovery-base`, and has an

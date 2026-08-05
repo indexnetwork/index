@@ -16,7 +16,7 @@ expose further (see [§ Who may use this server](#who-may-use-this-server) below
 Everything in this directory is provider-free and covered by `bun run eval:verify`
 (`suite: ops`).
 
-## Scope: four scorecard harnesses and one comparison harness
+## Scope: four scorecard harnesses and one discovery harness
 
 `OPS_HARNESSES` ([`ops.registry.ts`](./ops.registry.ts)) is `matching`, `profile`,
 `premise`, `opportunity`, `discovery` — and nothing else.
@@ -25,13 +25,16 @@ The **four scorecard harnesses** emit the shared scorecard artifact envelope
 (`index-eval/baseline` / `index-eval/run-report`), which is what artifact indexing,
 baseline diffing and comparison all read.
 
-**`discovery` is the fifth, and it is a different shape.** It scores no single
-configuration against a baseline: it carries two (`sides`), has no baseline and never will,
-runs in `services/api` rather than here, and resets two Neon branches on entry. It is
-therefore launchable, and its site-launched runs are indexed from `.ops-runs` like any
-other run — but it is never diffed or compared against a baseline, and the launch form
-refuses the configuration surface that would make its two sides differ in anything but the
-pair (see [the `discovery` sections below](#one-discovery-run-at-a-time)).
+**`discovery` is the fifth, and it is a different shape.** It has no baseline and never
+will, runs in `services/api` rather than here, and resets a Neon branch per side on entry —
+two when it compares a pair, one when it measures a single configuration. It is therefore
+launchable, and its site-launched runs are indexed from `.ops-runs` like any other run, but
+it is never diffed or compared against a baseline.
+
+Unlike the scorecard harnesses it can carry **two** configurations at once (`sides`), which
+is what makes a comparison a single run rather than two runs an operator must trust were
+alike. That is optional: omitting `sides` measures one configuration and emits an ordinary
+scorecard (see [the `discovery` sections below](#one-discovery-run-at-a-time)).
 
 `hyde`, `clarification`, `discovery-retrieval`, `discovery-env-matrix`, `stance` and the
 canary are **not** launchable, indexable or comparable here; they use different evidence
@@ -46,6 +49,10 @@ change.
 | [`ops.registry.ts`](./ops.registry.ts) | `HARNESS_REGISTRY` — the single source of launchable capability. |
 | [`ops.argv.ts`](./ops.argv.ts) | `RunSpecSchema` (the trust boundary) and `renderRun` (spec → argv + child env). |
 | [`ops.profiles.ts`](./ops.profiles.ts) | Loads/validates [`profiles/`](./profiles), resolves a profile into injected env + fingerprint. |
+| [`ops.envcatalog.ts`](./ops.envcatalog.ts) | **Generated.** `HARNESS_ENV_KEYS` — the env keys each harness's own code reads. Never hand-edited. |
+| [`ops.envcatalog.build.ts`](./ops.envcatalog.build.ts) | `buildEnvCatalog` — renders the file above; imported by both the generator script and the drift test. |
+| [`ops.envscan.ts`](./ops.envscan.ts) | `reachableEnvKeys` — walks an entry point's import closure for `process.env` reads. Not browser-safe (`Bun.Transpiler`, `node:fs`). |
+| [`ops.envreach.ts`](./ops.envreach.ts) | `harnessesReading` / `unreadEnvKeys` — the catalogue asked in both directions. |
 | [`ops.artifacts.ts`](./ops.artifacts.ts) | `ArtifactSource` — filesystem index of baselines and run reports, addressable by id. |
 | [`ops.compare.ts`](./ops.compare.ts) | `compareArtifacts` — refuses incomparable artifacts, no new statistics. |
 | [`ops.store.ts`](./ops.store.ts) | `RunStore` — run records, logs, report paths, exit-code mapping, restart reconciliation. |
@@ -252,9 +259,12 @@ queue holds in memory and writes nowhere:
 ### One `discovery` run at a time
 
 `EXCLUSIVE_HARNESSES` ([`ops.queue.ts`](./ops.queue.ts)) names the harnesses whose runs may
-never overlap, and why. `discovery` resets and uses the same two designated Neon
-evaluation branches on every run, so two at once would reset each other's databases
-mid-run. A second launch is refused with **409** naming the run that holds the slot.
+never overlap, and why. `discovery` resets and uses the same designated Neon evaluation
+branches on every run — both when it compares a pair, side a's alone when it measures one
+configuration — so two at once would reset each other's databases mid-run. The slot is per
+harness, not per side: a single-configuration run and a pair still collide, because they
+share side a's branch. A second launch is refused with **409** naming the run that holds
+the slot.
 
 The slot outlives the process holding it. `queue.exclusiveConflict()` asks this process's
 queue **and** the store: a `running` record whose pid is still alive holds the slot even
