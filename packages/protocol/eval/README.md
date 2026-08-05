@@ -99,7 +99,8 @@ Five harnesses are launchable from the ops site (`OPS_HARNESSES`,
 [`ops/ops.registry.ts`](./ops/ops.registry.ts)). Four are the baseline-backed scorecard
 harnesses (`matching`, `profile`, `premise`, `opportunity`) — they emit the shared artifact
 envelope and are diffed against their committed baseline. `discovery` is the fifth and a
-different shape: it carries two configurations rather than one, runs in `services/api`, and
+different shape: it MAY carry two configurations rather than one — launched with `sides` it
+compares a pair, launched without them it measures a single configuration — runs in `services/api`, and
 has no baseline and never will, so its site-launched runs are indexed from `.ops-runs` like
 any other run but are never diffed or compared against a baseline. Every other harness
 stays CLI-only.

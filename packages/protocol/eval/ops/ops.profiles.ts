@@ -61,9 +61,28 @@ export async function loadProfiles(dir: string): Promise<ConfigProfile[]> {
     if (entry.name !== expectedFile) {
       throw new Error(`Profile file ${entry.name} declares name "${profile.name}" (mismatch); rename it to ${expectedFile}`);
     }
+    // Repo profiles are checked against the same boundary as every other
+    // configured key, not the narrower PROFILE_ENV_ALLOWLIST.
+    //
+    // The narrow list was the last surviving instance of "the list is the limit,
+    // not the code" — the defect this branch exists to remove. It contains none
+    // of CHAT_MODEL, NEGOTIATOR_STANCE, EVAL_MODEL_OVERRIDES or the OpenRouter
+    // set, so a committed, code-reviewed profile could not set a key that a
+    // config saved from a browser can. The reviewed artefact was the more
+    // restricted one, which is backwards.
+    //
+    // Credentials stay refused here as everywhere else: `isCredentialEnvKey` is
+    // the same predicate the request boundary uses, so a committed profile
+    // cannot hold a provider key or a connection string either.
     for (const key of Object.keys(profile.env)) {
-      if (!PROFILE_ENV_ALLOWLIST.includes(key)) {
-        throw new Error(`Profile ${profile.name} sets ${key}, which is not in PROFILE_ENV_ALLOWLIST`);
+      if (isCredentialEnvKey(key)) {
+        throw new Error(`Profile ${profile.name} sets ${key}, which is a credential and may never be set by a profile`);
+      }
+      if (!CONFIGURABLE_ENV_KEYS.has(key)) {
+        throw new Error(
+          `Profile ${profile.name} sets ${key}, which is not offered by any harness `
+          + `and is not a configurable protocol flag`,
+        );
       }
     }
     if (profile.name === DEFAULT_PROFILE_NAME
@@ -168,7 +187,13 @@ export function validateConfigOverrides(
       continue;
     }
     if (!CONFIGURABLE_ENV_KEYS.has(key)) {
-      issues.push(`env key ${key} is not read by any harness`);
+      // Not "is not read by any harness": CONFIGURABLE_ENV_KEYS is the union of
+      // every harness catalogue AND PROFILE_ENV_ALLOWLIST, so the seven flags no
+      // harness reads (IND-630) pass this very check. Saying "no harness reads
+      // it" would describe a boundary this is not, and would be false of the
+      // keys it lets through — spec §6 is precisely that those are accepted and
+      // reported rather than refused.
+      issues.push(`env key ${key} is not offered by any harness and is not a configurable protocol flag`);
       continue;
     }
     // Named a harness, and this key is not in ITS catalogue. Refused rather than

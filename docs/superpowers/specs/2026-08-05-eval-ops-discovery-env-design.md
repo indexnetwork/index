@@ -57,9 +57,12 @@ costume.
 
 ### Credentials are excluded at generation and refused at the boundary
 
-`ENV_SECRET_KEYS` = `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`. These are
-reachable from every harness and must never be settable from a browser: one
-repoints the run at another provider account, the other at another endpoint.
+`ENV_SECRET_KEYS` = `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`,
+`DISCOVERY_TARGETS`. The first two are reachable from every harness and must
+never be settable from a browser: one repoints the run at another provider
+account, the other at another endpoint. The third is read by the discovery
+engine's bootstrap rather than by a harness closure, and carries `protocol_eval`
+connection strings with passwords.
 
 **One predicate, `isCredentialEnvKey`, called at two sites**: the generator, so
 such a key never enters a catalogue, and `validateConfigOverrides`, so one is
@@ -69,10 +72,17 @@ the server come to disagree about what a credential is.
 
 The predicate is a name list *plus* a shape rule (`_KEY`, `_TOKEN`, `_SECRET`,
 `_URL` and friends, matched anywhere in the name, with an explicit exception
-list). The shape rule alone already covers both `ENV_SECRET_KEYS` entries:
-deleting that list changes nothing, which a mutation test pins. The list is kept
-because it names the two keys this system actually holds, and a future rename
-that escapes the shape rule should still be caught.
+list). **Neither guard subsumes the other**, and a test pins exactly which keys
+each one catches:
+
+- The shape rule alone covers `OPENROUTER_API_KEY` and `OPENROUTER_BASE_URL`, so
+  a rename that escaped it would fail that test.
+- It does **not** cover `DISCOVERY_TARGETS`, whose name says what it points at
+  rather than what it is. The list is that key's only guard.
+
+The second case is why the list is not decoration: a secret can be named after
+its subject, and "named the way secrets are named" is the precise limit of what
+the shape rule promises.
 
 Measured against the 64-key candidate universe, the predicate matches ten keys
 and **zero** of the 27 any harness offers — which is why the exception list is

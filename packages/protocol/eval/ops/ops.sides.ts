@@ -18,6 +18,7 @@
  */
 
 import { DISCOVERY_ENV_KEYS } from "./ops.allowlist.js";
+import { HARNESS_ENV_KEYS } from "./ops.envcatalog.js";
 import { envValueIssueForKey, modelMapBounds } from "./ops.metadata.js";
 import type { AbSides, OpsHarness } from "./ops.types.js";
 
@@ -130,11 +131,21 @@ export interface AbSideIssue {
  * Re-implementing these five for the single shape is how the two shapes would
  * come to disagree about what a value means, so there is one copy.
  */
-function sideConfigIssues(config: Record<string, string>, id: string, label: string): AbSideIssue[] {
+function sideConfigIssues(
+  config: Record<string, string>,
+  id: string,
+  label: string,
+  offered: readonly string[] = DISCOVERY_ENV_KEYS,
+  // Names the harness in the unreadable-key refusal. Defaulted to the discovery
+  // graph because that is the only caller whose offered list is
+  // DISCOVERY_ENV_KEYS; a per-harness caller passes its own name, since "not
+  // readable by the discovery graph" is false when the harness is `matching`.
+  reader = "the discovery graph",
+): AbSideIssue[] {
   const issues: AbSideIssue[] = [];
   for (const key of Object.keys(config).sort()) {
-    if (!DISCOVERY_ENV_KEYS.includes(key)) {
-      issues.push({ path: [id, key], message: `${key} is not readable by the discovery graph; this harness cannot test it` });
+    if (!offered.includes(key)) {
+      issues.push({ path: [id, key], message: `${key} is not readable by ${reader}; this harness cannot test it` });
       continue;
     }
     const value = config[key]!;
@@ -224,6 +235,47 @@ export function singleConfigIssues(
     }];
   }
   return sideConfigIssues(config, "a", "").map((issue) => ({ ...issue, path: issue.path.slice(1) }));
+}
+
+/**
+ * Every reason a resolved configuration would be refused ON THIS HARNESS,
+ * per key. No emptiness rule: an empty configuration is a legitimate run
+ * everywhere except the sides-capable harness, whose own rule is
+ * {@link singleConfigIssues}.
+ *
+ * Exists because the per-key rules are NOT discovery-specific but
+ * `singleConfigIssues` is: it checks membership against DISCOVERY_ENV_KEYS, so
+ * asking it about a `matching` config that legitimately sets
+ * SMARTEST_VERIFIER_MODEL (which matching reads and discovery does not) answers
+ * "not readable by the discovery graph" — a refusal that is false on its face
+ * and would block a legal run.
+ *
+ * The launch form calls this on a config it has resolved the way the server
+ * does, because the server judges a config AFTER `resolveProfile` folds
+ * `models` into EVAL_MODEL_OVERRIDES, and that folded value is subject to every
+ * per-key rule including the length cap: five overridable agents at the longest
+ * model id is 259 characters, which the cap refuses. Before this existed, such
+ * a config was savable, enabled Run, took the spend confirmation and collected
+ * a 400.
+ *
+ * Membership is checked against THIS harness's catalogue, so a key the harness
+ * does read is never called unreadable. Callers that have already narrowed with
+ * `readableEnv` pass a config in which every key is offered by construction;
+ * the check still runs, because a caller that has not narrowed is the case it
+ * exists to catch.
+ */
+export function configValueIssuesFor(harness: OpsHarness, config: Record<string, string>): AbSideIssue[] {
+  // A harness with no catalogue in THIS build is reachable from the browser:
+  // the harness list arrives from the server, which may be running a newer set.
+  // Returning no issues rather than throwing keeps an unknown harness a
+  // question for the server to answer, which is what every other per-harness
+  // lookup on that page does.
+  const offered = HARNESS_ENV_KEYS[harness] as readonly string[] | undefined;
+  if (offered === undefined) return [];
+  return sideConfigIssues(config, "a", "", offered, `the ${harness} harness`).map((issue) => ({
+    ...issue,
+    path: issue.path.slice(1),
+  }));
 }
 
 /**

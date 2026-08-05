@@ -45,7 +45,7 @@ import { describe, expect, it } from 'vitest';
 import { RunSpecSchema } from '../../../packages/protocol/eval/ops/ops.argv';
 import { validateConfigOverrides, resolveAdHoc, resolveProfile } from '../../../packages/protocol/eval/ops/ops.profiles';
 import { envValueIssueForKey, modelMapBounds } from '../../../packages/protocol/eval/ops/ops.metadata';
-import { abSideIssues, singleConfigIssues, SUPPORTS_SIDES } from '../../../packages/protocol/eval/ops/ops.sides';
+import { abSideIssues, configValueIssuesFor, singleConfigIssues, SUPPORTS_SIDES } from '../../../packages/protocol/eval/ops/ops.sides';
 import { HARNESS_ENV_KEYS } from '../../../packages/protocol/eval/ops/ops.envcatalog';
 import { readableEnv } from '../../../packages/protocol/eval/ops/ops.envreach';
 import { MODEL_OVERRIDE_KEY } from '../src/routes/Launch';
@@ -75,10 +75,18 @@ function dropsConfiguration(state: FormState): boolean {
   // env from the candidate's spec while the reference's spec still carries it.
   // Reading only `profile.reference` hid exactly that state.
   const columns: ('reference' | 'candidate')[] = state.ab ? ['reference', 'candidate'] : ['reference'];
-  return columns.some((column) => {
+  if (columns.some((column) => {
     const models = column === 'reference' ? Object.keys(state.models ?? {}).length > 0 : false;
     return profile[column] !== 'default' && (models || env);
-  });
+  })) return true;
+  // The models/typed-EVAL_MODEL_OVERRIDES collision, which is the same class one
+  // layer down: `resolveProfile` folds the pickers into that key, so a typed row
+  // for it is overwritten and never reaches the run. The form blocks this
+  // (`modelOverrideConflict`) and the server cannot see it — by the time the
+  // spec is built only one value survives — so without this term such a row
+  // reads as FORM STRICTER THAN SERVER while the form is right.
+  return Object.keys(state.env ?? {}).includes(MODEL_OVERRIDE_KEY)
+    && Object.keys(state.models ?? {}).length > 0;
 }
 
 /**
@@ -99,6 +107,25 @@ function dropsConfiguration(state: FormState): boolean {
 function reachableFromPicker(state: FormState): boolean {
   const keys = Object.keys(state.env ?? {});
   return keys.every((key) => HARNESS_ENV_KEYS[state.harness].includes(key));
+}
+
+/**
+ * A saved config's env as `resolveProfile` produces it — the fold the form must
+ * perform to ask the server's question.
+ *
+ * The form cannot import `resolveProfile` (node:fs), so Launch.tsx reimplements
+ * this fold, and so does this model. Two copies of a rule is exactly what this
+ * file exists to catch, so `resolvedConfigEnvSpec` below pins BOTH against the
+ * real resolver rather than trusting either.
+ */
+function resolvedConfigEnv(config: { models: Record<string, string>; env: Record<string, string> }): Record<string, string> {
+  const env: Record<string, string> = { ...config.env };
+  if (Object.keys(config.models).length > 0) {
+    env[MODEL_OVERRIDE_KEY] = JSON.stringify(
+      Object.fromEntries(Object.keys(config.models).sort().map((agent) => [agent, config.models[agent]!])),
+    );
+  }
+  return env;
 }
 
 /** A form state, in the terms the operator manipulates. */
@@ -217,14 +244,31 @@ function formVerdict(
   // envEmpty (Launch.tsx). A sides-capable harness must configure SOMETHING, in
   // either shape — and for the single shape under a named config, "something"
   // means something THIS HARNESS READS, which is the server's own question.
+  const namedConfig = sides || profile.reference === 'default'
+    ? undefined
+    : savedConfigs[profile.reference];
   if (SUPPORTS_SIDES[state.harness] && Object.keys(env).length === 0) {
-    const config = sides || profile.reference === 'default'
-      ? undefined
-      : savedConfigs[profile.reference];
-    const configConfigures = config !== undefined
-      && (Object.keys(readableEnv(state.harness, config.env ?? {})).length > 0
-        || Object.keys(config.models ?? {}).length > 0);
+    const configConfigures = namedConfig !== undefined
+      && (Object.keys(readableEnv(state.harness, namedConfig.env ?? {})).length > 0
+        || Object.keys(namedConfig.models ?? {}).length > 0);
     if (sides || profile.reference === 'default' || !configConfigures) why.push('envEmpty');
+  }
+
+  // configValueIssues (Launch.tsx): the selected config, resolved the way the
+  // server resolves it, run through the server's per-key rules. This is the B1
+  // term — without it the form judged a config by whether it was non-empty,
+  // while the server judged the FOLDED value.
+  // Gated on SUPPORTS_SIDES because the SERVER's post-resolution check is: a
+  // scorecard harness accepts a value this long, since nothing renders it into
+  // argv there. Asking it everywhere would make the form stricter than the
+  // server.
+  if (namedConfig !== undefined && SUPPORTS_SIDES[state.harness]) {
+    why.push(
+      ...configValueIssuesFor(
+        state.harness,
+        readableEnv(state.harness, resolvedConfigEnv(namedConfig)),
+      ).map((issue) => issue.message),
+    );
   }
 
   // modelOverrideConflict (Launch.tsx): the per-agent pickers and a typed
@@ -319,8 +363,30 @@ function serverVerdict(
 }
 
 const SCORECARDS = ['matching', 'profile', 'premise', 'opportunity'] as const;
+/**
+ * Five overridable agents at the longest selectable model id.
+ *
+ * `resolveProfile` folds this into EVAL_MODEL_OVERRIDES as JSON, which is 259
+ * characters — past the 200-character per-key cap. The config is SAVABLE
+ * (`validateConfigOverrides` passes: every agent is overridable and every model
+ * selectable), which is precisely why the form could not judge it by asking
+ * whether the config was non-empty. Four agents (209) crosses the cap too; five
+ * is used so the row stays over it if a shorter model id is ever removed.
+ */
+const FIVE_AGENT_MODELS: Record<string, string> = {
+  opportunityEvaluator: 'google/gemini-2.5-flash-lite',
+  opportunityPresenter: 'google/gemini-2.5-flash-lite',
+  premiseAnalyzer: 'google/gemini-2.5-flash-lite',
+  premiseDecomposer: 'google/gemini-2.5-flash-lite',
+  profileGenerator: 'google/gemini-2.5-flash-lite',
+};
+
 const SAVED = {
   'discovery-premise': { models: {}, env: { DISCOVERY_PROFILE_SOURCE: 'premise' } },
+  // The B1 config: legal to save, resolves to a value the per-key cap refuses.
+  // Its `env` is empty, so ONLY the models fold makes it non-empty — which is
+  // the fold the form was not performing.
+  'five-agents': { models: FIVE_AGENT_MODELS, env: {} },
   // A config that is legal everywhere and configures NOTHING on discovery:
   // SMARTEST_VERIFIER_MODEL is read by the four scorecard harnesses and is
   // absent from the 26-key discovery catalogue. Launching discovery under it is
@@ -459,6 +525,36 @@ const MATRIX: Row[] = [
     },
   },
 
+  // --- B1: a savable config whose RESOLVED value the server refuses ---------
+  // The models fold is the whole point: `env` is empty, so a form asking "is
+  // this config non-empty?" about `env` alone saw nothing, and one asking about
+  // `models` saw a legitimate five-agent selection. Only resolving it the way
+  // the server does reveals the 259-character EVAL_MODEL_OVERRIDES the per-key
+  // cap refuses.
+  {
+    name: 'discovery single, saved config resolving past the length cap (B1)',
+    state: {
+      harness: 'discovery',
+      ab: false,
+      profile: { reference: 'five-agents', candidate: 'default' },
+    },
+    savedConfigs: SAVED,
+  },
+  {
+    // The SAME config on a scorecard harness, which both layers ACCEPT: the
+    // per-key cap exists to keep a value out of the engine's `--env` argv, and
+    // no scorecard run renders one. Kept as a row because it pins the scope of
+    // the fix — an earlier attempt asked the length question for every harness
+    // and made this legal five-agent run unreachable from the page.
+    name: 'matching, the same config, which this harness accepts (B1 scope)',
+    state: {
+      harness: 'matching',
+      ab: false,
+      profile: { reference: 'five-agents', candidate: 'default' },
+    },
+    savedConfigs: SAVED,
+  },
+
   // --- discovery under a saved config: readable vs not (B3) -----------------
   {
     // The config sets a key discovery DOES read, so both layers accept it.
@@ -540,6 +636,23 @@ const MATRIX: Row[] = [
           b: '{"alsoNotAnAgent":"google/gemini-2.5-flash"}',
         },
       },
+    },
+  },
+
+  {
+    // Suggestion 10's row, and the reason `dropsConfiguration` needed the
+    // collision term: the pickers and this typed row write the same key, the
+    // pickers win, so the typed value never reaches the run. The form blocks it
+    // (`modelOverrideConflict`) and the SERVER CANNOT — by the time the spec is
+    // built only one value survives, and the spec it sees is legitimate. Without
+    // that term this row reads as FORM STRICTER THAN SERVER while the form is
+    // right, which is how a correct refusal would have been argued away.
+    name: 'matching: typed EVAL_MODEL_OVERRIDES plus model pickers (silent drop)',
+    state: {
+      harness: 'matching',
+      ab: false,
+      models: { opportunityEvaluator: 'google/gemini-2.5-flash' },
+      env: { EVAL_MODEL_OVERRIDES: { [SINGLE]: '{"opportunityEvaluator":"google/gemini-2.5-flash-lite"}' } },
     },
   },
 
@@ -720,6 +833,65 @@ describe('the matrix covers what it claims to cover', () => {
   it('exercises a scorecard harness with A/B on', () => {
     // The form's other A/B shape: two ordinary specs rather than one sides spec.
     expect(MATRIX.some((row) => row.state.ab && !SUPPORTS_SIDES[row.state.harness])).toBe(true);
+  });
+
+  it('exercises a config whose RESOLVED value is refused though the config is savable', () => {
+    // The B1 state, and the reason it needs its own assertion: every other
+    // config row is judged the same whether or not the models are folded, so
+    // dropping the fold from the form would leave them all green.
+    const rows = MATRIX.filter((row) => {
+      const name = row.state.profile?.reference;
+      if (name === undefined || name === 'default' || row.savedConfigs === undefined) return false;
+      const config = row.savedConfigs[name as keyof typeof SAVED];
+      if (config === undefined) return false;
+      const unfolded = configValueIssuesFor(row.state.harness, readableEnv(row.state.harness, config.env));
+      const folded = configValueIssuesFor(
+        row.state.harness,
+        readableEnv(row.state.harness, resolvedConfigEnv(config)),
+      );
+      return unfolded.length === 0 && folded.length > 0;
+    });
+    expect(rows.length, 'no row distinguishes a folded config from an unfolded one').toBeGreaterThan(0);
+    // And it must really be savable, or it would be caught at the Configs page
+    // and never reach a launch.
+    for (const row of rows) {
+      const config = row.savedConfigs![row.state.profile!.reference as keyof typeof SAVED]!;
+      expect(validateConfigOverrides(config), `${row.name}: config must be savable`).toEqual([]);
+    }
+  });
+});
+
+describe('the form resolves a config the way the server does', () => {
+  /**
+   * Launch.tsx and this file each reimplement `resolveProfile`'s models fold,
+   * because the real one reads node:fs and cannot enter the browser bundle.
+   * Two copies of a rule is the drift this whole file exists to catch, so both
+   * are pinned against the real resolver here.
+   */
+  it('folds models into EVAL_MODEL_OVERRIDES exactly as resolveProfile does', () => {
+    const cases: { models: Record<string, string>; env: Record<string, string> }[] = [
+      { models: {}, env: {} },
+      { models: {}, env: { CHAT_MODEL: 'google/gemini-2.5-flash' } },
+      { models: { opportunityEvaluator: 'google/gemini-2.5-flash' }, env: {} },
+      { models: FIVE_AGENT_MODELS, env: {} },
+      // Insertion order deliberately not sorted: the real resolver sorts, and a
+      // copy that did not would produce a different STRING for the same config.
+      {
+        models: { profileGenerator: 'google/gemini-2.5-flash', opportunityEvaluator: 'google/gemini-2.5-flash' },
+        env: { DISCOVERY_PROFILE_SOURCE: 'premise' },
+      },
+    ];
+    for (const config of cases) {
+      const real = resolveProfile({ name: 'pin', description: 'pin', ...config }).env;
+      expect(resolvedConfigEnv(config), JSON.stringify(config)).toEqual(real);
+    }
+  });
+
+  it('is the fold that makes the five-agent config exceed the cap', () => {
+    // The number the refusal quotes, pinned so the row cannot silently stop
+    // testing the cap if a model id changes length.
+    const value = resolvedConfigEnv(SAVED['five-agents'])[MODEL_OVERRIDE_KEY]!;
+    expect(value.length).toBeGreaterThan(200);
   });
 });
 

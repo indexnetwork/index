@@ -155,10 +155,12 @@ overrides and a small set of protocol feature flags:
   the child through `EVAL_MODEL_OVERRIDES`. Validation happens at run time: a profile
   naming an unknown agent loads and lists fine, but throws when the harness child reads
   the override.
-- `env` keys must appear in `PROFILE_ENV_ALLOWLIST` ([`ops.profiles.ts`](./ops.profiles.ts)) —
-  protocol feature flags only. Credentials, connection strings and `NODE_ENV` are
-  deliberately absent, so a profile can never repoint a run at another database or
-  provider account. Adding a key is a reviewed code change.
+- `env` keys must be offered by some harness or named by `PROFILE_ENV_ALLOWLIST`
+  ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the same boundary a config saved from the
+  site is held to, so a committed profile can set exactly what a saved config can. It was
+  briefly narrower, which made the code-reviewed artefact the more restricted one.
+  Credentials are refused outright by `isCredentialEnvKey`, so a profile can never repoint
+  a run at another database or provider account.
 - The file name must match `name`, and `default` must declare no override at all.
 - Each profile has a stable `fingerprint` (SHA-256 over models + env), recorded on every
   run record.

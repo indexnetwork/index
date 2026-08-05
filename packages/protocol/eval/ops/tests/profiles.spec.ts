@@ -3,7 +3,8 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { ENV_SECRET_KEYS } from "../ops.allowlist.js";
+import { ENV_SECRET_KEYS, PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { HARNESS_ENV_KEYS } from "../ops.envcatalog.js";
 import { ALLOWED_CONFIG_MODELS, DEFAULT_PROFILE_NAME, harnessesReading, loadProfiles, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides } from "../ops.profiles.js";
 import { HARNESS_REGISTRY } from "../ops.registry.js";
 
@@ -45,6 +46,46 @@ describe("loadProfiles", () => {
     );
 
     await expect(loadProfiles(dir)).rejects.toThrow(/DATABASE_URL/);
+  });
+
+  it("accepts a key a harness reads that PROFILE_ENV_ALLOWLIST does not name", async () => {
+    // C7: repo profiles were checked against PROFILE_ENV_ALLOWLIST while saved
+    // configs were checked against the derived catalogues, so a code-reviewed,
+    // committed profile could set STRICTLY LESS than a config saved from a
+    // browser. NEGOTIATOR_STANCE is read by the discovery graph and is absent
+    // from that list, which is what made the asymmetry visible.
+    expect(PROFILE_ENV_ALLOWLIST).not.toContain("NEGOTIATOR_STANCE");
+    expect(HARNESS_ENV_KEYS.discovery).toContain("NEGOTIATOR_STANCE");
+
+    await writeFile(
+      path.join(dir, "stance.json"),
+      JSON.stringify({ name: "stance", description: "x", models: {}, env: { NEGOTIATOR_STANCE: "concise" } }),
+    );
+
+    const profiles = await loadProfiles(dir);
+    expect(profiles.map((p) => p.name).sort()).toEqual(["default", "stance"]);
+  });
+
+  it("still rejects a credential, which no profile may set", async () => {
+    // Widening the boundary must not widen it to credentials. DISCOVERY_TARGETS
+    // is the case the shape rule cannot see — it carries connection strings but
+    // is named after what it points at — so this proves the list-based half of
+    // `isCredentialEnvKey` is reached from the profile loader too.
+    await writeFile(
+      path.join(dir, "targets.json"),
+      JSON.stringify({ name: "targets", description: "x", models: {}, env: { DISCOVERY_TARGETS: "{}" } }),
+    );
+
+    await expect(loadProfiles(dir)).rejects.toThrow(/DISCOVERY_TARGETS.*credential/);
+  });
+
+  it("rejects a key no harness reads and no protocol flag names", async () => {
+    await writeFile(
+      path.join(dir, "invented.json"),
+      JSON.stringify({ name: "invented", description: "x", models: {}, env: { NOT_A_REAL_FLAG: "1" } }),
+    );
+
+    await expect(loadProfiles(dir)).rejects.toThrow(/not offered by any harness/);
   });
 
   it("rejects a file whose name does not match its profile name", async () => {

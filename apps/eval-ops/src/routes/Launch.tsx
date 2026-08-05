@@ -5,7 +5,7 @@ import { HARNESS_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.env
 import { readableEnv, unreadEnvKeys } from '../../../../packages/protocol/eval/ops/ops.envreach';
 import { flagValueIssues } from '../../../../packages/protocol/eval/ops/ops.flags';
 import { envValueIssueForKey, modelMapBounds } from '../../../../packages/protocol/eval/ops/ops.metadata';
-import { SUPPORTS_SIDES, abSideIssues, singleConfigIssues, sidesPerRun } from '../../../../packages/protocol/eval/ops/ops.sides';
+import { SUPPORTS_SIDES, abSideIssues, configValueIssuesFor, singleConfigIssues, sidesPerRun } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
 import { EnvConfigEditor, type EnvFlagRow } from '../components/EnvConfigEditor';
 import { ModelOverrideEditor } from '../components/ModelOverrideEditor';
@@ -758,6 +758,64 @@ export function Launch() {
     return [...keys].sort();
   }, [harnessId, state.profile, state.savedConfigs, state.profiles, state.ab]);
 
+  /**
+   * The server's post-resolution verdict on the selected config, reached the
+   * server's own way.
+   *
+   * Asking merely "is the config non-empty?" was a THIRD door of the class the
+   * two conflicts above close: a config is savable whenever
+   * `validateConfigOverrides` passes, but the server judges it AFTER
+   * `resolveProfile` has folded `models` into EVAL_MODEL_OVERRIDES, and that
+   * folded value goes through every per-key rule including the length cap. Five
+   * overridable agents at the longest selectable model id resolve to 259
+   * characters, so a config the Configs page accepts, and which this form
+   * enabled, priced and confirmed, collected
+   * `EVAL_MODEL_OVERRIDES is 259 characters; no flag this harness offers takes
+   * a value longer than 200` from the server — after the spend confirmation.
+   * Four agents (209) do it too.
+   *
+   * Gated on `SUPPORTS_SIDES` because that is the server's own gate: `launchRun`
+   * runs this check for a sides-capable harness in its single shape and nowhere
+   * else, so a scorecard harness legitimately accepts a value this long —
+   * nothing renders it into argv there, it reaches the child through `env`.
+   * Asking it everywhere made the form STRICTER than the server and removed a
+   * legal five-agent run from the page.
+   *
+   * `resolveProfile` cannot be imported here — it reads node:fs — so the one
+   * thing it does that matters is done inline: folding `models` into
+   * EVAL_MODEL_OVERRIDES. `resolvedConfigEnvSpec` in
+   * launch-server-parity.test.ts pins this copy against the real resolver.
+   *
+   * Above the conditional returns, and reading `state` rather than the derived
+   * `selectedConfig`/`carriesSides` below them, because this is a hook.
+   */
+  const selectedConfigIssues = useMemo(() => {
+    if (harnessId === null || !(harnessId in HARNESS_ENV_KEYS)) return [];
+    if (SUPPORTS_SIDES[harnessId] !== true) return [];
+    // The paired shape renders no config picker and pins both columns to
+    // "default", so a stale selection cannot reach the server and must not
+    // block the run. Mirrors `carriesSides`, which is derived below.
+    if (state.ab) return [];
+    if (state.profile.reference === 'default') return [];
+    const config = state.savedConfigs.find((candidate) => candidate.name === state.profile.reference)
+      ?? state.profiles.find((candidate) => candidate.name === state.profile.reference);
+    if (config === undefined) return [];
+    const models = config.models ?? {};
+    const env: Record<string, string> = { ...(config.env ?? {}) };
+    // resolveProfile (ops.profiles.ts) writes the key only for a non-empty
+    // models block, and sorts it, because the value is compared as a string.
+    if (Object.keys(models).length > 0) {
+      env[MODEL_OVERRIDE_KEY] = JSON.stringify(
+        Object.fromEntries(Object.keys(models).sort().map((agent) => [agent, models[agent]!])),
+      );
+    }
+    // `configValueIssuesFor`, not `singleConfigIssues`: the latter checks
+    // membership against DISCOVERY_ENV_KEYS, so it answers "not readable by the
+    // discovery graph" for a `matching` config setting SMARTEST_VERIFIER_MODEL
+    // — which matching does read.
+    return configValueIssuesFor(harnessId, readableEnv(harnessId, env));
+  }, [harnessId, state.ab, state.profile, state.savedConfigs, state.profiles]);
+
   // Every hook is above this line: the two returns below are conditional.
   if (state.error !== null) {
     return (
@@ -906,11 +964,18 @@ export function Launch() {
     ? undefined
     : state.savedConfigs.find((candidate) => candidate.name === state.profile.reference)
       ?? state.profiles.find((candidate) => candidate.name === state.profile.reference);
+  /**
+   * Whether the config sets anything this harness reads — the emptiness
+   * question alone, which is what `envEmpty` needs. Kept separate from
+   * {@link selectedConfigIssues}: a config can configure this harness and still
+   * be refused for a value, and the two produce different copy.
+   */
   const configConfiguresThisHarness =
     selectedConfig !== undefined
     && harnessId !== null
     && (Object.keys(readableEnv(harnessId, selectedConfig.env ?? {})).length > 0
       || Object.keys(selectedConfig.models ?? {}).length > 0);
+  const configValueIssues = selectedConfigIssues.map((issue) => issue.message);
   const envEmpty =
     supportsSides
     && state.env.length === 0
@@ -945,6 +1010,11 @@ export function Launch() {
     || modelOverrideConflict
     || configEnvConflict.length > 0
     || configModelConflict.length > 0
+    // Per-key refusals on the selected config. `envEmpty` already covers its
+    // emptiness refusal, and only for a sides-capable harness; these apply to
+    // every harness, since the fold into EVAL_MODEL_OVERRIDES and the per-key
+    // rules are not discovery-specific.
+    || configValueIssues.length > 0
     || envIssues.length > 0;
   const saveConfigBlocked =
     state.configName.trim() === '' ||
@@ -1179,6 +1249,26 @@ export function Launch() {
                     measure. Add a flag, or choose a config this harness reads.</>
                 : <>This config sets them and the run will record them, but this harness's code never
                     reads them, so they will not affect the result.</>}
+            </p>
+          )}
+
+          {/*
+            * Refusals the SERVER would answer for the selected config, other than
+            * the emptiness one the block above already words in the operator's
+            * terms. Rendered beside the picker that produced them, because the
+            * only fix is to choose a different config or edit that one: nothing
+            * on this page can change a saved config's values.
+            *
+            * Reachable today via EVAL_MODEL_OVERRIDES: a config selecting four
+            * or five agents resolves to 209/259 characters, which the per-key
+            * length cap refuses. Without this the run was enabled, priced and
+            * confirmed before the server said so.
+            */}
+          {configValueIssues.length > 0 && (
+            <p className="text-term-red">
+              The saved config “{state.profile.reference}” cannot run on {harnessId}:{' '}
+              {configValueIssues.join('; ')}. Choose another config, or edit that one on the Configs
+              page.
             </p>
           )}
 

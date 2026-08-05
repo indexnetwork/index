@@ -402,40 +402,45 @@ steps in order.
 #### Launching it from the eval-ops site
 
 The eval-ops console lists `discovery` as a fifth harness and can launch it:
-it is in `OPS_HARNESSES` (`packages/protocol/eval/ops/ops.registry.ts:8`) with a
-descriptor at `ops.registry.ts:190-243`. That descriptor is the only one carrying
-`cwd: "services/api"` (`ops.registry.ts:212`), because `bun run eval:discovery`
+it is in `OPS_HARNESSES` (`packages/protocol/eval/ops/ops.registry.ts`) with its
+own entry in `HARNESS_REGISTRY`. That entry is the only one carrying
+`cwd: "services/api"`, because `bun run eval:discovery`
 resolves nowhere else; the server turns that into a step plan
-(`harnessSteps`, `ops.server.ts:1200-1224`). Everything below is the site's
+(`harnessSteps`, `ops.server.ts`). Everything below is the site's
 behaviour, not the CLI's.
 
+(Symbol names rather than line numbers throughout this section: the descriptor
+has moved twice, and a citation that points at the wrong line is worse than none
+— `ops.registry.ts:190` once landed inside a neighbouring harness's prose.)
+
 **What the server must have configured.** Credentials never come from the
-browser. `HARNESS_CREDENTIALS["discovery"]` (`ops.server.ts:1053-1117`) names
+browser. `HARNESS_CREDENTIALS["discovery"]` (`ops.server.ts`) names
 three different kinds of thing:
 
 | Variable | Where it comes from |
 | --- | --- |
-| `NEON_API_KEY` | **The ops server's own environment** — `keys`, `ops.server.ts:1054`. |
-| `DISCOVERY_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys`, `ops.server.ts:1054`. |
-| `OPENROUTER_API_KEY` | **The ops server's own environment** — `runtimeKeys`, `ops.server.ts:1087`. No gate asks for it; the child cannot run a model or an embedding without it. |
-| `REDIS_URL` | **The ops server's own environment** — `runtimeKeys`, `ops.server.ts:1087`. No gate asks for it; the HyDE cache write is uncaught, so an unreachable Redis fails the graph. |
-| `DISCOVERY_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`, `ops.server.ts:1088`). |
-| `TEST_DATABASE_SAFE=1` | Same: asserted, not required (`asserts`, `ops.server.ts:1088`). |
+| `NEON_API_KEY` | **The ops server's own environment** — `keys` in `HARNESS_CREDENTIALS`. |
+| `DISCOVERY_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys` in `HARNESS_CREDENTIALS`. |
+| `OPENROUTER_API_KEY` | **The ops server's own environment** — `runtimeKeys`. No gate asks for it; the child cannot run a model or an embedding without it. |
+| `REDIS_URL` | **The ops server's own environment** — `runtimeKeys`. No gate asks for it; the HyDE cache write is uncaught, so an unreachable Redis fails the graph. |
+| `DISCOVERY_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`). |
+| `TEST_DATABASE_SAFE=1` | Same: asserted, not required (`asserts`). |
 
 So four variables have to be set and two do not — setting the two attestations in
 the server's environment anyway changes nothing about this route, because the
 server writes its own values over whatever the child would have inherited
-(`resolveHarnessEnvironment`, `ops.server.ts:1162-1164`). The comment at
-`ops.server.ts:1030-1042` records why the server is entitled to assert them.
-`DATABASE_URL` is *deleted* from what the child inherits (`unset`,
-`ops.server.ts:1109`), so the harness script's own `--env-file` decides it.
+(`resolveHarnessEnvironment`). The docblock on `HARNESS_CREDENTIALS`
+records why the server is entitled to assert them.
+`DATABASE_URL` is *deleted* from what the child inherits (`unset` in
+`HARNESS_CREDENTIALS`), so the harness script's own `--env-file` decides it.
 
 **Why the last two are pre-checked at all**, when the four scorecard harnesses
 read `OPENROUTER_API_KEY` too and nothing checks it for them
-(`NO_CREDENTIALS`, `ops.server.ts:997-1014`): the order of this harness's run.
-It resets both Neon branches on entry and only then spawns the children that read
-these variables, so a server missing one used to pass every check on this route,
-destroy both branches, and fail afterwards. They are also the easiest to miss,
+(`NO_CREDENTIALS`, `ops.server.ts`, `NO_CREDENTIALS`): the order of this harness's run.
+It resets the Neon branches its shape needs on entry — both for a comparison,
+`eval-ab-a` alone for a single configuration — and only then spawns the children
+that read these variables, so a server missing one used to pass every check on
+this route, destroy those branches, and fail afterwards. They are also the easiest to miss,
 because nothing names them: they reach the child by inheritance from
 `bun --env-file=../../.env.test` (`services/api/package.json:39`), `.env.test` is
 gitignored, and Bun exits 0 without a warning when an `--env-file` is absent — so
@@ -922,7 +927,7 @@ Two Neon projects exist:
    - **`production`** (`br-fragrant-brook-ahexgsek`) — production data. **Never touch.**
    - **`dev`** (`br-late-tooth-ahlsfgdb`) — used by the Railway `dev` environment. Database name: `protocol_prod`.
    - **`eval-discovery-base`** (`br-wispy-queen-ahmxwx1s`) — the **protected** seeded fixture base for the discovery evals. Database name: `protocol_eval`. Seeded and verified by `eval:discovery-env-matrix-base`; never used by a run directly.
-   - **`eval-ab-a`** (`br-old-meadow-ahw6rnu1`) and **`eval-ab-b`** (`br-snowy-math-ahnnrwew`) — children of `eval-discovery-base`, one per A/B side, each with its own endpoint on `protocol_eval`. **Every discovery run resets both from the base before it spawns anything**, so they hold no data worth keeping and only one run may use them at a time. Their ids, endpoint ids and connection strings are what `DISCOVERY_TARGETS` attests; see **Discovery Eval** above.
+   - **`eval-ab-a`** (`br-old-meadow-ahw6rnu1`) and **`eval-ab-b`** (`br-snowy-math-ahnnrwew`) — children of `eval-discovery-base`, one per A/B side, each with its own endpoint on `protocol_eval`. **A discovery run resets the branches its shape needs from the base before it spawns anything** — both for a comparison, `eval-ab-a` alone for a single configuration (`abRunningTargets`, `services/api/src/cli/discovery.main.ts`) — so they hold no data worth keeping and only one run may use them at a time. Their ids, endpoint ids and connection strings are what `DISCOVERY_TARGETS` attests; see **Discovery Eval** above.
 
 Railway dev deployments run `db:migrate` against the `dev` branch of the Protocol project.
 

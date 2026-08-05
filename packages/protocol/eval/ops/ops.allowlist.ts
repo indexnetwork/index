@@ -33,6 +33,13 @@ import { HARNESS_ENV_KEYS } from "./ops.envcatalog.js";
 export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
   "OPENROUTER_API_KEY",
   "OPENROUTER_BASE_URL",
+  // Carries `protocol_eval` connection strings, passwords included — .env.example
+  // §15d says so in as many words. Its name has no credential-shaped segment
+  // (`TARGETS` is not `KEY`, `TOKEN`, `SECRET` or `URL`), so the shape rule below
+  // does NOT match it and the list is its only guard. This is the case the list
+  // exists for, and the reason the shape rule alone is not sufficient: a secret
+  // can be named after what it points at rather than what it is.
+  "DISCOVERY_TARGETS",
 ]);
 
 /**
@@ -53,6 +60,12 @@ export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
  * So the rule inverts: a key is a credential unless its name shows it is not.
  * A new secret named the way secrets are named is refused the moment it appears,
  * by a rule nobody has to remember to update.
+ *
+ * "Named the way secrets are named" is the limit of that promise, and
+ * `DISCOVERY_TARGETS` is the counter-example living in this repo: it carries
+ * connection strings with passwords and matches nothing here, because it is
+ * named after what it points at. The list above is what catches it. Neither
+ * guard subsumes the other.
  *
  * `_URL` is in the list because an endpoint origin is the same risk class as a
  * key: `OPENROUTER_BASE_URL` repoints a run at another provider, `DATABASE_URL`

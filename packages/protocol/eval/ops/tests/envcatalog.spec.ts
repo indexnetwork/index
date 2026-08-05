@@ -171,10 +171,29 @@ describe("ENV_SECRET_KEYS", () => {
     // If a secret stopped being reachable, excluding it would be theatre and
     // this test would say so. Scanned directly rather than read from the
     // catalogue, which by construction cannot contain them.
+    //
+    // Restricted to the keys a HARNESS reads. DISCOVERY_TARGETS is a credential
+    // this system holds but no harness entry point reads: it is consumed by the
+    // discovery ENGINE's bootstrap (services/api/src/cli/discovery.ts), outside
+    // every closure scanned here. Its exclusion is load-bearing at the request
+    // boundary rather than in the catalogue, which `isCredentialEnvKey` covers.
+    const harnessRead = ENV_SECRET_KEYS.filter((key) => key !== "DISCOVERY_TARGETS");
+    expect(harnessRead.length, "the reachability claim must cover something").toBeGreaterThan(0);
     for (const harness of OPS_HARNESSES) {
       const entry = path.join(PROTOCOL_ROOT, HARNESS_ENTRY_POINTS[harness]);
-      const reachable = reachableEnvKeys(entry, ENV_SECRET_KEYS);
-      expect([...reachable].sort()).toEqual([...ENV_SECRET_KEYS].sort());
+      const reachable = reachableEnvKeys(entry, harnessRead);
+      expect([...reachable].sort()).toEqual([...harnessRead].sort());
+    }
+  });
+
+  it("refuses DISCOVERY_TARGETS at the request boundary, which is its only guard", () => {
+    // The key the shape rule cannot see. It carries protocol_eval connection
+    // strings with passwords (.env.example §15d), and is named after what it
+    // points at rather than what it is, so `CREDENTIAL_NAME_PATTERN` does not
+    // match it. Without the list entry a browser could set it.
+    expect(isCredentialEnvKey("DISCOVERY_TARGETS")).toBe(true);
+    for (const harness of OPS_HARNESSES) {
+      expect(HARNESS_ENV_KEYS[harness]).not.toContain("DISCOVERY_TARGETS");
     }
   });
 });
@@ -238,26 +257,29 @@ describe("credential shape", () => {
     }
   });
 
-  it("covers the two named secrets by shape alone, so the list is redundant", () => {
-    // The design doc claims deleting ENV_SECRET_KEYS would change nothing,
-    // because the shape rule already covers both entries — and keeps the list
-    // only to name the two keys this system actually holds. That claim was
-    // unpinned: `isCredentialEnvKey` consults the list FIRST, so every test
-    // above passes whether or not the shape rule covers these two names, and
-    // the nearest test exercises only names that were never on the list.
+  it("says exactly which named secrets the shape rule covers, and which it does not", () => {
+    // `isCredentialEnvKey` consults the list FIRST, so every other test passes
+    // whether or not the shape rule covers a listed name. This applies the shape
+    // rule ALONE to each listed key, and pins the split.
     //
-    // This is the missing half: the shape rule alone, applied to the very keys
-    // the list names. If a rename escapes it (OPENROUTER_APIKEY, say) this
-    // fails, and the list stops being redundant — which is the fact the doc
-    // asserts and the reason the list is safe to keep.
+    // The two provider keys are shape-covered: the list is redundant for them,
+    // and a rename that escaped the rule (OPENROUTER_APIKEY, say) would fail
+    // here. DISCOVERY_TARGETS is NOT, and must not silently become so-called
+    // redundant: it is named after what it points at, which is exactly the case
+    // the list exists to catch. Neither guard subsumes the other, and this test
+    // is what stops either being described as sufficient.
     const source = readFileSync(path.join(import.meta.dir, "..", "ops.allowlist.ts"), "utf8");
     const literal = source.match(/const CREDENTIAL_NAME_PATTERN\s*=\s*\/(.+)\/([a-z]*)\s*;/);
     if (!literal) throw new Error("CREDENTIAL_NAME_PATTERN not found in ops.allowlist.ts");
     const shapeOnly = new RegExp(literal[1]!, literal[2]!);
 
-    expect(ENV_SECRET_KEYS.length).toBeGreaterThan(0);
-    for (const key of ENV_SECRET_KEYS) {
-      expect(shapeOnly.test(key), `${key} must be caught by the shape rule alone`).toBe(true);
+    const covered = ENV_SECRET_KEYS.filter((key) => shapeOnly.test(key));
+    const listOnly = ENV_SECRET_KEYS.filter((key) => !shapeOnly.test(key));
+    expect(covered.sort()).toEqual(["OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"]);
+    expect(listOnly).toEqual(["DISCOVERY_TARGETS"]);
+    // And the one the shape rule misses is still refused, by the list.
+    for (const key of listOnly) {
+      expect(isCredentialEnvKey(key), `${key} must still be refused`).toBe(true);
     }
   });
 });

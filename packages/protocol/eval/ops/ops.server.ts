@@ -1062,10 +1062,13 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
      * The two variables the child composition needs and no gate asks for.
      *
      * They are here because of the ORDER this harness runs in: the parent resets
-     * both Neon branches on entry and only then spawns the children that read
-     * these. Without the pre-check, a server missing one passes every check on
-     * this route, destroys both branches, and fails afterwards — the expensive
-     * half of the run already spent on a configuration that could never finish.
+     * the Neon branches the run's shape needs on entry — both for a comparison,
+     * eval-ab-a alone for a single configuration (`abRunningTargets`,
+     * services/api/src/cli/discovery.main.ts) — and only then spawns the children
+     * that read these. Without the pre-check, a server missing one passes every
+     * check on this route, destroys those branches, and fails afterwards — the
+     * expensive half of the run already spent on a configuration that could never
+     * finish.
      *
      * They arrive by inheritance rather than by gate, which is why nothing else
      * catches them: `eval:discovery` is `bun --env-file=../../.env.test ...`
@@ -1099,9 +1102,11 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
     // the eval fixture database, and handing that to a child tree this same
     // server is asserting TEST_DATABASE_SAFE=1 over is exactly the mistake worth
     // preventing. Either side's URL out of the manifest would be a lie about the
-    // other side. And the parent A/B process composes no database at all: it
-    // resets two branches through the Neon control plane and spawns one child per
-    // side, each of which sets its own DATABASE_URL from the attested manifest
+    // other side. And the parent discovery process composes no database at all:
+    // it resets the branches the run's shape needs through the Neon control plane
+    // and spawns one child per side — two of each for a comparison, one of each
+    // for a single configuration — each of which sets its own DATABASE_URL from
+    // the attested manifest
     // (discovery.ts) and is then re-checked against that side's branch
     // (`assertAbSideEnvironment`).
     //
@@ -1258,7 +1263,7 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // the credentials its gate demands, and the variables its child needs after
   // the run's destructive step has already happened. A browser never sends
   // either, and a server that does not hold them refuses here rather than
-  // resetting two branches and spawning children to die. 503 rather than 4xx:
+  // resetting branches and spawning children to die. 503 rather than 4xx:
   // the request is valid, and it is this server that is not configured to serve it.
   const harnessEnv = resolveHarnessEnvironment(harness, context.serverEnv ?? {});
   if (!harnessEnv.ok) return json({ error: harnessEnv.reason }, 503);

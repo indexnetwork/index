@@ -3,9 +3,9 @@
  *
  * The first four emit the shared scorecard artifact envelope and are scored
  * against a committed baseline. `discovery` emits the same envelope but has
- * no baseline and never will: it compares two operator-chosen environment
- * configurations against each other, and arbitrary configurations have nothing
- * to be a baseline of.
+ * no baseline and never will: it measures operator-chosen environment
+ * configurations — one on its own, or two against each other when launched with
+ * `sides` — and arbitrary configurations have nothing to be a baseline of.
  */
 export type OpsHarness = "matching" | "profile" | "premise" | "opportunity" | "discovery";
 
@@ -115,7 +115,8 @@ export interface HarnessDescriptor {
    * targets to the sides being run). A single string here was quoted verbatim
    * into the confirmation and told an operator launching one configuration that
    * both branches would be reset — the same false claim the engine's own contract
-   * was rewritten to eliminate. `resetsFor` is how the form asks the right one.
+   * was rewritten to eliminate. The launch form reads the shape's own entry
+   * (`resets.sides` or `resets.single`) rather than one string for both.
    */
   resets?: HarnessResets;
   /** Model-overridable agents this harness exercises, in pipeline order. */
@@ -202,9 +203,12 @@ export interface EvalRunSpec {
   overrides?: { models: Record<string, string>; env: Record<string, string> };
   flags: RunFlags;
   /**
-   * Required for discovery and invalid for every other harness: the
-   * scorecard harnesses score one configuration against a committed baseline,
-   * so a second configuration would have nothing to mean.
+   * Optional for discovery and invalid for every other harness: discovery
+   * measures a single configuration when launched without `sides` and compares
+   * a pair when launched with them. The scorecard harnesses score one
+   * configuration against a committed baseline, so a second configuration would
+   * have nothing to mean — `SUPPORTS_SIDES` (ops.sides.ts) is the predicate, and
+   * it is "may", not "must".
    */
   sides?: AbSides;
 }
