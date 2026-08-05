@@ -328,7 +328,9 @@ steps in order.
    via the API, then record the project id, the base branch id, and each side's
    branch id, endpoint id and `DATABASE_URL` in the manifest above. Attestation
    fails on any of those being wrong, and the failure is deliberately
-   non-specific.
+   non-specific. All three branches already exist and their ids are listed under
+   **Neon Database Topology** below; the endpoint ids and `DATABASE_URL`s are not
+   written down anywhere in this repo, because the latter carry passwords.
 
 4. **Smoke it: one case, one repetition.**
 
@@ -353,12 +355,146 @@ steps in order.
    exit code is `3` and the run supports no comparison, however good the numbers
    look.
 
+#### Launching it from the eval-ops site
+
+The eval-ops console lists `discovery-ab` as a fifth harness and can launch it:
+it is in `OPS_HARNESSES` (`packages/protocol/eval/ops/ops.registry.ts:8`) with a
+descriptor at `ops.registry.ts:200-235`. That descriptor is the only one carrying
+`cwd: "services/api"` (`ops.registry.ts:204`), because `bun run eval:discovery-ab`
+resolves nowhere else; the server turns that into a step plan
+(`harnessSteps`, `ops.server.ts:1129-1153`). Everything below is the site's
+behaviour, not the CLI's.
+
+**What the server must have configured.** Credentials never come from the
+browser. `HARNESS_CREDENTIALS["discovery-ab"]` (`ops.server.ts:1031-1061`) splits
+the harness's four gate variables into two different kinds:
+
+| Variable | Where it comes from |
+| --- | --- |
+| `NEON_API_KEY` | **The ops server's own environment** — `keys`, `ops.server.ts:1032`. |
+| `DISCOVERY_AB_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys`, `ops.server.ts:1032`. |
+| `DISCOVERY_AB_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`, `ops.server.ts:1033`). |
+| `TEST_DATABASE_SAFE=1` | Same: asserted, not required (`asserts`, `ops.server.ts:1033`). |
+
+So two variables have to be set and two do not — setting the two attestations in
+the server's environment anyway changes nothing about this route, because the
+server writes its own values over whatever the child would have inherited
+(`resolveHarnessEnvironment`, `ops.server.ts:1100-1102`). The comment at
+`ops.server.ts:1008-1020` records why the server is entitled to assert them.
+`DATABASE_URL` is *deleted* from what the child inherits (`unset`,
+`ops.server.ts:1054`), so the harness script's own `--env-file` decides it.
+
+A local server reads them from the repo-root `.env.test`, which `eval:web` loads
+(`packages/protocol/package.json:46`); a deployed one reads its own process
+environment (`serverEnv: process.env`, `ops.server.ts:1922`).
+
+Without the two keys the launch route answers **503**, naming exactly what is
+missing: `Refusing to launch discovery-ab: this server has no NEON_API_KEY or
+DISCOVERY_AB_TARGETS configured. …` (`resolveHarnessEnvironment`,
+`ops.server.ts:1092-1098`), returned at `ops.server.ts:1185-1186`. 503 and not a
+4xx on purpose — the request is valid and it is the server that is not configured
+to serve it. A blank value counts as absent (`ops.server.ts:1092`). The message
+names variables, never values.
+
+**One run in flight, ever — including after a restart.** The two Neon branches
+are a shared resource, so `EXCLUSIVE_HARNESSES` (`ops.queue.ts:35-43`) gives
+`discovery-ab`, and only it, an exclusive slot. A second launch is refused with
+**409** naming the run that holds it (`exclusiveRefusal`,
+`ops.server.ts:1111-1116`; returned at `ops.server.ts:1178`, and again at
+`ops.server.ts:1255` for two launches that raced past the first check).
+`EVAL_OPS_MAX_CONCURRENT_RUNS` cannot open this: it is a separate rule
+(`resolveConcurrency`, `ops.queue.ts:9-12`) and no value of it is consulted
+here. The slot survives a
+server restart because `exclusiveConflict` reads the run store as well as this
+process's queue (`ops.queue.ts:128-134`) — a child spawned by a server that then
+died keeps running, and a queue rebuilt in the new process would otherwise admit
+a second run that resets `eval-ab-a` and `eval-ab-b` underneath it. A stored
+record holds the slot only while its pid is genuinely alive
+(`storedRecordHoldsSlot`, `ops.queue.ts:165-169`), so the other restart — the
+container is replaced and the child dies with it — unblocks the harness instead
+of stranding it behind a file nobody can delete.
+
+**Both sides always run, so the workload is cases × runs × 2.**
+`SIDES_PER_RUN["discovery-ab"]` is 2 (`ops.sides.ts:54-60`) and is the single
+source for both the workload recorded on the run record (`renderRun`,
+`ops.argv.ts:296`) and the number the launch form prices and displays
+(`Launch.tsx:546,554`, rendered at `Launch.tsx:840-843`), so the two cannot
+disagree. The A/B checkbox is pinned on and disabled for this harness
+(`Launch.tsx:646`), because one run is already both sides.
+
+The spend confirmation fires for **every** run of this harness, filtered or not
+(`Launch.tsx:368` — `isFullCorpus() || requiresSides`), because `--case` narrows
+what is measured, not what is destroyed: a filtered run still resets both
+branches. The confirmation names the destruction in the descriptor's own words,
+`resets: "both Neon evaluation branches"` (`ops.registry.ts:233`, rendered at
+`Launch.tsx:872-876`), rather than only counting invocations.
+
+**No baseline, and there never will be one, so the run view shows a pair rather
+than a regression verdict.** The run page does not even fetch a baseline for a
+sides harness (`Run.tsx:161`), and renders `AbComparison` in place of the
+scorecard frame (`Run.tsx:366-371`) — the scorecard would report this run's
+aggregate pass rate, which is the mean across two *different* configurations and
+therefore a score of neither. `AbComparison` says so on the page
+(`AbComparison.tsx:15-18` and `:28-31`) and returns `no-verdict` rather than a
+comparison whenever the artifact does not support one (`deriveAbView`,
+`apps/eval-ops/src/lib/ab.ts:313-360`). The overview row shows neither a
+baseline nor a latest cell for it, for the same two reasons
+(`Overview.tsx:129-142`).
+
+**A saved config cannot be selected for it.** The server refuses a named profile
+alongside `sides` (`ops.argv.ts:147-156`) and refuses ad-hoc `overrides`
+alongside `sides` (`ops.argv.ts:157-166`), both as 400s; `renderRun` throws on
+the same pair a second time, because that is the layer that would otherwise spend
+on it (`ops.argv.ts:243-248`). The reason is that a config moves both sides
+identically and so cannot change the difference being measured: its models apply
+under both sides at once, and its `env` block would set a shared baseline for the
+allowlisted keys nobody is comparing — unrecorded in the artifact, whose
+configuration provenance is the per-case `configDeltas` naming only the per-side
+keys. The form therefore renders no Config picker for this harness and states
+that on the page (`Launch.tsx:666-671`).
+
+**The nine keys a side may set** are `DISCOVERY_AB_ENV_KEYS`
+(`packages/protocol/eval/ops/ops.allowlist.ts:68-78`) — the same nine as the
+CLI's `AB_FLAGS`, which is a copy the two sides keep honest from both ends:
+`eval/ops/tests/argv.spec.ts:392-406` parses the engine's literal and compares
+the sets, and `services/api/src/cli/tests/discovery-ab.flags.spec.ts:32` compares
+them as imported values. The launch form's per-side key picker offers exactly
+these nine and nothing else (`Launch.tsx:447-451`):
+
+```
+DISCOVERY_ALLOWED_TYPES            DISCOVERY_CONTEXT_TO_INTENT
+DISCOVERY_PROFILE_SOURCE           DISCOVERY_REJECTION_COOLDOWN_DAYS
+DISCOVERY_SOURCE_PREMISE_LIMIT     NEGOTIATION_INCLUDE_OTHER_INTENTS
+NEGOTIATION_MAX_TURNS_AMBIENT      NEGOTIATION_MAX_TURNS_CHAT
+RUN_OPPORTUNITY_EVAL_IN_PARALLEL
+```
+
+**The other seven allowlisted flags are not reachable from the discovery graph,
+and this harness does not test them.** `PROFILE_ENV_ALLOWLIST`
+(`ops.allowlist.ts:12-29`) has sixteen entries; the seven below are absent from
+the nine above. They are unreachable from the discovery graph, so this harness
+cannot test them: no picker offers them, and a request naming one anyway is
+refused by name — `<KEY> is not readable by the discovery graph; this harness
+cannot test it` (`abSideIssues`, `ops.sides.ts:142-144`), which the form and the
+server both run:
+
+```
+POOL_QUESTIONS_MODE       POOL_QUESTIONS_PUSH      POOL_QUESTIONS_RANKING
+POOL_QUESTIONS_MINING     OUTCOME_QUESTIONS_MODE   INTRODUCER_DISCOVERY_ENABLED
+NEGOTIATION_EVIDENCE_QUESTIONS_MODE
+```
+
+Putting `discovery-ab` on the site therefore covers nine of the sixteen editable
+flags and no more. Finding these seven a harness is tracked as **IND-630**; until
+then, editing one on the Configs page still moves nothing any harness reads.
+
 ### Eval Ops Site
 
 A local-first web console over the eval artifacts: browse baselines and runs,
 launch the four scorecard harnesses (`matching`, `profile`, `premise`,
-`opportunity`) with live streaming output, compare runs A/B, and control the
-seeded test database. The headless core is `packages/protocol/eval/ops/` (the
+`opportunity`) and the `discovery-ab` comparison harness (see **Launching it
+from the eval-ops site** above) with live streaming output, compare runs A/B, and
+control the seeded test database. The headless core is `packages/protocol/eval/ops/` (the
 `ops` eval suite); the UI is the `apps/eval-ops/` workspace.
 
 ```bash
@@ -663,9 +799,11 @@ See `docs/guides/getting-started.md` for full setup guide.
 Two Neon projects exist:
 
 1. **Protocol-dev-europe** (`patient-pine-89907813`, `aws-eu-central-1`) — local development database. Developers connect here from their machines.
-2. **Protocol** (`shiny-cloud-34341469`, `aws-us-east-1`) — has two branches:
+2. **Protocol** (`shiny-cloud-34341469`, `aws-us-east-1`) — has these branches:
    - **`production`** (`br-fragrant-brook-ahexgsek`) — production data. **Never touch.**
    - **`dev`** (`br-late-tooth-ahlsfgdb`) — used by the Railway `dev` environment. Database name: `protocol_prod`.
+   - **`eval-discovery-base`** (`br-wispy-queen-ahmxwx1s`) — the **protected** seeded fixture base for the discovery evals. Database name: `protocol_eval`. Seeded and verified by `eval:discovery-env-matrix-base`; never used by a run directly.
+   - **`eval-ab-a`** (`br-old-meadow-ahw6rnu1`) and **`eval-ab-b`** (`br-snowy-math-ahnnrwew`) — children of `eval-discovery-base`, one per A/B side, each with its own endpoint on `protocol_eval`. **Every discovery-ab run resets both from the base before it spawns anything**, so they hold no data worth keeping and only one run may use them at a time. Their ids, endpoint ids and connection strings are what `DISCOVERY_AB_TARGETS` attests; see **Discovery A/B Eval** above.
 
 Railway dev deployments run `db:migrate` against the `dev` branch of the Protocol project.
 
