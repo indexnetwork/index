@@ -990,7 +990,13 @@ export interface HarnessCredentialRequirement {
    * be pointed at names it here rather than hoping nobody inherits it.
    */
   unset: readonly string[];
-  /** What an operator must configure, appended to the refusal. Empty when `keys` is. */
+  /**
+   * What an operator must configure, appended to the refusal.
+   *
+   * Empty only when both `keys` and `runtimeKeys` are: the refusal is raised for
+   * a missing key from either list (`resolveHarnessEnvironment`), so advice that
+   * covered `keys` alone would leave a `runtimeKeys` refusal with nothing to act on.
+   */
   advice: string;
 }
 

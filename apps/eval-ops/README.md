@@ -3,8 +3,9 @@
 An internal console for the protocol's eval harnesses: browse committed baselines and run
 reports, launch a run and watch its log stream live, compare two artifacts, and reset the
 test-database fixture. **Local by default**, and reachable from exactly one deployed origin
-when `EVAL_OPS_PUBLIC_ORIGIN` names it — which is how the Railway service below runs. Every
-route needs a verified `@index.network` Index account in both postures.
+when `EVAL_OPS_PUBLIC_ORIGIN` names it — which is how the Railway service below runs. In
+both postures every route needs a verified `@index.network` Index account, except the three
+that make signing in possible.
 
 It is a thin client. Every decision that matters — what may run, under which
 configuration, against which database — is made server-side in
@@ -77,7 +78,10 @@ consumer resets its accumulator on reconnect instead of rendering the log twice.
 
 - **It binds loopback.** `127.0.0.1` unless `EVAL_OPS_BIND` is set (`EVAL_OPS_PORT` changes
   the port).
-- **Every route needs an Index session** except the two that make signing in possible. See
+- **Every route needs an Index session** except the three that make signing in possible:
+  `GET /api/auth/status`, `POST /api/auth/login` and `POST /api/auth/session`
+  (`PUBLIC_ROUTES` in `packages/protocol/eval/ops/ops.server.ts`). `/callback` is not under
+  `/api` and is handled ahead of the gate, because it is what establishes a session. See
   [Authentication](#authentication) below.
 - **Do not set `EVAL_OPS_BIND` locally, and do not treat it as the thing that keeps the
   site local.** What bounds who can reach it is the pair of allowlists: the API refuses
