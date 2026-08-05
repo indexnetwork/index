@@ -9,7 +9,7 @@ import { log } from '@/lib/logger';
 
 const logger = log.ui.from('RequestNetworkModal');
 
-const SIZE_OPTIONS = ['Fewer than 25', '25–100', '100–500', 'More than 500'];
+const SIZE_OPTIONS = ['Under 100', '100 – 1K', '1K – 10K', '10K+'];
 
 interface RequestNetworkModalProps {
   open: boolean;
@@ -22,7 +22,6 @@ interface RequestNetworkModalProps {
 export default function RequestNetworkModal({ open, onOpenChange, onSubmit, initial }: RequestNetworkModalProps) {
   const [name, setName] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [audience, setAudience] = useState('');
   const [expectedSize, setExpectedSize] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,7 +33,6 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
     if (open) {
       setName(initial?.title ?? '');
       setPurpose(initial?.purpose ?? '');
-      setAudience(initial?.audience ?? '');
       setExpectedSize(initial?.expectedSize ?? '');
       setNotes(initial?.notes ?? '');
       setSubmitted(null);
@@ -49,7 +47,6 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
       const request = await onSubmit({
         name: name.trim(),
         purpose: purpose.trim() || undefined,
-        audience: audience.trim() || undefined,
         expectedSize: expectedSize || undefined,
         notes: notes.trim() || undefined,
       });
@@ -109,11 +106,11 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-1.5">What is this network for?</label>
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">What are you hoping to build?</label>
                   <Textarea
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="Who is it for, and what should people or agents be able to discover through it?"
+                    placeholder="Who is it for, who do you expect to join, and what should people or agents be able to discover through it?"
                     rows={3}
                     disabled={isSubmitting}
                     className="resize-none"
@@ -121,12 +118,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-1.5">Who do you expect to join?</label>
-                  <Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. founders, researchers, local residents" disabled={isSubmitting} />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">Expected size</label>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">How many people are you hoping to bring together?</label>
                   <div className="grid grid-cols-2 gap-2">
                     {SIZE_OPTIONS.map((opt) => (
                       <button
@@ -159,7 +151,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
                 </div>
 
                 <p className="text-xs text-gray-500">
-                  Every request is currently reviewed by the Index team. We&apos;ll get back to you personally.
+                  Every request is currently reviewed by the Index team. We&apos;ll get back to you personally, usually within a day or two.
                 </p>
 
                 <div className="flex justify-end gap-3 pt-1">
