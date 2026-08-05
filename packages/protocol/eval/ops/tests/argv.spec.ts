@@ -702,6 +702,38 @@ describe("renderRun sides", () => {
     ).toThrow(/both sides at once/);
   });
 
+  /**
+   * What DISCOVERY_AB_FLAGS' comment in ops.registry.ts rests on. `--no-save` is
+   * the one argv that list does not cover, and the engine would silently drop it
+   * (parseAbRunArgs keeps only the flags it knows) — so the claim that the site
+   * never sends it has to be checked rather than assumed. renderRun appends it
+   * for `resolved.experimental` alone, and the two producers of that flag (a
+   * non-default profile, ad-hoc overrides) are both refused alongside `sides` by
+   * the test above, while `sides` is mandatory here.
+   */
+  it("never renders --no-save for discovery-ab, because no run of it can be experimental", () => {
+    const rendered = renderRun(
+      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 2 }, sides: SIDES },
+      DEFAULT,
+      REPORT,
+    );
+
+    expect(rendered.argv).not.toContain("--no-save");
+    // Vacuity guard: the same renderer does append it, so the absence above is a
+    // property of this harness's runs and not of this call.
+    expect(
+      renderRun({ kind: "eval", harness: "matching", profile: "claude-evaluator", flags: {} }, EXPERIMENT, REPORT).argv,
+    ).toContain("--no-save");
+    // And a sides run under that same experimental profile never renders at all.
+    expect(() =>
+      renderRun(
+        { kind: "eval", harness: "discovery-ab", profile: "claude-evaluator", flags: {}, sides: SIDES },
+        EXPERIMENT,
+        REPORT,
+      ),
+    ).toThrow();
+  });
+
   it("refuses to render a pair the engine would refuse", () => {
     expect(() =>
       renderRun(

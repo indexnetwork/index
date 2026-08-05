@@ -101,12 +101,20 @@ const TIER_FLAG: HarnessFlag = {
  * configure. renderRun is the last thing that can refuse it, and it refuses on
  * exactly this list, which is what registry.spec.ts pins.
  *
- * One control the server already emits and this engine already drops:
- * renderRun appends --no-save for an experimental profile (ops.argv.ts), and
- * discovery-ab ignores it. Harmless today — the server always passes --report,
- * abRunReportPath honours it, and this harness has no baseline or rolling run
- * history to poison — but it is a flag the site sends into a void, so whoever
- * gives discovery-ab a save path of its own owes it a real --no-save.
+ * The one argv this list does not cover is --no-save, which renderRun appends
+ * for an experimental run (ops.argv.ts:261) — and this harness can never have
+ * one. `experimental` is set by exactly two things: a profile whose name is not
+ * "default" (ops.profiles.ts:81) and ad-hoc overrides (ops.profiles.ts:166).
+ * Both are refused alongside `sides` by RunSpecSchema (ops.argv.ts:147-166) and
+ * again by renderRun before anything is spent (ops.argv.ts:243-248), while
+ * `sides` is mandatory here (REQUIRES_SIDES, ops.argv.ts:236-239). So no
+ * discovery-ab run reaches line 261 with `experimental` true, and the site never
+ * sends this engine a flag it would drop.
+ *
+ * That is the only reason it does not matter that parseAbRunArgs would drop one:
+ * the harness saves where --report says and nowhere else, so whoever later gives
+ * discovery-ab a rolling run history, or lets it run under a config, owes it a
+ * real --no-save first.
  */
 const DISCOVERY_AB_FLAGS: readonly HarnessFlag[] = Object.freeze([
   {

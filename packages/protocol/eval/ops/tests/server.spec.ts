@@ -49,6 +49,15 @@ const AB_MANIFEST = {
   ],
 };
 const DISCOVERY_AB_TARGETS = JSON.stringify(AB_MANIFEST);
+/**
+ * The two variables no gate asks for and the child cannot run without
+ * (`runtimeKeys`). Both carry a credential, so both are held to the same rule as
+ * the gate keys: checked before the run is admitted, never written down.
+ */
+const OPENROUTER_API_KEY = "sk-or-test-key-that-must-never-leave-the-server";
+const REDIS_URL = "redis://default:pw-redis@redis.internal:6379";
+/** The posture of a server configured to run discovery-ab: every key it pre-checks. */
+const AB_SERVER_ENV = { NEON_API_KEY, DISCOVERY_AB_TARGETS, OPENROUTER_API_KEY, REDIS_URL };
 
 interface StartCall {
   record: RunRecord;
@@ -154,7 +163,7 @@ async function build(overrides: Partial<OpsContext> = {}, auth: Partial<OpsAuthC
     // The posture a configured server has. Injected rather than read from
     // process.env where it is used, so these tests state it instead of mutating
     // the process — and so a context that says nothing has no credentials at all.
-    serverEnv: { NEON_API_KEY, DISCOVERY_AB_TARGETS },
+    serverEnv: { ...AB_SERVER_ENV },
     inspector: { count: async () => COUNTS },
     auth: {
       sessions,
@@ -541,35 +550,97 @@ describe("resolveHarnessEnvironment", () => {
     for (const harness of ["matching", "profile", "premise", "opportunity"] as const) {
       // Not "no credential": nothing. Their runs are spawned with the record's
       // own environment and this adds no key to it, configured server or not.
-      expect(resolveHarnessEnvironment(harness, { NEON_API_KEY, DISCOVERY_AB_TARGETS })).toEqual({ ok: true, env: {} });
+      expect(resolveHarnessEnvironment(harness, { ...AB_SERVER_ENV })).toEqual({ ok: true, env: {} });
     }
   });
 
-  it("gives discovery-ab the two secrets it holds plus the two attestations it makes", () => {
-    const resolved = resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY, DISCOVERY_AB_TARGETS });
+  it("gives discovery-ab the four secrets it holds plus the two attestations it makes", () => {
+    const resolved = resolveHarnessEnvironment("discovery-ab", { ...AB_SERVER_ENV });
     expect(resolved).toEqual({
       ok: true,
       // DATABASE_URL is present and undefined, which is how a deletion is stated;
       // toEqual ignores undefined properties, so it is asserted explicitly below.
-      env: { NEON_API_KEY, DISCOVERY_AB_TARGETS, DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1", DATABASE_URL: undefined },
+      env: {
+        NEON_API_KEY,
+        DISCOVERY_AB_TARGETS,
+        OPENROUTER_API_KEY,
+        REDIS_URL,
+        DISCOVERY_AB_CONFIRM: "1",
+        TEST_DATABASE_SAFE: "1",
+        DATABASE_URL: undefined,
+      },
     });
     const env = (resolved as { env: Record<string, string | undefined> }).env;
-    expect(Object.keys(env).sort())
-      .toEqual(["DATABASE_URL", "DISCOVERY_AB_CONFIRM", "DISCOVERY_AB_TARGETS", "NEON_API_KEY", "TEST_DATABASE_SAFE"]);
+    expect(Object.keys(env).sort()).toEqual([
+      "DATABASE_URL",
+      "DISCOVERY_AB_CONFIRM",
+      "DISCOVERY_AB_TARGETS",
+      "NEON_API_KEY",
+      "OPENROUTER_API_KEY",
+      "REDIS_URL",
+      "TEST_DATABASE_SAFE",
+    ]);
     expect(env.DATABASE_URL).toBeUndefined();
   });
 
-  it("names both variables when a server holds neither, and neither value when it holds one", () => {
+  it("hands the child the trimmed value it checked, so what was verified is what runs", () => {
+    // A dotenv line with a trailing space is not a different credential, but an
+    // inherited untrimmed value would be a different string than the one this
+    // check read. Both kinds of key are stated, because both are checked alike.
+    const resolved = resolveHarnessEnvironment("discovery-ab", {
+      ...AB_SERVER_ENV,
+      NEON_API_KEY: `  ${NEON_API_KEY} `,
+      REDIS_URL: `${REDIS_URL}\n`,
+    });
+    const env = (resolved as { env: Record<string, string | undefined> }).env;
+    expect(env.NEON_API_KEY).toBe(NEON_API_KEY);
+    expect(env.REDIS_URL).toBe(REDIS_URL);
+  });
+
+  it("names every variable when a server holds none, and no value when it holds some", () => {
     const empty = resolveHarnessEnvironment("discovery-ab", {});
     expect(empty.ok).toBe(false);
     const reason = (empty as { reason: string }).reason;
-    expect(reason).toContain("NEON_API_KEY");
-    expect(reason).toContain("DISCOVERY_AB_TARGETS");
+    for (const name of ["NEON_API_KEY", "DISCOVERY_AB_TARGETS", "OPENROUTER_API_KEY", "REDIS_URL"]) {
+      expect(reason).toContain(name);
+    }
 
     const half = resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY });
     expect(half.ok).toBe(false);
     // The refusal is displayed: it says what is missing, never what is present.
     expect((half as { reason: string }).reason).not.toContain(NEON_API_KEY);
+  });
+
+  /**
+   * The gate keys are named by `assertAbConfirmation`; these two are named by
+   * nothing, arrive only by inheritance, and are read AFTER both branches have
+   * been reset. Their absence must therefore be a refusal on this route rather
+   * than a failure in the child.
+   */
+  it("pre-checks the runtime keys the child inherits and no gate demands", () => {
+    expect(HARNESS_CREDENTIALS["discovery-ab"].runtimeKeys).toEqual(["OPENROUTER_API_KEY", "REDIS_URL"]);
+
+    for (const key of HARNESS_CREDENTIALS["discovery-ab"].runtimeKeys) {
+      const { [key]: _dropped, ...rest } = AB_SERVER_ENV as Record<string, string>;
+      const refused = resolveHarnessEnvironment("discovery-ab", rest);
+      expect(refused.ok).toBe(false);
+      const reason = (refused as { reason: string }).reason;
+      expect(reason).toContain(key);
+      // Only the missing one is named: an operator reading it must not be sent
+      // looking for three variables they already set.
+      for (const other of Object.keys(rest)) expect(reason).not.toContain(`no ${other}`);
+      for (const value of Object.values(AB_SERVER_ENV)) expect(reason).not.toContain(value);
+    }
+  });
+
+  it("leaves the scorecard harnesses' runtime keys unchecked, because nothing of theirs is reset first", () => {
+    // They read OPENROUTER_API_KEY too. The difference is order: their run has
+    // destroyed nothing when the first model is constructed, so a missing key
+    // costs a message, not two branches.
+    for (const harness of ["matching", "profile", "premise", "opportunity"] as const) {
+      expect(HARNESS_CREDENTIALS[harness].runtimeKeys).toEqual([]);
+      expect(resolveHarnessEnvironment(harness, {}).ok).toBe(true);
+    }
   });
 });
 
@@ -708,7 +779,7 @@ describe("launching discovery-ab", () => {
     await context.queue.drain();
 
     expect(executor.starts[0].steps).toBeUndefined();
-    expect(resolveHarnessEnvironment("matching", { NEON_API_KEY, DISCOVERY_AB_TARGETS }).ok).toBe(true);
+    expect(resolveHarnessEnvironment("matching", { ...AB_SERVER_ENV }).ok).toBe(true);
     expect(HARNESS_CREDENTIALS["matching"].unset).toEqual([]);
   });
 
@@ -732,19 +803,22 @@ describe("launching discovery-ab", () => {
     await context.queue.drain();
 
     const surfaces = `${body}\n${await readableSurfaces(record.id)}`;
-    for (const secret of [NEON_API_KEY, DISCOVERY_AB_TARGETS, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
+    for (const secret of [NEON_API_KEY, DISCOVERY_AB_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
       expect(surfaces).not.toContain(secret);
     }
     // Not even the names: a record that mentioned them would invite an operator
     // to paste one in, and would say the run's environment held something it does not.
     expect(surfaces).not.toContain("NEON_API_KEY");
     expect(surfaces).not.toContain("DISCOVERY_AB_TARGETS");
+    expect(surfaces).not.toContain("OPENROUTER_API_KEY");
+    expect(surfaces).not.toContain("REDIS_URL");
     // What the record does carry is the profile's environment, exactly as before.
     expect(Object.keys(record.env)).toEqual(["EVAL_MODEL_OVERRIDES"]);
   });
 
   it("refuses to launch when the server holds no NEON_API_KEY, naming what an operator must set", async () => {
-    await build({ serverEnv: { DISCOVERY_AB_TARGETS } });
+    const { NEON_API_KEY: _absent, ...serverEnv } = AB_SERVER_ENV;
+    await build({ serverEnv });
 
     const response = await post("/api/runs", AB_BODY);
 
@@ -759,13 +833,58 @@ describe("launching discovery-ab", () => {
   });
 
   it("refuses to launch when DISCOVERY_AB_TARGETS is blank rather than absent", async () => {
-    await build({ serverEnv: { NEON_API_KEY, DISCOVERY_AB_TARGETS: "   " } });
+    await build({ serverEnv: { ...AB_SERVER_ENV, DISCOVERY_AB_TARGETS: "   " } });
 
     const response = await post("/api/runs", AB_BODY);
 
     expect(response.status).toBe(503);
     expect((await response.json()).error).toContain("DISCOVERY_AB_TARGETS");
     expect(executor.starts).toHaveLength(0);
+  });
+
+  /**
+   * The refusal that has to happen BEFORE the destructive step, not after it.
+   *
+   * Nothing names these two: the gate does not read them, and they reach the
+   * child by inheritance from `bun --env-file=../../.env.test` — a file that is
+   * gitignored, absent from a container, and whose absence Bun does not report.
+   * A server missing one used to pass every check here, reset `eval-ab-a` and
+   * `eval-ab-b`, spawn both children, and fail inside them. So each is asserted
+   * to produce a 503 that names it, with no child started and no record written.
+   */
+  for (const key of ["OPENROUTER_API_KEY", "REDIS_URL"] as const) {
+    it(`refuses to launch when the server holds no ${key}, before either branch is reset`, async () => {
+      const { [key]: _absent, ...serverEnv } = AB_SERVER_ENV;
+      await build({ serverEnv });
+
+      const response = await post("/api/runs", AB_BODY);
+
+      expect(response.status).toBe(503);
+      const error = (await response.json()).error as string;
+      expect(error).toContain(key);
+      // The value never appears, only the name and what it is for.
+      expect(error).not.toContain(AB_SERVER_ENV[key]);
+      expect(executor.starts).toHaveLength(0);
+      expect((await store.list()).records).toHaveLength(0);
+    });
+
+    it(`refuses to launch when ${key} is blank rather than absent`, async () => {
+      await build({ serverEnv: { ...AB_SERVER_ENV, [key]: "   " } });
+
+      const response = await post("/api/runs", AB_BODY);
+
+      expect(response.status).toBe(503);
+      expect((await response.json()).error).toContain(key);
+      expect(executor.starts).toHaveLength(0);
+    });
+  }
+
+  it("hands both runtime keys to the child, so the run uses the values it verified", async () => {
+    await post("/api/runs", AB_BODY);
+    await context.queue.drain();
+
+    const step = executor.starts[0].steps![0];
+    expect(step.env).toMatchObject({ OPENROUTER_API_KEY, REDIS_URL });
   });
 
   it("refuses a second discovery-ab run while one holds the two branches", async () => {
@@ -822,6 +941,13 @@ describe("launching discovery-ab", () => {
     const error = (await response.json()).error as string;
     expect(error).toContain(orphan.id);
     expect(error).toMatch(/Neon/);
+    // What the operator is told has to be true HERE, which is the case where it
+    // was not: this server never spawned that run, so the real executor has no
+    // live entry to signal (executor.spec.ts, "changes nothing when asked to
+    // cancel a run it never started") while POST /cancel still answers accepted.
+    // The refusal therefore ties the slot to the holder's process exiting.
+    expect(error).toContain("The slot opens when that run's process exits");
+    expect(error).not.toMatch(/cancel it\.?$/);
     // Refused before a record existed, so the restart leaves no second run at all.
     expect(executor.starts).toHaveLength(0);
     expect((await store.list()).records.map((run) => run.id)).toEqual([orphan.id]);

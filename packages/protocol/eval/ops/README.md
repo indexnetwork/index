@@ -8,23 +8,35 @@ This directory is the whole server. The browser app is a thin client over the JS
 API in [`ops.server.ts`](./ops.server.ts); every decision that matters — what may run,
 under which configuration, against which database — is made here, including **who is
 allowed to ask**: every route but two requires a session belonging to a verified
-`@index.network` Index account. That is defence in depth on top of the loopback guards,
-not a replacement for them — the site is still loopback-only and still not safe to expose
-(see [§ Who may use this server](#who-may-use-this-server) below).
+`@index.network` Index account. That is defence in depth on top of the `Host` and
+`Origin` guards, not a replacement for them — the site is loopback-only unless
+`EVAL_OPS_PUBLIC_ORIGIN` names exactly one deployed origin, and even then it is nothing to
+expose further (see [§ Who may use this server](#who-may-use-this-server) below).
 
 Everything in this directory is provider-free and covered by `bun run eval:verify`
 (`suite: ops`).
 
-## Scope: only the four scorecard harnesses
+## Scope: four scorecard harnesses and one comparison harness
 
-`OPS_HARNESSES` is `matching`, `profile`, `premise`, `opportunity` — and nothing else.
+`OPS_HARNESSES` ([`ops.registry.ts`](./ops.registry.ts)) is `matching`, `profile`,
+`premise`, `opportunity`, `discovery-ab` — and nothing else.
 
-These are the four harnesses that emit the shared scorecard artifact envelope
+The **four scorecard harnesses** emit the shared scorecard artifact envelope
 (`index-eval/baseline` / `index-eval/run-report`), which is what artifact indexing,
-baseline diffing and comparison all read. `hyde`, `clarification`,
-`discovery-retrieval`, `discovery-env-matrix`, `stance` and the canary are **not**
-launchable, indexable or comparable here; they use different evidence models and remain
-CLI-only. Adding one is a deliberate code change, not a configuration change.
+baseline diffing and comparison all read.
+
+**`discovery-ab` is the fifth, and it is a different shape.** It scores no single
+configuration against a baseline: it carries two (`sides`), has no baseline and never will,
+runs in `services/api` rather than here, and resets two Neon branches on entry. It is
+therefore launchable, and its site-launched runs are indexed from `.ops-runs` like any
+other run — but it is never diffed or compared against a baseline, and the launch form
+refuses the configuration surface that would make its two sides differ in anything but the
+pair (see [the `discovery-ab` sections below](#one-discovery-ab-run-at-a-time)).
+
+`hyde`, `clarification`, `discovery-retrieval`, `discovery-env-matrix`, `stance` and the
+canary are **not** launchable, indexable or comparable here; they use different evidence
+models and remain CLI-only. Adding one is a deliberate code change, not a configuration
+change.
 
 ## Modules
 
@@ -211,13 +223,20 @@ queue holds in memory and writes nowhere:
   stores, after the fact.
 - **credentials the run record must not carry.** `HARNESS_CREDENTIALS` in
   [`ops.server.ts`](./ops.server.ts) states, per harness, what must come from this server's
-  own environment. The four scorecard harnesses need nothing, and say so. `discovery-ab`
-  needs `NEON_API_KEY` and `DISCOVERY_AB_TARGETS`, which its own gate
+  own environment. The four scorecard harnesses have nothing pre-checked, and say so.
+  `discovery-ab` names four keys in two groups. `keys` is what its own gate
   (`assertAbConfirmation`, services/api/src/cli/discovery-ab.gate.ts) refuses to run
-  without; the server adds `DISCOVERY_AB_CONFIRM=1` and `TEST_DATABASE_SAFE=1`, which are
-  attestations rather than secrets. A launch is refused with **503** naming what an
-  operator must configure when either secret is absent or blank — rather than spawning a
-  child that dies at the gate. The same entry `unset`s `DATABASE_URL`, which is *removed*
+  without: `NEON_API_KEY` and `DISCOVERY_AB_TARGETS`. `runtimeKeys` is what no gate
+  mentions and the child cannot finish without: `OPENROUTER_API_KEY` (every model and
+  embedding the discovery graph runs on) and `REDIS_URL` (the HyDE cache the graph writes
+  through, uncaught on the write path). The server adds `DISCOVERY_AB_CONFIRM=1` and
+  `TEST_DATABASE_SAFE=1`, which are attestations rather than secrets. Any of the four
+  absent or blank is refused with **503** naming it — and the second group matters most
+  for the same reason it is easiest to miss: it arrives only by inheritance from
+  `--env-file=../../.env.test`, a gitignored file whose absence Bun does not report, and it
+  is read *after* the parent has already reset both Neon branches. Without the pre-check,
+  the destructive step happens and the run then fails. The same entry `unset`s
+  `DATABASE_URL`, which is *removed*
   from what the child inherits: the parent A/B process composes no database, both children
   set their own from the attested manifest, and this server's own value — the eval fixture
   database — must not be what a child tree it is asserting `TEST_DATABASE_SAFE=1` over can
@@ -274,6 +293,12 @@ and a genuinely live process is left alone.
 **202-accepted** rather than awaiting it: a harness that ignores SIGINT would otherwise
 hang the request for as long as it likes. The outcome arrives over the run's own status
 stream.
+
+A run this process never spawned has no live entry to signal — `cancel()` returns the
+stored record and the route still answers accepted — so cancelling an orphan left by an
+earlier server moves nothing. That is why the exclusive-slot refusal above ties the slot to
+the holder's process exiting rather than to a button: an orphan releases it by exiting, and
+the 409 says exactly that.
 
 ## Comparison
 

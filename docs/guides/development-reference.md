@@ -359,49 +359,80 @@ steps in order.
 
 The eval-ops console lists `discovery-ab` as a fifth harness and can launch it:
 it is in `OPS_HARNESSES` (`packages/protocol/eval/ops/ops.registry.ts:8`) with a
-descriptor at `ops.registry.ts:200-235`. That descriptor is the only one carrying
-`cwd: "services/api"` (`ops.registry.ts:204`), because `bun run eval:discovery-ab`
+descriptor at `ops.registry.ts:190-243`. That descriptor is the only one carrying
+`cwd: "services/api"` (`ops.registry.ts:212`), because `bun run eval:discovery-ab`
 resolves nowhere else; the server turns that into a step plan
-(`harnessSteps`, `ops.server.ts:1129-1153`). Everything below is the site's
+(`harnessSteps`, `ops.server.ts:1200-1224`). Everything below is the site's
 behaviour, not the CLI's.
 
 **What the server must have configured.** Credentials never come from the
-browser. `HARNESS_CREDENTIALS["discovery-ab"]` (`ops.server.ts:1031-1061`) splits
-the harness's four gate variables into two different kinds:
+browser. `HARNESS_CREDENTIALS["discovery-ab"]` (`ops.server.ts:1053-1117`) names
+three different kinds of thing:
 
 | Variable | Where it comes from |
 | --- | --- |
-| `NEON_API_KEY` | **The ops server's own environment** — `keys`, `ops.server.ts:1032`. |
-| `DISCOVERY_AB_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys`, `ops.server.ts:1032`. |
-| `DISCOVERY_AB_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`, `ops.server.ts:1033`). |
-| `TEST_DATABASE_SAFE=1` | Same: asserted, not required (`asserts`, `ops.server.ts:1033`). |
+| `NEON_API_KEY` | **The ops server's own environment** — `keys`, `ops.server.ts:1054`. |
+| `DISCOVERY_AB_TARGETS` | **The ops server's own environment** — the attested manifest, the same shape as above; `keys`, `ops.server.ts:1054`. |
+| `OPENROUTER_API_KEY` | **The ops server's own environment** — `runtimeKeys`, `ops.server.ts:1087`. No gate asks for it; the child cannot run a model or an embedding without it. |
+| `REDIS_URL` | **The ops server's own environment** — `runtimeKeys`, `ops.server.ts:1087`. No gate asks for it; the HyDE cache write is uncaught, so an unreachable Redis fails the graph. |
+| `DISCOVERY_AB_CONFIRM=1` | Asserted by the server onto the child it spawns, *not* read from the environment (`asserts`, `ops.server.ts:1088`). |
+| `TEST_DATABASE_SAFE=1` | Same: asserted, not required (`asserts`, `ops.server.ts:1088`). |
 
-So two variables have to be set and two do not — setting the two attestations in
+So four variables have to be set and two do not — setting the two attestations in
 the server's environment anyway changes nothing about this route, because the
 server writes its own values over whatever the child would have inherited
-(`resolveHarnessEnvironment`, `ops.server.ts:1100-1102`). The comment at
-`ops.server.ts:1008-1020` records why the server is entitled to assert them.
+(`resolveHarnessEnvironment`, `ops.server.ts:1162-1164`). The comment at
+`ops.server.ts:1030-1042` records why the server is entitled to assert them.
 `DATABASE_URL` is *deleted* from what the child inherits (`unset`,
-`ops.server.ts:1054`), so the harness script's own `--env-file` decides it.
+`ops.server.ts:1109`), so the harness script's own `--env-file` decides it.
 
-A local server reads them from the repo-root `.env.test`, which `eval:web` loads
-(`packages/protocol/package.json:46`); a deployed one reads its own process
-environment (`serverEnv: process.env`, `ops.server.ts:1922`).
+**Why the last two are pre-checked at all**, when the four scorecard harnesses
+read `OPENROUTER_API_KEY` too and nothing checks it for them
+(`NO_CREDENTIALS`, `ops.server.ts:997-1014`): the order of this harness's run.
+It resets both Neon branches on entry and only then spawns the children that read
+these variables, so a server missing one used to pass every check on this route,
+destroy both branches, and fail afterwards. They are also the easiest to miss,
+because nothing names them: they reach the child by inheritance from
+`bun --env-file=../../.env.test` (`services/api/package.json:39`), `.env.test` is
+gitignored, and Bun exits 0 without a warning when an `--env-file` is absent — so
+a container with neither the file nor the variable reads them as unset, silently.
+What each is for: `createModel` throws `OPENROUTER_API_KEY is required`
+(`packages/protocol/src/shared/agent/model.config.ts:166-169`) and the embedder
+passes the same key to its OpenAI client
+(`services/api/src/adapters/embedder.adapter.ts:107-110`); and
+`createChildDependencies` builds the HyDE graph over a `RedisCacheAdapter`
+(`services/api/src/cli/discovery-env-matrix.main.ts:705-717`) whose client
+falls back to `localhost:6379` when neither `REDIS_URL` nor `REDIS_HOST` is set
+(`services/api/src/adapters/cache.adapter.ts:43-56`), while the graph's
+`cache_results` node awaits `cache.set` with no catch
+(`packages/protocol/src/shared/hyde/hyde.graph.ts:545`) and the adapter's `set`
+has none either (`services/api/src/adapters/cache.adapter.ts:135-143`). The
+check is on `REDIS_URL` alone, so a Redis configured as `REDIS_HOST`/`REDIS_PORT`
+is refused here even though the adapter would have accepted it — a refusal an
+operator can fix, rather than two reset branches and a failed run.
 
-Without the two keys the launch route answers **503**, naming exactly what is
-missing: `Refusing to launch discovery-ab: this server has no NEON_API_KEY or
-DISCOVERY_AB_TARGETS configured. …` (`resolveHarnessEnvironment`,
-`ops.server.ts:1092-1098`), returned at `ops.server.ts:1185-1186`. 503 and not a
-4xx on purpose — the request is valid and it is the server that is not configured
-to serve it. A blank value counts as absent (`ops.server.ts:1092`). The message
-names variables, never values.
+A local server reads all four from the repo-root `.env.test`, which `eval:web`
+loads (`packages/protocol/package.json:46`); a deployed one reads its own process
+environment (`serverEnv: process.env`, `ops.server.ts:1994`).
+
+Without any of the four the launch route answers **503**, naming exactly what is
+missing: `Refusing to launch discovery-ab: this server has no REDIS_URL
+configured. …` (`resolveHarnessEnvironment`, `ops.server.ts:1152-1160`), returned
+at `ops.server.ts:1257-1258`. 503 and not a 4xx on purpose — the request is valid
+and it is the server that is not configured to serve it. A blank value counts as
+absent (`ops.server.ts:1154`). The message names variables, never values.
 
 **One run in flight, ever — including after a restart.** The two Neon branches
 are a shared resource, so `EXCLUSIVE_HARNESSES` (`ops.queue.ts:35-43`) gives
 `discovery-ab`, and only it, an exclusive slot. A second launch is refused with
 **409** naming the run that holds it (`exclusiveRefusal`,
-`ops.server.ts:1111-1116`; returned at `ops.server.ts:1178`, and again at
-`ops.server.ts:1255` for two launches that raced past the first check).
+`ops.server.ts:1180-1187`; returned at `ops.server.ts:1249`, and again at
+`ops.server.ts:1327` for two launches that raced past the first check).
+The refusal names the holder and ties the slot to that run's process exiting,
+rather than promising that cancelling it works: a run left behind by an earlier
+server has no live entry for `executor.cancel` (`ops.executor.ts:155-161`) while
+`cancelRun` still answers accepted (`ops.server.ts:1333-1347`), so an orphan is
+released by exiting and not by the button.
 `EVAL_OPS_MAX_CONCURRENT_RUNS` cannot open this: it is a separate rule
 (`resolveConcurrency`, `ops.queue.ts:9-12`) and no value of it is consulted
 here. The slot survives a
@@ -426,7 +457,7 @@ The spend confirmation fires for **every** run of this harness, filtered or not
 (`Launch.tsx:368` — `isFullCorpus() || requiresSides`), because `--case` narrows
 what is measured, not what is destroyed: a filtered run still resets both
 branches. The confirmation names the destruction in the descriptor's own words,
-`resets: "both Neon evaluation branches"` (`ops.registry.ts:233`, rendered at
+`resets: "both Neon evaluation branches"` (`ops.registry.ts:241`, rendered at
 `Launch.tsx:872-876`), rather than only counting invocations.
 
 **No baseline, and there never will be one, so the run view shows a pair rather
@@ -503,18 +534,36 @@ bun run dev:eval-ops                        # UI on 127.0.0.1:5174 (from repo ro
 bun run build:eval-ops                      # Build the UI
 ```
 
-Both bind loopback, and every route but the two that make signing in possible
-requires a session belonging to a verified `@index.network` Index account
-(sign-in reuses the CLI browser-auth bridge). That is defence in depth, not
-permission to expose it: state-changing requests must be same-origin and carry a
-JSON content type, and every request must be addressed to a loopback host, so
-another site the operator has open cannot drive or read it — those guards, not
-the authentication, are what keep the site local. `WEB_APP_URL` and `API_URL`
-are one pair (mint and verify); the ops server refuses to start on a mismatched
-or half-configured pair. The app is
-deliberately excluded from the root `build` script and from Railway. CI gates it
-through the `eval-ops` job in `.github/workflows/lint.yml` (typecheck, test,
-lint) — the root `build` does not cover it.
+Both commands above bind loopback, and every route but the two that make signing
+in possible requires a session belonging to a verified `@index.network` Index
+account. That is defence in depth, not permission to expose it: state-changing
+requests must be same-origin and carry a JSON content type, and every request
+must be addressed to an allowlisted host, so another site the operator has open
+cannot drive or read it — those guards, not the authentication, are what bound
+who can reach the site. `WEB_APP_URL` and `API_URL` are one pair (mint and
+verify); the ops server refuses to start on a mismatched or half-configured
+pair.
+
+**Local by default, and deployable to exactly one origin.** Two variables, both
+read in `ops.server.ts`, are what widen it, and neither has a wildcard:
+`EVAL_OPS_BIND` moves the bind off `127.0.0.1` (`resolveBindHostname`), and
+`EVAL_OPS_PUBLIC_ORIGIN` adds **one** absolute `https` origin to the `Host` and
+`Origin` allowlists (`resolvePublicOrigin`, which refuses to start on anything
+else) and switches sign-in from the loopback CLI bridge to the JWT token
+exchange (`resolveSignInMode`). Unset means loopback only, which is the local
+posture and the default. So the site is local unless a deployment deliberately
+says otherwise — it is *not* the bind alone that keeps it local, since the
+allowlists still fail closed.
+
+The app is excluded from the root `build` script (`build` runs skills, protocol,
+API and web; `build:eval-ops` exists but is not in that chain) but it **is**
+deployed on Railway, as its own service with its own
+[`apps/eval-ops/railway.toml`](../../apps/eval-ops/railway.toml) — a separate
+config precisely so it does not inherit the API's `preDeployCommand`, which
+would run drizzle-kit against it. The root `railway.toml` remains the API
+service's alone. CI gates the app through the `eval-ops` job in
+`.github/workflows/lint.yml` (typecheck, test, lint) — the root `build` does not
+cover it.
 
 ### Subtrees
 

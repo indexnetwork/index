@@ -259,6 +259,27 @@ describe("LocalProcessRunExecutor", () => {
     await expect(executor.start(record)).rejects.toThrow(/no command/i);
   });
 
+  /**
+   * The property the exclusive-slot refusal is worded around (`exclusiveRefusal`,
+   * ops.server.ts): after a restart, the run holding the slot was spawned by a
+   * process that is gone, so this executor has no live entry for it and cancel
+   * signals nothing — while the route still answers 202/accepted. The slot is
+   * released by that orphan's own exit, which is what the refusal now says
+   * instead of pointing at a button that moves nothing.
+   */
+  it("changes nothing when asked to cancel a run it never started", async () => {
+    const record = await createRecord(["bun", FAKE, "--emit", "done", "--exit", "0"]);
+    await store.update(record.id, { status: "running", pid: process.pid, startedAt: new Date().toISOString() });
+
+    const returned = await executor.cancel(record.id);
+
+    // The stored record, read back untouched: not cancelled, not terminal, still
+    // holding its pid — and therefore still holding the slot.
+    expect(returned.status).toBe("running");
+    expect(returned.pid).toBe(process.pid);
+    expect((await store.get(record.id))!.status).toBe("running");
+  });
+
   it("does not relabel a run that already exited as cancelled", async () => {
     // Hold the terminal update open so cancel() lands in the window between the child
     // exiting and start() finishing its bookkeeping.

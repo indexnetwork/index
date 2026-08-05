@@ -968,8 +968,18 @@ const RESET_IN_FLIGHT = "A test-database reset is in flight; a run launched now 
 
 /** What one harness needs from this server's own environment before it can run. */
 export interface HarnessCredentialRequirement {
-  /** Keys that must be non-blank in the server's environment. Never in a record. */
+  /** Keys the harness's own gate demands, non-blank in the server's environment. Never in a record. */
   keys: readonly string[];
+  /**
+   * Keys no gate checks, but without which the child cannot finish the run.
+   *
+   * Checked exactly like {@link keys} and separated from them only so the
+   * gate-parity guard in tests/server.spec.ts stays exact: it compares `keys`
+   * plus `asserts` against the variables `assertAbConfirmation` reads, and a
+   * runtime dependency listed there would break that comparison while proving
+   * nothing about the gate.
+   */
+  runtimeKeys: readonly string[];
   /** Constants this server asserts on the operator's behalf. Not secrets. */
   asserts: Readonly<Record<string, string>>;
   /**
@@ -984,9 +994,20 @@ export interface HarnessCredentialRequirement {
   advice: string;
 }
 
-/** A harness that needs nothing from this server's environment beyond its profile's. */
+/**
+ * A harness this server pre-checks nothing for.
+ *
+ * Not "a harness that needs no environment": the four scorecard harnesses read
+ * OPENROUTER_API_KEY like everything else that calls a model (`createModel`,
+ * src/shared/agent/model.config.ts). What is true is that nothing of theirs is
+ * destroyed before that key is read — they take the executor's own single-command
+ * path with no step plan, and a missing key surfaces as their first model
+ * construction throwing, with nothing reset and nothing spent. A pre-check there
+ * would move a message earlier; for discovery-ab it prevents a destruction.
+ */
 const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
   keys: Object.freeze([]),
+  runtimeKeys: Object.freeze([]),
   asserts: Object.freeze({}),
   unset: Object.freeze([]),
   advice: "",
@@ -997,7 +1018,8 @@ const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
  *
  * discovery-ab's bootstrap refuses to run without four variables
  * (`assertAbConfirmation`, services/api/src/cli/discovery-ab.gate.ts), and they
- * are two different kinds of thing.
+ * are two different kinds of thing. A third kind is below them: variables no
+ * gate mentions that the child cannot run without (`runtimeKeys`).
  *
  * `NEON_API_KEY` and `DISCOVERY_AB_TARGETS` are secrets an operator configures
  * once — a control-plane key that can create and delete branches, and an
@@ -1030,6 +1052,39 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
   opportunity: NO_CREDENTIALS,
   "discovery-ab": Object.freeze({
     keys: Object.freeze(["NEON_API_KEY", "DISCOVERY_AB_TARGETS"]),
+    /**
+     * The two variables the child composition needs and no gate asks for.
+     *
+     * They are here because of the ORDER this harness runs in: the parent resets
+     * both Neon branches on entry and only then spawns the children that read
+     * these. Without the pre-check, a server missing one passes every check on
+     * this route, destroys both branches, and fails afterwards — the expensive
+     * half of the run already spent on a configuration that could never finish.
+     *
+     * They arrive by inheritance rather than by gate, which is why nothing else
+     * catches them: `eval:discovery-ab` is `bun --env-file=../../.env.test ...`
+     * (services/api/package.json), `.env.test` is gitignored, and Bun exits 0
+     * with no warning when an --env-file is missing. So a container that has
+     * neither the file nor the variable reads them as absent, silently.
+     *
+     * OPENROUTER_API_KEY — every model this harness builds resolves the key or
+     * throws (`createModel`, src/shared/agent/model.config.ts: "OPENROUTER_API_KEY
+     * is required"), and the embeddings the discovery graph runs on go through
+     * the same key (EmbedderAdapter, services/api/src/adapters/embedder.adapter.ts).
+     *
+     * REDIS_URL — `createChildDependencies` (services/api/src/cli/discovery-env-matrix.main.ts)
+     * hands the HyDE graph a RedisCacheAdapter, whose client falls back to
+     * localhost:6379 when neither REDIS_URL nor REDIS_HOST is set
+     * (services/api/src/adapters/cache.adapter.ts). The graph's cache_results node
+     * awaits `cache.set` with no catch around it (src/shared/hyde/hyde.graph.ts),
+     * and the adapter's `set` has none either, so an unreachable Redis fails the
+     * graph invocation rather than degrading to no cache. REDIS_URL and not
+     * REDIS_HOST: this server checks the one form, so a Redis configured by host
+     * and port is refused here even though the adapter would accept it. That is
+     * the deliberate direction to be wrong in — a refusal an operator can fix by
+     * setting REDIS_URL, rather than two reset branches and a failed run.
+     */
+    runtimeKeys: Object.freeze(["OPENROUTER_API_KEY", "REDIS_URL"]),
     asserts: Object.freeze({ DISCOVERY_AB_CONFIRM: "1", TEST_DATABASE_SAFE: "1" }),
     // Deleted, not pinned, and this is the one variable that decides which
     // database the child tree can reach — so it is stated rather than inherited.
@@ -1054,10 +1109,11 @@ export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialR
     unset: Object.freeze(["DATABASE_URL"]),
     // Returned to a browser: it names variables and what they are for, never a value.
     advice:
-      "It resets and runs the real discovery graph against the two designated Neon evaluation branches, so an "
-      + "operator must set NEON_API_KEY (a Neon control-plane key) and DISCOVERY_AB_TARGETS (the attested manifest "
-      + "naming the project, the base branch, and both side branches with their protocol_eval databases) in this "
-      + "server's own environment. Neither is ever sent from a browser.",
+      "It resets the two designated Neon evaluation branches and then runs the real discovery graph against them, "
+      + "so this server's own environment must hold NEON_API_KEY (a Neon control-plane key), DISCOVERY_AB_TARGETS "
+      + "(the attested manifest naming the project, the base branch, and both side branches with their "
+      + "protocol_eval databases), OPENROUTER_API_KEY (every model and embedding the graph runs on) and REDIS_URL "
+      + "(the HyDE cache the graph writes through). None of them is ever sent from a browser.",
   }),
 });
 
@@ -1082,14 +1138,20 @@ export type HarnessEnvironment =
  * A blank value counts as absent: `NEON_API_KEY=` in a dotenv file is an
  * operator who has not set it, and passing it through would produce exactly the
  * gate failure this refusal exists to replace.
+ *
+ * `keys` and `runtimeKeys` are checked together and treated identically from
+ * here on: both must be present before the run is admitted, and both are handed
+ * to the child as the trimmed value this check read, so what was verified is
+ * what runs.
  */
 export function resolveHarnessEnvironment(
   harness: OpsHarness,
   env: Record<string, string | undefined>,
 ): HarnessEnvironment {
   const requirement = HARNESS_CREDENTIALS[harness];
+  const required = [...requirement.keys, ...requirement.runtimeKeys];
 
-  const missing = requirement.keys.filter((key) => (env[key] ?? "").trim() === "");
+  const missing = required.filter((key) => (env[key] ?? "").trim() === "");
   if (missing.length > 0) {
     return {
       ok: false,
@@ -1099,7 +1161,7 @@ export function resolveHarnessEnvironment(
 
   const resolved: Record<string, string | undefined> = { ...requirement.asserts };
   for (const key of requirement.unset) resolved[key] = undefined;
-  for (const key of requirement.keys) resolved[key] = (env[key] as string).trim();
+  for (const key of required) resolved[key] = (env[key] as string).trim();
   return { ok: true, env: resolved };
 }
 
@@ -1107,11 +1169,20 @@ export function resolveHarnessEnvironment(
  * Why a second run of an exclusive harness is refused, naming the run that holds
  * the slot. The reason itself comes from {@link EXCLUSIVE_HARNESSES}, which is
  * also what enforces the rule, so the explanation cannot outlive it.
+ *
+ * The advice has to hold for a holder this process never spawned, which is the
+ * case the durable half of the check exists for: `executor.cancel` finds no live
+ * entry for an orphan and {@link cancelRun} still answers accepted, so "cancel
+ * it" on its own would name a control that moves nothing exactly there. What is
+ * true in both cases is the pid: `storedRecordHoldsSlot` (ops.queue.ts) holds the
+ * slot only while the process is alive, so an orphan releases it by exiting.
  */
 function exclusiveRefusal(harness: OpsHarness, holder: RunRecord): string {
   return (
     `Refusing a second ${harness} run: run ${holder.id} is already ${holder.status}. `
-    + `${EXCLUSIVE_HARNESSES[harness] ?? ""} Wait for it to finish, or cancel it.`
+    + `${EXCLUSIVE_HARNESSES[harness] ?? ""} The slot opens when that run's process exits. `
+    + `Cancelling it works while this server still owns the run; one left behind by an earlier server `
+    + `is out of reach of cancel and releases the slot itself when it exits.`
   );
 }
 
@@ -1177,11 +1248,12 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   const holder = await context.queue.exclusiveConflict(harness);
   if (holder !== null) return json({ error: exclusiveRefusal(harness, holder) }, 409);
 
-  // The credentials this harness's own gate demands, from this server's
-  // environment and nowhere else. A browser never sends them, and a server that
-  // does not hold them refuses here rather than spawning a child to die at the
-  // gate. 503 rather than 4xx: the request is valid, and it is this server that
-  // is not configured to serve it.
+  // What this harness needs from this server's environment and nowhere else:
+  // the credentials its gate demands, and the variables its child needs after
+  // the run's destructive step has already happened. A browser never sends
+  // either, and a server that does not hold them refuses here rather than
+  // resetting two branches and spawning children to die. 503 rather than 4xx:
+  // the request is valid, and it is this server that is not configured to serve it.
   const harnessEnv = resolveHarnessEnvironment(harness, context.serverEnv ?? {});
   if (!harnessEnv.ok) return json({ error: harnessEnv.reason }, 503);
 
