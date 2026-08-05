@@ -25,15 +25,15 @@ function appleAppSiteAssociation(): string {
         {
           appIDs: [`${teamId}.${MAC_APP_BUNDLE_ID}`],
           // Order matters: the system uses the first component that matches,
-          // and `*` matches path separators too. Without the exclusion, `/u/*`
-          // would also claim real web-only routes like `/u/<id>/chat`, which
-          // the app cannot render — it would raise its window and drop the
-          // link (apps/mac/api/deeplink.mjs only routes 2-segment paths).
+          // and `*` matches path separators too. Require at least one character
+          // after the second slash so the exclusion leaves `/u/<id>` claimed
+          // while keeping real web-only routes like `/u/<id>/chat` in-browser.
+          // The app only routes 2-segment paths (apps/mac/api/deeplink.mjs).
           components: [
             { "/": "/c/*" },
             { "/": "/o/*" },
             {
-              "/": "/u/*/*",
+              "/": "/u/*/?*",
               exclude: true,
               comment: "Deeper /u/ paths (e.g. /u/<id>/chat) are web-only; do not open the app.",
             },
