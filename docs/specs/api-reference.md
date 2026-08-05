@@ -2526,6 +2526,8 @@ Inbound endpoint for Telegram Bot API updates. Called by Telegram when the bot r
 
 **Response**: Always `200 OK`. Inbound handling is fire-and-forget so the endpoint never blocks Telegram's delivery pipeline.
 
+**Half-configured gateway**: inbound is gated by `TELEGRAM_WEBHOOK_SECRET` and outbound by `TELEGRAM_BOT_TOKEN`, so a deployment with only the secret set authenticates updates it can never answer. When the bot token is missing the update is acknowledged and **dropped without running the inbound path** — the chat agent does not run, no chat session or message rows are written, and one warning is logged per process. The response stays `200` deliberately: a non-2xx makes Telegram retry the same update indefinitely. To disable the gateway cleanly, unset both variables.
+
 > Registered automatically at backend startup via `setWebhook` when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are configured.
 
 ---
