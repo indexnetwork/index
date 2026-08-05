@@ -370,24 +370,6 @@ export function extractBearerToken(req: Request): string | undefined {
   return undefined;
 }
 
-/**
- * Normalizes the x-index-surface header to a typed surface value.
- * Unknown or absent values collapse to 'web'.
- */
-let hasWarnedInvalidSurface = false;
-export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
-  if (raw === null || raw === '') return 'web';
-  const trimmed = raw.trim().toLowerCase();
-  if (trimmed === '') return 'web';
-  if (trimmed === 'telegram') return 'telegram';
-  if (trimmed === 'web') return 'web';
-  if (!hasWarnedInvalidSurface) {
-    hasWarnedInvalidSurface = true;
-    logger.warn('Unknown x-index-surface value (collapsing to web; warning once per process)');
-  }
-  return 'web';
-}
-
 export function createMcpServer(
   deps: ToolRegistryDeps,
   authResolver: McpAuthResolver,
@@ -444,7 +426,6 @@ export function createMcpServer(
   const extractAuthInput = (httpReq: Request): McpAuthInput => ({
     bearerToken: extractBearerToken(httpReq),
     apiKey: httpReq.headers.get('x-api-key') ?? undefined,
-    clientSurface: parseClientSurface(httpReq.headers.get('x-index-surface')),
     telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
     telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
   });
@@ -514,9 +495,6 @@ export function createMcpServer(
         surface: 'mcp',
         sessionAuthenticated: authenticated.identity.isSessionAuth === true,
       });
-      if (authenticated.identity.clientSurface) {
-        context.clientSurface = authenticated.identity.clientSurface;
-      }
       applyNetworkScopeToContext(context, authenticated.identity.networkScopeId);
 
       const subject = resolveMcpCapabilitySubject({

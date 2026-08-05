@@ -265,3 +265,92 @@ export const MODEL_METADATA: readonly ModelMeta[] = Object.freeze([
     blurb: "OpenAI's small GPT-4.1 variant.",
   },
 ]);
+
+/**
+ * A harness flag's presentation and — crucially — whether it may differ between
+ * the two sides of an A/B run.
+ *
+ * `selection` flags decide WHICH cases run. If the two sides disagree, the runs
+ * are not comparable at all (compareArtifacts refuses on a selection mismatch),
+ * so the UI shares one control between both sides.
+ *
+ * `scoring` flags decide HOW a run is scored. They may legitimately differ —
+ * that is a comparison worth making — but the UI must say so, because a verdict
+ * produced under different scoring rules is not a like-for-like result.
+ */
+export interface FlagMeta {
+  /** HarnessFlag.name in ops.registry.ts. */
+  name: string;
+  label: string;
+  /** What changing it does, grounded in the harness CLI help. */
+  description: string;
+  scope: "selection" | "scoring";
+  /** Shown as the control's default/placeholder. */
+  defaultLabel: string;
+}
+
+/**
+ * Copy for every flag the registry can expose. Grounded in the harness usage
+ * banner (eval/matching/matching.eval.ts:40-61) and the argv handling beside it.
+ * Drift-guarded by test against HARNESS_REGISTRY.
+ */
+export const FLAG_METADATA: readonly FlagMeta[] = Object.freeze([
+  {
+    name: "runs",
+    label: "Runs per case",
+    description: "How many times every case is executed. More runs expose flaky cases that pass only sometimes.",
+    scope: "selection",
+    defaultLabel: "3",
+  },
+  {
+    name: "case",
+    label: "Case",
+    description: "Run only cases whose id contains this text — the fastest way to reproduce one failure.",
+    scope: "selection",
+    defaultLabel: "all cases",
+  },
+  {
+    name: "rule",
+    label: "Rule",
+    description: "Run only the cases belonging to one rule (for example is_a_identity).",
+    scope: "selection",
+    defaultLabel: "all rules",
+  },
+  {
+    name: "tier",
+    label: "Tier",
+    description: "Run only one difficulty tier (1-4). Higher tiers hold the harder, more adversarial cases.",
+    scope: "selection",
+    defaultLabel: "all tiers",
+  },
+  {
+    name: "noJudge",
+    label: "LLM judge",
+    description:
+      "The judge runs the reasoning checks that cannot be asserted mechanically. Turning it off is free and fast, but scores then reflect deterministic assertions only.",
+    scope: "scoring",
+    defaultLabel: "on",
+  },
+  {
+    name: "alpha",
+    label: "Regression threshold",
+    description:
+      "Significance level for calling a change a regression. Lower is stricter — fewer changes are reported as real.",
+    scope: "scoring",
+    defaultLabel: "0.05",
+  },
+  {
+    name: "strictEvidence",
+    label: "Strict evidence",
+    description: "Fail the run when any requested case-run did not complete, instead of scoring what did finish.",
+    scope: "scoring",
+    defaultLabel: "off",
+  },
+  {
+    name: "attemptTimeoutMs",
+    label: "Attempt timeout",
+    description: "How long a single attempt may take before it is abandoned and retried.",
+    scope: "scoring",
+    defaultLabel: "harness default",
+  },
+]);

@@ -37,7 +37,7 @@ import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type Confi
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
@@ -880,7 +880,8 @@ const ConfigPatchSchema = z
 
 /** Static, dependency-free description of everything the guided editors may offer. */
 function configMetadata(): Response {
-  const response = json({ env: ENV_FLAG_METADATA, models: MODEL_METADATA, harnessAgents: HARNESS_AGENT_METADATA });
+  const response = json({ env: ENV_FLAG_METADATA, models: MODEL_METADATA, harnessAgents: HARNESS_AGENT_METADATA, flags: FLAG_METADATA
+    });
   response.headers.set("Cache-Control", "no-store");
   return response;
 }

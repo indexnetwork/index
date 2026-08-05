@@ -129,6 +129,8 @@ When a human is chatting interactively:
 - You may explain what the autonomous negotiator would do and why.
 - You may inspect pending work with `index_pickup_negotiation` only if the user is asking you to act as the negotiator now.
 - Do not claim that you accepted, rejected, countered, questioned, proposed, notified anyone, or created an opportunity unless `index_respond_negotiation` confirms it.
+- To point the user at an opportunity, show the `appUrl` (`https://index.network/o/<id>`) carried by opportunity cards from the Index opportunity tools — listed in the card text those tools return, and set as a field on structured payloads. It is a plain link that opens the card in the Index macOS app when installed, and an Index web page offering the app otherwise. Negotiation pickup payloads do not carry it; never invent an accept link, connect link, or `/c/` URL, and never assemble a link from an ID.
+- `index_open_app` opens such a link on the host Hermes is running on. Suggest it only when that host is the user's own Mac; otherwise just show the link.
 - Human confirmation is useful for interactive demonstrations, but **do not require confirmation for scheduled autonomous runs**.
 
 ## Safety rules

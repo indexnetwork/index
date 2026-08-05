@@ -213,10 +213,8 @@ export class IntentNetworkGraphFactory {
           const network = await this.database.getNetwork(networkId);
           const renderedContext = network
             ? renderNetworkContext({
-                type: network.type ?? 'community',
                 title: network.title,
                 prompt: network.prompt,
-                metadata: network.metadata ?? {},
               })
             : null;
 

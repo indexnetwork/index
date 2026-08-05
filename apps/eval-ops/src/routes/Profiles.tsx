@@ -84,6 +84,7 @@ export function Profiles() {
           env: result.env ?? [],
           models: result.models ?? [],
           harnessAgents: result.harnessAgents ?? {},
+          flags: result.flags ?? [],
         };
         setState((prev) => ({
           ...prev,

@@ -208,13 +208,14 @@ function UserMenu({ me, onSelect }) {
 
 function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
   const env = useIndexEnv();
-  const demo = window.INDEX_DATA;
-  // ME/NETWORKS/AGENTS prefer live data; AGENTS has no live snapshot yet.
-  const ME = env.me || demo.ME;
-  const NETWORKS = env.networks || demo.NETWORKS;
-  const AGENTS = demo.AGENTS;
-  const joinedCount = (NETWORKS || []).filter(n => n.joined !== false).length;
-  const agentCount  = (AGENTS || []).filter(a => a.state === "connected").length;
+  // Live-only: empty until the snapshot loads. AGENTS has no live snapshot in
+  // this view yet, so the count is the builtin Index (always on) until the
+  // agents pane loads the registered runtimes.
+  const ME = env.me || {};
+  const NETWORKS = env.networks || [];
+  const AGENTS = [];
+  const joinedCount = NETWORKS.filter(n => n.joined !== false).length;
+  const agentCount  = 1 + AGENTS.filter(a => a.state === "connected").length;
 
   // A just-onboarded user has no signals yet, the hub opens empty.
   const [signals, setSignals] = useState(() => fresh ? [] : (env.data.INTENTS || []));

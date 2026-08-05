@@ -16,7 +16,7 @@ rm -rf dist
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
 echo "==> Compiling Swift (host arch)"
-swiftc -O \
+swiftc -Onone \
     -framework Cocoa -framework WebKit \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
     Sources/main.swift
@@ -24,6 +24,14 @@ swiftc -O \
 echo "==> Copying resources"
 cp Info.plist "${CONTENTS}/Info.plist"
 cp Resources/index.html "${CONTENTS}/Resources/index.html"
+# Dock/Finder icon. Assets.car carries the macOS 26 Liquid Glass icon
+# (CFBundleIconName=AppIcon, shadow/specular disabled); AppIcon.icns is the
+# pre-26 fallback (CFBundleIconFile). Both are compiled from AppIcon.icon/
+# via: xcrun actool AppIcon.icon --compile Resources --app-icon AppIcon \
+#      --include-all-app-icons --platform macosx --minimum-deployment-target 26.0 \
+#      --output-partial-info-plist /dev/null
+cp Resources/AppIcon.icns "${CONTENTS}/Resources/AppIcon.icns"
+cp Resources/Assets.car "${CONTENTS}/Resources/Assets.car"
 
 # Signing identity. An ad-hoc signature (`--sign -`) has no stable identity: the
 # app's code requirement is its exact binary hash, so every rebuild looks like a
@@ -39,15 +47,25 @@ cp Resources/index.html "${CONTENTS}/Resources/index.html"
 # Set CODESIGN_IDENTITY to sign with a real identity when you have one.
 IDENTITY="${CODESIGN_IDENTITY:-}"
 
+# Associated domains (universal links). The entitlement is only honoured for a
+# Developer ID-signed, notarized build whose team id matches the appIDs in the
+# apple-app-site-association served by index.network. A real identity must carry
+# it (strict below); ad-hoc must never be broken by it, see the retry there.
+ENTITLEMENTS="IndexApp.entitlements"
+
 if [ -n "${IDENTITY}" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "${IDENTITY}"; then
     echo "==> Code signing as '${IDENTITY}'"
-    codesign --force --deep --sign "${IDENTITY}" "${APP}"
+    codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign "${IDENTITY}" "${APP}"
 else
     if [ -n "${IDENTITY}" ]; then
         echo "==> WARNING: CODESIGN_IDENTITY='${IDENTITY}' not found, falling back to ad-hoc"
     fi
     echo "==> Ad-hoc code signing (local dev only, not distributable)"
-    codesign --force --deep --sign - "${APP}" || echo "   (codesign skipped/failed, app still runs locally)"
+    codesign --force --deep --sign - "${APP}" 2>&1 | grep -v "replacing existing signature" || true
+    echo "==> WARNING: universal links (https://index.network/o|u|c/...) will NOT open"
+    echo "    this build. They need a Developer ID-signed, notarized app plus an"
+    echo "    apple-app-site-association listing <TEAM_ID>.network.index.system6."
+    echo "    Use 'open index://o/<id>' to exercise deep links locally."
 fi
 
 echo "==> Done: ${APP}"

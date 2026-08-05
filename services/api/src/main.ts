@@ -8,7 +8,6 @@ import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
-import { NetworkExperimentController } from './controllers/network-experiment.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
 import { IntentController } from './controllers/intent.controller';
 import { IntentIntakeController } from './controllers/intent-intake.controller';
@@ -68,7 +67,6 @@ import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeou
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
-import { integrationSyncQueue } from './queues/integration.queue';
 import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
 import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
 import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
@@ -457,7 +455,6 @@ negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-integrationSyncQueue.startWorker();
 if (isQuestionerEnabled()) {
   questionerQueue.startWorker();
 }
@@ -596,7 +593,6 @@ controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
 controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
-controllerInstances.set(NetworkExperimentController, new NetworkExperimentController());
 controllerInstances.set(NetworkRequestController, new NetworkRequestController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(IntentIntakeController, new IntentIntakeController());

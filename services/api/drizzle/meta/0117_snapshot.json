@@ -1,5 +1,5 @@
 {
-  "id": "ce913947-2564-402d-bd69-e4d1efc100ec",
+  "id": "39064a0a-8355-4b4d-8313-4843366163a1",
   "prevId": "7a855cc1-8c5e-4f2e-8b5d-863651e24fa4",
   "version": "7",
   "dialect": "postgresql",
@@ -3403,32 +3403,18 @@
           "notNull": true,
           "default": false
         },
-        "is_experiment": {
-          "name": "is_experiment",
+        "master_key_hash": {
+          "name": "master_key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hidden": {
+          "name": "hidden",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "experiment_master_key_hash": {
-          "name": "experiment_master_key_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "type": {
-          "name": "type",
-          "type": "network_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'community'"
-        },
-        "request_status": {
-          "name": "request_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "metadata": {
           "name": "metadata",
@@ -7001,14 +6987,6 @@
         "PAUSED",
         "FULFILLED",
         "EXPIRED"
-      ]
-    },
-    "public.network_type": {
-      "name": "network_type",
-      "schema": "public",
-      "values": [
-        "community",
-        "event"
       ]
     },
     "public.opportunity_status": {

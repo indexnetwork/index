@@ -1,19 +1,32 @@
 // Agents: the runtimes on this Mac, and which one speaks for you.
 // Reached from the agents row on the hub's sidebar footer, same as networks.
 
+// Per-agent permissions, shown when a connected runtime is expanded.
+const AGENT_PERMISSIONS = [
+  { id:"updates", title:"connection updates",
+    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
+  { id:"indexing", title:"nightly indexing",
+    blurb:"turns what this agent learned today into signals, overnight. off means "
+        + "discovery only knows what you've told it." },
+  { id:"brief", title:"daily brief",
+    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
+];
+
 // On/off switch. A sliding knob rather than a checkmark: these rows are states
 // a runtime is in, not items you tick, and the knob's position reads at a
 // glance down a column. Squared off, since a rounded pill would be the only
 // round thing in the app.
-function MiniSwitch({ on, onClick, label }) {
+function MiniSwitch({ on, onClick, label, fixed }) {
   return (
     <button
-      onClick={onClick}
+      onClick={fixed ? undefined : onClick}
       role="switch"
       aria-checked={on}
+      aria-disabled={fixed || undefined}
       aria-label={label}
       style={{
-        flex:"0 0 auto", width:34, height:18, padding:0, cursor:"pointer",
+        flex:"0 0 auto", width:34, height:18, padding:0,
+        cursor: fixed ? "default" : "pointer",
         border:"1px solid #000",
         background: on ? "#FF8A00" : "#EDEAE1",
         boxShadow: on
@@ -32,8 +45,9 @@ function MiniSwitch({ on, onClick, label }) {
 }
 
 // Status dot + word. Connected is live (accent); detected is present but idle.
-function AgentState({ state, negotiator }) {
-  const live = state === "connected";
+function AgentState({ state }) {
+  // "detected" is the only idle state; "connected" and "system default" are live
+  const live = state !== "detected";
   return (
     <span style={{
       display:"flex", alignItems:"center", gap:6, minWidth:0,
@@ -44,12 +58,12 @@ function AgentState({ state, negotiator }) {
         flex:"0 0 auto", width:6, height:6,
         background: live ? "#1FA95B" : "var(--ink-4)",
       }}/>
-      {state}{negotiator && " · negotiates for you"}
+      {state}
     </span>
   );
 }
 
-function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onTogglePerm, isNegotiator, last }) {
+function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onTogglePerm, last }) {
   const connected = agent.state === "connected";
   const [hover, setHover] = useState(false);
 
@@ -72,7 +86,8 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           if (!connected) return;
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
         }}
-        title={connected ? "permissions" : "connect this agent to configure it"}
+        title={agent.builtin ? "index is built in and always on"
+          : connected ? "permissions" : "connect this agent to configure it"}
         style={{
           display:"flex", alignItems:"center", gap:11,
           padding:"9px 12px",
@@ -86,21 +101,22 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
           overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
         }}>{agent.name}</span>
         <span style={{ flex:1, minWidth:0 }}>
-          <AgentState state={agent.state} negotiator={isNegotiator}/>
+          <AgentState state={agent.state}/>
         </span>
         {/* the one thing in the row that isn't "open the row" */}
         <span
           onClick={e => e.stopPropagation()}
           style={{ flex:"0 0 auto", display:"flex" }}>
           <MiniSwitch on={agent.on} onClick={() => onToggleOn(agent.id)}
-            label={`${agent.name} on`}/>
+            fixed={agent.builtin} label={`${agent.name} on`}/>
         </span>
-        {/* indicator now, not a control, the row carries the click */}
+        {/* indicator now, not a control, the row carries the click.
+            the builtin row never opens, so it carries no chevron */}
         <span aria-hidden="true" style={{
           flex:"0 0 auto", width:18, textAlign:"center",
           fontFamily:"var(--mac-mono)", fontSize:12,
           color: connected ? "#000" : "var(--ink-4)",
-        }}>{expanded ? "▾" : "›"}</span>
+        }}>{agent.builtin ? "" : expanded ? "▾" : "›"}</span>
       </div>
 
       {expanded && connected && (
@@ -352,20 +368,18 @@ function mapLiveAgent(a) {
 }
 
 function Agents({ onClose }) {
-  const { AGENTS } = window.INDEX_DATA;
-  const [agents, setAgents] = useState(AGENTS);
+  // Live-only: no demo runtimes. The list is populated by fetchRegistered (the
+  // account's registered agents) and the local harness scan below.
+  const [agents, setAgents] = useState([]);
   const [expanded, setExpanded] = useState(null);
-  // Demo defaults, replaced wholesale by the live list below when signed in.
-  const [perms, setPerms] = useState(() => ({
-    hermes: { updates:true, indexing:true, brief:true },
-    claude: { updates:true, indexing:false, brief:false },
-  }));
-  const [negotiator, setNegotiator] = useState("hermes");
+  // Filled from the live agent list; "index" is the builtin negotiator fallback.
+  const [perms, setPerms] = useState({});
+  const [negotiator, setNegotiator] = useState("index");
 
   // Which local runtimes are already registered on the account: personal
-  // agents matched by name (lowercased). System agents (orchestrator, index
-  // negotiator) never appear as runtime rows — index stays the builtin
-  // negotiator fallback in the picker below.
+  // agents matched by name (lowercased). Server-side system agents never map
+  // to runtime rows — the Index row in the list is the local builtin, pinned
+  // on, and it doubles as the negotiator fallback in the picker below.
   const [registered, setRegistered] = useState({});
   const noteRegistered = (a) => {
     const row = mapLiveAgent(a);
@@ -524,23 +538,29 @@ function Agents({ onClose }) {
     bump(n => n + 1);
   };
 
-  // Rows are the detected local runtimes only. A runtime already registered
-  // on the account (matched by name) wears its live record: connected state,
-  // real id, on = active. Everything else is detected and off until the
-  // switch registers it.
-  const rows = detected === null ? agents : detected.map(d => {
+  // Rows are the builtin Index runtime plus the detected local runtimes.
+  // Index leads the list: always on, not switchable — it is the system
+  // default that carries negotiations when nothing else does. A local
+  // runtime already registered on the account (matched by name) wears its
+  // live record: connected state, real id, on = active. Everything else is
+  // detected and off until the switch registers it.
+  const indexRow = {
+    id:"index", name:"Index", state:"system default", on:true, builtin:true,
+  };
+  const rows = [indexRow, ...(detected === null ? agents : detected.map(d => {
     const live = registered[d.name.toLowerCase()];
     return live
       ? { ...live, path: d.path }
       : { id: d.id, name: d.name, state: "detected", on: false,
           connectedAs: "", heartbeat: "", path: d.path };
-  });
+  }))];
 
   // Only runtimes you've switched on can speak for you, so only those are
   // offered. Index is always available as the fallback.
   const negotiatorOptions = [
     { id:"index", label:"Index · system default" },
-    ...rows.filter(a => a.on).map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
+    ...rows.filter(a => a.on && !a.builtin)
+      .map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
   ];
 
   return (
@@ -614,12 +634,6 @@ function Agents({ onClose }) {
               opacity: checking ? 0.5 : 1,
               transition:"opacity 140ms linear",
             }}>
-              {rows.length === 0 && (
-                <div style={{
-                  padding:"12px",
-                  fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
-                }}>no agent runtimes found on this mac</div>
-              )}
               {rows.map((a, i) => (
                 <AgentRow
                   key={a.id}
@@ -630,9 +644,15 @@ function Agents({ onClose }) {
                   onToggleOn={toggleOn}
                   perms={perms[a.id] || {}}
                   onTogglePerm={togglePerm}
-                  isNegotiator={negotiator === a.id}
                 />
               ))}
+              {/* index is always here, so "empty" means no local runtimes */}
+              {rows.length === 1 && (
+                <div style={{
+                  padding:"12px", borderTop:"1px solid #000",
+                  fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
+                }}>no other agent runtimes found on this mac</div>
+              )}
             </div>
 
             <SectionRule size={13}>negotiator agent</SectionRule>

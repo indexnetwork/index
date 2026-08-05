@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -24,6 +24,112 @@ describe("production web server", () => {
   afterEach(() => {
     rmSync(distDir, { recursive: true, force: true });
   });
+
+  test("serves the apple-app-site-association file as uncached JSON", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+
+    const response = fetch(
+      new Request("https://index.network/.well-known/apple-app-site-association"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/json");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain("network.index.system6");
+    expect(body).toContain("/c/*");
+    expect(body).toContain("/o/*");
+    expect(body).toContain("/u/*");
+  });
+
+  test("excludes deeper /u/ paths so web-only routes are not claimed", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+
+    const response = fetch(
+      new Request("https://index.network/.well-known/apple-app-site-association"),
+    );
+
+    const aasa = (await response.json()) as {
+      applinks: { details: Array<{ components: Array<{ "/": string; exclude?: boolean }> }> };
+    };
+    const components = aasa.applinks.details[0].components;
+    const excludedIndex = components.findIndex((c) => c["/"] === "/u/*/*");
+    const claimedIndex = components.findIndex((c) => c["/"] === "/u/*");
+
+    expect(components[excludedIndex].exclude).toBe(true);
+    // First match wins, so the exclusion has to precede the broad claim.
+    expect(excludedIndex).toBeGreaterThanOrEqual(0);
+    expect(excludedIndex).toBeLessThan(claimedIndex);
+    // The other claimed paths are untouched.
+    expect(components.filter((c) => c.exclude !== true).map((c) => c["/"])).toEqual([
+      "/c/*",
+      "/o/*",
+      "/u/*",
+    ]);
+  });
+
+  test("serves the placeholder team id when APPLE_TEAM_ID is unset", async () => {
+    vi.stubEnv("APPLE_TEAM_ID", "");
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+
+    const response = fetch(
+      new Request("https://index.network/.well-known/apple-app-site-association"),
+    );
+
+    expect(JSON.stringify(await response.json())).toContain(
+      "TEAMIDPLACEHOLDER.network.index.system6",
+    );
+    vi.unstubAllEnvs();
+  });
+
+  test("uses the APPLE_TEAM_ID env var when set", async () => {
+    vi.stubEnv("APPLE_TEAM_ID", "ABCDE12345");
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+
+    const response = fetch(
+      new Request("https://index.network/.well-known/apple-app-site-association"),
+    );
+
+    expect(JSON.stringify(await response.json())).toContain(
+      "ABCDE12345.network.index.system6",
+    );
+    vi.unstubAllEnvs();
+  });
+
+  test("answers HEAD for the apple-app-site-association file with an empty body", async () => {
+    const fetch = createWebHandler({ distDir, metaMap: {} });
+
+    const response = fetch(
+      new Request("https://index.network/.well-known/apple-app-site-association", {
+        method: "HEAD",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/json");
+    expect(await response.text()).toBe("");
+  });
+
+  test.each(["/c/aB3xY9zQ2w", "/o/opp-123"])(
+    "injects deep-link meta for document navigations to %s",
+    async (pathname) => {
+      const fetch = createWebHandler({ distDir, metaMap: {} });
+
+      const response = fetch(
+        new Request(`https://index.network${pathname}`, {
+          headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "Sec-Fetch-Mode": "navigate",
+          },
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const html = await response.text();
+      expect(html).toContain("<title>Open in the Index app</title>");
+    },
+  );
 
   test("serves the SPA entrypoint for document route navigation", async () => {
     const fetch = createWebHandler({ distDir, metaMap: {} });

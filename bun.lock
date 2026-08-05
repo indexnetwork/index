@@ -19,7 +19,7 @@
     },
     "apps/eval-ops": {
       "name": "@indexnetwork/eval-ops",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "dependencies": {
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
@@ -41,7 +41,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.44.0",
+      "version": "0.46.0",
       "dependencies": {
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
@@ -106,11 +106,11 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.13.0",
+      "version": "0.15.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "8.8.0",
+      "version": "8.11.0",
       "dependencies": {
         "@langchain/core": "1.1.48",
         "@langchain/langgraph": "1.3.2",
@@ -126,7 +126,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.70.1",
+      "version": "0.73.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

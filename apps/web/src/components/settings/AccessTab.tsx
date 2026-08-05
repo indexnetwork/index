@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff, EyeOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -70,6 +70,7 @@ export default function AccessTab({
   const usersService = createUsersService(api);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
+  const [isHiddenFromDirectory, setIsHiddenFromDirectory] = useState(network.hidden ?? false);
   const [isUpdatingProfilePolicy, setIsUpdatingProfilePolicy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -99,12 +100,13 @@ export default function AccessTab({
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
     setAnyoneCanJoin(network.permissions?.joinPolicy === 'anyone');
+    setIsHiddenFromDirectory(network.hidden ?? false);
     if (network.permissions?.invitationLink?.code && network.permissions.joinPolicy === 'invite_only') {
       setInvitationLink({ code: network.permissions.invitationLink.code });
     } else {
       setInvitationLink(null);
     }
-  }, [network.id, network.permissions]);
+  }, [network.id, network.permissions, network.hidden]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadMembers = useCallback(async () => {
@@ -177,6 +179,17 @@ export default function AccessTab({
     }
   };
 
+  const handleUpdateHidden = async (hidden: boolean) => {
+    try {
+      await networkService.updateNetwork(networkId, { hidden });
+      const updatedNetwork = await networkService.getNetwork(networkId);
+      onUpdated(updatedNetwork);
+    } catch (err) {
+      logger.error('Error updating directory visibility', { error: err });
+      error('Failed to update directory visibility');
+    }
+  };
+
   const handleUpdateProfileEnrichment = async (profileEnrichment: ProfileEnrichmentPolicy) => {
     if (isUpdatingProfilePolicy) return;
     setIsUpdatingProfilePolicy(true);
@@ -208,7 +221,7 @@ export default function AccessTab({
   };
 
   const handleAddMember = async (memberUser: Member) => {
-    if (network.isExperiment) {
+    if (network.hasMasterKey) {
       await handleInviteMember(memberUser.email);
       return;
     }
@@ -363,8 +376,8 @@ export default function AccessTab({
     <>
       <div className="space-y-8">
 
-        {/* Who can join — experiment networks are always private */}
-        {!network.isPersonal && !network.isExperiment && (
+        {/* Who can join — master-key networks are always private */}
+        {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
             <div className="grid grid-cols-2 gap-2">
@@ -394,6 +407,24 @@ export default function AccessTab({
           </div>
         )}
 
+        {/* Hidden from directory — personal networks reject non-prompt updates */}
+        {!network.isPersonal && (
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Directory Listing</p>
+            <button
+              type="button"
+              onClick={() => { setIsHiddenFromDirectory(!isHiddenFromDirectory); handleUpdateHidden(!isHiddenFromDirectory); }}
+              className={`w-full flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${isHiddenFromDirectory ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+            >
+              <EyeOff className={`h-4 w-4 flex-shrink-0 ${isHiddenFromDirectory ? 'text-black' : 'text-gray-400'}`} />
+              <div>
+                <p className="text-sm font-medium text-black">Hidden from directory</p>
+                <p className="text-xs text-gray-400">{isHiddenFromDirectory ? 'This network is not shown in public listings' : 'This network appears in public listings'}</p>
+              </div>
+            </button>
+          </div>
+        )}
+
         {/* Profile enrichment policy */}
         {!network.isPersonal && (
           <div>
@@ -418,16 +449,16 @@ export default function AccessTab({
                 );
               })}
             </div>
-            {network.isExperiment && profileEnrichmentPolicy !== 'consent_required' && (
+            {network.hasMasterKey && profileEnrichmentPolicy !== 'consent_required' && (
               <p className="text-xs text-amber-600 mt-2">
-                Consent is recommended for experiment signup networks so attendee profile data is staged until members verify it.
+                Consent is recommended for master-key signup networks so attendee profile data is staged until members verify it.
               </p>
             )}
           </div>
         )}
 
-        {/* Share link — not applicable for experiment networks */}
-        {!network.isPersonal && !network.isExperiment && (
+        {/* Share link — not applicable for master-key networks */}
+        {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
               {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
@@ -470,7 +501,7 @@ export default function AccessTab({
                   className="pl-9"
                 />
               </div>
-              {network.isExperiment && (
+              {network.hasMasterKey && (
                 <>
                   <input
                     ref={csvInputRef}
@@ -513,14 +544,14 @@ export default function AccessTab({
                 {memberSearchQuery.includes('@') ? (
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                    onClick={() => network.isExperiment ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
+                    onClick={() => network.hasMasterKey ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
                     disabled={isAddingMember}
                   >
                     <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                       <Plus className="h-3.5 w-3.5 text-gray-500" />
                     </div>
                     <span className="text-sm text-black flex-1 truncate">
-                      {network.isExperiment ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
+                      {network.hasMasterKey ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
                     </span>
                   </button>
                 ) : (
@@ -596,7 +627,7 @@ export default function AccessTab({
                     </button>
                   </Tooltip>
                 )}
-                {network.isExperiment && (
+                {network.hasMasterKey && (
                   <Tooltip content="Resend invitation · expires old key">
                     <button
                       onClick={() => setResendTarget(member)}

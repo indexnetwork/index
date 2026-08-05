@@ -23,6 +23,7 @@ API_EXPORTS = [
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
+    "parseDeepLink", "isIndexDeepLink",
 ]
 
 # Pinned CDN URLs -> local vendored files (downloaded once into src/vendor/).
@@ -55,7 +56,7 @@ for url, fname in VENDOR.items():
 #      injected before the babel scripts so api.jsx can build a client from it.
 def build_index_api() -> str:
     parts = []
-    for fname in ("client.mjs", "mappers.mjs"):
+    for fname in ("client.mjs", "mappers.mjs", "deeplink.mjs"):
         code = (API_DIR / fname).read_text()
         if "</script" in code:
             raise SystemExit(f"refusing to inline {fname}: contains </script")
@@ -67,7 +68,7 @@ def build_index_api() -> str:
     return f"<script>\n(function(){{\n{body}\n}})();\n</script>"
 
 
-anchor = '<script type="text/babel" src="index-amiga/data.jsx"></script>'
+anchor = '<script type="text/babel" src="index-amiga/primitives.jsx"></script>'
 if anchor not in html:
     raise SystemExit("could not find the first babel script tag to inject IndexApi before")
 html = html.replace(anchor, build_index_api() + "\n" + anchor, 1)

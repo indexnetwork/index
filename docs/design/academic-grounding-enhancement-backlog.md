@@ -25,7 +25,7 @@ Ordering below is **our** priority order (implementation leverage ÷ risk), whic
 
 ## 2. Uptake transition guard (pre-accept clarification) — **S/M** — **SHIPPED (IND-424)**
 
-Implemented low-authority preparatory-condition questions when opportunities enter `pending`, an internal `uptake` detection purpose, and a flag-gated soft acceptance interlock across MCP, REST, web, connect links, CLI, and Hermes. The first accept attempt remains non-mutating until the user answers/dismisses the questions or explicitly acknowledges the current question IDs to continue anyway. No new lifecycle state was added.
+Implemented low-authority preparatory-condition questions when opportunities enter `pending`, an internal `uptake` detection purpose, and a flag-gated soft acceptance interlock across MCP, REST, web, CLI, and Hermes (connect links carried it too, until they were removed in favor of app-only acceptance over universal links). The first accept attempt remains non-mutating until the user answers/dismisses the questions or explicitly acknowledges the current question IDs to continue anyway. No new lifecycle state was added.
 
 **Theory:** Schlöder & Fernández (2014), clarification requests at the level of uptake; Clark (1996) joint-action ladder — verify *understanding* before *commitment*. *(Report rank #4, Ch. 10.)*
 

@@ -516,7 +516,10 @@ function NetworkDetail({ net, onBack, onLeave }) {
 }
 
 function Networks({ onClose }) {
-  const { NETWORKS } = window.INDEX_DATA;
+  // Live-only: the mirror holds the signed-in user's networks (set by
+  // applyLoaded). Ensure it is an array so the local unshift below still
+  // persists a just-created network to the other screens.
+  const NETWORKS = (window.INDEX_DATA.NETWORKS = window.INDEX_DATA.NETWORKS || []);
   // Live backend wiring: writes fire against services/api when signed in, but
   // the UI keeps updating the local mirror exactly as the offline demo does.
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());

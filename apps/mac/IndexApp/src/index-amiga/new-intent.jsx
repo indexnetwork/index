@@ -1,162 +1,49 @@
-// Onboarding, Mac System 6 chrome, conversational. + Calibrating screen.
+// NewIntent — the signal-creation flow. Mac System 6 chrome, conversational.
+// + Calibrating screen.
+// Live-only: the clarifying questions between the opening prompt and the
+// operating-mode choice come from the backend (the intake funnel or the chat
+// agent). There is no local scripted question set or canned example content.
 
-// The second step adapts to whatever intent the person gave in step one, so the
-// follow-up question is actually relevant to what they're looking for.
-function resolveStep(baseStep, answers) {
-  if (baseStep.id === "edges" && answers.intent) {
-    return { ...baseStep, ...followUpFor(answers.intent) };
-  }
-  if (baseStep.id === "off-limits" && answers.intent) {
-    return { ...baseStep, ...offLimitsFor(answers.intent) };
-  }
-  return baseStep;
-}
+// The opening prompt: the user's first answer IS the signal, handed to the
+// agent to clarify. No suggestion chips — whatever they type drives it.
+const INTENT_STEP = {
+  id: "intent",
+  prompt: "who are you trying to meet right now?",
+  placeholder: "type what you're looking for…",
+};
 
-// Off-limits chips, tuned to whatever they're actually looking for, so the
-// suggestions feel like the agent gets the context, not a canned list.
-function offLimitsFor(intent) {
-  const t = (intent || "").toLowerCase();
+// The closing beat: how the agent should operate for you. A real product
+// choice, not scripted filler, so it stays.
+const SHAPE_STEP = {
+  id: "shape",
+  prompt: "how do you want me to operate?",
+  hint: "i can be a busybody, or i can sit quietly in the background.",
+  choices: [
+    { value: "quiet",  label: "quiet",  sub: "introduce 1–2 high-signal people a week; otherwise nothing." },
+    { value: "warm",   label: "warm",   sub: "surface a handful, ask before negotiating." },
+    { value: "active", label: "active", sub: "keep the radar busy; you can ignore most of it." },
+  ],
+};
 
-  if (/(feedback|\bidea\b|business|startup|launch|validate|pitch)/.test(t)) {
-    return {
-      placeholder: "no investors in pitch mode · skip direct competitors · no 'just pivot' people…",
-      examples: [
-        "no investors pitching me",
-        "skip direct competitors",
-        "no 'you should pivot' takes",
-      ],
-    };
-  }
+// How many dynamic follow-ups sit between the two beats. Caps the chat clarify
+// loop and drives the progress pips (opening + middle + operating-mode).
+const DYN_MAX = 2;
+const STEP_COUNT = 2 + DYN_MAX;
 
-  if (/(open.?source|contribut|\brepo\b|github|maintainer|\boss\b)/.test(t)) {
-    return {
-      placeholder: "no recruiters · skip crypto projects · no vague 'let's collab' DMs…",
-      examples: [
-        "no recruiters",
-        "skip crypto projects",
-        "no vague 'let's collab'",
-      ],
-    };
-  }
-
-  if (/(co.?founder|cofounder|\bpartner\b|start a company|build a company)/.test(t)) {
-    return {
-      placeholder: "no idea-only people · skip anyone not ready to commit · no recruiters…",
-      examples: [
-        "no idea-only people",
-        "skip the not-ready-to-commit",
-        "no recruiters",
-      ],
-    };
-  }
-
-  if (/(\bai\b|\bml\b|machine learning|\bmodel|\bllm)/.test(t)) {
-    return {
-      placeholder: "no recruiters · skip web3 / crypto · no one in hard-sell mode…",
-      examples: [
-        "no recruiters",
-        "skip web3 / crypto",
-        "no hard-sell mode",
-      ],
-    };
-  }
-
-  return {
-    placeholder: "no recruiters · skip sales pitches · don't introduce me to my ex's friends…",
-    examples: [
-      "no recruiters",
-      "skip sales pitches",
-      "no crypto",
-    ],
-  };
-}
-
-function followUpFor(intent) {
-  const t = (intent || "").toLowerCase();
-
-  // a new idea / wants feedback
-  if (/(feedback|\bidea\b|business|startup|launch|validate|pitch)/.test(t)) {
-    return {
-      prompt: "what's the idea, in a sentence?",
-      hint: "rough is fine. i'll look for people who've been near this problem.",
-      placeholder: "a payments tool for small crews · a calmer email client · ai notetaker for therapists…",
-      examples: [
-        "a payments tool for small crews",
-        "an AI notetaker for therapists",
-        "a marketplace for vintage synths",
-      ],
-    };
-  }
-
-  // open source / contributing
-  if (/(open.?source|contribut|\brepo\b|github|maintainer|\boss\b)/.test(t)) {
-    return {
-      prompt: "what do you like to build with?",
-      hint: "languages, stacks, the kind of problem you enjoy. helps me find the right projects.",
-      placeholder: "rust + systems · typescript + dev tools · python + ml…",
-      examples: [
-        "rust + systems work",
-        "typescript + developer tooling",
-        "python + ml infra",
-      ],
-    };
-  }
-
-  // co-founder hunt
-  if (/(co.?founder|cofounder|\bpartner\b|start a company|build a company)/.test(t)) {
-    return {
-      prompt: "what do you bring, and where's the gap?",
-      hint: "your strength plus what you're missing lets me match the complement.",
-      placeholder: "technical, need someone commercial · strong on design, weak on distribution…",
-      examples: [
-        "technical, need someone commercial",
-        "strong on product, weak on sales",
-        "can sell, need an engineer",
-      ],
-    };
-  }
-
-  // AI people / general interest
-  if (/(\bai\b|\bml\b|machine learning|\bmodel|\bllm)/.test(t)) {
-    return {
-      prompt: "what corner of AI are you in right now?",
-      hint: "the part you're closest to helps me find your people.",
-      placeholder: "agents + tool use · evals + interpretability · open-weights models · ai for science…",
-      examples: [
-        "agents and tool use",
-        "evals and interpretability",
-        "open-weights tinkering",
-      ],
-    };
-  }
-
-  // default, meeting people generally
-  return {
-    prompt: "what're you into these days?",
-    hint: "what's on your mind. it helps me pattern-match.",
-    placeholder: "a side project i'm shipping · getting back into climbing · reading more fiction…",
-    examples: [
-      "a side project i'm shipping",
-      "getting back into climbing",
-      "reading more this year",
-    ],
-  };
-}
-
-function Onboarding({ onDone, onBack }) {
-  const { ONBOARDING_STEPS } = window.INDEX_DATA;
-  const SHAPE_STEP = ONBOARDING_STEPS[ONBOARDING_STEPS.length - 1];
-  // How many follow-up questions sit between "intent" and "shape", the live
-  // flow asks the backend for the same number the local script would.
-  const DYN_MAX = Math.max(1, ONBOARDING_STEPS.length - 2);
+function NewIntent({ onDone, onBack }) {
   const live = !!(window.IndexApp && window.IndexApp.isAuthed());
   const client = live ? window.IndexApp.getClient() : null;
+  const env = useIndexEnv();
+  // The web app's deterministic intake funnel (/intents/intake/*), gated by the
+  // backend FAST_SIGNAL_INTAKE flag. When off (or start fails) the chat flow
+  // below stays the path.
+  const fastEnabled = !!(client && env.features && env.features.fastSignalIntake);
 
   // Completed turns drive the progress bar and the faded history; the current
   // step is either a local scripted one or a backend-generated question.
   const [turns, setTurns] = useState([]);
-  const [step, setStep] = useState(() => resolveStep(ONBOARDING_STEPS[0], {}));
-  const [thinking, setThinking] = useState(false);
+  const [step, setStep] = useState(() => INTENT_STEP);
+  const [thinking, setThinking] = useState(fastEnabled);
   const [answers, setAnswers] = useState({});
   const [draft, setDraft] = useState("");
   const [calibrating, setCalibrating] = useState(false);
@@ -170,17 +57,15 @@ function Onboarding({ onDone, onBack }) {
   const seenQ = useRef(new Set());
   const awaitingRef = useRef(false);      // a chat turn owes us the next step
   const dynAsked = useRef(0);
-  const localIdx = useRef(0);             // pointer into the scripted steps
-  const usedLocalFallback = useRef(false);
   const cancelledRef = useRef(false);
   useEffect(() => () => { cancelledRef.current = true; }, []);
 
-  const stepIdx = Math.min(turns.length, ONBOARDING_STEPS.length - 1);
+  const stepIdx = Math.min(turns.length, STEP_COUNT - 1);
 
   useEffect(() => {
     setDraft("");
     if (inputRef.current) {
-      setTimeout(() => inputRef.current && inputRef.current.focus(), 700);
+      setTimeout(() => inputRef.current && inputRef.current.focus(), 50);
     }
   }, [step && step.id, thinking]);
 
@@ -195,11 +80,142 @@ function Onboarding({ onDone, onBack }) {
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // ---- fast intake (the web app's /intents/intake funnel) ------------------
+  //
+  // Round 1 comes from /start, follow-ups from /question until the locked
+  // total, then /prepare + /proposal synthesize the draft (a 422 carries a
+  // clarification question). The signal always looks everywhere (no networkId),
+  // and a one-button summary gates /intents/confirm. The server holds no funnel
+  // session: every call resends the answered rounds.
+
+  const fastRounds = useRef([]);          // [{ prompt, answer }]
+  const fastQueue = useRef([]);           // prefetched follow-up questions
+  const fastTotal = useRef(null);         // locked question budget
+  const fastPrepare = useRef(null);       // in-flight /prepare promise
+  const fastRunId = useRef(null);
+  const fastProposal = useRef(null);      // resolved proposal shown on the summary
+
+  const showFastQuestion = (q, kind = "question") => {
+    setThinking(false);
+    setStep({
+      id: `fast-${kind}-${Date.now()}`,
+      fast: kind,
+      prompt: q.prompt,
+      hint: q.evidence || "",
+      placeholder: "type your answer…",
+      examples: (q.options || []).map((o) => o.label).filter(Boolean),
+    });
+  };
+
+  // Summary gate: rendered as a dedicated card (SignalSummaryCard), not the
+  // generic question layout. `choices` stays so submit() resolves the label.
+  const showFastSummary = (p, note) => {
+    fastProposal.current = p;
+    setThinking(false);
+    setStep({
+      id: `fast-summary-${Date.now()}`,
+      fast: "summary",
+      prompt: p.description,
+      proposal: p,
+      note: note || "",
+      choices: [{ value: "create", label: "create this signal", sub: "looking everywhere" }],
+    });
+  };
+
+  const showFastRetry = () => {
+    setThinking(false);
+    setStep({
+      id: `fast-retry-${Date.now()}`,
+      fast: "retry",
+      prompt: "couldn't build your signal.",
+      choices: [{ value: "retry", label: "try again", sub: "your answers are kept" }],
+    });
+  };
+
+  // Next follow-up from the queue or the server; once the budget is spent,
+  // fire speculative synthesis and move on to the where step.
+  const fastAdvance = async () => {
+    if (fastQueue.current.length > 0) { showFastQuestion(fastQueue.current.shift()); return; }
+    const rounds = fastRounds.current;
+    if (fastTotal.current === null || rounds.length < fastTotal.current) {
+      try {
+        const res = await client.intents.intake.question({
+          rounds,
+          ...(fastTotal.current !== null ? { plannedTotal: fastTotal.current } : {}),
+        });
+        if (cancelledRef.current) return;
+        fastTotal.current = res.total;
+        const qs = res.questions || [];
+        if (qs.length > 0 && rounds.length < res.total) {
+          fastQueue.current = qs.slice(1);
+          showFastQuestion(qs[0]);
+          return;
+        }
+      } catch (_e) { /* proceed with the rounds we have */ }
+      if (cancelledRef.current) return;
+    }
+    fastPrepare.current = client.intents.intake.prepare({ rounds });
+    fastPrepare.current.then((r) => { fastRunId.current = r.runId; }).catch(() => {});
+    fastResolve();
+  };
+
+  const fastResolve = async () => {
+    setThinking(true);
+    try {
+      if (!fastRunId.current && fastPrepare.current) {
+        fastRunId.current = await fastPrepare.current.then((r) => r.runId).catch(() => null);
+      }
+      if (!fastRunId.current) {
+        fastRunId.current = (await client.intents.intake.prepare({ rounds: fastRounds.current })).runId;
+      }
+      const p = await client.intents.intake.proposal({
+        runId: fastRunId.current,
+        rounds: fastRounds.current,
+      });
+      if (!cancelledRef.current) showFastSummary(p);
+    } catch (e) {
+      if (cancelledRef.current) return;
+      const body = e && e.response;
+      if (body && body.code === "verification_rejected" && body.clarification) {
+        showFastQuestion(body.clarification, "clarify");
+        return;
+      }
+      showFastRetry();
+    }
+  };
+
+  const fastConfirm = async (ans) => {
+    setThinking(true);
+    try {
+      const p = fastProposal.current;
+      const res = await client.intents.confirm({
+        proposalId: p.proposalId,
+        description: p.description,
+      });
+      if (cancelledRef.current) return;
+      if (res && res.intentId) intentIdRef.current = res.intentId;
+      createdRef.current = true;
+      finish(ans);
+    } catch (_e) {
+      if (cancelledRef.current) return;
+      showFastSummary(fastProposal.current, "that didn't go through — try again.");
+    }
+  };
+
+  useEffect(() => {
+    if (!fastEnabled) return;
+    client.intents.intake.start()
+      .then(({ question }) => { if (!cancelledRef.current) showFastQuestion(question); })
+      // Start failed (flag raced off, network): the scripted first step is
+      // still in place, so the chat flow takes over untouched.
+      .catch(() => { if (!cancelledRef.current) setThinking(false); });
+  }, []);
+
   // ---- chat-driven clarification (same machinery as the web app) ----------
   //
   // The first answer opens a /chat/stream turn. The agent asks clarifying
   // questions via ask_user_question, each arrives as a `user_question` SSE
-  // event and becomes the next onboarding step; answering it resumes the same
+  // event and becomes the next question step; answering it resumes the same
   // blocked turn. The turn ends in an ```intent_proposal``` block, which we
   // confirm through POST /intents/confirm.
 
@@ -235,20 +251,15 @@ function Onboarding({ onDone, onBack }) {
   const toShape = () => {
     awaitingRef.current = false;
     setThinking(false);
-    setStep(resolveStep(SHAPE_STEP, answersRef.current));
+    setStep(SHAPE_STEP);
   };
 
-  // No dynamic flow available (demo, stream error before anything happened),
-  // continue with the original scripted follow-ups.
-  const fallbackLocal = () => {
+  // Backend clarification is unavailable or errored: there is no local script to
+  // fall back to, so close out the guided beat and go to the operating-mode
+  // choice. finish() still creates the signal from whatever was answered.
+  const skipToShape = () => {
     if (cancelledRef.current) return;
-    if (dynAsked.current > 0 || createdRef.current) { toShape(); return; }
-    usedLocalFallback.current = true;
-    awaitingRef.current = false;
-    setThinking(false);
-    localIdx.current += 1;
-    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
-    setStep(resolveStep(next, answersRef.current));
+    toShape();
   };
 
   const confirmProposal = async (p) => {
@@ -295,7 +306,7 @@ function Onboarding({ onDone, onBack }) {
       });
       return;
     }
-    fallbackLocal();
+    skipToShape();
   };
 
   // Open one chat turn and route its events back into the step machine.
@@ -319,10 +330,10 @@ function Onboarding({ onDone, onBack }) {
         } else if (ev.type === "done") {
           handleDone(ev.response || ev.fullResponse || "");
         } else if (ev.type === "error") {
-          if (awaitingRef.current) fallbackLocal();
+          if (awaitingRef.current) skipToShape();
         }
       },
-    }).catch(() => { if (awaitingRef.current) fallbackLocal(); });
+    }).catch(() => { if (awaitingRef.current) skipToShape(); });
   };
 
   const submit = (val) => {
@@ -341,10 +352,43 @@ function Onboarding({ onDone, onBack }) {
       if (dynAsked.current === 1) newAns.edges = v;
       else if (!newAns["off-limits"]) newAns["off-limits"] = v;
     }
+    if (step.fast === "question" || step.fast === "clarify") {
+      if (!newAns.intent) newAns.intent = v;
+      else if (!newAns.edges) newAns.edges = v;
+      else if (!newAns["off-limits"]) newAns["off-limits"] = v;
+    }
     setAnswers(newAns);
     answersRef.current = newAns;
 
     if (step.id === "shape") { finish(newAns); return; }
+
+    // Fast-intake steps: each answer extends the resent rounds, exactly like
+    // the web funnel.
+    if (step.fast) {
+      const isChip = (step.examples || []).includes(raw);
+      if (step.fast === "question") {
+        fastRounds.current = [...fastRounds.current, {
+          prompt: step.prompt,
+          answer: isChip ? { selectedOptions: [raw] } : { selectedOptions: [], freeText: v },
+        }];
+        setThinking(true);
+        fastAdvance();
+      } else if (step.fast === "clarify") {
+        // Merges into the last round's free text; it is not a new round and
+        // does not count toward the locked total.
+        const last = fastRounds.current[fastRounds.current.length - 1];
+        last.answer = {
+          selectedOptions: last.answer.selectedOptions,
+          freeText: [last.answer.freeText, v].filter(Boolean).join(" — "),
+        };
+        fastResolve();
+      } else if (step.fast === "summary") {
+        fastConfirm(newAns);
+      } else if (step.fast === "retry") {
+        fastResolve();
+      }
+      return;
+    }
 
     // A structured chat question, answering it resumes the blocked turn, and
     // the same stream carries the next question or the final proposal.
@@ -375,10 +419,9 @@ function Onboarding({ onDone, onBack }) {
       return;
     }
 
-    // Demo / scripted fallback, the original local flow.
-    localIdx.current += 1;
-    const next = ONBOARDING_STEPS[Math.min(localIdx.current, ONBOARDING_STEPS.length - 1)];
-    setStep(resolveStep(next, newAns));
+    // No live client to clarify against — go straight to the operating-mode
+    // choice; finish() creates the signal from what was answered.
+    toShape();
   };
 
   const finish = (ans) => {
@@ -386,18 +429,12 @@ function Onboarding({ onDone, onBack }) {
     (async () => {
       let created = createdRef.current;
       if (client && !created) {
-        // Live but the early create failed (or never ran), create from the
-        // composed script answers, exactly like the original flow.
+        // The agent never created the signal (no proposal, or the guided beat
+        // was cut short), so create it from the composed answers.
         try {
           await window.IndexApp.createIntent(composeDescription(ans));
           created = true;
-        } catch (_e) { /* fall back to demo transition */ }
-      } else if (client && created && intentIdRef.current && usedLocalFallback.current) {
-        // Scripted fallback answers still refine the created signal.
-        window.IndexApp.mcpCall("update_intent", {
-          intentId: intentIdRef.current,
-          description: composeDescription(ans),
-        }).catch(() => {});
+        } catch (_e) { /* fall through to the calibrating transition */ }
       }
       // Keep the calibrating beat visible even if the calls are fast.
       await new Promise((r) => setTimeout(r, created ? 1200 : 2000));
@@ -439,7 +476,7 @@ function Onboarding({ onDone, onBack }) {
 
             {/* progress, pinstripe segments */}
             <div style={{ display:"flex", gap:3, marginBottom:24 }}>
-              {ONBOARDING_STEPS.map((_, i) => (
+              {Array.from({ length: STEP_COUNT }).map((_, i) => (
                 <div key={i} style={{
                   flex:1, height:8,
                   border:"1px solid #000",
@@ -466,15 +503,24 @@ function Onboarding({ onDone, onBack }) {
                   <AgentBubble>
                     <span style={{
                       color:"var(--ink-2)", display:"inline-flex",
-                      alignItems:"center", flexWrap:"wrap",
+                      alignItems:"center",
                     }}>
-                      working out who to look for<WorkingDots/>
+                      <WorkingDots/>
                     </span>
                   </AgentBubble>
                 </div>
+              ) : step.fast === "summary" ? (
+              <div key={step.id} className="fade-up" style={{ display:"grid", gap:12 }}>
+                <AgentBubble>Here's your signal.</AgentBubble>
+                <SignalSummaryCard
+                  proposal={step.proposal}
+                  note={step.note}
+                  onCreate={() => submit("create")}
+                />
+              </div>
               ) : (
               <div key={step.id} className="fade-up" style={{ display:"grid", gap:10 }}>
-                <AgentBubble><StreamText text={step.prompt} speed={18}/></AgentBubble>
+                <AgentBubble>{step.prompt}</AgentBubble>
                 {step.hint && (
                   <div style={{
                     fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
@@ -544,14 +590,14 @@ function Onboarding({ onDone, onBack }) {
 
         {/* RIGHT, the field warming */}
         <MacWindow title="the field, warming">
-          <OnboardingFieldPreview answers={answers} stepIdx={stepIdx}/>
+          <NewIntentFieldPreview answers={answers} stepIdx={stepIdx}/>
         </MacWindow>
       </div>
     </div>
   );
 }
 
-// Onboarding is the same agent that speaks on the signals page, so it wears the
+// New-intent is the same agent that speaks on the signals page, so it wears the
 // same mark. The "h" tile this replaced named the runtime (hermes) at the one
 // moment you have no idea what that is, and made your first conversation with
 // index look like it came from something else.
@@ -575,7 +621,7 @@ function AgentBubble({ children }) {
    the rest of the app use, so "busy" looks the same everywhere. */
 function WorkingDots({ size = 8 }) {
   return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:5, marginLeft:10 }}>
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
       {[0, 1, 2].map(i => (
         <span key={i} style={{
           width:size, height:size, background:"#000",
@@ -606,6 +652,43 @@ function PastTurn({ step, answer }) {
         <span style={{ fontSize:16, color:"var(--ink-2)" }}>{step.prompt}</span>
       </AgentBubble>
       <UserBubble>{step.choices ? step.choices.find(c => c.value === answer)?.label : answer}</UserBubble>
+    </div>
+  );
+}
+
+// The fast-intake summary gate, kept quiet: the signal as an indented quote in
+// the conversation, small detail lines, one button. No card chrome.
+function SignalSummaryCard({ proposal, note, onCreate }) {
+  return (
+    <div style={{ marginLeft:36, maxWidth:560, display:"grid", gap:14 }}>
+      <div style={{
+        borderLeft:"2px solid #000", paddingLeft:14,
+        display:"grid", gap:8,
+      }}>
+        <div style={{
+          fontFamily:"var(--mac-sans)", fontSize:16, fontWeight:500,
+          lineHeight:1.4, color:"#000",
+        }}>{proposal.description}</div>
+        {(proposal.lookingFor || proposal.youBring) && (
+          <div style={{
+            fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+            lineHeight:1.6, display:"grid", gap:2,
+          }}>
+            {proposal.lookingFor && <div>looking for · {proposal.lookingFor}</div>}
+            {proposal.youBring && <div>you bring · {proposal.youBring}</div>}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+        <Btn primary onClick={onCreate}>create this signal</Btn>
+        {note && (
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            color:"#000", fontWeight:700,
+          }}>{note}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -665,8 +748,8 @@ function ChoiceRow({ c, onClick }) {
   );
 }
 
-// Right column during onboarding
-function OnboardingFieldPreview({ answers, stepIdx }) {
+// Right column during signal creation
+function NewIntentFieldPreview({ answers, stepIdx }) {
   // Just the narrative of what the agent is doing with you.
   const lines = [
     "getting a read on what you need…",
@@ -797,4 +880,4 @@ function Calibrating() {
   );
 }
 
-window.Onboarding = Onboarding;
+window.NewIntent = NewIntent;

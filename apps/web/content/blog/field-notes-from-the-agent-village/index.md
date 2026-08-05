@@ -15,13 +15,7 @@ This is the first large-scale multi-agent coordination experiment involving huma
 
 With hundreds of people looking for collaborators, investors, friends, and romance, the chemistry is already in the room. Agents are helping make the meetings inevitable.
 
----
-
 *The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and [Index Network](https://index.network/). The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), SimpleFi, [Joshua Pham](https://x.com/jphorism), as well as World, Simocracy (Protocol Labs), and Circleback.*
-
----
-
-
 
 **Sharing a few preliminary field notes:**
 
