@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 
 const root = new URL('.', import.meta.url).pathname;
 const build = `${root}build.sh`;
@@ -58,6 +58,34 @@ async function expectRejected(path, fragment, team, bundle, host) {
 }
 
 afterEach(async () => Promise.all(fixtures.splice(0).map((path) => rm(path, { force: true }))));
+
+test('certificate lookup failure under inherited errexit reports the redacted diagnostic', async () => {
+  const fixtureRoot = `${Bun.env.TMPDIR ?? '/tmp'}/index-profile-team-${crypto.randomUUID()}`;
+  const profile = `${fixtureRoot}/input.provisionprofile`;
+  const contents = `${fixtureRoot}/Contents`;
+  try {
+    await mkdir(contents, { recursive: true });
+    await writeFile(profile, 'not secret profile material');
+
+    const identity = 'Developer ID Application: SECRET PERSON (SECRETTEAM)';
+    const result = Bun.spawnSync([
+      'bash',
+      '-c',
+      'set -e; source "$1"; certificate_team_id() { return 1; }; embed_provisioning_profile "$2" "$3" "$4" network.index.system6 dev.index.network',
+      'test-shell',
+      helper,
+      profile,
+      contents,
+      identity,
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('could not derive the signing team');
+    expect(result.stderr.toString()).not.toContain(identity);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
 
 describe('Developer ID provisioning profile validation', () => {
   test('accepts an exact associated domain', async () => {

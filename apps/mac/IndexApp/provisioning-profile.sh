@@ -69,7 +69,7 @@ PY
 embed_provisioning_profile() (
   profile="$1"; contents="$2"; identity="$3"; bundle_id="$4"; host="$5"
   [ -f "$profile" ] || profile_error 'file does not exist'
-  team_id="$(certificate_team_id "$identity")"
+  team_id="$(certificate_team_id "$identity")" || team_id=''
   [ -n "$team_id" ] || profile_error 'could not derive the signing team'
   decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.XXXXXX.plist")"
   trap 'rm -f "$decoded"' EXIT
@@ -77,6 +77,54 @@ embed_provisioning_profile() (
     || profile_error 'could not be decoded'
   validate_profile_plist "$decoded" "$team_id" "$bundle_id" "$host"
   cp "$profile" "$contents/embedded.provisionprofile"
+)
+
+validate_embedded_profile() (
+  app="$1"; host="$2"
+  profile="$app/Contents/embedded.provisionprofile"
+  [ -f "$profile" ] || profile_error 'embedded provisioning profile is missing'
+
+  bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" \
+    || profile_error 'could not read the signed bundle identifier'
+  signing_details="$(codesign -dvv "$app" 2>&1)" \
+    || profile_error 'could not inspect the signed app'
+  team_id="$(printf '%s\n' "$signing_details" | awk -F= '$1 == "TeamIdentifier" { print $2; exit }')"
+  [ -n "$team_id" ] && [ "$team_id" != 'not set' ] \
+    || profile_error 'could not derive the signing team'
+
+  decoded=''
+  signed_entitlements=''
+  trap '[ -z "$decoded" ] || rm -f "$decoded"; [ -z "$signed_entitlements" ] || rm -f "$signed_entitlements"' EXIT
+  decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.XXXXXX.plist")"
+  signed_entitlements="$(mktemp "${TMPDIR:-/tmp}/index-entitlements.XXXXXX.plist")"
+
+  security cms -D -i "$profile" -o "$decoded" >/dev/null 2>&1 \
+    || profile_error 'could not be decoded'
+  validate_profile_plist "$decoded" "$team_id" "$bundle_id" "$host"
+  codesign -d --entitlements :- "$app" >"$signed_entitlements" 2>/dev/null \
+    || profile_error 'could not read signed entitlements'
+
+  python3 - "$signed_entitlements" "$host" <<'PY'
+import plistlib
+import sys
+
+entitlements_path, host = sys.argv[1:]
+
+
+def fail(message):
+    print(f'provisioning profile {message}', file=sys.stderr)
+    raise SystemExit(1)
+
+
+try:
+    with open(entitlements_path, 'rb') as source:
+        entitlements = plistlib.load(source)
+except Exception:
+    fail('could not read signed entitlements')
+
+if entitlements.get('com.apple.developer.associated-domains') != [f'applinks:{host}']:
+    fail('does not match the signed Associated Domains entitlement')
+PY
 )
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
