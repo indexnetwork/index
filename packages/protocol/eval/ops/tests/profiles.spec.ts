@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { ENV_SECRET_KEYS } from "../ops.allowlist.js";
-import { ALLOWED_CONFIG_MODELS, DEFAULT_PROFILE_NAME, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides } from "../ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, DEFAULT_PROFILE_NAME, harnessesReading, loadProfiles, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides } from "../ops.profiles.js";
 import { HARNESS_REGISTRY } from "../ops.registry.js";
 
 let dir: string;
@@ -280,6 +280,70 @@ describe("validateConfigOverrides", () => {
       expect(issues[0]).toContain(value);
       expect(issues[0]).toMatch(/positive number/i);
     }
+  });
+});
+
+describe("validateConfigOverrides per harness", () => {
+  it("accepts a key the harness's own code reads", () => {
+    // CHAT_MODEL is in matching's catalogue, so it is settable there. Before
+    // this task the four scorecard harnesses had no env editor at all, on the
+    // false premise that they read nothing.
+    expect(validateConfigOverrides({ models: {}, env: { CHAT_MODEL: "google/gemini-2.5-flash" } }, "matching")).toEqual([]);
+  });
+
+  it("refuses a key another harness reads but this one does not, naming both", () => {
+    // The union check alone passed this: DISCOVERY_ALLOWED_TYPES is read by
+    // SOME harness, just never by matching. Recording it would have written a
+    // value onto the run record that nothing acts on.
+    const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } }, "matching");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(issues[0]).toContain("matching");
+    // Names where it IS read, so the message is actionable rather than a dead end.
+    expect(issues[0]).toContain("discovery");
+  });
+
+  it("still refuses a credential, by name, for every harness", () => {
+    for (const harness of ["matching", "discovery"] as const) {
+      const issues = validateConfigOverrides({ models: {}, env: { OPENROUTER_API_KEY: "sk-x" } }, harness);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("OPENROUTER_API_KEY");
+      expect(issues[0]).toMatch(/credential/i);
+    }
+  });
+
+  it("keeps the union when no harness is named, because a saved config names none", () => {
+    // The Configs page saves a config without choosing a harness to run it
+    // under, so it has nothing to check against. Narrowing here would make a
+    // legitimate shared config unsavable.
+    expect(validateConfigOverrides({ models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } })).toEqual([]);
+  });
+
+  it("reports every harness that reads a key", () => {
+    // Model and provider knobs are read by all five; a discovery flag by one.
+    expect(harnessesReading("CHAT_MODEL")).toEqual(["matching", "profile", "premise", "opportunity", "discovery"]);
+    expect(harnessesReading("DISCOVERY_ALLOWED_TYPES")).toEqual(["discovery"]);
+    expect(harnessesReading("NOT_A_REAL_KEY")).toEqual([]);
+  });
+});
+
+describe("unreadEnvKeys", () => {
+  it("names the keys a harness will not read", () => {
+    expect(unreadEnvKeys("matching", { CHAT_MODEL: "m", DISCOVERY_ALLOWED_TYPES: "intent" }))
+      .toEqual(["DISCOVERY_ALLOWED_TYPES"]);
+  });
+
+  it("is empty when the harness reads everything the config sets", () => {
+    expect(unreadEnvKeys("discovery", { DISCOVERY_ALLOWED_TYPES: "intent", CHAT_MODEL: "m" })).toEqual([]);
+  });
+
+  it("reports rather than filters, so the record matches the process", () => {
+    // The value is still injected into the child environment; this function only
+    // says what will be ignored. A filter here would make the run record
+    // disagree with the process that actually ran.
+    const env = { CHAT_MODEL: "m", DISCOVERY_ALLOWED_TYPES: "intent" };
+    unreadEnvKeys("matching", env);
+    expect(env).toEqual({ CHAT_MODEL: "m", DISCOVERY_ALLOWED_TYPES: "intent" });
   });
 });
 

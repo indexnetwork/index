@@ -5,6 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { HARNESS_REGISTRY } from "./ops.registry.js";
+import type { OpsHarness } from "./ops.types.js";
 
 export const DEFAULT_PROFILE_NAME = "default";
 
@@ -151,11 +152,20 @@ interface ModelMapBoundsShape {
  * Validates client-originated overrides. Returns human-readable issues;
  * empty means valid. Used by the config routes and the launch path — never
  * by the repo profile loader, whose files are code-reviewed.
+ *
+ * `harness` narrows the env boundary from "any harness reads this" to "THIS
+ * harness reads this", and passing it is what distinguishes an ad-hoc override
+ * from a saved config. See {@link unreadEnvKeys} for why the two differ.
+ * Omitting it keeps the union — the Configs page saves a config without
+ * choosing a harness to run it under, so it has no harness to check against.
  */
-export function validateConfigOverrides(overrides: {
-  models: Record<string, string>;
-  env: Record<string, string>;
-}): string[] {
+export function validateConfigOverrides(
+  overrides: {
+    models: Record<string, string>;
+    env: Record<string, string>;
+  },
+  harness?: OpsHarness,
+): string[] {
   const issues: string[] = [];
   const agents = overridableAgents();
   for (const [agent, model] of Object.entries(overrides.models)) {
@@ -177,10 +187,53 @@ export function validateConfigOverrides(overrides: {
     }
     if (!CONFIGURABLE_ENV_KEYS.has(key)) {
       issues.push(`env key ${key} is not read by any harness`);
+      continue;
+    }
+    // Named a harness, and this key is not in ITS catalogue. Refused rather than
+    // recorded, because an ad-hoc override was typed for THIS run: accepting it
+    // would write a value onto the run record and the artifact that the harness
+    // provably never reads, which is the inert-flag lie the whole branch exists
+    // to remove. A saved config carrying the same key is a different case and is
+    // NOT refused — see unreadEnvKeys.
+    if (harness !== undefined && !HARNESS_ENV_KEYS[harness].includes(key)) {
+      issues.push(
+        `env key ${key} is not read by the ${harness} harness, so setting it here would record a value nothing acts on. `
+        + `Harnesses that read it: ${harnessesReading(key).join(", ") || "none"}`,
+      );
     }
   }
   issues.push(...validateProfileEnv(overrides.env));
   return issues;
+}
+
+/** Every harness whose own code reads `key`, in registry order. */
+export function harnessesReading(key: string): OpsHarness[] {
+  return (Object.keys(HARNESS_ENV_KEYS) as OpsHarness[]).filter((harness) => HARNESS_ENV_KEYS[harness].includes(key));
+}
+
+/**
+ * Keys a saved config carries that the chosen harness does not read.
+ *
+ * The counterpart to the ad-hoc refusal above, and the distinction is the whole
+ * of spec §6. Both describe "a key this harness will not read"; they differ in
+ * who chose it and when:
+ *
+ * - **Ad-hoc override** — the operator typed this key for THIS run, having
+ *   already chosen the harness. There is no reading under which they meant it
+ *   to do nothing, so it is refused (400) and the run does not start.
+ * - **Saved config** — the config was written once, without naming a harness,
+ *   and may be deliberately shared with one that DOES read the key. Refusing it
+ *   would make a legitimate config unlaunchable against any harness but the
+ *   union of its keys. So the run proceeds and the keys are reported, named, as
+ *   recorded-but-not-read.
+ *
+ * The value is still injected into the child environment either way: this
+ * reports what the harness will ignore, it does not filter it. Filtering would
+ * make the run record disagree with the process that ran.
+ */
+export function unreadEnvKeys(harness: OpsHarness, env: Record<string, string>): string[] {
+  const readable = HARNESS_ENV_KEYS[harness];
+  return Object.keys(env).filter((key) => !readable.includes(key)).sort();
 }
 
 /**

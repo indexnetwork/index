@@ -37,7 +37,7 @@ import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type Confi
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { EXCLUSIVE_HARNESSES, RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
@@ -1269,7 +1269,9 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // never arrive outside the validated overrides object.
   let resolved: ResolvedProfile;
   if (parsed.data.overrides !== undefined) {
-    const issues = validateConfigOverrides(parsed.data.overrides);
+    // Harness-aware: an ad-hoc override was typed for THIS run against THIS
+    // harness, so a key the harness cannot read is a refusal, not a note.
+    const issues = validateConfigOverrides(parsed.data.overrides, harness);
     if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
     resolved = resolveAdHoc(parsed.data.overrides);
   } else {
@@ -1281,6 +1283,17 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
     if (profile === undefined) return json({ error: `Unknown profile "${parsed.data.profile}"` }, 400);
     resolved = resolveProfile(profile);
   }
+
+  // Recorded-but-not-read (spec §6). A saved config is harness-agnostic and may
+  // legitimately carry a key this harness never reads — it is shared with one
+  // that does — so the run proceeds and the keys are NAMED on the response. The
+  // ad-hoc path above never reaches here with such a key: it was already a 400.
+  //
+  // EVAL_MODEL_OVERRIDES is excluded because it is not an operator-chosen env
+  // key at all: renderRun writes it from the profile's `models` block (and
+  // writes "" when there is none), so reporting it would tell the operator their
+  // model selection was ignored when it was in fact applied.
+  const unread = unreadEnvKeys(harness, resolved.env).filter((key) => key !== "EVAL_MODEL_OVERRIDES");
 
   // Two phases: the report path contains the run id, and the id is minted by the
   // store, so the record is created first and then completed with its argv.
@@ -1333,7 +1346,11 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
     return json({ error: exclusiveRefusal(harness, raced) }, 409);
   }
   context.queue.enqueue(record, harnessSteps(context, record, harness, harnessEnv.env));
-  return json(record, 202);
+  // The run record's own shape is unchanged — every existing client reads these
+  // fields off the 202 body directly, and RunRecord is what the store persists
+  // and every other route returns. `unreadEnvKeys` rides alongside it, and only
+  // when non-empty, so a client that ignores it sees exactly what it saw before.
+  return json(unread.length > 0 ? { ...record, unreadEnvKeys: unread } : record, 202);
 }
 
 async function cancelRun(context: OpsContext, id: string): Promise<Response> {

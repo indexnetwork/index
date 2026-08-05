@@ -888,6 +888,116 @@ describe("launching discovery", () => {
     expect(step.env).toMatchObject({ OPENROUTER_API_KEY, REDIS_URL });
   });
 
+  /**
+   * The single shape (spec §5): one configuration, no `sides`. Everything below
+   * asserts that making the cheap shape expressible did not make it the
+   * unguarded one — it faces the same credentials pre-check, the same exclusive
+   * slot and the same value rules as a pair.
+   */
+  const SINGLE_BODY = {
+    kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 },
+    overrides: { models: {}, env: { DISCOVERY_PROFILE_SOURCE: "premise" } },
+  };
+
+  it("measures one configuration when launched without sides", async () => {
+    const response = await post("/api/runs", SINGLE_BODY);
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    await context.queue.drain();
+
+    // The engine's single-run shape, not a degenerate pair.
+    expect(record.argv).toContain("--env");
+    expect(record.argv).not.toContain("--a");
+    expect(record.argv).not.toContain("--b");
+    expect(record.argv.join(" ")).toContain("DISCOVERY_PROFILE_SOURCE=premise");
+    // One pass over the 5-case corpus, not two. The site shows this before
+    // spending, so the number has to be the run's real cost.
+    expect(record.workload).toBe(5);
+    // Same environment a pair gets: the destructive step is the same step.
+    const step = executor.starts[0].steps![0];
+    expect(step.env).toMatchObject({ NEON_API_KEY, DISCOVERY_TARGETS, DISCOVERY_CONFIRM: "1", TEST_DATABASE_SAFE: "1" });
+  });
+
+  it("prices a pair at twice a single run", async () => {
+    const single = (await (await post("/api/runs", SINGLE_BODY)).json()) as RunRecord;
+    await context.queue.drain();
+    const pair = (await (await post("/api/runs", AB_BODY)).json()) as RunRecord;
+    await context.queue.drain();
+
+    expect(pair.workload).toBe(single.workload * 2);
+  });
+
+  it("refuses a discovery run that configures nothing, in either shape", async () => {
+    // Without this, the single shape would silently measure the committed
+    // default and report it under whatever the operator believed they had set.
+    const bare = await post("/api/runs", { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 } });
+    expect(bare.status).toBe(400);
+    expect((await bare.json()).error).toMatch(/no configuration/i);
+
+    const empty = await post("/api/runs", {
+      kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 },
+      overrides: { models: {}, env: {} },
+    });
+    expect(empty.status).toBe(400);
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("holds a single run to the same value rules as a side", async () => {
+    // `user-context` (hyphen) is not what the graph reads; it falls back rather
+    // than failing, so an unchecked run reports results under a value that never
+    // applied. This is the exact defect that shipped once already.
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 },
+      overrides: { models: {}, env: { DISCOVERY_PROFILE_SOURCE: "user-context" } },
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("DISCOVERY_PROFILE_SOURCE");
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("refuses a single run when a credential is missing, before any branch is reset", async () => {
+    // The pre-check is keyed on the harness, not on the shape, so the cheaper
+    // run is protected by the same 503. A single run still resets a branch.
+    const { NEON_API_KEY: _absent, ...serverEnv } = AB_SERVER_ENV;
+    await build({ serverEnv });
+
+    const response = await post("/api/runs", SINGLE_BODY);
+
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toContain("NEON_API_KEY");
+    expect(executor.starts).toHaveLength(0);
+    expect((await store.list()).records).toHaveLength(0);
+  });
+
+  it("holds the exclusive slot against the other shape, both ways", async () => {
+    // A single run resets a branch too, so two runs still collide however each
+    // was configured. If the slot were keyed on `sides` this would pass twice.
+    let release!: () => void;
+    executor.gate = new Promise<void>((resolve) => { release = resolve; });
+
+    const first = (await (await post("/api/runs", SINGLE_BODY)).json()) as RunRecord;
+    const blockedPair = await post("/api/runs", AB_BODY);
+    expect(blockedPair.status).toBe(409);
+    expect((await blockedPair.json()).error).toContain(first.id);
+
+    release();
+    executor.gate = null;
+    await context.queue.drain();
+
+    // And the mirror: a pair holding the slot blocks a single run.
+    executor.gate = new Promise<void>((resolve) => { release = resolve; });
+    const pair = (await (await post("/api/runs", AB_BODY)).json()) as RunRecord;
+    const blockedSingle = await post("/api/runs", SINGLE_BODY);
+    expect(blockedSingle.status).toBe(409);
+    expect((await blockedSingle.json()).error).toContain(pair.id);
+
+    release();
+    executor.gate = null;
+    await context.queue.drain();
+  });
+
   it("refuses a second discovery run while one holds the two branches", async () => {
     let release!: () => void;
     executor.gate = new Promise<void>((resolve) => {
@@ -1479,6 +1589,102 @@ describe("GET /api/compare", () => {
       const response = await get("/api/compare?referenceRun=a");
       expect(response.status).toBe(400);
     });
+  });
+});
+
+/**
+ * Spec §6: the same fact — "this harness will not read this key" — is a refusal
+ * or a note depending on WHO chose the key and WHEN.
+ *
+ * An ad-hoc override was typed for this run against this harness, so there is no
+ * reading under which the operator meant it to do nothing. A saved config was
+ * written once without naming a harness, and may be deliberately shared with one
+ * that does read the key; refusing it would make a legitimate config
+ * unlaunchable against anything but the union of its keys.
+ */
+describe("env keys a harness does not read", () => {
+  it("refuses an ad-hoc override naming a key this harness cannot read", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "matching", profile: "default", flags: {},
+      overrides: { models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } },
+    });
+
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error as string;
+    expect(error).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(error).toContain("matching");
+    expect(error).toContain("discovery");
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("accepts an ad-hoc override naming a key this harness does read", async () => {
+    // The point of the whole task: the four scorecard harnesses read model and
+    // provider keys, and nobody could set any of them.
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "matching", profile: "default", flags: {},
+      overrides: { models: {}, env: { CHAT_MODEL: "google/gemini-2.5-flash" } },
+    });
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    await context.queue.drain();
+    // It reaches the child, which is what "settable" has to mean. A scorecard
+    // harness needs no injected credentials and so has no explicit step plan
+    // (harnessSteps returns undefined); its environment travels on the record,
+    // which the executor spawns with.
+    expect(executor.starts[0].steps).toBeUndefined();
+    expect(record.env).toMatchObject({ CHAT_MODEL: "google/gemini-2.5-flash" });
+  });
+
+  it("launches a saved config carrying unread keys, and names them", async () => {
+    await configs.create({
+      name: "shared",
+      description: "one config, several harnesses",
+      models: {},
+      env: { CHAT_MODEL: "google/gemini-2.5-flash", DISCOVERY_ALLOWED_TYPES: "intent" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "matching", profile: "shared", flags: {} });
+
+    // Not refused: the config is legitimately shared with discovery.
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as RunRecord & { unreadEnvKeys?: string[] };
+    expect(body.unreadEnvKeys).toEqual(["DISCOVERY_ALLOWED_TYPES"]);
+
+    await context.queue.drain();
+    // Reported, not filtered: the value still reaches the process, so the run
+    // record and the child agree about what was set.
+    expect(body.env).toMatchObject({
+      CHAT_MODEL: "google/gemini-2.5-flash",
+      DISCOVERY_ALLOWED_TYPES: "intent",
+    });
+  });
+
+  it("says nothing when the harness reads every key the config sets", async () => {
+    await configs.create({
+      name: "models-only", description: "nothing exotic", models: {},
+      env: { CHAT_MODEL: "google/gemini-2.5-flash" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "matching", profile: "models-only", flags: {} });
+
+    expect(response.status).toBe(202);
+    // Absent rather than empty, so a client can treat presence as the signal.
+    expect((await response.json()).unreadEnvKeys).toBeUndefined();
+  });
+
+  it("does not report EVAL_MODEL_OVERRIDES, which renderRun writes from the models block", async () => {
+    // It is not an operator-chosen env key: reporting it would tell the operator
+    // their model selection was ignored when it was in fact applied.
+    await configs.create({
+      name: "sonnet", description: "evaluator on sonnet",
+      models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {},
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "matching", profile: "sonnet", flags: {} });
+
+    expect(response.status).toBe(202);
+    expect((await response.json()).unreadEnvKeys).toBeUndefined();
   });
 });
 

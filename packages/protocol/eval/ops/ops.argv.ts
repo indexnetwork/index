@@ -1,8 +1,9 @@
 import { z } from "zod";
 
+import { DISCOVERY_ENV_KEYS } from "./ops.allowlist.js";
 import { flagValueIssues } from "./ops.flags.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "./ops.registry.js";
-import { REQUIRES_SIDES, SIDES_PER_RUN, SIDE_IDS, abSideIssues } from "./ops.sides.js";
+import { SIDE_IDS, SUPPORTS_SIDES, abSideIssues, sidesPerRun, singleConfigIssues } from "./ops.sides.js";
 import type { ResolvedProfile } from "./ops.profiles.js";
 import type { EvalRunSpec, RunFlags } from "./ops.types.js";
 
@@ -13,7 +14,7 @@ import type { EvalRunSpec, RunFlags } from "./ops.types.js";
  * browser bundle). Re-exported here because this is where the server reads them
  * from.
  */
-export { REQUIRES_SIDES, SIDES_PER_RUN, abSideIssues, type AbSideIssue } from "./ops.sides.js";
+export { REQUIRES_SIDES, SIDES_PER_RUN, SUPPORTS_SIDES, abSideIssues, sidesPerRun, singleConfigIssues, type AbSideIssue } from "./ops.sides.js";
 export { flagValueIssues, type FlagValueIssue } from "./ops.flags.js";
 
 /**
@@ -112,24 +113,35 @@ export const RunSpecSchema = z
         message: 'ad-hoc overrides require profile "default"; launch a named config and tweak it from the Configs page instead',
       });
     }
-    // Per-side configuration is required by exactly the harness that compares two
-    // of them, and inexpressible for every other. Both directions are refusals:
-    // a discovery run without `sides` has nothing to compare, and `sides` on a
-    // scorecard harness would be a control the engine never reads.
-    const requiresSides = REQUIRES_SIDES[spec.harness as EvalRunSpec["harness"]];
-    if (requiresSides && spec.sides === undefined) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["sides"],
-        message: `The ${spec.harness} harness compares two environment configurations; a run without "sides" has nothing to compare`,
-      });
-    }
-    if (!requiresSides && spec.sides !== undefined) {
+    // Per-side configuration is offered by exactly the harness that can compare
+    // two of them, and inexpressible for every other: `sides` on a scorecard
+    // harness would be a control the engine never reads.
+    //
+    // Its ABSENCE is no longer a refusal for discovery. A run without `sides`
+    // measures one configuration (spec §5), which the engine expresses as
+    // `--env KEY=VALUE`; that configuration arrives as `overrides.env`, checked
+    // below.
+    const supportsSides = SUPPORTS_SIDES[spec.harness as EvalRunSpec["harness"]];
+    if (!supportsSides && spec.sides !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["sides"],
         message: `The ${spec.harness} harness scores one configuration against a committed baseline and does not accept "sides"`,
       });
+    }
+    // A single discovery run still has to say what it is measuring, and its keys
+    // face the same per-key rules a pair's do (membership, non-blank, length,
+    // line terminators, and the value's real meaning at its read site). Without
+    // this, the cheaper shape would be the unchecked one.
+    if (supportsSides && spec.sides === undefined) {
+      const env = spec.overrides?.env ?? {};
+      for (const issue of singleConfigIssues(env)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: issue.path.length === 0 ? ["overrides", "env"] : ["overrides", "env", ...issue.path],
+          message: issue.message,
+        });
+      }
     }
     // A pair of sides is the whole configuration of the run that carries it.
     //
@@ -233,9 +245,9 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   // Checked again here rather than trusted from RunSpecSchema, exactly as the
   // flag list above is: the engine ignores unrecognised argv, so anything wrong
   // that reaches this point is spent, not reported.
-  if (REQUIRES_SIDES[spec.harness]) {
-    if (spec.sides === undefined) {
-      throw new Error(`The ${spec.harness} harness compares two environment configurations; a run without "sides" has nothing to compare`);
+  if (spec.sides !== undefined) {
+    if (!SUPPORTS_SIDES[spec.harness]) {
+      throw new Error(`The ${spec.harness} harness scores one configuration against a committed baseline and does not accept "sides"`);
     }
     // The sides are the whole configuration: nothing else may differ between
     // them or sit under both of them unrecorded. RunSpecSchema refuses the pair
@@ -253,8 +265,25 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
         argv.push(`--${id}`, `${key}=${spec.sides[id][key]!}`);
       }
     }
-  } else if (spec.sides !== undefined) {
-    throw new Error(`The ${spec.harness} harness scores one configuration against a committed baseline and does not accept "sides"`);
+  } else if (SUPPORTS_SIDES[spec.harness]) {
+    // The single shape. The configuration is the resolved env — whether it came
+    // from an ad-hoc override or a named config — narrowed to the keys the
+    // discovery graph reads, because `--env` is how the engine is told what to
+    // set and it refuses a key it cannot read (assertAbEnvConfig).
+    //
+    // Narrowing rather than passing everything is what makes a named config
+    // launchable here at all: a config carrying a key this harness does not read
+    // is legitimate (spec §6) and its unread keys are reported, not rendered
+    // into argv the engine would refuse. The full env still reaches the child
+    // through `env` below, so nothing is hidden from the process — only from the
+    // flag list the engine parses.
+    const configured = Object.keys(resolved.env)
+      .filter((key) => DISCOVERY_ENV_KEYS.includes(key))
+      .sort();
+    const config = Object.fromEntries(configured.map((key) => [key, resolved.env[key]!]));
+    const refusal = singleConfigIssues(config)[0];
+    if (refusal !== undefined) throw new Error(refusal.message);
+    for (const key of configured) argv.push("--env", `${key}=${config[key]!}`);
   }
 
   argv.push("--report", reportPath);
@@ -293,5 +322,5 @@ export function renderRun(spec: EvalRunSpec, resolved: ResolvedProfile, reportPa
   const runs = spec.flags.runs ?? descriptor.defaultRuns;
   const cases = fullCorpus ? descriptor.caseCount : 1;
 
-  return { argv, env, fullCorpus, workload: cases * runs * SIDES_PER_RUN[spec.harness] };
+  return { argv, env, fullCorpus, workload: cases * runs * sidesPerRun(spec) };
 }

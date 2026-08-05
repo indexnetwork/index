@@ -22,15 +22,21 @@ import { envValueIssueForKey } from "./ops.metadata.js";
 import type { AbSides, OpsHarness } from "./ops.types.js";
 
 /**
- * Whether one run of this harness compares two operator-supplied environment
+ * Whether one run of this harness MAY compare two operator-supplied environment
  * configurations.
+ *
+ * "May", not "must": discovery measures one configuration when launched without
+ * `sides` and compares two when launched with them. It was `REQUIRES_SIDES`
+ * while a comparison was the only shape it had; a single run is now expressible
+ * (spec §5), so requiring a pair would refuse the cheaper of the two runs.
  *
  * Exhaustive by type, so a second comparison harness has to state its answer
  * here rather than inherit "no" and silently accept a spec with nothing to
  * compare. The four scorecard harnesses score one configuration against a
- * committed baseline, so a second configuration would have nothing to mean.
+ * committed baseline, so a second configuration would have nothing to mean —
+ * for them `sides` remains inexpressible, not optional.
  */
-export const REQUIRES_SIDES: Readonly<Record<OpsHarness, boolean>> = Object.freeze({
+export const SUPPORTS_SIDES: Readonly<Record<OpsHarness, boolean>> = Object.freeze({
   matching: false,
   profile: false,
   premise: false,
@@ -41,15 +47,35 @@ export const REQUIRES_SIDES: Readonly<Record<OpsHarness, boolean>> = Object.free
 /**
  * How many times one launched run passes over the selected corpus.
  *
- * discovery is not two launches: a single invocation runs every case on both
- * sides (its own contract prices its ceiling as "5 cases x 10 repetitions x
- * 2 sides"), so counting one side would record half of what the run spends.
- * Exhaustive by type, so a new harness has to state its number here rather than
- * inherit an understated one.
+ * A function of the SPEC, not of the harness, because discovery has two shapes
+ * and they cost different amounts: a pair runs every case twice in one
+ * invocation (its contract prices its ceiling as "5 cases x 10 repetitions x
+ * 2 sides") while a single run passes over the corpus once. A per-harness
+ * constant — which this was, pinned at 2 for discovery — would now overstate a
+ * single run by double.
  *
  * Read by `renderRun` (the number recorded on the run record) and by the launch
  * form (the number the operator authorises in the full-corpus confirmation).
- * Those two numbers must be the same number, so there is one of them.
+ * Those two numbers must be the same number, so there is one of them. The site
+ * shows it before spending, so a wrong number here is a lie about cost.
+ */
+export function sidesPerRun(spec: { harness: OpsHarness; sides?: AbSides }): number {
+  return spec.sides === undefined ? 1 : SIDE_IDS.length;
+}
+
+/**
+ * @deprecated Renamed to {@link SUPPORTS_SIDES}. Kept so the browser app keeps
+ * compiling across the task that renames it there; delete once Launch.tsx,
+ * Run.tsx and Overview.tsx have moved. The VALUE is unchanged — only the claim
+ * it makes is weaker, because discovery no longer requires a pair.
+ */
+export const REQUIRES_SIDES = SUPPORTS_SIDES;
+
+/**
+ * @deprecated Superseded by {@link sidesPerRun}, which reads the spec's shape
+ * instead of assuming discovery always runs two sides. Retained ONLY so the
+ * launch form keeps building; it overstates a single discovery run by double,
+ * so the form must move to `sidesPerRun` in the task that owns it.
  */
 export const SIDES_PER_RUN: Readonly<Record<OpsHarness, number>> = Object.freeze({
   matching: 1,
@@ -96,6 +122,83 @@ export interface AbSideIssue {
 }
 
 /**
+ * Every reason the engine would refuse ONE side's configuration: key
+ * membership, non-blank, length, line terminators and the value's real meaning.
+ *
+ * Extracted from {@link abSideIssues} so a single discovery run gets exactly the
+ * per-side checks a pair gets. The pair-only rules — symmetry and distinctness —
+ * are deliberately NOT here: they compare two sides and are meaningless for one.
+ * Re-implementing these five for the single shape is how the two shapes would
+ * come to disagree about what a value means, so there is one copy.
+ */
+function sideConfigIssues(config: Record<string, string>, id: string, label: string): AbSideIssue[] {
+  const issues: AbSideIssue[] = [];
+  for (const key of Object.keys(config).sort()) {
+    if (!DISCOVERY_ENV_KEYS.includes(key)) {
+      issues.push({ path: [id, key], message: `${key} is not readable by the discovery graph; this harness cannot test it` });
+      continue;
+    }
+    const value = config[key]!;
+    if (value.trim() === "") {
+      issues.push({ path: [id, key], message: `${key} has an empty value${label}; unset it instead of blanking it` });
+      continue;
+    }
+    if (value.length > AB_SIDE_VALUE_MAX_LENGTH) {
+      issues.push({
+        path: [id, key],
+        message: `${key}${label} is ${value.length} characters; no flag this harness offers takes a value longer than ${AB_SIDE_VALUE_MAX_LENGTH}`,
+      });
+      continue;
+    }
+    if (LINE_TERMINATORS.test(value)) {
+      issues.push({
+        path: [id, key],
+        message:
+          `${key}${label} contains a line break; the engine's KEY=VALUE parser would refuse the argv `
+          + `this renders, after the run had been queued`,
+      });
+      continue;
+    }
+    // The value's meaning, not just its shape. Every read site in the discovery
+    // graph falls back rather than failing on a value it does not recognise, so
+    // an unchecked typo does not stop the run: it runs the DEFAULT and reports
+    // results under the value the operator named. Same rule the saved-config and
+    // ad-hoc paths use (validateProfileEnv), by construction — both call
+    // envValueIssueForKey.
+    const unreal = envValueIssueForKey(key, value);
+    if (unreal !== null) {
+      issues.push({
+        path: [id, key],
+        message:
+          `${key}="${value}"${label} ${unreal}. The discovery graph falls back to its own default for a `
+          + `value it does not recognise, so this run would use the default while the report named your value`,
+      });
+    }
+  }
+  return issues;
+}
+
+/**
+ * Every reason the engine would refuse a SINGLE discovery configuration.
+ *
+ * The single-run counterpart of {@link abSideIssues}. Same per-key rules, none
+ * of the pair rules: there is no other side for a key to be symmetric with, and
+ * nothing for the configuration to be distinct from. The one shared rule that
+ * survives is "at least one flag", because a run configuring nothing is a run
+ * measuring the committed default, which the engine refuses (`parseAbSideConfig`
+ * in services/api/src/cli/discovery.main.ts throws when a shape names no key).
+ */
+export function singleConfigIssues(config: Record<string, string>): AbSideIssue[] {
+  if (Object.keys(config).length === 0) {
+    return [{
+      path: [],
+      message: "This run has no configuration; set at least one flag the discovery graph reads, or there is nothing to measure",
+    }];
+  }
+  return sideConfigIssues(config, "a", "").map((issue) => ({ ...issue, path: issue.path.slice(1) }));
+}
+
+/**
  * Every reason the engine would refuse this pair, checked before a run is queued.
  *
  * A mirror of `buildAbPlan` and `assertAbEnvConfig`
@@ -131,56 +234,14 @@ export function abSideIssues(sides: AbSides): AbSideIssue[] {
 
   for (const id of SIDE_IDS) {
     const config = sides[id];
-    const keys = Object.keys(config).sort();
-    if (keys.length === 0) {
+    if (Object.keys(config).length === 0) {
       issues.push({
         path: [id],
         message: `Side ${id} has no configuration; each side must set at least one flag the discovery graph reads`,
       });
       continue;
     }
-    for (const key of keys) {
-      if (!DISCOVERY_ENV_KEYS.includes(key)) {
-        issues.push({ path: [id, key], message: `${key} is not readable by the discovery graph; this harness cannot test it` });
-        continue;
-      }
-      const value = config[key]!;
-      if (value.trim() === "") {
-        issues.push({ path: [id, key], message: `${key} has an empty value on side ${id}; unset it on both sides instead of blanking it` });
-        continue;
-      }
-      if (value.length > AB_SIDE_VALUE_MAX_LENGTH) {
-        issues.push({
-          path: [id, key],
-          message: `${key} on side ${id} is ${value.length} characters; no flag this harness offers takes a value longer than ${AB_SIDE_VALUE_MAX_LENGTH}`,
-        });
-        continue;
-      }
-      if (LINE_TERMINATORS.test(value)) {
-        issues.push({
-          path: [id, key],
-          message:
-            `${key} on side ${id} contains a line break; the engine's KEY=VALUE parser would refuse the argv `
-            + `this renders, after the run had been queued`,
-        });
-        continue;
-      }
-      // The value's meaning, not just its shape. Every read site in the discovery
-      // graph falls back rather than failing on a value it does not recognise, so
-      // an unchecked typo does not stop the run: it runs the DEFAULT on that side
-      // and reports a difference that never existed. Same rule the saved-config
-      // and ad-hoc paths use (validateProfileEnv), by construction — both call
-      // envValueIssueForKey.
-      const unreal = envValueIssueForKey(key, value);
-      if (unreal !== null) {
-        issues.push({
-          path: [id, key],
-          message:
-            `${key}="${value}" on side ${id} ${unreal}. The discovery graph falls back to its own default for a `
-            + `value it does not recognise, so this side would run the default while the report named your value`,
-        });
-      }
-    }
+    issues.push(...sideConfigIssues(config, id, ` on side ${id}`));
   }
 
   // Symmetry. An omitted flag takes the graph's own default, and that default can

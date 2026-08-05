@@ -6,7 +6,7 @@ import { DISCOVERY_ENV_KEYS } from "../ops.allowlist.js";
 import { renderRun, RunSpecSchema } from "../ops.argv.js";
 import { flagValueIssues } from "../ops.flags.js";
 import { ENV_FLAG_METADATA } from "../ops.metadata.js";
-import { resolveProfile } from "../ops.profiles.js";
+import { resolveAdHoc, resolveProfile } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 
 const DEFAULT = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
@@ -415,8 +415,38 @@ describe("RunSpecSchema sides", () => {
     for (const key of DISCOVERY_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
   });
 
-  it("refuses a discovery run that names no configurations", () => {
-    expect(refusal({ kind: "eval", harness: "discovery", profile: "default", flags: {} })).toMatch(/sides/i);
+  it("refuses a discovery run that names no configuration at all", () => {
+    // A run with neither `sides` nor an env override configures nothing, so it
+    // would measure the committed default and report it under whatever the
+    // operator thought they had set. Refused in BOTH shapes, so making a single
+    // run expressible did not make an empty one expressible with it.
+    expect(refusal({ kind: "eval", harness: "discovery", profile: "default", flags: {} }))
+      .toMatch(/no configuration/i);
+    expect(refusal({
+      kind: "eval", harness: "discovery", profile: "default", flags: {},
+      overrides: { models: {}, env: {} },
+    })).toMatch(/no configuration/i);
+  });
+
+  it("accepts a discovery run that measures one configuration", () => {
+    // The single shape (spec §5): one configuration, no `sides`. It was refused
+    // outright while a comparison was the harness's only shape.
+    expect(RunSpecSchema.safeParse({
+      kind: "eval", harness: "discovery", profile: "default", flags: {},
+      overrides: { models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } },
+    }).success).toBe(true);
+  });
+
+  it("holds a single discovery configuration to the same value rules as a side", () => {
+    // The cheaper shape must not be the unchecked one: `user-context` (hyphen)
+    // is not what the graph reads, and it falls back rather than failing, so an
+    // unchecked run would report results under a value that never applied.
+    const message = refusal({
+      kind: "eval", harness: "discovery", profile: "default", flags: {},
+      overrides: { models: {}, env: { DISCOVERY_PROFILE_SOURCE: "user-context" } },
+    });
+    expect(message).toContain("DISCOVERY_PROFILE_SOURCE");
+    expect(message).toMatch(/falls back/i);
   });
 
   it("refuses sides on a harness that scores against a baseline", () => {
@@ -618,13 +648,46 @@ describe("renderRun sides", () => {
     ]);
   });
 
-  it("refuses to render a discovery run without sides", () => {
-    // The engine ignores what it does not recognise and would refuse a sideless
-    // run only after loading its eval modules, so renderRun is the last place
-    // that can refuse before a run is queued.
+  it("refuses to render a discovery run that configures nothing", () => {
+    // The engine ignores what it does not recognise and would refuse an
+    // unconfigured run only after loading its eval modules, so renderRun is the
+    // last place that can refuse before a run is queued.
     expect(() =>
       renderRun({ kind: "eval", harness: "discovery", profile: "default", flags: {} }, DEFAULT, REPORT),
-    ).toThrow(/sides/i);
+    ).toThrow(/no configuration/i);
+  });
+
+  it("renders a single discovery configuration as --env, not --a/--b", () => {
+    const env = { DISCOVERY_ALLOWED_TYPES: "intent", DISCOVERY_SOURCE_PREMISE_LIMIT: "10" };
+    const rendered = renderRun(
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 }, overrides: { models: {}, env } },
+      resolveAdHoc({ models: {}, env }),
+      REPORT,
+    );
+    // Sorted, so two launches of one configuration render identical argv.
+    expect(rendered.argv).toContain("--env");
+    expect(rendered.argv).not.toContain("--a");
+    expect(rendered.argv).not.toContain("--b");
+    const pairs = rendered.argv.filter((_, i) => rendered.argv[i - 1] === "--env");
+    expect(pairs).toEqual(["DISCOVERY_ALLOWED_TYPES=intent", "DISCOVERY_SOURCE_PREMISE_LIMIT=10"]);
+  });
+
+  it("prices a single discovery run at one pass and a pair at two", () => {
+    // The site shows this number before spending, so a wrong one is a lie about
+    // cost. A per-harness constant pinned discovery at 2 and would have doubled
+    // the single shape.
+    const env = { DISCOVERY_ALLOWED_TYPES: "intent" };
+    const single = renderRun(
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, overrides: { models: {}, env } },
+      resolveAdHoc({ models: {}, env }),
+      REPORT,
+    );
+    const pair = renderRun(
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, sides: SIDES },
+      DEFAULT,
+      REPORT,
+    );
+    expect(pair.workload).toBe(single.workload * 2);
   });
 
   it("refuses to render sides for a harness that takes one configuration", () => {
