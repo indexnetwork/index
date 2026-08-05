@@ -280,6 +280,12 @@ function PairTable({ pairs, repetitions }: { pairs: AbCasePair[]; repetitions: n
  * artifact measured. When only the score agreed, the score is named first so the
  * line cannot be read as a scoring difference, and the retrieval change is what
  * follows it.
+ *
+ * "found the same way" is a claim about both sides, so it requires both sides to
+ * have recorded a retrieval outcome. One side recording one and the other
+ * recording none is not agreement — nothing was measured on the second side to
+ * agree with — and `retrievalDiffers` cannot catch it either, because a
+ * difference also takes two recordings (see src/lib/ab.ts).
  */
 function Verdict({ pair }: { pair: AbCasePair }) {
   if (pair.delta === null) {
@@ -303,10 +309,24 @@ function Verdict({ pair }: { pair: AbCasePair }) {
       </span>
     );
   }
-  // Nothing to have found differently: an artifact that records no retrieval
-  // cannot be said to have retrieved the same way, only to have scored the same.
-  if (pair.a?.retrieval.recorded !== true && pair.b?.retrieval.recorded !== true) {
-    return <span className="text-term-dim">same</span>;
+  const recordedA = pair.a?.retrieval.recorded === true;
+  const recordedB = pair.b?.retrieval.recorded === true;
+  if (!(recordedA && recordedB)) {
+    // Nothing to have found differently: an artifact that records no retrieval
+    // cannot be said to have retrieved the same way, only to have scored the same.
+    if (!recordedA && !recordedB) return <span className="text-term-dim">same</span>;
+    // One side recorded and the other did not, so how the target was found was
+    // measured once. Naming which side recorded it says what is on disk without
+    // claiming a sameness nobody measured.
+    const side = recordedA ? 'A' : 'B';
+    return (
+      <span
+        className="text-term-yellow"
+        title={`both sides scored this case identically, and only side ${side.toLowerCase()} recorded where the target came back and what evidence found it — whether the two sides found it the same way was not measured`}
+      >
+        same score; only {side} recorded how it found the target
+      </span>
+    );
   }
   return <span className="text-term-dim">same score, found the same way</span>;
 }
@@ -336,10 +356,23 @@ function retrievalText(retrieval: AbRetrieval): string | null {
   const missed = retrieval.ranks.some((rank) => rank === null);
   const ranks = found.length === 0
     ? 'not returned'
-    : `rank ${found.join('/')}${missed ? ', not returned' : ''}`;
+    : `${found.length === 1 ? 'rank' : 'ranks'} ${listRanks(found)}${missed ? ', not returned' : ''}`;
   return retrieval.evidenceTypes.length === 0
     ? ranks
     : `${ranks} · via ${retrieval.evidenceTypes.join('+')}`;
+}
+
+/**
+ * Distinct ranks as prose, never joined by a slash.
+ *
+ * The line directly above this one in the same cell reads `66.7% (2/3)`, where
+ * the slash separates a count from a denominator. `rank 1/4` in the line below
+ * it reads as the same thing — a rank out of four — rather than as two ranks the
+ * repetitions actually came back at.
+ */
+function listRanks(ranks: readonly number[]): string {
+  if (ranks.length === 1) return String(ranks[0]);
+  return `${ranks.slice(0, -1).join(', ')} and ${ranks[ranks.length - 1]}`;
 }
 
 /**

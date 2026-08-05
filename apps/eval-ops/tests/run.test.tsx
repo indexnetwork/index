@@ -654,6 +654,43 @@ function bareRowsReport(): Artifact {
   ]);
 }
 
+/**
+ * One side recorded how it found the target and the other recorded nothing.
+ *
+ * Not something this engine writes — `scoreMatrixSlot` writes `targetRank` and
+ * `evidenceTypes` on every slot it scores — which is the same standing as
+ * `inconsistentSideReport` and `bareRowsReport`, and the same reason the view
+ * has to handle it: with retrieval measured on one side only there is no
+ * sameness to claim, and `retrievalDiffers` cannot report it either because a
+ * difference needs two recordings too.
+ */
+function oneSidedRetrievalReport(): Artifact {
+  return buildAbReport([
+    { caseId: BUILDER, side: 'a', repetition: 1, outcome: 'passed' },
+    { caseId: BUILDER, side: 'b', repetition: 1, outcome: 'passed', retrieval: null },
+  ]);
+}
+
+/**
+ * A case whose repetitions came back at two different ranks on one side.
+ *
+ * Both sides pass everything, so the pass rates say the flag changed nothing;
+ * side b's target came back at rank 1 once and rank 4 once, which is the spread
+ * the cell has to show without averaging it into a rank that never happened.
+ */
+function multiRankReport(): Artifact {
+  return buildAbReport([
+    ...[1, 2].map((r): AbRowSpec => ({
+      caseId: BUILDER, side: 'a', repetition: r, outcome: 'passed',
+      retrieval: { targetRank: 1, evidenceTypes: ['intent'] },
+    })),
+    ...[1, 2].map((r): AbRowSpec => ({
+      caseId: BUILDER, side: 'b', repetition: r, outcome: 'passed',
+      retrieval: { targetRank: r === 1 ? 4 : 1, evidenceTypes: ['premise'] },
+    })),
+  ]);
+}
+
 /** A row filed under an id the `<case>/<side>/r<n>` scheme cannot produce. */
 function unpairedRowsReport(): Artifact {
   return buildAbReport([
@@ -864,6 +901,40 @@ describe('Run · discovery-ab', () => {
     expect(within(pair).queryByText(/rank/)).toBeNull();
   });
 
+  it('says only one side recorded how it found the target, instead of calling that the same way', async () => {
+    stubArtifactFetch(oneSidedRetrievalReport());
+    renderRun(AB_RUN);
+
+    const pair = await screen.findByTestId(`ab-case-${BUILDER}`);
+    // Side a's rows say where the target came back; side b's say nothing at all.
+    expect(within(pair).getByText('rank 1 · via intent')).toBeInTheDocument();
+    expect(within(pair).queryByText(/via premise/)).toBeNull();
+
+    // So the verdict names what is on disk. "found the same way" would be a
+    // claim about a side that recorded nothing about how it found anything.
+    const verdict = within(pair).getByText('same score; only A recorded how it found the target');
+    expect(verdict).toHaveClass('text-term-yellow');
+    expect(within(pair).queryByText(/found the same way/)).toBeNull();
+    expect(within(pair).queryByText('same')).toBeNull();
+  });
+
+  it('reads two distinct ranks as ranks, not as a fraction beside a fraction', async () => {
+    stubArtifactFetch(multiRankReport());
+    renderRun(AB_RUN);
+
+    const pair = await screen.findByTestId(`ab-case-${BUILDER}`);
+    // The rate on the line above reads `100.0% (2/2)`, where the slash separates
+    // a count from a denominator. `rank 1/4` under it reads as one too.
+    expect(within(pair).getByText('ranks 1 and 4 · via premise')).toBeInTheDocument();
+    expect(pair.textContent).not.toContain('1/4');
+
+    // Side a came back at one rank every time, which stays singular.
+    expect(within(pair).getByText('rank 1 · via intent')).toBeInTheDocument();
+
+    // Equal rates, unequal retrieval: the case this harness exists to catch.
+    expect(within(pair).getByText('same score, found differently')).toBeInTheDocument();
+  });
+
   it('names the rows it could not pair instead of dropping them from the comparison', async () => {
     stubArtifactFetch(unpairedRowsReport());
     renderRun(AB_RUN);
@@ -907,6 +978,8 @@ describe('Run · discovery-ab fixtures', () => {
       ['oneSidedReport', oneSidedReport()],
       ['inconsistentSideReport', inconsistentSideReport()],
       ['bareRowsReport', bareRowsReport()],
+      ['oneSidedRetrievalReport', oneSidedRetrievalReport()],
+      ['multiRankReport', multiRankReport()],
       ['unpairedRowsReport', unpairedRowsReport()],
     ];
 
