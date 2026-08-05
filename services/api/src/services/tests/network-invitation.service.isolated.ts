@@ -25,7 +25,7 @@ describe('networkInvitationService.invite', () => {
     cleanupUserIds.push(u.id);
 
     const [n] = await db.insert(schema.networks)
-      .values({ title: 'Invite Net', isPersonal: false, isExperiment: true })
+      .values({ title: 'Invite Net', isPersonal: false, masterKeyHash: 'test-master-key-hash' })
       .returning({ id: schema.networks.id });
     networkId = n.id;
   }, 30_000);

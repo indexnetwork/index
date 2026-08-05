@@ -108,7 +108,9 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Update network
-  updateNetwork: async (id: string, data: UpdateNetworkRequest): Promise<Network> => {
+  // `hidden` is declared locally: UpdateNetworkRequest resolves through the
+  // pre-broken `@/lib/types` chain, so it cannot carry new fields.
+  updateNetwork: async (id: string, data: UpdateNetworkRequest & { hidden?: boolean }): Promise<Network> => {
     const response = await api.put<APIResponse<Network>>(`/networks/${id}`, data);
     if (!response.network) {
       throw new Error('Failed to update network');
@@ -353,10 +355,15 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return api.post(`/networks/${networkId}/members/${memberId}/resend-invite`, {});
   },
 
-  // Rotate the master key on an experiment network. Plaintext is returned
+  // Rotate the master key on a network. Plaintext is returned
   // exactly once; the old key stops working immediately.
   rotateMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
     return api.post<{ masterKey: string }>(`/networks/${networkId}/rotate-master-key`, {});
+  },
+
+  // Enable a master key on a network. Plaintext is returned exactly once.
+  enableMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
+    return api.post<{ masterKey: string }>(`/networks/${networkId}/master-key`, {});
   },
 });
 

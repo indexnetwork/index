@@ -223,10 +223,8 @@ function buildCoreBody(ctx: ResolvedToolContext): string {
   );
   const scopedIndexContext = ctx.scopedIndex
     ? renderNetworkContext({
-        type: ctx.scopedIndex.type ?? 'community',
         title: ctx.scopedIndex.title,
         prompt: ctx.scopedIndex.prompt,
-        metadata: ctx.scopedIndex.metadata ?? {},
       }) + `\n- **Your Role:** ${ctx.scopedMembershipRole ?? 'member'}`
     : null;
 

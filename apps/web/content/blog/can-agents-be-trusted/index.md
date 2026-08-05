@@ -10,8 +10,6 @@ Below is what happened, and what it tells us about handing human coordination ov
 
 *The Agent Village experiment was created by [Edge City](https://www.edgecity.live/), [Cosmos Institute](https://www.cosmos-institute.org), and [Index Network](https://index.network/). The experiment was supported by [Foresight Institute](https://foresight.org/). Other tech partners included [Geo](https://www.geobrowser.io/), [SimpleFi](https://simplefi.tech/), [Joshua Pham](https://x.com/jphorism), as well as [World](https://world.org/), [Simocracy](https://www.simocracy.org/) ([Protocol Labs](https://pl.xyz/)), and [Circleback](https://circleback.ai/).*
 
----
-
 ## The headline numbers
 
 | Metric | Value |
@@ -157,8 +155,6 @@ The agent worked on people who weren't paying attention to it, not only the ones
 ## 10. Chat apps are not the right surface for opportunities
 
 Opportunities arrived as notifications in Telegram that scrolled out of view. Residents asked for a dedicated application—a persistent surface to review and act on matches, which is also what would clear the latent backlog.
-
----
 
 ## What comes next
 

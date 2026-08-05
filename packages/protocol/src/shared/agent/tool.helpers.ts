@@ -91,8 +91,6 @@ export interface ResolvedToolContext {
     id: string;
     title: string;
     prompt: string | null;
-    type?: string;
-    metadata?: Record<string, unknown>;
     permissions?: Record<string, unknown>;
   };
   scopedMembershipRole?: "owner" | "member";
@@ -426,8 +424,6 @@ export async function resolveChatContext(params: {
       id: index.id,
       title: index.title,
       prompt: membership?.indexPrompt ?? null,
-      type: index.type ?? 'community',
-      metadata: index.metadata ?? {},
       permissions: index.permissions ?? {},
     };
     isOwner = owner;

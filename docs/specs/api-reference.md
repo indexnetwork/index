@@ -1719,6 +1719,8 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 **Controller prefix**: `/networks`
 
+**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hidden`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hidden: true` excludes the network from the public directory; `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
+
 ### GET /api/networks
 
 List networks the authenticated user is a member of, including their personal network.
@@ -1910,7 +1912,8 @@ Update an index (title, prompt, image, join policy). Owner only.
   "prompt": "string | null (optional)",
   "imageUrl": "string | null (optional)",
   "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "allowGuestVibeCheck": "boolean (optional)",
+  "hidden": "boolean (optional — exclude from the public directory)"
 }
 ```
 
@@ -1935,9 +1938,30 @@ Soft-delete a network. Owner only.
 { "success": true }
 ```
 
+### POST /api/networks/:id/master-key
+
+Enable master-key signup on a network. Owner only, any network. Generates a master key, stores only its hash, and returns the plaintext exactly once — the caller must store it. Enabling forces consent-safe permissions on the network (`joinPolicy: 'invite_only'`, `profileEnrichment: 'consent_required'`, `allowGuestVibeCheck: false`) because key/import-provisioned users never pass a consenting UI; owners can change these permissions afterwards.
+
+**Auth**: `AuthGuard` (session or API key)
+
+**Path params**:
+- `id` — Network ID
+
+**Request body**: none
+
+**Response 201**:
+```json
+{
+  "masterKey": "<plaintext-64-chars>"
+}
+```
+
+**Errors**:
+- `403`/`404` — Caller is not an owner of the network, or the network does not exist.
+
 ### POST /api/networks/:id/rotate-master-key
 
-Rotate the master key on an experiment network. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
+Rotate the master key on any network with a master key enabled. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
 
 **Auth**: `AuthGuard` (session or API key)
 
@@ -1954,7 +1978,7 @@ Rotate the master key on an experiment network. Owner only. The plaintext is ret
 ```
 
 **Errors**:
-- `403` — Caller is not an owner of an experiment network (covers both "not an experiment" and "not an owner" — the controller's pre-check returns 403 for both).
+- `403`/`404` — Caller is not an owner of the network, or the network does not exist.
 
 ### GET /api/networks/:id/members
 
@@ -2136,12 +2160,12 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless experiment-network signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding. Experiment networks use `profileEnrichment: 'consent_required'` by default, so automatic public enrichment jobs carry `networkId`/reason context and self-skip until the user records public profile lookup consent during onboarding.
+Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding. Enabling master-key signup forces `profileEnrichment: 'consent_required'` on the network, so automatic public enrichment jobs carry `networkId`/reason context and self-skip until the user records public profile lookup consent during onboarding.
 
-**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key (issued once at network creation, stored by the caller).
+**Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key (issued once when master-key signup is enabled via `POST /api/networks/:id/master-key`, stored by the caller).
 
 **Path params**:
-- `id` — Network ID (must be an experiment network with a master key set).
+- `id` — Network ID (must have a master key enabled).
 
 **Request body** (`email` required; all other fields optional):
 ```json
@@ -2171,25 +2195,25 @@ Validation caps: `name` 200 chars, `bio` 2000 chars, `location` 200 chars, `soci
 }
 ```
 
-**Response 200** (existing user): Same shape. A fresh API key is always returned; the previous key for this user+network is revoked on each call.
+**Response 200** (existing user): Same shape. A fresh API key is always returned; previously issued keys keep working — prior keys are deliberately not revoked, because signup may be retried by portals/installers and invalidating a just-installed key creates a setup race.
 
-**Idempotency**: Same email = same user. Key is rotated on every call — store the latest returned `apiKey`. No orphan agent records: repeated calls reuse the same scoped agent and rotate its token.
+**Idempotency**: Same email = same user. Each call mints an additional key on the same network-scoped agent — store the latest returned `apiKey`. No orphan agent records: repeated calls reuse the same scoped agent.
 
 **Errors**:
 - `400` — Missing/invalid email; oversized field; malformed `socials` array.
 - `401` — Missing `x-api-key` header.
-- `403` — Master key invalid; network not experiment type; network deleted.
+- `403` — Master key invalid; network has no master key enabled; network deleted.
 
 ---
 
 ### POST /api/networks/:id/signup/lookup
 
-Read-only sibling of `/signup`. Verifies, without side effects, that a given email is fully provisioned for this experiment network — user is live, member of the network, and has a network-scoped personal agent. Use this to check provisioning state without rotating the user's API key (which is what `/signup` does on every call).
+Read-only sibling of `/signup`. Verifies, without side effects, that a given email is fully provisioned for this network — user is live, member of the network, and has a network-scoped personal agent. Use this to check provisioning state without minting an additional API key (which is what `/signup` does on every call).
 
-**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key.
+**Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key.
 
 **Path params**:
-- `id` — Network ID (must be an experiment network with a master key set).
+- `id` — Network ID (must have a master key enabled).
 
 **Request body**:
 ```json
@@ -2203,7 +2227,7 @@ Only `email` is read; any other fields in the body are ignored. Email is normali
 { "user": { "id": "uuid", "email": "attendee@example.com" } }
 ```
 
-The response does **not** include an API key or an MCP server config — the integrator is presumed to hold the key from its original `/signup` call. If the key has been lost, call `/signup` to mint a fresh one (this will rotate any deployed key, so prefer not to).
+The response does **not** include an API key or an MCP server config — the integrator is presumed to hold the key from its original `/signup` call. If the key has been lost, call `/signup` to mint a fresh one (previously issued keys remain valid).
 
 **Response 409** — User is not in a fully-provisioned state. A single canned message is returned for every "no" path (email unknown, user soft-deleted, no membership, membership soft-deleted, no scoped agent, scoped agent soft-deleted). The integrator's recovery is the same in all cases: call `/signup` proper.
 ```json
@@ -2215,7 +2239,7 @@ The response does **not** include an API key or an MCP server config — the int
 **Errors**:
 - `400` — Missing or malformed email; unparseable body.
 - `401` — Missing `x-api-key` header.
-- `403` — Master key invalid; network not experiment type; network deleted.
+- `403` — Master key invalid; network has no master key enabled; network deleted.
 
 **Example (curl)**:
 ```bash
@@ -2229,7 +2253,7 @@ curl -X POST https://protocol.index.network/api/networks/<NETWORK_ID>/signup/loo
 
 ### POST /api/networks/:id/members/import/parse
 
-Parse a CSV file and validate rows before committing an import. Owner-only, experiment networks only. Intended for large files (> 500 rows) where client-side parsing is skipped.
+Parse a CSV file and validate rows before committing an import. Owner-only, any network. Intended for large files (> 500 rows) where client-side parsing is skipped.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2254,7 +2278,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, expe
 
 ### POST /api/networks/:id/members/import
 
-Import validated rows (from `/import/parse`) into the network. Owner-only, experiment networks only. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding. For consent-required experiment networks, public profile enrichment is skipped until consent is recorded.
+Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding. Running an import forces `profileEnrichment: 'consent_required'` and `allowGuestVibeCheck: false` on the network, because imported users never pass a consenting UI; public profile enrichment is skipped until consent is recorded.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2283,12 +2307,12 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 
 ### POST /api/networks/:id/members/invite
 
-Invite a single member to an experiment network by email. Owner-only, experiment networks only. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
+Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is. Inviting forces `profileEnrichment: 'consent_required'` and `allowGuestVibeCheck: false` on the network, because invited users never pass a consenting UI.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
-- `id` — Network ID (must be an experiment network).
+- `id` — Network ID.
 
 **Request body**:
 ```json
@@ -2330,7 +2354,7 @@ The raw API key is delivered only via the invitation email and is never returned
 
 **Errors**:
 - `400` — Missing or malformed email.
-- `403` — Not the network owner, not an experiment network, or scope violation.
+- `403` — Not the network owner or scope violation.
 - `409` — Email belongs to a soft-deleted account and cannot be invited.
 - `500` — Provisioning failed.
 
@@ -2338,12 +2362,12 @@ The raw API key is delivered only via the invitation email and is never returned
 
 ### POST /api/networks/:id/members/:memberId/resend-invite
 
-Resend the invitation email to an existing network member, optionally rotating their API key. Owner-only, experiment networks only. Used when a member did not receive their initial invitation email or requests a refreshed API key.
+Resend the invitation email to an existing network member. Owner-only, any network. Used when a member did not receive their initial invitation email or requests a refreshed API key. If the member already has a network-scoped agent, its API key is rotated (previous keys revoked, a fresh one minted); if the member has no scoped agent yet (e.g. they joined via another path), a fresh agent and key are provisioned instead.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
-- `id` — Network ID (must be an experiment network).
+- `id` — Network ID.
 - `memberId` — User ID of the network member to resend the invite to.
 
 **Request body**:
@@ -2351,7 +2375,7 @@ Resend the invitation email to an existing network member, optionally rotating t
 {}
 ```
 
-**Response 200**: Invitation email resent with the current or newly minted API key.
+**Response 200**: Invitation email resent with a newly minted API key. `rotated` is `false` when the member had no network-scoped agent yet — a fresh agent and key were provisioned, and no prior key existed.
 ```json
 {
   "rotated": false,
@@ -2359,7 +2383,7 @@ Resend the invitation email to an existing network member, optionally rotating t
 }
 ```
 
-**Response 200 with key rotation**: An existing API key for the member's network-scoped agent was revoked and a new one was minted before sending the email.
+**Response 200 with key rotation**: The member's existing network-scoped agent keys were revoked and a new one was minted before sending the email.
 ```json
 {
   "rotated": true,
@@ -2367,10 +2391,10 @@ Resend the invitation email to an existing network member, optionally rotating t
 }
 ```
 
-When `rotated: true`, the member's previous API key is no longer valid and the new key is delivered only via the resent invitation email. When `rotated: false`, the member's existing API key remains valid and the email contains the same key that was previously issued.
+When `rotated: true`, the member's previous API keys are no longer valid and the new key is delivered only via the resent invitation email.
 
 **Errors**:
-- `403` — Not the network owner, not an experiment network, or scope violation.
+- `403` — Not the network owner or scope violation.
 - `404` — Member not found or not a member of this network.
 - `500` — Provisioning or email delivery failed.
 
@@ -2469,25 +2493,6 @@ Import contacts from a connected toolkit into an index.
 
 **Response**: Import result with counts.
 
-### PATCH /api/integrations/:toolkit/sync
-
-Configure sync settings for an integration linked to a network. Currently only `google_calendar` is supported.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `toolkit` — Must be `google_calendar`.
-
-**Body**:
-- `networkId` (string, required) — Target network.
-- `calendarId` (string, optional) — Google Calendar ID (default: `primary`).
-- `intervalMs` (number, optional) — Sync interval in milliseconds (min 60000, default: 900000).
-- `status` (`active` | `paused`, optional) — Enable or pause sync.
-
-**Behavior**: Reads the existing syncConfig, merges the provided fields, validates via `SyncConfigSchema`, and writes back. The caller must be a network owner with the toolkit already linked.
-
-**Response**: `{ success: true }`
-
 ---
 
 ### DELETE /api/integrations/:id
@@ -2500,7 +2505,7 @@ Disconnect (delete) a connected account.
 - `id` — Connection ID (or `telegram:<userId>` for Telegram)
 
 **Behavior**:
-- Composio connections (`gmail`/`slack`/`google_calendar`): disconnects the OAuth account and removes all index integration links.
+- Composio connections (`gmail`/`slack`): disconnects the OAuth account and removes all index integration links.
 - Telegram (`telegram:<userId>`): clears the stored chatId and notification prefs. The deep-link token is unchanged; reconnect via `POST /connect/telegram`.
 
 **Response**: Disconnect result.

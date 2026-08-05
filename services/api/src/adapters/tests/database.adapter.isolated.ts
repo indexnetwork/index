@@ -304,13 +304,13 @@ describe('ChatDatabaseAdapter', () => {
     expect(m!.networkTitle).toContain('Test Index');
   });
 
-  it('should include experiment networks in shared networks', async () => {
+  it('should include master-key networks in shared networks', async () => {
     const experimentNetworkId = uuidv4();
     await db.insert(networks).values({
       id: experimentNetworkId,
-      title: TEST_PREFIX + 'Experiment Shared Network',
-      prompt: 'Experiment network prompt',
-      isExperiment: true,
+      title: TEST_PREFIX + 'Master-Key Shared Network',
+      prompt: 'Master-key network prompt',
+      masterKeyHash: TEST_PREFIX + 'master-key-hash',
     });
     await db.insert(networkMembers).values([
       { networkId: experimentNetworkId, userId: fixture.userAId, permissions: ['member'], autoAssign: true },
@@ -321,7 +321,7 @@ describe('ChatDatabaseAdapter', () => {
       const shared = await adapter.getSharedNetworks(fixture.userAId, fixture.userBId);
       const experiment = shared.find((network) => network.id === experimentNetworkId);
       expect(experiment).toBeDefined();
-      expect(experiment!.title).toContain('Experiment Shared Network');
+      expect(experiment!.title).toContain('Master-Key Shared Network');
       expect(experiment!._count.members).toBe(2);
     } finally {
       await db.delete(networkMembers).where(eq(networkMembers.networkId, experimentNetworkId));

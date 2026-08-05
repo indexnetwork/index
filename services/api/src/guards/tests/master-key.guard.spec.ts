@@ -2,19 +2,18 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterAll as bunAfterAll, beforeAll as bunBeforeAll, describe, expect, test } from 'bun:test';
-import { inArray } from 'drizzle-orm/sql';
+import { eq, inArray } from 'drizzle-orm/sql';
 
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { generateMasterKey } from '../../lib/experiment/master-key';
 import { withMinimumDatabaseHookBudget } from '../../lib/testing/database-test-budget';
-import { ExperimentMasterKeyGuard } from '../experiment.guard';
-import { networkService } from '../../services/network.service';
+import { MasterKeyGuard } from '../master-key.guard';
 
 const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
-describe('ExperimentMasterKeyGuard after rotation', () => {
+describe('MasterKeyGuard after rotation', () => {
   let networkId: string;
   let ownerId: string;
   let originalKey: string;
@@ -37,8 +36,7 @@ describe('ExperimentMasterKeyGuard after rotation', () => {
       .values({
         title: 'Guard Rotation Test',
         isPersonal: false,
-        isExperiment: true,
-        experimentMasterKeyHash: initialHash,
+        masterKeyHash: initialHash,
         permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false },
       })
       .returning({ id: schema.networks.id });
@@ -58,7 +56,7 @@ describe('ExperimentMasterKeyGuard after rotation', () => {
   });
 
   test('original key validates before rotation, new key validates after, old key is rejected after', async () => {
-    const before = await ExperimentMasterKeyGuard(
+    const before = await MasterKeyGuard(
       new Request(`http://localhost/networks/${networkId}/signup`, {
         method: 'POST',
         headers: { 'x-api-key': originalKey },
@@ -67,9 +65,15 @@ describe('ExperimentMasterKeyGuard after rotation', () => {
     );
     expect(before.id).toBe(networkId);
 
-    const { masterKey: newKey } = await networkService.rotateExperimentMasterKey(networkId, ownerId);
+    // Rotate directly in the fixture via networkService.rotateMasterKey
+    // (writes only the networks.masterKeyHash column).
+    const rotated = await generateMasterKey();
+    const newKey = rotated.key;
+    await db.update(schema.networks)
+      .set({ masterKeyHash: rotated.hash })
+      .where(eq(schema.networks.id, networkId));
 
-    const after = await ExperimentMasterKeyGuard(
+    const after = await MasterKeyGuard(
       new Request(`http://localhost/networks/${networkId}/signup`, {
         method: 'POST',
         headers: { 'x-api-key': newKey },
@@ -80,7 +84,7 @@ describe('ExperimentMasterKeyGuard after rotation', () => {
 
     let rejected: Response | null = null;
     try {
-      await ExperimentMasterKeyGuard(
+      await MasterKeyGuard(
         new Request(`http://localhost/networks/${networkId}/signup`, {
           method: 'POST',
           headers: { 'x-api-key': originalKey },

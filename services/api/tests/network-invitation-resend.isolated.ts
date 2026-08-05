@@ -29,7 +29,7 @@ async function setupNetworkAndOwner() {
     .returning({ id: users.id });
   const [network] = await db
     .insert(networks)
-    .values({ title: `Net ${randomUUID().slice(0, 6)}`, isExperiment: true, isPersonal: false })
+    .values({ title: `Net ${randomUUID().slice(0, 6)}`, isPersonal: false })
     .returning({ id: networks.id });
   await db
     .insert(networkMembers)

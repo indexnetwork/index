@@ -19,8 +19,8 @@ Environment-based feature gate for the contact import / manual-add endpoints. Th
 ### `debug.guard.ts` — `DebugGuard`
 Environment-based gate for debug API endpoints. Allows requests only when `NODE_ENV === 'development'` or `ENABLE_DEBUG_API === 'true'`; otherwise throws a 404-mapped error.
 
-### `experiment.guard.ts` — `ExperimentMasterKeyGuard`
-Authorizes experiment-network endpoints by validating the `x-api-key` header against the network's stored `experimentMasterKeyHash`. Returns the experiment network (`{ id, title }`) on success; throws a 400/401/403 `Response` if the network id is missing, the key is absent, or the network isn't an experiment / the key doesn't match.
+### `master-key.guard.ts` — `MasterKeyGuard`
+Authorizes master-key-protected network endpoints (master-key signup, CSV import, cohort delete) by validating the `x-api-key` header against the network's stored `masterKeyHash`. Returns the network (`{ id, title }`) on success; throws a 400/401/403 `Response` if the network id is missing, the key is absent, or the network has no master key / the key doesn't match.
 
 ### `limiter.guard.ts` — `RateLimit(class)`
 Factory that returns a per-route-class rate-limiting guard, run before auth. Buckets requests by verified user id (hashed) or client IP, enforces the class's per-minute limit via Redis-backed storage (failing open on storage errors), stashes `RateLimitInfo` for response headers, and throws `RateLimiterError` (429) when the limit is exceeded; private/loopback IPs and system agents bypass limiting.

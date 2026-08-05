@@ -90,6 +90,8 @@ function cellClass(children: ReactNode): string | undefined {
 }
 
 const markdownComponents: Components = {
+  // Posts carry no divider rules; drop any `---` left in the markdown.
+  hr: () => null,
   a: ({ href, children }) => {
     const text = typeof children === "string"
       ? children
@@ -205,7 +207,6 @@ function BlogPostPage() {
               })}
             </div>
             <h1 className="post-title">{state.post.title}</h1>
-            <hr className="post-divider" />
             <div className="post-body">
               <ReactMarkdown
                 components={markdownComponents}
