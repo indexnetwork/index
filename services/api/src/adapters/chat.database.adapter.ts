@@ -812,6 +812,8 @@ export class ChatDatabaseAdapter {
       isNull(schema.networks.deletedAt),
       eq(schema.networks.isPersonal, false),
       eq(schema.networks.hidden, false),
+      // Unapproved network requests are inert rows, never discoverable.
+      isNull(schema.networks.requestStatus),
     ];
 
     if (excludeIds.length > 0) {

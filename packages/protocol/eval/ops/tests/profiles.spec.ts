@@ -175,6 +175,38 @@ describe("validateConfigOverrides", () => {
     }
   });
 
+  it("rejects a value the use site would silently fall back on, for a flag startup.env.ts calls free text", () => {
+    // DISCOVERY_PROFILE_SOURCE is z.string() upstream but a two-valued enum where
+    // it is read (discovery.env.ts): an unknown value warns once and runs
+    // `premise`. Accepting it here would save a config that does not do what it says.
+    const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_PROFILE_SOURCE: "user-context" } });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("DISCOVERY_PROFILE_SOURCE");
+    expect(issues[0]).toContain("user-context");
+    expect(issues[0]).toContain("user_context");
+    expect(validateConfigOverrides({ models: {}, env: { DISCOVERY_PROFILE_SOURCE: "user_context" } })).toEqual([]);
+  });
+
+  it("rejects an unknown token in a comma-separated flag, which the reader would ignore", () => {
+    // discoveryAllowedTypes ignores unknown tokens, and falls back to BOTH when
+    // nothing valid remains — so "intnet" is not a narrower corpus, it is the
+    // default corpus under a name that says otherwise.
+    const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intnet" } });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(issues[0]).toContain("intnet");
+    for (const value of ["intent", "profile", "intent,profile", "intent, profile"]) {
+      expect(validateConfigOverrides({ models: {}, env: { DISCOVERY_ALLOWED_TYPES: value } })).toEqual([]);
+    }
+  });
+
+  it("rejects a turn cap of 0, which the reader turns back into the default", () => {
+    const issues = validateConfigOverrides({ models: {}, env: { NEGOTIATION_MAX_TURNS_CHAT: "0" } });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("NEGOTIATION_MAX_TURNS_CHAT");
+    expect(issues[0]).toMatch(/at least 1/);
+  });
+
   it("rejects non-positive and non-numeric values for a positive-number flag", () => {
     for (const value of ["-3", "0", "soon"]) {
       const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_REJECTION_COOLDOWN_DAYS: value } });

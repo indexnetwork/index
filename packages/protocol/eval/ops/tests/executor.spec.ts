@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { createReadStream } from "node:fs";
-import { appendFile, mkdtemp, rm, truncate } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, realpath, rm, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -114,6 +114,92 @@ describe("LocalProcessRunExecutor", () => {
     expect(log).toContain("[eval-ops] flush:");
   });
 
+  it("runs a single step in that step's own directory, not the executor's", async () => {
+    // The registry gives discovery-ab a cwd of services/api, because its package
+    // script and CLI live there and `bun run eval:discovery-ab` resolves nowhere
+    // else. A step whose cwd were ignored would run the wrong package's scripts.
+    const elsewhere = path.join(dir, "elsewhere");
+    await mkdir(elsewhere);
+    const record = await createRecord([]);
+
+    const finished = await executor.start(record, [
+      { label: "discovery-ab", argv: ["bun", "-e", "console.log(`ran in ${process.cwd()}`)"], cwd: elsewhere, env: {} },
+    ]);
+
+    expect(finished.status).toBe("passed");
+    const log = await Bun.file(store.logPath(record.id)).text();
+    expect(log.trim()).toBe(`ran in ${await realpath(elsewhere)}`);
+    expect(log).not.toContain(await realpath(process.cwd()));
+  });
+
+  it("keeps the harness exit-code contract for a one-step plan", async () => {
+    // A harness run given a step is still one command, so exit 1 is a regression
+    // rather than the coarse pass/fail a multi-command pipeline reports.
+    const record = await createRecord([]);
+
+    const finished = await executor.start(record, [
+      { label: "discovery-ab", argv: ["bun", FAKE, "--exit", "1"], cwd: dir, env: {} },
+    ]);
+
+    expect(finished.status).toBe("regression");
+  });
+
+  it("gives a step's environment to the child without writing it to the log", async () => {
+    // discovery-ab's gate demands NEON_API_KEY, and the log is streamed to a
+    // browser and kept on disk: the value must reach the child and nothing else.
+    const record = await createRecord([]);
+
+    await executor.start(record, [
+      {
+        label: "discovery-ab",
+        argv: ["bun", "-e", "console.log(`key length ${(process.env.NEON_API_KEY ?? '').length}`)"],
+        cwd: dir,
+        env: { NEON_API_KEY: "napi-secret-value" },
+      },
+    ]);
+
+    const log = await Bun.file(store.logPath(record.id)).text();
+    expect(log).toContain(`key length ${"napi-secret-value".length}`);
+    expect(log).not.toContain("napi-secret-value");
+  });
+
+  it("removes a key a step maps to undefined from what the child inherits", async () => {
+    // The A/B harness's step deletes DATABASE_URL: the value this process holds
+    // must not be what a child tree it asserts TEST_DATABASE_SAFE=1 over can
+    // reach. Deleting is not the same as blanking — an empty string is still a
+    // value, and `--env-file` would no longer supply the one the script expects —
+    // so the child is asked whether the key is present at all.
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://u:p@parent-host/parent_db";
+    try {
+      const record = await createRecord([]);
+
+      await executor.start(record, [
+        {
+          label: "discovery-ab",
+          argv: [
+            "bun",
+            "-e",
+            "console.log(`inherited=${'INHERITED_MARKER' in process.env} database=${'DATABASE_URL' in process.env} value=${JSON.stringify(process.env.DATABASE_URL)}`)",
+          ],
+          cwd: dir,
+          env: { DATABASE_URL: undefined, INHERITED_MARKER: "kept" },
+        },
+      ]);
+
+      const log = await Bun.file(store.logPath(record.id)).text();
+      // Everything else this process holds still reaches the child — the deletion
+      // is one key, not a scrubbed environment.
+      expect(log).toContain("inherited=true");
+      expect(log).toContain("database=false");
+      expect(log).toContain("value=undefined");
+      expect(log).not.toContain("parent-host");
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
+  });
+
   it("stops a step sequence at the first failure and reports execution-error", async () => {
     const record = await createRecord([]);
     const steps: ExecutionStep[] = [
@@ -171,6 +257,27 @@ describe("LocalProcessRunExecutor", () => {
   it("refuses a run with no command to execute", async () => {
     const record = await createRecord([]);
     await expect(executor.start(record)).rejects.toThrow(/no command/i);
+  });
+
+  /**
+   * The property the exclusive-slot refusal is worded around (`exclusiveRefusal`,
+   * ops.server.ts): after a restart, the run holding the slot was spawned by a
+   * process that is gone, so this executor has no live entry for it and cancel
+   * signals nothing — while the route still answers 202/accepted. The slot is
+   * released by that orphan's own exit, which is what the refusal now says
+   * instead of pointing at a button that moves nothing.
+   */
+  it("changes nothing when asked to cancel a run it never started", async () => {
+    const record = await createRecord(["bun", FAKE, "--emit", "done", "--exit", "0"]);
+    await store.update(record.id, { status: "running", pid: process.pid, startedAt: new Date().toISOString() });
+
+    const returned = await executor.cancel(record.id);
+
+    // The stored record, read back untouched: not cancelled, not terminal, still
+    // holding its pid — and therefore still holding the slot.
+    expect(returned.status).toBe("running");
+    expect(returned.pid).toBe(process.pid);
+    expect((await store.get(record.id))!.status).toBe("running");
   });
 
   it("does not relabel a run that already exited as cancelled", async () => {

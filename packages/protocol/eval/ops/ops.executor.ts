@@ -10,16 +10,30 @@ export interface ExecutionStep {
   argv: readonly string[];
   /** Absolute working directory for the child. */
   cwd: string;
-  /** Environment merged over the parent process environment. */
-  env: Record<string, string>;
+  /**
+   * Environment merged over the parent process environment.
+   *
+   * A key mapped to `undefined` is **deleted** from what the child inherits,
+   * rather than set to an empty string. That is the only way to say "this child
+   * tree must not see the server's own value" for a variable the server itself
+   * holds: a step that merely omitted the key would inherit it silently, and
+   * setting it blank would be a different, equally invented answer.
+   */
+  env: Record<string, string | undefined>;
 }
 
 export interface RunExecutor {
   /**
    * Runs `steps` in order, stopping at the first non-zero exit, or the record's
    * own argv when `steps` is omitted. Callers that need a different working
-   * directory or extra environment — the guarded fixture reset is the only one —
-   * pass steps, so there is exactly one spawn, log and status-mapping path.
+   * directory or extra environment pass steps, so there is exactly one spawn,
+   * log and status-mapping path.
+   *
+   * Two callers do: the guarded fixture reset, whose pipeline is several
+   * commands; and a harness whose script does not live in packages/protocol or
+   * whose own gate demands credentials this server holds (discovery-ab is both).
+   * A one-step plan is still one command, so it keeps the numbered harness
+   * exit-code contract — see {@link terminalStatus}.
    */
   start(record: RunRecord, steps?: readonly ExecutionStep[]): Promise<RunRecord>;
   cancel(id: string): Promise<RunRecord>;
@@ -27,7 +41,11 @@ export interface RunExecutor {
 
 export interface LocalProcessRunExecutorOptions {
   store: RunStore;
-  /** Working directory for the child. Always packages/protocol in production use. */
+  /**
+   * Working directory for a child spawned without a step plan: packages/protocol
+   * in production use, where the four scorecard harnesses' scripts live. A step
+   * carries its own cwd and this is not consulted for it.
+   */
   cwd: string;
 }
 
@@ -43,6 +61,11 @@ interface LiveRun {
  * Spawns a harness as a child process, streaming combined stdout/stderr to the
  * run's log file. argv is passed as an array — there is no shell, so nothing in a
  * RunSpec can be interpreted as a command.
+ *
+ * A step's environment is handed to the child and written nowhere: the log
+ * receives the child's own output, and a step label (which names the step, never
+ * its environment) only for a plan of more than one command. That is what lets a
+ * caller inject a credential the run record must not carry.
  */
 export class LocalProcessRunExecutor implements RunExecutor {
   private readonly store: RunStore;
@@ -89,7 +112,7 @@ export class LocalProcessRunExecutor implements RunExecutor {
         const proc = Bun.spawn({
           cmd: [...step.argv],
           cwd: step.cwd,
-          env: { ...process.env, ...step.env },
+          env: childEnvironment(step.env),
           stdout: logFile.fd,
           stderr: logFile.fd,
           stdin: "ignore",
@@ -146,6 +169,23 @@ export class LocalProcessRunExecutor implements RunExecutor {
     // Wait for the terminal update so the caller sees the effect of the cancel, not a stale read.
     return await entry.settled;
   }
+}
+
+/**
+ * The environment a step's child is spawned with: this process's, with the
+ * step's overrides applied and its deletions removed.
+ *
+ * The deletions are applied by hand rather than left to `Bun.spawn`'s handling
+ * of an `undefined` value, so what the child receives is decided here, in one
+ * readable place, instead of by a spawn detail that could change under us.
+ */
+function childEnvironment(env: Record<string, string | undefined>): Record<string, string> {
+  const merged: Record<string, string> = { ...(process.env as Record<string, string>) };
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete merged[key];
+    else merged[key] = value;
+  }
+  return merged;
 }
 
 /**

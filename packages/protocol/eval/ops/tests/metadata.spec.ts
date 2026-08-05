@@ -20,14 +20,38 @@ describe("ENV_FLAG_METADATA", () => {
     }
   });
 
-  it("gives every enum and boolean flag explicit non-empty values", () => {
+  it("gives every enum, boolean and csv-enum flag explicit non-empty values", () => {
     for (const meta of ENV_FLAG_METADATA) {
-      if (meta.kind === "enum" || meta.kind === "boolean") {
+      if (meta.kind === "enum" || meta.kind === "boolean" || meta.kind === "csv-enum") {
         expect(meta.values, `${meta.key} must declare values`).toBeDefined();
         expect(meta.values!.length).toBeGreaterThan(1);
       } else {
         expect(meta.values, `${meta.key} must not declare values`).toBeUndefined();
       }
+    }
+  });
+
+  it("declares a minimum only where a number can be given and where it would be honoured", () => {
+    // A `min` on a kind envFlagValueIssue does not range-check would be a bound
+    // that reads as enforced and enforces nothing.
+    for (const meta of ENV_FLAG_METADATA) {
+      if (meta.min === undefined) continue;
+      expect(["integer", "number"], `${meta.key} declares min on kind ${meta.kind}`).toContain(meta.kind);
+    }
+  });
+
+  it("bounds the negotiation turn caps away from the value that silently means the default", () => {
+    // Both are read as `Number(env) || <default>`, so 0 is not "no turns": it is
+    // the default, chosen by a fallback the operator never asked for. The bound
+    // is derived from that read, so a read site that stops falling back fails here.
+    const graph = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "src", "opportunity", "application", "opportunity.graph.ts"),
+      "utf8",
+    );
+    const byKey = new Map(ENV_FLAG_METADATA.map((m) => [m.key, m]));
+    for (const [key, fallback] of [["NEGOTIATION_MAX_TURNS_CHAT", "4"], ["NEGOTIATION_MAX_TURNS_AMBIENT", "6"]] as const) {
+      expect(graph, `${key} is no longer read with a || fallback`).toContain(`Number(process.env.${key}) || ${fallback}`);
+      expect(byKey.get(key)!.min, `${key} must refuse the values that fall back`).toBe(1);
     }
   });
 
@@ -38,6 +62,30 @@ describe("ENV_FLAG_METADATA", () => {
     DISCOVERY_REJECTION_COOLDOWN_DAYS: {
       kind: "number",
       useSite: "../../../src/opportunity/application/opportunity.graph.ts",
+    },
+  };
+
+  // Flags startup.env.ts declares as free text but the protocol parses as a
+  // closed set at the use site. The metadata must describe the USE SITE, not the
+  // startup schema: an unrecognised value is never refused at runtime, it warns
+  // once and falls back, so "any string" here would let an operator configure a
+  // side of an A/B run that silently runs the default. Values are derived from
+  // the use site's own source, so widening or renaming them fails here.
+  const USE_SITE_NARROWED_FLAGS: Record<string, {
+    kind: EnvFlagMeta["kind"];
+    useSite: string;
+    /** Captures the group holding the quoted values the use site accepts. */
+    valuesFrom: RegExp;
+  }> = {
+    DISCOVERY_ALLOWED_TYPES: {
+      kind: "csv-enum",
+      useSite: "../../../src/opportunity/discovery.env.ts",
+      valuesFrom: /const VALID_TOKENS: [^=]+= new Set\(\[([^\]]+)\]\)/,
+    },
+    DISCOVERY_PROFILE_SOURCE: {
+      kind: "enum",
+      useSite: "../../../src/opportunity/discovery.env.ts",
+      valuesFrom: /export type DiscoveryProfileSource = ([^;]+);/,
     },
   };
 
@@ -71,6 +119,7 @@ describe("ENV_FLAG_METADATA", () => {
 
     const byKey = new Map(ENV_FLAG_METADATA.map((m) => [m.key, m]));
     let pinnedFromSchema = 0;
+    let pinnedFromUseSite = 0;
 
     for (const key of PROFILE_ENV_ALLOWLIST) {
       const meta = byKey.get(key);
@@ -87,11 +136,34 @@ describe("ENV_FLAG_METADATA", () => {
         continue;
       }
 
-      pinnedFromSchema += 1;
       const declaration = /^optional[A-Za-z]*$/.test(declared[1]!.trim())
         ? aliasOf(declared[1]!.trim())
         : declared[1]!;
 
+      const narrowed = USE_SITE_NARROWED_FLAGS[key];
+      if (narrowed !== undefined) {
+        // The narrowing entry is only justified while upstream really is the
+        // looser one; once startup.env.ts states the values itself, the entry is
+        // stale and the schema branch below should own the flag again.
+        expect(enumMembersOf(declaration), `${key} states its values upstream now; drop its narrowing entry`).toBeUndefined();
+        expect(declaration, `${key} is no longer free text upstream`).toContain("z.string()");
+        expect(meta!.kind, `${key} kind`).toBe(narrowed.kind);
+
+        const useSiteSource = readFileSync(path.join(import.meta.dir, narrowed.useSite), "utf8");
+        expect(useSiteSource, `${key} not read at its declared use site`).toContain(`process.env.${key}`);
+        const captured = useSiteSource.match(narrowed.valuesFrom);
+        expect(captured, `${key}: valuesFrom matched nothing in ${narrowed.useSite}`).not.toBeNull();
+        const useSiteValues = [...captured![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+        // Guards the pin against passing vacuously on an unparsed match.
+        expect(useSiteValues.length, `${key}: no values parsed from the use site`).toBeGreaterThan(1);
+        expect([...meta!.values!].sort(), `${key} values drifted from ${narrowed.useSite}`).toEqual(
+          [...useSiteValues].sort(),
+        );
+        pinnedFromUseSite += 1;
+        continue;
+      }
+
+      pinnedFromSchema += 1;
       const upstreamValues = enumMembersOf(declaration);
       if (upstreamValues) {
         // Enum/boolean: our offerable values must be exactly upstream's.
@@ -108,7 +180,12 @@ describe("ENV_FLAG_METADATA", () => {
 
     // Guard the guard: if the regexes stop matching, this test must not silently
     // pass having pinned nothing.
-    expect(pinnedFromSchema).toBe(PROFILE_ENV_ALLOWLIST.length - Object.keys(USE_SITE_ONLY_FLAGS).length);
+    expect(pinnedFromUseSite).toBe(Object.keys(USE_SITE_NARROWED_FLAGS).length);
+    expect(pinnedFromSchema).toBe(
+      PROFILE_ENV_ALLOWLIST.length
+      - Object.keys(USE_SITE_ONLY_FLAGS).length
+      - Object.keys(USE_SITE_NARROWED_FLAGS).length,
+    );
   });
 });
 
@@ -168,7 +245,7 @@ describe("MODEL_METADATA", () => {
 });
 
 describe("HARNESS_AGENT_METADATA", () => {
-  it("keys are exactly the four ops harnesses", () => {
+  it("keys are exactly the registered harnesses", () => {
     expect(Object.keys(HARNESS_AGENT_METADATA).sort()).toEqual([...OPS_HARNESSES].sort());
   });
 

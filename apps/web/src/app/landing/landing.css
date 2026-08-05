@@ -593,8 +593,8 @@
 
 .landing .comment {
   color: var(--cream-soft);
-  /* Align with the step title (.cmd): width of the "[NN]" num (4ch) + step-row gap */
-  padding-left: calc(4ch + 14px);
+  /* Align with the step title (.cmd): width of the "NN" num (2ch) + step-row gap */
+  padding-left: calc(2ch + 14px);
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .landing .comment .hash { color: var(--cream-faint); margin-right: 10px; }
@@ -1332,11 +1332,6 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--cream);
-}
-.landing .landing-modal-title::before {
-  content: "› ";
-  color: var(--cream-faint);
-  margin-right: 4px;
 }
 .landing .landing-modal-lede {
   margin: 0 0 22px;

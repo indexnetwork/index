@@ -28,7 +28,6 @@ const STEPS: Step[] = [
             <span className="cli-cmd">index intent</span>
           </div>
           <div className="cli-line cli-input">
-            <span className="cli-prompt">›</span>
             <span>“I&apos;m going to SF next month — who should I meet?”</span>
           </div>
         </div>
@@ -381,7 +380,7 @@ function HowItWorks() {
       <div className="how-inner">
         <div className="how-head">
           <span className="title">
-            <span className="arrow">›</span>how it works
+            how it works
           </span>
           <span className="meta" />
         </div>
@@ -391,7 +390,7 @@ function HowItWorks() {
             <div className="block how-block" key={s.num}>
               <div className="how-block-text">
                 <div className="step-row">
-                  <span className="num">[{s.num}]</span>
+                  <span className="num">{s.num}</span>
                   <span className="cmd">{s.title}</span>
                   <span className="spacer" aria-hidden="true" />
                 </div>
@@ -476,13 +475,13 @@ function NegotiationStream() {
       <div className="ex-log ex-log-stream">
         {items.map((item) => (
           <div className="ex-log-row" key={item.id}>
-            <span className="ex-log-ts">[{item.ts}]</span>
+            <span className="ex-log-ts">{item.ts}</span>
             <span className="ex-log-text">{item.text}</span>
             <span className="ex-log-status">OK</span>
           </div>
         ))}
         <div className="ex-log-row ex-log-active" key="cursor">
-          <span className="ex-log-ts">[{nextTs.slice(0, 6)}</span>
+          <span className="ex-log-ts">{nextTs.slice(0, 6)}</span>
           <span className="cursor" aria-hidden="true" />
         </div>
       </div>
@@ -546,9 +545,9 @@ function LatestPosts() {
       <div className="how-inner">
         <div className="how-head">
           <span className="title">
-            <span className="arrow">›</span>field notes
+            field notes
           </span>
-          <span className="meta">latest 3 · /blog</span>
+          <span className="meta" />
         </div>
 
         <div className="log">
@@ -596,7 +595,7 @@ function OpenSource() {
       <div className="how-inner">
         <div className="how-head">
           <span className="title">
-            <span className="arrow">›</span>open source
+            open source
           </span>
         </div>
 

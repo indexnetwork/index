@@ -22,6 +22,7 @@
  * one configuration, so no cross-configuration overlap is possible here.
  */
 import path from 'node:path';
+import { statSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
@@ -332,6 +333,13 @@ export interface AbRunSelection {
   repetitions: number;
   sides: [AbSide, AbSide];
   force: boolean;
+  /**
+   * Where the run report must be written, absolute. Absent means this run names
+   * its own timestamped path under `RUNS_DIR`, which is the operator default;
+   * a caller that has to find the artifact afterwards (the eval-ops site stores
+   * every run at a path it chose) passes `--report`.
+   */
+  reportPath?: string;
 }
 
 const AB_ENV_ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
@@ -369,7 +377,50 @@ function parseAbSideConfig(args: readonly string[], flag: string, sideId: AbSide
   return Object.fromEntries(config);
 }
 
-/** Parses the operator's run contract: `--case <id>* --runs <n> --a K=V* --b K=V* [--force]`. */
+/**
+ * The artifact destination `--report` names, resolved to an absolute path.
+ *
+ * Resolved here, against the working directory the operator typed the flag in,
+ * because the write happens later in a process whose relative paths would
+ * otherwise be read against whatever `RUNS_DIR` sits under. At most one is
+ * accepted: a run writes exactly one report, so two destinations name a
+ * mistake rather than a choice.
+ *
+ * An existing *directory* is refused here rather than left to the write plan,
+ * which only asks whether the path exists as a file: `Bun.file(dir).exists()`
+ * is false for a directory, so a mistyped destination would pass pre-flight and
+ * fail at the write — after both branches were reset and both sides ran, which
+ * is a code-4 spend report for a typo. Refusing at parse time keeps it in the
+ * code-2 path the contract promises: nothing reset, nothing spawned, nothing
+ * spent.
+ */
+function parseAbReportPath(args: readonly string[]): string | undefined {
+  const reports = collectFlagValues(args, '--report');
+  if (reports.length > 1) throw new Error('--report may be given at most once; a run writes exactly one report');
+  const raw = reports[0];
+  if (raw === undefined) return undefined;
+  if (raw.trim() === '') throw new Error('--report requires a value');
+  const resolved = path.resolve(raw);
+  if (statSync(resolved, { throwIfNoEntry: false })?.isDirectory() === true) {
+    throw new Error(`--report must name a file to write, but ${resolved} is an existing directory`);
+  }
+  return resolved;
+}
+
+/**
+ * Where this run's report is written: the destination `--report` named, or the
+ * timestamped default under `RUNS_DIR`.
+ *
+ * A one-line choice, but the only line that makes `--report` do anything, so it
+ * is exported and tested on both branches rather than buried in `runAbComparison`
+ * where nothing but a live run could reach it. Whichever it returns is the sole
+ * output declared to the write plan, so `--force` guards both alike.
+ */
+export function abRunReportPath(selection: { reportPath?: string }, stamp: string): string {
+  return selection.reportPath ?? path.resolve(RUNS_DIR, `${stamp}.json`);
+}
+
+/** Parses the operator's run contract: `--case <id>* --runs <n> --a K=V* --b K=V* [--report <path>] [--force]`. */
 export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
   const caseIds = collectFlagValues(args, '--case');
   if (new Set(caseIds).size !== caseIds.length) throw new Error('--case names the same case twice');
@@ -383,6 +434,7 @@ export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
   if (repetitions > AB_MAX_REPETITIONS) {
     throw new Error(`--runs must not exceed ${AB_MAX_REPETITIONS}; ${repetitions} repetitions is hours of live graph invocations`);
   }
+  const reportPath = parseAbReportPath(args);
   return {
     caseIds,
     repetitions,
@@ -391,6 +443,7 @@ export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
       { id: 'b', config: parseAbSideConfig(args, '--b', 'b') },
     ],
     force: args.includes('--force'),
+    ...(reportPath === undefined ? {} : { reportPath }),
   };
 }
 
@@ -400,8 +453,9 @@ export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
  * The children are handed this rather than the parent's own argv so both sides
  * plan from one normalized input: `buildAbPlan` is pure, so identical arguments
  * produce identical plans, and a side cannot silently run a different
- * selection. `--force` is deliberately not forwarded — only the parent writes
- * the artifact.
+ * selection. `--force` and `--report` are deliberately not forwarded — only the
+ * parent writes the run report; a child writes the `--child-output` it is
+ * given.
  */
 export function formatAbRunArgs(selection: AbRunSelection): string[] {
   return [
@@ -783,8 +837,11 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   const plan = buildAbPlan(cases, selection.sides, selection.repetitions);
   const slotsPerSide = plan.filter((slot) => slot.side.id === 'a').length;
 
+  // `--report` names the destination; without it the run names its own
+  // timestamped path. Either way the plan below is what guards the write, so an
+  // existing destination still needs `--force`.
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const runPath = path.resolve(RUNS_DIR, `${stamp}.json`);
+  const runPath = abRunReportPath(selection, stamp);
   // No inputs: this harness reads no baseline, so nothing it writes can clobber one.
   await assertEvalWritePlan({ inputs: [], outputs: [runPath], force: selection.force });
 
