@@ -112,9 +112,9 @@ function App() {
         ? window.IndexApi.parseDeepLink(url, deepLinkHosts)
         : null;
       if (!route) {
-        // Not ours: stay quiet. Ours but unroutable (the AASA claims `/u/*`,
-        // and macOS hands over web-only routes like `/u/<id>/chat`): the
-        // window is already up, so say something instead of dropping it.
+        // Not ours: stay quiet. Direct or manual invocation can still provide
+        // a recognized-host URL the app cannot route; AASA excludes deeper
+        // web-only profile paths before normal macOS delivery.
         const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
           ? window.IndexApi.isIndexDeepLink(url, deepLinkHosts)
           : false;
