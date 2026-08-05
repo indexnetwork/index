@@ -31,7 +31,7 @@ import type { AbSideId } from './discovery.plan';
  *
  * The refusal itself is authored in `discovery.contract.ts`, per role: the
  * same attestation runs in the parent and in every child, and a child is
- * attesting *after* the parent already reset both branches and spawned it, so
+ * attesting *after* the parent already reset this run's target branches and spawned it, so
  * the two cannot truthfully say the same thing about cost.
  */
 async function attestOrRefuse(manifest: AbManifest, role: AbInvocationRole): Promise<void> {

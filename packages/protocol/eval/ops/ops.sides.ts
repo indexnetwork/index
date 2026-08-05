@@ -99,6 +99,20 @@ const AB_SIDE_VALUE_MAX_LENGTH = 200;
  */
 const LINE_TERMINATORS = /[\n\r\u2028\u2029]/;
 
+/**
+ * Offered keys whose read site THROWS on a value it does not recognise, rather
+ * than warning and using its own default.
+ *
+ * Every other catalogued flag is read by a parser that falls back — that is the
+ * whole reason values are checked here before a run is queued, since a fallback
+ * turns a reported difference into one that never happened. EVAL_MODEL_OVERRIDES
+ * is the exception: `readModelOverrides` throws on invalid JSON, a non-object,
+ * an unknown agent key and a blank model id
+ * (src/shared/agent/model.config.ts:54-69, and ENV_FLAG_METADATA's json-model-map
+ * docblock says so). The refusal text differs accordingly.
+ */
+const THROWING_ENV_KEYS: readonly string[] = Object.freeze(["EVAL_MODEL_OVERRIDES"]);
+
 /** One refusal, with the path inside `sides` it belongs to. */
 export interface AbSideIssue {
   /** Relative to `sides`: `[]`, `[sideId]` or `[sideId, key]`. */
@@ -153,11 +167,24 @@ function sideConfigIssues(config: Record<string, string>, id: string, label: str
     // whole check for EVAL_MODEL_OVERRIDES, whose bounds are its entire rule.
     const unreal = envValueIssueForKey(key, value, modelMapBounds());
     if (unreal !== null) {
+      // The consequence sentence is per-key, because the two consequences are
+      // opposite and an operator acts on them differently. Most read sites in
+      // the discovery graph fall back, so a typo runs the DEFAULT under the
+      // operator's label. EVAL_MODEL_OVERRIDES does not: readModelOverrides
+      // THROWS on an unknown agent, a non-object and a blank model id
+      // (src/shared/agent/model.config.ts:59-69), which is why ENV_FLAG_METADATA
+      // gives it its own `json-model-map` kind. Telling an operator their value
+      // would "fall back to the default" when it will in fact kill the run after
+      // the branch reset is the same class of false sentence this check exists
+      // to prevent, one layer over.
       issues.push({
         path: [id, key],
         message:
-          `${key}="${value}"${label} ${unreal}. The discovery graph falls back to its own default for a `
-          + `value it does not recognise, so this run would use the default while the report named your value`,
+          `${key}="${value}"${label} ${unreal}. `
+          + (THROWING_ENV_KEYS.includes(key)
+            ? `This value is not honoured with a fallback: the run would fail at startup, after the branch reset`
+            : `The discovery graph falls back to its own default for a value it does not recognise, so this `
+              + `run would use the default while the report named your value`),
       });
     }
   }

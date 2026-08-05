@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { HARNESS_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.envcatalog';
-import { unreadEnvKeys } from '../../../../packages/protocol/eval/ops/ops.envreach';
+import { readableEnv, unreadEnvKeys } from '../../../../packages/protocol/eval/ops/ops.envreach';
 import { flagValueIssues } from '../../../../packages/protocol/eval/ops/ops.flags';
 import { envValueIssueForKey, modelMapBounds } from '../../../../packages/protocol/eval/ops/ops.metadata';
 import { SUPPORTS_SIDES, abSideIssues, singleConfigIssues, sidesPerRun } from '../../../../packages/protocol/eval/ops/ops.sides';
@@ -81,7 +81,7 @@ function envFromRows(rows: readonly EnvFlagRow[]): Record<string, string> {
  * applying the typed value would contradict the server. The operator is told
  * which control to clear.
  */
-const MODEL_OVERRIDE_KEY = 'EVAL_MODEL_OVERRIDES';
+export const MODEL_OVERRIDE_KEY = 'EVAL_MODEL_OVERRIDES';
 
 interface LaunchState {
   harnesses: HarnessDescriptor[];
@@ -883,20 +883,38 @@ export function Launch() {
    * true of this one: a scorecard harness with no env set runs the committed
    * default, which is its normal and most common launch.
    *
-   * "Configures nothing" means neither env NOR a named config, for the same
-   * reason `singleConfigIssues` takes models: `resolveProfile` folds a config's
-   * models into EVAL_MODEL_OVERRIDES, a key the discovery catalogue offers, so a
-   * single-shape run under a saved config IS configured and the server accepts
-   * it. Judging on env rows alone disabled Run on a launch both server layers
-   * would have taken — the mirror of the defect that let the empty default
-   * through, and just as much a disagreement between the form and the server.
-   * Only the single shape can carry a config: the paired shape renders no
-   * picker, and pins both columns to "default".
+   * "Configures nothing" means neither env NOR a config THIS HARNESS READS, for
+   * the same reason `singleConfigIssues` takes models: `resolveProfile` folds a
+   * config's models into EVAL_MODEL_OVERRIDES, a key the discovery catalogue
+   * offers, so a single-shape run under a saved config that sets models IS
+   * configured and the server accepts it. Judging on env rows alone disabled Run
+   * on a launch both server layers would have taken — the mirror of the defect
+   * that let the empty default through.
+   *
+   * But "a config is selected" is not the question either, and asking it was a
+   * second disagreement in the opposite direction: a config whose env names only
+   * keys some OTHER harness reads (and whose models block is empty) configures
+   * nothing here, and the server answers 400 —
+   * `Config "x" sets nothing the discovery harness reads`. The form asked "is a
+   * config selected?", the server asks "does it configure anything I read?", so
+   * Run was enabled, the confirmation taken, and the spend committed before the
+   * refusal arrived. `readableEnv` is the server's own narrowing, imported
+   * rather than restated. Only the single shape can carry a config: the paired
+   * shape renders no picker, and pins both columns to "default".
    */
+  const selectedConfig = carriesSides || state.profile.reference === 'default'
+    ? undefined
+    : state.savedConfigs.find((candidate) => candidate.name === state.profile.reference)
+      ?? state.profiles.find((candidate) => candidate.name === state.profile.reference);
+  const configConfiguresThisHarness =
+    selectedConfig !== undefined
+    && harnessId !== null
+    && (Object.keys(readableEnv(harnessId, selectedConfig.env ?? {})).length > 0
+      || Object.keys(selectedConfig.models ?? {}).length > 0);
   const envEmpty =
     supportsSides
     && state.env.length === 0
-    && (carriesSides || state.profile.reference === 'default');
+    && (carriesSides || state.profile.reference === 'default' || !configConfiguresThisHarness);
   const envGeneralIssues =
     envIncomplete || envEmpty ? [] : envIssues.filter((issue) => issue.path.length < (carriesSides ? 2 : 1));
 
@@ -1151,9 +1169,16 @@ export function Launch() {
 
           {unreadConfigKeys.length > 0 && (
             <p className="text-term-yellow">
-              Recorded but not read by {harnessId}: {unreadConfigKeys.join(', ')}. This config sets
-              them and the run will record them, but this harness's code never reads them, so they
-              will not affect the result.
+              Recorded but not read by {harnessId}: {unreadConfigKeys.join(', ')}.{' '}
+              {envEmpty
+                // The reassuring wording is only true of a run that starts. When
+                // the config sets NOTHING this harness reads, envEmpty is what
+                // blocks the launch, and promising the keys "will be recorded"
+                // would describe a run that never happens.
+                ? <>This config sets nothing {harnessId} reads, so there is nothing for this run to
+                    measure. Add a flag, or choose a config this harness reads.</>
+                : <>This config sets them and the run will record them, but this harness's code never
+                    reads them, so they will not affect the result.</>}
             </p>
           )}
 

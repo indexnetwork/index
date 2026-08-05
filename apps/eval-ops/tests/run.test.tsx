@@ -828,6 +828,11 @@ describe('Run · discovery', () => {
 
     expect(await screen.findByText('overrides:')).toBeTruthy();
     expect(screen.queryByText('environment:')).toBeNull();
+    // The fixture carries the EVAL_MODEL_OVERRIDES="" neutraliser that renderRun
+    // writes onto every record, so this row also pins that the summary does not
+    // report it as corruption — one word, and the label test covers all three
+    // claims it makes about this line.
+    expect(screen.queryByText(/unparseable/)).toBeNull();
   });
 
   it('still calls a scorecard harness’s env an override, because it deviates from a baseline', async () => {
@@ -852,6 +857,7 @@ describe('Run · discovery', () => {
     expect(await screen.findByText('overrides:')).toBeTruthy();
     expect(screen.getByText(/OPENROUTER_MAX_RETRIES=5/)).toBeTruthy();
     expect(screen.queryByText('environment:')).toBeNull();
+    expect(screen.queryByText(/unparseable/)).toBeNull();
   });
 
   it('shows both sides with their pass rates, saying which is read against which', async () => {

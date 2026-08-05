@@ -49,3 +49,21 @@ export function unreadEnvKeys(harness: OpsHarness, env: Record<string, string>):
   const readable = HARNESS_ENV_KEYS[harness];
   return Object.keys(env).filter((key) => !readable.includes(key)).sort();
 }
+
+/**
+ * The keys of `env` this harness's own code reads — the complement of
+ * {@link unreadEnvKeys}, as a map rather than a list.
+ *
+ * The server narrows a resolved profile's env to exactly this before asking
+ * whether a single-shape run configures anything (ops.server.ts, the
+ * post-resolution `singleConfigIssues` check), and the launch form has to ask
+ * the same question about the same keys BEFORE enabling Run. Asking it two ways
+ * is how the form came to enable a saved config the server answers 400 to: the
+ * form asked "is a config selected?" while the server asked "does the config
+ * configure anything I read?", and for a config naming only other harnesses'
+ * keys those two questions have opposite answers.
+ */
+export function readableEnv(harness: OpsHarness, env: Record<string, string>): Record<string, string> {
+  const readable = HARNESS_ENV_KEYS[harness];
+  return Object.fromEntries(Object.entries(env).filter(([key]) => readable.includes(key)));
+}

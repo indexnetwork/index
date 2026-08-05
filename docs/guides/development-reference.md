@@ -441,51 +441,51 @@ because nothing names them: they reach the child by inheritance from
 gitignored, and Bun exits 0 without a warning when an `--env-file` is absent — so
 a container with neither the file nor the variable reads them as unset, silently.
 What each is for: `createModel` throws `OPENROUTER_API_KEY is required`
-(`packages/protocol/src/shared/agent/model.config.ts:166-169`) and the embedder
+(`instantiateModel`, `packages/protocol/src/shared/agent/model.config.ts`) and the embedder
 passes the same key to its OpenAI client
-(`services/api/src/adapters/embedder.adapter.ts:107-110`); and
+(`services/api/src/adapters/embedder.adapter.ts`); and
 `createChildDependencies` builds the HyDE graph over a `RedisCacheAdapter`
-(`services/api/src/cli/discovery-env-matrix.main.ts:705-717`) whose client
+(`createChildDependencies`, `services/api/src/cli/discovery-env-matrix.main.ts`) whose client
 falls back to `localhost:6379` when neither `REDIS_URL` nor `REDIS_HOST` is set
-(`services/api/src/adapters/cache.adapter.ts:43-56`), while the graph's
+(`services/api/src/adapters/cache.adapter.ts`), while the graph's
 `cache_results` node awaits `cache.set` with no catch
-(`packages/protocol/src/shared/hyde/hyde.graph.ts:545`) and the adapter's `set`
-has none either (`services/api/src/adapters/cache.adapter.ts:135-143`). The
+(`cache_results`, `packages/protocol/src/shared/hyde/hyde.graph.ts`) and the adapter's `set`
+has none either (`RedisCacheAdapter.set`, `services/api/src/adapters/cache.adapter.ts`). The
 check is on `REDIS_URL` alone, so a Redis configured as `REDIS_HOST`/`REDIS_PORT`
 is refused here even though the adapter would have accepted it — a refusal an
 operator can fix, rather than two reset branches and a failed run.
 
 A local server reads all four from the repo-root `.env.test`, which `eval:web`
 loads (`packages/protocol/package.json:46`); a deployed one reads its own process
-environment (`serverEnv: process.env`, `ops.server.ts:1994`).
+environment (`serverEnv: process.env`, `ops.server.ts`).
 
 Without any of the four the launch route answers **503**, naming exactly what is
 missing: `Refusing to launch discovery: this server has no REDIS_URL
-configured. …` (`resolveHarnessEnvironment`, `ops.server.ts:1152-1160`), returned
-at `ops.server.ts:1257-1258`. 503 and not a 4xx on purpose — the request is valid
+configured. …` (`resolveHarnessEnvironment`, `ops.server.ts`), returned
+in `launchRun` (`ops.server.ts`). 503 and not a 4xx on purpose — the request is valid
 and it is the server that is not configured to serve it. A blank value counts as
-absent (`ops.server.ts:1154`). The message names variables, never values.
+absent (`resolveHarnessEnvironment`, `ops.server.ts`). The message names variables, never values.
 
 **One run in flight, ever — including after a restart.** The two Neon branches
-are a shared resource, so `EXCLUSIVE_HARNESSES` (`ops.queue.ts:35-43`) gives
+are a shared resource, so `EXCLUSIVE_HARNESSES` (`ops.queue.ts`) gives
 `discovery`, and only it, an exclusive slot. A second launch is refused with
 **409** naming the run that holds it (`exclusiveRefusal`,
-`ops.server.ts:1180-1187`; returned at `ops.server.ts:1249`, and again at
-`ops.server.ts:1327` for two launches that raced past the first check).
+`ops.server.ts`), returned by `launchRun` before anything is resolved and
+again by the executor for two launches that raced past the first check).
 The refusal names the holder and ties the slot to that run's process exiting,
 rather than promising that cancelling it works: a run left behind by an earlier
-server has no live entry for `executor.cancel` (`ops.executor.ts:155-161`) while
-`cancelRun` still answers accepted (`ops.server.ts:1333-1347`), so an orphan is
+server has no live entry for `executor.cancel` (`executor.cancel`, `ops.executor.ts`) while
+`cancelRun` still answers accepted (`cancelRun`, `ops.server.ts`), so an orphan is
 released by exiting and not by the button.
 `EVAL_OPS_MAX_CONCURRENT_RUNS` cannot open this: it is a separate rule
-(`resolveConcurrency`, `ops.queue.ts:9-12`) and no value of it is consulted
+(`resolveConcurrency`, `ops.queue.ts`) and no value of it is consulted
 here. The slot survives a
 server restart because `exclusiveConflict` reads the run store as well as this
-process's queue (`ops.queue.ts:128-134`) — a child spawned by a server that then
+process's queue (`exclusiveConflict`, `ops.queue.ts`) — a child spawned by a server that then
 died keeps running, and a queue rebuilt in the new process would otherwise admit
 a second run that resets `eval-ab-a` and `eval-ab-b` underneath it. A stored
 record holds the slot only while its pid is genuinely alive
-(`storedRecordHoldsSlot`, `ops.queue.ts:165-169`), so the other restart — the
+(`storedRecordHoldsSlot`, `ops.queue.ts`), so the other restart — the
 container is replaced and the child dies with it — unblocks the harness instead
 of stranding it behind a file nobody can delete.
 
@@ -495,11 +495,11 @@ twice in one invocation, a single configuration passes over it once. So the
 multiplier is a function of the SPEC, not of the harness — `sidesPerRun`
 (`ops.sides.ts`) returns `spec.sides === undefined ? 1 : 2`. It is the single
 source for both the workload recorded on the run record (`renderRun`,
-`ops.argv.ts:339`) and the number the launch form prices and displays
-(`Launch.tsx:755-757`), so the two cannot disagree. A per-harness constant
-pinned at 2 — which is what this was — quoted 30 invocations for a single run
-that costs 15, and has been deleted rather than deprecated. The A/B checkbox is
-an ordinary checkbox for this harness (`Launch.tsx:938`): ticking it compares two
+`renderRun`, `ops.argv.ts`) and the number the launch form prices and displays
+(`passesPerLaunch`, `Launch.tsx`), so the two cannot disagree. A per-harness
+constant pinned at 2 — which is what this was — quoted 30 invocations for a
+single run that costs 15, and has been deleted rather than deprecated. The A/B
+checkbox is an ordinary checkbox for this harness: ticking it compares two
 configurations, leaving it off measures one.
 
 The spend confirmation fires for **every** run of this harness, filtered or not,
@@ -515,52 +515,57 @@ targets to the sides actually being run.
 
 **No baseline, and there never will be one, so the run view shows a pair rather
 than a regression verdict.** The run page does not even fetch a baseline for a
-sides harness (`Run.tsx:161`), and renders `AbComparison` in place of the
-scorecard frame (`Run.tsx:366-371`) — the scorecard would report this run's
+sides harness (`Run.tsx`), and renders `AbComparison` in place of the
+scorecard frame (`Run.tsx`) — the scorecard would report this run's
 aggregate pass rate, which is the mean across two *different* configurations and
 therefore a score of neither. `AbComparison` says so on the page
-(`AbComparison.tsx:15-18` and `:28-31`) and returns `no-verdict` rather than a
+(`AbComparison.tsx`) and returns `no-verdict` rather than a
 comparison whenever the artifact does not support one (`deriveAbView`,
-`apps/eval-ops/src/lib/ab.ts:313-360`). The overview row shows neither a
+`apps/eval-ops/src/lib/ab.ts`). The overview row shows neither a
 baseline nor a latest cell for it, for the same two reasons
-(`Overview.tsx:129-142`).
+(`Overview.tsx`).
 
 **A saved config cannot be selected for it.** The server refuses a named profile
-alongside `sides` (`ops.argv.ts:147-156`) and refuses ad-hoc `overrides`
-alongside `sides` (`ops.argv.ts:157-166`), both as 400s; `renderRun` throws on
+alongside `sides` (`RunSpecSchema`, `ops.argv.ts`) and refuses ad-hoc `overrides`
+alongside `sides` (`RunSpecSchema`, `ops.argv.ts`), both as 400s; `renderRun` throws on
 the same pair a second time, because that is the layer that would otherwise spend
-on it (`ops.argv.ts:243-248`). The reason is that a config moves both sides
+on it (`renderRun`, `ops.argv.ts`). The reason is that a config moves both sides
 identically and so cannot change the difference being measured: its models apply
 under both sides at once, and its `env` block would set a shared baseline for the
 allowlisted keys nobody is comparing — unrecorded in the artifact, whose
 configuration provenance is the per-case `configDeltas` naming only the per-side
-keys. The form therefore renders no Config picker for this harness and states
-that on the page (`Launch.tsx:666-671`).
+keys. The form therefore renders no Config picker for the PAIRED shape of this
+harness and states that on the page (`configEnvConflict`, `Launch.tsx`). A single
+configuration run may carry one, provided it configures something this harness
+reads — see **Configs are harness-agnostic** below.
 
-**The nine keys a side may set** are `DISCOVERY_ENV_KEYS`
-(`packages/protocol/eval/ops/ops.allowlist.ts:68-78`) — the same nine as the
-CLI's `AB_FLAGS`, which is a copy the two sides keep honest from both ends:
-`eval/ops/tests/argv.spec.ts:392-406` parses the engine's literal and compares
-the sets, and `services/api/src/cli/tests/discovery.flags.spec.ts:32` compares
-them as imported values. The launch form's per-side key picker offers exactly
-these nine and nothing else (`Launch.tsx:447-451`):
+**The keys a side may set are derived from the harness's own code, not
+maintained by hand.** `DISCOVERY_ENV_KEYS` is `HARNESS_ENV_KEYS.discovery`
+(`ops.allowlist.ts`), which the generator produces by walking the discovery
+graph's transitive import closure and collecting its `process.env` reads
+(`ops.envcatalog.build.ts`); `eval/ops/tests/envcatalog.spec.ts` regenerates it
+and fails on any difference, so the committed file cannot drift from the code.
+That is **26 keys**, not the nine an earlier hand-written list offered: the nine
+were an artefact of scanning against the sixteen-key `PROFILE_ENV_ALLOWLIST`
+rather than against the graph. The launch form's key picker offers exactly
+`HARNESS_ENV_KEYS[harness]` and nothing else, and every offered key must also
+carry `ENV_FLAG_METADATA` — a key nobody has explained is not offered
+(`eval/ops/tests/metadata.spec.ts`).
 
-```
-DISCOVERY_ALLOWED_TYPES            DISCOVERY_CONTEXT_TO_INTENT
-DISCOVERY_PROFILE_SOURCE           DISCOVERY_REJECTION_COOLDOWN_DAYS
-DISCOVERY_SOURCE_PREMISE_LIMIT     NEGOTIATION_INCLUDE_OTHER_INTENTS
-NEGOTIATION_MAX_TURNS_AMBIENT      NEGOTIATION_MAX_TURNS_CHAT
-RUN_OPPORTUNITY_EVAL_IN_PARALLEL
-```
+Each of the four scorecard harnesses offers **8**: `CHAT_MODEL`,
+`CHAT_REASONING_EFFORT`, `EVAL_MODEL_OVERRIDES`, `SMARTEST_VERIFIER_MODEL`,
+`OPENROUTER_FALLBACK_MODEL`, `OPENROUTER_MAX_RETRIES`,
+`OPENROUTER_REQUEST_TIMEOUT_MS` and `OPENROUTER_RUNNABLE_MAX_ATTEMPTS`. The two
+credentials every harness also reads — `OPENROUTER_API_KEY` and
+`OPENROUTER_BASE_URL` — are excluded by `isCredentialEnvKey` at generation and
+refused again at the request boundary.
 
-**The other seven allowlisted flags are not reachable from the discovery graph,
-and this harness does not test them.** `PROFILE_ENV_ALLOWLIST`
-(`ops.allowlist.ts:12-29`) has sixteen entries; the seven below are absent from
-the nine above. They are unreachable from the discovery graph, so this harness
-cannot test them: no picker offers them, and a request naming one anyway is
-refused by name — `<KEY> is not readable by the discovery graph; this harness
-cannot test it` (`abSideIssues`, `ops.sides.ts:142-144`), which the form and the
-server both run:
+**Seven allowlisted flags are reachable from no harness at all, so nothing on
+this site tests them.** `PROFILE_ENV_ALLOWLIST` (`ops.allowlist.ts`) has sixteen
+entries; the seven below appear in no harness's catalogue. A request naming one
+on discovery is refused by name — `<KEY> is not readable by the discovery graph;
+this harness cannot test it` (`sideConfigIssues`, `ops.sides.ts`), which the form
+and the server both run:
 
 ```
 POOL_QUESTIONS_MODE       POOL_QUESTIONS_PUSH      POOL_QUESTIONS_RANKING
@@ -568,9 +573,21 @@ POOL_QUESTIONS_MINING     OUTCOME_QUESTIONS_MODE   INTRODUCER_DISCOVERY_ENABLED
 NEGOTIATION_EVIDENCE_QUESTIONS_MODE
 ```
 
-Putting `discovery` on the site therefore covers nine of the sixteen editable
-flags and no more. Finding these seven a harness is tracked as **IND-630**; until
-then, editing one on the Configs page still moves nothing any harness reads.
+Finding these seven a harness is tracked as **IND-630**; until then, editing one
+on the Configs page still moves nothing any harness reads. The Configs page
+annotates every key with the harnesses that read it, so a key no harness reads is
+visible as such rather than silently inert.
+
+**Configs are harness-agnostic, and a config may legitimately carry a key the
+chosen harness never reads** — it is shared with one that does. Such keys are
+reported, named, as recorded-but-not-read rather than refused (`unreadEnvKeys`,
+`ops.envreach.ts`). The exception is a single-configuration discovery run whose
+config sets **nothing** this harness reads: that run would measure the committed
+default while the record named the operator's config, so both the form and the
+server refuse it (`readableEnv` + `singleConfigIssues`, called by `launchRun` and
+by the launch form's `envEmpty`). An ad-hoc override naming an unreadable key is
+a different case and is always a 400: it was typed for this run, against this
+harness, so there is no reading under which it was meant to do nothing.
 
 ### Eval Ops Site
 

@@ -2,8 +2,9 @@
  * The discovery harness: two operator-chosen environment configurations,
  * the same cases, one child process per side, one artifact holding both.
  *
- * The parent gates, attests, resets both branches, spawns the two children and
- * aggregates them. The child half below it runs one side.
+ * The parent gates, attests, resets the run's target branches, spawns one child
+ * per side and aggregates them — two of each for a comparison, one of each for a
+ * single configuration. The child half below it runs one side.
  *
  * ── Child half ──────────────────────────────────────────────────────────────
  * One side, one branch, one configuration.
@@ -293,7 +294,7 @@ export async function runAbChild(sideId: AbSideId, slots: readonly AbSlot[], out
 }
 
 // ── Parent half ─────────────────────────────────────────────────────────────
-// Gate, attest, reset both branches, spawn one child per side, aggregate.
+// Gate, attest, reset the target branches, spawn one child per side, aggregate.
 
 /**
  * The operator-facing contract — the repetition bounds and the exit codes —
@@ -428,7 +429,7 @@ function parseAbShape(args: readonly string[]): AbSides {
  * An existing *directory* is refused here rather than left to the write plan,
  * which only asks whether the path exists as a file: `Bun.file(dir).exists()`
  * is false for a directory, so a mistyped destination would pass pre-flight and
- * fail at the write — after both branches were reset and both sides ran, which
+ * fail at the write — after the target branches were reset and every side ran, which
  * is a code-4 spend report for a typo. Refusing at parse time keeps it in the
  * code-2 path the contract promises: nothing reset, nothing spawned, nothing
  * spent.
@@ -953,7 +954,7 @@ export async function withAbSpendAccounting(run: (progress: AbRunProgress) => Pr
 }
 
 /**
- * Gate, attest, reset both branches, run one child per side, aggregate.
+ * Gate, attest, reset the target branches, run one child per side, aggregate.
  *
  * The bootstrap has already attested these targets before importing this
  * module - that is what keeps the graph and its database singleton unreachable

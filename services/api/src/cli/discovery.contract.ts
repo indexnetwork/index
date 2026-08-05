@@ -26,7 +26,7 @@
 import { AB_BRANCH_NAMES } from './discovery.neon';
 import { AbGateError } from './discovery.gate';
 
-/** The protected branch both A/B branches are reset from before every run. */
+/** The protected branch this run's target branches are reset from before every run. */
 export const AB_BASE_BRANCH = 'eval-discovery-base';
 /** Three repetitions per side; one observation per case cannot separate a difference from noise. */
 export const AB_DEFAULT_REPETITIONS = 3;
@@ -273,7 +273,7 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
  * The same attestation runs in the parent and in every child, and the two are
  * at different points in the run. "Nothing was reset and nothing was spawned"
  * is true of a parent refusing before its first reset; a child attests *after*
- * the parent has already reset both branches and spawned it, so the same
+ * the parent has already reset this run's target branches and spawned it, so the same
  * sentence printed from a child is simply false. A child speaks only for
  * itself.
  *

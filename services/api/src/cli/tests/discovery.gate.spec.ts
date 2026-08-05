@@ -45,6 +45,30 @@ describe('assertAbConfirmation', () => {
   it('raises a refusal the bootstrap is allowed to print', () => {
     expect(() => assertAbConfirmation({})).toThrow(AbGateError);
   });
+
+  it('claims nothing about how many branches this run will touch', () => {
+    // This gate runs before the argv is parsed, so it does not yet know whether
+    // the run is a comparison (two branches, two children) or a single
+    // configuration (one of each). Both of these messages said "both A/B
+    // branches" / "the two designated A/B branches", which became false for half
+    // the runs the harness accepts the moment the single shape landed — and a
+    // count of branches is exactly the sort of claim an operator acts on, by
+    // going to look at them.
+    //
+    // The other shape-dependent messages solve this by taking the shape as a
+    // parameter (`abSpentMessage`); this one cannot, so it must not count.
+    const counting = /\bboth\b|\btwo\b|\bpair\b/i;
+    for (const key of ['NEON_API_KEY', 'DISCOVERY_TARGETS'] as const) {
+      let message = '';
+      try {
+        assertAbConfirmation(env({ [key]: undefined }));
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message, `${key}: gate refusal must not be raised without a message`).not.toBe('');
+      expect(message, `${key}: "${message}" counts branches this gate cannot know`).not.toMatch(counting);
+    }
+  });
 });
 
 describe('assertAbSideEnvironment', () => {

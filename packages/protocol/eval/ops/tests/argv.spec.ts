@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { DISCOVERY_ENV_KEYS } from "../ops.allowlist.js";
 import { renderRun, RunSpecSchema, singleConfigIssues } from "../ops.argv.js";
+import { abSideIssues } from "../ops.sides.js";
 import { flagValueIssues } from "../ops.flags.js";
 import { ALLOWED_CONFIG_MODEL_IDS, ENV_FLAG_METADATA } from "../ops.metadata.js";
 import { resolveAdHoc, resolveProfile, validateConfigOverrides } from "../ops.profiles.js";
@@ -454,6 +455,58 @@ describe("RunSpecSchema sides", () => {
       Object.entries(resolved.env).filter(([key]) => DISCOVERY_ENV_KEYS.includes(key)),
     );
     expect(singleConfigIssues(readable)).toEqual([]);
+  });
+
+  it("checks a PAIR's values against the same bounds as a single run", () => {
+    // The bounds pin for the paired shape. Its sibling above covers the single
+    // shape, and for a while that was the only one: dropping `modelMapBounds()`
+    // from the shared per-key check failed exactly one assertion in the whole
+    // repository, on the single shape, while the claim being made was that the
+    // hole was closed "on the discovery path".
+    //
+    // The launch form cannot pin this. It and RunSpecSchema both call
+    // `abSideIssues`, so on the paired shape they agree BY CONSTRUCTION and a
+    // parity matrix stays green with the bounds removed. It has to be asserted
+    // against the rule itself, here.
+    //
+    // Symmetric keys and differing values, so neither the symmetry rule nor the
+    // distinctness rule can account for the refusal: only the bounds can.
+    const issues = abSideIssues({
+      a: { EVAL_MODEL_OVERRIDES: JSON.stringify({ notAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+      b: { EVAL_MODEL_OVERRIDES: JSON.stringify({ alsoNotAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+    });
+    expect(issues.map((issue) => issue.path)).toEqual([
+      ["a", "EVAL_MODEL_OVERRIDES"],
+      ["b", "EVAL_MODEL_OVERRIDES"],
+    ]);
+    for (const issue of issues) expect(issue.message).toContain("names an unknown agent");
+  });
+
+  it("does not promise a fallback for the one key whose read site throws", () => {
+    // Every consequence sentence this file renders is acted on by an operator,
+    // so each must be true of the key it is attached to. Most catalogued flags
+    // fall back on a value their read site does not recognise — that is why
+    // values are checked before a run is queued at all. EVAL_MODEL_OVERRIDES is
+    // the exception: `readModelOverrides` THROWS on an unknown agent
+    // (src/shared/agent/model.config.ts:65), so the run dies at startup, after
+    // the branch reset. Telling the operator it "falls back to the default" is
+    // the same class of false sentence the value check itself exists to prevent.
+    const throwing = abSideIssues({
+      a: { EVAL_MODEL_OVERRIDES: JSON.stringify({ notAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+      b: { EVAL_MODEL_OVERRIDES: JSON.stringify({ alsoNotAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+    });
+    for (const issue of throwing) {
+      expect(issue.message).toContain("not honoured with a fallback");
+      expect(issue.message).not.toContain("falls back to its own default");
+    }
+
+    // And the sentence is still there for a key that really does fall back, so
+    // the fix is a distinction rather than a deletion.
+    const fallingBack = abSideIssues({
+      a: { DISCOVERY_PROFILE_SOURCE: "user-context" },
+      b: { DISCOVERY_PROFILE_SOURCE: "premise" },
+    });
+    expect(fallingBack.some((issue) => issue.message.includes("falls back to its own default"))).toBe(true);
   });
 
   it("states the value cap's real headroom, including where it bites", () => {

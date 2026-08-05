@@ -18,7 +18,7 @@ import { isCredentialEnvKey, PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 // The derived per-harness catalogue: what a harness can actually read, as
 // opposed to what the hand-written allowlist happens to name.
 import { HARNESS_ENV_KEYS } from "./ops.envcatalog.js";
-import { harnessesReading, unreadEnvKeys } from "./ops.envreach.js";
+import { harnessesReading, readableEnv, unreadEnvKeys } from "./ops.envreach.js";
 
 // Guided-editing metadata is likewise dependency-free (ops.metadata.ts) so the
 // browser app imports it directly; re-exported here for server-side consumers.
@@ -192,7 +192,7 @@ export function validateConfigOverrides(
 // questions: this module imports node:crypto and node:fs/promises and can never
 // enter the Vite bundle. Re-exported under their original names, so every
 // server-side import site is unchanged.
-export { harnessesReading, unreadEnvKeys };
+export { harnessesReading, readableEnv, unreadEnvKeys };
 
 /**
  * Every key any harness can read, plus the catalogued flags no harness reaches.

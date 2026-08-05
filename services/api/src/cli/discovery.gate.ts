@@ -48,12 +48,17 @@ export interface AbSideEnvironment {
 /**
  * The operator attestation every A/B process requires, parent included.
  *
- * The parent composes no database of its own, but it resets two branches and
- * spawns two processes that do, so it is gated by the same variables rather
- * than by the children it starts. `NEON_API_KEY` is required here rather than
- * where it is used because every A/B process attests its targets before
- * importing anything that touches a database, and a missing key would
+ * The parent composes no database of its own, but it resets the run's target
+ * branches and spawns the processes that do, so it is gated by the same
+ * variables rather than by the children it starts. `NEON_API_KEY` is required
+ * here rather than where it is used because every process attests its targets
+ * before importing anything that touches a database, and a missing key would
  * otherwise surface as an attestation refusal that says nothing about the key.
+ *
+ * Shape-neutral wording throughout: this gate runs before the argv is parsed,
+ * so it does not yet know whether the run is a single configuration (one branch,
+ * one child) or a comparison (two of each). Saying "both branches" here was
+ * false for half the runs the harness now accepts.
  */
 export function assertAbConfirmation(env: NodeJS.ProcessEnv): void {
   if (env.DISCOVERY_CONFIRM !== '1') {
@@ -63,12 +68,12 @@ export function assertAbConfirmation(env: NodeJS.ProcessEnv): void {
     throw new AbGateError('Refusing to mutate: set TEST_DATABASE_SAFE=1 only for a disposable evaluation branch');
   }
   if ((env.NEON_API_KEY ?? '') === '') {
-    throw new AbGateError('Refusing to run: NEON_API_KEY is required to attest both A/B branches before anything runs');
+    throw new AbGateError("Refusing to run: NEON_API_KEY is required to attest this run's target branches before anything runs");
   }
   // Presence only. What a manifest must contain is `parseAbManifest`'s contract,
   // and restating any of it here would be a second copy to drift from.
   if ((env.DISCOVERY_TARGETS ?? '').trim() === '') {
-    throw new AbGateError('Refusing to run: DISCOVERY_TARGETS must declare the two designated A/B branches');
+    throw new AbGateError('Refusing to run: DISCOVERY_TARGETS must declare the designated evaluation branches');
   }
 }
 

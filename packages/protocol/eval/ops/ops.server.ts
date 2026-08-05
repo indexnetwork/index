@@ -30,7 +30,6 @@ import path from "node:path";
 import { z } from "zod";
 
 import { renderRun, RunSpecSchema, SUPPORTS_SIDES, singleConfigIssues } from "./ops.argv.js";
-import { DISCOVERY_ENV_KEYS } from "./ops.allowlist.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
 import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
@@ -38,7 +37,7 @@ import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type Confi
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, readableEnv, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
 import { EXCLUSIVE_HARNESSES, RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
@@ -1297,9 +1296,12 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // harness reads configures nothing here, and would otherwise be spent as a run
   // of the committed default while the record named the operator's config.
   if (SUPPORTS_SIDES[harness] && parsed.data.sides === undefined) {
-    const readable = Object.fromEntries(
-      Object.entries(resolved.env).filter(([key]) => DISCOVERY_ENV_KEYS.includes(key)),
-    );
+    // `readableEnv`, not a local filter, because the launch form must ask this
+    // same question before enabling Run and the two must not drift: a config
+    // naming only keys some other harness reads configures nothing HERE, and a
+    // form that asked merely "is a config selected?" enabled the run, took the
+    // confirmation, and collected the 400 below.
+    const readable = readableEnv(harness, resolved.env);
     const issues = singleConfigIssues(readable);
     if (issues.length > 0) {
       // The empty case gets a message true for the shape the operator used. A

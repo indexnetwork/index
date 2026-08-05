@@ -193,6 +193,17 @@ const PROFILES = {
       models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
       env: {},
     },
+    {
+      // Legal everywhere, and configures NOTHING on discovery: this key is read
+      // by the four scorecard harnesses and is absent from discovery's
+      // 26-key catalogue. No models either, so nothing is folded into
+      // EVAL_MODEL_OVERRIDES. The state that reached a 400 after the operator
+      // had confirmed the spend.
+      name: 'judge-only',
+      description: 'a stricter verifier, for the scorecard harnesses',
+      models: {},
+      env: { SMARTEST_VERIFIER_MODEL: 'google/gemini-2.5-flash' },
+    },
   ],
 };
 
@@ -1386,6 +1397,35 @@ describe('Launch — refusing what the server would refuse', () => {
 
     expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
     expect(screen.queryByText(/add a flag or choose a config before running/i)).toBeNull();
+  });
+
+  /**
+   * The third disagreement in this family, and the one that survived the first
+   * two fixes: a config that IS selected but configures nothing THIS harness
+   * reads.
+   *
+   * `envEmpty` short-circuited on "a config is selected", while the server asks
+   * "does the config configure anything I read?" — and for a config naming only
+   * another harness's keys those questions have opposite answers. Run was
+   * enabled, the confirmation taken, and only then did the server answer 400:
+   * `Config "judge-only" sets nothing the discovery harness reads, so this run
+   * would measure the committed default while the record named your config`.
+   *
+   * Reachable with clicks alone — select the harness, select the config — which
+   * is what made it worth a fixture of its own.
+   */
+  it('will not launch discovery under a config it reads nothing of', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await selectDiscovery(user);
+
+    await user.selectOptions(screen.getByLabelText('Config'), 'judge-only');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+    // And the recorded-but-not-read note must not reassure about a run that
+    // will never start: it says what to do instead.
+    expect(screen.getByText(/sets nothing discovery reads/i)).toBeTruthy();
+    expect(screen.queryByText(/the run will record them/i)).toBeNull();
   });
 
   it('still refuses an empty comparison, naming both sides', async () => {
