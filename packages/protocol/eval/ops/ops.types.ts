@@ -2,12 +2,12 @@
  * Every harness the site can launch.
  *
  * The first four emit the shared scorecard artifact envelope and are scored
- * against a committed baseline. `discovery-ab` emits the same envelope but has
- * no baseline and never will: it compares two operator-chosen environment
- * configurations against each other, and arbitrary configurations have nothing
- * to be a baseline of.
+ * against a committed baseline. `discovery` emits the same envelope but has
+ * no baseline and never will: it measures operator-chosen environment
+ * configurations — one on its own, or two against each other when launched with
+ * `sides` — and arbitrary configurations have nothing to be a baseline of.
  */
-export type OpsHarness = "matching" | "profile" | "premise" | "opportunity" | "discovery-ab";
+export type OpsHarness = "matching" | "profile" | "premise" | "opportunity" | "discovery";
 
 export type HarnessFlagName =
   | "runs"
@@ -24,7 +24,7 @@ export type HarnessFlagName =
  *
  * `heldBy` is not decoration: it decides what the refusal is allowed to SAY.
  * `"harness"` means the engine's own parser refuses the value (matching's
- * `alpha <= 0 || alpha >= 1`, discovery-ab's `--runs must not exceed 10`), so a
+ * `alpha <= 0 || alpha >= 1`, discovery's `--runs must not exceed 10`), so a
  * refusal may tell the operator the harness itself would refuse it. `"site"`
  * means only this site refuses it — RunFlagsSchema's shared ceiling, e.g.
  * `--runs 26`, which every scorecard harness would happily run — so the refusal
@@ -64,7 +64,7 @@ export interface HarnessFlag {
    * the launch form refuses the same values from the same function, so the form
    * cannot mark an API-valid value invalid nor offer one the API would refuse.
    *
-   * Per harness, because the harnesses do not agree: discovery-ab caps `--runs`
+   * Per harness, because the harnesses do not agree: discovery caps `--runs`
    * at AB_MAX_REPETITIONS (10) where the scorecard harnesses have no ceiling of
    * their own at all and only the site's 25 applies.
    *
@@ -81,7 +81,7 @@ export interface HarnessDescriptor {
   script: string;
   /**
    * Repository-relative directory the script is run from. Absent means
-   * packages/protocol, where every scorecard harness lives; discovery-ab
+   * packages/protocol, where every scorecard harness lives; discovery
    * declares "services/api" because its CLI and script live there.
    */
   cwd?: string;
@@ -98,20 +98,40 @@ export interface HarnessDescriptor {
   /** One sentence on what is actually scored, shown under `question` for context. */
   detail: string;
   /**
-   * What a run of this harness DESTROYS, named as a noun phrase ("both Neon
-   * evaluation branches"), and shown in the launch form's confirmation because
-   * that is the last moment anyone can decline it.
+   * What a run of this harness DESTROYS, named as a noun phrase, and shown in
+   * the launch form's confirmation because that is the last moment anyone can
+   * decline it.
    *
    * Sourced here rather than written into the form, because the form branches on
-   * REQUIRES_SIDES rather than on a harness name: a second comparison harness
+   * SUPPORTS_SIDES rather than on a harness name: a second comparison harness
    * would otherwise inherit this one's claim about Neon, which may not be true
    * of it. Absent means a run destroys nothing outside its own report, which is
    * the case for every scorecard harness, and the confirmation then speaks only
    * of the spend.
+   *
+   * Keyed by the run's SHAPE, because for a sides-capable harness the two shapes
+   * destroy different things: a comparison resets both Neon branches, a single
+   * run resets only the one it reads (discovery.main.ts filters `attested`
+   * targets to the sides being run). A single string here was quoted verbatim
+   * into the confirmation and told an operator launching one configuration that
+   * both branches would be reset — the same false claim the engine's own contract
+   * was rewritten to eliminate. The launch form reads the shape's own entry
+   * (`resets.sides` or `resets.single`) rather than one string for both.
    */
-  resets?: string;
+  resets?: HarnessResets;
   /** Model-overridable agents this harness exercises, in pipeline order. */
   agents: readonly string[];
+}
+
+/**
+ * What a run destroys, by shape. `single` is what one configuration destroys,
+ * `sides` what a comparison destroys. A harness that destroys the same thing
+ * either way repeats the string rather than leaving a field blank: a missing
+ * field would render an empty noun phrase into the confirmation.
+ */
+export interface HarnessResets {
+  single: string;
+  sides: string;
 }
 
 export interface ArtifactRef {
@@ -160,12 +180,12 @@ export interface RunFlags {
 }
 
 /**
- * The two environment configurations a discovery-ab run compares, rendered as
+ * The two environment configurations a discovery run compares, rendered as
  * `--a KEY=VALUE` / `--b KEY=VALUE`.
  *
  * `a` and `b` are named rather than a list because the engine requires exactly
  * two sides in that order (`assertOrderedDistinctSides` in
- * services/api/src/cli/discovery-ab.plan.ts: a reversed pair reports side b's
+ * services/api/src/cli/discovery.plan.ts: a reversed pair reports side b's
  * values under the artifact's a column). Both sides must declare the same key
  * set and differ in at least one value; RunSpecSchema enforces both.
  */
@@ -183,9 +203,12 @@ export interface EvalRunSpec {
   overrides?: { models: Record<string, string>; env: Record<string, string> };
   flags: RunFlags;
   /**
-   * Required for discovery-ab and invalid for every other harness: the
-   * scorecard harnesses score one configuration against a committed baseline,
-   * so a second configuration would have nothing to mean.
+   * Optional for discovery and invalid for every other harness: discovery
+   * measures a single configuration when launched without `sides` and compares
+   * a pair when launched with them. The scorecard harnesses score one
+   * configuration against a committed baseline, so a second configuration would
+   * have nothing to mean — `SUPPORTS_SIDES` (ops.sides.ts) is the predicate, and
+   * it is "may", not "must".
    */
   sides?: AbSides;
 }

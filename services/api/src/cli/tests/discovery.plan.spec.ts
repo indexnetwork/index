@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { buildAbPlan, configDiff, type AbSide } from '../discovery-ab.plan';
+import { buildAbPlan, configDiff, isAbPair, type AbSide } from '../discovery.plan';
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
 
 const testCase = (id: string): HistoricalMatrixFixture => ({
@@ -11,12 +11,53 @@ const testCase = (id: string): HistoricalMatrixFixture => ({
 const sideA: AbSide = { id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } };
 const sideB: AbSide = { id: 'b', config: { DISCOVERY_ALLOWED_TYPES: 'intent,profile' } };
 
+describe('isAbPair', () => {
+  it('distinguishes the two shapes, which decide how many branches a run resets', () => {
+    expect(isAbPair([sideA, sideB])).toBe(true);
+    expect(isAbPair([sideA])).toBe(false);
+  });
+});
+
 describe('buildAbPlan', () => {
   it('produces cases x repetitions x two sides', () => {
     const plan = buildAbPlan([testCase('c1'), testCase('c2')], [sideA, sideB], 3);
     expect(plan).toHaveLength(12);
     expect(plan.filter((slot) => slot.side.id === 'a')).toHaveLength(6);
     expect(plan.filter((slot) => slot.side.id === 'b')).toHaveLength(6);
+  });
+
+  it('produces cases x repetitions for a single side', () => {
+    const plan = buildAbPlan([testCase('c1'), testCase('c2')], [sideA], 3);
+    expect(plan).toHaveLength(6);
+    expect(plan.every((slot) => slot.side.id === 'a')).toBe(true);
+  });
+
+  it('accepts a single side whose keys would be asymmetric in a pair', () => {
+    // Symmetry is a property of a comparison. There is no second column for an
+    // omitted key to be misattributed to, so the rule has nothing to protect
+    // and would only refuse valid runs.
+    expect(() => buildAbPlan([testCase('c1')], [sideA], 1)).not.toThrow();
+  });
+
+  it('refuses a lone side b, which names no comparison and no seeded branch', () => {
+    expect(() => buildAbPlan([testCase('c1')], [sideB], 1))
+      .toThrow(/single-configuration discovery run uses side 'a'/);
+  });
+
+  it('still refuses an unreachable flag on a single side', () => {
+    // The catalogue check is not a comparison rule and must survive the shape.
+    expect(() => buildAbPlan([testCase('c1')], [{ id: 'a', config: { POOL_QUESTIONS_MODE: 'on' } }], 1))
+      .toThrow(/POOL_QUESTIONS_MODE/);
+  });
+
+  it('still refuses an empty value on a single side', () => {
+    expect(() => buildAbPlan([testCase('c1')], [{ id: 'a', config: { DISCOVERY_ALLOWED_TYPES: '  ' } }], 1))
+      .toThrow(/DISCOVERY_ALLOWED_TYPES/);
+  });
+
+  it('still requires a case and a positive repetition count for a single side', () => {
+    expect(() => buildAbPlan([], [sideA], 1)).toThrow(/at least one case/);
+    expect(() => buildAbPlan([testCase('c1')], [sideA], 0)).toThrow(/positive repetition count/);
   });
 
   it('gives both sides identical case and repetition coverage', () => {

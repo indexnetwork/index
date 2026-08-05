@@ -388,6 +388,15 @@ describe('Route rendering smoke tests', () => {
     expect(container.textContent).toContain('Open in the Index app');
   });
 
+  test('/download — macOS install page renders without crashing', async () => {
+    const { Component } = await import('@/app/download/page');
+    const { container } = renderWithRouter(<Component />, {
+      route: '/download',
+    });
+    expect(container).toBeTruthy();
+    expect(container.textContent).toContain('Index for macOS');
+  });
+
   test('/u/:id — User profile page renders without crashing', async () => {
     const { Component } = await import('@/app/u/[id]/page');
     const { container } = renderWithRouter(<Component />, {

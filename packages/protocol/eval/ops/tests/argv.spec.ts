@@ -2,11 +2,12 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { DISCOVERY_AB_ENV_KEYS } from "../ops.allowlist.js";
-import { renderRun, RunSpecSchema } from "../ops.argv.js";
+import { DISCOVERY_ENV_KEYS } from "../ops.allowlist.js";
+import { renderRun, RunSpecSchema, singleConfigIssues } from "../ops.argv.js";
+import { abSideIssues } from "../ops.sides.js";
 import { flagValueIssues } from "../ops.flags.js";
-import { ENV_FLAG_METADATA } from "../ops.metadata.js";
-import { resolveProfile } from "../ops.profiles.js";
+import { ALLOWED_CONFIG_MODEL_IDS, ENV_FLAG_METADATA } from "../ops.metadata.js";
+import { resolveAdHoc, resolveProfile, validateConfigOverrides } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 
 const DEFAULT = resolveProfile({ name: "default", description: "d", models: {}, env: {} });
@@ -25,14 +26,14 @@ const SIDES = {
   b: { DISCOVERY_PROFILE_SOURCE: "user_context" },
 };
 
-const AB_FLAGS_SOURCE = path.join(
+const DISCOVERY_FLAGS_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
-  "services", "api", "src", "cli", "discovery-ab.flags.ts",
+  "services", "api", "src", "cli", "discovery.flags.ts",
 );
 
 const AB_MAIN_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
-  "services", "api", "src", "cli", "discovery-ab.main.ts",
+  "services", "api", "src", "cli", "discovery.main.ts",
 );
 
 /**
@@ -43,12 +44,12 @@ const AB_MAIN_SOURCE = path.join(
 function engineAssignmentPattern(): RegExp {
   const source = readFileSync(AB_MAIN_SOURCE, "utf8");
   const literal = source.match(/const AB_ENV_ASSIGNMENT = \/(.+)\/;/);
-  if (!literal) throw new Error("AB_ENV_ASSIGNMENT not found in discovery-ab.main.ts");
+  if (!literal) throw new Error("AB_ENV_ASSIGNMENT not found in discovery.main.ts");
   return new RegExp(literal[1]!);
 }
 
 function abSpec(extra: Record<string, unknown> = {}): Record<string, unknown> {
-  return { kind: "eval", harness: "discovery-ab", profile: "default", flags: {}, sides: SIDES, ...extra };
+  return { kind: "eval", harness: "discovery", profile: "default", flags: {}, sides: SIDES, ...extra };
 }
 
 /** Every refusal message of a failed parse, joined; the messages are the point here. */
@@ -104,14 +105,14 @@ describe("RunSpecSchema", () => {
 describe("RunSpecSchema flag bounds", () => {
   it("refuses a run count this harness caps below the shared schema's, naming the bound", () => {
     // The failure this closes: RunFlagsSchema allows 1..25 because the scorecard
-    // harnesses do, discovery-ab's registry entry caps --runs at 10
+    // harnesses do, discovery's registry entry caps --runs at 10
     // (AB_MAX_REPETITIONS), and the schema used to check only flag NAMES. So
     // `--runs 25` parsed, was queued, was priced at 250 model invocations on the
     // launch page and then died on the engine's own "--runs must not exceed 10"
     // — a refusal after the operator had committed to the spend.
     const message = refusal(abSpec({ flags: { runs: 25 } }));
     expect(message).toContain("--runs");
-    expect(message).toContain(String(HARNESS_REGISTRY["discovery-ab"].flags.find((f) => f.name === "runs")!.max));
+    expect(message).toContain(String(HARNESS_REGISTRY["discovery"].flags.find((f) => f.name === "runs")!.max));
     // The harness's own maximum is still accepted.
     expect(RunSpecSchema.safeParse(abSpec({ flags: { runs: 10 } })).success).toBe(true);
   });
@@ -119,7 +120,7 @@ describe("RunSpecSchema flag bounds", () => {
   it("enforces a scorecard harness's own bounds the same way", () => {
     // --tier is 1..4 in matching's own parser (parseTier throws on anything
     // else), so this is that harness's rule being enforced rather than
-    // discovery-ab's being special-cased.
+    // discovery's being special-cased.
     const message = refusal({ kind: "eval", harness: "matching", profile: "default", flags: { tier: 9 } });
     expect(message).toContain("--tier");
     expect(message).toContain("between 1 and 4");
@@ -189,7 +190,7 @@ describe("RunSpecSchema flag bounds", () => {
     // here, and a bound tightened later cannot be enforced by the form alone.
     let checked = 0;
     for (const harness of OPS_HARNESSES) {
-      const base = harness === "discovery-ab"
+      const base = harness === "discovery"
         ? abSpec()
         : { kind: "eval", harness, profile: "default", flags: {} };
       for (const flag of HARNESS_REGISTRY[harness].flags) {
@@ -221,9 +222,9 @@ describe("RunSpecSchema flag bounds", () => {
   it("reports an unsupported flag through the same function the form calls", () => {
     // One definition of "would this harness accept these flags", so the page and
     // the schema cannot come to disagree about it.
-    const issues = flagValueIssues("discovery-ab", HARNESS_REGISTRY["discovery-ab"].flags, { tier: 2 });
+    const issues = flagValueIssues("discovery", HARNESS_REGISTRY["discovery"].flags, { tier: 2 });
     expect(issues.map((issue) => issue.name)).toEqual(["tier"]);
-    expect(refusal({ kind: "eval", harness: "discovery-ab", profile: "default", flags: { tier: 2 }, sides: SIDES }))
+    expect(refusal({ kind: "eval", harness: "discovery", profile: "default", flags: { tier: 2 }, sides: SIDES }))
       .toContain(issues[0]!.message);
   });
 });
@@ -280,20 +281,20 @@ describe("renderRun", () => {
   });
 
   it("counts both sides for the harness whose single run evaluates every case twice", () => {
-    // A discovery-ab run is one process that runs the corpus on side a and on
+    // A discovery run is one process that runs the corpus on side a and on
     // side b. Recording cases x runs would report half of what it spent, on the
     // one harness here that costs real branch resets and live graph calls.
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4 }, sides: SIDES },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 4 }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
-    expect(rendered.workload).toBe(HARNESS_REGISTRY["discovery-ab"].caseCount * 4 * 2);
+    expect(rendered.workload).toBe(HARNESS_REGISTRY["discovery"].caseCount * 4 * 2);
 
     // Narrowing the corpus narrows the count but not the doubling: both sides
     // still run the case that survived the filter.
     const oneCase = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" }, sides: SIDES },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 4, case: "historical/songwriting-duo" }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
@@ -389,32 +390,182 @@ describe("renderRun", () => {
 });
 
 describe("RunSpecSchema sides", () => {
-  it("keeps the site's nine offerable keys identical to the engine's AB_FLAGS", () => {
-    // Read, never retyped: discovery-ab.flags.ts imports node:fs, so ops.argv.ts
-    // cannot import AB_FLAGS without breaking the Vite bundle the app builds from
-    // these modules. Pinning the list as source text is the same technique
+  it("keeps the site's offerable keys identical to the engine's copy", () => {
+    // Read, never retyped: the engine's module lives outside this package and
+    // cannot be imported by production code here (services/api sets rootDir
+    // ./src). Pinning the list as source text is the same technique
     // registry.spec.ts uses for AB_MAX_REPETITIONS: a key added, removed or
     // renamed in the engine fails here instead of being silently dropped by a
     // parser that ignores what it does not recognise.
-    const source = readFileSync(AB_FLAGS_SOURCE, "utf8");
-    const literal = source.match(/export const AB_FLAGS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
-    if (!literal) throw new Error("AB_FLAGS not found in discovery-ab.flags.ts");
+    const source = readFileSync(DISCOVERY_FLAGS_SOURCE, "utf8");
+    const literal = source.match(/export const DISCOVERY_ENV_KEYS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
+    if (!literal) throw new Error("DISCOVERY_ENV_KEYS not found in discovery.flags.ts");
     const engineKeys = [...literal[1]!.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]!);
 
     // Guards the pin against passing vacuously on an empty or unparsed match.
-    expect(engineKeys.length).toBe(9);
-    expect([...DISCOVERY_AB_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
+    // Not a fixed count: a count is what let "nine" look correct while the
+    // graph read twenty-six. The set equality below is the real assertion.
+    expect(engineKeys.length).toBeGreaterThan(0);
+    expect([...DISCOVERY_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
   });
 
   it("can describe every key it offers", () => {
     // The launch form labels each key from ENV_FLAG_METADATA, so a key the site
     // may offer but cannot describe would render as a bare identifier.
     const described = new Set(ENV_FLAG_METADATA.map((meta) => meta.key));
-    for (const key of DISCOVERY_AB_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
+    for (const key of DISCOVERY_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
   });
 
-  it("refuses a discovery-ab run that names no configurations", () => {
-    expect(refusal({ kind: "eval", harness: "discovery-ab", profile: "default", flags: {} })).toMatch(/sides/i);
+  it("refuses a discovery run whose ad-hoc override configures nothing", () => {
+    // A run that configures nothing would measure the committed default and
+    // report it under whatever the operator thought they had set.
+    expect(refusal({
+      kind: "eval", harness: "discovery", profile: "default", flags: {},
+      overrides: { models: {}, env: {} },
+    })).toMatch(/no configuration/i);
+  });
+
+  it("accepts a discovery run configured only by its models, as the resolved layer does", () => {
+    // `resolveProfile` folds a non-empty `models` into EVAL_MODEL_OVERRIDES,
+    // which is in every catalogue including discovery's, so this run DOES
+    // configure something the graph reads.
+    //
+    // Judging emptiness on `env` alone made the two layers answer differently
+    // about one run: this refusal fired with "set at least one flag the
+    // discovery graph reads" while launchRun accepted the same selection and
+    // rendered `--env EVAL_MODEL_OVERRIDES={...}`. The refusal was false in its
+    // own terms, and the accepted path is the proof.
+    // The agent must be one validateConfigOverrides accepts — the registry's
+    // overridable set. This fixture named "negotiator", which that validator
+    // refuses as an unknown agent on this very path, so the run it describes
+    // could never have been launched; it passed here only because
+    // singleConfigIssues was checking the folded value without bounds, and so
+    // could not see the same problem.
+    const spec = {
+      kind: "eval" as const, harness: "discovery" as const, profile: "default", flags: {},
+      overrides: { models: { opportunityEvaluator: ALLOWED_CONFIG_MODEL_IDS[0]! }, env: {} },
+    };
+    expect(RunSpecSchema.safeParse(spec).success).toBe(true);
+    // Both layers agree the selection is launchable, which is the claim.
+    expect(validateConfigOverrides(spec.overrides, "discovery")).toEqual([]);
+
+    // The other layer, on the same input: what launchRun checks after resolving.
+    const resolved = resolveAdHoc(spec.overrides);
+    const readable = Object.fromEntries(
+      Object.entries(resolved.env).filter(([key]) => DISCOVERY_ENV_KEYS.includes(key)),
+    );
+    expect(singleConfigIssues(readable)).toEqual([]);
+  });
+
+  it("checks a PAIR's values against the same bounds as a single run", () => {
+    // The bounds pin for the paired shape. Its sibling above covers the single
+    // shape, and for a while that was the only one: dropping `modelMapBounds()`
+    // from the shared per-key check failed exactly one assertion in the whole
+    // repository, on the single shape, while the claim being made was that the
+    // hole was closed "on the discovery path".
+    //
+    // The launch form cannot pin this. It and RunSpecSchema both call
+    // `abSideIssues`, so on the paired shape they agree BY CONSTRUCTION and a
+    // parity matrix stays green with the bounds removed. It has to be asserted
+    // against the rule itself, here.
+    //
+    // Symmetric keys and differing values, so neither the symmetry rule nor the
+    // distinctness rule can account for the refusal: only the bounds can.
+    const issues = abSideIssues({
+      a: { EVAL_MODEL_OVERRIDES: JSON.stringify({ notAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+      b: { EVAL_MODEL_OVERRIDES: JSON.stringify({ alsoNotAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+    });
+    expect(issues.map((issue) => issue.path)).toEqual([
+      ["a", "EVAL_MODEL_OVERRIDES"],
+      ["b", "EVAL_MODEL_OVERRIDES"],
+    ]);
+    for (const issue of issues) expect(issue.message).toContain("names an unknown agent");
+  });
+
+  it("does not promise a fallback for the one key whose read site throws", () => {
+    // Every consequence sentence this file renders is acted on by an operator,
+    // so each must be true of the key it is attached to. Most catalogued flags
+    // fall back on a value their read site does not recognise — that is why
+    // values are checked before a run is queued at all. EVAL_MODEL_OVERRIDES is
+    // the exception: `readModelOverrides` THROWS on an unknown agent
+    // (src/shared/agent/model.config.ts:65), so the run dies at startup, after
+    // the branch reset. Telling the operator it "falls back to the default" is
+    // the same class of false sentence the value check itself exists to prevent.
+    const throwing = abSideIssues({
+      a: { EVAL_MODEL_OVERRIDES: JSON.stringify({ notAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+      b: { EVAL_MODEL_OVERRIDES: JSON.stringify({ alsoNotAnAgent: ALLOWED_CONFIG_MODEL_IDS[0]! }) },
+    });
+    for (const issue of throwing) {
+      expect(issue.message).toContain("not honoured with a fallback");
+      expect(issue.message).not.toContain("falls back to its own default");
+    }
+
+    // And the sentence is still there for a key that really does fall back, so
+    // the fix is a distinction rather than a deletion.
+    const fallingBack = abSideIssues({
+      a: { DISCOVERY_PROFILE_SOURCE: "user-context" },
+      b: { DISCOVERY_PROFILE_SOURCE: "premise" },
+    });
+    expect(fallingBack.some((issue) => issue.message.includes("falls back to its own default"))).toBe(true);
+  });
+
+  it("states the value cap's real headroom, including where it bites", () => {
+    // The cap's docblock justifies 200 by naming the longest legitimate value.
+    // It said "a model name, 28", which understated it: EVAL_MODEL_OVERRIDES is
+    // in every catalogue and its value is a JSON model map, so the honest
+    // numbers are these — and the largest one is REFUSED.
+    const longest = [...ALLOWED_CONFIG_MODEL_IDS].sort((a, b) => b.length - a.length)[0]!;
+    const agents = [...new Set(Object.values(HARNESS_REGISTRY).flatMap((d) => d.agents))];
+    expect(longest.length).toBe(28);
+
+    const oneAgent = JSON.stringify({ [agents[0]!]: longest });
+    const allAgents = JSON.stringify(Object.fromEntries(agents.map((a) => [a, longest])));
+    expect(oneAgent.length).toBe(55);
+    expect(allAgents.length).toBe(259);
+
+    const sides = (value: string) => ({
+      kind: "eval" as const, harness: "discovery" as const, profile: "default", flags: {},
+      sides: { a: { EVAL_MODEL_OVERRIDES: value }, b: { EVAL_MODEL_OVERRIDES: oneAgent } },
+    });
+    // One agent fits; all five do not, and the refusal names key and length.
+    expect(RunSpecSchema.safeParse(sides(JSON.stringify({ [agents[1]!]: longest }))).success).toBe(true);
+    expect(refusal(sides(allAgents))).toMatch(/EVAL_MODEL_OVERRIDES on side a is 259 characters/);
+  });
+
+  it("leaves a named config's emptiness to the layer that can resolve it", () => {
+    // The schema cannot see a named profile's env — it lives in a file or the
+    // config store and this refinement is synchronous — so `spec.overrides` is
+    // undefined here for that shape. Checking it unconditionally made the schema
+    // see `{}` and refuse EVERY saved config on discovery with "this run has no
+    // configuration", which was false: the operator's config is full of flags.
+    //
+    // The rule still holds, one layer later: launchRun re-checks after
+    // resolveProfile (server.spec.ts covers both directions), and renderRun
+    // refuses before anything is spent.
+    expect(RunSpecSchema.safeParse({
+      kind: "eval", harness: "discovery", profile: "a-saved-config", flags: {},
+    }).success).toBe(true);
+  });
+
+  it("accepts a discovery run that measures one configuration", () => {
+    // The single shape (spec §5): one configuration, no `sides`. It was refused
+    // outright while a comparison was the harness's only shape.
+    expect(RunSpecSchema.safeParse({
+      kind: "eval", harness: "discovery", profile: "default", flags: {},
+      overrides: { models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } },
+    }).success).toBe(true);
+  });
+
+  it("holds a single discovery configuration to the same value rules as a side", () => {
+    // The cheaper shape must not be the unchecked one: `user-context` (hyphen)
+    // is not what the graph reads, and it falls back rather than failing, so an
+    // unchecked run would report results under a value that never applied.
+    const message = refusal({
+      kind: "eval", harness: "discovery", profile: "default", flags: {},
+      overrides: { models: {}, env: { DISCOVERY_PROFILE_SOURCE: "user-context" } },
+    });
+    expect(message).toContain("DISCOVERY_PROFILE_SOURCE");
+    expect(message).toMatch(/falls back/i);
   });
 
   it("refuses sides on a harness that scores against a baseline", () => {
@@ -429,7 +580,7 @@ describe("RunSpecSchema sides", () => {
   });
 
   it("refuses an asymmetric key set, naming the key and both sides", () => {
-    // Mirrors assertSymmetricKeySets in discovery-ab.plan.ts: an omitted flag
+    // Mirrors assertSymmetricKeySets in discovery.plan.ts: an omitted flag
     // takes the graph's own default, which may equal the other side's value —
     // so the run would measure nothing while attributing noise to that flag.
     const message = refusal(abSpec({
@@ -589,7 +740,7 @@ describe("renderRun sides", () => {
     const rendered = renderRun(
       {
         kind: "eval",
-        harness: "discovery-ab",
+        harness: "discovery",
         profile: "default",
         flags: { runs: 2, case: "historical/songwriting-duo" },
         sides: {
@@ -605,7 +756,7 @@ describe("renderRun sides", () => {
     );
 
     expect(rendered.argv).toEqual([
-      "bun", "run", "eval:discovery-ab", "--",
+      "bun", "run", "eval:discovery", "--",
       "--runs", "2",
       "--case", "historical/songwriting-duo",
       "--a", "DISCOVERY_PROFILE_SOURCE=premise",
@@ -616,13 +767,46 @@ describe("renderRun sides", () => {
     ]);
   });
 
-  it("refuses to render a discovery-ab run without sides", () => {
-    // The engine ignores what it does not recognise and would refuse a sideless
-    // run only after loading its eval modules, so renderRun is the last place
-    // that can refuse before a run is queued.
+  it("refuses to render a discovery run that configures nothing", () => {
+    // The engine ignores what it does not recognise and would refuse an
+    // unconfigured run only after loading its eval modules, so renderRun is the
+    // last place that can refuse before a run is queued.
     expect(() =>
-      renderRun({ kind: "eval", harness: "discovery-ab", profile: "default", flags: {} }, DEFAULT, REPORT),
-    ).toThrow(/sides/i);
+      renderRun({ kind: "eval", harness: "discovery", profile: "default", flags: {} }, DEFAULT, REPORT),
+    ).toThrow(/no configuration/i);
+  });
+
+  it("renders a single discovery configuration as --env, not --a/--b", () => {
+    const env = { DISCOVERY_ALLOWED_TYPES: "intent", DISCOVERY_SOURCE_PREMISE_LIMIT: "10" };
+    const rendered = renderRun(
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 }, overrides: { models: {}, env } },
+      resolveAdHoc({ models: {}, env }),
+      REPORT,
+    );
+    // Sorted, so two launches of one configuration render identical argv.
+    expect(rendered.argv).toContain("--env");
+    expect(rendered.argv).not.toContain("--a");
+    expect(rendered.argv).not.toContain("--b");
+    const pairs = rendered.argv.filter((_, i) => rendered.argv[i - 1] === "--env");
+    expect(pairs).toEqual(["DISCOVERY_ALLOWED_TYPES=intent", "DISCOVERY_SOURCE_PREMISE_LIMIT=10"]);
+  });
+
+  it("prices a single discovery run at one pass and a pair at two", () => {
+    // The site shows this number before spending, so a wrong one is a lie about
+    // cost. A per-harness constant pinned discovery at 2 and would have doubled
+    // the single shape.
+    const env = { DISCOVERY_ALLOWED_TYPES: "intent" };
+    const single = renderRun(
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, overrides: { models: {}, env } },
+      resolveAdHoc({ models: {}, env }),
+      REPORT,
+    );
+    const pair = renderRun(
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, sides: SIDES },
+      DEFAULT,
+      REPORT,
+    );
+    expect(pair.workload).toBe(single.workload * 2);
   });
 
   it("refuses to render sides for a harness that takes one configuration", () => {
@@ -633,7 +817,7 @@ describe("renderRun sides", () => {
 
   it("emits only assignments the engine's own parser accepts", () => {
     // The round trip the site depends on and cannot see: every `--a`/`--b` value
-    // must match AB_ENV_ASSIGNMENT, read from discovery-ab.main.ts. Without this,
+    // must match AB_ENV_ASSIGNMENT, read from discovery.main.ts. Without this,
     // either side could change its half of the contract and nothing would fail
     // until an operator paid for a run the parser refused.
     const pattern = engineAssignmentPattern();
@@ -645,7 +829,7 @@ describe("renderRun sides", () => {
       b: { DISCOVERY_ALLOWED_TYPES: "intent", DISCOVERY_SOURCE_PREMISE_LIMIT: "40", DISCOVERY_PROFILE_SOURCE: "user_context" },
     };
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 2 }, sides },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, sides },
       DEFAULT,
       REPORT,
     );
@@ -671,7 +855,7 @@ describe("renderRun sides", () => {
     // eval modules and reset two branches.
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 25 }, sides: SIDES },
+        { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 25 }, sides: SIDES },
         DEFAULT,
         REPORT,
       ),
@@ -681,7 +865,7 @@ describe("renderRun sides", () => {
   it("refuses to render sides under anything but the shared default baseline", () => {
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "claude-evaluator", flags: {}, sides: SIDES },
+        { kind: "eval", harness: "discovery", profile: "claude-evaluator", flags: {}, sides: SIDES },
         EXPERIMENT,
         REPORT,
       ),
@@ -690,7 +874,7 @@ describe("renderRun sides", () => {
       renderRun(
         {
           kind: "eval",
-          harness: "discovery-ab",
+          harness: "discovery",
           profile: "default",
           flags: {},
           overrides: { models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {} },
@@ -703,7 +887,7 @@ describe("renderRun sides", () => {
   });
 
   /**
-   * What DISCOVERY_AB_FLAGS' comment in ops.registry.ts rests on. `--no-save` is
+   * What DISCOVERY_FLAGS' comment in ops.registry.ts rests on. `--no-save` is
    * the one argv that list does not cover, and the engine would silently drop it
    * (parseAbRunArgs keeps only the flags it knows) — so the claim that the site
    * never sends it has to be checked rather than assumed. renderRun appends it
@@ -711,9 +895,9 @@ describe("renderRun sides", () => {
    * non-default profile, ad-hoc overrides) are both refused alongside `sides` by
    * the test above, while `sides` is mandatory here.
    */
-  it("never renders --no-save for discovery-ab, because no run of it can be experimental", () => {
+  it("never renders --no-save for discovery, because no run of it can be experimental", () => {
     const rendered = renderRun(
-      { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 2 }, sides: SIDES },
+      { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 2 }, sides: SIDES },
       DEFAULT,
       REPORT,
     );
@@ -727,7 +911,7 @@ describe("renderRun sides", () => {
     // And a sides run under that same experimental profile never renders at all.
     expect(() =>
       renderRun(
-        { kind: "eval", harness: "discovery-ab", profile: "claude-evaluator", flags: {}, sides: SIDES },
+        { kind: "eval", harness: "discovery", profile: "claude-evaluator", flags: {}, sides: SIDES },
         EXPERIMENT,
         REPORT,
       ),
@@ -739,7 +923,7 @@ describe("renderRun sides", () => {
       renderRun(
         {
           kind: "eval",
-          harness: "discovery-ab",
+          harness: "discovery",
           profile: "default",
           flags: {},
           sides: { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "premise" } },
@@ -768,7 +952,25 @@ describe("renderRun sides", () => {
  * reason: what matters is the specifier, not the syntax that reaches it.
  */
 describe("browser-importable module boundary", () => {
-  const DEPENDENCY_FREE = ["ops.sides.ts", "ops.flags.ts"] as const;
+  // ops.envcatalog.ts is generated, and its text comes from a template in
+  // ops.envcatalog.build.ts — a module that imports node:fs and Bun.Transpiler.
+  // Nothing stops a future template edit from emitting a runtime import into the
+  // generated file, which would ship into the SPA with every gate green, so the
+  // generated output is held to the same boundary as the hand-written modules.
+  //
+  // The list is every eval/ops module the SPA imports for its *value* (checked
+  // against apps/eval-ops/src): ops.sides, ops.flags, ops.metadata, ops.progress
+  // and ops.allowlist, plus the generated ops.envcatalog they reach through.
+  // ops.metadata carries an equivalent guard of its own in metadata.spec.ts;
+  // ops.progress and ops.allowlist had none, and happened to import nothing —
+  // a property no test held them to, which is the same gap in a different file.
+  const DEPENDENCY_FREE = [
+    "ops.sides.ts",
+    "ops.flags.ts",
+    "ops.envcatalog.ts",
+    "ops.progress.ts",
+    "ops.allowlist.ts",
+  ] as const;
 
   for (const module of DEPENDENCY_FREE) {
     it(`${module} stays dependency-free so the browser bundle can import it`, () => {
@@ -776,7 +978,9 @@ describe("browser-importable module boundary", () => {
       const importSpecifiers = [...source.matchAll(/\b(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g)].map(
         (m) => m[1],
       );
-      expect(importSpecifiers.length).toBeGreaterThan(0);
+      // No lower bound on the count: ops.progress.ts and ops.allowlist.ts import
+      // nothing at all, and "imports nothing" is the strongest possible form of
+      // the property this test defends.
       for (const specifier of importSpecifiers) {
         expect(specifier).not.toMatch(/^node:/);
         expect(specifier).not.toMatch(/^(fs|crypto|path|os|util|stream)$/);
@@ -784,7 +988,7 @@ describe("browser-importable module boundary", () => {
         // a bare specifier is a package, and a package is the thing this file
         // exists not to pull into the SPA.
         expect(specifier, `${module} imports ${specifier}`).toMatch(
-          /^\.\/ops\.(allowlist|flags|metadata|registry|sides|types)\.js$/,
+          /^\.\/ops\.(allowlist|envcatalog|flags|metadata|registry|sides|types)\.js$/,
         );
       }
     });

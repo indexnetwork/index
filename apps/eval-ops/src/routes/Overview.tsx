@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 
-import { REQUIRES_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
+import { SUPPORTS_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { api, type HarnessDescriptor, type ArtifactRef, type IndexIssue, type RunRecord, type FixtureStatus } from '../api/client';
@@ -126,19 +126,20 @@ function HarnessHealth({
               >
                 {harness.harness}
               </Link>
-              {REQUIRES_SIDES[harness.harness] ? (
+              {SUPPORTS_SIDES[harness.harness] ? (
                 /**
-                 * A sides harness gets neither cell, because neither number
-                 * exists for it. It reads, writes and compares no baseline by
-                 * design, so "baseline: —" states a missing value rather than an
-                 * absent concept; and its run aggregate is the mean across two
-                 * DIFFERENT configurations, so showing it as "latest" would put a
-                 * score of neither side in a column read as a score of the
-                 * harness. What the run measured is on the run page.
+                 * This harness gets neither cell, because neither number exists
+                 * for it. It reads, writes and compares no baseline by design —
+                 * in either of its shapes — so "baseline: —" would state a
+                 * missing value rather than an absent concept; and a comparison
+                 * run's aggregate is the mean across two DIFFERENT
+                 * configurations, so showing it as "latest" would put a score of
+                 * neither side in a column read as a score of the harness. What
+                 * a run measured is on the run page.
                  */
                 <span className="text-term-dim" data-testid={`harness-sides-${harness.harness}`}>
-                  two configurations per run — no baseline to score against, and a run's aggregate
-                  is the mean over both sides, so it is a score of neither
+                  operator-chosen configurations — no baseline to score against, and a comparison
+                  run's aggregate is the mean over both sides, so it is a score of neither
                 </span>
               ) : (
                 <>

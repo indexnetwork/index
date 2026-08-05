@@ -2,9 +2,9 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
-import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery-ab.contract';
-import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery-ab.main';
-import { buildAbPlan, type AbSide } from '../discovery-ab.plan';
+import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery.contract';
+import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abRunShape, abRunningTargets, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery.main';
+import { buildAbPlan, type AbSide } from '../discovery.plan';
 
 import type { MatrixSlotResult } from '../discovery-env-matrix.main';
 import type { HistoricalMatrixFixture } from '../discovery-env-matrix.shared';
@@ -50,8 +50,8 @@ describe('parseAbRunArgs', () => {
   });
 
   it('reads --report as the artifact destination, and leaves it unset otherwise', () => {
-    expect(parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']).reportPath)
-      .toBe('/tmp/discovery-ab-report.json');
+    expect(parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-report.json']).reportPath)
+      .toBe('/tmp/discovery-report.json');
     expect(parseAbRunArgs(configArgs).reportPath).toBeUndefined();
   });
 
@@ -74,13 +74,35 @@ describe('parseAbRunArgs', () => {
   });
 
   it('still accepts a --report naming an existing file, which is the write plan\'s to refuse without --force', () => {
-    const existingFile = path.resolve(import.meta.dir, 'discovery-ab.parent.spec.ts');
+    const existingFile = path.resolve(import.meta.dir, 'discovery.parent.spec.ts');
     expect(parseAbRunArgs([...configArgs, '--report', existingFile]).reportPath).toBe(existingFile);
   });
 
   it('produces sides a plan will accept', () => {
     const selection = parseAbRunArgs(['--runs', '1', ...configArgs]);
     expect(buildAbPlan([testCase('c1')], selection.sides, selection.repetitions)).toHaveLength(2);
+  });
+
+  it('parses --env into a single side a', () => {
+    const selection = parseAbRunArgs(['--runs', '1', '--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    expect(selection.sides).toHaveLength(1);
+    expect(selection.sides[0]).toEqual({ id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } });
+  });
+
+  it('plans one slot per case per repetition for a single run, not two', () => {
+    // The whole point of the shape: half the invocations, half the branches.
+    const selection = parseAbRunArgs(['--runs', '2', '--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    const plan = buildAbPlan([testCase('c1'), testCase('c2')], selection.sides, selection.repetitions);
+    expect(plan).toHaveLength(4);
+    expect(new Set(plan.map((slot) => slot.side.id))).toEqual(new Set(['a']));
+  });
+
+  it('accepts a single run whose one key would be asymmetric in a pair', () => {
+    // Symmetry and difference are rules about a comparison. Applied to one side
+    // they would refuse every valid single run, since there is no other side to
+    // match keys with.
+    const selection = parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    expect(() => buildAbPlan([testCase('c1')], selection.sides, 1)).not.toThrow();
   });
 
   it.each([
@@ -97,6 +119,16 @@ describe('parseAbRunArgs', () => {
     [['--a', 'DISCOVERY_ALLOWED_TYPES', '--b', 'DISCOVERY_ALLOWED_TYPES=x'], /--a expects KEY=VALUE/],
     [['--a', 'X=1', '--a', 'X=2', '--b', 'X=3'], /--a sets X twice/],
     [['--a', '--b', 'X=1'], /--a requires a value/],
+    // The two ways of asking for neither shape or both. Both refusals are
+    // pre-flight and cost nothing, which is the point: a run that guessed would
+    // reset a branch first and be wrong afterwards.
+    [['--runs', '1'], /needs a configuration/],
+    [['--case', 'c1'], /--env KEY=VALUE to measure one/],
+    [['--env', 'X=1', '--a', 'Y=2', '--b', 'Y=3'], /pass one shape or the other/],
+    [['--env', 'X=1', '--b', 'Y=2'], /pass one shape or the other/],
+    [['--env', 'DISCOVERY_ALLOWED_TYPES'], /--env expects KEY=VALUE/],
+    [['--env', 'X=1', '--env', 'X=2'], /--env sets X twice/],
+    [['--env'], /--env requires a value/],
     [[...configArgs, '--report'], /--report requires a value/],
     [[...configArgs, '--report', '   '], /--report requires a value/],
     [[...configArgs, '--report', '/tmp/a.json', '--report', '/tmp/b.json'], /--report may be given at most once/],
@@ -118,6 +150,18 @@ describe('formatAbRunArgs', () => {
     expect(parseAbRunArgs(formatAbRunArgs(selection))).toEqual({ ...selection, force: false });
   });
 
+  it('round-trips a single run as --env, not as a pair with a missing side', () => {
+    // The child re-parses these arguments and re-plans from them. Rendering a
+    // single run as --a would have it plan a comparison whose side b never
+    // existed, and the plan would refuse it after the branch was already reset.
+    const selection = parseAbRunArgs(['--case', 'c2', '--runs', '2', '--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    const rendered = formatAbRunArgs(selection);
+    expect(rendered).toContain('--env');
+    expect(rendered).not.toContain('--a');
+    expect(rendered).not.toContain('--b');
+    expect(parseAbRunArgs(rendered)).toEqual({ ...selection, force: false });
+  });
+
   it('is independent of the order the operator typed the flags in', () => {
     const typed = parseAbRunArgs(['--b', 'DISCOVERY_SOURCE_PREMISE_LIMIT=5', '--a', 'DISCOVERY_SOURCE_PREMISE_LIMIT=40',
       '--b', 'DISCOVERY_ALLOWED_TYPES=intent,profile', '--a', 'DISCOVERY_ALLOWED_TYPES=intent']);
@@ -129,7 +173,7 @@ describe('formatAbRunArgs', () => {
   });
 
   it('does not forward --report: a child writes its own --child-output, never the run report', () => {
-    const selection = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-report.json']);
+    const selection = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-report.json']);
     expect(formatAbRunArgs(selection)).not.toContain('--report');
     expect(parseAbRunArgs(formatAbRunArgs(selection)).reportPath).toBeUndefined();
   });
@@ -152,13 +196,13 @@ describe('abRunReportPath', () => {
     // Restated from the harness's own layout rather than imported, so moving the
     // runs directory has to be a deliberate edit here too.
     expect(abRunReportPath({}, stamp))
-      .toBe(path.resolve(import.meta.dir, '../../../eval/discovery-ab/runs', `${stamp}.json`));
+      .toBe(path.resolve(import.meta.dir, '../../../eval/discovery/runs', `${stamp}.json`));
   });
 
   it('takes the destination from a real parsed selection, not just a hand-built one', () => {
-    const chosen = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-ab-chosen.json']);
-    expect(abRunReportPath(chosen, stamp)).toBe('/tmp/discovery-ab-chosen.json');
-    expect(abRunReportPath(parseAbRunArgs(configArgs), stamp)).not.toBe('/tmp/discovery-ab-chosen.json');
+    const chosen = parseAbRunArgs([...configArgs, '--report', '/tmp/discovery-chosen.json']);
+    expect(abRunReportPath(chosen, stamp)).toBe('/tmp/discovery-chosen.json');
+    expect(abRunReportPath(parseAbRunArgs(configArgs), stamp)).not.toBe('/tmp/discovery-chosen.json');
   });
 });
 
@@ -172,7 +216,7 @@ describe('resolveAbCases', () => {
   });
 
   it('refuses an unknown case rather than silently running fewer', () => {
-    expect(() => resolveAbCases(corpus, ['c9'])).toThrow(/Unknown discovery A\/B case: c9/);
+    expect(() => resolveAbCases(corpus, ['c9'])).toThrow(/Unknown discovery case: c9/);
   });
 });
 
@@ -219,6 +263,35 @@ describe('resolveAbRunOutcome', () => {
     ]);
     expect(outcome.summary).toContain('side a 1/2');
     expect(outcome.summary).toContain('side b 2/2');
+  });
+
+  it('scores a single run without inventing a side it never had', () => {
+    const outcome = resolveAbRunOutcome({
+      slots: [complete[0]!, complete[1]!],
+      sides: [sides[0]],
+      expectedSlotsPerSide: 2,
+    });
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.verdict).toEqual([{ sideId: 'a', passes: 1, runs: 2, passRate: 0.5 }]);
+    expect(outcome.summary).toContain('side a 1/2');
+    // No "vs": there is nothing to be versus.
+    expect(outcome.summary).not.toContain('vs');
+    expect(outcome.summary).not.toContain('side b');
+  });
+
+  it('withholds a verdict from an incomplete single run, naming the real reason', () => {
+    // "A comparison with one side missing is not a comparison" would be false
+    // here — nothing is missing a side. What is wrong is that a pass rate over
+    // the slots that happened to succeed states no denominator.
+    const outcome = resolveAbRunOutcome({
+      slots: [complete[0]!, slot('a', 'c2/a/r1', 0, 0)],
+      sides: [sides[0]],
+      expectedSlotsPerSide: 2,
+    });
+    expect(outcome.verdict).toBeNull();
+    expect(outcome.exitCode).toBe(AB_EXIT_INSUFFICIENT_EVIDENCE);
+    expect(outcome.summary).toContain('states no denominator');
+    expect(outcome.summary).not.toContain('comparison');
   });
 
   it('reports no verdict and exits non-zero when one side has a failed slot', () => {
@@ -274,9 +347,70 @@ describe('resolveAbRunOutcome', () => {
  * This is the wrapper `runAbParent` runs its whole body through, so what it
  * decides is what the operator's exit code is.
  */
+describe('abRunShape', () => {
+  /**
+   * The mapping the cost messages depend on. It is exported and pinned here
+   * because its only caller sits inside `runAbComparison`, which needs live
+   * Neon credentials and two branch resets to reach — so a deleted assignment
+   * there would otherwise be invisible, and would turn every single-run failure
+   * report into a claim that two branches were overwritten.
+   */
+  it('maps each selection to what it actually resets', () => {
+    expect(abRunShape(sides)).toBe('pair');
+    expect(abRunShape([sides[0]])).toBe('single');
+  });
+
+  it('agrees with what the parser produces for each shape of argv', () => {
+    expect(abRunShape(parseAbRunArgs(configArgs).sides)).toBe('pair');
+    expect(abRunShape(parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']).sides)).toBe('single');
+  });
+});
+
+/**
+ * Which branches a run RESETS — the destructive decision, and the one with no
+ * reachable test until it was extracted.
+ *
+ * Its call site is inside `runAbComparison`, which needs live Neon credentials,
+ * so replacing the filter with `[...attested.targets]` left the whole api CLI
+ * suite green while making a single run reset the other operator's branch too.
+ */
+describe('abRunningTargets', () => {
+  const targets = [
+    { sideId: 'a' as const, branchId: 'br-a', endpointId: 'ep-a', databaseUrl: 'postgresql://a' },
+    { sideId: 'b' as const, branchId: 'br-b', endpointId: 'ep-b', databaseUrl: 'postgresql://b' },
+  ];
+
+  it('resets both branches for a comparison', () => {
+    expect(abRunningTargets(targets, sides).map((target) => target.sideId)).toEqual(['a', 'b']);
+  });
+
+  it('resets ONLY the branch a single run reads', () => {
+    // The guarantee: eval-ab-b is another operator's evidence, and a run that
+    // never reads it must not destroy it.
+    expect(abRunningTargets(targets, [sides[0]!]).map((target) => target.sideId)).toEqual(['a']);
+    expect(abRunningTargets(targets, [sides[1]!]).map((target) => target.sideId)).toEqual(['b']);
+  });
+
+  it('refuses before any reset when the manifest omits a side the run needs', () => {
+    expect(() => abRunningTargets([targets[0]!], sides)).toThrow(/does not declare every side/);
+  });
+});
+
 describe('withAbSpendAccounting', () => {
   it('passes a successful run through untouched', async () => {
     await expect(withAbSpendAccounting(async () => undefined)).resolves.toBeUndefined();
+  });
+
+  it('carries the shape into the cost report, so a single run is not reported as two branches', async () => {
+    const thrown = await withAbSpendAccounting(async (progress) => {
+      progress.shape = abRunShape(parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']).sides);
+      progress.stage = 'reset';
+      throw new Error('boom');
+    }).catch((error: unknown) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+    expect(report.message).toContain('eval-ab-a');
+    expect(report.message).not.toContain('eval-ab-b');
   });
 
   it('leaves a failure before the first reset as the pre-flight refusal it is', async () => {
@@ -319,7 +453,7 @@ describe('withAbSpendAccounting', () => {
       progress.stage = 'reset';
       progress.stage = 'spawned';
       // The dead-child case: supervision aborts and nothing was written.
-      throw new Error('Discovery A/B child exited with code 1');
+      throw new Error('Discovery child exited with code 1');
     }).catch((error: unknown) => error);
     const report = describeAbFailure(thrown);
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
@@ -340,13 +474,13 @@ describe('withAbSpendAccounting', () => {
    * successful one whose cleanup hit EBUSY - must not be told nothing survived.
    */
   it('names the artifact when the failure came after it was written', async () => {
-    const runPath = '/repo/eval/discovery-ab/runs/2026-08-04T00-00-00-000Z.json';
+    const runPath = '/repo/eval/discovery/runs/2026-08-04T00-00-00-000Z.json';
     const thrown = await withAbSpendAccounting(async (progress) => {
       progress.stage = 'reset';
       progress.stage = 'spawned';
       progress.artifactPath = runPath;
       progress.stage = 'written';
-      throw new Error('EBUSY: resource busy or locked, rm /tmp/discovery-ab-x');
+      throw new Error('EBUSY: resource busy or locked, rm /tmp/discovery-x');
     }).catch((error: unknown) => error);
     const report = describeAbFailure(thrown);
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
@@ -377,33 +511,33 @@ describe('finalizeAbChildArtifacts', () => {
   it('removes the directory when the run succeeded', async () => {
     const { fs, removed } = fakeFs(['a.json', 'b.json']);
     warnings.length = 0;
-    await finalizeAbChildArtifacts('/tmp/discovery-ab-x', true, fs, logger);
-    expect(removed).toEqual(['/tmp/discovery-ab-x']);
+    await finalizeAbChildArtifacts('/tmp/discovery-x', true, fs, logger);
+    expect(removed).toEqual(['/tmp/discovery-x']);
     expect(warnings).toEqual([]);
   });
 
   it('names this harness, not the matrix, and says how many artifacts it kept', async () => {
     const { fs, removed } = fakeFs(['b.json', 'a.json']);
     warnings.length = 0;
-    await finalizeAbChildArtifacts('/tmp/discovery-ab-y', false, fs, logger);
+    await finalizeAbChildArtifacts('/tmp/discovery-y', false, fs, logger);
     expect(removed).toEqual([]);
-    expect(warnings[0]).toContain('Discovery A/B retained 2 child artifact(s)');
-    expect(warnings[0]).toContain('/tmp/discovery-ab-y: a.json, b.json');
+    expect(warnings[0]).toContain('Discovery retained 2 child artifact(s)');
+    expect(warnings[0]).toContain('/tmp/discovery-y: a.json, b.json');
     expect(warnings[0]).not.toContain('matrix');
   });
 
   it('does not promise artifacts that are not there, which is the usual dead-child case', async () => {
     const { fs, removed } = fakeFs([]);
     warnings.length = 0;
-    await finalizeAbChildArtifacts('/tmp/discovery-ab-z', false, fs, logger);
-    expect(warnings).toEqual(['Discovery A/B kept no child artifacts: neither side wrote one before the run failed']);
-    expect(removed).toEqual(['/tmp/discovery-ab-z']);
+    await finalizeAbChildArtifacts('/tmp/discovery-z', false, fs, logger);
+    expect(warnings).toEqual(['Discovery kept no child artifacts: neither side wrote one before the run failed']);
+    expect(removed).toEqual(['/tmp/discovery-z']);
   });
 
   it('reports rather than throws when the directory cannot be read', async () => {
     const { fs } = fakeFs(new Error('ENOENT'));
     warnings.length = 0;
-    await expect(finalizeAbChildArtifacts('/tmp/discovery-ab-gone', false, fs, logger)).resolves.toBeUndefined();
+    await expect(finalizeAbChildArtifacts('/tmp/discovery-gone', false, fs, logger)).resolves.toBeUndefined();
     expect(warnings[0]).toContain('kept no child artifacts');
   });
 });

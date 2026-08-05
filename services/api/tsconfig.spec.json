@@ -1,9 +1,9 @@
 {
-  // Type-checks the discovery A/B CLI specs, which the build tsconfig excludes
+  // Type-checks the discovery CLI specs, which the build tsconfig excludes
   // (`src/**/*.spec.ts`) and CI's `bun run build` therefore never compiles.
   //
   // That exclusion is normally harmless — until a spec's assertion *is* a
-  // type-level assertion. `discovery-ab.neon.spec.ts` carries the only guard
+  // type-level assertion. `discovery.neon.spec.ts` carries the only guard
   // proving `resetAbBranch` refuses an unattested manifest at compile time: a
   // `@ts-expect-error` on a forged manifest. Widen that parameter back to
   // `AbManifest` and the directive becomes unused, which is an error TypeScript
@@ -11,7 +11,7 @@
   // config, nothing in CI includes it, and the brand's whole protection could be
   // removed with every check green.
   //
-  // Scope note: this is deliberately `discovery-ab.*.spec.ts` and not the whole
+  // Scope note: this is deliberately `discovery.*.spec.ts` and not the whole
   // `src/cli/tests` directory. Four unrelated specs
   // (`backfill-intent-verification-analysis.spec.ts`,
   // `discovery-env-matrix.spec.ts`, `discovery-retrieval-smoke.spec.ts`,
@@ -20,7 +20,7 @@
   // Widening the `include` below is the whole of that follow-up.
   //
   // `noEmit`, and `rootDir` is relaxed to the repo root because
-  // `discovery-ab.flags.spec.ts` reads
+  // `discovery.flags.spec.ts` reads
   // `packages/protocol/eval/ops/ops.allowlist.ts` by path (that module is
   // deliberately dependency-free so any consumer can import it) and it is
   // outside `src/`.
@@ -30,7 +30,7 @@
     "rootDir": "../.."
   },
   "include": [
-    "src/cli/tests/discovery-ab.*.spec.ts"
+    "src/cli/tests/discovery.*.spec.ts"
   ],
   "exclude": [
     "node_modules"

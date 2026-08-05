@@ -9,6 +9,118 @@
  * it: ops.profiles.ts pulls in node:fs and node:crypto, which the Vite bundle
  * cannot. This module must stay dependency-free.
  */
+// The only import this module may take: ops.envcatalog.ts is generated, has no
+// runtime dependencies of its own, and is browser-safe for the same reason this
+// file is. The scanner that produces it (ops.envscan.ts) uses node:fs and must
+// never appear in this chain.
+import { HARNESS_ENV_KEYS } from "./ops.envcatalog.js";
+
+/**
+ * Credentials, never offerable and never settable from a request. One repoints
+ * a run at another provider account and the other at another endpoint, so
+ * either turns an environment override into a way to bill someone else or to
+ * exfiltrate a corpus.
+ *
+ * Both are reachable from every harness — that is why excluding them cannot be
+ * left to the scan. They are dropped at catalogue generation
+ * (ops.envcatalog.build.ts, which re-exports this list) *and* refused at the
+ * request boundary in validateConfigOverrides, because a bug in one guard
+ * should not be enough to publish a credential field into a browser form.
+ *
+ * Lives here, with the other dependency-free lists, because both guards need
+ * it and one of them sits in a module the browser bundle imports.
+ */
+export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  // Carries `protocol_eval` connection strings, passwords included — .env.example
+  // §15d says so in as many words. Its name has no credential-shaped segment
+  // (`TARGETS` is not `KEY`, `TOKEN`, `SECRET` or `URL`), so the shape rule below
+  // does NOT match it and the list is its only guard. This is the case the list
+  // exists for, and the reason the shape rule alone is not sufficient: a secret
+  // can be named after what it points at rather than what it is.
+  "DISCOVERY_TARGETS",
+]);
+
+/**
+ * Names that make a key a credential regardless of whether anyone listed it.
+ *
+ * `ENV_SECRET_KEYS` above is an exact-match list of two, and that was the whole
+ * guard until a review ran the real generator against a fake protocol root whose
+ * entry points read `OPENROUTER_API_KEY_2`, `ANTHROPIC_API_KEY`, `DATABASE_URL`
+ * and `NEON_API_KEY`. All four appeared in all five harness catalogues, and the
+ * catalogue is now the request boundary — `validateConfigOverrides` asks it
+ * whether a browser may set a key. Nothing leaks today, because none of the four
+ * is in a real harness closure, but `DATABASE_URL` and `NEON_API_KEY` are read
+ * one import away from the discovery harness runner
+ * (services/api/src/cli/discovery-env-matrix.neon.ts). A two-name denylist that
+ * has to be updated *before* the code that reads a new credential is written is
+ * a guard that fails open by construction.
+ *
+ * So the rule inverts: a key is a credential unless its name shows it is not.
+ * A new secret named the way secrets are named is refused the moment it appears,
+ * by a rule nobody has to remember to update.
+ *
+ * "Named the way secrets are named" is the limit of that promise, and
+ * `DISCOVERY_TARGETS` is the counter-example living in this repo: it carries
+ * connection strings with passwords and matches nothing here, because it is
+ * named after what it points at. The list above is what catches it. Neither
+ * guard subsumes the other.
+ *
+ * `_URL` is in the list because an endpoint origin is the same risk class as a
+ * key: `OPENROUTER_BASE_URL` repoints a run at another provider, `DATABASE_URL`
+ * at another corpus. Exfiltration does not require a password.
+ *
+ * Bare `KEY` is matched exactly, not as a suffix, because `KEY` alone is a key
+ * and `_KEY$` would miss it. It reaches the candidate universe today only
+ * because the superset scan reads comments — `ops.envscan.ts` documents
+ * `process.env.KEY` as the form it recognises — but a rule that depends on a
+ * name never becoming real is not a rule.
+ *
+ * The credential words match as whole underscore-separated *segments* anywhere
+ * in the name, not only at the end. Anchoring to the end was tried first and
+ * the tests caught it: `OPENROUTER_API_KEY_2` — the review's own example of a
+ * second provider account — ends in `_2` and slipped straight through. A
+ * numbered or suffixed credential is still a credential, and `..._KEY_BACKUP`
+ * or `..._TOKEN_OLD` are exactly the names a second one acquires.
+ *
+ * Verified against the 64-key candidate universe: this matches ten
+ * (API_URL, DATABASE_URL, EVAL_OPS_UI_URL, KEY, NEON_API_KEY,
+ * OPENROUTER_API_KEY, OPENROUTER_BASE_URL, SOME_KEY, TEST_EVAL_SECRET,
+ * WEB_APP_URL) and *zero* of the 27 keys any harness offers, which is why
+ * CREDENTIAL_SHAPE_EXCEPTIONS below is empty. `CHAT_MODEL`,
+ * `EVAL_MODEL_OVERRIDES` and `SMARTEST_VERIFIER_MODEL` name models, not
+ * endpoints, and are deliberately untouched by every pattern here.
+ */
+const CREDENTIAL_NAME_PATTERN = /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|URL|URI|DSN|AUTH)(?:_|$)/;
+
+/**
+ * Keys whose names match {@link CREDENTIAL_NAME_PATTERN} but which are provably
+ * not credentials, and may therefore be offered.
+ *
+ * Empty, and that is a measured fact rather than an oversight: no key in any
+ * harness catalogue matches the pattern (envcatalog.spec.ts asserts it). An
+ * entry here needs a comment saying why the name lies — that it names no
+ * account, endpoint or corpus — because every entry is a hole in a guard that
+ * otherwise needs no maintenance.
+ */
+const CREDENTIAL_SHAPE_EXCEPTIONS: readonly string[] = Object.freeze([]);
+
+/**
+ * Whether `key` must never be settable from a request.
+ *
+ * True for anything on {@link ENV_SECRET_KEYS} or shaped like a credential and
+ * not explicitly excepted. Used by the generator (to keep such keys out of every
+ * catalogue) and by `validateConfigOverrides` (to refuse them at the boundary
+ * even if a generator bug published one), so the two guards cannot disagree
+ * about what a credential is.
+ */
+export function isCredentialEnvKey(key: string): boolean {
+  if (ENV_SECRET_KEYS.includes(key)) return true;
+  if (CREDENTIAL_SHAPE_EXCEPTIONS.includes(key)) return false;
+  return CREDENTIAL_NAME_PATTERN.test(key);
+}
+
 export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
   "DISCOVERY_ALLOWED_TYPES",
   "DISCOVERY_PROFILE_SOURCE",
@@ -29,50 +141,25 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
 ]);
 
 /**
- * The environment keys a discovery-ab side may set: the nine the discovery
- * graph actually reads.
+ * The environment keys a discovery side may set: exactly what the discovery
+ * graph reads, derived rather than listed.
  *
- * A copy, and deliberately so — after both directions of a real import were
- * tried and refused by the toolchain:
+ * This was a hand-written list of nine. The graph reads twenty-six offerable
+ * keys, and the nine were what a scan against a sixteen-key allowlist could
+ * return — the list was the limit, not the code. Anything outside it was
+ * refused with "is not readable by the discovery graph", which for
+ * `NEGOTIATOR_STANCE` and eighteen others was false.
  *
- * - This module cannot import the engine's `AB_FLAGS`
- *   (services/api/src/cli/discovery-ab.flags.ts): that module imports node:fs to
- *   derive its list from a scan of the graph's import closure, and this one is
- *   imported by the browser app, so the Vite bundle would break.
- * - The engine cannot import this list either. A relative import from
- *   services/api/src is `TS6059: not under rootDir` (services/api/tsconfig.json
- *   sets `rootDir: ./src`), and `@indexnetwork/protocol/eval/ops/ops.allowlist`
- *   resolves at neither type-check nor runtime, because the package exports
- *   exactly one entry, its built root. Publishing a subpath for eval/ops would
- *   make an eval-only module part of a versioned SDK contract that explicitly
- *   excludes deep imports (STABILITY.md), and would not even work for an
- *   installed consumer, since the published files are dist alone.
+ * Now it is one line off the generated catalogue, so there is nothing left to
+ * keep in sync on this side of the boundary. Both modules are dependency-free
+ * and browser-safe, so this import costs the Vite bundle nothing.
  *
- * So the list is a copy with two guards, one from each side, and neither is a
- * source-text substring match on the values themselves: eval/ops/tests/argv.spec.ts
- * parses the engine's `Object.freeze([...])` literal and compares the sets, and
- * services/api/src/cli/tests/discovery-ab.flags.spec.ts — a spec file, which
- * tsconfig excludes and which may therefore import across — compares the two
- * lists as real imported values. A key added, removed or renamed on either side
- * fails both.
- *
- * Drift matters more here than for a normal allowlist, because the engine does
- * not reject an unreadable key at the CLI boundary — `parseAbRunArgs` scans for
- * the flags it knows — and `buildAbPlan` only refuses it after the harness has
- * loaded its eval modules. A key this list wrongly offers is an operator
- * configuring a control that either fails late or moves nothing.
- *
- * Every key is also in PROFILE_ENV_ALLOWLIST above, so ENV_FLAG_METADATA can
- * describe all nine to the launch form.
+ * The engine keeps its own copy (services/api/src/cli/discovery.flags.ts)
+ * because it genuinely cannot import either module: a relative import from
+ * services/api/src is `TS6059: not under rootDir`, and
+ * `@indexnetwork/protocol/eval/ops/...` resolves at neither type-check nor
+ * runtime, since the package exports exactly one entry, its built root.
+ * discovery.flags.spec.ts — a spec file, which tsconfig excludes and which may
+ * therefore import across — asserts that copy equals this value exactly.
  */
-export const DISCOVERY_AB_ENV_KEYS: readonly string[] = Object.freeze([
-  "DISCOVERY_ALLOWED_TYPES",
-  "DISCOVERY_CONTEXT_TO_INTENT",
-  "DISCOVERY_PROFILE_SOURCE",
-  "DISCOVERY_REJECTION_COOLDOWN_DAYS",
-  "DISCOVERY_SOURCE_PREMISE_LIMIT",
-  "NEGOTIATION_INCLUDE_OTHER_INTENTS",
-  "NEGOTIATION_MAX_TURNS_AMBIENT",
-  "NEGOTIATION_MAX_TURNS_CHAT",
-  "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
-]);
+export const DISCOVERY_ENV_KEYS: readonly string[] = HARNESS_ENV_KEYS.discovery;

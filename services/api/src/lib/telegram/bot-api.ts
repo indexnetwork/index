@@ -24,6 +24,19 @@ function botToken(): string | null {
   return token ? token : null;
 }
 
+/**
+ * Whether the gateway can actually reply.
+ *
+ * Inbound and outbound are gated by different variables
+ * (`TELEGRAM_WEBHOOK_SECRET` vs `TELEGRAM_BOT_TOKEN`), so a half-configured
+ * deployment can authenticate updates it can never answer. Callers on the
+ * inbound path use this to stop before doing expensive work whose reply would
+ * be discarded here anyway.
+ */
+export function isTelegramOutboundConfigured(): boolean {
+  return botToken() !== null;
+}
+
 /** Warn once per process that Telegram outbound is disabled, then stay quiet. */
 function warnDisabled(method: string): void {
   if (missingTokenWarned) return;

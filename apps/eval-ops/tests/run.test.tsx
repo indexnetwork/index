@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { parseEvalArtifact } from '../../../packages/protocol/eval/shared/artifact';
 import { Run } from '../src/routes/Run';
 import type { Artifact, ArtifactCase, ArtifactConfigDelta, ArtifactRule, RunRecord } from '../src/api/client';
-import { DISCOVERY_AB_RUN_REPORT } from './fixtures/discovery-ab-run-report';
+import { DISCOVERY_RUN_REPORT } from './fixtures/discovery-run-report';
 
 const RUN: RunRecord = {
   id: 'run-1',
@@ -291,13 +291,49 @@ describe('Run', () => {
     expect(await screen.findByText(/run-1/)).toBeInTheDocument();
     expect(screen.getByText(/EVAL_MODEL_OVERRIDES \(unparseable\)/)).toBeInTheDocument();
   });
+
+  it('reads an empty EVAL_MODEL_OVERRIDES as no overrides, not as a parse failure', async () => {
+    // renderRun writes EVAL_MODEL_OVERRIDES="" onto EVERY record to neutralise a
+    // value inherited from .env.test (ops.argv.ts:308-318), and readModelOverrides
+    // — the code that consumes it — trims and treats empty as "no overrides"
+    // (src/shared/agent/model.config.ts:45-46). JSON.parse("") throws, so reading
+    // it as a parse failure printed "EVAL_MODEL_OVERRIDES (unparseable)" at the
+    // front of every single run's summary, including the line this page labels as
+    // the configuration the run measured.
+    const neutralised: RunRecord = {
+      ...RUN,
+      env: { EVAL_MODEL_OVERRIDES: '', DISCOVERY_ALLOWED_TYPES: 'intent' },
+    };
+    renderRun(neutralised);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+    expect(screen.getByText(/DISCOVERY_ALLOWED_TYPES=intent/)).toBeInTheDocument();
+  });
+
+  it('shows nothing at all when the neutraliser is the only env entry', async () => {
+    // The whole-summary consequence: a default run carries exactly this one key,
+    // so treating it as a parse failure gave every default run a spurious
+    // "overrides:" line reporting corruption that was not there.
+    const defaultRun: RunRecord = { ...RUN, env: { EVAL_MODEL_OVERRIDES: '' } };
+    renderRun(defaultRun);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/overrides:/)).toBeNull();
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+  });
+
+  it('still reports a whitespace-only value as no overrides, matching the trim at the read site', async () => {
+    const padded: RunRecord = { ...RUN, env: { EVAL_MODEL_OVERRIDES: '   ' } };
+    renderRun(padded);
+    await screen.findByText(/run-1/);
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+  });
 });
 
 /**
- * The finished discovery-ab run, read.
+ * The finished discovery run, read.
  *
  * Every fixture below is assembled by `buildAbReport` from the rows of the real
- * artifact in tests/fixtures/discovery-ab-run-report.ts, and every one of them is
+ * artifact in tests/fixtures/discovery-run-report.ts, and every one of them is
  * asserted to survive the ops server's own `parseEvalArtifact` (the last test in
  * this file). That assertion is the point: a fixture the server would reject is
  * a page designed against output that cannot exist, which is the failure this
@@ -311,7 +347,7 @@ const AB_RUN: RunRecord = {
   status: 'passed',
   spec: {
     kind: 'eval',
-    harness: 'discovery-ab',
+    harness: 'discovery',
     profile: 'default',
     flags: { runs: 1, case: 'historical/builder-and-operator' },
     sides: {
@@ -320,7 +356,7 @@ const AB_RUN: RunRecord = {
     },
   },
   argv: [
-    'bun', 'run', 'eval:discovery-ab', '--',
+    'bun', 'run', 'eval:discovery', '--',
     '--case', 'historical/builder-and-operator', '--runs', '1',
     '--a', 'DISCOVERY_ALLOWED_TYPES=intent',
     '--b', 'DISCOVERY_ALLOWED_TYPES=intent,profile',
@@ -348,7 +384,7 @@ function stubArtifactFetch(report: unknown) {
 }
 
 function abReport(): Artifact {
-  return structuredClone(DISCOVERY_AB_RUN_REPORT);
+  return structuredClone(DISCOVERY_RUN_REPORT);
 }
 
 const BUILDER = 'historical/builder-and-operator';
@@ -453,7 +489,7 @@ function missedSlot(completed: boolean): Record<string, unknown> {
 }
 
 /**
- * Builds a discovery-ab artifact from a list of case rows.
+ * Builds a discovery artifact from a list of case rows.
  *
  * Row *contents* are the real artifact's — assertions, candidates, evaluator
  * traces, configDeltas and retrieval outcomes are copied from the side's own row
@@ -516,7 +552,7 @@ function buildAbReport(specs: readonly AbRowSpec[]): Artifact {
     if (!scored) {
       Object.assign(attempt, {
         outcome: 'failure',
-        error: { class: 'Error', message: 'discovery A/B slot did not complete' },
+        error: { class: 'Error', message: 'discovery slot did not complete' },
       });
     }
     runs.push({
@@ -605,7 +641,7 @@ function incompleteReport(): Artifact {
  * The launch form refuses this pair (`abSideIssues` requires the two sides to
  * name the same keys), but the engine's own CLI does not — `assertAbEnvConfig`
  * only checks each value is non-blank — so an artifact written by a direct
- * `bun run eval:discovery-ab` invocation can hold it.
+ * `bun run eval:discovery` invocation can hold it.
  */
 function asymmetricConfigReport(): Artifact {
   return buildAbReport([
@@ -700,7 +736,130 @@ function unpairedRowsReport(): Artifact {
   ]);
 }
 
-describe('Run · discovery-ab', () => {
+describe('Run · discovery', () => {
+  it('renders a single run as a scorecard, not as a pair with one side', async () => {
+    // Discovery runs in two shapes now. The page must read the SPEC's shape, not
+    // the harness: keyed on the harness, a single run — which has one scorecard
+    // and no `b` — would be handed to the comparison view.
+    const singleRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'discovery',
+        profile: 'default',
+        flags: { runs: 1, case: 'historical/builder-and-operator' },
+      },
+      argv: [
+        'bun', 'run', 'eval:discovery', '--',
+        '--case', 'historical/builder-and-operator', '--runs', '1',
+        '--env', 'DISCOVERY_ALLOWED_TYPES=intent',
+      ],
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(singleRun);
+
+    expect(await screen.findByText(/aggregate pass rate/i)).toBeTruthy();
+    expect(screen.queryByTestId('ab-side-a')).toBeNull();
+    expect(screen.queryByTestId('ab-side-b')).toBeNull();
+  });
+
+  it('shows the configuration a single discovery run measured, as its environment', async () => {
+    // The scorecard says what the run scored; this says what it scored. Without
+    // it the page reports a pass rate for a configuration it never names, and a
+    // run whose entire subject is one environment is unreadable.
+    //
+    // "environment:", not "overrides:", and the reason is the SUBJECT of the
+    // result, not the absence of defaults: a single discovery run's pass rate IS
+    // the pass rate of the configuration on this line, whereas a scorecard
+    // harness's result is a corpus score that its env modifies. Discovery has 26
+    // committed defaults of its own (ops.sides.ts, ops.server.ts), so "it has no
+    // baseline" would be false.
+    const singleRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'discovery',
+        profile: 'default',
+        flags: { runs: 1 },
+        overrides: { models: {}, env: { DISCOVERY_ALLOWED_TYPES: 'intent' } },
+      },
+      // As renderRun writes it onto the record: the operator's key, plus the
+      // EVAL_MODEL_OVERRIDES neutraliser every run carries.
+      env: { DISCOVERY_ALLOWED_TYPES: 'intent', EVAL_MODEL_OVERRIDES: '' },
+      argv: [
+        'bun', 'run', 'eval:discovery', '--',
+        '--runs', '1', '--env', 'DISCOVERY_ALLOWED_TYPES=intent',
+      ],
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(singleRun);
+
+    // Scoped to the row the label heads: the argv line below also spells the
+    // assignment out, and matching that would pass even if this row vanished.
+    const label = await screen.findByText('environment:');
+    // Exact, not toContain: the fixture carries the EVAL_MODEL_OVERRIDES=""
+    // neutraliser that renderRun writes onto every record, and a containment
+    // assertion passed straight over the "EVAL_MODEL_OVERRIDES (unparseable)"
+    // this row used to lead with — on the very line the label calls the
+    // configuration the run measured.
+    expect(label.parentElement!.textContent).toBe('environment:DISCOVERY_ALLOWED_TYPES=intent');
+    expect(screen.queryByText('overrides:')).toBeNull();
+  });
+
+  it('calls a discovery PAIR’s shared env an override, not the thing it measured', async () => {
+    // The row holds the env shared by both sides; the two configurations under
+    // comparison live in the A/B panels below. Labelling this "the configuration
+    // it measured" would point at the one part of the page that is NOT the
+    // subject of the comparison — which is exactly what keying the label on the
+    // harness rather than the spec's shape did.
+    const pairRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'discovery',
+        profile: 'default',
+        flags: { runs: 1 },
+        sides: { a: { DISCOVERY_ALLOWED_TYPES: 'intent' }, b: { DISCOVERY_ALLOWED_TYPES: 'intent,profile' } },
+      },
+      env: { OPENROUTER_MAX_RETRIES: '5', EVAL_MODEL_OVERRIDES: '' },
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(pairRun);
+
+    expect(await screen.findByText('overrides:')).toBeTruthy();
+    expect(screen.queryByText('environment:')).toBeNull();
+    // The fixture carries the EVAL_MODEL_OVERRIDES="" neutraliser that renderRun
+    // writes onto every record, so this row also pins that the summary does not
+    // report it as corruption — one word, and the label test covers all three
+    // claims it makes about this line.
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+  });
+
+  it('still calls a scorecard harness’s env an override, because it deviates from a baseline', async () => {
+    // The counterpart: matching HAS a committed baseline, so a model or provider
+    // key set on it is a deviation from that baseline and "overrides" is the
+    // true word. One label for both would misdescribe one of them.
+    const matchingRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'matching',
+        profile: 'default',
+        flags: { runs: 1 },
+        overrides: { models: {}, env: { OPENROUTER_MAX_RETRIES: '5' } },
+      },
+      env: { OPENROUTER_MAX_RETRIES: '5', EVAL_MODEL_OVERRIDES: '' },
+      argv: ['bun', 'run', 'eval:matching', '--', '--runs', '1'],
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(matchingRun);
+
+    expect(await screen.findByText('overrides:')).toBeTruthy();
+    expect(screen.getByText(/OPENROUTER_MAX_RETRIES=5/)).toBeTruthy();
+    expect(screen.queryByText('environment:')).toBeNull();
+    expect(screen.queryByText(/unparseable/)).toBeNull();
+  });
+
   it('shows both sides with their pass rates, saying which is read against which', async () => {
     stubArtifactFetch(withRepetitions());
     renderRun(AB_RUN);
@@ -725,8 +884,8 @@ describe('Run · discovery-ab', () => {
   it('derives the configuration difference from the two sides’ case rows', async () => {
     // The artifact carries no run-level configuration: the strict schemas leave
     // it nowhere to live, so per-case configDeltas is the only record.
-    expect(Object.keys(DISCOVERY_AB_RUN_REPORT)).not.toContain('configDiff');
-    expect(Object.keys(DISCOVERY_AB_RUN_REPORT)).not.toContain('configs');
+    expect(Object.keys(DISCOVERY_RUN_REPORT)).not.toContain('configDiff');
+    expect(Object.keys(DISCOVERY_RUN_REPORT)).not.toContain('configs');
 
     stubArtifactFetch(abReport());
     renderRun(AB_RUN);
@@ -957,7 +1116,7 @@ describe('Run · discovery-ab', () => {
   });
 });
 
-describe('Run · discovery-ab fixtures', () => {
+describe('Run · discovery fixtures', () => {
   /**
    * Every fixture this file renders, read back through the ops server's own
    * parser.

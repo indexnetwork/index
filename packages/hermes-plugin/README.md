@@ -113,7 +113,7 @@ an `apple-app-site-association` file that claims `/c/*`, `/o/*` and `/u/*` for t
 macOS app, so one URL covers both cases:
 
 - Index macOS app installed → macOS opens the link directly in the app.
-- App not installed → the browser opens the Index landing page for that link, which offers the macOS app (its download button still points at `https://index.network/download`, an unregistered route that falls through to the web app's client-rendered not-found page, until the signed release publishes its real URL).
+- App not installed → the browser opens the Index landing page for that link, whose CTA leads to `https://index.network/download`. That install page states the app is not yet publicly available until a signed release is published, and serves the real download once it is.
 
 The plugin deliberately performs **no app-installation detection**. It runs wherever
 the agent runs — often a headless server that is not the user's Mac — so probing the

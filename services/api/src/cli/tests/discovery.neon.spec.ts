@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { attestAbTargets, parseAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest } from '../discovery-ab.neon';
+import { attestAbTargets, parseAbManifest, resetAbBranch, type AbManifest, type AttestedAbManifest } from '../discovery.neon';
 import type { NeonControlPlane } from '../discovery-env-matrix.neon';
 
 const manifest: AbManifest = {

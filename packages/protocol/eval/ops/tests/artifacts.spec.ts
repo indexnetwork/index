@@ -178,9 +178,9 @@ describe("FsArtifactSource", () => {
   });
 
   it("treats a registered harness with no directory here as nothing to index, not as a problem", async () => {
-    // Only matching/ exists in this fixture. discovery-ab never gets one: its
+    // Only matching/ exists in this fixture. discovery never gets one: its
     // CLI writes under services/api/eval and it has no baseline at all, so
-    // scanning for eval/discovery-ab/{baselines,runs} must stay silent rather
+    // scanning for eval/discovery/{baselines,runs} must stay silent rather
     // than reporting an issue or forcing an empty directory to be created.
     for (const harness of OPS_HARNESSES) {
       if (harness === "matching") continue;
@@ -193,19 +193,19 @@ describe("FsArtifactSource", () => {
     expect(issues).toEqual([]);
   });
 
-  it("indexes a discovery-ab run from .ops-runs even though it has no directory under eval/", async () => {
-    const runId = "discovery-ab-run";
+  it("indexes a discovery run from .ops-runs even though it has no directory under eval/", async () => {
+    const runId = "discovery-run";
     await mkdir(path.join(evalDir, ".ops-runs", runId), { recursive: true });
     await writeFile(
       path.join(evalDir, ".ops-runs", runId, "report.json"),
-      JSON.stringify(runReportArtifact({ harness: "discovery-ab" })),
+      JSON.stringify(runReportArtifact({ harness: "discovery" })),
     );
 
     const { refs, issues } = await new FsArtifactSource({ evalDir }).list();
 
     expect(issues).toEqual([]);
     expect(refs).toHaveLength(1);
-    expect(refs[0].harness).toBe("discovery-ab");
+    expect(refs[0].harness).toBe("discovery");
     expect(refs[0].kind).toBe("run");
   });
 

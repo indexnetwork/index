@@ -1,5 +1,5 @@
 /**
- * The discovery A/B harness's operator-facing contract: what the command
+ * The discovery harness's operator-facing contract: what the command
  * promises, and what each of its exit codes means.
  *
  * It lives in its own dependency-free module for two reasons, both of them
@@ -14,7 +14,7 @@
  *    reads a single environment variable, and its "attest before importing the
  *    runtime" ordering is untouched.
  * 2. **The exit codes must be visible in one place.** The bootstrap decides the
- *    process exit code and cannot import `discovery-ab.main.ts` (that module
+ *    process exit code and cannot import `discovery.main.ts` (that module
  *    reaches `@indexnetwork/protocol` on its first import), so the codes and
  *    the classification that picks between them have to live somewhere both
  *    halves can reach.
@@ -23,10 +23,10 @@
  * runs. A `--side` child's exit code is consumed by the parent's supervision,
  * which then reports the run-level code for the whole comparison.
  */
-import { AB_BRANCH_NAMES } from './discovery-ab.neon';
-import { AbGateError } from './discovery-ab.gate';
+import { AB_BRANCH_NAMES } from './discovery.neon';
+import { AbGateError } from './discovery.gate';
 
-/** The protected branch both A/B branches are reset from before every run. */
+/** The protected branch this run's target branches are reset from before every run. */
 export const AB_BASE_BRANCH = 'eval-discovery-base';
 /** Three repetitions per side; one observation per case cannot separate a difference from noise. */
 export const AB_DEFAULT_REPETITIONS = 3;
@@ -94,23 +94,46 @@ export const AB_EXIT_SPENT_WITHOUT_ARTIFACT = 4;
 export type AbRunStage = 'resetting' | 'reset' | 'spawned' | 'written';
 
 /**
+ * The branches a run of this shape resets, named for a message.
+ *
+ * A single run touches only `eval-ab-a`. Saying "the A/B branches
+ * (eval-ab-a, eval-ab-b)" after a single run would send an operator to check a
+ * branch this run never opened, and would overstate the damage of a failure —
+ * the exact class of false claim these messages exist to avoid.
+ */
+function abBranchPhrase(shape: AbRunShape): string {
+  return shape === 'single'
+    ? `the A/B branch ${AB_BRANCH_NAMES.a}`
+    : `the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b})`;
+}
+
+/**
  * What a failure at each stage may truthfully assert.
  *
  * Every clause here has to hold in *every* situation that can reach it. Where
  * the stage cannot distinguish two situations — a restore that failed on side a
  * versus one that failed on side b — the message hedges rather than reporting
  * the common case as fact.
+ *
+ * The shape is threaded through for the same reason: a single run resets one
+ * branch and spawns one child, so every plural claim below would be false for
+ * it.
  */
-function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
+function abSpentMessage(stage: AbRunStage, shape: AbRunShape, artifactPath?: string): string {
+  const branches = abBranchPhrase(shape);
+  const single = shape === 'single';
   switch (stage) {
     case 'resetting':
-      return `Discovery A/B failed while resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
-        + `from ${AB_BASE_BRANCH}: one or both branches may have been overwritten — the reset was still in `
-        + 'progress, so this run cannot say which. No side was spawned, no run was spent, and no artifact was '
-        + 'written. Treat both branches as dirty; the next run resets them again.';
+      return `Discovery failed while resetting ${branches} `
+        + `from ${AB_BASE_BRANCH}: ${single ? 'the branch' : 'one or both branches'} may have been overwritten — `
+        + 'the reset was still in progress, so this run cannot say '
+        + `${single ? 'whether it completed' : 'which'}. No side was spawned, no run was spent, and no artifact was `
+        + `written. Treat ${single ? 'the branch' : 'both branches'} as dirty; the next run resets `
+        + `${single ? 'it' : 'them'} again.`;
     case 'reset':
-      return `Discovery A/B failed after resetting the A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) `
-        + `from ${AB_BASE_BRANCH} and before spawning any side: both branches were overwritten, no run was spent, `
+      return `Discovery failed after resetting ${branches} `
+        + `from ${AB_BASE_BRANCH} and before spawning any side: `
+        + `${single ? 'the branch was' : 'both branches were'} overwritten, no run was spent, `
         + 'and no artifact was written.';
     case 'spawned':
       // "may already be gone", not "are gone": the stage is set the moment a
@@ -124,26 +147,39 @@ function abSpentMessage(stage: AbRunStage, artifactPath?: string): string {
       // before this message is printed — keeps that directory and names what is
       // in it precisely so the scored slots can be read. What is certainly lost
       // is the run report and the verdict, so that is what this says.
-      return 'Discovery A/B failed after spawning a side: both A/B branches were reset and at least one side '
-        + 'process was started, so provider spend and wall-clock time may already be gone. No run report was '
+      return `Discovery failed after spawning a side: ${branches} `
+        + `${single ? 'was' : 'were'} reset and ${single ? 'the side process was' : 'at least one side process was'} `
+        + 'started, so provider spend and wall-clock time may already be gone. No run report was '
         + 'written and there is no verdict — any child artifact this run kept is named above — and re-running '
-        + 'pays for the whole comparison again.';
+        + `pays for the whole ${single ? 'run' : 'comparison'} again.`;
     case 'written':
       // "may have been spent", like every other stage: a child writes its output
       // and exits 0 even when every one of its slots failed, so both sides can
       // complete with nothing scored. Attempts were certainly made; a paid run
       // is not something this stage can assert.
-      return 'Discovery A/B failed after the run artifact was written'
-        + `${artifactPath === undefined ? '' : ` (${artifactPath})`}: both A/B branches were reset and a live run `
+      return 'Discovery failed after the run artifact was written'
+        + `${artifactPath === undefined ? '' : ` (${artifactPath})`}: ${branches} `
+        + `${single ? 'was' : 'were'} reset and a live run `
         + 'may have been spent, and the failure came after the artifact was saved. The artifact on disk is real — '
         + 'read it before re-running, which costs the same again.';
   }
 }
 
+/**
+ * Whether this run measures one configuration or compares two.
+ *
+ * Known before the first reset and carried into every cost message, because
+ * "both branches were reset" is the sort of claim an operator acts on — by
+ * going to look at a branch, or by assuming twice the spend.
+ */
+export type AbRunShape = 'single' | 'pair';
+
 /** What a spend report knows beyond the stage. */
 export interface AbSpentRunDetail {
   /** The run report's path, known only once it has been written. */
   artifactPath?: string;
+  /** How many branches and children the failed run involved. Defaults to a pair. */
+  shape?: AbRunShape;
 }
 
 /**
@@ -157,12 +193,18 @@ export interface AbSpentRunDetail {
  */
 export class AbSpentRunError extends Error {
   readonly stage: AbRunStage;
+  readonly shape: AbRunShape;
   readonly artifactPath?: string;
 
   constructor(stage: AbRunStage, options?: ErrorOptions & AbSpentRunDetail) {
-    super(abSpentMessage(stage, options?.artifactPath), options);
+    // A pair is the safe default for an unknown shape: it claims *more* was
+    // touched than may have been, which sends an operator to check a clean
+    // branch. The reverse default would tell them a dirty branch was untouched.
+    const shape: AbRunShape = options?.shape ?? 'pair';
+    super(abSpentMessage(stage, shape, options?.artifactPath), options);
     this.name = 'AbSpentRunError';
     this.stage = stage;
+    this.shape = shape;
     if (options?.artifactPath !== undefined) this.artifactPath = options.artifactPath;
   }
 }
@@ -216,10 +258,10 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
   return {
     exitCode: AB_EXIT_PREFLIGHT_REFUSED,
     message: role === 'child'
-      ? 'Discovery A/B side process failed. A child makes no claim about what this run cost: whether the '
+      ? 'Discovery side process failed. A child makes no claim about what this run cost: whether the '
         + 'branches were reset, a side was spawned or a live run was spent is reported by the parent '
         + "invocation, and the parent's exit code is the one to act on."
-      : 'Discovery A/B command failed before anything was reset or spawned: '
+      : 'Discovery command failed before anything was reset or spawned: '
         + 'no branch was mutated and no run was spent.',
   };
 }
@@ -231,7 +273,7 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
  * The same attestation runs in the parent and in every child, and the two are
  * at different points in the run. "Nothing was reset and nothing was spawned"
  * is true of a parent refusing before its first reset; a child attests *after*
- * the parent has already reset both branches and spawned it, so the same
+ * the parent has already reset this run's target branches and spawned it, so the same
  * sentence printed from a child is simply false. A child speaks only for
  * itself.
  *
@@ -241,7 +283,7 @@ export function describeAbFailure(error: unknown, role: AbInvocationRole = 'pare
  */
 export function abAttestationRefusal(role: AbInvocationRole, options?: ErrorOptions): AbGateError {
   return new AbGateError(
-    'Refusing to run: DISCOVERY_AB_TARGETS was not attested as the two designated A/B branches '
+    'Refusing to run: DISCOVERY_TARGETS was not attested as the two designated A/B branches '
     + `(${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) parented on ${AB_BASE_BRANCH}. `
     + (role === 'child'
       ? 'This side did not run; what the run reset or spawned is reported by the parent invocation.'
@@ -257,47 +299,51 @@ export function abAttestationRefusal(role: AbInvocationRole, options?: ErrorOpti
 export function abUsage(): string {
   const manifest = '{"projectId":"...","baseBranchId":"br-...","targets":[{"sideId":"a","branchId":"br-...","endpointId":"ep-...","databaseUrl":"postgres://...neon.tech/protocol_eval"}, ...]}';
   return [
-    'Discovery A/B eval',
+    'Discovery eval',
     '',
-    'Runs the real discovery graph twice - once per operator-chosen environment',
-    'configuration - over the same cases, and emits one artifact holding both sides.',
-    'It never reads, writes or compares a baseline: arbitrary configurations have',
-    'none, so the pair is the result.',
+    'Runs the real discovery graph under one operator-chosen environment',
+    'configuration, or under two over the same cases for a comparison. It',
+    'never reads, writes or compares a baseline: arbitrary configurations have',
+    'none, so the scorecard (or the pair) is the result.',
     '',
     'Required operator attestation:',
-    '  DISCOVERY_AB_CONFIRM=1',
+    '  DISCOVERY_CONFIRM=1',
     '  TEST_DATABASE_SAFE=1',
     '  NEON_API_KEY=<neon api key>',
-    `  DISCOVERY_AB_TARGETS='${manifest}'`,
+    `  DISCOVERY_TARGETS='${manifest}'`,
     '',
-    'This command never creates or deletes Neon branches. It resets both attested',
-    `A/B branches (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) from ${AB_BASE_BRANCH} before it spawns anything.`,
+    'This command never creates or deletes Neon branches. It resets the attested',
+    `branch of every side it runs from ${AB_BASE_BRANCH} before it spawns anything:`,
+    `${AB_BRANCH_NAMES.a} alone with --env, and both (${AB_BRANCH_NAMES.a}, ${AB_BRANCH_NAMES.b}) with --a/--b.`,
     '',
-    'Selection is shared by both sides; configuration is not:',
+    'Exactly one of --env or --a/--b. Selection is shared by both sides;',
+    'configuration is not:',
     '  --case <id>       Restrict to one case. Repeatable. Default: the full corpus.',
     `  --runs <n>        Repetitions per side (default ${AB_DEFAULT_REPETITIONS}, maximum ${AB_MAX_REPETITIONS}).`,
-    '  --a KEY=VALUE     A flag for side a. Repeatable.',
-    '  --b KEY=VALUE     A flag for side b. Repeatable.',
+    '  --env KEY=VALUE   A flag for a single-configuration run. Repeatable.',
+    '  --a KEY=VALUE     A flag for side a of a comparison. Repeatable.',
+    '  --b KEY=VALUE     A flag for side b of a comparison. Repeatable.',
     '  --report <path>   Write the run artifact here. Given at most once. A relative',
     '                    path is resolved against the working directory this command',
-    '                    was invoked from, not against eval/discovery-ab/runs.',
+    '                    was invoked from, not against eval/discovery/runs.',
     '                    An existing file is replaced only with --force, and an',
     '                    existing directory is refused before anything runs.',
-    '                    Default: a timestamped file under eval/discovery-ab/runs.',
+    '                    Default: a timestamped file under eval/discovery/runs.',
     '  --force           Consent to replacing an existing run artifact.',
     '',
-    'Both sides must state the same keys with differing values; identical or',
-    'asymmetric configurations are refused before any spend.',
+    'A comparison requires both sides to state the same keys with differing values;',
+    'identical or asymmetric configurations are refused before any spend. Neither',
+    'rule applies to --env, which has no second side to differ from.',
     '',
     'Exit codes, for the parent invocation an operator runs (a --side child\'s code',
     "is consumed by the parent's supervision, which reports the run-level code):",
-    `  ${AB_EXIT_COMPARISON}   Both sides completed; the artifact holds the comparison.`,
+    `  ${AB_EXIT_COMPARISON}   Every side completed; the artifact holds the scorecard or the comparison.`,
     `  ${AB_EXIT_PREFLIGHT_REFUSED}   Refused before anything ran (gate, arguments, manifest, attestation).`,
     '      Nothing was reset, nothing was spawned, nothing was spent.',
     `  ${AB_EXIT_INSUFFICIENT_EVIDENCE}   The artifact was written but a side did not score every slot, so there is no`,
     '      verdict. The run was spent and the artifact on disk is real.',
-    `  ${AB_EXIT_SPENT_WITHOUT_ARTIFACT}   Failed after the branches began being reset and/or a side was spawned. The`,
-    '      branches were mutated and a live run may have been spent; the message says what',
-    '      was overwritten and whether an artifact survived.',
+    `  ${AB_EXIT_SPENT_WITHOUT_ARTIFACT}   Failed after a branch began being reset and/or a side was spawned. The`,
+    '      branch or branches this run uses were mutated and a live run may have been spent;',
+    '      the message names what was overwritten and whether an artifact survived.',
   ].join('\n');
 }

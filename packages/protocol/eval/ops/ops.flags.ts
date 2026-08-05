@@ -3,12 +3,12 @@
  * their names.
  *
  * `HARNESS_REGISTRY` states each flag's real bounds per harness, and those
- * bounds are not all the same: discovery-ab caps `--runs` at 10
+ * bounds are not all the same: discovery caps `--runs` at 10
  * (AB_MAX_REPETITIONS) where the scorecard harnesses do not cap it at all. A
  * schema that checked only flag NAMES therefore authorised runs the engine
- * refuses: `--runs 25` on discovery-ab parsed, was queued, was displayed as
+ * refuses: `--runs 25` on discovery parsed, was queued, was displayed as
  * "250 model invocations", and then died on `--runs must not exceed 10`
- * (discovery-ab.main.ts) — a late refusal, after the operator had committed to
+ * (discovery.main.ts) — a late refusal, after the operator had committed to
  * the spend.
  *
  * What is checked is `flag.accepts` — the API bounds — and never the control
