@@ -21,7 +21,7 @@ validate_profile_plist() {
   python3 - "$profile_path" "$expected_team" "$bundle_id" "$host" <<'PY'
 import plistlib
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 profile_path, expected_team, bundle_id, host = sys.argv[1:]
 
@@ -35,7 +35,7 @@ with open(profile_path, 'rb') as source:
     profile = plistlib.load(source)
 
 expiration = profile.get('ExpirationDate')
-if not isinstance(expiration, datetime) or expiration <= datetime.utcnow():
+if not isinstance(expiration, datetime) or expiration <= datetime.now(timezone.utc).replace(tzinfo=None):
     fail('is expired')
 
 teams = profile.get('TeamIdentifier')

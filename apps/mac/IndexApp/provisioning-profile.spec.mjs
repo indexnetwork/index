@@ -119,8 +119,10 @@ test('existing embedded profile reaches CMS decoding after temporary file creati
 });
 
 describe('Developer ID provisioning profile validation', () => {
-  test('accepts an exact associated domain', async () => {
-    expect(validate(await writeProfile()).exitCode).toBe(0);
+  test('accepts an exact associated domain without stderr output', async () => {
+    const result = validate(await writeProfile());
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.toString()).toBe('');
   });
 
   test.each(['*', 'applinks:*'])('accepts Apple wildcard authorization %s', async (domain) => {
