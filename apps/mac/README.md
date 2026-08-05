@@ -145,7 +145,8 @@ bundle or substitute production URLs.
 Before building, confirm the dev host serves
 `/.well-known/apple-app-site-association` directly (HTTP 200, JSON, no redirect)
 for the Developer ID team's `network.index.system6` app ID. Its components must
-exclude `/u/*/*` before the broader `/u/*` entry so chat URLs remain browser-only.
+exclude `/u/*/?*` before the broader `/u/*` entry so only a non-empty deeper
+profile segment (such as `chat`) remains browser-only while `/u/<id>` opens the app.
 The signed artifact must contain exactly `applinks:dev.index.network` in its
 associated-domains entitlement.
 
