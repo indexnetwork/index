@@ -29,6 +29,79 @@ export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
   "OPENROUTER_BASE_URL",
 ]);
 
+/**
+ * Names that make a key a credential regardless of whether anyone listed it.
+ *
+ * `ENV_SECRET_KEYS` above is an exact-match list of two, and that was the whole
+ * guard until a review ran the real generator against a fake protocol root whose
+ * entry points read `OPENROUTER_API_KEY_2`, `ANTHROPIC_API_KEY`, `DATABASE_URL`
+ * and `NEON_API_KEY`. All four appeared in all five harness catalogues, and the
+ * catalogue is now the request boundary — `validateConfigOverrides` asks it
+ * whether a browser may set a key. Nothing leaks today, because none of the four
+ * is in a real harness closure, but `DATABASE_URL` and `NEON_API_KEY` are read
+ * one import away from the discovery harness runner
+ * (services/api/src/cli/discovery-env-matrix.neon.ts). A two-name denylist that
+ * has to be updated *before* the code that reads a new credential is written is
+ * a guard that fails open by construction.
+ *
+ * So the rule inverts: a key is a credential unless its name shows it is not.
+ * A new secret named the way secrets are named is refused the moment it appears,
+ * by a rule nobody has to remember to update.
+ *
+ * `_URL` is in the list because an endpoint origin is the same risk class as a
+ * key: `OPENROUTER_BASE_URL` repoints a run at another provider, `DATABASE_URL`
+ * at another corpus. Exfiltration does not require a password.
+ *
+ * Bare `KEY` is matched exactly, not as a suffix, because `KEY` alone is a key
+ * and `_KEY$` would miss it. It reaches the candidate universe today only
+ * because the superset scan reads comments — `ops.envscan.ts` documents
+ * `process.env.KEY` as the form it recognises — but a rule that depends on a
+ * name never becoming real is not a rule.
+ *
+ * The credential words match as whole underscore-separated *segments* anywhere
+ * in the name, not only at the end. Anchoring to the end was tried first and
+ * the tests caught it: `OPENROUTER_API_KEY_2` — the review's own example of a
+ * second provider account — ends in `_2` and slipped straight through. A
+ * numbered or suffixed credential is still a credential, and `..._KEY_BACKUP`
+ * or `..._TOKEN_OLD` are exactly the names a second one acquires.
+ *
+ * Verified against the 64-key candidate universe: this matches nine
+ * (API_URL, DATABASE_URL, EVAL_OPS_UI_URL, KEY, NEON_API_KEY,
+ * OPENROUTER_API_KEY, OPENROUTER_BASE_URL, SOME_KEY, TEST_EVAL_SECRET,
+ * WEB_APP_URL) and *zero* of the 27 keys any harness offers, which is why
+ * CREDENTIAL_SHAPE_EXCEPTIONS below is empty. `CHAT_MODEL`,
+ * `EVAL_MODEL_OVERRIDES` and `SMARTEST_VERIFIER_MODEL` name models, not
+ * endpoints, and are deliberately untouched by every pattern here.
+ */
+const CREDENTIAL_NAME_PATTERN = /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|URL|URI|DSN|AUTH)(?:_|$)/;
+
+/**
+ * Keys whose names match {@link CREDENTIAL_NAME_PATTERN} but which are provably
+ * not credentials, and may therefore be offered.
+ *
+ * Empty, and that is a measured fact rather than an oversight: no key in any
+ * harness catalogue matches the pattern (envcatalog.spec.ts asserts it). An
+ * entry here needs a comment saying why the name lies — that it names no
+ * account, endpoint or corpus — because every entry is a hole in a guard that
+ * otherwise needs no maintenance.
+ */
+const CREDENTIAL_SHAPE_EXCEPTIONS: readonly string[] = Object.freeze([]);
+
+/**
+ * Whether `key` must never be settable from a request.
+ *
+ * True for anything on {@link ENV_SECRET_KEYS} or shaped like a credential and
+ * not explicitly excepted. Used by the generator (to keep such keys out of every
+ * catalogue) and by `validateConfigOverrides` (to refuse them at the boundary
+ * even if a generator bug published one), so the two guards cannot disagree
+ * about what a credential is.
+ */
+export function isCredentialEnvKey(key: string): boolean {
+  if (ENV_SECRET_KEYS.includes(key)) return true;
+  if (CREDENTIAL_SHAPE_EXCEPTIONS.includes(key)) return false;
+  return CREDENTIAL_NAME_PATTERN.test(key);
+}
+
 export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
   "DISCOVERY_ALLOWED_TYPES",
   "DISCOVERY_PROFILE_SOURCE",

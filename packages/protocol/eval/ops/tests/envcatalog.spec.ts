@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { isCredentialEnvKey } from "../ops.allowlist.js";
 import { HARNESS_ENV_KEYS } from "../ops.envcatalog.js";
 import { buildEnvCatalog, ENV_SECRET_KEYS, HARNESS_ENTRY_POINTS, PROTOCOL_ROOT, renderEnvCatalog } from "../ops.envcatalog.build.js";
-import { reachableEnvKeys } from "../ops.envscan.js";
+import { reachableEnvKeys, referencedEnvKeys } from "../ops.envscan.js";
 import { OPS_HARNESSES } from "../ops.registry.js";
 
 const CATALOG_FILE = path.join(PROTOCOL_ROOT, "eval/ops/ops.envcatalog.ts");
@@ -112,6 +114,35 @@ describe("HARNESS_ENV_KEYS", () => {
   });
 });
 
+describe("buildEnvCatalog", () => {
+  it("refuses a harness whose entry point does not exist", () => {
+    // reachableEnvKeys skips a path that is not there, so before this guard a
+    // typo'd entry point derived an empty set and the site offered that harness
+    // no environment at all — indistinguishable, in the UI, from a harness that
+    // genuinely reads nothing. Proved by deleting premise.eval.ts, which
+    // silently yielded "premise": []. An empty temp root reproduces the same
+    // condition without touching the tree.
+    const emptyRoot = mkdtempSync(path.join(tmpdir(), "envcatalog-"));
+    try {
+      expect(() => buildEnvCatalog(emptyRoot)).toThrow(/entry point not found/);
+    } finally {
+      rmSync(emptyRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("names the harness and the path it looked for", () => {
+    // The error has to be actionable: "not found" alone would leave a reader
+    // guessing which of five harnesses moved.
+    const emptyRoot = mkdtempSync(path.join(tmpdir(), "envcatalog-"));
+    try {
+      expect(() => buildEnvCatalog(emptyRoot)).toThrow(/matching/);
+      expect(() => buildEnvCatalog(emptyRoot)).toThrow(/HARNESS_ENTRY_POINTS/);
+    } finally {
+      rmSync(emptyRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("ENV_SECRET_KEYS", () => {
   it("is excluded from every harness's catalogue", () => {
     // The first of the two independent guards named in the spec. A credential
@@ -133,6 +164,66 @@ describe("ENV_SECRET_KEYS", () => {
       const entry = path.join(PROTOCOL_ROOT, HARNESS_ENTRY_POINTS[harness]);
       const reachable = reachableEnvKeys(entry, ENV_SECRET_KEYS);
       expect([...reachable].sort()).toEqual([...ENV_SECRET_KEYS].sort());
+    }
+  });
+});
+
+/**
+ * The catalogue is the request boundary: `validateConfigOverrides` asks it
+ * whether a browser may set a key. So "what reached the catalogue" and "what a
+ * credential is" have to be checked against each other, not just against a list
+ * somebody maintained.
+ */
+describe("credential shape", () => {
+  it("offers no key that is shaped like a credential", () => {
+    // The strong form of the guard: not "the two known secrets are absent" but
+    // "nothing a reasonable person would call a credential is present". This is
+    // what catches a secret nobody has added to a list yet — the case that made
+    // the exact-match denylist fail open, since a new API key reaching a harness
+    // closure would have been offered until someone noticed.
+    for (const harness of OPS_HARNESSES) {
+      for (const key of HARNESS_ENV_KEYS[harness]) {
+        expect(isCredentialEnvKey(key), `${harness} offers credential-shaped key ${key}`).toBe(false);
+      }
+    }
+  });
+
+  it("classifies the candidate universe the way a reader would", () => {
+    // Pins the rule against every key named anywhere in src/ and eval/, so a
+    // pattern change that started matching model knobs, or stopped matching
+    // endpoints, fails here rather than in a browser form. Spelled out because
+    // this is the list a reviewer should be able to check by eye.
+    const universe = [...referencedEnvKeys([path.join(PROTOCOL_ROOT, "src"), path.join(PROTOCOL_ROOT, "eval")])];
+    const flagged = universe.filter((key) => isCredentialEnvKey(key)).sort();
+    expect(flagged).toEqual([
+      "API_URL",
+      "DATABASE_URL",
+      "EVAL_OPS_UI_URL",
+      "KEY",
+      "NEON_API_KEY",
+      "OPENROUTER_API_KEY",
+      "OPENROUTER_BASE_URL",
+      "SOME_KEY",
+      "TEST_EVAL_SECRET",
+      "WEB_APP_URL",
+    ]);
+  });
+
+  it("leaves model and provider knobs settable", () => {
+    // The rule has to be narrow enough to be useful. These are the keys an
+    // operator legitimately configures, and every one of them would be lost to a
+    // pattern that matched on "MODEL" or on any underscore-separated noun.
+    for (const key of SCORECARD_KEYS) {
+      expect(isCredentialEnvKey(key), `${key} must stay offerable`).toBe(false);
+    }
+  });
+
+  it("refuses a credential the generator never saw, by shape alone", () => {
+    // The names in the review's fake-root reproduction. None is in ENV_SECRET_KEYS;
+    // all must still be refused, because that is the difference between a list
+    // that has to be updated in advance and a rule that does not.
+    for (const key of ["OPENROUTER_API_KEY_2", "ANTHROPIC_API_KEY", "DATABASE_URL", "NEON_API_KEY", "REDIS_URL"]) {
+      expect(isCredentialEnvKey(key), `${key} must be refused`).toBe(true);
     }
   });
 });

@@ -768,7 +768,25 @@ describe("renderRun sides", () => {
  * reason: what matters is the specifier, not the syntax that reaches it.
  */
 describe("browser-importable module boundary", () => {
-  const DEPENDENCY_FREE = ["ops.sides.ts", "ops.flags.ts"] as const;
+  // ops.envcatalog.ts is generated, and its text comes from a template in
+  // ops.envcatalog.build.ts — a module that imports node:fs and Bun.Transpiler.
+  // Nothing stops a future template edit from emitting a runtime import into the
+  // generated file, which would ship into the SPA with every gate green, so the
+  // generated output is held to the same boundary as the hand-written modules.
+  //
+  // The list is every eval/ops module the SPA imports for its *value* (checked
+  // against apps/eval-ops/src): ops.sides, ops.flags, ops.metadata, ops.progress
+  // and ops.allowlist, plus the generated ops.envcatalog they reach through.
+  // ops.metadata carries an equivalent guard of its own in metadata.spec.ts;
+  // ops.progress and ops.allowlist had none, and happened to import nothing —
+  // a property no test held them to, which is the same gap in a different file.
+  const DEPENDENCY_FREE = [
+    "ops.sides.ts",
+    "ops.flags.ts",
+    "ops.envcatalog.ts",
+    "ops.progress.ts",
+    "ops.allowlist.ts",
+  ] as const;
 
   for (const module of DEPENDENCY_FREE) {
     it(`${module} stays dependency-free so the browser bundle can import it`, () => {
@@ -776,7 +794,9 @@ describe("browser-importable module boundary", () => {
       const importSpecifiers = [...source.matchAll(/\b(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g)].map(
         (m) => m[1],
       );
-      expect(importSpecifiers.length).toBeGreaterThan(0);
+      // No lower bound on the count: ops.progress.ts and ops.allowlist.ts import
+      // nothing at all, and "imports nothing" is the strongest possible form of
+      // the property this test defends.
       for (const specifier of importSpecifiers) {
         expect(specifier).not.toMatch(/^node:/);
         expect(specifier).not.toMatch(/^(fs|crypto|path|os|util|stream)$/);
@@ -784,7 +804,7 @@ describe("browser-importable module boundary", () => {
         // a bare specifier is a package, and a package is the thing this file
         // exists not to pull into the SPA.
         expect(specifier, `${module} imports ${specifier}`).toMatch(
-          /^\.\/ops\.(allowlist|flags|metadata|registry|sides|types)\.js$/,
+          /^\.\/ops\.(allowlist|envcatalog|flags|metadata|registry|sides|types)\.js$/,
         );
       }
     });

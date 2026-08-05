@@ -11,8 +11,8 @@ export const DEFAULT_PROFILE_NAME = "default";
 // The allowlist lives in ops.allowlist.ts (dependency-free) so the browser app
 // can import it without dragging node:fs/crypto into the Vite bundle. Re-exported
 // here so existing server-side imports keep working.
-export { ENV_SECRET_KEYS, PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
-import { ENV_SECRET_KEYS, PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
+export { ENV_SECRET_KEYS, isCredentialEnvKey, PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
+import { isCredentialEnvKey, PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 
 // The derived per-harness catalogue: what a harness can actually read, as
 // opposed to what the hand-written allowlist happens to name.
@@ -171,7 +171,7 @@ export function validateConfigOverrides(overrides: {
     // the two independent guards the spec requires: the generator excludes
     // these from every catalogue, and this refuses them at the boundary even if
     // the generator were wrong.
-    if ((ENV_SECRET_KEYS as readonly string[]).includes(key)) {
+    if (isCredentialEnvKey(key)) {
       issues.push(`env key ${key} is a credential and can never be set from a request`);
       continue;
     }

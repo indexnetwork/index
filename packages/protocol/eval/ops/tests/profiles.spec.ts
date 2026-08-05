@@ -137,6 +137,20 @@ describe("validateConfigOverrides", () => {
     }
   });
 
+  it("refuses a credential-shaped key even if one reached a catalogue", () => {
+    // ENV_SECRET_KEYS is an exact-match list of two. A review showed the real
+    // generator will happily catalogue OPENROUTER_API_KEY_2, ANTHROPIC_API_KEY,
+    // DATABASE_URL and NEON_API_KEY if a harness closure ever reads them — and
+    // the last two are read one import away from the discovery runner. None of
+    // these is on the list, so an exact-match guard would pass them straight to
+    // the child process. The shape rule refuses them without anyone having to
+    // predict the name.
+    for (const key of ["OPENROUTER_API_KEY_2", "ANTHROPIC_API_KEY", "DATABASE_URL", "NEON_API_KEY", "REDIS_URL"]) {
+      const issues = validateConfigOverrides({ models: {}, env: { [key]: "x" } });
+      expect(issues.some((i) => i.includes(key) && i.includes("credential")), `${key} not refused as a credential`).toBe(true);
+    }
+  });
+
   it("accepts the keys the derived catalogue added, which the old allowlist refused", () => {
     // These are read by real harnesses (eval/ops/ops.envcatalog.ts) but absent
     // from the hand-written PROFILE_ENV_ALLOWLIST. Before the catalogue existed

@@ -11,6 +11,7 @@
  * Not importable by the browser app: this reaches the filesystem through
  * `ops.envscan.ts`. Its *output* is dependency-free and is what the app reads.
  */
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 import { reachableEnvKeys, referencedEnvKeys } from "./ops.envscan.js";
@@ -24,8 +25,8 @@ export const PROTOCOL_ROOT: string = path.resolve(import.meta.dir, "../..");
 // validateConfigOverrides, sits in a module chain the browser bundle reaches.
 // Re-exported here so the generator and its tests keep importing it from the
 // module that uses it.
-export { ENV_SECRET_KEYS } from "./ops.allowlist.js";
-import { ENV_SECRET_KEYS } from "./ops.allowlist.js";
+export { ENV_SECRET_KEYS, isCredentialEnvKey } from "./ops.allowlist.js";
+import { isCredentialEnvKey } from "./ops.allowlist.js";
 
 /**
  * The file whose transitive imports define what each harness can read.
@@ -64,8 +65,25 @@ export function buildEnvCatalog(root: string = PROTOCOL_ROOT): Record<OpsHarness
   const catalog = {} as Record<OpsHarness, string[]>;
   for (const harness of OPS_HARNESSES) {
     const entry = path.join(root, HARNESS_ENTRY_POINTS[harness]);
+    // reachableEnvKeys skips a path that does not exist, so a typo'd or moved
+    // entry point would derive an empty set for that harness and silently offer
+    // an operator nothing, reading as "this harness has no configurable
+    // environment" rather than "the scan never ran". The five exact-set
+    // assertions catch it for today's harnesses; a sixth added with a bad path
+    // would only meet the weak keys-of-the-record check. Refuse here instead, so
+    // the failure names the file.
+    if (!existsSync(entry)) {
+      throw new Error(
+        `Harness "${harness}" entry point not found: ${entry}. ` +
+          `Fix HARNESS_ENTRY_POINTS in eval/ops/ops.envcatalog.build.ts — a missing entry ` +
+          `point would otherwise derive an empty catalogue and offer nothing.`,
+      );
+    }
     const reachable = reachableEnvKeys(entry, universe);
-    catalog[harness] = [...reachable].filter((key) => !ENV_SECRET_KEYS.includes(key)).sort();
+    // Credentials are dropped by name, not by membership of a two-key list: a
+    // denylist that must be updated before the code reading a new secret is
+    // written fails open. See isCredentialEnvKey.
+    catalog[harness] = [...reachable].filter((key) => !isCredentialEnvKey(key)).sort();
   }
   return catalog;
 }
