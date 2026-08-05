@@ -913,9 +913,11 @@ describe('Launch — discovery', () => {
   });
 
   it('confirms a filtered run too, because the branch resets are not filtered', async () => {
-    // --case narrows what is MEASURED. It does not narrow what is destroyed:
-    // every run of this harness resets both Neon evaluation branches. So the
-    // only spend gate on the page must fire here, and say what it is confirming.
+    // --case narrows what is MEASURED. It does not narrow what is destroyed: a
+    // run resets the branches its shape needs whether or not the corpus is
+    // filtered, and this run is a comparison, so that is both. (The single shape
+    // resets one, and the test below pins that it says so.) The only spend gate
+    // on the page must fire here, and say what it is confirming.
     const user = userEvent.setup();
     renderLaunch();
 
