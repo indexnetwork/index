@@ -7,7 +7,11 @@ import path from 'node:path';
 // @indexnetwork/protocol only exports its built `dist` entry point, and
 // ops.allowlist.ts is deliberately dependency-free so any consumer can read it.
 import { DISCOVERY_ENV_KEYS, PROFILE_ENV_ALLOWLIST } from '../../../../../packages/protocol/eval/ops/ops.allowlist';
-import { AB_FLAGS, assertAbEnvConfig, reachableEnvKeys } from '../discovery.flags';
+// The scanner lives in packages/protocol now, where it derives the catalogue for
+// every harness. Production code here cannot import it (rootDir ./src makes that
+// TS6059) but a spec file can, and this is the only place that needed it.
+import { reachableEnvKeys } from '../../../../../packages/protocol/eval/ops/ops.envscan';
+import { AB_FLAGS, assertAbEnvConfig } from '../discovery.flags';
 
 const GRAPH_ENTRY = path.resolve(
   import.meta.dir,
