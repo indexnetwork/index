@@ -210,7 +210,7 @@ Opportunity and profile links are plain `https://index.network/...` URLs that op
 | `/c/:code` | Same landing page (retired connect links). |
 | `/u/:id` | The existing public profile page, unchanged. |
 
-The macOS download CTA on that landing page currently points at `https://index.network/download`, which is not a registered web route — it falls through to the web app's catch-all and renders the not-found page until the signed release publishes its real URL.
+The macOS CTA on that landing page links to `/download`, the app's install page. `/download` reads its artifact URL from `VITE_MAC_APP_DOWNLOAD_URL`: while that is unset it states that the app is not yet publicly available and offers no download button, and once a Developer ID-signed, notarized build is published it renders a real download with no code change. The CTA therefore never dead-ends, in either state.
 
 **Legacy short links.** `GET /c/:code` on this protocol server is a tombstone for links already delivered in chats. `main.ts` rewrites the unprefixed path onto `ConnectLinkController`, which performs no database lookup and no opportunity side effects: a code matching `^[A-Za-z0-9]{10}$` gets a `302` to `${WEB_APP_URL}/c/<code>` (default `https://index.network`) with the request's query string preserved — already-delivered links carry `?link_preview=false`, and dropping it would resurrect preview cards in chat clients — and anything else gets a `404` HTML page. The resolution stack behind it — `/c/:code/go`, connect-link minting, connect tokens, surface routing — is deleted.
 

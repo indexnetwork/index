@@ -19,6 +19,13 @@ const MARKETING: Record<string, PageMeta> = {
     image: `${ORIGIN}/found-in-translation/found-in-translation-1-hero.png`,
     type: "article",
   },
+  "/download": {
+    title: "Download Index for macOS",
+    description:
+      "Get the Index macOS app. Opportunity links open directly in the app, where you can review and accept them.",
+    image: DEFAULT_IMAGE,
+    type: "website",
+  },
   "/overview": {
     title: "Index Network: Protocol Overview",
     description:
