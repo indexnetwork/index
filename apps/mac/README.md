@@ -149,19 +149,49 @@ exclude `/u/*/*` before the broader `/u/*` entry so chat URLs remain browser-onl
 The signed artifact must contain exactly `applinks:dev.index.network` in its
 associated-domains entitlement.
 
-```bash
-cd apps/mac/IndexApp
-INDEX_LINK_HOST=dev.index.network \
-CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
-./build.sh
-NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
-codesign -d --entitlements :- dist/index.app
-open dist/index.app
-```
+Prepare and run the handoff in this order:
 
-Supply real dev IDs only at execution time. After the entitlement inspection,
-exercise this seven-row matrix; stop and report a failed row rather than falling
-back to a production host.
+1. In Apple Developer Certificates, Identifiers & Profiles, register or select
+   the explicit App ID `network.index.system6`.
+2. Edit that App ID, enable Associated Domains, confirm **Associated Domains enabled**
+   is shown, and save it.
+3. Create a **Distribution → Developer ID** provisioning profile for that App
+   ID, selecting the matching Developer ID Application certificate.
+4. Download the Developer ID provisioning profile to the operator machine. Do
+   not commit it or record its local name or path in PR evidence.
+5. From the repository root, build with all three required inputs:
+
+   ```bash
+   cd apps/mac/IndexApp
+   INDEX_LINK_HOST=dev.index.network \
+   CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
+   PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
+   ./build.sh
+   ```
+
+6. Verify the embedded profile and signed entitlements, then notarize. The
+   notarization script revalidates the signed bundle and profile before
+   submission, waits for notary acceptance, staples and validates the ticket,
+   rechecks the signature, and runs the Gatekeeper assessment. Launch only
+   after every command succeeds:
+
+   ```bash
+   test -f dist/index.app/Contents/embedded.provisionprofile
+   codesign --verify --deep --strict --verbose=2 dist/index.app
+   codesign -d --entitlements :- dist/index.app
+   NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
+   open dist/index.app
+   ```
+
+7. Treat runtime launch as a separate required check. `codesign`, notary
+   acceptance, stapling, and `spctl` can all pass while AMFI still rejects the
+   restricted Associated Domains entitlement with `No matching profile found`.
+   That failure means the embedded profile does not authorize the launched app;
+   do not treat the earlier checks as a successful handoff.
+
+Supply real dev IDs and local values only at execution time. After the runtime
+launch, exercise this seven-row matrix; stop and report a failed row rather than
+falling back to a production host.
 
 | URL / condition | Expected outcome |
 | --- | --- |

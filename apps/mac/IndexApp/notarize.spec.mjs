@@ -71,7 +71,12 @@ test('documents the Developer ID dev handoff', () => {
   for (const required of [
     'INDEX_LINK_HOST=dev.index.network',
     'CODESIGN_IDENTITY=',
+    'PROVISIONING_PROFILE=',
     'NOTARYTOOL_PROFILE=',
+    'embedded.provisionprofile',
+    'Associated Domains enabled',
+    'Developer ID provisioning profile',
+    'No matching profile found',
     'https://dev.index.network/u/<id>/chat',
     'stays in the browser',
     'redacted',
