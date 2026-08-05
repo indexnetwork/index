@@ -26,6 +26,16 @@ backfill (299 rows reclassified, zero surprises).
 **empty** — you get `relation "opportunities" does not exist`. Always pass all three:
 `projectId`, `branchId`, `databaseName: "protocol_prod"`.
 
+**Endpoint drift between local and Railway dev is expected:** the Railway dev `protocol`
+service's `DATABASE_URL` resolves to the pooled endpoint of `br-late-tooth-ahlsfgdb`
+(e.g. `ep-divine-hall-…-pooler.c-3.us-east-1.aws.neon.tech`). The root `.env.development`
+`DATABASE_URL` intentionally points at a *different* endpoint (`ep-weathered-poetry-…`) —
+the owner's **personal dev branch**, not staleness; do not flag or "fix" it. When
+verifying Railway dev deploys or migrations (e.g. checking a Drizzle migration landed),
+treat the Railway dev service's `DATABASE_URL` as authoritative — read it via
+`railway run --environment dev --service protocol` env injection, never print it —
+not the local `.env`.
+
 ## The sequence (do not skip steps)
 
 1. **Size the problem + validate the discriminator with a control group** (read-only,

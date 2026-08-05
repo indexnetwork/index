@@ -210,7 +210,7 @@ Opportunity and profile links are plain `https://index.network/...` URLs that op
 | `/c/:code` | Same landing page (retired connect links). |
 | `/u/:id` | The existing public profile page, unchanged. |
 
-The macOS download CTA on that landing page currently points at `https://index.network/download`, which is not a registered web route — it falls through to the web app's catch-all and renders the not-found page until the signed release publishes its real URL.
+The macOS CTA on that landing page links to `/download`, the app's install page. `/download` reads its artifact URL from `VITE_MAC_APP_DOWNLOAD_URL`: while that is unset it states that the app is not yet publicly available and offers no download button, and once a Developer ID-signed, notarized build is published it renders a real download with no code change. The CTA therefore never dead-ends, in either state.
 
 **Legacy short links.** `GET /c/:code` on this protocol server is a tombstone for links already delivered in chats. `main.ts` rewrites the unprefixed path onto `ConnectLinkController`, which performs no database lookup and no opportunity side effects: a code matching `^[A-Za-z0-9]{10}$` gets a `302` to `${WEB_APP_URL}/c/<code>` (default `https://index.network`) with the request's query string preserved — already-delivered links carry `?link_preview=false`, and dropping it would resurrect preview cards in chat clients — and anything else gets a `404` HTML page. The resolution stack behind it — `/c/:code/go`, connect-link minting, connect tokens, surface routing — is deleted.
 
@@ -2525,6 +2525,8 @@ Inbound endpoint for Telegram Bot API updates. Called by Telegram when the bot r
 **Body**: Telegram `Update` object (JSON). The handler inspects `message.chat.id`, `message.text`, and optional `message.from.username`. When a valid username is present, it is stored as the user's public Telegram social handle without clearing other socials.
 
 **Response**: Always `200 OK`. Inbound handling is fire-and-forget so the endpoint never blocks Telegram's delivery pipeline.
+
+**Half-configured gateway**: inbound is gated by `TELEGRAM_WEBHOOK_SECRET` and outbound by `TELEGRAM_BOT_TOKEN`, so a deployment with only the secret set authenticates updates it can never answer. When the bot token is missing the update is acknowledged and **dropped without running the inbound path** — the chat agent does not run, no chat session or message rows are written, and one warning is logged per process. The response stays `200` deliberately: a non-2xx makes Telegram retry the same update indefinitely. To disable the gateway cleanly, unset both variables.
 
 > Registered automatically at backend startup via `setWebhook` when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are configured.
 

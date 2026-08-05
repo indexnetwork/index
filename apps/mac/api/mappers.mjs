@@ -36,7 +36,7 @@ export function mapEventSummary(input = {}) {
   return {
     ...DEFAULT_EVENT,
     name: selected?.title || DEFAULT_EVENT.name,
-    venue: selected?.type === 'event' ? 'event index' : DEFAULT_EVENT.venue,
+    venue: DEFAULT_EVENT.venue,
     neighborhood: selected?.prompt || DEFAULT_EVENT.neighborhood,
     doors: networks.length ? `${networks.length} indexes joined` : DEFAULT_EVENT.doors,
     attending: memberCount,
