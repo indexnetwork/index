@@ -127,12 +127,86 @@ ${entries}
 `;
 }
 
+/**
+ * The engine's copy of the discovery catalogue, rendered as the full text of
+ * services/api/src/cli/discovery.flags.ts.
+ *
+ * A second output rather than a second source. The engine cannot import the
+ * catalogue — services/api sets `rootDir: ./src`, so a relative import of a
+ * protocol source file is TS6059, and @indexnetwork/protocol exports only its
+ * built `dist` entry — so a copy is forced. Generating it means the copy is
+ * never typed by hand, and discovery.flags.spec.ts asserts it equals
+ * `HARNESS_ENV_KEYS.discovery` besides, so drift fails CI rather than shipping
+ * a refusal that names a flag the graph does read.
+ */
+export function renderEngineFlags(catalog: Record<OpsHarness, string[]>): string {
+  const keys = catalog.discovery.map((key) => `  '${key}',`).join("\n");
+  return `/**
+ * GENERATED LIST — regenerate with:
+ *   cd packages/protocol && bun ./eval/ops/ops.envcatalog.build.ts
+ *
+ * The environment flags this harness may offer: those the discovery graph
+ * actually reads, derived by walking the graph's own transitive import closure
+ * and collecting \`process.env\` reads.
+ *
+ * DISCOVERY_ENV_KEYS below is a verbatim copy of \`HARNESS_ENV_KEYS.discovery\`
+ * in packages/protocol/eval/ops/ops.envcatalog.ts. It is copied rather than
+ * imported because services/api sets \`rootDir: ./src\`, so importing a protocol
+ * source file from production code is TS6059, and @indexnetwork/protocol
+ * exports only its built \`dist\` entry point. A spec file may reach across, and
+ * discovery.flags.spec.ts asserts this copy equals the catalogue exactly — so
+ * the duplication cannot drift silently, which is the only thing that made a
+ * hand-kept list dangerous.
+ *
+ * The previous version of this file pinned nine keys by hand. The graph reads
+ * twenty-six offerable ones. The nine were the result of scanning against a
+ * sixteen-key hand-written allowlist: the list was the limit, not the code, so
+ * \`NEGOTIATOR_STANCE\` and eighteen others were refused by a message asserting
+ * the graph could not read them — which was false. The list is now derived and
+ * the code answers.
+ *
+ * Credentials are absent by construction: the generator drops any key
+ * \`isCredentialEnvKey\` matches, so no configuration reaching this harness can
+ * repoint it at another provider account or endpoint.
+ */
+
+export const DISCOVERY_ENV_KEYS: readonly string[] = Object.freeze([
+${keys}
+]);
+
+export type AbEnvConfig = Readonly<Record<string, string>>;
+
+/**
+ * Throws when a config names a flag this harness cannot honestly exercise.
+ *
+ * The refusal is kept — a key the graph never reads is a control that moves
+ * nothing, and accepting it would let a run attribute noise to a flag that was
+ * never consulted. Only the list it checks against has changed.
+ */
+export function assertAbEnvConfig(config: AbEnvConfig): void {
+  for (const [key, value] of Object.entries(config)) {
+    if (!DISCOVERY_ENV_KEYS.includes(key)) {
+      throw new Error(\`\${key} is not readable by the discovery graph; this harness cannot test it\`);
+    }
+    if (value.trim() === '') {
+      throw new Error(\`\${key} has an empty value; unset it instead of blanking it\`);
+    }
+  }
+}
+`;
+}
+
+/** services/api, a sibling of packages/protocol in the monorepo. */
+const ENGINE_FLAGS_TARGET = path.resolve(PROTOCOL_ROOT, "../../services/api/src/cli/discovery.flags.ts");
+
 if (import.meta.main) {
   const target = path.join(PROTOCOL_ROOT, "eval/ops/ops.envcatalog.ts");
   const catalog = buildEnvCatalog();
   await Bun.write(target, renderEnvCatalog(catalog));
+  await Bun.write(ENGINE_FLAGS_TARGET, renderEngineFlags(catalog));
   for (const harness of OPS_HARNESSES) {
     console.log(`${harness.padEnd(12)} ${catalog[harness].length} keys`);
   }
   console.log(`\nWrote ${path.relative(PROTOCOL_ROOT, target)}`);
+  console.log(`Wrote ${path.relative(PROTOCOL_ROOT, ENGINE_FLAGS_TARGET)}`);
 }

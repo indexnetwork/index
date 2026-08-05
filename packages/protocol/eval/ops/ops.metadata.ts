@@ -546,8 +546,8 @@ export const HARNESS_AGENT_METADATA: Readonly<Record<OpsHarness, readonly AgentM
   // and an LLM judge, all overridable through EVAL_MODEL_OVERRIDES — but because
   // the two sides of an A/B run differ in environment configuration and never in
   // models, so a per-side model editor could not change the comparison it looked
-  // like it configured. The launch form edits the AB_FLAGS environment instead
-  // (services/api/src/cli/discovery.flags.ts).
+  // like it configured. The launch form edits the DISCOVERY_ENV_KEYS environment
+  // instead (services/api/src/cli/discovery.flags.ts).
   discovery: [],
   premise: [
     {

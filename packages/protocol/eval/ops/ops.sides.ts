@@ -83,7 +83,8 @@ const AB_SIDE_VALUE_MAX_LENGTH = 200;
  * value carrying one of these therefore renders argv the engine rejects with
  * "--a expects KEY=VALUE", after the run has been queued and displayed. The
  * keys need no equivalent check: DISCOVERY_ENV_KEYS membership is asserted
- * first, and every one of the nine matches the key half by construction.
+ * first, and every catalogued key is SCREAMING_SNAKE, which matches the key
+ * half by construction.
  */
 const LINE_TERMINATORS = /[\n\r\u2028\u2029]/;
 

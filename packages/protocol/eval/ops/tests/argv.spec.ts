@@ -389,20 +389,22 @@ describe("renderRun", () => {
 });
 
 describe("RunSpecSchema sides", () => {
-  it("keeps the site's nine offerable keys identical to the engine's AB_FLAGS", () => {
-    // Read, never retyped: discovery.flags.ts imports node:fs, so ops.argv.ts
-    // cannot import AB_FLAGS without breaking the Vite bundle the app builds from
-    // these modules. Pinning the list as source text is the same technique
+  it("keeps the site's offerable keys identical to the engine's copy", () => {
+    // Read, never retyped: the engine's module lives outside this package and
+    // cannot be imported by production code here (services/api sets rootDir
+    // ./src). Pinning the list as source text is the same technique
     // registry.spec.ts uses for AB_MAX_REPETITIONS: a key added, removed or
     // renamed in the engine fails here instead of being silently dropped by a
     // parser that ignores what it does not recognise.
     const source = readFileSync(AB_FLAGS_SOURCE, "utf8");
-    const literal = source.match(/export const AB_FLAGS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
-    if (!literal) throw new Error("AB_FLAGS not found in discovery.flags.ts");
+    const literal = source.match(/export const DISCOVERY_ENV_KEYS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
+    if (!literal) throw new Error("DISCOVERY_ENV_KEYS not found in discovery.flags.ts");
     const engineKeys = [...literal[1]!.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]!);
 
     // Guards the pin against passing vacuously on an empty or unparsed match.
-    expect(engineKeys.length).toBe(9);
+    // Not a fixed count: a count is what let "nine" look correct while the
+    // graph read twenty-six. The set equality below is the real assertion.
+    expect(engineKeys.length).toBeGreaterThan(0);
     expect([...DISCOVERY_ENV_KEYS].sort()).toEqual([...engineKeys].sort());
   });
 

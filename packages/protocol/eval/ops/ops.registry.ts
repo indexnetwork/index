@@ -197,7 +197,7 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
    * true is narrower — the two SIDES never differ in models, only in
    * environment configuration — so a per-side model editor would be a control
    * that cannot change the comparison it appears to configure. Its per-side
-   * surface is AB_FLAGS (services/api/src/cli/discovery.flags.ts).
+   * surface is DISCOVERY_ENV_KEYS (services/api/src/cli/discovery.flags.ts).
    *
    * An empty `agents` list is not on its own enough to keep models off the
    * page: the Launch form's Config picker is gated on saved configs, not on

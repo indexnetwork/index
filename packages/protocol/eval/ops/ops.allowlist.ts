@@ -9,6 +9,12 @@
  * it: ops.profiles.ts pulls in node:fs and node:crypto, which the Vite bundle
  * cannot. This module must stay dependency-free.
  */
+// The only import this module may take: ops.envcatalog.ts is generated, has no
+// runtime dependencies of its own, and is browser-safe for the same reason this
+// file is. The scanner that produces it (ops.envscan.ts) uses node:fs and must
+// never appear in this chain.
+import { HARNESS_ENV_KEYS } from "./ops.envcatalog.js";
+
 /**
  * Credentials, never offerable and never settable from a request. One repoints
  * a run at another provider account and the other at another endpoint, so
@@ -122,50 +128,25 @@ export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
 ]);
 
 /**
- * The environment keys a discovery side may set: the nine the discovery
- * graph actually reads.
+ * The environment keys a discovery side may set: exactly what the discovery
+ * graph reads, derived rather than listed.
  *
- * A copy, and deliberately so — after both directions of a real import were
- * tried and refused by the toolchain:
+ * This was a hand-written list of nine. The graph reads twenty-six offerable
+ * keys, and the nine were what a scan against a sixteen-key allowlist could
+ * return — the list was the limit, not the code. Anything outside it was
+ * refused with "is not readable by the discovery graph", which for
+ * `NEGOTIATOR_STANCE` and eighteen others was false.
  *
- * - This module cannot import the engine's `AB_FLAGS`
- *   (services/api/src/cli/discovery.flags.ts): that module imports node:fs to
- *   derive its list from a scan of the graph's import closure, and this one is
- *   imported by the browser app, so the Vite bundle would break.
- * - The engine cannot import this list either. A relative import from
- *   services/api/src is `TS6059: not under rootDir` (services/api/tsconfig.json
- *   sets `rootDir: ./src`), and `@indexnetwork/protocol/eval/ops/ops.allowlist`
- *   resolves at neither type-check nor runtime, because the package exports
- *   exactly one entry, its built root. Publishing a subpath for eval/ops would
- *   make an eval-only module part of a versioned SDK contract that explicitly
- *   excludes deep imports (STABILITY.md), and would not even work for an
- *   installed consumer, since the published files are dist alone.
+ * Now it is one line off the generated catalogue, so there is nothing left to
+ * keep in sync on this side of the boundary. Both modules are dependency-free
+ * and browser-safe, so this import costs the Vite bundle nothing.
  *
- * So the list is a copy with two guards, one from each side, and neither is a
- * source-text substring match on the values themselves: eval/ops/tests/argv.spec.ts
- * parses the engine's `Object.freeze([...])` literal and compares the sets, and
- * services/api/src/cli/tests/discovery.flags.spec.ts — a spec file, which
- * tsconfig excludes and which may therefore import across — compares the two
- * lists as real imported values. A key added, removed or renamed on either side
- * fails both.
- *
- * Drift matters more here than for a normal allowlist, because the engine does
- * not reject an unreadable key at the CLI boundary — `parseAbRunArgs` scans for
- * the flags it knows — and `buildAbPlan` only refuses it after the harness has
- * loaded its eval modules. A key this list wrongly offers is an operator
- * configuring a control that either fails late or moves nothing.
- *
- * Every key is also in PROFILE_ENV_ALLOWLIST above, so ENV_FLAG_METADATA can
- * describe all nine to the launch form.
+ * The engine keeps its own copy (services/api/src/cli/discovery.flags.ts)
+ * because it genuinely cannot import either module: a relative import from
+ * services/api/src is `TS6059: not under rootDir`, and
+ * `@indexnetwork/protocol/eval/ops/...` resolves at neither type-check nor
+ * runtime, since the package exports exactly one entry, its built root.
+ * discovery.flags.spec.ts — a spec file, which tsconfig excludes and which may
+ * therefore import across — asserts that copy equals this value exactly.
  */
-export const DISCOVERY_ENV_KEYS: readonly string[] = Object.freeze([
-  "DISCOVERY_ALLOWED_TYPES",
-  "DISCOVERY_CONTEXT_TO_INTENT",
-  "DISCOVERY_PROFILE_SOURCE",
-  "DISCOVERY_REJECTION_COOLDOWN_DAYS",
-  "DISCOVERY_SOURCE_PREMISE_LIMIT",
-  "NEGOTIATION_INCLUDE_OTHER_INTENTS",
-  "NEGOTIATION_MAX_TURNS_AMBIENT",
-  "NEGOTIATION_MAX_TURNS_CHAT",
-  "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
-]);
+export const DISCOVERY_ENV_KEYS: readonly string[] = HARNESS_ENV_KEYS.discovery;

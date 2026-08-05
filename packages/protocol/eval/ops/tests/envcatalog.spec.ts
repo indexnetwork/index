@@ -5,11 +5,12 @@ import path from "node:path";
 
 import { isCredentialEnvKey } from "../ops.allowlist.js";
 import { HARNESS_ENV_KEYS } from "../ops.envcatalog.js";
-import { buildEnvCatalog, ENV_SECRET_KEYS, HARNESS_ENTRY_POINTS, PROTOCOL_ROOT, renderEnvCatalog } from "../ops.envcatalog.build.js";
+import { buildEnvCatalog, ENV_SECRET_KEYS, HARNESS_ENTRY_POINTS, PROTOCOL_ROOT, renderEngineFlags, renderEnvCatalog } from "../ops.envcatalog.build.js";
 import { reachableEnvKeys, referencedEnvKeys } from "../ops.envscan.js";
 import { OPS_HARNESSES } from "../ops.registry.js";
 
 const CATALOG_FILE = path.join(PROTOCOL_ROOT, "eval/ops/ops.envcatalog.ts");
+const ENGINE_FLAGS_FILE = path.resolve(PROTOCOL_ROOT, "../../services/api/src/cli/discovery.flags.ts");
 
 /**
  * The eight model and provider keys every scorecard harness reaches. They are
@@ -70,6 +71,16 @@ describe("HARNESS_ENV_KEYS", () => {
     // eyeballed. Rendering both sides means a formatting drift fails too — the
     // committed file must be exactly what the generator would write.
     expect(renderEnvCatalog(buildEnvCatalog())).toEqual(readFileSync(CATALOG_FILE, "utf8"));
+  });
+
+  it("keeps the engine's forced copy byte-identical to what it would generate", () => {
+    // services/api cannot import this catalogue (rootDir ./src makes it TS6059,
+    // and the package exports only its built dist entry), so the engine holds a
+    // copy. Generating that copy rather than typing it is what stops the two
+    // from disagreeing — and a disagreement here is not cosmetic: the engine's
+    // list decides which flags a run refuses, so a stale copy refuses a flag
+    // the graph does read, with a message asserting it does not.
+    expect(renderEngineFlags(buildEnvCatalog())).toEqual(readFileSync(ENGINE_FLAGS_FILE, "utf8"));
   });
 
   it("offers every harness the site can launch, and nothing else", () => {

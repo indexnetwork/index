@@ -359,8 +359,8 @@ function collectFlagValues(args: readonly string[], flag: string): string[] {
 /**
  * One side's configuration, built through a Map so a key like `__proto__`
  * cannot reach an object prototype. Which keys are legal is not decided here:
- * `buildAbPlan` asserts them against `AB_FLAGS`, and duplicating that list at
- * the CLI is exactly the drift this harness exists to prevent.
+ * `buildAbPlan` asserts them against `DISCOVERY_ENV_KEYS`, and duplicating that
+ * list at the CLI is exactly the drift this harness exists to prevent.
  */
 function parseAbSideConfig(args: readonly string[], flag: string, sideId: AbSideId): AbEnvConfig {
   const config = new Map<string, string>();
