@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { DISCOVERY_ENV_KEYS } from "../ops.allowlist.js";
-import { renderRun, RunSpecSchema } from "../ops.argv.js";
+import { renderRun, RunSpecSchema, singleConfigIssues } from "../ops.argv.js";
 import { flagValueIssues } from "../ops.flags.js";
-import { ENV_FLAG_METADATA } from "../ops.metadata.js";
+import { ALLOWED_CONFIG_MODEL_IDS, ENV_FLAG_METADATA } from "../ops.metadata.js";
 import { resolveAdHoc, resolveProfile } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
 
@@ -422,6 +422,53 @@ describe("RunSpecSchema sides", () => {
       kind: "eval", harness: "discovery", profile: "default", flags: {},
       overrides: { models: {}, env: {} },
     })).toMatch(/no configuration/i);
+  });
+
+  it("accepts a discovery run configured only by its models, as the resolved layer does", () => {
+    // `resolveProfile` folds a non-empty `models` into EVAL_MODEL_OVERRIDES,
+    // which is in every catalogue including discovery's, so this run DOES
+    // configure something the graph reads.
+    //
+    // Judging emptiness on `env` alone made the two layers answer differently
+    // about one run: this refusal fired with "set at least one flag the
+    // discovery graph reads" while launchRun accepted the same selection and
+    // rendered `--env EVAL_MODEL_OVERRIDES={...}`. The refusal was false in its
+    // own terms, and the accepted path is the proof.
+    const spec = {
+      kind: "eval" as const, harness: "discovery" as const, profile: "default", flags: {},
+      overrides: { models: { negotiator: ALLOWED_CONFIG_MODEL_IDS[0]! }, env: {} },
+    };
+    expect(RunSpecSchema.safeParse(spec).success).toBe(true);
+
+    // The other layer, on the same input: what launchRun checks after resolving.
+    const resolved = resolveAdHoc(spec.overrides);
+    const readable = Object.fromEntries(
+      Object.entries(resolved.env).filter(([key]) => DISCOVERY_ENV_KEYS.includes(key)),
+    );
+    expect(singleConfigIssues(readable)).toEqual([]);
+  });
+
+  it("states the value cap's real headroom, including where it bites", () => {
+    // The cap's docblock justifies 200 by naming the longest legitimate value.
+    // It said "a model name, 28", which understated it: EVAL_MODEL_OVERRIDES is
+    // in every catalogue and its value is a JSON model map, so the honest
+    // numbers are these — and the largest one is REFUSED.
+    const longest = [...ALLOWED_CONFIG_MODEL_IDS].sort((a, b) => b.length - a.length)[0]!;
+    const agents = [...new Set(Object.values(HARNESS_REGISTRY).flatMap((d) => d.agents))];
+    expect(longest.length).toBe(28);
+
+    const oneAgent = JSON.stringify({ [agents[0]!]: longest });
+    const allAgents = JSON.stringify(Object.fromEntries(agents.map((a) => [a, longest])));
+    expect(oneAgent.length).toBe(55);
+    expect(allAgents.length).toBe(259);
+
+    const sides = (value: string) => ({
+      kind: "eval" as const, harness: "discovery" as const, profile: "default", flags: {},
+      sides: { a: { EVAL_MODEL_OVERRIDES: value }, b: { EVAL_MODEL_OVERRIDES: oneAgent } },
+    });
+    // One agent fits; all five do not, and the refusal names key and length.
+    expect(RunSpecSchema.safeParse(sides(JSON.stringify({ [agents[1]!]: longest }))).success).toBe(true);
+    expect(refusal(sides(allAgents))).toMatch(/EVAL_MODEL_OVERRIDES on side a is 259 characters/);
   });
 
   it("leaves a named config's emptiness to the layer that can resolve it", () => {

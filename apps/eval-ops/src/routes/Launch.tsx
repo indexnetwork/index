@@ -811,8 +811,21 @@ export function Launch() {
    * Scoped to `supportsSides` rather than to every harness, because it is only
    * true of this one: a scorecard harness with no env set runs the committed
    * default, which is its normal and most common launch.
+   *
+   * "Configures nothing" means neither env NOR a named config, for the same
+   * reason `singleConfigIssues` takes models: `resolveProfile` folds a config's
+   * models into EVAL_MODEL_OVERRIDES, a key the discovery catalogue offers, so a
+   * single-shape run under a saved config IS configured and the server accepts
+   * it. Judging on env rows alone disabled Run on a launch both server layers
+   * would have taken — the mirror of the defect that let the empty default
+   * through, and just as much a disagreement between the form and the server.
+   * Only the single shape can carry a config: the paired shape renders no
+   * picker, and pins both columns to "default".
    */
-  const envEmpty = supportsSides && state.env.length === 0;
+  const envEmpty =
+    supportsSides
+    && state.env.length === 0
+    && (carriesSides || state.profile.reference === 'default');
   const envGeneralIssues =
     envIncomplete || envEmpty ? [] : envIssues.filter((issue) => issue.path.length < (carriesSides ? 2 : 1));
 
@@ -1156,7 +1169,7 @@ export function Launch() {
                 <p className="text-term-red">
                   {carriesSides
                     ? 'Add a flag to both sides before running.'
-                    : 'Add a flag before running: a discovery run measures the configuration you set, so with none there is nothing to measure.'}
+                    : 'Add a flag or choose a config before running: a discovery run measures the configuration you set, so with none there is nothing to measure.'}
                 </p>
               )}
               {envIncomplete && (

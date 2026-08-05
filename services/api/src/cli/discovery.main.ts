@@ -907,12 +907,18 @@ export function abRunShape(sides: AbSides): AbRunShape {
  * whole manifest.
  *
  * Exported and pure for the same reason as `abRunShape` above, and it matters
- * more here because this one is DESTRUCTIVE. The call site sits inside
- * `runAbComparison`, which needs live Neon credentials, so no test can reach it;
- * replacing the filter with `[...attested.targets]` left the whole api CLI suite
- * green while making a single run reset `eval-ab-b` too — destroying evidence
+ * more here because this one is DESTRUCTIVE.
+ *
+ * RESIDUAL RISK, open and not closed by these tests: this FUNCTION is covered,
+ * its WIRING is not. The call site sits inside `runAbComparison`, which needs
+ * live Neon credentials and performs two branch resets, so no test in this suite
+ * reaches it. A reviewer mutated the call site itself — `const runningTargets =
+ * [...attested.targets]`, dropping the filter — and all 401 api CLI tests stayed
+ * green, while a single run would have reset `eval-ab-b` too: destroying evidence
  * another operator may be mid-way through reading, and falsifying every message
- * that says a single run touches one branch.
+ * that says a single run touches one branch. Treat a change to that assignment as
+ * unguarded by CI and verify it against live Neon, or cover it by injecting the
+ * control plane so the call site becomes reachable.
  *
  * The completeness check belongs here rather than at the call site for the same
  * reason: a manifest missing the side being run must fail before the first

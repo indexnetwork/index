@@ -79,10 +79,12 @@ discovery:     5 cases, only --runs (max 10) and --case; runs in services/api
 The launch form, the workload estimate and `renderRun`'s argv rendering all read this one
 table, so the UI cannot offer a flag the CLI does not accept, and the form's numeric
 bounds are the same bounds `RunSpecSchema` enforces server-side. Workload is `cases ×
-runs` for the scorecard harnesses and doubles for `discovery`, whose single run
-evaluates every case on both sides. `renderRun` and the launch form both multiply by the
-same `SIDES_PER_RUN` ([`ops.sides.ts`](./ops.sides.ts)), so the number an operator confirms
-before spending and the number recorded on the run cannot drift apart.
+runs` for the scorecard harnesses, and for `discovery` it depends on the shape of the
+run: a comparison evaluates every case under both configurations and doubles, while a
+single configuration passes over the corpus once. `renderRun` and the launch form both
+multiply by the same `sidesPerRun(spec)` ([`ops.sides.ts`](./ops.sides.ts)) — a function
+of the spec, not a per-harness constant — so the number an operator confirms before
+spending and the number recorded on the run cannot drift apart.
 
 **`discovery` also carries two configurations.** Its spec has a `sides: { a, b }`
 object of environment values, rendered as `--a KEY=VALUE` / `--b KEY=VALUE` with keys
@@ -436,10 +438,16 @@ handled ahead of the gate because it is the request that establishes one.
   being silently ignored.
 - The one environment a client may name is `sides` (or a single configuration) on a
   `discovery` spec: values for the 26 `DISCOVERY_ENV_KEYS` flags, which are protocol
-  feature flags and nothing
-  else. They reach the child as `--a`/`--b`/`--env` argv, never as the run's injected env, and any
-  other key **fails with 400** — as does any value the flag's own read site would not
-  honour, or one longer than 200 characters, or one carrying a line break.
+  feature flags and nothing else. Any other key **fails with 400** — as does any value
+  the flag's own read site would not honour, or one longer than 200 characters, or one
+  carrying a line break.
+  - A **pair** reaches the child only as `--a`/`--b` argv. The two sides are argv by
+    construction: one process cannot hold two values for one variable.
+  - A **single configuration** reaches it as `--env` argv *and* in the child's injected
+    environment, because that shape's configuration is `resolved.env` — the same object
+    `renderRun` copies into the record's `env` and the executor spawns with
+    (`ops.argv.ts:306`; `server.spec.ts` asserts the injected value). The 400s above are
+    what makes that safe: the value was validated before it was injected.
 - The `fixture-reset` variant of `RunSpec` is deliberately not parseable by
   `RunSpecSchema`. A reset is not constructible through `/api/runs`; it exists only behind
   the guarded fixture route.

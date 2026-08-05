@@ -63,40 +63,24 @@ export function sidesPerRun(spec: { harness: OpsHarness; sides?: AbSides }): num
   return spec.sides === undefined ? 1 : SIDE_IDS.length;
 }
 
-/**
- * @deprecated Renamed to {@link SUPPORTS_SIDES}. Kept so the browser app keeps
- * compiling across the task that renames it there; delete once Launch.tsx,
- * Run.tsx and Overview.tsx have moved. The VALUE is unchanged — only the claim
- * it makes is weaker, because discovery no longer requires a pair.
- */
-export const REQUIRES_SIDES = SUPPORTS_SIDES;
-
-/**
- * @deprecated Superseded by {@link sidesPerRun}, which reads the spec's shape
- * instead of assuming discovery always runs two sides. Retained ONLY so the
- * launch form keeps building; it overstates a single discovery run by double,
- * so the form must move to `sidesPerRun` in the task that owns it.
- */
-export const SIDES_PER_RUN: Readonly<Record<OpsHarness, number>> = Object.freeze({
-  matching: 1,
-  profile: 1,
-  premise: 1,
-  opportunity: 1,
-  discovery: 2,
-});
-
 export const SIDE_IDS = ["a", "b"] as const;
 
 /**
  * Longest value a side may give a flag.
  *
- * No offered flag needs more than a few characters (the longest legitimate value
- * is a model name such as "google/gemini-2.5-flash-lite", 28), and the value is
- * not merely stored: it is recorded
- * on the run record, rendered on every page that shows the spec, and passed to
- * Bun.spawn as an argv element — where a megabyte-scale value would fail the
- * whole exec with E2BIG rather than being refused with a message. Matches the
- * cap SelectionValueSchema already puts on the other operator-supplied strings.
+ * Most offered flags need only a few characters — an enum token, an integer, or
+ * a model name such as "google/gemini-2.5-flash-lite" (28). The exception is
+ * EVAL_MODEL_OVERRIDES, which every catalogue offers and whose value is a JSON
+ * agent-to-model map: one agent at the longest model id is 55 characters, and
+ * all five overridable agents at that id is 259, which this cap REFUSES. That
+ * refusal is deliberate and pre-flight — it names the key and the length — but
+ * it does mean the largest expressible model map cannot be set per side. Raise
+ * the cap rather than special-casing the key if that becomes a real need; the
+ * value is not merely stored, it is recorded on the run record, rendered on
+ * every page that shows the spec, and passed to Bun.spawn as an argv element,
+ * where a megabyte-scale value would fail the whole exec with E2BIG rather than
+ * being refused with a message. Matches the cap SelectionValueSchema already
+ * puts on the other operator-supplied strings.
  */
 const AB_SIDE_VALUE_MAX_LENGTH = 200;
 
@@ -188,9 +172,24 @@ function sideConfigIssues(config: Record<string, string>, id: string, label: str
  * survives is "at least one flag", because a run configuring nothing is a run
  * measuring the committed default, which the engine refuses (`parseAbSideConfig`
  * in services/api/src/cli/discovery.main.ts throws when a shape names no key).
+ *
+ * `models` is the second half of the same question, not a courtesy. A model
+ * selection is not a sibling of the env block: `resolveProfile` folds a
+ * non-empty `models` into `EVAL_MODEL_OVERRIDES`, which every catalogue offers,
+ * so a run selecting only models DOES configure something the harness reads.
+ * Judging emptiness on `env` alone made the two layers disagree about one run —
+ * `RunSpecSchema` refused an ad-hoc `{models:{...}, env:{}}` with "set at least
+ * one flag the discovery graph reads" while the resolved path accepted the same
+ * selection, and the refusal was false in its own terms because the accepted
+ * path proves the graph reads it. Callers that have already resolved a profile
+ * pass the folded env and omit `models`; callers holding an unresolved override
+ * pass both.
  */
-export function singleConfigIssues(config: Record<string, string>): AbSideIssue[] {
-  if (Object.keys(config).length === 0) {
+export function singleConfigIssues(
+  config: Record<string, string>,
+  models: Record<string, string> = {},
+): AbSideIssue[] {
+  if (Object.keys(config).length === 0 && Object.keys(models).length === 0) {
     return [{
       path: [],
       message: "This run has no configuration; set at least one flag the discovery graph reads, or there is nothing to measure",

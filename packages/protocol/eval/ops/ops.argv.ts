@@ -14,7 +14,7 @@ import type { EvalRunSpec, RunFlags } from "./ops.types.js";
  * browser bundle). Re-exported here because this is where the server reads them
  * from.
  */
-export { REQUIRES_SIDES, SIDES_PER_RUN, SUPPORTS_SIDES, abSideIssues, sidesPerRun, singleConfigIssues, type AbSideIssue } from "./ops.sides.js";
+export { SUPPORTS_SIDES, abSideIssues, sidesPerRun, singleConfigIssues, type AbSideIssue } from "./ops.sides.js";
 export { flagValueIssues, type FlagValueIssue } from "./ops.flags.js";
 
 /**
@@ -143,8 +143,13 @@ export const RunSpecSchema = z
     // of flags. The named path is checked in `launchRun` once the profile has been
     // resolved, and by `renderRun` before anything is spent; `singleConfigIssues`
     // is the one definition all three call.
+    //
+    // `models` goes in alongside `env` because this shape has not been resolved
+    // yet: `resolveProfile` folds a non-empty `models` into EVAL_MODEL_OVERRIDES,
+    // a key every catalogue offers, so judging emptiness on `env` alone refused a
+    // model-only run here that `launchRun` accepts one layer down.
     if (supportsSides && spec.sides === undefined && spec.overrides !== undefined) {
-      for (const issue of singleConfigIssues(spec.overrides.env)) {
+      for (const issue of singleConfigIssues(spec.overrides.env, spec.overrides.models)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: issue.path.length === 0 ? ["overrides", "env"] : ["overrides", "env", ...issue.path],

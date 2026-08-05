@@ -1352,14 +1352,40 @@ describe('Launch — refusing what the server would refuse', () => {
     expect(screen.queryByRole('combobox', { name: 'flag 1' })).toBeNull();
 
     expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
-    expect(screen.getByText(/add a flag before running/i)).toBeTruthy();
+    expect(screen.getByText(/add a flag or choose a config before running/i)).toBeTruthy();
 
     // And it is the ABSENCE of configuration that blocks it: one flag clears it.
     await user.click(screen.getByRole('button', { name: /^add flag$/ }));
     await pickFlag(user, 1, 'DISCOVERY_PROFILE_SOURCE');
     await user.selectOptions(screen.getByLabelText('value 1'), 'user_context');
     expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
-    expect(screen.queryByText(/add a flag before running/i)).toBeNull();
+    expect(screen.queryByText(/add a flag or choose a config before running/i)).toBeNull();
+  });
+
+  /**
+   * The mirror of the blocker above, and the same disagreement one layer up.
+   *
+   * A saved config's models are folded into EVAL_MODEL_OVERRIDES by
+   * `resolveProfile`, and that key is in discovery's catalogue — so a
+   * single-shape run under a models-only config IS configured, and both server
+   * layers accept it (argv.spec.ts pins the pair agreeing). Judging emptiness on
+   * env rows alone disabled Run on a launch the server would have taken, which
+   * is the same form/server disagreement in the opposite direction: not a 400
+   * after committing, but a run the operator could never start.
+   */
+  it('lets a config alone configure a single discovery run', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await selectDiscovery(user);
+
+    // Precondition: still the empty default, and still refused.
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+
+    // `claude-evaluator` sets models and no env — the shape at issue.
+    await user.selectOptions(screen.getByLabelText('Config'), 'claude-evaluator');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+    expect(screen.queryByText(/add a flag or choose a config before running/i)).toBeNull();
   });
 
   it('still refuses an empty comparison, naming both sides', async () => {

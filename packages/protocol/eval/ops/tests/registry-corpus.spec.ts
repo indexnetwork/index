@@ -26,10 +26,12 @@ const CORPORA: Record<OpsHarness, readonly unknown[]> = {
   profile: PROFILE_CASES,
   premise: PREMISE_CASES,
   opportunity: OPPORTUNITY_CASES,
-  // discovery runs the historical matrix corpus once per side, so one run
-  // costs cases x runs x 2 — renderRun and the launch form both double it from
-  // SIDES_PER_RUN (ops.sides.ts), which makes an understated caseCount twice as
-  // expensive here as it is for a scorecard harness.
+  // discovery runs the historical matrix corpus once per side, so a COMPARISON
+  // costs cases x runs x 2 while a single configuration costs cases x runs —
+  // renderRun and the launch form both take the multiplier from
+  // sidesPerRun(spec) (ops.sides.ts), which reads the run's shape. An
+  // understated caseCount is therefore up to twice as expensive here as it is
+  // for a scorecard harness.
   discovery: HISTORICAL_MATRIX_CASES,
 };
 

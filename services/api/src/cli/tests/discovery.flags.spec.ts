@@ -124,14 +124,27 @@ describe('the engine and the site refuse the same values', () => {
    */
   it('carries every metadata field for every offered key', () => {
     const offered = ENV_FLAG_METADATA.filter((meta) => DISCOVERY_ENV_KEYS.includes(meta.key));
-    expect(offered.length).toBeGreaterThan(0);
+    // Exact, not `> 0`: a count that only has to be positive would still pass if
+    // the catalogue collapsed to one key, which is the failure this guards.
+    expect(offered.length).toBe(DISCOVERY_ENV_KEYS.length);
+
     for (const meta of offered) {
       const rule = ENGINE_ENV_VALUE_RULES[meta.key];
       expect(rule, `${meta.key} is offered by the site but has no engine rule`).toBeDefined();
-      expect(rule!.kind, `${meta.key} kind`).toBe(meta.kind);
-      expect(rule!.values ?? undefined, `${meta.key} values`).toEqual(meta.values ?? undefined);
-      expect(rule!.min ?? undefined, `${meta.key} min`).toEqual(meta.min ?? undefined);
-      expect(rule!.max ?? undefined, `${meta.key} max`).toEqual(meta.max ?? undefined);
+
+      // Compared as whole objects rather than field by field. Naming the fields
+      // here is what let `max` be added to ENV_FLAG_METADATA and not to the
+      // generator's template without a test noticing: a hardcoded list pins the
+      // fields it happens to mention and is silent about the next one. The
+      // projection is taken from the METADATA's own keys, minus the ones that
+      // are documentation rather than validation, so a sixth validation field
+      // fails here the day it is added.
+      const DOC_ONLY = new Set(['key', 'label', 'description', 'defaultDescription']);
+      const validationFields = Object.keys(meta).filter((field) => !DOC_ONLY.has(field));
+      const project = (source: Record<string, unknown>) =>
+        Object.fromEntries(validationFields.map((field) => [field, source[field] ?? undefined]));
+      expect(project(rule as unknown as Record<string, unknown>), `${meta.key} validation fields`)
+        .toEqual(project(meta as unknown as Record<string, unknown>));
     }
   });
 
@@ -142,14 +155,35 @@ describe('the engine and the site refuse the same values', () => {
    * Number() accepted '0x10' as sixteen days while the graph read NaN and fell
    * back to its 7-day default. Both sides then ran the SAME configuration while
    * the artifact's configDiff named a difference — the exact outcome an A/B run
-   * must never produce. `integer` was never exposed (its /^\d+$/ shape rejects
-   * these already), which this pins so a future relaxation is caught.
+   * must never produce. `integer` was never exposed, because its /^\d+$/ shape
+   * rejects these already — and the integer case below is what makes that a
+   * guard rather than an assertion about today: relaxing that regex to anything
+   * Number()-shaped would otherwise pass this whole suite.
    */
   it.each(['0x10', '0b110', '0o17', '7abc', '1.2.3'])('refuses %s for a number flag, in both validators', (value) => {
     let engineAccepts = true;
     try { assertAbEnvConfig({ DISCOVERY_REJECTION_COOLDOWN_DAYS: value }); } catch { engineAccepts = false; }
     expect(engineAccepts, 'engine').toBe(false);
     expect(envValueIssueForKey('DISCOVERY_REJECTION_COOLDOWN_DAYS', value), 'site').not.toBeNull();
+  });
+
+  it.each(['0x10', '0b110', '0o17', '7abc', '1.2.3', ' 7', '7 ', '+7', '1e3'])(
+    'refuses %s for an integer flag, in both validators',
+    (value) => {
+      // The parallel the docblock above promised and did not have. Every one of
+      // these is Number()-parseable or Number-adjacent, and the integer read
+      // site (optionalInt, /^\d+$/) honours none of them: it falls back to the
+      // graph's own default while the artifact reports the operator's value.
+      let engineAccepts = true;
+      try { assertAbEnvConfig({ DISCOVERY_SOURCE_PREMISE_LIMIT: value }); } catch { engineAccepts = false; }
+      expect(engineAccepts, 'engine').toBe(false);
+      expect(envValueIssueForKey('DISCOVERY_SOURCE_PREMISE_LIMIT', value), 'site').not.toBeNull();
+    },
+  );
+
+  it.each(['0', '7', '40'])('still accepts %s for an integer flag, in both validators', (value) => {
+    expect(() => assertAbEnvConfig({ DISCOVERY_SOURCE_PREMISE_LIMIT: value })).not.toThrow();
+    expect(envValueIssueForKey('DISCOVERY_SOURCE_PREMISE_LIMIT', value)).toBeNull();
   });
 
   it.each(['7', '0.5', '1e3', '.5'])('still accepts %s for a number flag, in both validators', (value) => {

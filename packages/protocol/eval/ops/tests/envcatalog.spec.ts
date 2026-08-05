@@ -237,4 +237,27 @@ describe("credential shape", () => {
       expect(isCredentialEnvKey(key), `${key} must be refused`).toBe(true);
     }
   });
+
+  it("covers the two named secrets by shape alone, so the list is redundant", () => {
+    // The design doc claims deleting ENV_SECRET_KEYS would change nothing,
+    // because the shape rule already covers both entries — and keeps the list
+    // only to name the two keys this system actually holds. That claim was
+    // unpinned: `isCredentialEnvKey` consults the list FIRST, so every test
+    // above passes whether or not the shape rule covers these two names, and
+    // the nearest test exercises only names that were never on the list.
+    //
+    // This is the missing half: the shape rule alone, applied to the very keys
+    // the list names. If a rename escapes it (OPENROUTER_APIKEY, say) this
+    // fails, and the list stops being redundant — which is the fact the doc
+    // asserts and the reason the list is safe to keep.
+    const source = readFileSync(path.join(import.meta.dir, "..", "ops.allowlist.ts"), "utf8");
+    const literal = source.match(/const CREDENTIAL_NAME_PATTERN\s*=\s*\/(.+)\/([a-z]*)\s*;/);
+    if (!literal) throw new Error("CREDENTIAL_NAME_PATTERN not found in ops.allowlist.ts");
+    const shapeOnly = new RegExp(literal[1]!, literal[2]!);
+
+    expect(ENV_SECRET_KEYS.length).toBeGreaterThan(0);
+    for (const key of ENV_SECRET_KEYS) {
+      expect(shapeOnly.test(key), `${key} must be caught by the shape rule alone`).toBe(true);
+    }
+  });
 });

@@ -474,13 +474,18 @@ record holds the slot only while its pid is genuinely alive
 container is replaced and the child dies with it — unblocks the harness instead
 of stranding it behind a file nobody can delete.
 
-**Both sides always run, so the workload is cases × runs × 2.**
-`SIDES_PER_RUN["discovery"]` is 2 (`ops.sides.ts:54-60`) and is the single
+**The workload is cases × runs × the run's own number of sides.** Discovery has
+two shapes, and they cost different amounts: a comparison passes over the corpus
+twice in one invocation, a single configuration passes over it once. So the
+multiplier is a function of the SPEC, not of the harness — `sidesPerRun`
+(`ops.sides.ts`) returns `spec.sides === undefined ? 1 : 2`. It is the single
 source for both the workload recorded on the run record (`renderRun`,
-`ops.argv.ts:296`) and the number the launch form prices and displays
-(`Launch.tsx:546,554`, rendered at `Launch.tsx:840-843`), so the two cannot
-disagree. The A/B checkbox is pinned on and disabled for this harness
-(`Launch.tsx:646`), because one run is already both sides.
+`ops.argv.ts:339`) and the number the launch form prices and displays
+(`Launch.tsx:755-757`), so the two cannot disagree. A per-harness constant
+pinned at 2 — which is what this was — quoted 30 invocations for a single run
+that costs 15, and has been deleted rather than deprecated. The A/B checkbox is
+an ordinary checkbox for this harness (`Launch.tsx:938`): ticking it compares two
+configurations, leaving it off measures one.
 
 The spend confirmation fires for **every** run of this harness, filtered or not,
 because `--case` narrows what is measured, not what is destroyed: a filtered run
