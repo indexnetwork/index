@@ -267,7 +267,8 @@ jobs:
 
   eval-ops:
     # The eval-ops app was excluded from the root build (by design: it is not
-    # part of the production deployment) but was also absent from CI entirely,
+    # part of the API's deployment — it deploys as its own Railway service from
+    # apps/eval-ops/railway.toml) but was also absent from CI entirely,
     # so neither typecheck nor the 47 vitest tests written in Tasks 12–17 gated
     # anything — which is how 8 type errors accumulated unnoticed.
     runs-on: blacksmith-4vcpu-ubuntu-2404

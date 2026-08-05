@@ -1,5 +1,6 @@
 import { useCallback, useId, useMemo } from 'react';
 
+import { envFlagValueIssue } from '../../../../packages/protocol/eval/ops/ops.metadata';
 import type { EnvFlagMeta } from '../api/client';
 
 export interface EnvOverrideRow {
@@ -12,31 +13,20 @@ export const EMPTY_ENV_ROW: EnvOverrideRow = { key: '', value: '' };
 
 /**
  * Human-readable problem with a non-empty value, or null when the value is
- * acceptable for the flag's kind. Mirrors validateProfileEnv in
- * packages/protocol/eval/ops/ops.profiles.ts — the server still re-validates,
- * this only gives the user feedback before submit. Empty values are not an
- * issue here; they are "incomplete", which envRowsValid reports separately.
- * Whitespace-only values are reported for every kind: envRowsToOverrides drops
- * them, so without a marker the row would silently block submit.
+ * acceptable for the flag's kind.
+ *
+ * Delegates to envFlagValueIssue in packages/protocol/eval/ops/ops.metadata.ts
+ * — the same function the server validates saved configs, ad-hoc launches and
+ * A/B sides with. Re-implementing the rules here is how a form comes to accept
+ * a value its own server refuses (or worse, to accept one the live pipeline
+ * silently falls back on). This wrapper adds only what is a UI concern: an
+ * empty value is "incomplete", which envRowsValid reports separately, and a
+ * whitespace-only value is marked for every kind because envRowsToOverrides
+ * drops it, so without a marker the row would silently block submit.
  */
 export function envValueIssue(flag: EnvFlagMeta, value: string): string | null {
   if (value !== '' && value.trim() === '') return 'must not be blank';
-  switch (flag.kind) {
-    case 'enum':
-    case 'boolean':
-      return flag.values?.includes(value)
-        ? null
-        : `expected one of: ${flag.values?.join(', ') ?? '(no values defined)'}`;
-    case 'integer':
-      // Non-negative digits only — mirrors optionalInt in services/api/src/startup.env.ts.
-      return /^\d+$/.test(value) ? null : 'must be an integer';
-    case 'number':
-      return Number.isFinite(Number(value)) && Number(value) > 0
-        ? null
-        : 'must be a positive number';
-    case 'string':
-      return null;
-  }
+  return envFlagValueIssue(flag, value);
 }
 
 /**
@@ -77,6 +67,7 @@ const INPUT_CLASS = 'bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]';
 const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
   enum: '',
   boolean: '',
+  'csv-enum': 'e.g. intent,profile',
   integer: 'e.g. 4',
   number: 'e.g. 7',
   string: 'value',

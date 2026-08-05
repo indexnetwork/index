@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
+import { HISTORICAL_MATRIX_CASES } from "../../discovery-env-matrix/historical-matrix.cases.js";
 import { CASES as MATCHING_CASES } from "../../matching/matching.cases.js";
 import { CASES as OPPORTUNITY_CASES } from "../../opportunity/opportunity.cases.js";
 import { CASES as PREMISE_CASES } from "../../premise/premise.cases.js";
@@ -25,12 +26,19 @@ const CORPORA: Record<OpsHarness, readonly unknown[]> = {
   profile: PROFILE_CASES,
   premise: PREMISE_CASES,
   opportunity: OPPORTUNITY_CASES,
+  // discovery-ab runs the historical matrix corpus once per side, so one run
+  // costs cases x runs x 2 — renderRun and the launch form both double it from
+  // SIDES_PER_RUN (ops.sides.ts), which makes an understated caseCount twice as
+  // expensive here as it is for a scorecard harness.
+  "discovery-ab": HISTORICAL_MATRIX_CASES,
 };
 
 describe("HARNESS_REGISTRY.caseCount", () => {
   it("matches the real corpus size for every harness", () => {
     const declared = Object.fromEntries(OPS_HARNESSES.map((h) => [h, HARNESS_REGISTRY[h].caseCount]));
-    const actual = Object.fromEntries(OPS_HARNESSES.map((h) => [h, CORPORA[h].length]));
+    // Keyed off CORPORA rather than OPS_HARNESSES so a harness that is missing
+    // from the registry entirely fails here too, instead of being skipped.
+    const actual = Object.fromEntries(Object.entries(CORPORA).map(([h, cases]) => [h, cases.length]));
 
     // Compared as whole objects so a failure names every drifted harness at once.
     expect(declared).toEqual(actual);

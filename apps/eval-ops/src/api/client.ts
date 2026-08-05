@@ -16,6 +16,7 @@
  * itself. There is now exactly one definition and the compiler enforces it.
  */
 export type {
+  AbSides,
   ArtifactRef,
   EvalRunSpec,
   FixtureResetSpec,
@@ -71,6 +72,22 @@ export interface RunsResult {
   issues: IndexIssue[];
 }
 
+/**
+ * One configuration value recorded on a case row.
+ *
+ * `before` is null when the configuration was applied around the call rather
+ * than replacing an established value, which is what discovery-ab does
+ * (`abConfigDeltas`, services/api/src/cli/discovery-ab.main.ts). For that
+ * harness this is the ONLY on-disk record of what each side was: the governed
+ * envelope and scorecard schemas are `.strict()`, so a run-level configuration
+ * block has no legal home in them.
+ */
+export interface ArtifactConfigDelta {
+  key: string;
+  before: string | null;
+  after: string | null;
+}
+
 /** One scored case within an artifact's payload. */
 export interface ArtifactCase {
   caseId: string;
@@ -79,6 +96,58 @@ export interface ArtifactCase {
   passes: number;
   passRate: number;
   flaky: boolean;
+  /**
+   * Optional because only the harnesses that vary configuration write it. The
+   * shared case schema is `.passthrough()`, so it survives the ops server's
+   * `parseEvalArtifact` and reaches this app unchanged.
+   */
+  configDeltas?: ArtifactConfigDelta[];
+  /**
+   * Where the expected target came back in the final ordering, or null when it
+   * did not come back at all.
+   *
+   * Not a trace: this and `evidenceTypes` are the outcome measures of retrieval
+   * itself, which is exactly what a discovery A/B run varies. A configuration
+   * that keeps every case passing while pushing the target from rank 1 to rank 4
+   * changed the retrieval outcome, and pass rates alone cannot say so.
+   *
+   * Optional for the same reason as `configDeltas`: only the discovery harnesses
+   * write it, and it reaches this app through the `.passthrough()` case schema.
+   */
+  targetRank?: number | null;
+  /** Which evidence the target was found through (`intent`, `premise`, …). */
+  evidenceTypes?: string[];
+}
+
+/**
+ * One rule's roll-up. For discovery-ab a "rule" is a SIDE (`a` or `b`), because
+ * the engine files each side as the row id every slot is aggregated under.
+ */
+export interface ArtifactRule {
+  rule: string;
+  caseCount: number;
+  passRate: number;
+}
+
+/**
+ * Execution completeness, as the artifact states it.
+ *
+ * The first five fields exist on every artifact; the rest arrive with schema v2
+ * (`EvalCompletenessV2Schema`), so they are optional here — a v1 artifact
+ * records no attempt evidence and cannot be read as complete or incomplete.
+ */
+export interface ArtifactCompleteness {
+  caseCount: number;
+  ruleCount: number;
+  totalRuns: number;
+  totalPasses: number;
+  flakyCaseCount: number;
+  requestedRuns?: number;
+  completedRuns?: number;
+  failedRuns?: number;
+  recoveredRuns?: number;
+  totalAttempts?: number;
+  complete?: boolean;
 }
 
 /**
@@ -98,9 +167,12 @@ export interface Artifact {
   corpusFingerprint: string;
   configFingerprint: string;
   git: { revision: string; dirty: boolean | null };
+  /** Absent on schema-v1 artifacts, which carry no execution evidence. */
+  completeness?: ArtifactCompleteness;
   payload: {
     cases: ArtifactCase[];
     aggregatePassRate: number;
+    rules?: ArtifactRule[];
   };
 }
 

@@ -1,9 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { decodeArtifactId, encodeArtifactId, FsArtifactSource } from "../ops.artifacts.js";
+import { OPS_HARNESSES } from "../ops.registry.js";
 
 function baselineArtifact(overrides: Record<string, unknown> = {}) {
   return {
@@ -163,7 +165,7 @@ describe("FsArtifactSource", () => {
     expect(issues[0].message).toMatch(/json/i);
   });
 
-  it("ignores harnesses outside the four scorecard harnesses", async () => {
+  it("ignores harnesses that are not registered", async () => {
     await writeFile(
       path.join(evalDir, "hyde/anything.json"),
       JSON.stringify(baselineArtifact({ harness: "hyde" })),
@@ -173,6 +175,38 @@ describe("FsArtifactSource", () => {
 
     expect(refs).toEqual([]);
     expect(issues).toEqual([]);
+  });
+
+  it("treats a registered harness with no directory here as nothing to index, not as a problem", async () => {
+    // Only matching/ exists in this fixture. discovery-ab never gets one: its
+    // CLI writes under services/api/eval and it has no baseline at all, so
+    // scanning for eval/discovery-ab/{baselines,runs} must stay silent rather
+    // than reporting an issue or forcing an empty directory to be created.
+    for (const harness of OPS_HARNESSES) {
+      if (harness === "matching") continue;
+      expect(existsSync(path.join(evalDir, harness))).toBe(false);
+    }
+
+    const { refs, issues } = await new FsArtifactSource({ evalDir }).list();
+
+    expect(refs).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
+  it("indexes a discovery-ab run from .ops-runs even though it has no directory under eval/", async () => {
+    const runId = "discovery-ab-run";
+    await mkdir(path.join(evalDir, ".ops-runs", runId), { recursive: true });
+    await writeFile(
+      path.join(evalDir, ".ops-runs", runId, "report.json"),
+      JSON.stringify(runReportArtifact({ harness: "discovery-ab" })),
+    );
+
+    const { refs, issues } = await new FsArtifactSource({ evalDir }).list();
+
+    expect(issues).toEqual([]);
+    expect(refs).toHaveLength(1);
+    expect(refs[0].harness).toBe("discovery-ab");
+    expect(refs[0].kind).toBe("run");
   });
 
   it("round-trips artifact ids and rejects traversal", async () => {

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
+import { REQUIRES_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
+import { AbComparison } from '../components/AbComparison';
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { LogView } from '../components/LogView';
@@ -150,8 +152,13 @@ function RunDetail({ runId }: { runId: string }) {
         if (!mounted) return;
         setState((prev) => ({ ...prev, artifact }));
 
-        // Only compare if non-experimental
-        if (!record.experimental) {
+        // Only compare if non-experimental, and never for a harness that
+        // compares two operator-chosen configurations: it has no committed
+        // baseline and never will (`discovery-ab --help`: "It never reads,
+        // writes or compares a baseline"), so asking for one would at best
+        // find nothing and at worst diff this run against another harness's
+        // artifact. The pair the run itself measured is the whole result.
+        if (!record.experimental && !REQUIRES_SIDES[spec.harness]) {
           try {
             const artifacts = await api.artifacts();
             const baseline = artifacts.refs
@@ -253,6 +260,8 @@ function RunDetail({ runId }: { runId: string }) {
       ? state.harnesses.find((h) => h.harness === (run.spec as { harness: string }).harness)?.question ?? null
       : null;
   const overridesSummary = run.spec.kind === 'eval' ? summarizeRunEnv(run.env) : null;
+  /** True for the harness whose one run IS a comparison of two configurations. */
+  const comparesSides = run.spec.kind === 'eval' && REQUIRES_SIDES[run.spec.harness];
 
   return (
     <div className="p-4 space-y-4">
@@ -354,7 +363,13 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       )}
 
-      {state.artifact && (
+      {state.artifact && (comparesSides ? (
+        // The scorecard frame would report this run's aggregate pass rate: the
+        // mean across two DIFFERENT configurations, which is a number about
+        // neither of them, over a case table listing each side's rows as if
+        // they were unrelated cases. The pair is what this run measured.
+        <AbComparison artifact={state.artifact} />
+      ) : (
         <Frame label="scorecard">
           <div className="space-y-2">
             <div className="flex gap-4">
@@ -367,7 +382,7 @@ function RunDetail({ runId }: { runId: string }) {
             />
           </div>
         </Frame>
-      )}
+      ))}
 
       {state.comparison && !run.experimental && (
         <Frame label="baseline diff">
