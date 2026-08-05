@@ -67,6 +67,19 @@ export interface ConfigMetadata {
 
 import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
 
+/**
+ * The 202 from a launch: the run record, plus the keys a saved config set that
+ * this harness does not read.
+ *
+ * `unreadEnvKeys` rides alongside the record and is present only when non-empty,
+ * so a client that ignores it sees exactly the RunRecord it saw before. It is a
+ * note, not an error — a saved config is harness-agnostic and may legitimately
+ * carry a key this harness never reads because it is shared with one that does.
+ */
+export interface LaunchedRun extends RunRecord {
+  unreadEnvKeys?: readonly string[];
+}
+
 export interface RunsResult {
   runs: RunRecord[];
   issues: IndexIssue[];
@@ -76,8 +89,8 @@ export interface RunsResult {
  * One configuration value recorded on a case row.
  *
  * `before` is null when the configuration was applied around the call rather
- * than replacing an established value, which is what discovery-ab does
- * (`abConfigDeltas`, services/api/src/cli/discovery-ab.main.ts). For that
+ * than replacing an established value, which is what discovery does
+ * (`abConfigDeltas`, services/api/src/cli/discovery.main.ts). For that
  * harness this is the ONLY on-disk record of what each side was: the governed
  * envelope and scorecard schemas are `.strict()`, so a run-level configuration
  * block has no legal home in them.
@@ -107,7 +120,7 @@ export interface ArtifactCase {
    * did not come back at all.
    *
    * Not a trace: this and `evidenceTypes` are the outcome measures of retrieval
-   * itself, which is exactly what a discovery A/B run varies. A configuration
+   * itself, which is exactly what a discovery run varies. A configuration
    * that keeps every case passing while pushing the target from rank 1 to rank 4
    * changed the retrieval outcome, and pass rates alone cannot say so.
    *
@@ -120,7 +133,7 @@ export interface ArtifactCase {
 }
 
 /**
- * One rule's roll-up. For discovery-ab a "rule" is a SIDE (`a` or `b`), because
+ * One rule's roll-up. For discovery a "rule" is a SIDE (`a` or `b`), because
  * the engine files each side as the row id every slot is aggregated under.
  */
 export interface ArtifactRule {
@@ -470,7 +483,7 @@ export const api = {
     return fetchJson('/api/runs');
   },
 
-  async launch(spec: RunSpec): Promise<RunRecord> {
+  async launch(spec: RunSpec): Promise<LaunchedRun> {
     return postJson('/api/runs', spec);
   },
 

@@ -9,7 +9,8 @@ import { InMemoryConfigStore } from "../ops.configs.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
-import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { ENV_SECRET_KEYS, PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { ENV_FLAG_METADATA } from "../ops.metadata.js";
 import { RunQueue } from "../ops.queue.js";
 import { createDefaultOpsContext, createOpsHandler, HARNESS_CREDENTIALS, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveHarnessEnvironment, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
@@ -20,19 +21,19 @@ import { makeSuccessfulExecution, makeTestMeta } from "../../shared/tests/artifa
 const DATABASE_URL = "postgres://u:p@host/neondb";
 
 /** The engine module whose `parseAbManifest` defines the manifest's shape. */
-const AB_NEON_SOURCE = path.resolve(import.meta.dir, "../../../../../services/api/src/cli/discovery-ab.neon.ts");
+const AB_NEON_SOURCE = path.resolve(import.meta.dir, "../../../../../services/api/src/cli/discovery.neon.ts");
 /** The engine module whose `assertAbConfirmation` this server's credential table serves. */
-const AB_GATE_SOURCE = path.resolve(import.meta.dir, "../../../../../services/api/src/cli/discovery-ab.gate.ts");
+const AB_GATE_SOURCE = path.resolve(import.meta.dir, "../../../../../services/api/src/cli/discovery.gate.ts");
 
 /**
- * The two credentials discovery-ab's own gate demands, as this server would hold
+ * The two credentials discovery's own gate demands, as this server would hold
  * them: a Neon control-plane key and the attested manifest naming both branches.
  *
  * Both are real secrets in production — the manifest carries two `protocol_eval`
  * connection strings, passwords included — so the tests below assert on these
  * exact strings never appearing in anything the server returns, stores or logs.
  *
- * The manifest is shaped the way `parseAbManifest` (discovery-ab.neon.ts)
+ * The manifest is shaped the way `parseAbManifest` (discovery.neon.ts)
  * actually requires: `projectId`, `baseBranchId` and a two-element `targets`
  * array of `{ sideId, branchId, endpointId, databaseUrl }`. This server treats
  * the value as opaque and would not notice a different shape — which is exactly
@@ -48,7 +49,7 @@ const AB_MANIFEST = {
     { sideId: "b", branchId: "br-eval-ab-b", endpointId: "ep-b", databaseUrl: "postgres://u:pw-side-b@ep-b.neon.tech/protocol_eval" },
   ],
 };
-const DISCOVERY_AB_TARGETS = JSON.stringify(AB_MANIFEST);
+const DISCOVERY_TARGETS = JSON.stringify(AB_MANIFEST);
 /**
  * The two variables no gate asks for and the child cannot run without
  * (`runtimeKeys`). Both carry a credential, so both are held to the same rule as
@@ -56,8 +57,8 @@ const DISCOVERY_AB_TARGETS = JSON.stringify(AB_MANIFEST);
  */
 const OPENROUTER_API_KEY = "sk-or-test-key-that-must-never-leave-the-server";
 const REDIS_URL = "redis://default:pw-redis@redis.internal:6379";
-/** The posture of a server configured to run discovery-ab: every key it pre-checks. */
-const AB_SERVER_ENV = { NEON_API_KEY, DISCOVERY_AB_TARGETS, OPENROUTER_API_KEY, REDIS_URL };
+/** The posture of a server configured to run discovery: every key it pre-checks. */
+const AB_SERVER_ENV = { NEON_API_KEY, DISCOVERY_TARGETS, OPENROUTER_API_KEY, REDIS_URL };
 
 interface StartCall {
   record: RunRecord;
@@ -260,7 +261,7 @@ describe("ops API", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.harnesses.map((h: { harness: string }) => h.harness).sort()).toEqual([
-      "discovery-ab",
+      "discovery",
       "matching",
       "opportunity",
       "premise",
@@ -269,7 +270,7 @@ describe("ops API", () => {
     // The descriptor carries the cwd the executor needs, so a client listing
     // harnesses sees where each one actually runs.
     const byHarness = new Map(body.harnesses.map((h: { harness: string }) => [h.harness, h]));
-    expect((byHarness.get("discovery-ab") as { cwd?: string }).cwd).toBe("services/api");
+    expect((byHarness.get("discovery") as { cwd?: string }).cwd).toBe("services/api");
   });
 
   it("lists the committed profiles", async () => {
@@ -554,18 +555,18 @@ describe("resolveHarnessEnvironment", () => {
     }
   });
 
-  it("gives discovery-ab the four secrets it holds plus the two attestations it makes", () => {
-    const resolved = resolveHarnessEnvironment("discovery-ab", { ...AB_SERVER_ENV });
+  it("gives discovery the four secrets it holds plus the two attestations it makes", () => {
+    const resolved = resolveHarnessEnvironment("discovery", { ...AB_SERVER_ENV });
     expect(resolved).toEqual({
       ok: true,
       // DATABASE_URL is present and undefined, which is how a deletion is stated;
       // toEqual ignores undefined properties, so it is asserted explicitly below.
       env: {
         NEON_API_KEY,
-        DISCOVERY_AB_TARGETS,
+        DISCOVERY_TARGETS,
         OPENROUTER_API_KEY,
         REDIS_URL,
-        DISCOVERY_AB_CONFIRM: "1",
+        DISCOVERY_CONFIRM: "1",
         TEST_DATABASE_SAFE: "1",
         DATABASE_URL: undefined,
       },
@@ -573,8 +574,8 @@ describe("resolveHarnessEnvironment", () => {
     const env = (resolved as { env: Record<string, string | undefined> }).env;
     expect(Object.keys(env).sort()).toEqual([
       "DATABASE_URL",
-      "DISCOVERY_AB_CONFIRM",
-      "DISCOVERY_AB_TARGETS",
+      "DISCOVERY_CONFIRM",
+      "DISCOVERY_TARGETS",
       "NEON_API_KEY",
       "OPENROUTER_API_KEY",
       "REDIS_URL",
@@ -587,7 +588,7 @@ describe("resolveHarnessEnvironment", () => {
     // A dotenv line with a trailing space is not a different credential, but an
     // inherited untrimmed value would be a different string than the one this
     // check read. Both kinds of key are stated, because both are checked alike.
-    const resolved = resolveHarnessEnvironment("discovery-ab", {
+    const resolved = resolveHarnessEnvironment("discovery", {
       ...AB_SERVER_ENV,
       NEON_API_KEY: `  ${NEON_API_KEY} `,
       REDIS_URL: `${REDIS_URL}\n`,
@@ -598,14 +599,14 @@ describe("resolveHarnessEnvironment", () => {
   });
 
   it("names every variable when a server holds none, and no value when it holds some", () => {
-    const empty = resolveHarnessEnvironment("discovery-ab", {});
+    const empty = resolveHarnessEnvironment("discovery", {});
     expect(empty.ok).toBe(false);
     const reason = (empty as { reason: string }).reason;
-    for (const name of ["NEON_API_KEY", "DISCOVERY_AB_TARGETS", "OPENROUTER_API_KEY", "REDIS_URL"]) {
+    for (const name of ["NEON_API_KEY", "DISCOVERY_TARGETS", "OPENROUTER_API_KEY", "REDIS_URL"]) {
       expect(reason).toContain(name);
     }
 
-    const half = resolveHarnessEnvironment("discovery-ab", { NEON_API_KEY });
+    const half = resolveHarnessEnvironment("discovery", { NEON_API_KEY });
     expect(half.ok).toBe(false);
     // The refusal is displayed: it says what is missing, never what is present.
     expect((half as { reason: string }).reason).not.toContain(NEON_API_KEY);
@@ -618,11 +619,11 @@ describe("resolveHarnessEnvironment", () => {
    * than a failure in the child.
    */
   it("pre-checks the runtime keys the child inherits and no gate demands", () => {
-    expect(HARNESS_CREDENTIALS["discovery-ab"].runtimeKeys).toEqual(["OPENROUTER_API_KEY", "REDIS_URL"]);
+    expect(HARNESS_CREDENTIALS["discovery"].runtimeKeys).toEqual(["OPENROUTER_API_KEY", "REDIS_URL"]);
 
-    for (const key of HARNESS_CREDENTIALS["discovery-ab"].runtimeKeys) {
+    for (const key of HARNESS_CREDENTIALS["discovery"].runtimeKeys) {
       const { [key]: _dropped, ...rest } = AB_SERVER_ENV as Record<string, string>;
-      const refused = resolveHarnessEnvironment("discovery-ab", rest);
+      const refused = resolveHarnessEnvironment("discovery", rest);
       expect(refused.ok).toBe(false);
       const reason = (refused as { reason: string }).reason;
       expect(reason).toContain(key);
@@ -652,7 +653,7 @@ describe("resolveHarnessEnvironment", () => {
  * covers the reason.
  *
  * Read as source text rather than imported, for the same reason argv.spec.ts
- * reads AB_FLAGS and registry.spec.ts reads AB_MAX_REPETITIONS: these modules
+ * reads DISCOVERY_ENV_KEYS and registry.spec.ts reads AB_MAX_REPETITIONS: these modules
  * reach node: APIs and the API's own dependency tree, which this provider-free
  * suite (and the Vite bundle built from these modules) must not load.
  */
@@ -673,7 +674,7 @@ describe("guard parity with the engine's own gate", () => {
     // Vacuity guard: an unparsed body would otherwise agree with an empty table.
     expect(names.length).toBeGreaterThan(0);
 
-    const requirement = HARNESS_CREDENTIALS["discovery-ab"];
+    const requirement = HARNESS_CREDENTIALS["discovery"];
     const supplied = [...requirement.keys, ...Object.keys(requirement.asserts)];
     // A fifth variable in the gate fails here, naming it — rather than surfacing
     // months later as a child that exits at the gate with a 503 that never fired.
@@ -686,13 +687,13 @@ describe("guard parity with the engine's own gate", () => {
     const { constants } = await gateDemands();
     // Vacuity guard: the parse found the gate's equality checks at all.
     expect(Object.keys(constants).length).toBeGreaterThan(0);
-    // A gate that started demanding DISCOVERY_AB_CONFIRM=2 would make this
+    // A gate that started demanding DISCOVERY_CONFIRM=2 would make this
     // server's attestation a value the child refuses.
-    expect(HARNESS_CREDENTIALS["discovery-ab"].asserts).toEqual(constants);
+    expect(HARNESS_CREDENTIALS["discovery"].asserts).toEqual(constants);
   });
 
   it("holds the manifest in the shape parseAbManifest requires", async () => {
-    // The server treats DISCOVERY_AB_TARGETS as opaque, so a wrong-shaped fixture
+    // The server treats DISCOVERY_TARGETS as opaque, so a wrong-shaped fixture
     // would pass every other test in this file while documenting something the
     // engine would refuse.
     const source = await readFile(AB_NEON_SOURCE, "utf8");
@@ -714,9 +715,9 @@ describe("guard parity with the engine's own gate", () => {
   });
 });
 
-describe("launching discovery-ab", () => {
+describe("launching discovery", () => {
   const SIDES = { a: { DISCOVERY_PROFILE_SOURCE: "premise" }, b: { DISCOVERY_PROFILE_SOURCE: "user_context" } };
-  const AB_BODY = { kind: "eval", harness: "discovery-ab", profile: "default", flags: { runs: 1 }, sides: SIDES };
+  const AB_BODY = { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 }, sides: SIDES };
 
   /** Everything the run left behind that an operator or a browser can read. */
   async function readableSurfaces(id: string): Promise<string> {
@@ -739,12 +740,12 @@ describe("launching discovery-ab", () => {
     expect(plan).toHaveLength(1);
     const step = plan![0];
     expect(step.argv).toEqual(record.argv);
-    // `bun run eval:discovery-ab` resolves in services/api and nowhere else.
+    // `bun run eval:discovery` resolves in services/api and nowhere else.
     expect(step.cwd).toBe(path.join(root, "services/api"));
     expect(step.env).toMatchObject({
       NEON_API_KEY,
-      DISCOVERY_AB_TARGETS,
-      DISCOVERY_AB_CONFIRM: "1",
+      DISCOVERY_TARGETS,
+      DISCOVERY_CONFIRM: "1",
       TEST_DATABASE_SAFE: "1",
     });
     // The profile's own environment is still injected alongside them.
@@ -755,7 +756,7 @@ describe("launching discovery-ab", () => {
     // This server holds a DATABASE_URL (the eval fixture database) and asserts
     // TEST_DATABASE_SAFE=1 over the child tree. A parent environment beats
     // --env-file in Bun, so an inherited value would silently override the one
-    // `eval:discovery-ab`'s own --env-file=../../.env.test was written around —
+    // `eval:discovery`'s own --env-file=../../.env.test was written around —
     // while this server vouched for its disposability. The step states the key's
     // absence instead: present, and undefined.
     expect(context.databaseUrl).toBe(DATABASE_URL);
@@ -803,13 +804,13 @@ describe("launching discovery-ab", () => {
     await context.queue.drain();
 
     const surfaces = `${body}\n${await readableSurfaces(record.id)}`;
-    for (const secret of [NEON_API_KEY, DISCOVERY_AB_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
+    for (const secret of [NEON_API_KEY, DISCOVERY_TARGETS, OPENROUTER_API_KEY, REDIS_URL, "pw-side-a", "pw-side-b", "eval-ab-a"]) {
       expect(surfaces).not.toContain(secret);
     }
     // Not even the names: a record that mentioned them would invite an operator
     // to paste one in, and would say the run's environment held something it does not.
     expect(surfaces).not.toContain("NEON_API_KEY");
-    expect(surfaces).not.toContain("DISCOVERY_AB_TARGETS");
+    expect(surfaces).not.toContain("DISCOVERY_TARGETS");
     expect(surfaces).not.toContain("OPENROUTER_API_KEY");
     expect(surfaces).not.toContain("REDIS_URL");
     // What the record does carry is the profile's environment, exactly as before.
@@ -825,20 +826,20 @@ describe("launching discovery-ab", () => {
     expect(response.status).toBe(503);
     const error = (await response.json()).error as string;
     expect(error).toContain("NEON_API_KEY");
-    expect(error).toContain("DISCOVERY_AB_TARGETS");
+    expect(error).toContain("DISCOVERY_TARGETS");
     // Refused before anything exists: no child dying at the gate, and no record
     // of a run that never ran.
     expect(executor.starts).toHaveLength(0);
     expect((await store.list()).records).toHaveLength(0);
   });
 
-  it("refuses to launch when DISCOVERY_AB_TARGETS is blank rather than absent", async () => {
-    await build({ serverEnv: { ...AB_SERVER_ENV, DISCOVERY_AB_TARGETS: "   " } });
+  it("refuses to launch when DISCOVERY_TARGETS is blank rather than absent", async () => {
+    await build({ serverEnv: { ...AB_SERVER_ENV, DISCOVERY_TARGETS: "   " } });
 
     const response = await post("/api/runs", AB_BODY);
 
     expect(response.status).toBe(503);
-    expect((await response.json()).error).toContain("DISCOVERY_AB_TARGETS");
+    expect((await response.json()).error).toContain("DISCOVERY_TARGETS");
     expect(executor.starts).toHaveLength(0);
   });
 
@@ -887,7 +888,117 @@ describe("launching discovery-ab", () => {
     expect(step.env).toMatchObject({ OPENROUTER_API_KEY, REDIS_URL });
   });
 
-  it("refuses a second discovery-ab run while one holds the two branches", async () => {
+  /**
+   * The single shape (spec §5): one configuration, no `sides`. Everything below
+   * asserts that making the cheap shape expressible did not make it the
+   * unguarded one — it faces the same credentials pre-check, the same exclusive
+   * slot and the same value rules as a pair.
+   */
+  const SINGLE_BODY = {
+    kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 },
+    overrides: { models: {}, env: { DISCOVERY_PROFILE_SOURCE: "premise" } },
+  };
+
+  it("measures one configuration when launched without sides", async () => {
+    const response = await post("/api/runs", SINGLE_BODY);
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    await context.queue.drain();
+
+    // The engine's single-run shape, not a degenerate pair.
+    expect(record.argv).toContain("--env");
+    expect(record.argv).not.toContain("--a");
+    expect(record.argv).not.toContain("--b");
+    expect(record.argv.join(" ")).toContain("DISCOVERY_PROFILE_SOURCE=premise");
+    // One pass over the 5-case corpus, not two. The site shows this before
+    // spending, so the number has to be the run's real cost.
+    expect(record.workload).toBe(5);
+    // Same environment a pair gets: the destructive step is the same step.
+    const step = executor.starts[0].steps![0];
+    expect(step.env).toMatchObject({ NEON_API_KEY, DISCOVERY_TARGETS, DISCOVERY_CONFIRM: "1", TEST_DATABASE_SAFE: "1" });
+  });
+
+  it("prices a pair at twice a single run", async () => {
+    const single = (await (await post("/api/runs", SINGLE_BODY)).json()) as RunRecord;
+    await context.queue.drain();
+    const pair = (await (await post("/api/runs", AB_BODY)).json()) as RunRecord;
+    await context.queue.drain();
+
+    expect(pair.workload).toBe(single.workload * 2);
+  });
+
+  it("refuses a discovery run that configures nothing, in either shape", async () => {
+    // Without this, the single shape would silently measure the committed
+    // default and report it under whatever the operator believed they had set.
+    const bare = await post("/api/runs", { kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 } });
+    expect(bare.status).toBe(400);
+    expect((await bare.json()).error).toMatch(/no configuration/i);
+
+    const empty = await post("/api/runs", {
+      kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 },
+      overrides: { models: {}, env: {} },
+    });
+    expect(empty.status).toBe(400);
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("holds a single run to the same value rules as a side", async () => {
+    // `user-context` (hyphen) is not what the graph reads; it falls back rather
+    // than failing, so an unchecked run reports results under a value that never
+    // applied. This is the exact defect that shipped once already.
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "discovery", profile: "default", flags: { runs: 1 },
+      overrides: { models: {}, env: { DISCOVERY_PROFILE_SOURCE: "user-context" } },
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("DISCOVERY_PROFILE_SOURCE");
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("refuses a single run when a credential is missing, before any branch is reset", async () => {
+    // The pre-check is keyed on the harness, not on the shape, so the cheaper
+    // run is protected by the same 503. A single run still resets a branch.
+    const { NEON_API_KEY: _absent, ...serverEnv } = AB_SERVER_ENV;
+    await build({ serverEnv });
+
+    const response = await post("/api/runs", SINGLE_BODY);
+
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toContain("NEON_API_KEY");
+    expect(executor.starts).toHaveLength(0);
+    expect((await store.list()).records).toHaveLength(0);
+  });
+
+  it("holds the exclusive slot against the other shape, both ways", async () => {
+    // A single run resets a branch too, so two runs still collide however each
+    // was configured. If the slot were keyed on `sides` this would pass twice.
+    let release!: () => void;
+    executor.gate = new Promise<void>((resolve) => { release = resolve; });
+
+    const first = (await (await post("/api/runs", SINGLE_BODY)).json()) as RunRecord;
+    const blockedPair = await post("/api/runs", AB_BODY);
+    expect(blockedPair.status).toBe(409);
+    expect((await blockedPair.json()).error).toContain(first.id);
+
+    release();
+    executor.gate = null;
+    await context.queue.drain();
+
+    // And the mirror: a pair holding the slot blocks a single run.
+    executor.gate = new Promise<void>((resolve) => { release = resolve; });
+    const pair = (await (await post("/api/runs", AB_BODY)).json()) as RunRecord;
+    const blockedSingle = await post("/api/runs", SINGLE_BODY);
+    expect(blockedSingle.status).toBe(409);
+    expect((await blockedSingle.json()).error).toContain(pair.id);
+
+    release();
+    executor.gate = null;
+    await context.queue.drain();
+  });
+
+  it("refuses a second discovery run while one holds the two branches", async () => {
     let release!: () => void;
     executor.gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -916,14 +1027,14 @@ describe("launching discovery-ab", () => {
     await context.queue.drain();
   });
 
-  it("refuses a discovery-ab run that a restart made invisible", async () => {
+  it("refuses a discovery run that a restart made invisible", async () => {
     // The scenario a restart creates: the deployed service restarts ON_FAILURE
     // while a ~13-minute child keeps running — nothing killed it, its parent went
     // away. Only the record survived, and reconcile() deliberately leaves a
     // `running` record with a live pid alone.
     const orphan = await store.create({
       spec: AB_BODY as never,
-      argv: ["bun", "run", "eval:discovery-ab"],
+      argv: ["bun", "run", "eval:discovery"],
       env: {},
       profileFingerprint: "f",
       experimental: false,
@@ -933,7 +1044,7 @@ describe("launching discovery-ab", () => {
 
     // A restarted server: a fresh queue and a fresh handler over the same records.
     await build();
-    expect(context.queue.inProcessConflict("discovery-ab")).toBeNull();
+    expect(context.queue.inProcessConflict("discovery")).toBeNull();
 
     const response = await post("/api/runs", AB_BODY);
 
@@ -953,7 +1064,7 @@ describe("launching discovery-ab", () => {
     expect((await store.list()).records.map((run) => run.id)).toEqual([orphan.id]);
   });
 
-  it("lets discovery-ab launch again once the recorded process is gone", async () => {
+  it("lets discovery launch again once the recorded process is gone", async () => {
     // The other restart: the container was replaced, taking the child with it.
     // A `running` record with a dead pid must block nothing, or the harness stays
     // unlaunchable until someone deletes a file.
@@ -961,7 +1072,7 @@ describe("launching discovery-ab", () => {
     await proc.exited;
     const orphan = await store.create({
       spec: AB_BODY as never,
-      argv: ["bun", "run", "eval:discovery-ab"],
+      argv: ["bun", "run", "eval:discovery"],
       env: {},
       profileFingerprint: "f",
       experimental: false,
@@ -989,7 +1100,7 @@ describe("launching discovery-ab", () => {
 
     expect(responses.map((response) => response.status).sort()).toEqual([202, 409]);
     const refused = responses.find((response) => response.status === 409)!;
-    expect((await refused.json()).error).toContain("Refusing a second discovery-ab run");
+    expect((await refused.json()).error).toContain("Refusing a second discovery run");
     // Exactly one run survives; a record the server created and then refused is
     // marked interrupted rather than left claiming to be queued.
     const records = (await store.list()).records;
@@ -1481,6 +1592,167 @@ describe("GET /api/compare", () => {
   });
 });
 
+/**
+ * Spec §6: the same fact — "this harness will not read this key" — is a refusal
+ * or a note depending on WHO chose the key and WHEN.
+ *
+ * An ad-hoc override was typed for this run against this harness, so there is no
+ * reading under which the operator meant it to do nothing. A saved config was
+ * written once without naming a harness, and may be deliberately shared with one
+ * that does read the key; refusing it would make a legitimate config
+ * unlaunchable against anything but the union of its keys.
+ */
+describe("env keys a harness does not read", () => {
+  it("refuses an ad-hoc override naming a key this harness cannot read", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "matching", profile: "default", flags: {},
+      overrides: { models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } },
+    });
+
+    expect(response.status).toBe(400);
+    const error = (await response.json()).error as string;
+    expect(error).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(error).toContain("matching");
+    expect(error).toContain("discovery");
+    expect(executor.starts).toHaveLength(0);
+  });
+
+  it("accepts an ad-hoc override naming a key this harness does read", async () => {
+    // The point of the whole task: the four scorecard harnesses read model and
+    // provider keys, and nobody could set any of them.
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "matching", profile: "default", flags: {},
+      overrides: { models: {}, env: { CHAT_MODEL: "google/gemini-2.5-flash" } },
+    });
+
+    expect(response.status).toBe(202);
+    const record = (await response.json()) as RunRecord;
+    await context.queue.drain();
+    // It reaches the child, which is what "settable" has to mean. A scorecard
+    // harness needs no injected credentials and so has no explicit step plan
+    // (harnessSteps returns undefined); its environment travels on the record,
+    // which the executor spawns with.
+    expect(executor.starts[0].steps).toBeUndefined();
+    expect(record.env).toMatchObject({ CHAT_MODEL: "google/gemini-2.5-flash" });
+  });
+
+  it("launches a saved config carrying unread keys, and names them", async () => {
+    await configs.create({
+      name: "shared",
+      description: "one config, several harnesses",
+      models: {},
+      env: { CHAT_MODEL: "google/gemini-2.5-flash", DISCOVERY_ALLOWED_TYPES: "intent" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "matching", profile: "shared", flags: {} });
+
+    // Not refused: the config is legitimately shared with discovery.
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as RunRecord & { unreadEnvKeys?: string[] };
+    expect(body.unreadEnvKeys).toEqual(["DISCOVERY_ALLOWED_TYPES"]);
+
+    await context.queue.drain();
+    // Reported, not filtered: the value still reaches the process, so the run
+    // record and the child agree about what was set.
+    expect(body.env).toMatchObject({
+      CHAT_MODEL: "google/gemini-2.5-flash",
+      DISCOVERY_ALLOWED_TYPES: "intent",
+    });
+  });
+
+  it("says nothing when the harness reads every key the config sets", async () => {
+    await configs.create({
+      name: "models-only", description: "nothing exotic", models: {},
+      env: { CHAT_MODEL: "google/gemini-2.5-flash" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "matching", profile: "models-only", flags: {} });
+
+    expect(response.status).toBe(202);
+    // Absent rather than empty, so a client can treat presence as the signal.
+    expect((await response.json()).unreadEnvKeys).toBeUndefined();
+  });
+
+  /**
+   * A saved config on the harness whose configuration IS its env.
+   *
+   * The single-configuration check ran inside RunSpecSchema against
+   * `spec.overrides`, which a named-profile launch never carries — so the schema
+   * always saw `{}` and refused every named config on discovery with "this run
+   * has no configuration", before the profile was ever resolved. False in the
+   * operator's terms: their config is full of flags. The check now runs where
+   * the resolved env exists.
+   */
+  it("launches a saved config on discovery, whose configuration is its env", async () => {
+    await configs.create({
+      name: "intent-only",
+      description: "one discovery configuration",
+      models: {},
+      env: { DISCOVERY_ALLOWED_TYPES: "intent" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "discovery", profile: "intent-only", flags: { runs: 1 } });
+
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as RunRecord;
+    // The config reached the engine as the run's one configuration.
+    expect(body.argv).toContain("--env");
+    expect(body.argv).toContain("DISCOVERY_ALLOWED_TYPES=intent");
+  });
+
+  /**
+   * The other direction: a genuinely empty configuration is still refused, and
+   * the message is true for the shape the operator used. Moving the check must
+   * not turn a real refusal into a spend.
+   */
+  it("refuses a saved config that sets nothing discovery reads, naming what it does set", async () => {
+    // POOL_QUESTIONS_MODE is allowlisted for configs but reachable from NO
+    // harness (IND-630), so this config is legitimate to save and configures
+    // nothing here. Note the key must be one discovery genuinely cannot read:
+    // CHAT_REASONING_EFFORT looks model-ish but IS in discovery's catalogue,
+    // because the graph reaches the model configuration too.
+    await configs.create({
+      name: "unreadable-config",
+      description: "nothing discovery reads",
+      models: {},
+      env: { POOL_QUESTIONS_MODE: "on" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "discovery", profile: "unreadable-config", flags: { runs: 1 } });
+
+    expect(response.status).toBe(400);
+    const error = ((await response.json()) as { error: string }).error;
+    // Names the config and what it actually sets, rather than claiming the
+    // operator configured nothing.
+    expect(error).toContain("unreadable-config");
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+  });
+
+  it("refuses an ad-hoc discovery run that configures nothing at all", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "discovery", profile: "default",
+      overrides: { models: {}, env: {} }, flags: { runs: 1 },
+    });
+
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toContain("no configuration");
+  });
+
+  it("does not report EVAL_MODEL_OVERRIDES, which renderRun writes from the models block", async () => {
+    // It is not an operator-chosen env key: reporting it would tell the operator
+    // their model selection was ignored when it was in fact applied.
+    await configs.create({
+      name: "sonnet", description: "evaluator on sonnet",
+      models: { opportunityEvaluator: "anthropic/claude-sonnet-4" }, env: {},
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "matching", profile: "sonnet", flags: {} });
+
+    expect(response.status).toBe(202);
+    expect((await response.json()).unreadEnvKeys).toBeUndefined();
+  });
+});
+
 describe("config routes", () => {
   const SONNET_CONFIG = {
     name: "sonnet-evaluator",
@@ -1605,8 +1877,20 @@ describe("config routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await response.json();
-    expect(body.env).toHaveLength(PROFILE_ENV_ALLOWLIST.length);
-    expect(body.env.map((flag: { key: string }) => flag.key)).toEqual([...PROFILE_ENV_ALLOWLIST]);
+    // Every documented flag, which is now more than the hand-written allowlist:
+    // the guided editor has to describe each key a harness can read, and the
+    // catalogue derives those from the code. Compared as the full key list
+    // rather than a count, so a swap fails too.
+    expect(body.env.map((flag: { key: string }) => flag.key)).toEqual(ENV_FLAG_METADATA.map((m) => m.key));
+    // The allowlisted flags must still all be there — dropping one would leave a
+    // saved config carrying a key the editor cannot explain.
+    for (const key of PROFILE_ENV_ALLOWLIST) {
+      expect(body.env.map((flag: { key: string }) => flag.key)).toContain(key);
+    }
+    // A credential must never reach a browser form, by any route.
+    for (const secret of ENV_SECRET_KEYS) {
+      expect(body.env.map((flag: { key: string }) => flag.key)).not.toContain(secret);
+    }
     expect(body.models.length).toBeGreaterThan(0);
     for (const harness of ["matching", "opportunity", "premise", "profile"]) {
       expect(body.harnessAgents[harness].length).toBeGreaterThan(0);

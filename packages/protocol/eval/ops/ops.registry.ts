@@ -5,7 +5,7 @@ export const OPS_HARNESSES = [
   "profile",
   "premise",
   "opportunity",
-  "discovery-ab",
+  "discovery",
 ] as const satisfies readonly OpsHarness[];
 
 /**
@@ -80,8 +80,8 @@ const TIER_FLAG: HarnessFlag = {
 };
 
 /**
- * discovery-ab's entire selection surface. Its parser accepts only --case,
- * --runs, --a, --b, --report and --force (services/api/src/cli/discovery-ab.ts
+ * discovery's entire selection surface. Its parser accepts only --case,
+ * --runs, --a, --b, --report and --force (services/api/src/cli/discovery.ts
  * --help), so --rule, --tier, --no-judge, --alpha, --attempt-timeout-ms and
  * --strict-evidence are absent: offering a control the engine would reject is
  * the exact failure this harness exists to make visible.
@@ -95,28 +95,31 @@ const TIER_FLAG: HarnessFlag = {
  * refused with "--runs must not exceed 10" (flagValueIssues, ops.flags.ts).
  *
  * The engine does not *reject* a flag outside that set: parseAbRunArgs
- * (services/api/src/cli/discovery-ab.main.ts) scans argv for the flags it knows
+ * (services/api/src/cli/discovery.main.ts) scans argv for the flags it knows
  * and drops everything else. So a flag added to this list by mistake would not
  * fail the run — it would vanish, and the operator would get a run they did not
  * configure. renderRun is the last thing that can refuse it, and it refuses on
  * exactly this list, which is what registry.spec.ts pins.
  *
  * The one argv this list does not cover is --no-save, which renderRun appends
- * for an experimental run (ops.argv.ts:261) — and this harness can never have
- * one. `experimental` is set by exactly two things: a profile whose name is not
- * "default" (ops.profiles.ts:81) and ad-hoc overrides (ops.profiles.ts:166).
- * Both are refused alongside `sides` by RunSpecSchema (ops.argv.ts:147-166) and
- * again by renderRun before anything is spent (ops.argv.ts:243-248), while
- * `sides` is mandatory here (REQUIRES_SIDES, ops.argv.ts:236-239). So no
- * discovery-ab run reaches line 261 with `experimental` true, and the site never
- * sends this engine a flag it would drop.
+ * for an experimental run — and this engine's parser silently drops it, because
+ * parseAbRunArgs ignores what it does not recognise.
  *
- * That is the only reason it does not matter that parseAbRunArgs would drop one:
- * the harness saves where --report says and nowhere else, so whoever later gives
- * discovery-ab a rolling run history, or lets it run under a config, owes it a
- * real --no-save first.
+ * A discovery run CAN be experimental, and routinely is: `experimental` is set
+ * by a profile whose name is not "default" (ops.profiles.ts) and by ad-hoc
+ * overrides (resolveAdHoc), and while both remain inexpressible alongside
+ * `sides`, a SINGLE-configuration run is expressed as exactly those things. So
+ * `resolveAdHoc({env: {DISCOVERY_PROFILE_SOURCE: 'premise'}}).experimental` is
+ * true and renderRun does append --no-save to that run's argv.
+ *
+ * What makes the drop harmless is not that the flag never appears — it does —
+ * but that it would be redundant if it did arrive: renderRun always passes
+ * --report with an absolute path inside the ops store, and abRunReportPath
+ * writes to that path and nowhere else. The engine has no rolling run history to
+ * pollute and no baseline to become. Whoever gives discovery either one owes it
+ * a real --no-save first, and this comment is where they will find out.
  */
-const DISCOVERY_AB_FLAGS: readonly HarnessFlag[] = Object.freeze([
+const DISCOVERY_FLAGS: readonly HarnessFlag[] = Object.freeze([
   {
     name: "runs",
     cli: "--runs",
@@ -197,7 +200,7 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
    * true is narrower — the two SIDES never differ in models, only in
    * environment configuration — so a per-side model editor would be a control
    * that cannot change the comparison it appears to configure. Its per-side
-   * surface is AB_FLAGS (services/api/src/cli/discovery-ab.flags.ts).
+   * surface is DISCOVERY_ENV_KEYS (services/api/src/cli/discovery.flags.ts).
    *
    * An empty `agents` list is not on its own enough to keep models off the
    * page: the Launch form's Config picker is gated on saved configs, not on
@@ -205,23 +208,24 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
    * the form does not render that picker for a harness that carries sides, and
    * says on the page why (apps/eval-ops Launch.tsx).
    */
-  "discovery-ab": Object.freeze({
-    harness: "discovery-ab",
-    script: "eval:discovery-ab",
+  discovery: Object.freeze({
+    harness: "discovery",
+    script: "eval:discovery",
     // Its CLI and its package script both live in services/api, not here.
     cwd: "services/api",
-    flags: DISCOVERY_AB_FLAGS,
+    flags: DISCOVERY_FLAGS,
     defaultRuns: 3,
     // HISTORICAL_MATRIX_CASES; pinned against the real corpus by
-    // registry-corpus.spec.ts. One launched run executes every case on both
-    // sides, so a run costs caseCount x runs x 2 graph invocations — see the
-    // contract's own ceiling arithmetic, "5 cases x 10 repetitions x 2 sides"
-    // (services/api/src/cli/discovery-ab.contract.ts).
+    // registry-corpus.spec.ts. A run costs caseCount x runs x passes, where
+    // passes is 2 for a comparison and 1 for a single configuration — see the
+    // contract's own ceiling arithmetic for the pair, "5 cases x 10 repetitions
+    // x 2 sides" (services/api/src/cli/discovery.contract.ts).
     //
     // Both the number recorded on the run record and the number the operator
-    // confirms before launching read one constant: SIDES_PER_RUN in
-    // ops.sides.ts, used by renderRun (ops.argv.ts) and by the launch form
-    // (apps/eval-ops Launch.tsx). They cannot disagree about what a run costs.
+    // confirms before launching read one function: sidesPerRun in ops.sides.ts,
+    // used by renderRun (ops.argv.ts) and by the launch form (apps/eval-ops
+    // Launch.tsx). It reads the spec's shape rather than assuming a pair, so the
+    // two cannot disagree about what a run costs.
     caseCount: 5,
     // What the engine reports is two raw pass rates side by side
     // ("side a 4/15 (26.7%) vs side b 7/15 (46.7%)"), with no significance test
@@ -229,16 +233,27 @@ export const HARNESS_REGISTRY: Readonly<Record<OpsHarness, HarnessDescriptor>> =
     // five deterministic assertions plus a judge, of which returning the
     // expected person is one. The question therefore promises the comparison,
     // not a winner.
-    question: "What pass rate does each of two discovery configurations reach on the same cases?",
+    // True of both shapes: one configuration gets a pass rate, two get a pass
+    // rate each. Naming "two" here (as this did) described the comparison as if
+    // it were the only shape, on the card an operator reads before choosing one.
+    question: "What pass rate does each operator-chosen discovery configuration reach on the same cases?",
     detail:
-      "Runs the real discovery graph once per operator-chosen environment configuration over the same cases and emits one artifact holding both sides. There is no baseline \u2014 arbitrary configurations have none \u2014 so the pair is the result.",
-    // Every run of this harness resets the two Neon evaluation branches before
-    // each side, filtered or not: --case narrows what is measured, not what is
-    // destroyed. The launch form quotes this in its confirmation, which is the
-    // last moment anyone can decline it — and quotes it from here, because the
-    // form branches on REQUIRES_SIDES and must not attribute this harness's
+      "Runs the real discovery graph once per operator-chosen environment configuration over the same cases. There is no baseline \u2014 arbitrary configurations have none \u2014 so the result is the configuration's own pass rate, or, when two are given, the pair.",
+    // Every run of this harness resets the Neon evaluation branches it will read,
+    // before each side, filtered or not: --case narrows what is measured, not
+    // what is destroyed. A comparison reads both branches; a single run reads one
+    // and leaves the other alone (discovery.main.ts filters the attested targets
+    // to the sides being run), so the two shapes destroy different things and
+    // must not share one sentence.
+    //
+    // The launch form quotes the shape-matched string in its confirmation, which
+    // is the last moment anyone can decline it — and quotes it from here, because
+    // the form branches on SUPPORTS_SIDES and must not attribute this harness's
     // destruction to some later comparison harness that does not do it.
-    resets: "both Neon evaluation branches",
+    resets: {
+      single: "the Neon evaluation branch this configuration runs on",
+      sides: "both Neon evaluation branches",
+    },
     agents: Object.freeze([]),
   }),
 });

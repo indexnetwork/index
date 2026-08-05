@@ -5,7 +5,7 @@ import { deriveAbView, NOISE_FLOOR_REPETITIONS, type AbCasePair, type AbConfigRo
 import type { Artifact } from '../api/client';
 
 /**
- * A finished discovery A/B run, read as the pair it is.
+ * A finished discovery run, read as the pair it is.
  *
  * Every number here is derived from the artifact's own rows (see src/lib/ab.ts):
  * the two sides come from `payload.rules`, and the configuration difference is
@@ -14,7 +14,7 @@ import type { Artifact } from '../api/client';
  *
  * Nothing on this page compares the run to a baseline, and nothing offers to
  * write one. Two arbitrary operator-chosen configurations have no committed
- * baseline and never will (`discovery-ab --help`: "It never reads, writes or
+ * baseline and never will (`discovery --help`: "It never reads, writes or
  * compares a baseline"), so a regression verdict against one would be invented.
  */
 export function AbComparison({ artifact }: { artifact: Artifact }) {
@@ -65,7 +65,7 @@ export function AbComparison({ artifact }: { artifact: Artifact }) {
  * "reference" and "candidate" are the reading direction, not a claim of
  * authority: the engine requires side `a` first and side `b` second and computes
  * every difference as a → b (`assertOrderedDistinctSides` and `configDiff`,
- * services/api/src/cli/discovery-ab.plan.ts), so B is what A is read against.
+ * services/api/src/cli/discovery.plan.ts), so B is what A is read against.
  */
 function SideSummaries({ sides }: { sides: Record<AbSideId, AbSideSummary> }) {
   const delta = sides.b.passRate - sides.a.passRate;

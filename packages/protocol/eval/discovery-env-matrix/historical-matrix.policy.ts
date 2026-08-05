@@ -16,7 +16,7 @@ export type MatrixEvidenceType = MatrixRow["allowedEvidence"][number];
 /**
  * The identifier of the arm a slot belongs to. The fixed matrix names one of
  * `MATRIX_ROWS`; other harnesses that reuse this scoring policy (the discovery
- * A/B harness names its two sides) supply their own arm identifier and must
+ * harness names its two sides) supply their own arm identifier and must
  * then supply `allowedEvidence` explicitly, because no `MATRIX_ROWS` entry
  * describes their arm.
  */

@@ -377,7 +377,7 @@ bun run dev:eval-ops
 that file's `DATABASE_URL` as the fixture target.
 
 The four scorecard harnesses (`matching`, `profile`, `premise`, `opportunity`) and the
-`discovery-ab` comparison harness are supported (`OPS_HARNESSES`,
+`discovery` comparison harness are supported (`OPS_HARNESSES`,
 `packages/protocol/eval/ops/ops.registry.ts`). It **binds loopback and requires a verified
 `@index.network` Index account** — signing in opens the same browser-auth bridge the CLI
 uses, and every route but the two that make signing in possible needs that session. The

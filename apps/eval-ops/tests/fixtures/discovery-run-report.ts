@@ -1,7 +1,7 @@
 /**
- * The first live discovery-ab run, trimmed.
+ * The first live discovery run, trimmed.
  *
- * Copied from services/api/eval/discovery-ab/runs/2026-08-04T18-17-55-461Z.json
+ * Copied from services/api/eval/discovery/runs/2026-08-04T18-17-55-461Z.json
  * — a real artifact written by the engine and re-read through the ops server's
  * own `parseEvalArtifact`, so every key, shape and value type here is one the
  * browser really receives. The only edits are size: each case's `rawCandidates`
@@ -18,7 +18,7 @@ import type { Artifact } from '../../src/api/client';
 
 const REPORT = {
   artifactType: 'index-eval/run-report',
-  harness: 'discovery-ab' as const,
+  harness: 'discovery' as const,
   harnessVersion: '1',
   createdAt: '2026-08-04T18:19:06.257Z',
   startedAt: '2026-08-04T18:18:02.406Z',
@@ -359,4 +359,4 @@ const REPORT = {
  * writes. The assignment still proves the fixture satisfies the type the app
  * reads, so a drift in either direction fails `tsc`.
  */
-export const DISCOVERY_AB_RUN_REPORT: Artifact = REPORT;
+export const DISCOVERY_RUN_REPORT: Artifact = REPORT;

@@ -1,15 +1,33 @@
 /**
- * Turns a selection and two configurations into slots.
+ * Turns a selection and one or two configurations into slots.
  *
  * Selection is shared: two sides that ran different cases or different
  * repetition counts are not comparable, so it is one input, not two.
  */
-import { assertAbEnvConfig, type AbEnvConfig } from './discovery-ab.flags';
+import { assertAbEnvConfig, type AbEnvConfig } from './discovery.flags';
 import type { HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 
 export type AbSideId = 'a' | 'b';
 export interface AbSide { id: AbSideId; config: AbEnvConfig }
 export interface AbSlot { matrixCase: HistoricalMatrixFixture; side: AbSide; repetition: number }
+
+/**
+ * What a run compares, or measures.
+ *
+ * A pair is the comparison this harness was built for. A single side is one
+ * configuration measured against the corpus, which is a scorecard and not a
+ * comparison — it produces a pass rate, and the operator supplies the reference
+ * themselves (a previous run, an expectation, a hypothesis). The two shapes are
+ * one type rather than two code paths because everything downstream of planning
+ * — slot ids, scoring, child supervision, artifact assembly — is per side and
+ * does not care how many sides there are.
+ */
+export type AbSides = readonly [AbSide] | readonly [AbSide, AbSide];
+
+/** True when this run compares two configurations rather than measuring one. */
+export function isAbPair(sides: AbSides): sides is readonly [AbSide, AbSide] {
+  return sides.length === 2;
+}
 
 /**
  * Keys where the two sides disagree. Agreed keys explain no difference and are
@@ -25,6 +43,24 @@ export function configDiff(a: AbEnvConfig, b: AbEnvConfig): Array<{ key: string;
 }
 
 /**
+ * A single-sided run must be side `a`.
+ *
+ * Not cosmetic: the parent picks the branch to reset by looking up the side id
+ * in the manifest, the child asserts it is composed against the database its
+ * own side's manifest entry declares, and `AB_BRANCH_NAMES[sideId]` names the
+ * branch in every message. A lone side `b` would be coherent, but it would mean
+ * two ways to express one thing and a second branch to keep seeded for no gain.
+ */
+function assertSingleSideIsA(side: AbSide): void {
+  if (side.id !== 'a') {
+    throw new Error(
+      `A single-configuration discovery run uses side 'a' (received '${side.id}'); `
+      + 'side b exists to be compared against side a, so a lone b names no comparison',
+    );
+  }
+}
+
+/**
  * Two sides must be two sides: one `a`, one `b`, in that order.
  *
  * Side ids arrive from externally supplied JSON, not only from local callers.
@@ -37,7 +73,7 @@ export function configDiff(a: AbEnvConfig, b: AbEnvConfig): Array<{ key: string;
 function assertOrderedDistinctSides(sides: readonly [AbSide, AbSide]): void {
   if (sides[0].id !== 'a' || sides[1].id !== 'b') {
     throw new Error(
-      `A discovery A/B run requires side 'a' first and side 'b' second `
+      `A discovery comparison requires side 'a' first and side 'b' second `
       + `(received '${sides[0].id}' then '${sides[1].id}'); two sides sharing an id collapse into one row `
       + `downstream, and a reversed pair reports side b's values under the artifact's a column`,
     );
@@ -59,13 +95,14 @@ function assertOrderedDistinctSides(sides: readonly [AbSide, AbSide]): void {
  * door.
  *
  * Requiring symmetry removes the ambiguity at its root rather than guessing
- * defaults here — a copy of nine defaults is the same fiction one level up.
- * It is workable because every flag's unset behaviour is reachable by a value
- * an operator can type (defaults verified at their read sites: ALLOWED_TYPES
- * `intent,profile`, PROFILE_SOURCE `premise`, CONTEXT_TO_INTENT any non-`0`,
- * REJECTION_COOLDOWN_DAYS `7`, SOURCE_PREMISE_LIMIT `40`,
- * INCLUDE_OTHER_INTENTS `true`, MAX_TURNS_CHAT `4`, MAX_TURNS_AMBIENT `6`,
- * RUN_OPPORTUNITY_EVAL_IN_PARALLEL `false`).
+ * defaults here — a copy of the graph's defaults is the same fiction one level
+ * up. It is workable because every flag's unset behaviour is reachable by a
+ * value an operator can type.
+ *
+ * This is a rule about a *comparison*, so it applies only to a pair. A single
+ * side has nothing to be asymmetric with: every key it omits takes the graph's
+ * default, and the artifact records exactly the keys it set, so there is no
+ * second column for an omission to be misattributed to.
  */
 function assertSymmetricKeySets(sides: readonly [AbSide, AbSide]): void {
   for (const [side, other] of [[sides[0], sides[1]], [sides[1], sides[0]]] as const) {
@@ -82,19 +119,28 @@ function assertSymmetricKeySets(sides: readonly [AbSide, AbSide]): void {
 
 export function buildAbPlan(
   cases: readonly HistoricalMatrixFixture[],
-  sides: readonly [AbSide, AbSide],
+  sides: AbSides,
   repetitions: number,
 ): AbSlot[] {
-  assertOrderedDistinctSides(sides);
-  if (cases.length === 0) throw new Error('A discovery A/B run requires at least one case');
+  if (isAbPair(sides)) {
+    assertOrderedDistinctSides(sides);
+  } else {
+    assertSingleSideIsA(sides[0]);
+  }
+  if (cases.length === 0) throw new Error('A discovery run requires at least one case');
   if (!Number.isInteger(repetitions) || repetitions < 1) {
-    throw new Error(`A discovery A/B run requires a positive repetition count (received ${repetitions})`);
+    throw new Error(`A discovery run requires a positive repetition count (received ${repetitions})`);
   }
   for (const side of sides) assertAbEnvConfig(side.config);
-  assertSymmetricKeySets(sides);
-  const differences = configDiff(sides[0].config, sides[1].config);
-  if (differences.length === 0) {
-    throw new Error('Both sides have identical configurations; the run would measure noise, not a difference');
+  // Symmetry and difference are properties of a comparison. Applied to a single
+  // side they would refuse every valid run: there is no other side to match
+  // keys with, and "identical configurations" needs two configurations.
+  if (isAbPair(sides)) {
+    assertSymmetricKeySets(sides);
+    const differences = configDiff(sides[0].config, sides[1].config);
+    if (differences.length === 0) {
+      throw new Error('Both sides have identical configurations; the run would measure noise, not a difference');
+    }
   }
   const slots: AbSlot[] = [];
   for (const matrixCase of cases) {

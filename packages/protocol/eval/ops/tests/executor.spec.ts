@@ -115,15 +115,15 @@ describe("LocalProcessRunExecutor", () => {
   });
 
   it("runs a single step in that step's own directory, not the executor's", async () => {
-    // The registry gives discovery-ab a cwd of services/api, because its package
-    // script and CLI live there and `bun run eval:discovery-ab` resolves nowhere
+    // The registry gives discovery a cwd of services/api, because its package
+    // script and CLI live there and `bun run eval:discovery` resolves nowhere
     // else. A step whose cwd were ignored would run the wrong package's scripts.
     const elsewhere = path.join(dir, "elsewhere");
     await mkdir(elsewhere);
     const record = await createRecord([]);
 
     const finished = await executor.start(record, [
-      { label: "discovery-ab", argv: ["bun", "-e", "console.log(`ran in ${process.cwd()}`)"], cwd: elsewhere, env: {} },
+      { label: "discovery", argv: ["bun", "-e", "console.log(`ran in ${process.cwd()}`)"], cwd: elsewhere, env: {} },
     ]);
 
     expect(finished.status).toBe("passed");
@@ -138,20 +138,20 @@ describe("LocalProcessRunExecutor", () => {
     const record = await createRecord([]);
 
     const finished = await executor.start(record, [
-      { label: "discovery-ab", argv: ["bun", FAKE, "--exit", "1"], cwd: dir, env: {} },
+      { label: "discovery", argv: ["bun", FAKE, "--exit", "1"], cwd: dir, env: {} },
     ]);
 
     expect(finished.status).toBe("regression");
   });
 
   it("gives a step's environment to the child without writing it to the log", async () => {
-    // discovery-ab's gate demands NEON_API_KEY, and the log is streamed to a
+    // discovery's gate demands NEON_API_KEY, and the log is streamed to a
     // browser and kept on disk: the value must reach the child and nothing else.
     const record = await createRecord([]);
 
     await executor.start(record, [
       {
-        label: "discovery-ab",
+        label: "discovery",
         argv: ["bun", "-e", "console.log(`key length ${(process.env.NEON_API_KEY ?? '').length}`)"],
         cwd: dir,
         env: { NEON_API_KEY: "napi-secret-value" },
@@ -164,7 +164,7 @@ describe("LocalProcessRunExecutor", () => {
   });
 
   it("removes a key a step maps to undefined from what the child inherits", async () => {
-    // The A/B harness's step deletes DATABASE_URL: the value this process holds
+    // The discovery harness's step deletes DATABASE_URL: the value this process holds
     // must not be what a child tree it asserts TEST_DATABASE_SAFE=1 over can
     // reach. Deleting is not the same as blanking — an empty string is still a
     // value, and `--env-file` would no longer supply the one the script expects —
@@ -176,7 +176,7 @@ describe("LocalProcessRunExecutor", () => {
 
       await executor.start(record, [
         {
-          label: "discovery-ab",
+          label: "discovery",
           argv: [
             "bun",
             "-e",

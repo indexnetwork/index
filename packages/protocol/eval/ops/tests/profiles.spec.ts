@@ -3,7 +3,9 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { ALLOWED_CONFIG_MODELS, DEFAULT_PROFILE_NAME, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides } from "../ops.profiles.js";
+import { ENV_SECRET_KEYS, PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { HARNESS_ENV_KEYS } from "../ops.envcatalog.js";
+import { ALLOWED_CONFIG_MODELS, DEFAULT_PROFILE_NAME, harnessesReading, loadProfiles, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides } from "../ops.profiles.js";
 import { HARNESS_REGISTRY } from "../ops.registry.js";
 
 let dir: string;
@@ -44,6 +46,46 @@ describe("loadProfiles", () => {
     );
 
     await expect(loadProfiles(dir)).rejects.toThrow(/DATABASE_URL/);
+  });
+
+  it("accepts a key a harness reads that PROFILE_ENV_ALLOWLIST does not name", async () => {
+    // C7: repo profiles were checked against PROFILE_ENV_ALLOWLIST while saved
+    // configs were checked against the derived catalogues, so a code-reviewed,
+    // committed profile could set STRICTLY LESS than a config saved from a
+    // browser. NEGOTIATOR_STANCE is read by the discovery graph and is absent
+    // from that list, which is what made the asymmetry visible.
+    expect(PROFILE_ENV_ALLOWLIST).not.toContain("NEGOTIATOR_STANCE");
+    expect(HARNESS_ENV_KEYS.discovery).toContain("NEGOTIATOR_STANCE");
+
+    await writeFile(
+      path.join(dir, "stance.json"),
+      JSON.stringify({ name: "stance", description: "x", models: {}, env: { NEGOTIATOR_STANCE: "concise" } }),
+    );
+
+    const profiles = await loadProfiles(dir);
+    expect(profiles.map((p) => p.name).sort()).toEqual(["default", "stance"]);
+  });
+
+  it("still rejects a credential, which no profile may set", async () => {
+    // Widening the boundary must not widen it to credentials. DISCOVERY_TARGETS
+    // is the case the shape rule cannot see — it carries connection strings but
+    // is named after what it points at — so this proves the list-based half of
+    // `isCredentialEnvKey` is reached from the profile loader too.
+    await writeFile(
+      path.join(dir, "targets.json"),
+      JSON.stringify({ name: "targets", description: "x", models: {}, env: { DISCOVERY_TARGETS: "{}" } }),
+    );
+
+    await expect(loadProfiles(dir)).rejects.toThrow(/DISCOVERY_TARGETS.*credential/);
+  });
+
+  it("rejects a key no harness reads and no protocol flag names", async () => {
+    await writeFile(
+      path.join(dir, "invented.json"),
+      JSON.stringify({ name: "invented", description: "x", models: {}, env: { NOT_A_REAL_FLAG: "1" } }),
+    );
+
+    await expect(loadProfiles(dir)).rejects.toThrow(/not offered by any harness/);
   });
 
   it("rejects a file whose name does not match its profile name", async () => {
@@ -119,9 +161,73 @@ describe("validateConfigOverrides", () => {
     expect(issues.some((i) => i.includes("negotiator"))).toBe(true);
   });
 
-  it("rejects an env key outside PROFILE_ENV_ALLOWLIST", () => {
-    const issues = validateConfigOverrides({ models: {}, env: { OPENROUTER_API_KEY: "x" } });
-    expect(issues.some((i) => i.includes("OPENROUTER_API_KEY"))).toBe(true);
+  it("rejects an env key no harness reads and no allowlist names", () => {
+    const issues = validateConfigOverrides({ models: {}, env: { TOTALLY_UNKNOWN_KEY: "x" } });
+    expect(issues.some((i) => i.includes("TOTALLY_UNKNOWN_KEY"))).toBe(true);
+  });
+
+  it("refuses every credential by name, as a guard independent of the catalogue", () => {
+    // The spec's second guard. The generator already excludes these from every
+    // harness catalogue; this refuses them at the request boundary so that a
+    // bug in the generator cannot be enough to make a credential settable.
+    // Asserted on the reason, not just the key: "not read by any harness" would
+    // be the wrong answer for a credential every harness reads.
+    for (const secret of ENV_SECRET_KEYS) {
+      const issues = validateConfigOverrides({ models: {}, env: { [secret]: "x" } });
+      expect(issues.some((i) => i.includes(secret) && i.includes("credential")), `${secret} not refused as a credential`).toBe(true);
+    }
+  });
+
+  it("refuses a credential-shaped key even if one reached a catalogue", () => {
+    // ENV_SECRET_KEYS is an exact-match list of two. A review showed the real
+    // generator will happily catalogue OPENROUTER_API_KEY_2, ANTHROPIC_API_KEY,
+    // DATABASE_URL and NEON_API_KEY if a harness closure ever reads them — and
+    // the last two are read one import away from the discovery runner. None of
+    // these is on the list, so an exact-match guard would pass them straight to
+    // the child process. The shape rule refuses them without anyone having to
+    // predict the name.
+    for (const key of ["OPENROUTER_API_KEY_2", "ANTHROPIC_API_KEY", "DATABASE_URL", "NEON_API_KEY", "REDIS_URL"]) {
+      const issues = validateConfigOverrides({ models: {}, env: { [key]: "x" } });
+      expect(issues.some((i) => i.includes(key) && i.includes("credential")), `${key} not refused as a credential`).toBe(true);
+    }
+  });
+
+  it("accepts the keys the derived catalogue added, which the old allowlist refused", () => {
+    // These are read by real harnesses (eval/ops/ops.envcatalog.ts) but absent
+    // from the hand-written PROFILE_ENV_ALLOWLIST. Before the catalogue existed
+    // the boundary refused them, so the launch form could not offer them at all.
+    expect(validateConfigOverrides({
+      models: {},
+      env: {
+        NEGOTIATOR_STANCE: "skeptic",
+        NEGOTIATION_SCREEN_MODE: "enforce",
+        HYDE_FRAME_CONSTRAINTS_ENABLED: "true",
+        OPENROUTER_MAX_RETRIES: "0",
+        CHAT_REASONING_EFFORT: "high",
+      },
+    })).toEqual([]);
+  });
+
+  it("rejects a value the live service would silently fall back on", () => {
+    // The whole point of documenting these keys: an unrecognised value is not
+    // refused at runtime, it falls back, so a run would measure the default
+    // while reporting the configuration the operator typed.
+    const issues = validateConfigOverrides({ models: {}, env: { NEGOTIATOR_STANCE: "agressive" } });
+    expect(issues.some((i) => i.includes("NEGOTIATOR_STANCE"))).toBe(true);
+  });
+
+  it("rejects an EVAL_MODEL_OVERRIDES value its read site would throw on", () => {
+    // readModelOverrides throws lazily, at first model construction — after a
+    // discovery run has reset its branches and started spending.
+    expect(validateConfigOverrides({ models: {}, env: { EVAL_MODEL_OVERRIDES: "{oops" } }).length).toBeGreaterThan(0);
+    expect(validateConfigOverrides({
+      models: {},
+      env: { EVAL_MODEL_OVERRIDES: '{"noSuchAgent":"google/gemini-2.5-flash"}' },
+    }).length).toBeGreaterThan(0);
+    expect(validateConfigOverrides({
+      models: {},
+      env: { EVAL_MODEL_OVERRIDES: '{"opportunityEvaluator":"google/gemini-2.5-flash"}' },
+    })).toEqual([]);
   });
 
   it("accepts valid env values of every kind", () => {
@@ -215,6 +321,70 @@ describe("validateConfigOverrides", () => {
       expect(issues[0]).toContain(value);
       expect(issues[0]).toMatch(/positive number/i);
     }
+  });
+});
+
+describe("validateConfigOverrides per harness", () => {
+  it("accepts a key the harness's own code reads", () => {
+    // CHAT_MODEL is in matching's catalogue, so it is settable there. Before
+    // this task the four scorecard harnesses had no env editor at all, on the
+    // false premise that they read nothing.
+    expect(validateConfigOverrides({ models: {}, env: { CHAT_MODEL: "google/gemini-2.5-flash" } }, "matching")).toEqual([]);
+  });
+
+  it("refuses a key another harness reads but this one does not, naming both", () => {
+    // The union check alone passed this: DISCOVERY_ALLOWED_TYPES is read by
+    // SOME harness, just never by matching. Recording it would have written a
+    // value onto the run record that nothing acts on.
+    const issues = validateConfigOverrides({ models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } }, "matching");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("DISCOVERY_ALLOWED_TYPES");
+    expect(issues[0]).toContain("matching");
+    // Names where it IS read, so the message is actionable rather than a dead end.
+    expect(issues[0]).toContain("discovery");
+  });
+
+  it("still refuses a credential, by name, for every harness", () => {
+    for (const harness of ["matching", "discovery"] as const) {
+      const issues = validateConfigOverrides({ models: {}, env: { OPENROUTER_API_KEY: "sk-x" } }, harness);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toContain("OPENROUTER_API_KEY");
+      expect(issues[0]).toMatch(/credential/i);
+    }
+  });
+
+  it("keeps the union when no harness is named, because a saved config names none", () => {
+    // The Configs page saves a config without choosing a harness to run it
+    // under, so it has nothing to check against. Narrowing here would make a
+    // legitimate shared config unsavable.
+    expect(validateConfigOverrides({ models: {}, env: { DISCOVERY_ALLOWED_TYPES: "intent" } })).toEqual([]);
+  });
+
+  it("reports every harness that reads a key", () => {
+    // Model and provider knobs are read by all five; a discovery flag by one.
+    expect(harnessesReading("CHAT_MODEL")).toEqual(["matching", "profile", "premise", "opportunity", "discovery"]);
+    expect(harnessesReading("DISCOVERY_ALLOWED_TYPES")).toEqual(["discovery"]);
+    expect(harnessesReading("NOT_A_REAL_KEY")).toEqual([]);
+  });
+});
+
+describe("unreadEnvKeys", () => {
+  it("names the keys a harness will not read", () => {
+    expect(unreadEnvKeys("matching", { CHAT_MODEL: "m", DISCOVERY_ALLOWED_TYPES: "intent" }))
+      .toEqual(["DISCOVERY_ALLOWED_TYPES"]);
+  });
+
+  it("is empty when the harness reads everything the config sets", () => {
+    expect(unreadEnvKeys("discovery", { DISCOVERY_ALLOWED_TYPES: "intent", CHAT_MODEL: "m" })).toEqual([]);
+  });
+
+  it("reports rather than filters, so the record matches the process", () => {
+    // The value is still injected into the child environment; this function only
+    // says what will be ignored. A filter here would make the run record
+    // disagree with the process that actually ran.
+    const env = { CHAT_MODEL: "m", DISCOVERY_ALLOWED_TYPES: "intent" };
+    unreadEnvKeys("matching", env);
+    expect(env).toEqual({ CHAT_MODEL: "m", DISCOVERY_ALLOWED_TYPES: "intent" });
   });
 });
 

@@ -31,7 +31,7 @@ export interface RunExecutor {
    *
    * Two callers do: the guarded fixture reset, whose pipeline is several
    * commands; and a harness whose script does not live in packages/protocol or
-   * whose own gate demands credentials this server holds (discovery-ab is both).
+   * whose own gate demands credentials this server holds (discovery is both).
    * A one-step plan is still one command, so it keeps the numbered harness
    * exit-code contract — see {@link terminalStatus}.
    */

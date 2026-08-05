@@ -1,5 +1,5 @@
 /**
- * Reading a discovery-ab run report as the pair it is.
+ * Reading a discovery run report as the pair it is.
  *
  * The artifact holds no comparison. It holds two sides filed as `payload.rules`
  * (`a` and `b`), one case row per side per repetition, and each side's
@@ -205,7 +205,7 @@ function valueIdentity(value: AbSideValue): string {
  * Every key either side recorded appears, so an operator sees what was held
  * equal as well as what was varied; `differs` marks the ones the run is about.
  * This is the same comparison the engine prints from its plan (`configDiff` in
- * services/api/src/cli/discovery-ab.plan.ts), reconstructed from the artifact,
+ * services/api/src/cli/discovery.plan.ts), reconstructed from the artifact,
  * which is all a reader of a finished run has.
  */
 export function deriveAbConfigDiff(cases: readonly ArtifactCase[]): AbConfigRow[] {
@@ -228,7 +228,7 @@ export function deriveAbConfigDiff(cases: readonly ArtifactCase[]): AbConfigRow[
  *
  * The last segment is the repetition and the one before it is the side, which
  * equals the row's `rule` (`abSlotCaseId`,
- * services/api/src/cli/discovery-ab.main.ts). Both are stripped, so a case run
+ * services/api/src/cli/discovery.main.ts). Both are stripped, so a case run
  * three times reads as one case with three repetitions rather than three cases.
  * A row that does not match that shape is not paired by guesswork — it is
  * reported unpaired, so a changed id scheme shows up as rows nobody could pair
@@ -303,7 +303,7 @@ function summarize(rows: readonly ArtifactCase[], id: AbSideId, statedPassRate: 
 }
 
 /**
- * Reads a discovery-ab artifact as two sides and the difference between them.
+ * Reads a discovery artifact as two sides and the difference between them.
  *
  * Returns `no-verdict` rather than a comparison whenever the artifact does not
  * support one: incomplete execution evidence (the engine's own exit-3 outcome,
@@ -353,7 +353,7 @@ export function deriveAbView(artifact: Artifact): AbView {
       kind: 'no-verdict',
       reason:
         `This artifact holds no side ${missing.join(' and no side ')}, so there is no pair to compare. `
-        + 'A discovery A/B run files each side as a rule of its own.',
+        + 'A discovery run files each side as a rule of its own.',
       config,
       unpairedCaseIds,
     };
