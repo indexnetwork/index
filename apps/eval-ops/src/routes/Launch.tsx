@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { HARNESS_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.envcatalog';
 import { unreadEnvKeys } from '../../../../packages/protocol/eval/ops/ops.envreach';
 import { flagValueIssues } from '../../../../packages/protocol/eval/ops/ops.flags';
+import { envValueIssueForKey } from '../../../../packages/protocol/eval/ops/ops.metadata';
 import { SUPPORTS_SIDES, abSideIssues, singleConfigIssues, sidesPerRun } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
 import { EnvConfigEditor, type EnvFlagRow } from '../components/EnvConfigEditor';
@@ -186,6 +187,14 @@ export function Launch() {
           harnesses: harnesses.harnesses,
           profiles: profiles.profiles,
           selectedHarness: selected,
+          // Env is per harness — catalogues differ — so it clears whenever the
+          // harness changes, by WHICHEVER route. This effect reruns on every
+          // searchParams change and can land on a different harness than the one
+          // on screen: /launch?profile=x from the Configs page, then the nav's
+          // own /launch link, resets the selection to harnesses[0] while leaving
+          // rows the previous harness's catalogue produced. That posts a key the
+          // new harness does not read, and the server answers 400.
+          env: prev.selectedHarness?.harness === selected?.harness ? prev.env : [],
         }));
       })
       .catch((error) => {
@@ -272,17 +281,20 @@ export function Launch() {
     }));
   }, []);
 
-  const handleEnvRowAdd = useCallback(() => {
+  /**
+   * Adds an empty row shaped for the columns currently on screen.
+   *
+   * Takes the shape as an argument rather than reading the first existing row:
+   * the FIRST row has no predecessor to copy, and defaulting it to the single
+   * column gave a comparison's opening row a `single` value and no `a`/`b` —
+   * contradicting the comment above it and leaving a residue that the A/B toggle
+   * then had to paper over. The caller knows the shape; the reducer should not
+   * have to infer it.
+   */
+  const handleEnvRowAdd = useCallback((columns: readonly string[]) => {
     setState((prev) => ({
       ...prev,
-      // Shaped from the columns already on screen, so a row added to a comparison
-      // gets both sides and a row added to a single run gets one.
-      env: [
-        ...prev.env,
-        prev.env[0] === undefined
-          ? { ...EMPTY_SINGLE_ROW, values: { ...EMPTY_SINGLE_ROW.values } }
-          : { key: '', values: Object.fromEntries(Object.keys(prev.env[0].values).map((c) => [c, ''])) },
-      ],
+      env: [...prev.env, { key: '', values: Object.fromEntries(columns.map((c) => [c, ''])) }],
       awaitingConfirmation: false,
       launchError: null,
     }));
@@ -464,14 +476,24 @@ export function Launch() {
     const description = state.configDescription.trim();
     const models = state.models.reference;
     if (name === '' || description === '' || Object.keys(models).length === 0) return;
+    // The typed environment is saved WITH the models, not dropped. Before this
+    // branch there was no env editor on this page, so `env: {}` was simply true;
+    // now it would silently discard rows the operator had filled in and hand
+    // back a config that does less than the form showed. A config carries both
+    // blocks, and the Configs page already renders both.
+    const env = envFromRows(state.env);
     api
-      .createConfig({ name, description, models, env: {} })
+      .createConfig({ name, description, models, env })
       .then((created) => {
         setState((prev) => ({
           ...prev,
           savedConfigs: [...prev.savedConfigs, created],
           profile: { ...prev.profile, reference: created.name },
+          // Both blocks move into the config, so both clear from the ad-hoc form:
+          // leaving the env rows behind would immediately conflict with the
+          // config now selected, refusing a launch the operator just set up.
           models: { ...prev.models, reference: {} },
+          env: [],
           savingConfig: false,
           configName: '',
           configDescription: '',
@@ -515,6 +537,16 @@ export function Launch() {
    * value schema either, and offering it would invite a value that silently
    * falls back.
    */
+  /**
+   * Whether the server's env copy actually arrived.
+   *
+   * Not `metadata !== null`: the fetch resolves to an object either way, and the
+   * reducer fills a missing `env` with `[]` — so a failed or empty metadata
+   * response and a harness that genuinely reads nothing both end as an empty
+   * `envFlags`. They need different sentences, and only this distinguishes them.
+   */
+  const envCopyLoaded = (state.metadata?.env ?? []).length > 0;
+
   const envFlags: readonly EnvFlagMeta[] = useMemo(
     () =>
       harnessId === null
@@ -527,25 +559,45 @@ export function Launch() {
 
   /**
    * Every reason the server would refuse this configuration, from the server's
-   * own functions — `abSideIssues` for a pair, `singleConfigIssues` for one.
-   * Not re-derived here: a form with its own copy of these rules is how a page
-   * comes to accept a configuration the launch rejects, or worse, one the
-   * discovery graph silently falls back on.
+   * own functions — `abSideIssues` for a pair, `singleConfigIssues` for one,
+   * and `envValueIssueForKey` for every harness's plain values. Not re-derived
+   * here: a form with its own copy of these rules is how a page comes to accept
+   * a configuration the launch rejects, or worse, one the graph silently falls
+   * back on.
    *
-   * Only for a harness whose engine validates env this way. The scorecard
-   * harnesses' env reaches the child as plain overrides, which the server checks
-   * with validateConfigOverrides; running the discovery rules over them here
-   * would refuse keys ("not readable by the discovery graph") that this harness
-   * legitimately reads.
+   * Two rules, not one, and the split is deliberate. `singleConfigIssues`
+   * couples a DISCOVERY_ENV_KEYS membership check to a value check, and only
+   * the membership half is discovery-specific: running it over a scorecard
+   * harness would refuse CHAT_MODEL as "not readable by the discovery graph"
+   * when that harness demonstrably reads it. So the scorecard harnesses get the
+   * value half alone — `envValueIssueForKey`, the exact function the server's
+   * `validateProfileEnv` calls — because without it OPENROUTER_MAX_RETRIES="not-a-number"
+   * left this page enabled, was priced, was confirmed, and came back a 400 after
+   * the operator had committed to the spend.
+   *
+   * The membership check is unnecessary for them by construction: the picker
+   * only offers `HARNESS_ENV_KEYS[harness]`, so a key it produced is one this
+   * harness reads.
    */
   // Depends on `state.ab` rather than the derived `carriesSides`: the compiler
   // cannot prove a value computed from two other locals is stable, and the two
   // primitives it IS derived from are exactly as precise.
   const envIssues = useMemo(() => {
-    if (!supportsSides || state.env.length === 0) return [];
-    return supportsSides && state.ab
-      ? abSideIssues(sidesFromRows(state.env))
-      : singleConfigIssues(envFromRows(state.env));
+    if (state.env.length === 0) return [];
+    if (supportsSides) {
+      return state.ab
+        ? abSideIssues(sidesFromRows(state.env))
+        : singleConfigIssues(envFromRows(state.env));
+    }
+    // Same shape of issue as the discovery rules return, so one renderer and one
+    // `envIssueFor` lookup serve both. Path is [key] because a scorecard run has
+    // one column, exactly as `singleConfigIssues` reports it.
+    const issues: { path: string[]; message: string }[] = [];
+    for (const [key, value] of Object.entries(envFromRows(state.env))) {
+      const problem = envValueIssueForKey(key, value);
+      if (problem !== null) issues.push({ path: [key], message: `${key}="${value}" ${problem}` });
+    }
+    return issues;
   }, [supportsSides, state.ab, state.env]);
 
   const envIssueFor = useCallback(
@@ -573,6 +625,30 @@ export function Launch() {
     return Object.keys(state.models.reference).length > 0
       || Object.keys(state.models.candidate).length > 0;
   }, [state.env, state.models]);
+
+  /**
+   * The columns holding BOTH a named config and typed environment — a
+   * combination `buildSpec` cannot express, so it must not be launchable.
+   *
+   * `RunSpecSchema` forbids `overrides` alongside a named profile, and
+   * `buildSpec` honours that by sending `overrides` only when profile is
+   * "default". The editor, though, renders outside ConfigColumn and stayed on
+   * screen, filled and validated, whichever config was picked: the operator
+   * typed an environment, the page showed it as accepted, and the run spent real
+   * money without it. Silently dropping is the one wrong option of the three.
+   *
+   * Refused rather than hidden, for the same reason `modelOverrideConflict` is
+   * refused: hiding the editor would discard rows the operator had already
+   * typed, without saying so. Naming the two controls lets them choose which to
+   * clear. Configs are per column, so the message can say which side.
+   */
+  const configEnvConflict: readonly Side[] = useMemo(() => {
+    if (!state.env.some((row) => row.key !== '')) return [];
+    // A run carrying sides has no config picker at all (profile is pinned to
+    // "default"), so only the columns actually offering one can conflict.
+    const sides: Side[] = state.ab ? ['reference', 'candidate'] : ['reference'];
+    return sides.filter((side) => state.profile[side] !== 'default');
+  }, [state.env, state.ab, state.profile]);
 
   /**
    * Keys the selected saved config sets that this harness does not read.
@@ -669,14 +745,16 @@ export function Launch() {
   // the workload from, so the number confirmed here and the number stored on the
   // record cannot drift.
   //
-  // The guard is not decoration: a server one release ahead can name a harness
-  // this build does not know, and `sidesPerRun` would then be asked about a
-  // harness absent from its table. Without the fallback the workload line reads
-  // "= NaN" on a page whose whole job is to say what a run costs.
+  // `sidesPerRun` reads the spec's own shape — `sides === undefined ? 1 : 2` —
+  // so it consults no per-harness table and cannot be stumped by a harness this
+  // build does not know. It returns 1 or 2 and never undefined, which is why
+  // there is no `|| 1` fallback here: a guard against a value the function
+  // cannot produce reads as a real possibility to the next person, and the test
+  // pinning it would have asserted a branch that cannot execute.
   const passesPerLaunch =
     harnessId === null
       ? 1
-      : (sidesPerRun({ harness: harnessId, ...(carriesSides ? { sides: sidesFromRows(state.env) } : {}) }) || 1);
+      : sidesPerRun({ harness: harnessId, ...(carriesSides ? { sides: sidesFromRows(state.env) } : {}) });
   // What this run DESTROYS, in the harness's own words, because the branch that
   // shows it is the descriptor's own field and not a harness name: discovery
   // resets Neon branches, and another harness must not inherit that claim from a
@@ -717,12 +795,26 @@ export function Launch() {
       row.key === ''
       || activeColumns.some((column) => (row.values[column] ?? '').trim() === ''),
   );
-  // A harness that carries sides must configure something: a run with no flags
-  // set has nothing to compare. Every other harness may run with none, which is
-  // simply the committed default.
-  const sidesEmpty = carriesSides && state.env.length === 0;
+  /**
+   * A discovery run must configure something, in EITHER shape.
+   *
+   * The engine refuses a shape that names no key (`parseAbSideConfig`), and
+   * `singleConfigIssues({})` returns "This run has no configuration; set at
+   * least one flag the discovery graph reads, or there is nothing to measure".
+   * Guarding only the paired shape — which is what `carriesSides && ...` did —
+   * left the harness's own DEFAULT state (A/B off, no rows) enabled, priced and
+   * confirmable, and the server answered 400 after the operator had committed.
+   * That is precisely the trade ops.sides.ts exists to prevent: "a form that
+   * accepts a pair the server rejects turns a configuration mistake into a 400
+   * after the operator has committed to a spend."
+   *
+   * Scoped to `supportsSides` rather than to every harness, because it is only
+   * true of this one: a scorecard harness with no env set runs the committed
+   * default, which is its normal and most common launch.
+   */
+  const envEmpty = supportsSides && state.env.length === 0;
   const envGeneralIssues =
-    envIncomplete || sidesEmpty ? [] : envIssues.filter((issue) => issue.path.length < (carriesSides ? 2 : 1));
+    envIncomplete || envEmpty ? [] : envIssues.filter((issue) => issue.path.length < (carriesSides ? 2 : 1));
 
   // The specs this page would post, so a value is checked exactly where it would
   // be sent: shared selection alone for the harness that carries sides, and
@@ -747,8 +839,9 @@ export function Launch() {
     invalidSelectionFlags.length > 0
     || flagIssues.length > 0
     || envIncomplete
-    || sidesEmpty
+    || envEmpty
     || modelOverrideConflict
+    || configEnvConflict.length > 0
     || envIssues.length > 0;
   const saveConfigBlocked =
     state.configName.trim() === '' ||
@@ -849,6 +942,7 @@ export function Launch() {
                 columns={SIDE_COLUMNS}
                 columnLabels={SIDE_COLUMN_LABELS}
                 flags={envFlags}
+                metadataLoaded={envCopyLoaded}
                 rows={state.env}
                 issueFor={envIssueFor}
                 onKeyChange={handleEnvKeyChange}
@@ -927,6 +1021,7 @@ export function Launch() {
               columns={SINGLE_COLUMNS}
               columnLabels={SINGLE_COLUMN_LABELS}
               flags={envFlags}
+              metadataLoaded={envCopyLoaded}
               rows={state.env}
               issueFor={envIssueFor}
               onKeyChange={handleEnvKeyChange}
@@ -941,6 +1036,18 @@ export function Launch() {
               {MODEL_OVERRIDE_KEY} is set here and the per-agent model pickers are also set. The
               pickers write this same variable, so one of the two would be discarded and the run
               would use models you did not choose. Clear one of them.
+            </p>
+          )}
+
+          {configEnvConflict.length > 0 && (
+            <p className="text-term-red">
+              Environment is set here and{' '}
+              {configEnvConflict
+                .map((side) => `${side === 'reference' ? 'A · reference' : 'B · candidate'} runs under the saved config "${state.profile[side]}"`)
+                .join(', and ')}
+              . A run uses one or the other, never both, so this environment would be dropped and
+              the run would measure the config alone. Clear the environment, or switch that column
+              back to “default”.
             </p>
           )}
 
@@ -1045,8 +1152,12 @@ export function Launch() {
                   {message}
                 </p>
               ))}
-              {sidesEmpty && (
-                <p className="text-term-red">Add a flag to both sides before running.</p>
+              {envEmpty && (
+                <p className="text-term-red">
+                  {carriesSides
+                    ? 'Add a flag to both sides before running.'
+                    : 'Add a flag before running: a discovery run measures the configuration you set, so with none there is nothing to measure.'}
+                </p>
               )}
               {envIncomplete && (
                 <p className="text-term-red">

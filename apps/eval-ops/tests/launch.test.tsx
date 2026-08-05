@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router';
+import { BrowserRouter, Link } from 'react-router';
 
 import { flagValueIssues } from '../../../packages/protocol/eval/ops/ops.flags';
 import { HARNESS_REGISTRY } from '../../../packages/protocol/eval/ops/ops.registry';
@@ -147,6 +147,18 @@ const METADATA = {
       kind: 'integer',
       min: 1,
       defaultDescription: '4',
+    },
+    {
+      // A free-text key in EVERY harness's catalogue, so a scorecard harness has
+      // a value the operator can get wrong. The enum keys above cannot carry a
+      // bad value — they render a <select> — so without this the page's value
+      // checking for the scorecard harnesses could not be tested at all.
+      key: 'OPENROUTER_MAX_RETRIES',
+      label: 'OpenRouter max retries',
+      description: 'How many times a failed provider call is retried.',
+      kind: 'integer',
+      min: 0,
+      defaultDescription: '2',
     },
   ],
   models: [
@@ -989,10 +1001,11 @@ describe('Launch — discovery', () => {
   });
 
   it('prices a harness this build has never heard of, rather than saying NaN', async () => {
-    // A server one release ahead names a harness the bundled SPA does not know,
-    // and SIDES_PER_RUN has no entry for it. Without the `?? 1` the multiplier
-    // is undefined and the workload line — the one line whose whole job is to
-    // say what a run costs — reads "= NaN" on every render for that harness.
+    // A server one release ahead can name a harness the bundled SPA does not
+    // know. `sidesPerRun` reads the SPEC's shape rather than a per-harness table
+    // (`sides === undefined ? 1 : 2`), so it answers for an unknown harness the
+    // same way it answers for a known one — which is what keeps the workload
+    // line, whose whole job is to say what a run costs, from reading "= NaN".
     const future = {
       harnesses: [
         ...HARNESSES.harnesses,
@@ -1228,11 +1241,19 @@ describe('FlagListbox — the flag picker', () => {
     // <select> on the same page also holds role="option" children, and the
     // ELEMENTS are replaced on every render so captured nodes go stale.
     const optionsNow = () => within(screen.getByRole('listbox')).getAllByRole('option');
+    // Read from the TRIGGER, which is where ARIA requires it: the attribute is
+    // only honoured on the element that actually holds DOM focus, and focus
+    // never enters the popup. Read from the <ul> (where it used to live) a
+    // screen reader announces nothing at all while arrowing.
     const activeIndex = () => {
-      const active = screen.getByRole('listbox').getAttribute('aria-activedescendant');
+      const active = trigger.getAttribute('aria-activedescendant');
       return optionsNow().findIndex((option) => option.id === active);
     };
     const lastIndex = optionsNow().length - 1;
+
+    // The attribute lives on the focused element, and the popup carries none.
+    expect(trigger).toHaveFocus();
+    expect(screen.getByRole('listbox')).not.toHaveAttribute('aria-activedescendant');
 
     // Opens onto the first option.
     expect(activeIndex()).toBe(0);
@@ -1249,31 +1270,36 @@ describe('FlagListbox — the flag picker', () => {
     await user.keyboard('{Home}');
     expect(activeIndex()).toBe(0);
 
-    // Enter chooses the active option, the popup closes, and focus returns to
-    // the trigger — so the tab order never strands anyone inside a dismissed
-    // popup.
+    // Enter chooses the active option and the popup closes. Focus is on the
+    // trigger throughout the KEYBOARD path — the popup is never focused — so
+    // this asserts focus is not LOST, which is what the tab order needs.
+    //
+    // It does not prove the refocus call in `close`, and nothing here can: that
+    // call exists for the MOUSE path, where clicking a non-focusable <li> blurs
+    // the trigger in a real browser. happy-dom does not move focus on click, so
+    // the state it repairs is unreachable in this environment. A previous
+    // version of this test called listbox.focus() by hand to manufacture that
+    // state; it passed, but it proved a recovery from a state the app cannot
+    // enter. Verified by hand in a browser instead.
     const chosenLabel = optionsNow()[0]!.textContent;
-    screen.getByRole('listbox').focus();
-    expect(trigger).not.toHaveFocus();
     await user.keyboard('{Enter}');
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(trigger).toHaveFocus();
     expect(chosenLabel).toContain(trigger.textContent!.split(' — ')[0]!);
   });
 
-  it('dismisses on Escape without choosing, and returns focus', async () => {
+  it('dismisses on Escape without choosing, and keeps focus on the trigger', async () => {
     const user = userEvent.setup();
     const trigger = await openPicker(user);
     const before = trigger.textContent;
 
-    // Focus is inside the popup, not on the trigger, so "returns focus" is a
-    // real claim: without the refocus call this assertion fails.
-    screen.getByRole('listbox').focus();
-    expect(trigger).not.toHaveFocus();
-
     await user.keyboard('{Escape}');
 
     expect(screen.queryByRole('listbox')).toBeNull();
+    // Focus never left the trigger on the keyboard path, so this asserts it is
+    // not lost on dismissal — not that it was restored. The restoring call in
+    // `close({refocus:true})` serves the mouse path, which happy-dom cannot
+    // stage: it does not blur on click. See the note in the keyboard test.
     expect(trigger).toHaveFocus();
     expect(trigger.textContent).toBe(before);
   });
@@ -1301,5 +1327,269 @@ describe('FlagListbox — the flag picker', () => {
       .getAllByRole('option')
       .map((option) => option.textContent);
     expect(offered.some((text) => text?.includes('CHAT_MODEL'))).toBe(false);
+  });
+});
+
+describe('Launch — refusing what the server would refuse', () => {
+  /**
+   * BLOCKER 1. The harness's own default state — A/B off, no flags — was
+   * enabled, priced and confirmable, and the server answered 400 after the
+   * operator had committed to the spend.
+   *
+   * `singleConfigIssues({})` is the server's word for it: "This run has no
+   * configuration; set at least one flag the discovery graph reads, or there is
+   * nothing to measure." The form must say so BEFORE the button, which is the
+   * contract ops.sides.ts states verbatim.
+   */
+  it('will not launch a discovery run that configures nothing', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await selectDiscovery(user);
+
+    // The default shape: A/B off, no rows. Precondition, so a future default
+    // that adds a row does not make this test silently vacuous.
+    expect((screen.getByRole('checkbox', { name: 'A/B' }) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByRole('combobox', { name: 'flag 1' })).toBeNull();
+
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+    expect(screen.getByText(/add a flag before running/i)).toBeTruthy();
+
+    // And it is the ABSENCE of configuration that blocks it: one flag clears it.
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'DISCOVERY_PROFILE_SOURCE');
+    await user.selectOptions(screen.getByLabelText('value 1'), 'user_context');
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+    expect(screen.queryByText(/add a flag before running/i)).toBeNull();
+  });
+
+  it('still refuses an empty comparison, naming both sides', async () => {
+    // The paired shape was already guarded; this pins that the generalised
+    // guard did not lose it, and that the two shapes still say different things.
+    const user = userEvent.setup();
+    renderLaunch();
+    await selectDiscovery(user);
+    await enableAb(user);
+
+    expect(screen.getByRole('button', { name: /run both sides/i })).toBeDisabled();
+    expect(screen.getByText(/add a flag to both sides before running/i)).toBeTruthy();
+  });
+
+  it('lets a scorecard harness run with no environment at all', async () => {
+    // The guard is scoped to the harness that measures its environment. A
+    // matching run with no env is the committed default and its most common
+    // launch; blocking it would be a regression dressed as a fix.
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+    await runAndConfirm(user, /^run$/i);
+    expect(postedRuns).toEqual([
+      { kind: 'eval', harness: 'matching', profile: 'default', flags: {} },
+    ]);
+  });
+
+  /**
+   * BLOCKER 2. The env editor renders outside ConfigColumn, so it stayed on
+   * screen and validated while a named config was selected — but `buildSpec`
+   * sends `overrides` only under profile "default". The operator typed an
+   * environment, the page showed it accepted, and the run spent real money
+   * without it.
+   */
+  it('will not silently drop typed environment when a saved config is picked', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'CHAT_MODEL');
+    await user.selectOptions(screen.getByLabelText('value 1'), 'anthropic/claude-sonnet-4');
+    // Enabled while the column is on "default".
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+
+    await user.selectOptions(screen.getByLabelText('Config'), 'claude-evaluator');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+    expect(screen.getByText(/environment is set here and.*claude-evaluator/i)).toBeTruthy();
+    expect(postedRuns).toEqual([]);
+
+    // Clearing either side of the contradiction resolves it.
+    await user.selectOptions(screen.getByLabelText('Config'), 'default');
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+  });
+
+  it('names which column carries the config it conflicts with', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+    await user.click(screen.getByRole('checkbox', { name: 'A/B' }));
+
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'CHAT_MODEL');
+    await user.selectOptions(screen.getByLabelText('value 1'), 'anthropic/claude-sonnet-4');
+    // Both columns render a "Config" picker; the second is B · candidate.
+    await user.selectOptions(screen.getAllByLabelText('Config')[1]!, 'claude-evaluator');
+
+    // The message names B, not A: the operator has to know which picker to clear.
+    expect(screen.getByText(/B · candidate runs under the saved config "claude-evaluator"/)).toBeTruthy();
+    expect(screen.queryByText(/A · reference runs under the saved config/)).toBeNull();
+  });
+
+  /**
+   * CONCERN 4. `envIssues` was gated on `supportsSides`, so the four scorecard
+   * harnesses' values were never checked here — the server 400'd after the
+   * spend had been confirmed.
+   */
+  it('checks scorecard env values with the same function the server uses', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'OPENROUTER_MAX_RETRIES');
+    await user.type(screen.getByLabelText('value 1'), 'not-a-number');
+
+    expect(screen.getByRole('button', { name: /^run$/i })).toBeDisabled();
+    // The server's own words, from envValueIssueForKey.
+    expect(screen.getByText(/must be an integer/i)).toBeTruthy();
+    expect(postedRuns).toEqual([]);
+
+    await user.clear(screen.getByLabelText('value 1'));
+    await user.type(screen.getByLabelText('value 1'), '4');
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+  });
+
+  it('does not refuse a scorecard key as unreadable by the discovery graph', async () => {
+    // The other half of concern 4: `singleConfigIssues` couples a
+    // DISCOVERY_ENV_KEYS membership check to the value check, and only the
+    // membership half is discovery-specific. Running it wholesale over matching
+    // would refuse CHAT_MODEL — a key matching demonstrably reads.
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'CHAT_MODEL');
+    await user.selectOptions(screen.getByLabelText('value 1'), 'google/gemini-2.5-flash');
+
+    expect(screen.queryByText(/not readable by the discovery graph/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /^run$/i })).not.toBeDisabled();
+  });
+
+  /**
+   * CONCERN 7. handleHarnessChange clears env, but the searchParams effect sets
+   * the harness without clearing — reachable with clicks alone via the Configs
+   * page's /launch?profile=<name> link and then the nav's own /launch link.
+   */
+  it('clears environment when the harness changes by URL, not only by the picker', async () => {
+    // The component STAYS MOUNTED across the URL change — unmounting would
+    // rebuild state from scratch and the assertion would hold with or without
+    // the fix. A <Link> inside the same router is the real path: Configs links
+    // to /launch?harness=discovery, the nav links back to /launch, and the
+    // searchParams effect reruns on a live component holding the old rows.
+    const user = userEvent.setup();
+    window.history.pushState({}, '', '/launch?harness=discovery');
+    render(
+      <BrowserRouter>
+        <Link to="/launch">back to launch</Link>
+        <Launch />
+      </BrowserRouter>,
+    );
+
+    await screen.findByRole('button', { name: /^add flag$/ });
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'DISCOVERY_PROFILE_SOURCE');
+    await user.selectOptions(screen.getByLabelText('value 1'), 'user_context');
+    expect(screen.getByRole('combobox', { name: 'flag 1' })).toBeTruthy();
+
+    // Navigating drops the ?harness= param, so the effect reselects
+    // harnesses[0] (matching), whose catalogue has no DISCOVERY_PROFILE_SOURCE.
+    await user.click(screen.getByRole('link', { name: 'back to launch' }));
+    await screen.findByLabelText(/evaluator/i);
+
+    expect(screen.queryByRole('combobox', { name: 'flag 1' })).toBeNull();
+    expect(screen.queryByText(/DISCOVERY_PROFILE_SOURCE/)).toBeNull();
+  });
+
+  /**
+   * SUGGESTION 8. Before this branch there was no env editor on this page, so
+   * `env: {}` was true. With one, saving a config silently discarded the rows
+   * the operator had filled in.
+   */
+  it('saves the typed environment into the config, not just the models', async () => {
+    const user = userEvent.setup();
+    renderLaunch();
+    await screen.findByLabelText(/evaluator/i);
+
+    await user.selectOptions(screen.getByLabelText('Evaluator'), 'anthropic/claude-sonnet-4');
+    await user.click(screen.getByRole('button', { name: /^add flag$/ }));
+    await pickFlag(user, 1, 'OPENROUTER_MAX_RETRIES');
+    await user.type(screen.getByLabelText('value 1'), '5');
+
+    await user.click(screen.getByRole('button', { name: /save as config/i }));
+    await user.type(screen.getByLabelText('config name'), 'high-effort');
+    await user.type(screen.getByLabelText('config description'), 'reasoning turned up');
+    await user.click(screen.getByRole('button', { name: /^save config$/i }));
+
+    expect(postedConfigs).toHaveLength(1);
+    expect(postedConfigs[0]).toMatchObject({
+      name: 'high-effort',
+      models: { opportunityEvaluator: 'anthropic/claude-sonnet-4' },
+      env: { OPENROUTER_MAX_RETRIES: '5' },
+    });
+  });
+});
+
+describe('EnvConfigEditor — an empty offer has two different causes', () => {
+  /**
+   * SUGGESTION 12. "The flag descriptions could not be loaded … Reload the page"
+   * was printed for both causes. For a harness whose catalogue is genuinely
+   * empty that is false twice over: nothing failed to load, and reloading will
+   * produce the same empty list forever.
+   */
+  it('says the descriptions failed to load when the metadata request failed', async () => {
+    vi.stubGlobal('fetch', stubFetch({ withMetadata: false }));
+    renderLaunch();
+    await screen.findByLabelText('--runs');
+
+    expect(screen.getByText(/flag descriptions could not be loaded/i)).toBeTruthy();
+    expect(screen.getByText(/reload the page/i)).toBeTruthy();
+  });
+
+  it('says the harness reads nothing when its catalogue is empty', async () => {
+    // A harness the server names whose generated catalogue holds no keys: the
+    // metadata loaded perfectly, and there is simply nothing to configure.
+    const future = {
+      harnesses: [
+        {
+          harness: 'reads-nothing',
+          script: 'eval:reads-nothing',
+          caseCount: 4,
+          defaultRuns: 1,
+          question: 'A harness with no environment surface.',
+          detail: 'Its catalogue is empty.',
+          agents: [],
+          flags: [RUNS_FLAG],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/api/harnesses')) return new Response(JSON.stringify(future));
+        if (String(url).endsWith('/api/profiles')) return new Response(JSON.stringify(PROFILES));
+        if (String(url).endsWith('/api/configs/metadata')) return new Response(JSON.stringify(METADATA));
+        if (String(url).endsWith('/api/configs')) {
+          return new Response(JSON.stringify({ repo: PROFILES.profiles, saved: [] }));
+        }
+        return new Response(JSON.stringify({}));
+      }),
+    );
+    renderLaunch();
+    await screen.findByLabelText('Runs per case');
+
+    expect(screen.getByText(/this harness reads no environment variables/i)).toBeTruthy();
+    // The false advice is gone: there is nothing to reload.
+    expect(screen.queryByText(/reload the page/i)).toBeNull();
   });
 });

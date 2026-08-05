@@ -273,6 +273,13 @@ function RunDetail({ runId }: { runId: string }) {
    * for a run that has only one side, whose `b` column does not exist.
    */
   const comparesSides = run.spec.kind === 'eval' && run.spec.sides !== undefined;
+  /**
+   * True when the environment is what this run set out to measure, rather than a
+   * deviation from a committed baseline. Read from the same table the launch
+   * form branches on, so the two pages describe one run the same way.
+   */
+  const measuresEnv =
+    run.spec.kind === 'eval' && SUPPORTS_SIDES[run.spec.harness] === true;
 
   return (
     <div className="p-4 space-y-4">
@@ -306,7 +313,15 @@ function RunDetail({ runId }: { runId: string }) {
               </div>
               {overridesSummary !== null && (
                 <div className="flex gap-4">
-                  <span className="text-term-dim w-24">overrides:</span>
+                  {/* "environment" for a run whose environment IS the subject, and
+                      "overrides" for one where it is a deviation from a baseline.
+                      A single discovery run has no baseline to deviate from — its
+                      whole result is the pass rate of the configuration named
+                      here — so calling it an override would misdescribe the one
+                      line that says what the run measured. */}
+                  <span className="text-term-dim w-24">
+                    {measuresEnv ? 'environment:' : 'overrides:'}
+                  </span>
                   <span className="text-term-dim">{overridesSummary}</span>
                 </div>
               )}

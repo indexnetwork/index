@@ -727,6 +727,65 @@ describe('Run · discovery', () => {
     expect(screen.queryByTestId('ab-side-b')).toBeNull();
   });
 
+  it('shows the configuration a single discovery run measured, as its environment', async () => {
+    // The scorecard says what the run scored; this says what it scored. Without
+    // it the page reports a pass rate for a configuration it never names, and a
+    // run whose entire subject is one environment is unreadable.
+    //
+    // "environment:", not "overrides:": an override is a deviation from a
+    // committed baseline, and a discovery run has none — the configuration IS
+    // the measurement.
+    const singleRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'discovery',
+        profile: 'default',
+        flags: { runs: 1 },
+        overrides: { models: {}, env: { DISCOVERY_ALLOWED_TYPES: 'intent' } },
+      },
+      // As renderRun writes it onto the record: the operator's key, plus the
+      // EVAL_MODEL_OVERRIDES neutraliser every run carries.
+      env: { DISCOVERY_ALLOWED_TYPES: 'intent', EVAL_MODEL_OVERRIDES: '' },
+      argv: [
+        'bun', 'run', 'eval:discovery', '--',
+        '--runs', '1', '--env', 'DISCOVERY_ALLOWED_TYPES=intent',
+      ],
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(singleRun);
+
+    // Scoped to the row the label heads: the argv line below also spells the
+    // assignment out, and matching that would pass even if this row vanished.
+    const label = await screen.findByText('environment:');
+    expect(label.parentElement!.textContent).toContain('DISCOVERY_ALLOWED_TYPES=intent');
+    expect(screen.queryByText('overrides:')).toBeNull();
+  });
+
+  it('still calls a scorecard harness’s env an override, because it deviates from a baseline', async () => {
+    // The counterpart: matching HAS a committed baseline, so a model or provider
+    // key set on it is a deviation from that baseline and "overrides" is the
+    // true word. One label for both would misdescribe one of them.
+    const matchingRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'matching',
+        profile: 'default',
+        flags: { runs: 1 },
+        overrides: { models: {}, env: { OPENROUTER_MAX_RETRIES: '5' } },
+      },
+      env: { OPENROUTER_MAX_RETRIES: '5', EVAL_MODEL_OVERRIDES: '' },
+      argv: ['bun', 'run', 'eval:matching', '--', '--runs', '1'],
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(matchingRun);
+
+    expect(await screen.findByText('overrides:')).toBeTruthy();
+    expect(screen.getByText(/OPENROUTER_MAX_RETRIES=5/)).toBeTruthy();
+    expect(screen.queryByText('environment:')).toBeNull();
+  });
+
   it('shows both sides with their pass rates, saying which is read against which', async () => {
     stubArtifactFetch(withRepetitions());
     renderRun(AB_RUN);

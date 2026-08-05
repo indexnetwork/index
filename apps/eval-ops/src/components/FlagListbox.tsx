@@ -154,7 +154,27 @@ export function FlagListbox({ flags, takenKeys, value, label, onChange }: FlagLi
     [open, options.length, activeIndex, choose, close, openAt],
   );
 
-  const optionId = (index: number) => `${baseId}-option-${index}`;
+  const optionId = useCallback((index: number) => `${baseId}-option-${index}`, [baseId]);
+
+  /**
+   * Keeps the active option visible while arrowing.
+   *
+   * `aria-activedescendant` moves a virtual cursor, and the browser does NOT
+   * scroll for it the way it does for real focus. The popup is capped at 20
+   * lines and discovery offers twenty-six flags, so without this, arrowing past
+   * the twentieth option moved the active row somewhere below the fold and the
+   * control appeared frozen.
+   *
+   * `block: 'nearest'` scrolls only when the option is actually out of view, so
+   * the list does not jump on every keypress. Guarded because happy-dom does not
+   * implement scrollIntoView — which is also why this behaviour is reasoned from
+   * the API contract rather than asserted in a test that cannot observe it.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const active = document.getElementById(optionId(activeIndex));
+    active?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, activeIndex, optionId]);
 
   return (
     <div className="relative flex-1">
@@ -166,6 +186,13 @@ export function FlagListbox({ flags, takenKeys, value, label, onChange }: FlagLi
         aria-expanded={open}
         aria-controls={`${baseId}-listbox`}
         aria-haspopup="listbox"
+        // On the TRIGGER, because ARIA only honours aria-activedescendant on the
+        // element that actually has DOM focus — and focus never leaves the
+        // trigger here (the popup is opened, but not focused). Placed on the
+        // <ul> it announced nothing while arrowing, which is the one affordance
+        // a native <select> gives for free. This is what the APG's select-only
+        // combobox pattern specifies.
+        aria-activedescendant={open && options.length > 0 ? optionId(activeIndex) : undefined}
         className="w-full bg-term-bg border border-term-rule px-[1ch] py-[0.5lh] text-left"
         onClick={() => (open ? close({ refocus: false }) : openAt())}
         onKeyDown={handleKeyDown}
@@ -185,7 +212,6 @@ export function FlagListbox({ flags, takenKeys, value, label, onChange }: FlagLi
           id={`${baseId}-listbox`}
           role="listbox"
           aria-label={label}
-          aria-activedescendant={options.length === 0 ? undefined : optionId(activeIndex)}
           tabIndex={-1}
           className="absolute z-10 mt-1 max-h-[20lh] w-full overflow-y-auto border border-term-rule bg-term-panel"
           onKeyDown={handleKeyDown}

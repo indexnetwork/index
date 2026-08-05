@@ -25,12 +25,23 @@ interface EnvConfigEditorProps {
   columnLabels: Readonly<Record<string, string>>;
   /** The flags this harness reads, with the server's copy and value schema. */
   flags: readonly EnvFlagMeta[];
+  /**
+   * Whether the server's flag copy arrived. Distinguishes "this harness reads
+   * nothing" from "the descriptions failed to load", which are the same empty
+   * `flags` array but not the same message.
+   */
+  metadataLoaded: boolean;
   rows: readonly EnvFlagRow[];
   /** The server's refusal for this column's value of `key`, if it has one. */
   issueFor: (column: string, key: string) => string | undefined;
   onKeyChange: (index: number, key: string) => void;
   onValueChange: (column: string, index: number, value: string) => void;
-  onAddRow: () => void;
+  /**
+   * Adds a row. Handed THIS editor's columns, so the new row is shaped for the
+   * shape on screen even when it is the first — the case a parent inferring the
+   * shape from an existing row cannot get right.
+   */
+  onAddRow: (columns: readonly string[]) => void;
   onRemoveRow: (index: number) => void;
 }
 
@@ -70,6 +81,7 @@ export function EnvConfigEditor({
   columns,
   columnLabels,
   flags,
+  metadataLoaded,
   rows,
   issueFor,
   onKeyChange,
@@ -84,9 +96,15 @@ export function EnvConfigEditor({
   if (flags.length === 0) {
     return (
       <div data-testid="env-editor" className="border border-term-rule p-3">
+        {/* Two different causes, and telling them apart matters: the operator can
+            act on the first and cannot on the second. "Reload the page" was
+            printed for both, which is false advice for a harness whose catalogue
+            is genuinely empty — the descriptions loaded fine, and reloading will
+            produce the same empty list forever. */}
         <p className="text-term-red">
-          The flag descriptions could not be loaded, so there is nothing safe to offer here. Reload
-          the page to configure this run.
+          {metadataLoaded
+            ? 'This harness reads no environment variables, so there is nothing to configure here.'
+            : 'The flag descriptions could not be loaded, so there is nothing safe to offer here. Reload the page to configure this run.'}
         </p>
       </div>
     );
@@ -191,7 +209,7 @@ export function EnvConfigEditor({
         <button
           type="button"
           className="px-[2ch] py-[0.5lh] border border-term-rule text-term-dim"
-          onClick={onAddRow}
+          onClick={() => onAddRow(columns)}
         >
           {/* One control, not one per column: a key belongs to the row, so two
               buttons were two ways to do the identical thing. */}

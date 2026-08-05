@@ -117,8 +117,10 @@ export function renderEnvCatalog(catalog: Record<OpsHarness, string[]>): string 
  *
  * Why derived rather than maintained: the site once offered nine flags for
  * discovery because a scan was run against a hand-written sixteen-key list.
- * The graph reads twenty-eight. The list was the limit, not the code — so the
- * list is gone and the code answers.
+ * The graph READS twenty-eight; two of those are credentials, so twenty-six are
+ * OFFERED. (The scorecard harnesses read ten each and offer eight, by the same
+ * two exclusions.) The list was the limit, not the code — so the list is gone
+ * and the code answers.
  */
 import type { OpsHarness } from "./ops.types.js";
 
