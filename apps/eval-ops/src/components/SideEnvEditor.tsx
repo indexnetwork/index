@@ -41,6 +41,9 @@ const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
   integer: 'e.g. 4',
   number: 'e.g. 7',
   string: 'value',
+  // Shows the shape rather than describing it: this is the one kind whose
+  // value is structured, and its read site throws on a malformed one.
+  'json-model-map': '{"opportunityEvaluator":"google/gemini-2.5-flash"}',
 };
 
 /**

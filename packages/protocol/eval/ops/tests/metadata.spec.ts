@@ -3,13 +3,74 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { HARNESS_ENV_KEYS } from "../ops.envcatalog.js";
 import { ALLOWED_CONFIG_MODELS } from "../ops.profiles.js";
 import { HARNESS_REGISTRY, OPS_HARNESSES } from "../ops.registry.js";
-import { FLAG_METADATA, ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, type EnvFlagMeta } from "../ops.metadata.js";
+import { FLAG_METADATA, ENV_FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, envFlagValueIssue, type EnvFlagMeta } from "../ops.metadata.js";
+
+/** Every key any harness offers, which is what "offered" means in the spec. */
+const OFFERED_KEYS: readonly string[] = [...new Set(Object.values(HARNESS_ENV_KEYS).flat())].sort();
+
+/**
+ * Documented flags no harness reads — pinned exactly, not merely allowed.
+ *
+ * These are the IND-630 seven: catalogued because the live services read them,
+ * unreachable from every harness entry point, and therefore never offered on
+ * the launch form. They stay documented so a saved config can still record
+ * them and the Configs page can say who reads them.
+ *
+ * An exact set rather than a permissive filter because this residue is where
+ * an unoffered flag would hide: if a key stops being read by a harness it
+ * lands here silently, and the launch form quietly loses a control that used
+ * to work. Growing or shrinking this list has to be a deliberate edit.
+ */
+const READ_BY_NO_HARNESS: readonly string[] = [
+  // Live discovery-on-behalf-of gate; reached from the introducer feature
+  // module, which no harness entry point imports.
+  "INTRODUCER_DISCOVERY_ENABLED",
+  // Lens C. Read in the negotiation-evidence module, driven by API queues.
+  "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+  // Lens B. Read in the outcome module, driven by explicit owner actions.
+  "OUTCOME_QUESTIONS_MODE",
+  // The four pool-question flags live in the discriminator module, whose entry
+  // is a discovery-run completion hook rather than the graph itself.
+  "POOL_QUESTIONS_MINING",
+  "POOL_QUESTIONS_MODE",
+  "POOL_QUESTIONS_PUSH",
+  "POOL_QUESTIONS_RANKING",
+].sort();
 
 describe("ENV_FLAG_METADATA", () => {
-  it("covers exactly the allowlisted keys, once each, in allowlist order", () => {
-    expect(ENV_FLAG_METADATA.map((m) => m.key)).toEqual([...PROFILE_ENV_ALLOWLIST]);
+  it("documents every key any harness offers", () => {
+    // The spec's central rule: offered ⊆ documented. An undocumented key
+    // renders as a bare SCREAMING_SNAKE string with no description and no
+    // validation, which is exactly how DISCOVERY_PROFILE_SOURCE=user-context
+    // reached a live A/B run and reported a difference that never existed.
+    const documented = new Set(ENV_FLAG_METADATA.map((m) => m.key));
+    const undocumented = OFFERED_KEYS.filter((key) => !documented.has(key));
+    expect(undocumented, "offered but undocumented — write metadata or stop offering").toEqual([]);
+  });
+
+  it("documents each key exactly once", () => {
+    const keys = ENV_FLAG_METADATA.map((m) => m.key);
+    expect(new Set(keys).size, "a duplicated key makes envValueIssueForKey's find() order load-bearing").toBe(keys.length);
+  });
+
+  it("describes exactly the offered keys plus the pinned unread residue", () => {
+    // The reverse direction, deliberately not total: metadata legitimately
+    // describes flags no harness reads. Pinning the residue exactly means a
+    // key silently dropping out of every catalogue fails here rather than
+    // disappearing from the launch form unnoticed.
+    const documented = ENV_FLAG_METADATA.map((m) => m.key);
+    const unread = documented.filter((key) => !OFFERED_KEYS.includes(key)).sort();
+    expect(unread).toEqual([...READ_BY_NO_HARNESS]);
+  });
+
+  it("keeps every allowlisted flag documented, so saved configs stay explainable", () => {
+    const documented = new Set(ENV_FLAG_METADATA.map((m) => m.key));
+    for (const key of PROFILE_ENV_ALLOWLIST) {
+      expect(documented.has(key), `${key} is allowlisted but undocumented`).toBe(true);
+    }
   });
 
   it("gives every flag a label, description, and defaultDescription", () => {
@@ -31,6 +92,74 @@ describe("ENV_FLAG_METADATA", () => {
     }
   });
 
+  it("offers only reviewed models wherever a flag names one", () => {
+    // Three flags carry a model id. Their read sites accept any string, so the
+    // narrowing is the site's, not the code's: a browser-launched run must not
+    // be able to name an unreviewed model through an env flag when the per-agent
+    // pickers refuse exactly that. `none`/`off` are the fallback flag's own
+    // documented disable words, read at model.config.ts's getFallbackModelName.
+    const DISABLE_WORDS = ["none", "off"];
+    for (const key of ["CHAT_MODEL", "SMARTEST_VERIFIER_MODEL", "OPENROUTER_FALLBACK_MODEL"]) {
+      const meta = ENV_FLAG_METADATA.find((m) => m.key === key)!;
+      expect(meta, `${key} missing`).toBeDefined();
+      const modelValues = meta.values!.filter((v) => !DISABLE_WORDS.includes(v));
+      expect([...modelValues].sort(), `${key} offers a model outside ALLOWED_CONFIG_MODELS`)
+        .toEqual([...ALLOWED_CONFIG_MODELS].sort());
+    }
+  });
+
+  it("refuses every EVAL_MODEL_OVERRIDES value its read site would throw on", () => {
+    // readModelOverrides throws on each of these, lazily, at first model
+    // construction — i.e. after the branches are reset and the run is spending.
+    // Refusing them here is what turns that crash into a launch-time message.
+    const meta = ENV_FLAG_METADATA.find((m) => m.key === "EVAL_MODEL_OVERRIDES")!;
+    const bounds = { agents: ["opportunityEvaluator"], models: [...ALLOWED_CONFIG_MODELS] };
+    expect(envFlagValueIssue(meta, "{not json", bounds)).not.toBeNull();
+    expect(envFlagValueIssue(meta, "[]", bounds)).not.toBeNull();
+    expect(envFlagValueIssue(meta, "\"a string\"", bounds)).not.toBeNull();
+    expect(envFlagValueIssue(meta, '{"noSuchAgent":"google/gemini-2.5-flash"}', bounds)).not.toBeNull();
+    expect(envFlagValueIssue(meta, '{"opportunityEvaluator":""}', bounds)).not.toBeNull();
+    expect(envFlagValueIssue(meta, '{"opportunityEvaluator":7}', bounds)).not.toBeNull();
+    // Accepted by the read site, refused by the site: an unreviewed model.
+    expect(envFlagValueIssue(meta, '{"opportunityEvaluator":"some/unreviewed-model"}', bounds)).not.toBeNull();
+    expect(envFlagValueIssue(meta, '{"opportunityEvaluator":"google/gemini-2.5-flash"}', bounds)).toBeNull();
+  });
+
+  it("pins the read site's rules for EVAL_MODEL_OVERRIDES, so a rewrite there fails here", () => {
+    const source = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "src", "shared", "agent", "model.config.ts"),
+      "utf8",
+    );
+    expect(source).toContain("EVAL_MODEL_OVERRIDES is not valid JSON");
+    expect(source).toContain("EVAL_MODEL_OVERRIDES must be a JSON object of agent -> model id");
+    expect(source).toContain("names an unknown agent");
+    expect(source).toContain("must be a non-empty model id string");
+  });
+
+  it("documents that EVAL_MODEL_OVERRIDES outranks CHAT_MODEL, because it does", () => {
+    // Both flags can set the chat agent's model, and the launch form's per-agent
+    // pickers write EVAL_MODEL_OVERRIDES — so an operator can set both and see
+    // only one take effect. Verified against the read site rather than assumed:
+    // getBaseModelConfig seeds chat.model from CHAT_MODEL, then getModelConfig
+    // applies the overrides map over the result.
+    const source = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "src", "shared", "agent", "model.config.ts"),
+      "utf8",
+    );
+    expect(source, "CHAT_MODEL is no longer the base for the chat agent")
+      .toContain("process.env.CHAT_MODEL");
+    expect(source, "overrides are no longer applied over the base config")
+      .toMatch(/const base = getBaseModelConfig\(config\);\s*\n\s*const overrides = readModelOverrides/);
+    expect(source, "EVAL_MODEL_OVERRIDES is no longer production-inert")
+      .toContain('if (process.env.NODE_ENV === "production") return {};');
+
+    const chat = ENV_FLAG_METADATA.find((m) => m.key === "CHAT_MODEL")!;
+    const overrides = ENV_FLAG_METADATA.find((m) => m.key === "EVAL_MODEL_OVERRIDES")!;
+    expect(chat.description).toContain("EVAL_MODEL_OVERRIDES");
+    expect(overrides.description).toContain("CHAT_MODEL");
+    expect(overrides.description).toContain("production");
+  });
+
   it("declares a minimum only where a number can be given and where it would be honoured", () => {
     // A `min` on a kind envFlagValueIssue does not range-check would be a bound
     // that reads as enforced and enforces nothing.
@@ -38,6 +167,46 @@ describe("ENV_FLAG_METADATA", () => {
       if (meta.min === undefined) continue;
       expect(["integer", "number"], `${meta.key} declares min on kind ${meta.kind}`).toContain(meta.kind);
     }
+  });
+
+  it("declares a maximum only where it would be honoured, and above its own minimum", () => {
+    for (const meta of ENV_FLAG_METADATA) {
+      if (meta.max === undefined) continue;
+      expect(["integer", "number"], `${meta.key} declares max on kind ${meta.kind}`).toContain(meta.kind);
+      if (meta.min !== undefined) expect(meta.max, `${meta.key} max is below its min`).toBeGreaterThan(meta.min);
+    }
+  });
+
+  it("enforces both ends of the negotiator turn timeout, matching AbortSignal's range", () => {
+    // The upper bound is not decoration: the read site calls
+    // AbortSignal.timeout(N), which throws above Number.MAX_SAFE_INTEGER, so a
+    // value like 1e30 passes Number.isFinite and then crashes the turn.
+    const agent = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "src", "negotiation", "application", "negotiation.agent.ts"),
+      "utf8",
+    );
+    expect(agent, "turn timeout no longer bounded by MAX_SAFE_INTEGER").toContain("n <= Number.MAX_SAFE_INTEGER");
+    expect(agent, "turn timeout no longer rejects zero").toContain("n > 0");
+    const meta = ENV_FLAG_METADATA.find((m) => m.key === "NEGOTIATOR_TURN_TIMEOUT_MS")!;
+    expect(meta.min).toBe(1);
+    expect(meta.max).toBe(Number.MAX_SAFE_INTEGER);
+    expect(envFlagValueIssue(meta, "0")).not.toBeNull();
+    expect(envFlagValueIssue(meta, String(Number.MAX_SAFE_INTEGER + 10))).not.toBeNull();
+    expect(envFlagValueIssue(meta, "15000")).toBeNull();
+  });
+
+  it("lets the retry count be zero, because its read site honours zero", () => {
+    // The negotiation turn caps refuse 0 because `Number(x) || d` turns it into
+    // the default. This one is `Number.isFinite(n) && n >= 0`, so 0 really is
+    // "no retries" — copying the other bound here would refuse a legal value.
+    const source = readFileSync(
+      path.join(import.meta.dir, "..", "..", "..", "src", "shared", "agent", "model.config.ts"),
+      "utf8",
+    );
+    expect(source, "OPENROUTER_MAX_RETRIES no longer accepts 0").toContain("retriesEnv >= 0");
+    const meta = ENV_FLAG_METADATA.find((m) => m.key === "OPENROUTER_MAX_RETRIES")!;
+    expect(meta.min).toBe(0);
+    expect(envFlagValueIssue(meta, "0")).toBeNull();
   });
 
   it("bounds the negotiation turn caps away from the value that silently means the default", () => {
@@ -89,6 +258,29 @@ describe("ENV_FLAG_METADATA", () => {
     },
   };
 
+  /**
+   * Flags whose offerable values the site narrows below what the startup schema
+   * and the read site both accept.
+   *
+   * Each of these is `z.string()` upstream and any-string at the read site, so
+   * neither source can supply a value list. The narrowing is a site policy, not
+   * a mirror of the code: a run launched from a browser may only name a
+   * reviewed model, exactly as validateConfigOverrides already requires of the
+   * per-agent pickers. Pinned by the "offers only reviewed models" test above
+   * rather than here, and excluded from the mirror so it does not demand a
+   * value list the sources do not have.
+   */
+  const SITE_NARROWED_MODEL_FLAGS = ["CHAT_MODEL", "SMARTEST_VERIFIER_MODEL", "OPENROUTER_FALLBACK_MODEL"];
+
+  /**
+   * Documented flags the API startup schema does not declare at all.
+   *
+   * EVAL_MODEL_OVERRIDES is declared there but as free text, and its shape is
+   * a JSON object no zod string schema describes; its rules are pinned directly
+   * against readModelOverrides by the tests above.
+   */
+  const NOT_IN_STARTUP_SCHEMA = [...SITE_NARROWED_MODEL_FLAGS, "EVAL_MODEL_OVERRIDES"];
+
   it("mirrors the real startup.env.ts schemas — upstream widening fails here", () => {
     // A hand-copied table compared against another hand-copied table proves
     // nothing: validateProfileEnv HARD-REJECTS on ENV_FLAG_METADATA, so if
@@ -121,7 +313,14 @@ describe("ENV_FLAG_METADATA", () => {
     let pinnedFromSchema = 0;
     let pinnedFromUseSite = 0;
 
-    for (const key of PROFILE_ENV_ALLOWLIST) {
+    // Every documented flag, not just the sixteen the hand-written allowlist
+    // names: the eighteen keys the derived catalogue added are declared in the
+    // same startup schema and must be mirrored by the same rule. Checking only
+    // the allowlist would leave the newly offered flags unpinned, which is the
+    // state that let a fallback-on-typo flag reach a live run.
+    const MIRRORED_KEYS = ENV_FLAG_METADATA.map((m) => m.key).filter((key) => !NOT_IN_STARTUP_SCHEMA.includes(key));
+
+    for (const key of MIRRORED_KEYS) {
       const meta = byKey.get(key);
       expect(meta, `${key} missing from ENV_FLAG_METADATA`).toBeDefined();
 
@@ -182,10 +381,15 @@ describe("ENV_FLAG_METADATA", () => {
     // pass having pinned nothing.
     expect(pinnedFromUseSite).toBe(Object.keys(USE_SITE_NARROWED_FLAGS).length);
     expect(pinnedFromSchema).toBe(
-      PROFILE_ENV_ALLOWLIST.length
+      MIRRORED_KEYS.length
       - Object.keys(USE_SITE_ONLY_FLAGS).length
       - Object.keys(USE_SITE_NARROWED_FLAGS).length,
     );
+    // The mirror must actually cover the flags this task added, not just the
+    // original sixteen; without this the loop could silently shrink.
+    for (const added of ["NEGOTIATOR_STANCE", "NEGOTIATION_SCREEN_MODE", "CHAT_REASONING_EFFORT", "OPENROUTER_MAX_RETRIES"]) {
+      expect(MIRRORED_KEYS, `${added} dropped out of the mirror`).toContain(added);
+    }
   });
 });
 

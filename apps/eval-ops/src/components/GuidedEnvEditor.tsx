@@ -1,7 +1,20 @@
 import { useCallback, useId, useMemo } from 'react';
 
-import { envFlagValueIssue } from '../../../../packages/protocol/eval/ops/ops.metadata';
+import { ALLOWED_CONFIG_MODEL_IDS, envFlagValueIssue } from '../../../../packages/protocol/eval/ops/ops.metadata';
 import type { EnvFlagMeta } from '../api/client';
+
+/**
+ * Model bounds for a `json-model-map` value, so the form refuses exactly what
+ * the server would.
+ *
+ * Only the model half is knowable here. The agent half is derived from the
+ * harness registry on the server, and passing an undefined agent list makes
+ * envFlagValueIssue skip that check rather than guess — so an unknown agent is
+ * caught at submit instead of on keystroke. Silent divergence is the thing to
+ * avoid; a browser that refuses *less* than the server is safe, one that
+ * refuses more would block a legal launch.
+ */
+const CLIENT_MODEL_BOUNDS = { models: ALLOWED_CONFIG_MODEL_IDS };
 
 export interface EnvOverrideRow {
   /** Empty until the user picks a flag. */
@@ -26,7 +39,7 @@ export const EMPTY_ENV_ROW: EnvOverrideRow = { key: '', value: '' };
  */
 export function envValueIssue(flag: EnvFlagMeta, value: string): string | null {
   if (value !== '' && value.trim() === '') return 'must not be blank';
-  return envFlagValueIssue(flag, value);
+  return envFlagValueIssue(flag, value, CLIENT_MODEL_BOUNDS);
 }
 
 /**
@@ -71,6 +84,9 @@ const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
   integer: 'e.g. 4',
   number: 'e.g. 7',
   string: 'value',
+  // Shows the shape rather than describing it: this is the one kind whose
+  // value is structured, and its read site throws on a malformed one.
+  'json-model-map': '{"opportunityEvaluator":"google/gemini-2.5-flash"}',
 };
 
 /**

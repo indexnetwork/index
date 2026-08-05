@@ -9,6 +9,26 @@
  * it: ops.profiles.ts pulls in node:fs and node:crypto, which the Vite bundle
  * cannot. This module must stay dependency-free.
  */
+/**
+ * Credentials, never offerable and never settable from a request. One repoints
+ * a run at another provider account and the other at another endpoint, so
+ * either turns an environment override into a way to bill someone else or to
+ * exfiltrate a corpus.
+ *
+ * Both are reachable from every harness — that is why excluding them cannot be
+ * left to the scan. They are dropped at catalogue generation
+ * (ops.envcatalog.build.ts, which re-exports this list) *and* refused at the
+ * request boundary in validateConfigOverrides, because a bug in one guard
+ * should not be enough to publish a credential field into a browser form.
+ *
+ * Lives here, with the other dependency-free lists, because both guards need
+ * it and one of them sits in a module the browser bundle imports.
+ */
+export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+]);
+
 export const PROFILE_ENV_ALLOWLIST: readonly string[] = Object.freeze([
   "DISCOVERY_ALLOWED_TYPES",
   "DISCOVERY_PROFILE_SOURCE",

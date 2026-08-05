@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { ENV_SECRET_KEYS } from "../ops.allowlist.js";
 import { ALLOWED_CONFIG_MODELS, DEFAULT_PROFILE_NAME, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides } from "../ops.profiles.js";
 import { HARNESS_REGISTRY } from "../ops.registry.js";
 
@@ -119,9 +120,59 @@ describe("validateConfigOverrides", () => {
     expect(issues.some((i) => i.includes("negotiator"))).toBe(true);
   });
 
-  it("rejects an env key outside PROFILE_ENV_ALLOWLIST", () => {
-    const issues = validateConfigOverrides({ models: {}, env: { OPENROUTER_API_KEY: "x" } });
-    expect(issues.some((i) => i.includes("OPENROUTER_API_KEY"))).toBe(true);
+  it("rejects an env key no harness reads and no allowlist names", () => {
+    const issues = validateConfigOverrides({ models: {}, env: { TOTALLY_UNKNOWN_KEY: "x" } });
+    expect(issues.some((i) => i.includes("TOTALLY_UNKNOWN_KEY"))).toBe(true);
+  });
+
+  it("refuses every credential by name, as a guard independent of the catalogue", () => {
+    // The spec's second guard. The generator already excludes these from every
+    // harness catalogue; this refuses them at the request boundary so that a
+    // bug in the generator cannot be enough to make a credential settable.
+    // Asserted on the reason, not just the key: "not read by any harness" would
+    // be the wrong answer for a credential every harness reads.
+    for (const secret of ENV_SECRET_KEYS) {
+      const issues = validateConfigOverrides({ models: {}, env: { [secret]: "x" } });
+      expect(issues.some((i) => i.includes(secret) && i.includes("credential")), `${secret} not refused as a credential`).toBe(true);
+    }
+  });
+
+  it("accepts the keys the derived catalogue added, which the old allowlist refused", () => {
+    // These are read by real harnesses (eval/ops/ops.envcatalog.ts) but absent
+    // from the hand-written PROFILE_ENV_ALLOWLIST. Before the catalogue existed
+    // the boundary refused them, so the launch form could not offer them at all.
+    expect(validateConfigOverrides({
+      models: {},
+      env: {
+        NEGOTIATOR_STANCE: "skeptic",
+        NEGOTIATION_SCREEN_MODE: "enforce",
+        HYDE_FRAME_CONSTRAINTS_ENABLED: "true",
+        OPENROUTER_MAX_RETRIES: "0",
+        CHAT_REASONING_EFFORT: "high",
+      },
+    })).toEqual([]);
+  });
+
+  it("rejects a value the live service would silently fall back on", () => {
+    // The whole point of documenting these keys: an unrecognised value is not
+    // refused at runtime, it falls back, so a run would measure the default
+    // while reporting the configuration the operator typed.
+    const issues = validateConfigOverrides({ models: {}, env: { NEGOTIATOR_STANCE: "agressive" } });
+    expect(issues.some((i) => i.includes("NEGOTIATOR_STANCE"))).toBe(true);
+  });
+
+  it("rejects an EVAL_MODEL_OVERRIDES value its read site would throw on", () => {
+    // readModelOverrides throws lazily, at first model construction — after a
+    // discovery run has reset its branches and started spending.
+    expect(validateConfigOverrides({ models: {}, env: { EVAL_MODEL_OVERRIDES: "{oops" } }).length).toBeGreaterThan(0);
+    expect(validateConfigOverrides({
+      models: {},
+      env: { EVAL_MODEL_OVERRIDES: '{"noSuchAgent":"google/gemini-2.5-flash"}' },
+    }).length).toBeGreaterThan(0);
+    expect(validateConfigOverrides({
+      models: {},
+      env: { EVAL_MODEL_OVERRIDES: '{"opportunityEvaluator":"google/gemini-2.5-flash"}' },
+    })).toEqual([]);
   });
 
   it("accepts valid env values of every kind", () => {

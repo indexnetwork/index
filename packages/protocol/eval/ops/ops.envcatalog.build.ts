@@ -20,20 +20,12 @@ import type { OpsHarness } from "./ops.types.js";
 /** packages/protocol, derived from this file's location rather than the cwd. */
 export const PROTOCOL_ROOT: string = path.resolve(import.meta.dir, "../..");
 
-/**
- * Credentials, never offerable. One repoints a run at another provider account
- * and the other at another endpoint, so either turns an environment override
- * into a way to bill someone else or to exfiltrate a corpus.
- *
- * Both are reachable from every harness — that is why excluding them cannot be
- * left to the scan. They are dropped here at generation *and* refused at the
- * request boundary, because a bug in one guard should not be enough to publish
- * a credential field into a browser form.
- */
-export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
-  "OPENROUTER_API_KEY",
-  "OPENROUTER_BASE_URL",
-]);
+// Defined in ops.allowlist.ts (dependency-free) because the second guard,
+// validateConfigOverrides, sits in a module chain the browser bundle reaches.
+// Re-exported here so the generator and its tests keep importing it from the
+// module that uses it.
+export { ENV_SECRET_KEYS } from "./ops.allowlist.js";
+import { ENV_SECRET_KEYS } from "./ops.allowlist.js";
 
 /**
  * The file whose transitive imports define what each harness can read.

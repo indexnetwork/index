@@ -9,7 +9,8 @@ import { InMemoryConfigStore } from "../ops.configs.js";
 import type { ExecutionStep, RunExecutor } from "../ops.executor.js";
 import { SEED_STEP_CWD, type FixtureCounts, type FixtureInspector } from "../ops.fixture.js";
 import { isOpsServerPath, OPS_CALLBACK_PATH } from "../ops.paths.js";
-import { PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { ENV_SECRET_KEYS, PROFILE_ENV_ALLOWLIST } from "../ops.allowlist.js";
+import { ENV_FLAG_METADATA } from "../ops.metadata.js";
 import { RunQueue } from "../ops.queue.js";
 import { createDefaultOpsContext, createOpsHandler, HARNESS_CREDENTIALS, PUBLIC_ROUTES, resolveBindHostname, resolveBindPort, resolveHarnessEnvironment, resolveIdentityEndpoints, resolvePublicOrigin, resolveSignInMode, validateResetEnvFile, type OpsAuthContext, type OpsContext } from "../ops.server.js";
 import { FsRunStore, type RunStore } from "../ops.store.js";
@@ -1605,8 +1606,20 @@ describe("config routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await response.json();
-    expect(body.env).toHaveLength(PROFILE_ENV_ALLOWLIST.length);
-    expect(body.env.map((flag: { key: string }) => flag.key)).toEqual([...PROFILE_ENV_ALLOWLIST]);
+    // Every documented flag, which is now more than the hand-written allowlist:
+    // the guided editor has to describe each key a harness can read, and the
+    // catalogue derives those from the code. Compared as the full key list
+    // rather than a count, so a swap fails too.
+    expect(body.env.map((flag: { key: string }) => flag.key)).toEqual(ENV_FLAG_METADATA.map((m) => m.key));
+    // The allowlisted flags must still all be there — dropping one would leave a
+    // saved config carrying a key the editor cannot explain.
+    for (const key of PROFILE_ENV_ALLOWLIST) {
+      expect(body.env.map((flag: { key: string }) => flag.key)).toContain(key);
+    }
+    // A credential must never reach a browser form, by any route.
+    for (const secret of ENV_SECRET_KEYS) {
+      expect(body.env.map((flag: { key: string }) => flag.key)).not.toContain(secret);
+    }
     expect(body.models.length).toBeGreaterThan(0);
     for (const harness of ["matching", "opportunity", "premise", "profile"]) {
       expect(body.harnessAgents[harness].length).toBeGreaterThan(0);

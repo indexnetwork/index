@@ -138,10 +138,12 @@ jobs:
   eval-cli-tests:
     # The services/api eval CLI specs, which ran local-only until now. They are
     # drift guards, and a drift guard nobody runs guards nothing: the discovery
-    # A/B set derives the nine offerable flags from the discovery graph's own
-    # import closure and fails when that set moves, refuses an asymmetric or
-    # identical configuration pair, and proves every artifact case row carries
-    # the configuration it was produced under.
+    # set derives its offerable flags from the discovery graph's own import
+    # closure and fails when that set moves, refuses an asymmetric or identical
+    # configuration pair, and proves every artifact case row carries the
+    # configuration it was produced under. The per-harness catalogue that feeds
+    # the launch form is derived the same way and pinned in packages/protocol
+    # (eval/ops/tests/envcatalog.spec.ts), which the `test` job runs.
     #
     # Separate from the `test` job above because these are not dist-free: the
     # discovery artifact and child specs import `discovery.main.ts`, which imports
