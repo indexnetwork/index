@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 
+profile_error() {
+  echo "provisioning profile $1" >&2
+  exit 1
+}
+
+certificate_team_id() {
+  identity="$1"
+  security find-certificate -c "$identity" -p 2>/dev/null \
+    | openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null \
+    | awk -F'OU=' 'NF > 1 { split($2, parts, ","); print parts[1]; exit }'
+}
+
 validate_profile_plist() {
   local profile_path="$1"
   local expected_team="$2"
@@ -53,6 +65,19 @@ if expected_domain not in domains and 'applinks:*' not in domains and '*' not in
     fail('does not authorize the selected host')
 PY
 }
+
+embed_provisioning_profile() (
+  profile="$1"; contents="$2"; identity="$3"; bundle_id="$4"; host="$5"
+  [ -f "$profile" ] || profile_error 'file does not exist'
+  team_id="$(certificate_team_id "$identity")"
+  [ -n "$team_id" ] || profile_error 'could not derive the signing team'
+  decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.XXXXXX.plist")"
+  trap 'rm -f "$decoded"' EXIT
+  security cms -D -i "$profile" -o "$decoded" >/dev/null 2>&1 \
+    || profile_error 'could not be decoded'
+  validate_profile_plist "$decoded" "$team_id" "$bundle_id" "$host"
+  cp "$profile" "$contents/embedded.provisionprofile"
+)
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   case "${1:-}" in

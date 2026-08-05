@@ -5,7 +5,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 source "$(dirname "$0")/link-host.sh"
+source "$(dirname "$0")/provisioning-profile.sh"
 LINK_HOST="$(resolve_link_host)"
+IDENTITY="${CODESIGN_IDENTITY:-}"
+PROFILE="${PROVISIONING_PROFILE:-}"
+if [ -n "$IDENTITY" ] && [ -z "$PROFILE" ]; then
+    echo "==> ERROR: set PROVISIONING_PROFILE for Developer ID signing" >&2
+    exit 1
+fi
 
 APP_NAME="index"
 APP="dist/${APP_NAME}.app"
@@ -50,7 +57,6 @@ cp Resources/Assets.car "${CONTENTS}/Resources/Assets.car"
 # restored. The prod checklist in Sources/main.swift has the full list.
 #
 # Set CODESIGN_IDENTITY to sign with a real identity when you have one.
-IDENTITY="${CODESIGN_IDENTITY:-}"
 
 # Associated domains (universal links). The entitlement is only honoured for a
 # Developer ID-signed, notarized build whose team id matches the appIDs in the
@@ -82,6 +88,8 @@ if [ -n "${IDENTITY}" ]; then
         exit 1
     fi
     echo "==> Code signing as '${IDENTITY}' for ${LINK_HOST}"
+    embed_provisioning_profile \
+        "$PROFILE" "$CONTENTS" "$IDENTITY" "network.index.system6" "$LINK_HOST"
     codesign --force --deep --options runtime --entitlements "${ENTITLEMENTS}" --sign "${IDENTITY}" "${APP}"
 else
     # Preserve the existing ad-hoc local-development path only here.

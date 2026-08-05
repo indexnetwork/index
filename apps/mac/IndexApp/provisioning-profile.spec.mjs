@@ -2,8 +2,24 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { rm } from 'node:fs/promises';
 
 const root = new URL('.', import.meta.url).pathname;
+const build = `${root}build.sh`;
 const helper = `${root}provisioning-profile.sh`;
 const fixtures = [];
+
+test('Developer ID builds refuse a missing explicit provisioning profile before build work', () => {
+  const result = Bun.spawnSync(['bash', build], {
+    cwd: root,
+    env: {
+      ...Bun.env,
+      INDEX_LINK_HOST: 'dev.index.network',
+      CODESIGN_IDENTITY: 'Developer ID Application: test identity (TEAM123)',
+      PROVISIONING_PROFILE: '',
+    },
+  });
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain('set PROVISIONING_PROFILE for Developer ID signing');
+  expect(result.stdout.toString()).not.toContain('Assembling Resources/index.html');
+});
 
 async function writeProfile(overrides = {}) {
   const path = `${Bun.env.TMPDIR ?? '/tmp'}/index-profile-${crypto.randomUUID()}.plist`;

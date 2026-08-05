@@ -8,6 +8,7 @@ test('requested signing is hardened and cannot fall back to ad-hoc', () => {
   expect(build).toContain('--options runtime');
   expect(build).toContain('Developer ID Application:');
   expect(build).toMatch(/if \[ -n "\$\{IDENTITY\}" \]; then[\s\S]*exit 1/);
+  expect(build).toMatch(/embed_provisioning_profile[\s\S]*codesign --force --deep --options runtime/);
   expect(build).not.toMatch(/if \[ -n "\$\{IDENTITY\}" \]; then[\s\S]*--sign -/);
 });
 
