@@ -62,7 +62,15 @@ function mapDiff(kind: "model" | "env", a: Record<string, string>, b: Record<str
     .map((key) => ({ kind, key, a: a[key] ?? null, b: b[key] ?? null }));
 }
 
+function assertNoOpaqueModelOverrides(config: HistoricalResolvedConfig): void {
+  if (Object.prototype.hasOwnProperty.call(config.env, "EVAL_MODEL_OVERRIDES")) {
+    throw new Error("Historical resolved env must not contain EVAL_MODEL_OVERRIDES; put resolved agent assignments in the resolved models map");
+  }
+}
+
 export function diffResolvedHistoricalConfigs(a: HistoricalResolvedConfig, b: HistoricalResolvedConfig): HistoricalFactorDifference[] {
+  assertNoOpaqueModelOverrides(a);
+  assertNoOpaqueModelOverrides(b);
   return [...mapDiff("model", a.models, b.models), ...mapDiff("env", a.env, b.env)];
 }
 
@@ -95,6 +103,7 @@ export function buildHistoricalExperimentPlan(input: HistoricalExperimentInput):
     throw new Error("Historical sides must be [a] or [a, b]");
   }
   for (const side of input.sides) {
+    assertNoOpaqueModelOverrides(side.config);
     for (const [agent, modelId] of Object.entries(side.config.models)) {
       if (agent.trim() === "" || modelId.trim() === "") throw new Error("Historical resolved model assignments must be non-empty");
     }

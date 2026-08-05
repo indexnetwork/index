@@ -27,6 +27,8 @@ export interface HistoricalQualityMetadata {
   };
   citations: HistoricalCitation[];
   claims: HistoricalClaim[];
+  /** JSON-pointer field paths in the model-safe projection mapped to supporting claim IDs. */
+  claimProvenance: Record<string, string[]>;
   outcomeCitationIds: string[];
   anonymizationReview: {
     reviewer: string;
@@ -58,6 +60,56 @@ export function historicalModelSafeProjection(input: HistoricalQualityCase): His
     input: structuredClone(input.input),
     triggerInputs: structuredClone(input.historicalQuality.triggerInputs),
   };
+}
+
+function escapeJsonPointerSegment(value: string): string {
+  return value.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function claimBearingProjectionFields(input: HistoricalQualityCase): Map<string, string> {
+  const fields = new Map<string, string>();
+  const add = (path: string, value: string | undefined): void => {
+    if (value !== undefined && value.trim() !== "") fields.set(path, value);
+  };
+
+  for (const [entityIndex, entity] of input.input.entities.entries()) {
+    const entityPath = `/input/entities/${entityIndex}`;
+    add(`${entityPath}/profile/bio`, entity.profile.bio);
+    add(`${entityPath}/profile/location`, entity.profile.location);
+    for (const [interestIndex, interest] of (entity.profile.interests ?? []).entries()) {
+      add(`${entityPath}/profile/interests/${interestIndex}`, interest);
+    }
+    for (const [skillIndex, skill] of (entity.profile.skills ?? []).entries()) {
+      add(`${entityPath}/profile/skills/${skillIndex}`, skill);
+    }
+    add(`${entityPath}/profile/context`, entity.profile.context);
+    for (const [intentIndex, intent] of (entity.intents ?? []).entries()) {
+      const intentPath = `${entityPath}/intents/${intentIndex}`;
+      add(`${intentPath}/payload`, intent.payload);
+      add(`${intentPath}/summary`, intent.summary);
+    }
+    add(`${entityPath}/matchedVia`, entity.matchedVia);
+    for (const [evidenceIndex, evidence] of (entity.evidence ?? []).entries()) {
+      const evidencePath = `${entityPath}/evidence/${evidenceIndex}`;
+      add(`${evidencePath}/payload`, evidence.payload);
+      add(`${evidencePath}/summary`, evidence.summary);
+      add(`${evidencePath}/assertionText`, evidence.assertionText);
+    }
+  }
+
+  add("/input/existingOpportunities", input.input.existingOpportunities);
+  add("/input/introductionHint", input.input.introductionHint);
+  add("/input/discoveryQuery", input.input.discoveryQuery);
+  for (const [networkId, context] of Object.entries(input.input.networkContexts ?? {})) {
+    add(`/input/networkContexts/${escapeJsonPointerSegment(networkId)}`, context);
+  }
+  add("/triggerInputs/intent/text", input.historicalQuality.triggerInputs.intent.text);
+  for (const [premiseIndex, premise] of input.historicalQuality.triggerInputs.enrichment.premises.entries()) {
+    add(`/triggerInputs/enrichment/premises/${premiseIndex}`, premise);
+  }
+  add("/triggerInputs/enrichment/userContext", input.historicalQuality.triggerInputs.enrichment.userContext);
+
+  return fields;
 }
 
 export function validateHistoricalQualityCase(input: HistoricalQualityCase): void {
@@ -107,17 +159,34 @@ export function validateHistoricalQualityCase(input: HistoricalQualityCase): voi
   }
   assertCitationIds(input.historicalQuality.cutoff.orderingCitationIds, "cutoff ordering");
   assertCitationIds(input.historicalQuality.outcomeCitationIds, "outcome");
-  const claimIds = new Set<string>();
+  const claims = new Map<string, HistoricalClaim>();
   const preConnectionCitationIds = new Set(input.historicalQuality.cutoff.orderingCitationIds);
   for (const claim of input.historicalQuality.claims) {
     nonblank(claim.id, "claim id");
-    if (claimIds.has(claim.id)) fail(`duplicate claim ${claim.id}`);
-    claimIds.add(claim.id);
+    if (claims.has(claim.id)) fail(`duplicate claim ${claim.id}`);
+    claims.set(claim.id, claim);
     nonblank(claim.text, `claim ${claim.id} text`);
     if (claim.preConnection !== true) fail(`claim ${claim.id} must attest preConnection`);
     assertCitationIds(claim.citationIds, `claim ${claim.id}`);
     for (const citationId of claim.citationIds) preConnectionCitationIds.add(citationId);
   }
+
+  const requiredClaimFields = claimBearingProjectionFields(input);
+  const claimProvenance = input.historicalQuality.claimProvenance;
+  for (const path of requiredClaimFields.keys()) {
+    if (!Object.prototype.hasOwnProperty.call(claimProvenance, path)) fail(`missing claim provenance for ${path}`);
+  }
+  for (const path of Object.keys(claimProvenance)) {
+    const fieldText = requiredClaimFields.get(path);
+    if (fieldText === undefined) fail(`unknown claim provenance path ${path}`);
+    const mappedClaimIds = claimProvenance[path]!;
+    if (mappedClaimIds.length === 0) fail(`claim provenance for ${path} requires at least one claim`);
+    for (const claimId of mappedClaimIds) {
+      const claim = claims.get(claimId) ?? fail(`claim provenance for ${path} references unknown claim ${claimId}`);
+      if (claim.text !== fieldText) fail(`claim ${claimId} text does not match ${path}`);
+    }
+  }
+
   if (input.historicalQuality.outcomeCitationIds.every((citationId) => preConnectionCitationIds.has(citationId))) {
     fail("outcome requires an independent citation");
   }

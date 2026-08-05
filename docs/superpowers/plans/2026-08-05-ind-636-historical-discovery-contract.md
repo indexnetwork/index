@@ -16,11 +16,13 @@
 - Historical evidence uses an exclusive first-substantive-collaboration cutoff.
 - Historical absence is never a negative label; only authored semantic negatives with an explicit violated requirement are scored negative.
 - Model-safe projection must structurally exclude citations, report identities, provenance excerpts, and anonymization-review fields.
+- Every nonblank claim-bearing string in the matching input and trigger inputs must have an exact JSON-pointer mapping to one or more cited pre-connection claims whose text equals the projected value. Missing and unknown mapping paths are invalid; IDs, pseudonym names, numeric RAG controls, and other structural/synthetic controls are exempt.
 - Retrieval rank is user-level: group evidence by participant ID, use the best score, tie-break by stable ID, and union evidence metadata.
 - Failure precedence is `execution → retrieval → evaluation_admission → evaluation_rejection → finalization → none`.
 - Shared scorecard `passes/passRate` represent execution completeness only for this future harness.
 - Historical experiments use exactly one attempt per requested slot and refuse more than 200 graph invocations.
 - Ordinary A/B comparisons change exactly one resolved graph-agent model assignment or one environment key; judge, embedding, provider, corpus, and scoring resources remain equal.
+- `EVAL_MODEL_OVERRIDES` is forbidden in `HistoricalResolvedConfig.env`; callers must materialize every resolved agent assignment in `HistoricalResolvedConfig.models` so model changes are compared semantically.
 - A/B contracts report factor differences and metric deltas; they do not declare a winner or significance.
 
 ---
@@ -65,7 +67,9 @@
 
 - [ ] **Step 1: Write the failing corpus-contract spec**
 
-Create `packages/protocol/eval/discovery-env-matrix/tests/historical-quality.corpus.spec.ts` with a complete valid fixture and focused mutations:
+**Final-review correction:** the original compact fixture sketch below is retained only as historical planning context and is not the prescribed final fixture. The final spec must use an explicit `claimProvenance` JSON-pointer map covering every present profile bio/location/interest/skill/context string, intent payload/summary, `matchedVia`, model-facing evidence text, network context, ordinary matching-input context/query string, trigger intent, enrichment premise, and enrichment user context. It must table-test deletion of every required mapping and reject unknown mapping paths, empty claims, unrelated claim text, and uncited field changes. IDs, pseudonym names, numeric RAG controls, and structural/synthetic controls remain exempt. See the tracked spec file for the complete fixture and exact red/green cases.
+
+The pre-correction sketch was:
 
 ```ts
 import { describe, expect, it } from "bun:test";
@@ -264,6 +268,8 @@ export interface HistoricalQualityMetadata {
   };
   citations: HistoricalCitation[];
   claims: HistoricalClaim[];
+  /** JSON-pointer projection field paths mapped to cited pre-connection claim IDs. */
+  claimProvenance: Record<string, string[]>;
   outcomeCitationIds: string[];
   anonymizationReview: {
     reviewer: string;
@@ -298,7 +304,7 @@ export function historicalModelSafeProjection(input: HistoricalQualityCase): His
 }
 ```
 
-Implement `validateHistoricalQualityCase` with small private helpers and these deterministic checks:
+Implement `validateHistoricalQualityCase` with small private helpers and these deterministic checks. In addition to the original validation sketch below, generate the exact nonblank claim-bearing projection fields from `input.input` and `historicalQuality.triggerInputs`; compare that set exactly with `claimProvenance`; require every mapping to contain known, cited, `preConnection: true` claims; and require every mapped claim's text to equal the projected field value. Use escaped JSON-pointer segments for dynamic network IDs. This binding check is mandatory and supersedes the sketch's claims-only loop.
 
 ```ts
 export function validateHistoricalQualityCase(input: HistoricalQualityCase): void {
@@ -627,7 +633,9 @@ git commit -m "test(eval): define historical quality metrics"
 
 - [ ] **Step 1: Write the failing experiment-contract spec**
 
-Create `packages/protocol/eval/discovery-env-matrix/tests/historical-quality.experiment.spec.ts`:
+**Final-review correction:** the original compact test sketch below is retained only as historical planning context. The prescribed final spec must additionally assert a complete small deterministic slot sequence; table-test mismatch rejection for all five fixed resources; accept an ordinary env-only comparison; reject reordered-equivalent and JSON-only `EVAL_MODEL_OVERRIDES` env values with an actionable direction to the resolved `models` map; and prove a one-agent resolved model swap produces exactly one factor.
+
+The pre-correction sketch was:
 
 ```ts
 import { describe, expect, it } from "bun:test";
@@ -823,7 +831,15 @@ function mapDiff(kind: "model" | "env", a: Record<string, string>, b: Record<str
     .map((key) => ({ kind, key, a: a[key] ?? null, b: b[key] ?? null }));
 }
 
+function assertNoOpaqueModelOverrides(config: HistoricalResolvedConfig): void {
+  if (Object.prototype.hasOwnProperty.call(config.env, "EVAL_MODEL_OVERRIDES")) {
+    throw new Error("Historical resolved env must not contain EVAL_MODEL_OVERRIDES; put resolved agent assignments in the resolved models map");
+  }
+}
+
 export function diffResolvedHistoricalConfigs(a: HistoricalResolvedConfig, b: HistoricalResolvedConfig): HistoricalFactorDifference[] {
+  assertNoOpaqueModelOverrides(a);
+  assertNoOpaqueModelOverrides(b);
   return [...mapDiff("model", a.models, b.models), ...mapDiff("env", a.env, b.env)];
 }
 
@@ -856,6 +872,7 @@ export function buildHistoricalExperimentPlan(input: HistoricalExperimentInput):
     throw new Error("Historical sides must be [a] or [a, b]");
   }
   for (const side of input.sides) {
+    assertNoOpaqueModelOverrides(side.config);
     for (const [agent, modelId] of Object.entries(side.config.models)) {
       if (agent.trim() === "" || modelId.trim() === "") throw new Error("Historical resolved model assignments must be non-empty");
     }
