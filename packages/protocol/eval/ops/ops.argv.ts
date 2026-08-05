@@ -133,9 +133,18 @@ export const RunSpecSchema = z
     // face the same per-key rules a pair's do (membership, non-blank, length,
     // line terminators, and the value's real meaning at its read site). Without
     // this, the cheaper shape would be the unchecked one.
-    if (supportsSides && spec.sides === undefined) {
-      const env = spec.overrides?.env ?? {};
-      for (const issue of singleConfigIssues(env)) {
+    //
+    // Only the AD-HOC shape is checkable here. A named profile's env lives in a
+    // file or the config store, neither of which a synchronous zod refinement can
+    // read, so `spec.overrides` is undefined by construction for that shape (the
+    // pair is inexpressible, just above) and an unconditional check would see `{}`
+    // and refuse EVERY named config on this harness with "this run has no
+    // configuration" — false in the operator's terms, since their config is full
+    // of flags. The named path is checked in `launchRun` once the profile has been
+    // resolved, and by `renderRun` before anything is spent; `singleConfigIssues`
+    // is the one definition all three call.
+    if (supportsSides && spec.sides === undefined && spec.overrides !== undefined) {
+      for (const issue of singleConfigIssues(spec.overrides.env)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: issue.path.length === 0 ? ["overrides", "env"] : ["overrides", "env", ...issue.path],

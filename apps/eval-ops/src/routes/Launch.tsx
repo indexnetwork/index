@@ -681,7 +681,12 @@ export function Launch() {
   // shows it is the descriptor's own field and not a harness name: discovery
   // resets Neon branches, and another harness must not inherit that claim from a
   // sentence written here. A harness that names nothing gets no sentence.
-  const resets = state.selectedHarness?.resets;
+  //
+  // Selected by SHAPE. A single discovery run resets one branch and a comparison
+  // resets both, so quoting one string for both told an operator launching one
+  // configuration that both branches would go — in the confirmation, which is the
+  // last moment they can decline.
+  const resets = carriesSides ? state.selectedHarness?.resets?.sides : state.selectedHarness?.resets?.single;
   const destroys = resets !== undefined;
   // A harness that carries both configurations in ONE run launches once; the
   // form's own A/B mode for every other harness launches twice, back to back.

@@ -10,7 +10,8 @@ import { describe, expect, it } from 'bun:test';
 import { HARNESS_ENV_KEYS } from '../../../../../packages/protocol/eval/ops/ops.envcatalog';
 import { DISCOVERY_ENV_KEYS as SITE_KEYS, isCredentialEnvKey } from '../../../../../packages/protocol/eval/ops/ops.allowlist';
 import { abSideIssues } from '../../../../../packages/protocol/eval/ops/ops.sides';
-import { DISCOVERY_ENV_KEYS, assertAbEnvConfig } from '../discovery.flags';
+import { ENV_FLAG_METADATA, envValueIssueForKey } from '../../../../../packages/protocol/eval/ops/ops.metadata';
+import { DISCOVERY_ENV_KEYS, ENV_VALUE_RULES as ENGINE_ENV_VALUE_RULES, assertAbEnvConfig } from '../discovery.flags';
 
 describe('DISCOVERY_ENV_KEYS', () => {
   it('is exactly the generated catalogue for this harness', () => {
@@ -108,6 +109,52 @@ describe('the engine and the site refuse the same values', () => {
       .length === 0;
     expect(engineAccepts, `engine ${engineAccepts ? 'accepts' : 'refuses'}, site ${siteAccepts ? 'accepts' : 'refuses'}`)
       .toBe(siteAccepts);
+  });
+
+  /**
+   * The hand-picked cases above cover eleven pairs. That left a whole FIELD
+   * invisible: the engine's rule type had no `max`, so NEGOTIATOR_TURN_TIMEOUT_MS
+   * lost the MAX_SAFE_INTEGER ceiling the site enforces and a CLI-direct run
+   * could still reach AbortSignal.timeout() out of range. No sampled pair
+   * exercised it.
+   *
+   * So the cross-check is exhaustive over every shared key and every field. A
+   * field added to ENV_FLAG_METADATA and not carried into the generator's
+   * template now fails here instead of waiting for someone to sample it.
+   */
+  it('carries every metadata field for every offered key', () => {
+    const offered = ENV_FLAG_METADATA.filter((meta) => DISCOVERY_ENV_KEYS.includes(meta.key));
+    expect(offered.length).toBeGreaterThan(0);
+    for (const meta of offered) {
+      const rule = ENGINE_ENV_VALUE_RULES[meta.key];
+      expect(rule, `${meta.key} is offered by the site but has no engine rule`).toBeDefined();
+      expect(rule!.kind, `${meta.key} kind`).toBe(meta.kind);
+      expect(rule!.values ?? undefined, `${meta.key} values`).toEqual(meta.values ?? undefined);
+      expect(rule!.min ?? undefined, `${meta.key} min`).toEqual(meta.min ?? undefined);
+      expect(rule!.max ?? undefined, `${meta.key} max`).toEqual(meta.max ?? undefined);
+    }
+  });
+
+  /**
+   * The phantom-difference case, in the one kind that could still produce it.
+   *
+   * Every `number` read site parses with Number.parseFloat; validating with
+   * Number() accepted '0x10' as sixteen days while the graph read NaN and fell
+   * back to its 7-day default. Both sides then ran the SAME configuration while
+   * the artifact's configDiff named a difference — the exact outcome an A/B run
+   * must never produce. `integer` was never exposed (its /^\d+$/ shape rejects
+   * these already), which this pins so a future relaxation is caught.
+   */
+  it.each(['0x10', '0b110', '0o17', '7abc', '1.2.3'])('refuses %s for a number flag, in both validators', (value) => {
+    let engineAccepts = true;
+    try { assertAbEnvConfig({ DISCOVERY_REJECTION_COOLDOWN_DAYS: value }); } catch { engineAccepts = false; }
+    expect(engineAccepts, 'engine').toBe(false);
+    expect(envValueIssueForKey('DISCOVERY_REJECTION_COOLDOWN_DAYS', value), 'site').not.toBeNull();
+  });
+
+  it.each(['7', '0.5', '1e3', '.5'])('still accepts %s for a number flag, in both validators', (value) => {
+    expect(() => assertAbEnvConfig({ DISCOVERY_REJECTION_COOLDOWN_DAYS: value })).not.toThrow();
+    expect(envValueIssueForKey('DISCOVERY_REJECTION_COOLDOWN_DAYS', value)).toBeNull();
   });
 });
 

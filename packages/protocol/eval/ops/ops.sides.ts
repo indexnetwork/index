@@ -90,8 +90,9 @@ export const SIDE_IDS = ["a", "b"] as const;
 /**
  * Longest value a side may give a flag.
  *
- * None of the nine needs more than a few characters (the longest legitimate
- * value is "intent,profile"), and the value is not merely stored: it is recorded
+ * No offered flag needs more than a few characters (the longest legitimate value
+ * is a model name such as "google/gemini-2.5-flash-lite", 28), and the value is
+ * not merely stored: it is recorded
  * on the run record, rendered on every page that shows the spec, and passed to
  * Bun.spawn as an argv element — where a megabyte-scale value would fail the
  * whole exec with E2BIG rather than being refused with a message. Matches the

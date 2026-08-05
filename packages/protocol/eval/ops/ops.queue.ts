@@ -38,8 +38,9 @@ export const EXCLUSIVE_HARNESSES: Readonly<Record<OpsHarness, string | null>> = 
   premise: null,
   opportunity: null,
   discovery:
-    "Every run of this harness resets and uses the same two designated Neon evaluation branches, so two at once "
-    + "would reset each other's databases mid-run and both reports would describe a graph reading the other run's data.",
+    "Every run of this harness resets and uses the same designated Neon evaluation branches — both for a "
+    + "comparison, one for a single configuration — so two at once would reset each other's databases mid-run and "
+    + "the reports would describe a graph reading the other run's data.",
 });
 
 /** The harness a record runs, or null for a fixture reset, which names none. */

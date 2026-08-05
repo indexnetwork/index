@@ -309,7 +309,7 @@ const AB_ATTEMPTS_PER_SLOT = 3;
 const AB_SLOT_BACKOFF_MS = 3_000;
 /** Bounded headroom for child startup, base verification and cleanup. */
 const AB_CHILD_STARTUP_HEADROOM_MS = 5 * 60_000;
-/** Two sides, two isolated branches, two processes: they never wait on each other. */
+/** One isolated branch and one process per side, run concurrently: no side ever waits on another. */
 const AB_CHILD_CONCURRENCY = 2;
 /** How long a sibling gets to honour SIGTERM before it is killed, matching the matrix. */
 const AB_CHILD_TERMINATION_GRACE_MS = 5_000;
@@ -902,6 +902,38 @@ export function abRunShape(sides: AbSides): AbRunShape {
   return isAbPair(sides) ? 'pair' : 'single';
 }
 
+/**
+ * The branches this run will reset: exactly the ones it will read, never the
+ * whole manifest.
+ *
+ * Exported and pure for the same reason as `abRunShape` above, and it matters
+ * more here because this one is DESTRUCTIVE. The call site sits inside
+ * `runAbComparison`, which needs live Neon credentials, so no test can reach it;
+ * replacing the filter with `[...attested.targets]` left the whole api CLI suite
+ * green while making a single run reset `eval-ab-b` too — destroying evidence
+ * another operator may be mid-way through reading, and falsifying every message
+ * that says a single run touches one branch.
+ *
+ * The completeness check belongs here rather than at the call site for the same
+ * reason: a manifest missing the side being run must fail before the first
+ * reset, not after one branch is already gone.
+ */
+export function abRunningTargets(
+  targets: readonly AbTarget[],
+  sides: AbSides,
+): readonly AbTarget[] {
+  const runningSideIds = new Set<string>(sides.map((side) => side.id));
+  const running = targets.filter((target) => runningSideIds.has(target.sideId));
+  if (running.length !== sides.length) {
+    throw new Error(
+      `DISCOVERY_TARGETS does not declare every side this run needs `
+      + `(needs ${[...runningSideIds].sort().join(', ')}; manifest declares `
+      + `${targets.map((target) => target.sideId).sort().join(', ')})`,
+    );
+  }
+  return running;
+}
+
 export async function withAbSpendAccounting(run: (progress: AbRunProgress) => Promise<void>): Promise<void> {
   const progress: AbRunProgress = { stage: null };
   try {
@@ -945,19 +977,8 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   const plan = buildAbPlan(cases, selection.sides, selection.repetitions);
   const slotsPerSide = plan.filter((slot) => slot.side.id === 'a').length;
 
-  // Only the branches this run actually uses. A single run resets one branch
-  // and leaves eval-ab-b untouched: resetting a branch it will not read would
-  // destroy another operator's evidence for no reason, and would make every
-  // spend message that says "both branches" false.
-  const runningSideIds = new Set<string>(selection.sides.map((side) => side.id));
-  const runningTargets = attested.targets.filter((target) => runningSideIds.has(target.sideId));
-  if (runningTargets.length !== selection.sides.length) {
-    throw new Error(
-      `DISCOVERY_TARGETS does not declare every side this run needs `
-      + `(needs ${[...runningSideIds].sort().join(', ')}; manifest declares `
-      + `${attested.targets.map((target) => target.sideId).sort().join(', ')})`,
-    );
-  }
+  // Only the branches this run actually uses (see abRunningTargets).
+  const runningTargets = abRunningTargets(attested.targets, selection.sides);
 
   // `--report` names the destination; without it the run names its own
   // timestamped path. Either way the plan below is what guards the write, so an

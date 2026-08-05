@@ -183,7 +183,7 @@ describe("the single discovery slot", () => {
     // here rather than leave this file explaining a rule about branches that no
     // longer exist. Read from source rather than imported: discovery.neon.ts
     // reaches node: APIs that this provider-free suite must not load, which is the
-    // same reason argv.spec.ts reads AB_FLAGS and registry.spec.ts reads
+    // same reason argv.spec.ts reads DISCOVERY_ENV_KEYS and registry.spec.ts reads
     // AB_MAX_REPETITIONS as text.
     const source = readFileSync(AB_NEON_SOURCE, "utf8");
     const literal = source.match(/export const AB_BRANCH_NAMES = \{([^}]*)\}/);

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'bun:test';
 
 import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery.contract';
-import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abRunShape, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery.main';
+import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abRunShape, abRunningTargets, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery.main';
 import { buildAbPlan, type AbSide } from '../discovery.plan';
 
 import type { MatrixSlotResult } from '../discovery-env-matrix.main';
@@ -363,6 +363,36 @@ describe('abRunShape', () => {
   it('agrees with what the parser produces for each shape of argv', () => {
     expect(abRunShape(parseAbRunArgs(configArgs).sides)).toBe('pair');
     expect(abRunShape(parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']).sides)).toBe('single');
+  });
+});
+
+/**
+ * Which branches a run RESETS — the destructive decision, and the one with no
+ * reachable test until it was extracted.
+ *
+ * Its call site is inside `runAbComparison`, which needs live Neon credentials,
+ * so replacing the filter with `[...attested.targets]` left the whole api CLI
+ * suite green while making a single run reset the other operator's branch too.
+ */
+describe('abRunningTargets', () => {
+  const targets = [
+    { sideId: 'a' as const, branchId: 'br-a', endpointId: 'ep-a', databaseUrl: 'postgresql://a' },
+    { sideId: 'b' as const, branchId: 'br-b', endpointId: 'ep-b', databaseUrl: 'postgresql://b' },
+  ];
+
+  it('resets both branches for a comparison', () => {
+    expect(abRunningTargets(targets, sides).map((target) => target.sideId)).toEqual(['a', 'b']);
+  });
+
+  it('resets ONLY the branch a single run reads', () => {
+    // The guarantee: eval-ab-b is another operator's evidence, and a run that
+    // never reads it must not destroy it.
+    expect(abRunningTargets(targets, [sides[0]!]).map((target) => target.sideId)).toEqual(['a']);
+    expect(abRunningTargets(targets, [sides[1]!]).map((target) => target.sideId)).toEqual(['b']);
+  });
+
+  it('refuses before any reset when the manifest omits a side the run needs', () => {
+    expect(() => abRunningTargets([targets[0]!], sides)).toThrow(/does not declare every side/);
   });
 });
 

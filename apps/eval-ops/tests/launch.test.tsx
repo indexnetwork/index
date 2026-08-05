@@ -68,8 +68,13 @@ const HARNESSES = {
       detail: 'Runs the real discovery graph once per operator-chosen environment configuration.',
       agents: [],
       // The confirmation quotes this rather than a sentence written into the
-      // page, because the page branches on REQUIRES_SIDES and not on a name.
-      resets: 'both Neon evaluation branches',
+      // page, because the page branches on SUPPORTS_SIDES and not on a name.
+      // Keyed by shape: a single run resets one branch, a comparison resets two,
+      // and the confirmation is the last moment anyone can decline it.
+      resets: {
+        single: 'the Neon evaluation branch this configuration runs on',
+        sides: 'both Neon evaluation branches',
+      },
       flags: [
         {
           name: 'runs',
@@ -907,6 +912,29 @@ describe('Launch — discovery', () => {
     await user.click(screen.getByRole('button', { name: /confirm and run/i }));
 
     expect(postedRuns).toHaveLength(1);
+  });
+
+  it('tells a single run it resets one branch, not both', async () => {
+    // The confirmation is the last moment anyone can decline, so it must describe
+    // what will actually happen. A single run resets only the branch it reads
+    // (discovery.main.ts filters the attested targets to the sides being run);
+    // quoting the comparison's sentence told an operator launching ONE
+    // configuration that both branches would be destroyed — the same false claim
+    // the engine's own contract was rewritten to eliminate.
+    const user = userEvent.setup();
+    renderLaunch();
+
+    await selectDiscovery(user);
+    // No A/B: one configuration, one branch.
+    await user.click(await screen.findByRole('button', { name: /^add flag/ }));
+    await pickFlag(user, 1, 'DISCOVERY_PROFILE_SOURCE');
+    await user.selectOptions(await screen.findByLabelText('value 1'), 'user_context');
+    await user.type(screen.getByLabelText('Case'), 'historical/songwriting-duo');
+
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+
+    expect(screen.getByText(/resets the Neon evaluation branch this configuration runs on/i)).toBeTruthy();
+    expect(screen.queryByText(/resets both Neon evaluation branches/i)).toBeNull();
   });
 
   it('asks for a flag, not for values, when every row has been removed', async () => {

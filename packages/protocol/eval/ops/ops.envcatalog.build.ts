@@ -166,6 +166,11 @@ export function renderEngineFlags(catalog: Record<OpsHarness, string[]>): string
       const fields = [`kind: '${meta.kind}'`];
       if (meta.values !== undefined) fields.push(`values: [${meta.values.map((value) => `'${value}'`).join(", ")}]`);
       if (meta.min !== undefined) fields.push(`min: ${meta.min}`);
+      // `max` is emitted for the same reason as `min`: NEGOTIATOR_TURN_TIMEOUT_MS
+      // is capped at MAX_SAFE_INTEGER because the value reaches
+      // AbortSignal.timeout(), which throws RangeError above it. Dropping the
+      // ceiling here let a CLI-direct run crash where the site refused.
+      if (meta.max !== undefined) fields.push(`max: ${meta.max}`);
       return `  ${meta.key}: { ${fields.join(", ")} },`;
     })
     .sort()
@@ -232,9 +237,15 @@ interface EnvValueRule {
   kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'string' | 'json-model-map';
   values?: readonly string[];
   min?: number;
+  max?: number;
 }
 
-const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.freeze({
+/**
+ * Exported for discovery.flags.spec.ts, which cross-checks every field of every
+ * shared key against ENV_FLAG_METADATA. A sampled cross-check missed an entire
+ * missing field (\`max\`) once; an exhaustive one needs to see the rules.
+ */
+export const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.freeze({
 ${valueRules}
 });
 
@@ -257,11 +268,20 @@ export function discoveryEnvValueIssue(key: string, value: string): string | nul
     case 'integer':
       if (!/^\\d+$/.test(value)) return 'must be an integer';
       if (rule.min !== undefined && Number(value) < rule.min) return \`must be an integer of at least \${rule.min}\`;
+      if (rule.max !== undefined && Number(value) > rule.max) return \`must be an integer of at most \${rule.max}\`;
       return null;
     case 'number': {
-      const parsed = Number(value);
+      // Mirrors ops.metadata.ts: the read sites parse with Number.parseFloat,
+      // which returns NaN for '0x10' where Number() returns 16, and which
+      // discards a trailing tail ('7abc' -> 7). Validating with Number() let
+      // '0x10' through as sixteen days while the graph fell back to its 7-day
+      // default, so the artifact named a difference that never ran.
+      const trimmed = value.trim();
+      if (!/^[+-]?(\\d+\\.?\\d*|\\.\\d+)(e[+-]?\\d+)?$/i.test(trimmed)) return 'must be a positive number in decimal notation';
+      const parsed = Number.parseFloat(trimmed);
       if (!Number.isFinite(parsed) || parsed <= 0) return 'must be a positive number';
       if (rule.min !== undefined && parsed < rule.min) return \`must be at least \${rule.min}\`;
+      if (rule.max !== undefined && parsed > rule.max) return \`must be at most \${rule.max}\`;
       return null;
     }
     case 'json-model-map':

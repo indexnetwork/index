@@ -653,7 +653,7 @@ describe("resolveHarnessEnvironment", () => {
  * covers the reason.
  *
  * Read as source text rather than imported, for the same reason argv.spec.ts
- * reads AB_FLAGS and registry.spec.ts reads AB_MAX_REPETITIONS: these modules
+ * reads DISCOVERY_ENV_KEYS and registry.spec.ts reads AB_MAX_REPETITIONS: these modules
  * reach node: APIs and the API's own dependency tree, which this provider-free
  * suite (and the Vite bundle built from these modules) must not load.
  */
@@ -1671,6 +1671,71 @@ describe("env keys a harness does not read", () => {
     expect(response.status).toBe(202);
     // Absent rather than empty, so a client can treat presence as the signal.
     expect((await response.json()).unreadEnvKeys).toBeUndefined();
+  });
+
+  /**
+   * A saved config on the harness whose configuration IS its env.
+   *
+   * The single-configuration check ran inside RunSpecSchema against
+   * `spec.overrides`, which a named-profile launch never carries — so the schema
+   * always saw `{}` and refused every named config on discovery with "this run
+   * has no configuration", before the profile was ever resolved. False in the
+   * operator's terms: their config is full of flags. The check now runs where
+   * the resolved env exists.
+   */
+  it("launches a saved config on discovery, whose configuration is its env", async () => {
+    await configs.create({
+      name: "intent-only",
+      description: "one discovery configuration",
+      models: {},
+      env: { DISCOVERY_ALLOWED_TYPES: "intent" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "discovery", profile: "intent-only", flags: { runs: 1 } });
+
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as RunRecord;
+    // The config reached the engine as the run's one configuration.
+    expect(body.argv).toContain("--env");
+    expect(body.argv).toContain("DISCOVERY_ALLOWED_TYPES=intent");
+  });
+
+  /**
+   * The other direction: a genuinely empty configuration is still refused, and
+   * the message is true for the shape the operator used. Moving the check must
+   * not turn a real refusal into a spend.
+   */
+  it("refuses a saved config that sets nothing discovery reads, naming what it does set", async () => {
+    // POOL_QUESTIONS_MODE is allowlisted for configs but reachable from NO
+    // harness (IND-630), so this config is legitimate to save and configures
+    // nothing here. Note the key must be one discovery genuinely cannot read:
+    // CHAT_REASONING_EFFORT looks model-ish but IS in discovery's catalogue,
+    // because the graph reaches the model configuration too.
+    await configs.create({
+      name: "unreadable-config",
+      description: "nothing discovery reads",
+      models: {},
+      env: { POOL_QUESTIONS_MODE: "on" },
+    });
+
+    const response = await post("/api/runs", { kind: "eval", harness: "discovery", profile: "unreadable-config", flags: { runs: 1 } });
+
+    expect(response.status).toBe(400);
+    const error = ((await response.json()) as { error: string }).error;
+    // Names the config and what it actually sets, rather than claiming the
+    // operator configured nothing.
+    expect(error).toContain("unreadable-config");
+    expect(error).toContain("POOL_QUESTIONS_MODE");
+  });
+
+  it("refuses an ad-hoc discovery run that configures nothing at all", async () => {
+    const response = await post("/api/runs", {
+      kind: "eval", harness: "discovery", profile: "default",
+      overrides: { models: {}, env: {} }, flags: { runs: 1 },
+    });
+
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toContain("no configuration");
   });
 
   it("does not report EVAL_MODEL_OVERRIDES, which renderRun writes from the models block", async () => {

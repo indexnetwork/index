@@ -71,7 +71,7 @@ export const ENV_SECRET_KEYS: readonly string[] = Object.freeze([
  * numbered or suffixed credential is still a credential, and `..._KEY_BACKUP`
  * or `..._TOKEN_OLD` are exactly the names a second one acquires.
  *
- * Verified against the 64-key candidate universe: this matches nine
+ * Verified against the 64-key candidate universe: this matches ten
  * (API_URL, DATABASE_URL, EVAL_OPS_UI_URL, KEY, NEON_API_KEY,
  * OPENROUTER_API_KEY, OPENROUTER_BASE_URL, SOME_KEY, TEST_EVAL_SECRET,
  * WEB_APP_URL) and *zero* of the 27 keys any harness offers, which is why

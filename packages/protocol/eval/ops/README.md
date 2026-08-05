@@ -86,11 +86,12 @@ before spending and the number recorded on the run cannot drift apart.
 
 **`discovery` also carries two configurations.** Its spec has a `sides: { a, b }`
 object of environment values, rendered as `--a KEY=VALUE` / `--b KEY=VALUE` with keys
-sorted. It is required for that harness and refused for every other (a scorecard harness
-scores one configuration against a baseline, so a second has nothing to mean). Keys are
-confined to `DISCOVERY_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the nine
-flags the discovery graph actually reads, pinned in `tests/argv.spec.ts` against the
-engine's own `AB_FLAGS` — and `abSideIssues` in [`ops.sides.ts`](./ops.sides.ts) mirrors the
+sorted. It is *optional* for that harness — omitting it measures one configuration,
+rendered as `--env KEY=VALUE` — and refused for every other (a scorecard harness scores
+one configuration against a baseline, so a second has nothing to mean). Keys are
+confined to `DISCOVERY_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the 26
+flags the discovery graph actually reads, generated from its own import closure and
+pinned in `tests/argv.spec.ts` — and `abSideIssues` in [`ops.sides.ts`](./ops.sides.ts) mirrors the
 engine's `buildAbPlan` rules: same key set on both sides, at least one differing value, no
 empty values. The engine *ignores* argv it does not recognise and only reaches those rules
 after loading its eval modules, so mirroring them here is what turns a late, paid failure
@@ -433,9 +434,10 @@ handled ahead of the gate because it is the request that establishes one.
   argv, never a database URL. `RunSpecSchema` is `.strict()`, so a
   request carrying `env`, `argv` or any other unknown key **fails with 400** rather than
   being silently ignored.
-- The one environment a client may name is `sides` on a `discovery` spec: values for
-  the nine `DISCOVERY_ENV_KEYS` flags, which are protocol feature flags and nothing
-  else. They reach the child as `--a`/`--b` argv, never as the run's injected env, and any
+- The one environment a client may name is `sides` (or a single configuration) on a
+  `discovery` spec: values for the 26 `DISCOVERY_ENV_KEYS` flags, which are protocol
+  feature flags and nothing
+  else. They reach the child as `--a`/`--b`/`--env` argv, never as the run's injected env, and any
   other key **fails with 400** — as does any value the flag's own read site would not
   honour, or one longer than 200 characters, or one carrying a line break.
 - The `fixture-reset` variant of `RunSpec` is deliberately not parseable by

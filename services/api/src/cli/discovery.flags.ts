@@ -86,9 +86,15 @@ interface EnvValueRule {
   kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'string' | 'json-model-map';
   values?: readonly string[];
   min?: number;
+  max?: number;
 }
 
-const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.freeze({
+/**
+ * Exported for discovery.flags.spec.ts, which cross-checks every field of every
+ * shared key against ENV_FLAG_METADATA. A sampled cross-check missed an entire
+ * missing field (`max`) once; an exhaustive one needs to see the rules.
+ */
+export const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.freeze({
   CHAT_MODEL: { kind: 'enum', values: ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite', 'google/gemini-3-pro-preview', 'anthropic/claude-sonnet-4', 'anthropic/claude-haiku-4.5', 'openai/gpt-4.1-mini'] },
   CHAT_REASONING_EFFORT: { kind: 'enum', values: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
   DISCOVERY_ALLOWED_TYPES: { kind: 'csv-enum', values: ['intent', 'profile'] },
@@ -109,7 +115,7 @@ const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.freeze({
   NEGOTIATION_PROTOCOL_VERSION: { kind: 'enum', values: ['v1', 'v2'] },
   NEGOTIATION_SCREEN_MODE: { kind: 'enum', values: ['off', 'shadow', 'enforce'] },
   NEGOTIATOR_STANCE: { kind: 'enum', values: ['advocate', 'evaluator', 'skeptic'] },
-  NEGOTIATOR_TURN_TIMEOUT_MS: { kind: 'integer', min: 1 },
+  NEGOTIATOR_TURN_TIMEOUT_MS: { kind: 'integer', min: 1, max: 9007199254740991 },
   OPENROUTER_FALLBACK_MODEL: { kind: 'enum', values: ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite', 'google/gemini-3-pro-preview', 'anthropic/claude-sonnet-4', 'anthropic/claude-haiku-4.5', 'openai/gpt-4.1-mini', 'none', 'off'] },
   OPENROUTER_MAX_RETRIES: { kind: 'integer', min: 0 },
   OPENROUTER_REQUEST_TIMEOUT_MS: { kind: 'integer', min: 1 },
@@ -136,11 +142,20 @@ export function discoveryEnvValueIssue(key: string, value: string): string | nul
     case 'integer':
       if (!/^\d+$/.test(value)) return 'must be an integer';
       if (rule.min !== undefined && Number(value) < rule.min) return `must be an integer of at least ${rule.min}`;
+      if (rule.max !== undefined && Number(value) > rule.max) return `must be an integer of at most ${rule.max}`;
       return null;
     case 'number': {
-      const parsed = Number(value);
+      // Mirrors ops.metadata.ts: the read sites parse with Number.parseFloat,
+      // which returns NaN for '0x10' where Number() returns 16, and which
+      // discards a trailing tail ('7abc' -> 7). Validating with Number() let
+      // '0x10' through as sixteen days while the graph fell back to its 7-day
+      // default, so the artifact named a difference that never ran.
+      const trimmed = value.trim();
+      if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(trimmed)) return 'must be a positive number in decimal notation';
+      const parsed = Number.parseFloat(trimmed);
       if (!Number.isFinite(parsed) || parsed <= 0) return 'must be a positive number';
       if (rule.min !== undefined && parsed < rule.min) return `must be at least ${rule.min}`;
+      if (rule.max !== undefined && parsed > rule.max) return `must be at most ${rule.max}`;
       return null;
     }
     case 'json-model-map':

@@ -173,29 +173,58 @@ fixed message and never the control plane's own — control-plane responses and
 `DATABASE_URL`s carry credentials — so do not expect the specific mismatch to be
 named.
 
-**The nine flags it can offer.** `AB_FLAGS` in
-`services/api/src/cli/discovery.flags.ts`, asserted by
-`discovery.flags.spec.ts` against a fresh scan of the discovery graph's own
-import closure rather than hand-maintained:
+**The 26 flags it can offer.** `DISCOVERY_ENV_KEYS` in
+`services/api/src/cli/discovery.flags.ts`, **generated** from a scan of the
+discovery graph's own transitive import closure rather than hand-maintained
+(`packages/protocol/eval/ops/ops.envcatalog.build.ts`), and regenerated-and-diffed
+by `eval/ops/tests/envcatalog.spec.ts` so the committed copy cannot drift:
 
 ```
-DISCOVERY_ALLOWED_TYPES            DISCOVERY_CONTEXT_TO_INTENT
-DISCOVERY_PROFILE_SOURCE           DISCOVERY_REJECTION_COOLDOWN_DAYS
-DISCOVERY_SOURCE_PREMISE_LIMIT     NEGOTIATION_INCLUDE_OTHER_INTENTS
-NEGOTIATION_MAX_TURNS_AMBIENT      NEGOTIATION_MAX_TURNS_CHAT
-RUN_OPPORTUNITY_EVAL_IN_PARALLEL
+CHAT_MODEL                           CHAT_REASONING_EFFORT
+DISCOVERY_ALLOWED_TYPES              DISCOVERY_CONTEXT_TO_INTENT
+DISCOVERY_PROFILE_SOURCE             DISCOVERY_REJECTION_COOLDOWN_DAYS
+DISCOVERY_SOURCE_PREMISE_LIMIT       EVAL_MODEL_OVERRIDES
+HYDE_FRAME_CONSTRAINTS_ENABLED       NEGOTIATION_ASK_USER_ENABLED
+NEGOTIATION_ASK_USER_WINDOW_MS       NEGOTIATION_CONSULTATION_POLICY_MODE
+NEGOTIATION_DEADLOCK_SHIFT_ENABLED   NEGOTIATION_DEADLOCK_THRESHOLD
+NEGOTIATION_INCLUDE_OTHER_INTENTS    NEGOTIATION_MAX_TURNS_AMBIENT
+NEGOTIATION_MAX_TURNS_CHAT           NEGOTIATION_PROTOCOL_VERSION
+NEGOTIATION_SCREEN_MODE              NEGOTIATOR_STANCE
+NEGOTIATOR_TURN_TIMEOUT_MS           OPENROUTER_FALLBACK_MODEL
+OPENROUTER_MAX_RETRIES               OPENROUTER_REQUEST_TIMEOUT_MS
+OPENROUTER_RUNNABLE_MAX_ATTEMPTS     RUN_OPPORTUNITY_EVAL_IN_PARALLEL
 ```
 
-**The seven it cannot.** `PROFILE_ENV_ALLOWLIST`
-(`packages/protocol/eval/ops/ops.allowlist.ts`) has sixteen entries. The other
-seven are **not reachable from the discovery graph**, so this harness refuses
-them by name rather than pretending to test them:
+An earlier version of this list had **nine** entries. That was the result of
+scanning against the sixteen-key `PROFILE_ENV_ALLOWLIST`: the list was the limit,
+not the code, so `NEGOTIATOR_STANCE` and eighteen others were refused with a
+message asserting the graph could not read them — which was false.
+
+**The scorecard harnesses offer 8 each** (`matching`, `profile`, `premise`,
+`opportunity`), from the same generated catalogue:
+
+```
+CHAT_MODEL                        CHAT_REASONING_EFFORT
+EVAL_MODEL_OVERRIDES              OPENROUTER_FALLBACK_MODEL
+OPENROUTER_MAX_RETRIES            OPENROUTER_REQUEST_TIMEOUT_MS
+OPENROUTER_RUNNABLE_MAX_ATTEMPTS  SMARTEST_VERIFIER_MODEL
+```
+
+**The seven no harness can offer.** `PROFILE_ENV_ALLOWLIST`
+(`packages/protocol/eval/ops/ops.allowlist.ts`) has sixteen entries. Seven are
+**not reachable from any harness's import closure**, so they are absent from
+every catalogue rather than being offered as controls that do nothing (IND-630):
 
 ```
 POOL_QUESTIONS_MODE       POOL_QUESTIONS_PUSH      POOL_QUESTIONS_RANKING
 POOL_QUESTIONS_MINING     OUTCOME_QUESTIONS_MODE   INTRODUCER_DISCOVERY_ENABLED
 NEGOTIATION_EVIDENCE_QUESTIONS_MODE
 ```
+
+**Credentials are never offered**, by any harness: `isCredentialEnvKey`
+(`ops.allowlist.ts`) drops them at generation and refuses them again at the
+request boundary. `OPENROUTER_API_KEY` and `OPENROUTER_BASE_URL` are read by the
+graph and absent from the catalogue for that reason, not because they are inert.
 
 "Not reachable from the discovery graph" is the whole claim, and it is not the
 same as "untestable". For most of them the behaviour lives in
@@ -453,12 +482,16 @@ source for both the workload recorded on the run record (`renderRun`,
 disagree. The A/B checkbox is pinned on and disabled for this harness
 (`Launch.tsx:646`), because one run is already both sides.
 
-The spend confirmation fires for **every** run of this harness, filtered or not
-(`Launch.tsx:368` — `isFullCorpus() || requiresSides`), because `--case` narrows
-what is measured, not what is destroyed: a filtered run still resets both
-branches. The confirmation names the destruction in the descriptor's own words,
-`resets: "both Neon evaluation branches"` (`ops.registry.ts:241`, rendered at
-`Launch.tsx:872-876`), rather than only counting invocations.
+The spend confirmation fires for **every** run of this harness, filtered or not,
+because `--case` narrows what is measured, not what is destroyed: a filtered run
+still resets the branches it will read. The confirmation names the destruction in
+the descriptor's own words, and `resets` is keyed by the run's **shape** —
+`sides: "both Neon evaluation branches"` for a comparison,
+`single: "the Neon evaluation branch this configuration runs on"` for one
+configuration (`ops.registry.ts`, selected in `Launch.tsx`). A single string here
+told an operator launching one configuration that both branches would be reset,
+which `discovery.main.ts` does not do: `abRunningTargets` filters the attested
+targets to the sides actually being run.
 
 **No baseline, and there never will be one, so the run view shows a pair rather
 than a regression verdict.** The run page does not even fetch a baseline for a

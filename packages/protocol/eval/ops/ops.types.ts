@@ -98,20 +98,39 @@ export interface HarnessDescriptor {
   /** One sentence on what is actually scored, shown under `question` for context. */
   detail: string;
   /**
-   * What a run of this harness DESTROYS, named as a noun phrase ("both Neon
-   * evaluation branches"), and shown in the launch form's confirmation because
-   * that is the last moment anyone can decline it.
+   * What a run of this harness DESTROYS, named as a noun phrase, and shown in
+   * the launch form's confirmation because that is the last moment anyone can
+   * decline it.
    *
    * Sourced here rather than written into the form, because the form branches on
-   * REQUIRES_SIDES rather than on a harness name: a second comparison harness
+   * SUPPORTS_SIDES rather than on a harness name: a second comparison harness
    * would otherwise inherit this one's claim about Neon, which may not be true
    * of it. Absent means a run destroys nothing outside its own report, which is
    * the case for every scorecard harness, and the confirmation then speaks only
    * of the spend.
+   *
+   * Keyed by the run's SHAPE, because for a sides-capable harness the two shapes
+   * destroy different things: a comparison resets both Neon branches, a single
+   * run resets only the one it reads (discovery.main.ts filters `attested`
+   * targets to the sides being run). A single string here was quoted verbatim
+   * into the confirmation and told an operator launching one configuration that
+   * both branches would be reset — the same false claim the engine's own contract
+   * was rewritten to eliminate. `resetsFor` is how the form asks the right one.
    */
-  resets?: string;
+  resets?: HarnessResets;
   /** Model-overridable agents this harness exercises, in pipeline order. */
   agents: readonly string[];
+}
+
+/**
+ * What a run destroys, by shape. `single` is what one configuration destroys,
+ * `sides` what a comparison destroys. A harness that destroys the same thing
+ * either way repeats the string rather than leaving a field blank: a missing
+ * field would render an empty noun phrase into the confirmation.
+ */
+export interface HarnessResets {
+  single: string;
+  sides: string;
 }
 
 export interface ArtifactRef {

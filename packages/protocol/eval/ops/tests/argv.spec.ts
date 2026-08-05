@@ -25,7 +25,7 @@ const SIDES = {
   b: { DISCOVERY_PROFILE_SOURCE: "user_context" },
 };
 
-const AB_FLAGS_SOURCE = path.join(
+const DISCOVERY_FLAGS_SOURCE = path.join(
   import.meta.dir, "..", "..", "..", "..", "..",
   "services", "api", "src", "cli", "discovery.flags.ts",
 );
@@ -396,7 +396,7 @@ describe("RunSpecSchema sides", () => {
     // registry.spec.ts uses for AB_MAX_REPETITIONS: a key added, removed or
     // renamed in the engine fails here instead of being silently dropped by a
     // parser that ignores what it does not recognise.
-    const source = readFileSync(AB_FLAGS_SOURCE, "utf8");
+    const source = readFileSync(DISCOVERY_FLAGS_SOURCE, "utf8");
     const literal = source.match(/export const DISCOVERY_ENV_KEYS[^=]*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/);
     if (!literal) throw new Error("DISCOVERY_ENV_KEYS not found in discovery.flags.ts");
     const engineKeys = [...literal[1]!.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]!);
@@ -415,17 +415,28 @@ describe("RunSpecSchema sides", () => {
     for (const key of DISCOVERY_ENV_KEYS) expect(described.has(key), `${key} has no metadata`).toBe(true);
   });
 
-  it("refuses a discovery run that names no configuration at all", () => {
-    // A run with neither `sides` nor an env override configures nothing, so it
-    // would measure the committed default and report it under whatever the
-    // operator thought they had set. Refused in BOTH shapes, so making a single
-    // run expressible did not make an empty one expressible with it.
-    expect(refusal({ kind: "eval", harness: "discovery", profile: "default", flags: {} }))
-      .toMatch(/no configuration/i);
+  it("refuses a discovery run whose ad-hoc override configures nothing", () => {
+    // A run that configures nothing would measure the committed default and
+    // report it under whatever the operator thought they had set.
     expect(refusal({
       kind: "eval", harness: "discovery", profile: "default", flags: {},
       overrides: { models: {}, env: {} },
     })).toMatch(/no configuration/i);
+  });
+
+  it("leaves a named config's emptiness to the layer that can resolve it", () => {
+    // The schema cannot see a named profile's env — it lives in a file or the
+    // config store and this refinement is synchronous — so `spec.overrides` is
+    // undefined here for that shape. Checking it unconditionally made the schema
+    // see `{}` and refuse EVERY saved config on discovery with "this run has no
+    // configuration", which was false: the operator's config is full of flags.
+    //
+    // The rule still holds, one layer later: launchRun re-checks after
+    // resolveProfile (server.spec.ts covers both directions), and renderRun
+    // refuses before anything is spent.
+    expect(RunSpecSchema.safeParse({
+      kind: "eval", harness: "discovery", profile: "a-saved-config", flags: {},
+    }).success).toBe(true);
   });
 
   it("accepts a discovery run that measures one configuration", () => {

@@ -29,7 +29,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { renderRun, RunSpecSchema } from "./ops.argv.js";
+import { renderRun, RunSpecSchema, SUPPORTS_SIDES, singleConfigIssues } from "./ops.argv.js";
+import { DISCOVERY_ENV_KEYS } from "./ops.allowlist.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
 import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
@@ -1284,6 +1285,43 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
     resolved = resolveProfile(profile);
   }
 
+  // A single-configuration run of a sides-capable harness must say what it is
+  // measuring, and only here is that knowable: the configuration may have come
+  // from a named profile, whose env RunSpecSchema cannot read (it is a file or a
+  // store record, and the refinement is synchronous). Checking it there against
+  // the absent `overrides` refused every named config on this harness with a
+  // message that was false — the operator's config is full of flags.
+  //
+  // Narrowed to the keys this harness can actually read, exactly as renderRun
+  // narrows before rendering `--env`: a config carrying only keys some OTHER
+  // harness reads configures nothing here, and would otherwise be spent as a run
+  // of the committed default while the record named the operator's config.
+  if (SUPPORTS_SIDES[harness] && parsed.data.sides === undefined) {
+    const readable = Object.fromEntries(
+      Object.entries(resolved.env).filter(([key]) => DISCOVERY_ENV_KEYS.includes(key)),
+    );
+    const issues = singleConfigIssues(readable);
+    if (issues.length > 0) {
+      // The empty case gets a message true for the shape the operator used. A
+      // NAMED config that sets nothing this harness reads is a different mistake
+      // from a run that set nothing at all, and naming the config is what makes
+      // it fixable. "default" is excluded because it is not a config anyone
+      // chose: a bare launch and an empty ad-hoc override both mean "nothing was
+      // configured", which is what singleConfigIssues already says.
+      const empty = issues.find((issue) => issue.path.length === 0);
+      if (empty !== undefined && parsed.data.overrides === undefined && parsed.data.profile !== "default") {
+        const carried = Object.keys(resolved.env).filter((key) => key !== "EVAL_MODEL_OVERRIDES").sort();
+        return json({
+          error:
+            `Config "${parsed.data.profile}" sets nothing the ${harness} harness reads, so this run would `
+            + `measure the committed default while the record named your config`
+            + (carried.length > 0 ? ` (it sets ${carried.join(", ")})` : ""),
+        }, 400);
+      }
+      return json({ error: issues.map((issue) => issue.message).join("; ") }, 400);
+    }
+  }
+
   // Recorded-but-not-read (spec §6). A saved config is harness-agnostic and may
   // legitimately carry a key this harness never reads — it is shared with one
   // that does — so the run proceeds and the keys are NAMED on the response. The
@@ -1293,6 +1331,11 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // key at all: renderRun writes it from the profile's `models` block (and
   // writes "" when there is none), so reporting it would tell the operator their
   // model selection was ignored when it was in fact applied.
+  //
+  // Today this filter removes nothing — every harness's catalogue contains the
+  // key, so unreadEnvKeys can never return it — and it is kept as a cheap guard
+  // for the case where one stops reading it: the key would then be reported as
+  // unread on that harness, which is the one thing this note must never say.
   const unread = unreadEnvKeys(harness, resolved.env).filter((key) => key !== "EVAL_MODEL_OVERRIDES");
 
   // Two phases: the report path contains the run id, and the id is minted by the

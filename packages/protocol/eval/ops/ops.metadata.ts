@@ -97,6 +97,20 @@ export const ALLOWED_CONFIG_MODEL_IDS = [
 ] as const;
 
 /**
+ * The decimal shape `Number.parseFloat` reads in full, which is what every
+ * `number` read site accepts.
+ *
+ * Anchored at both ends on purpose. parseFloat consumes a leading decimal prefix
+ * and discards the rest, so "7abc" parses as 7 and "0x10" as 0 — the first would
+ * let a typo run as a valid value, the second is the phantom-difference case:
+ * Number("0x10") is 16, so an unanchored check accepted it as sixteen days while
+ * the graph fell back to its 7-day default. Leading sign is accepted here and
+ * rejected by the `parsed <= 0` test below, so the message says "positive"
+ * rather than "malformed" for "-1".
+ */
+const DECIMAL_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/**
  * The problem with `value` for this flag, or null when the live service will
  * honour it as written.
  *
@@ -139,7 +153,16 @@ export function envFlagValueIssue(meta: EnvFlagMeta, value: string, bounds?: Mod
       if (meta.max !== undefined && Number(value) > meta.max) return `must be an integer of at most ${meta.max}`;
       return null;
     case "number": {
-      const parsed = Number(value);
+      // Shape first, and deliberately NOT Number(): every `number` read site
+      // parses with Number.parseFloat, which reads a DECIMAL prefix and returns
+      // NaN for "0x10" where Number() returns 16. Validating with Number() let
+      // "0x10" through as sixteen days while the read site fell back to its own
+      // default — a difference the artifact would name that never existed at
+      // runtime, which is precisely what this function's docblock forbids.
+      // parseFloat also IGNORES a trailing tail ("7abc" -> 7), so the shape is
+      // anchored here rather than left to the parse.
+      if (!DECIMAL_NUMBER.test(value.trim())) return "must be a positive number in decimal notation";
+      const parsed = Number.parseFloat(value.trim());
       if (!Number.isFinite(parsed) || parsed <= 0) return "must be a positive number";
       if (meta.min !== undefined && parsed < meta.min) return `must be at least ${meta.min}`;
       if (meta.max !== undefined && parsed > meta.max) return `must be at most ${meta.max}`;
@@ -190,10 +213,25 @@ export function envValueIssueForKey(key: string, value: string, bounds?: ModelMa
 }
 
 /**
- * All 16 PROFILE_ENV_ALLOWLIST flags, in allowlist order. Every flag tunes
- * the live discovery/negotiation services — the four scorecard harnesses do
- * not read them (eval/ops/ops.metadata.spec.ts pins the kind/values mirror of
- * services/api/src/startup.env.ts and the protocol use sites).
+ * Every environment key any harness offers, plus the PROFILE_ENV_ALLOWLIST
+ * flags a saved config may carry — 34 entries covering the 27 distinct keys in
+ * HARNESS_ENV_KEYS and the allowlisted flags no harness reaches (IND-630).
+ *
+ * "Offered implies documented" is enforced, not aspirational: metadata.spec.ts
+ * fails if any catalogued key lacks an entry here, because an undocumented key
+ * renders as a bare SCREAMING_SNAKE string with no validation — which is how a
+ * value that silently falls back at its read site gets typed into a form and
+ * spent (spec §4).
+ *
+ * The four scorecard harnesses DO read env: 8 keys each (CHAT_MODEL,
+ * CHAT_REASONING_EFFORT, EVAL_MODEL_OVERRIDES, SMARTEST_VERIFIER_MODEL and the
+ * OpenRouter retry/timeout/fallback set). An earlier version of this comment
+ * said they read none, which was true only of the 16 allowlisted flags and is
+ * the misreading this branch exists to correct.
+ *
+ * `kind`/`values`/`min`/`max` mirror each flag's own READ SITE, not the
+ * declaration in services/api/src/startup.env.ts; eval/ops/tests/metadata.spec.ts
+ * pins that mirror.
  */
 export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
   {
@@ -315,7 +353,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_ASK_USER_WINDOW_MS",
     label: "Ask-user answer window (ms)",
     description:
-      "How long a paused negotiation waits for its principal's answer before expiring. Non-numeric or non-positive values fall back to 24 hours rather than failing (src/negotiation/domain/negotiation.protocol.ts).",
+      "How long a paused negotiation waits for its principal's answer before expiring. Non-numeric or non-positive values fall back to 24 hours rather than failing (src/negotiation/domain/negotiation.protocol.ts). Declared `integer` though the read site parses with Number() and would honour a fraction of a millisecond: refusing one costs nothing an operator wants, and \"whole milliseconds\" is the honest offer.",
     kind: "integer",
     min: 1,
     defaultDescription: "86400000 (24 hours)",
@@ -477,7 +515,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "OPENROUTER_REQUEST_TIMEOUT_MS",
     label: "Request timeout (ms)",
     description:
-      "Hard upper bound on a single LLM HTTP call. Without it the client waits for the upstream to cut the socket, roughly three minutes through OpenRouter. Parsed with parseInt, and a non-positive or unparseable value falls back to 60000 (src/shared/agent/model.config.ts).",
+      "Hard upper bound on a single LLM HTTP call. Without it the client waits for the upstream to cut the socket, roughly three minutes through OpenRouter. Parsed with parseInt, and a non-positive or unparseable value falls back to 60000 (src/shared/agent/model.config.ts). `integer` is exact here rather than merely safe: parseInt truncates \"1.9\" to 1 millisecond, so accepting a fraction would run a value the operator did not choose.",
     kind: "integer",
     min: 1,
     defaultDescription: "60000 (60 seconds)",
@@ -486,7 +524,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "OPENROUTER_MAX_RETRIES",
     label: "HTTP retries per call",
     description:
-      "Transport-level retries for one LLM call. 0 is honoured and means no retry — unlike the negotiation turn caps, whose read sites treat 0 as unset. Worst-case latency is bounded by this many retries times the request timeout, which is why the default is 1 rather than the library's 2 (src/shared/agent/model.config.ts).",
+      "Transport-level retries for one LLM call. 0 is honoured and means no retry — unlike the negotiation turn caps, whose read sites treat 0 as unset. Worst-case latency is bounded by (retries + 1) times the request timeout, since the first attempt waits the full timeout before the first retry, which is why the default is 1 rather than the library's 2 (src/shared/agent/model.config.ts).",
     kind: "integer",
     min: 0,
     defaultDescription: "1",
@@ -495,7 +533,7 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "OPENROUTER_RUNNABLE_MAX_ATTEMPTS",
     label: "Structured-output attempts",
     description:
-      "Total attempts (1 means no retry) for retries wrapping the HTTP layer, which additionally cover structured-output parse and validation failures. A caller abort is never retried. Values below 1 fall back to 2 (src/shared/agent/model.config.ts).",
+      "Total attempts (1 means no retry) for retries wrapping the HTTP layer, which additionally cover structured-output parse and validation failures. A caller abort is never retried. Values below 1 fall back to 2 (src/shared/agent/model.config.ts). `integer` is exact here rather than merely safe: parseInt truncates a fraction, so accepting one would run a count the operator did not choose.",
     kind: "integer",
     min: 1,
     defaultDescription: "2",
