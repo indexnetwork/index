@@ -61,6 +61,32 @@ export interface AbSideSummary {
 }
 
 /**
+ * What retrieval did on one side of one case, folded across its repetitions.
+ *
+ * `targetRank` and `evidenceTypes` are not diagnostics: they are the outcome
+ * measures of retrieval, and retrieval is the thing this harness varies. Two
+ * sides can pass every repetition and still have found the target at a
+ * different rank or through different evidence — which is a real effect of the
+ * configuration, invisible in the pass rates. The first live run is exactly
+ * that case: both sides pass, side a finds the target through `intent` and side
+ * b through `premise`.
+ */
+export interface AbRetrieval {
+  /**
+   * False when no repetition carried these fields at all, so nothing about
+   * retrieval can be read — distinct from a recorded miss.
+   */
+  recorded: boolean;
+  /**
+   * Distinct final ranks the target came back at, ascending. `null` is a
+   * recorded miss: the run happened and the target was not returned.
+   */
+  ranks: (number | null)[];
+  /** Distinct evidence types the target was found through, sorted. */
+  evidenceTypes: string[];
+}
+
+/**
  * One case on one side, with its repetitions folded together.
  *
  * The artifact files every repetition as a case row of its own
@@ -79,6 +105,8 @@ export interface AbSideCase {
   passRate: number;
   /** The schema's own definition, applied across the repetitions. */
   flaky: boolean;
+  /** How this side found the target, not just whether it scored. */
+  retrieval: AbRetrieval;
 }
 
 /** One case, as both sides ran it. */
@@ -91,6 +119,13 @@ export interface AbCasePair {
   delta: number | null;
   /** True when both sides scored it and their pass rates are not equal. */
   differs: boolean;
+  /**
+   * True when both sides recorded retrieval and did not record the same
+   * outcome. Independent of `differs`: equal pass rates with unequal retrieval
+   * is the case this harness exists to catch, and reporting it as "same" hides
+   * the only thing the run measured.
+   */
+  retrievalDiffers: boolean;
   /** The sides that both passed and failed this case across its repetitions. */
   flakySides: AbSideId[];
 }
@@ -116,7 +151,25 @@ export type AbView =
       config: AbConfigRow[];
       pairs: AbCasePair[];
       unpairedCaseIds: string[];
+      /**
+       * How many times each case ran on each side — the artifact's repetition
+       * rows counted, not a flag echoed back.
+       */
+      repetitions: number;
     };
+
+/**
+ * Below this many repetitions per side, a case-level delta is not a measurement.
+ *
+ * A case's rate on one side moves in steps of 1/n, so at n = 1 the smallest
+ * possible difference is the largest one the table can show: one model call
+ * going the other way renders as ±100%. At n = 2 a single flip is still ±50%.
+ * Three is the first count at which a case-level difference can be smaller than
+ * a total reversal, which is the least a reader needs before a signed percentage
+ * means anything. `--runs 1` is legal and is what the first live run used, so
+ * this is the common case, not the edge one.
+ */
+export const NOISE_FLOOR_REPETITIONS = 3;
 
 /** The rows one side owns. `rule` is the side id for this harness. */
 function rowsForSide(cases: readonly ArtifactCase[], side: AbSideId): ArtifactCase[] {
@@ -190,6 +243,38 @@ function caseIdOf(row: ArtifactCase): string | null {
   return parts.slice(0, sideIndex).join('/');
 }
 
+/**
+ * Folds one side's retrieval outcomes for one case across its repetitions.
+ *
+ * A row that carries neither field is left out of `recorded`: the harnesses that
+ * do not measure retrieval write no such field, and inventing "not returned" for
+ * them would report a miss that was never measured.
+ */
+function foldRetrieval(rows: readonly ArtifactCase[]): AbRetrieval {
+  let recorded = false;
+  const ranks: (number | null)[] = [];
+  const evidenceTypes = new Set<string>();
+  for (const row of rows) {
+    if (!('targetRank' in row) && !('evidenceTypes' in row)) continue;
+    recorded = true;
+    const rank = row.targetRank ?? null;
+    if (!ranks.includes(rank)) ranks.push(rank);
+    for (const type of row.evidenceTypes ?? []) evidenceTypes.add(type);
+  }
+  // Ascending, with a recorded miss last: it is the worst outcome, not rank 0.
+  ranks.sort((left, right) => {
+    if (left === null) return right === null ? 0 : 1;
+    if (right === null) return -1;
+    return left - right;
+  });
+  return { recorded, ranks, evidenceTypes: [...evidenceTypes].sort() };
+}
+
+/** Order-independent identity of a retrieval reading, for equality only. */
+function retrievalIdentity(retrieval: AbRetrieval): string {
+  return JSON.stringify([retrieval.ranks, retrieval.evidenceTypes]);
+}
+
 /** Folds one side's repetition rows for one case into a single reading. */
 function foldRepetitions(rows: readonly ArtifactCase[]): AbSideCase {
   const runs = rows.reduce((total, row) => total + row.runs, 0);
@@ -203,6 +288,7 @@ function foldRepetitions(rows: readonly ArtifactCase[]): AbSideCase {
     // and flaky means some repetitions passed and some did not.
     passRate: runs === 0 ? 0 : passes / runs,
     flaky: passes > 0 && passes < runs,
+    retrieval: foldRetrieval(rows),
   };
 }
 
@@ -295,6 +381,11 @@ export function deriveAbView(artifact: Artifact): AbView {
       b,
       delta: comparable ? b!.passRate - a!.passRate : null,
       differs: comparable && a!.passRate !== b!.passRate,
+      retrievalDiffers:
+        comparable
+        && a!.retrieval.recorded
+        && b!.retrieval.recorded
+        && retrievalIdentity(a!.retrieval) !== retrievalIdentity(b!.retrieval),
       flakySides: SIDE_IDS.filter((side) => (side === 'a' ? a : b)?.flaky === true),
     };
   });
@@ -309,5 +400,14 @@ export function deriveAbView(artifact: Artifact): AbView {
     config,
     pairs,
     unpairedCaseIds,
+    // Counted from the rows, because that is what was actually run: `--runs` is
+    // not on the artifact (`buildAbArtifactMeta` pins the envelope's `runs` at 1
+    // whatever it was). A complete run gives every case the same count, so the
+    // largest is that count; a run where one is short is not complete and never
+    // reaches here.
+    repetitions: pairs.reduce(
+      (most, pair) => Math.max(most, pair.a?.repetitions ?? 0, pair.b?.repetitions ?? 0),
+      0,
+    ),
   };
 }

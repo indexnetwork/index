@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { Frame } from './Frame';
-import { deriveAbView, type AbCasePair, type AbConfigRow, type AbSideCase, type AbSideId, type AbSideSummary, type AbSideValue } from '../lib/ab';
+import { deriveAbView, NOISE_FLOOR_REPETITIONS, type AbCasePair, type AbConfigRow, type AbRetrieval, type AbSideCase, type AbSideId, type AbSideSummary, type AbSideValue } from '../lib/ab';
 import type { Artifact } from '../api/client';
 
 /**
@@ -44,7 +44,9 @@ export function AbComparison({ artifact }: { artifact: Artifact }) {
 
         <ConfigDifference rows={view.config} />
 
-        {view.kind === 'comparison' && <PairTable pairs={view.pairs} />}
+        {view.kind === 'comparison' && (
+          <PairTable pairs={view.pairs} repetitions={view.repetitions} />
+        )}
 
         {view.unpairedCaseIds.length > 0 && (
           <p className="text-term-yellow">
@@ -190,80 +192,165 @@ function describe(value: AbSideValue): string {
  * parted and a case where they agreed are told apart by words first ("same"
  * against a signed difference) and colour second, so the distinction survives a
  * monochrome screen.
+ *
+ * Each side's cell carries its retrieval outcome under its rate, because equal
+ * pass rates do not mean the two configurations did the same thing: the first
+ * live run passed both sides on every case while finding the target through
+ * different evidence, and a table that answered "same" to that would be reporting
+ * the opposite of what the artifact holds.
  */
-function PairTable({ pairs }: { pairs: AbCasePair[] }) {
+function PairTable({ pairs, repetitions }: { pairs: AbCasePair[]; repetitions: number }) {
   return (
-    <div className="font-mono text-sm overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="text-term-dim border-b border-term-rule">
-            <th className="text-left py-1 pr-4" style={{ width: '34ch' }}>
-              case
-            </th>
-            <th className="text-right py-1 pr-4" style={{ width: '12ch' }}>
-              A
-            </th>
-            <th className="text-right py-1 pr-4" style={{ width: '12ch' }}>
-              B
-            </th>
-            <th className="text-left py-1 pr-4" style={{ width: '20ch' }}>
-              B − A
-            </th>
-            <th className="text-left py-1" style={{ width: '16ch' }}>
-              {/* flaky marker column */}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {pairs.map((pair) => (
-            <tr
-              key={pair.id}
-              data-testid={`ab-case-${pair.id}`}
-              className={pair.differs ? 'border-b border-term-rule/30' : 'border-b border-term-rule/30 text-term-dim'}
-            >
-              <td className="py-1 pr-4 truncate" style={{ maxWidth: '34ch' }} title={pair.id}>
-                {pair.id}
-              </td>
-              <td className="py-1 pr-4 text-right">{scored(pair.a)}</td>
-              <td className="py-1 pr-4 text-right">{scored(pair.b)}</td>
-              <td className="py-1 pr-4">
-                {pair.delta === null ? (
-                  <span className="text-term-yellow">one side scored none of this case</span>
-                ) : pair.differs ? (
-                  <span className={pair.delta > 0 ? 'text-term-green' : 'text-term-red'}>
-                    {pair.delta > 0 ? '+' : ''}
-                    {(pair.delta * 100).toFixed(1)}% · B {pair.delta > 0 ? 'higher' : 'lower'}
-                  </span>
-                ) : (
-                  <span className="text-term-dim">same</span>
-                )}
-              </td>
-              <td className="py-1">
-                {pair.flakySides.length > 0 && (
-                  <span
-                    className="text-term-yellow"
-                    title="this case both passed and failed across its repetitions, so its rate is not a settled result"
-                  >
-                    ⚠ flaky on {pair.flakySides.map((side) => side.toUpperCase()).join(' and ')}
-                  </span>
-                )}
-              </td>
+    <div className="space-y-2">
+      {repetitions > 0 && repetitions < NOISE_FLOOR_REPETITIONS && (
+        <p className="text-term-yellow" data-testid="ab-noise-floor">
+          Each case ran {repetitions} time(s) per side. A case-level difference over that few
+          repetitions is one model call going the other way, which this run cannot tell apart from
+          run-to-run variation — read the differences below as something to re-run at a higher
+          <span className="font-mono"> --runs</span>, not as a measured effect.
+        </p>
+      )}
+      <div className="font-mono text-sm overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="text-term-dim border-b border-term-rule">
+              <th className="text-left py-1 pr-4" style={{ width: '30ch' }}>
+                case
+              </th>
+              <th className="text-left py-1 pr-4" style={{ width: '20ch' }}>
+                A
+              </th>
+              <th className="text-left py-1 pr-4" style={{ width: '20ch' }}>
+                B
+              </th>
+              <th className="text-left py-1 pr-4" style={{ width: '24ch' }}>
+                B − A
+              </th>
+              <th className="text-left py-1" style={{ width: '16ch' }}>
+                {/* flaky marker column */}
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pairs.map((pair) => (
+              <tr
+                key={pair.id}
+                data-testid={`ab-case-${pair.id}`}
+                className={
+                  pair.differs || pair.retrievalDiffers
+                    ? 'border-b border-term-rule/30 align-top'
+                    : 'border-b border-term-rule/30 align-top text-term-dim'
+                }
+              >
+                <td className="py-1 pr-4 truncate" style={{ maxWidth: '30ch' }} title={pair.id}>
+                  {pair.id}
+                </td>
+                <td className="py-1 pr-4">
+                  <SideCell side={pair.a} />
+                </td>
+                <td className="py-1 pr-4">
+                  <SideCell side={pair.b} />
+                </td>
+                <td className="py-1 pr-4">
+                  <Verdict pair={pair} />
+                </td>
+                <td className="py-1">
+                  {pair.flakySides.length > 0 && (
+                    <span
+                      className="text-term-yellow"
+                      title="this case both passed and failed across its repetitions, so its rate is not a settled result"
+                    >
+                      ⚠ flaky on {pair.flakySides.map((side) => side.toUpperCase()).join(' and ')}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-/** One side's reading of a case: its rate, and how many repetitions it is over. */
-function scored(side: AbSideCase | null): string {
-  if (side === null) return '—';
-  return `${(side.passRate * 100).toFixed(1)}% (${side.passes}/${side.runs})`;
+/**
+ * What the two sides did on one case, in the order a reader needs it.
+ *
+ * "same" is reserved for the case where the sides agreed on everything the
+ * artifact measured. When only the score agreed, the score is named first so the
+ * line cannot be read as a scoring difference, and the retrieval change is what
+ * follows it.
+ */
+function Verdict({ pair }: { pair: AbCasePair }) {
+  if (pair.delta === null) {
+    return <span className="text-term-yellow">one side scored none of this case</span>;
+  }
+  if (pair.differs) {
+    return (
+      <span className={pair.delta > 0 ? 'text-term-green' : 'text-term-red'}>
+        {pair.delta > 0 ? '+' : ''}
+        {(pair.delta * 100).toFixed(1)}% · B {pair.delta > 0 ? 'higher' : 'lower'}
+      </span>
+    );
+  }
+  if (pair.retrievalDiffers) {
+    return (
+      <span
+        className="text-term-cyan"
+        title="both sides scored this case identically; what changed is where the target came back and what evidence found it"
+      >
+        same score, found differently
+      </span>
+    );
+  }
+  // Nothing to have found differently: an artifact that records no retrieval
+  // cannot be said to have retrieved the same way, only to have scored the same.
+  if (pair.a?.retrieval.recorded !== true && pair.b?.retrieval.recorded !== true) {
+    return <span className="text-term-dim">same</span>;
+  }
+  return <span className="text-term-dim">same score, found the same way</span>;
 }
 
+/** One side's reading of a case: its rate, and how it reached it. */
+function SideCell({ side }: { side: AbSideCase | null }) {
+  if (side === null) return <span>—</span>;
+  const retrieval = retrievalText(side.retrieval);
+  return (
+    <span className="inline-block">
+      {(side.passRate * 100).toFixed(1)}% ({side.passes}/{side.runs})
+      {retrieval !== null && <span className="block text-term-dim">{retrieval}</span>}
+    </span>
+  );
+}
+
+/**
+ * Retrieval as one scannable line, or null when the artifact recorded none.
+ *
+ * Distinct values across the repetitions are all shown rather than averaged: a
+ * case that came back at rank 1 twice and rank 4 once did both, and a mean rank
+ * would be a number that never happened.
+ */
+function retrievalText(retrieval: AbRetrieval): string | null {
+  if (!retrieval.recorded) return null;
+  const found = retrieval.ranks.filter((rank): rank is number => rank !== null);
+  const missed = retrieval.ranks.some((rank) => rank === null);
+  const ranks = found.length === 0
+    ? 'not returned'
+    : `rank ${found.join('/')}${missed ? ', not returned' : ''}`;
+  return retrieval.evidenceTypes.length === 0
+    ? ranks
+    : `${ranks} · via ${retrieval.evidenceTypes.join('+')}`;
+}
+
+/**
+ * The gap between the two sides' pass rates, and nothing more than that.
+ *
+ * Zero says "same pass rate", not "same": two configurations can score
+ * identically while retrieving differently, and the case table below is where
+ * that shows.
+ */
 function Delta({ value }: { value: number }) {
-  if (value === 0) return <span className="text-term-dim">same on both sides</span>;
+  if (value === 0) return <span className="text-term-dim">same pass rate on both sides</span>;
   const className = value > 0 ? 'text-term-green' : 'text-term-red';
   return (
     <span className={className}>

@@ -102,6 +102,21 @@ export interface ArtifactCase {
    * `parseEvalArtifact` and reaches this app unchanged.
    */
   configDeltas?: ArtifactConfigDelta[];
+  /**
+   * Where the expected target came back in the final ordering, or null when it
+   * did not come back at all.
+   *
+   * Not a trace: this and `evidenceTypes` are the outcome measures of retrieval
+   * itself, which is exactly what a discovery A/B run varies. A configuration
+   * that keeps every case passing while pushing the target from rank 1 to rank 4
+   * changed the retrieval outcome, and pass rates alone cannot say so.
+   *
+   * Optional for the same reason as `configDeltas`: only the discovery harnesses
+   * write it, and it reaches this app through the `.passthrough()` case schema.
+   */
+  targetRank?: number | null;
+  /** Which evidence the target was found through (`intent`, `premise`, …). */
+  evidenceTypes?: string[];
 }
 
 /**

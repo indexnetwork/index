@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 
+import { REQUIRES_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { api, type HarnessDescriptor, type ArtifactRef, type IndexIssue, type RunRecord, type FixtureStatus } from '../api/client';
@@ -125,23 +126,41 @@ function HarnessHealth({
               >
                 {harness.harness}
               </Link>
-              <span className="text-term-dim w-20">baseline:</span>
-              <span className="w-16">
-                {baseline
-                  ? `${(baseline.aggregatePassRate * 100).toFixed(1)}%`
-                  : '—'}
-              </span>
-              <span className="text-term-dim w-20">latest:</span>
-              <span className="w-16">
-                {latestRun
-                  ? `${(latestRun.aggregatePassRate * 100).toFixed(1)}%`
-                  : '—'}
-              </span>
-              {baseline && latestRun && (
-                <Delta
-                  baseline={baseline.aggregatePassRate}
-                  current={latestRun.aggregatePassRate}
-                />
+              {REQUIRES_SIDES[harness.harness] ? (
+                /**
+                 * A sides harness gets neither cell, because neither number
+                 * exists for it. It reads, writes and compares no baseline by
+                 * design, so "baseline: —" states a missing value rather than an
+                 * absent concept; and its run aggregate is the mean across two
+                 * DIFFERENT configurations, so showing it as "latest" would put a
+                 * score of neither side in a column read as a score of the
+                 * harness. What the run measured is on the run page.
+                 */
+                <span className="text-term-dim" data-testid={`harness-sides-${harness.harness}`}>
+                  two configurations per run — no baseline to score against, and a run's aggregate
+                  is the mean over both sides, so it is a score of neither
+                </span>
+              ) : (
+                <>
+                  <span className="text-term-dim w-20">baseline:</span>
+                  <span className="w-16">
+                    {baseline
+                      ? `${(baseline.aggregatePassRate * 100).toFixed(1)}%`
+                      : '—'}
+                  </span>
+                  <span className="text-term-dim w-20">latest:</span>
+                  <span className="w-16">
+                    {latestRun
+                      ? `${(latestRun.aggregatePassRate * 100).toFixed(1)}%`
+                      : '—'}
+                  </span>
+                  {baseline && latestRun && (
+                    <Delta
+                      baseline={baseline.aggregatePassRate}
+                      current={latestRun.aggregatePassRate}
+                    />
+                  )}
+                </>
               )}
             </div>
             <p className="text-term-dim ml-28 -mt-1">{harness.question}</p>
