@@ -121,3 +121,4 @@ src/services/tests/signal-intake.confirm-seam.isolated.ts
 src/queues/tests/usercontext.intake-pack.isolated.ts
 src/lib/tests/staff.isolated.ts
 src/controllers/tests/network-request.controller.authz.isolated.ts
+src/controllers/tests/webhooks.controller.isolated.ts
