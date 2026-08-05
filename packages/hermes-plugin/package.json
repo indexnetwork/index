@@ -16,6 +16,7 @@
     "tools.py",
     "skills/",
     "dashboard/",
+    "desktop/dist/",
     "tests/",
     "README.md",
     "LICENSE"

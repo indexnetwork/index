@@ -5,6 +5,7 @@ capabilities, schemas.py defines what the LLM sees, tools.py implements handlers
 that always return JSON strings, and register(ctx) wires everything into Hermes.
 """
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -79,8 +80,31 @@ def _index_command(*args: Any, **kwargs: Any) -> str:
     return _INDEX_HINT
 
 
+def _install_desktop_plugin():
+    """Copy the shipped Hermes Desktop bundle into ~/.hermes/desktop-plugins.
+
+    The desktop app loads plugins from its own folder, separate from the
+    gateway's ~/.hermes/plugins, so `hermes plugins install` alone would not
+    surface the desktop tab. Self-installing here keeps it a one-step install
+    and refreshes the copy on upgrades (content comparison). Best-effort: the
+    desktop app is optional and this must never break gateway startup.
+    """
+    src = Path(__file__).parent / "desktop" / "dist"
+    dest = Path.home() / ".hermes" / "desktop-plugins" / "index-network"
+    try:
+        if not (src / "plugin.js").exists():
+            return
+        if dest.exists() and (dest / "plugin.js").read_bytes() == (src / "plugin.js").read_bytes():
+            return
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(src, dest)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def register(ctx):
     """Register Index Network plugin capabilities with Hermes."""
+    _install_desktop_plugin()
     ctx.register_tool(
         name="index_read_intents",
         toolset="index-network",
