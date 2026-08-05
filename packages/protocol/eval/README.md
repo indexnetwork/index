@@ -20,6 +20,19 @@ equivalent env) — harnesses call real models.
 | `clarification` | `bun run eval:clarification` | `IntentClarifier` QUD underspecification taxonomy (exact-match corpus)     |
 | `discovery-retrieval` | `bun run eval:discovery-retrieval` | paired real HyDE/embedding retrieval over frozen premise vs user-context profile corpora |
 
+### Historical discovery quality v2 contracts
+
+`eval/discovery-env-matrix/historical-quality.{corpus,metrics,experiment}.ts` defines the
+provider-free contract for the Historical Discovery Quality project (IND-636): cited
+pre-connection evidence, model-safe projection, user-level retrieval/evaluator attribution,
+and one-attempt/200-invocation one-factor experiment planning.
+
+These modules are deliberately **not wired into the current five cases or live discovery
+runner yet**. IND-637 migrates and independently reviews the historical corpus; IND-638
+builds the shared-pool dual-trigger fixture/runtime; IND-641 applies resolved side
+configuration at child spawn. Until those issues land, `eval:matching`,
+`eval:discovery-env-matrix`, and `eval:discovery` retain their existing behavior.
+
 Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
