@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 
-import { REQUIRES_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
+import { SUPPORTS_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { AbComparison } from '../components/AbComparison';
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
@@ -152,13 +152,17 @@ function RunDetail({ runId }: { runId: string }) {
         if (!mounted) return;
         setState((prev) => ({ ...prev, artifact }));
 
-        // Only compare if non-experimental, and never for a harness that
-        // compares two operator-chosen configurations: it has no committed
-        // baseline and never will (`discovery --help`: "It never reads,
-        // writes or compares a baseline"), so asking for one would at best
-        // find nothing and at worst diff this run against another harness's
-        // artifact. The pair the run itself measured is the whole result.
-        if (!record.experimental && !REQUIRES_SIDES[spec.harness]) {
+        // Only compare if non-experimental, and never for a harness that runs
+        // operator-chosen configurations: it has no committed baseline and never
+        // will, in EITHER of its shapes (`discovery --help`: "Runs the real
+        // discovery graph under one operator-chosen environment configuration,
+        // or under two … It never reads, writes or compares a baseline"). So
+        // asking for one would at best find nothing and at worst diff this run
+        // against another harness's artifact.
+        //
+        // Keyed on the HARNESS, unlike the pair view below: a single discovery
+        // run has one scorecard and still has no baseline to score it against.
+        if (!record.experimental && !SUPPORTS_SIDES[spec.harness]) {
           try {
             const artifacts = await api.artifacts();
             const baseline = artifacts.refs
@@ -260,8 +264,15 @@ function RunDetail({ runId }: { runId: string }) {
       ? state.harnesses.find((h) => h.harness === (run.spec as { harness: string }).harness)?.question ?? null
       : null;
   const overridesSummary = run.spec.kind === 'eval' ? summarizeRunEnv(run.env) : null;
-  /** True for the harness whose one run IS a comparison of two configurations. */
-  const comparesSides = run.spec.kind === 'eval' && REQUIRES_SIDES[run.spec.harness];
+  /**
+   * True when THIS run compared two configurations — read from the spec's own
+   * shape, not from the harness.
+   *
+   * Discovery runs in both shapes now: `sides` present is a comparison, absent
+   * is a single scorecard. Asking the harness instead would render the pair view
+   * for a run that has only one side, whose `b` column does not exist.
+   */
+  const comparesSides = run.spec.kind === 'eval' && run.spec.sides !== undefined;
 
   return (
     <div className="p-4 space-y-4">

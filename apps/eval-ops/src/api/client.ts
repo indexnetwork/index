@@ -67,6 +67,19 @@ export interface ConfigMetadata {
 
 import type { HarnessDescriptor, IndexIssue, IndexResult, OpsHarness, RunRecord, RunSpec, RunStatus } from '../../../../packages/protocol/eval/ops/ops.types';
 
+/**
+ * The 202 from a launch: the run record, plus the keys a saved config set that
+ * this harness does not read.
+ *
+ * `unreadEnvKeys` rides alongside the record and is present only when non-empty,
+ * so a client that ignores it sees exactly the RunRecord it saw before. It is a
+ * note, not an error — a saved config is harness-agnostic and may legitimately
+ * carry a key this harness never reads because it is shared with one that does.
+ */
+export interface LaunchedRun extends RunRecord {
+  unreadEnvKeys?: readonly string[];
+}
+
 export interface RunsResult {
   runs: RunRecord[];
   issues: IndexIssue[];
@@ -470,7 +483,7 @@ export const api = {
     return fetchJson('/api/runs');
   },
 
-  async launch(spec: RunSpec): Promise<RunRecord> {
+  async launch(spec: RunSpec): Promise<LaunchedRun> {
     return postJson('/api/runs', spec);
   },
 

@@ -18,6 +18,7 @@ import { isCredentialEnvKey, PROFILE_ENV_ALLOWLIST } from "./ops.allowlist.js";
 // The derived per-harness catalogue: what a harness can actually read, as
 // opposed to what the hand-written allowlist happens to name.
 import { HARNESS_ENV_KEYS } from "./ops.envcatalog.js";
+import { harnessesReading, unreadEnvKeys } from "./ops.envreach.js";
 
 // Guided-editing metadata is likewise dependency-free (ops.metadata.ts) so the
 // browser app imports it directly; re-exported here for server-side consumers.
@@ -206,35 +207,11 @@ export function validateConfigOverrides(
   return issues;
 }
 
-/** Every harness whose own code reads `key`, in registry order. */
-export function harnessesReading(key: string): OpsHarness[] {
-  return (Object.keys(HARNESS_ENV_KEYS) as OpsHarness[]).filter((harness) => HARNESS_ENV_KEYS[harness].includes(key));
-}
-
-/**
- * Keys a saved config carries that the chosen harness does not read.
- *
- * The counterpart to the ad-hoc refusal above, and the distinction is the whole
- * of spec §6. Both describe "a key this harness will not read"; they differ in
- * who chose it and when:
- *
- * - **Ad-hoc override** — the operator typed this key for THIS run, having
- *   already chosen the harness. There is no reading under which they meant it
- *   to do nothing, so it is refused (400) and the run does not start.
- * - **Saved config** — the config was written once, without naming a harness,
- *   and may be deliberately shared with one that DOES read the key. Refusing it
- *   would make a legitimate config unlaunchable against any harness but the
- *   union of its keys. So the run proceeds and the keys are reported, named, as
- *   recorded-but-not-read.
- *
- * The value is still injected into the child environment either way: this
- * reports what the harness will ignore, it does not filter it. Filtering would
- * make the run record disagree with the process that ran.
- */
-export function unreadEnvKeys(harness: OpsHarness, env: Record<string, string>): string[] {
-  const readable = HARNESS_ENV_KEYS[harness];
-  return Object.keys(env).filter((key) => !readable.includes(key)).sort();
-}
+// Both moved to ops.envreach.ts so the browser app can ask the same two
+// questions: this module imports node:crypto and node:fs/promises and can never
+// enter the Vite bundle. Re-exported under their original names, so every
+// server-side import site is unchanged.
+export { harnessesReading, unreadEnvKeys };
 
 /**
  * Every key any harness can read, plus the catalogued flags no harness reaches.

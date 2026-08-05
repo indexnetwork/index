@@ -701,6 +701,32 @@ function unpairedRowsReport(): Artifact {
 }
 
 describe('Run · discovery', () => {
+  it('renders a single run as a scorecard, not as a pair with one side', async () => {
+    // Discovery runs in two shapes now. The page must read the SPEC's shape, not
+    // the harness: keyed on the harness, a single run — which has one scorecard
+    // and no `b` — would be handed to the comparison view.
+    const singleRun: RunRecord = {
+      ...AB_RUN,
+      spec: {
+        kind: 'eval',
+        harness: 'discovery',
+        profile: 'default',
+        flags: { runs: 1, case: 'historical/builder-and-operator' },
+      },
+      argv: [
+        'bun', 'run', 'eval:discovery', '--',
+        '--case', 'historical/builder-and-operator', '--runs', '1',
+        '--env', 'DISCOVERY_ALLOWED_TYPES=intent',
+      ],
+    };
+    stubArtifactFetch(withRepetitions());
+    renderRun(singleRun);
+
+    expect(await screen.findByText(/aggregate pass rate/i)).toBeTruthy();
+    expect(screen.queryByTestId('ab-side-a')).toBeNull();
+    expect(screen.queryByTestId('ab-side-b')).toBeNull();
+  });
+
   it('shows both sides with their pass rates, saying which is read against which', async () => {
     stubArtifactFetch(withRepetitions());
     renderRun(AB_RUN);

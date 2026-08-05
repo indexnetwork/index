@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
-import { DISCOVERY_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.allowlist';
+import { HARNESS_ENV_KEYS } from '../../../../packages/protocol/eval/ops/ops.envcatalog';
+import { unreadEnvKeys } from '../../../../packages/protocol/eval/ops/ops.envreach';
 import { flagValueIssues } from '../../../../packages/protocol/eval/ops/ops.flags';
-import { REQUIRES_SIDES, SIDES_PER_RUN, abSideIssues } from '../../../../packages/protocol/eval/ops/ops.sides';
+import { SUPPORTS_SIDES, abSideIssues, singleConfigIssues, sidesPerRun } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
+import { EnvConfigEditor, type EnvFlagRow } from '../components/EnvConfigEditor';
 import { ModelOverrideEditor } from '../components/ModelOverrideEditor';
-import { SideEnvEditor, type SideEnvRow } from '../components/SideEnvEditor';
 import { api, type AbSides, type AgentMeta, type ConfigMetadata, type ConfigProfile, type EnvFlagMeta, type EvalRunSpec, type FlagMeta, type HarnessDescriptor, type HarnessFlag, type ModelMeta, type OpsHarness, type ProfileDescriptor, type RunFlags } from '../api/client';
 
 /**
@@ -20,35 +21,68 @@ const SELECTION_FLAGS = ['runs', 'case', 'rule', 'tier'] as const;
 type Side = 'reference' | 'candidate';
 
 /**
- * One environment flag as the form holds it for a side-comparison harness: one
- * key, one value per side.
+ * The single column's id, for a run that measures one configuration.
  *
- * Deliberately not two independent per-side records. A flag set on one side and
- * omitted on the other is refused by the server (the omitted side takes the
- * graph's own default, which may equal the other side's value, so the run can
- * measure nothing while the report names a difference), and a form that can
- * express a refused configuration is a form that wastes the operator's time.
- * Here the asymmetric pair does not exist to be built.
+ * A row carries one value per column, so the single shape needs a column name
+ * even though the operator never sees one. Not 'a': that is a side id, and a
+ * single run has no sides — using it would make the two shapes indistinguishable
+ * in state and invite an `a`-shaped bug into the shape that has no `b`.
  */
-interface AbFlagRow {
-  /** Empty until the operator picks a flag. */
-  key: string;
-  a: string;
-  b: string;
-}
+const SINGLE_COLUMN = 'single';
 
-const EMPTY_AB_ROW: AbFlagRow = { key: '', a: '', b: '' };
+const EMPTY_SINGLE_ROW: EnvFlagRow = { key: '', values: { [SINGLE_COLUMN]: '' } };
+
+/** Column ids and headings for each shape, in display order. */
+const SINGLE_COLUMNS = [SINGLE_COLUMN] as const;
+const SIDE_COLUMNS = ['a', 'b'] as const;
+const SINGLE_COLUMN_LABELS: Readonly<Record<string, string>> = { [SINGLE_COLUMN]: '' };
+// "A · reference" / "B · candidate": the same vocabulary every other harness
+// uses for its two columns. The previous "A · side a" repeated the letter and
+// named nothing the operator did not already know.
+const SIDE_COLUMN_LABELS: Readonly<Record<string, string>> = {
+  a: 'A · reference',
+  b: 'B · candidate',
+};
 
 /** The two configurations as the wire carries them; keyless rows contribute nothing. */
-function sidesFromRows(rows: readonly AbFlagRow[]): AbSides {
+function sidesFromRows(rows: readonly EnvFlagRow[]): AbSides {
   const sides: AbSides = { a: {}, b: {} };
   for (const row of rows) {
     if (row.key === '') continue;
-    sides.a[row.key] = row.a;
-    sides.b[row.key] = row.b;
+    sides.a[row.key] = row.values.a ?? '';
+    sides.b[row.key] = row.values.b ?? '';
   }
   return sides;
 }
+
+/** The single configuration as the wire carries it; keyless rows contribute nothing. */
+function envFromRows(rows: readonly EnvFlagRow[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.key === '') continue;
+    env[row.key] = row.values[SINGLE_COLUMN] ?? '';
+  }
+  return env;
+}
+
+/**
+ * The env key whose value the per-agent model pickers also write.
+ *
+ * `resolveProfile` builds the child's environment from the profile's `models`
+ * block and writes EVAL_MODEL_OVERRIDES from it, unconditionally — so when both
+ * are set, the picker's value REPLACES whatever the operator typed here, and the
+ * run spends real money on a model they did not choose while the page showed
+ * their value as accepted. Measured, not assumed: resolveProfile({models:
+ * {opportunityEvaluator: 'google/gemini-2.5-flash'}, env: {EVAL_MODEL_OVERRIDES:
+ * '{"opportunityEvaluator":"anthropic/claude-sonnet-4"}'}}) resolves to the
+ * gemini value.
+ *
+ * So the form refuses the pair rather than picking a winner. Refusing is the
+ * honest option: silently applying the picker is the current bug, and silently
+ * applying the typed value would contradict the server. The operator is told
+ * which control to clear.
+ */
+const MODEL_OVERRIDE_KEY = 'EVAL_MODEL_OVERRIDES';
 
 interface LaunchState {
   harnesses: HarnessDescriptor[];
@@ -66,8 +100,11 @@ interface LaunchState {
   scoring: Record<Side, RunFlags>;
   /** Shared by both sides: what gets tested. */
   selection: RunFlags;
-  /** The per-side environment configuration, for the harness that compares two. */
-  sides: AbFlagRow[];
+  /**
+   * The environment configuration, for every harness. One row per flag; one
+   * value per column, so the single and paired shapes are the same rows.
+   */
+  env: EnvFlagRow[];
   awaitingConfirmation: boolean;
   savingConfig: boolean;
   configName: string;
@@ -125,7 +162,7 @@ export function Launch() {
     models: { reference: {}, candidate: {} },
     scoring: { reference: EMPTY_FLAGS, candidate: EMPTY_FLAGS },
     selection: EMPTY_FLAGS,
-    sides: [],
+    env: [],
     awaitingConfirmation: false,
     savingConfig: false,
     configName: '',
@@ -149,14 +186,6 @@ export function Launch() {
           harnesses: harnesses.harnesses,
           profiles: profiles.profiles,
           selectedHarness: selected,
-          // A deep link (/launch?harness=…) selects a harness without going
-          // through handleHarnessChange, so the harness that needs a per-side
-          // configuration gets its first row here too — otherwise it would open
-          // on an editor with no rows and no sign of what to do with it.
-          sides:
-            selected !== null && REQUIRES_SIDES[selected.harness] === true
-              ? [{ ...EMPTY_AB_ROW }]
-              : prev.sides,
         }));
       })
       .catch((error) => {
@@ -195,7 +224,6 @@ export function Launch() {
 
   const handleHarnessChange = (harness: string) => {
     const descriptor = state.harnesses.find((h) => h.harness === harness) ?? null;
-    const comparesSides = descriptor !== null && REQUIRES_SIDES[descriptor.harness] === true;
     setState((prev) => ({
       ...prev,
       selectedHarness: descriptor,
@@ -203,48 +231,67 @@ export function Launch() {
       models: { reference: {}, candidate: {} },
       scoring: { reference: EMPTY_FLAGS, candidate: EMPTY_FLAGS },
       selection: EMPTY_FLAGS,
-      // One empty row so the harness that requires a configuration opens with the
-      // control for it; every other harness cannot express one at all.
-      sides: comparesSides ? [{ ...EMPTY_AB_ROW }] : [],
+      // Env resets for the same reason, and it is not cosmetic: catalogues differ
+      // per harness, so a key chosen under the old one may not exist in the new
+      // one's. Carrying it over would post a key the server refuses as unreadable
+      // by this harness — a 400 the operator did nothing to earn.
+      env: [],
       awaitingConfirmation: false,
       launchError: null,
     }));
   };
 
-  /** Picking a flag replaces the row on BOTH sides: a key belongs to the pair. */
-  const handleSideKeyChange = useCallback((index: number, key: string) => {
+  /**
+   * Picking a flag replaces the row in EVERY column: a key belongs to the row,
+   * not to a side. This is what makes the asymmetric pair unbuildable.
+   */
+  const handleEnvKeyChange = useCallback((index: number, key: string) => {
     setState((prev) => ({
       ...prev,
-      // A different flag has a different value schema, so no value carries over.
-      sides: prev.sides.map((row, i) => (i === index ? { key, a: '', b: '' } : row)),
+      // A different flag has a different value schema, so no value carries over —
+      // the columns are preserved, their values are not.
+      env: prev.env.map((row, i) =>
+        i === index
+          ? { key, values: Object.fromEntries(Object.keys(row.values).map((c) => [c, ''])) }
+          : row,
+      ),
       awaitingConfirmation: false,
       launchError: null,
     }));
   }, []);
 
-  /** The only per-side edit: what this side gives the flag. */
-  const handleSideValueChange = useCallback((side: 'a' | 'b', index: number, value: string) => {
+  /** The only per-column edit: what this column gives the flag. */
+  const handleEnvValueChange = useCallback((column: string, index: number, value: string) => {
     setState((prev) => ({
       ...prev,
-      sides: prev.sides.map((row, i) => (i === index ? { ...row, [side]: value } : row)),
+      env: prev.env.map((row, i) =>
+        i === index ? { ...row, values: { ...row.values, [column]: value } } : row,
+      ),
       awaitingConfirmation: false,
       launchError: null,
     }));
   }, []);
 
-  const handleSideRowAdd = useCallback(() => {
+  const handleEnvRowAdd = useCallback(() => {
     setState((prev) => ({
       ...prev,
-      sides: [...prev.sides, { ...EMPTY_AB_ROW }],
+      // Shaped from the columns already on screen, so a row added to a comparison
+      // gets both sides and a row added to a single run gets one.
+      env: [
+        ...prev.env,
+        prev.env[0] === undefined
+          ? { ...EMPTY_SINGLE_ROW, values: { ...EMPTY_SINGLE_ROW.values } }
+          : { key: '', values: Object.fromEntries(Object.keys(prev.env[0].values).map((c) => [c, ''])) },
+      ],
       awaitingConfirmation: false,
       launchError: null,
     }));
   }, []);
 
-  const handleSideRowRemove = useCallback((index: number) => {
+  const handleEnvRowRemove = useCallback((index: number) => {
     setState((prev) => ({
       ...prev,
-      sides: prev.sides.filter((_, i) => i !== index),
+      env: prev.env.filter((_, i) => i !== index),
       awaitingConfirmation: false,
       launchError: null,
     }));
@@ -340,20 +387,24 @@ export function Launch() {
     harness: state.selectedHarness!.harness,
     profile: 'default',
     flags: { ...state.selection },
-    sides: sidesFromRows(state.sides),
+    sides: sidesFromRows(state.env),
   });
 
   const buildSpec = (side: Side): EvalRunSpec => {
     const profile = state.profile[side];
     const models = state.models[side];
+    // Env belongs to the run, not to a column: the scorecard A/B posts two specs
+    // that differ in models and scoring, and giving each a different environment
+    // would be a second, unlabelled axis of difference in a comparison whose
+    // whole claim is that one thing changed.
+    const env = envFromRows(state.env);
+    const hasOverrides = Object.keys(models).length > 0 || Object.keys(env).length > 0;
     return {
       kind: 'eval',
       harness: state.selectedHarness!.harness,
       profile,
       flags: { ...state.selection, ...state.scoring[side] },
-      ...(profile === 'default' && Object.keys(models).length > 0
-        ? { overrides: { models, env: {} } }
-        : {}),
+      ...(profile === 'default' && hasOverrides ? { overrides: { models, env } } : {}),
     };
   };
 
@@ -361,11 +412,11 @@ export function Launch() {
     if (launchBlocked || state.selectedHarness === null) return;
 
     // What a confirmation is for is the destruction a launch causes, and a
-    // harness that carries sides destroys the same thing however few cases are
-    // selected: --case narrows what is measured, not what is reset. So the
-    // operator confirms every run of one, filtered or not, and the copy names
-    // what the DESCRIPTOR says is reset rather than only counting invocations.
-    if ((isFullCorpus() || requiresSides) && !state.awaitingConfirmation) {
+    // harness that resets something destroys it however few cases are selected:
+    // --case narrows what is measured, not what is reset. So the operator
+    // confirms every run of one, filtered or not, and the copy names what the
+    // DESCRIPTOR says is reset rather than only counting invocations.
+    if ((isFullCorpus() || destroys) && !state.awaitingConfirmation) {
       setState((prev) => ({ ...prev, awaitingConfirmation: true }));
       return;
     }
@@ -377,7 +428,7 @@ export function Launch() {
         awaitingConfirmation: false,
       }));
 
-    if (requiresSides) {
+    if (carriesSides) {
       // One run, both sides: the engine evaluates every case under configuration
       // a and configuration b and emits a single artifact holding the pair.
       api
@@ -438,48 +489,127 @@ export function Launch() {
   const harnessId: OpsHarness | null = state.selectedHarness?.harness ?? null;
 
   /**
-   * Whether this harness's run compares two operator-supplied environment
-   * configurations. Read from the server's own table, so the form branches on
-   * the same fact `RunSpecSchema` and `renderRun` branch on.
+   * Whether this harness's run MAY compare two environment configurations. Read
+   * from the server's own table, so the form branches on the same fact
+   * `RunSpecSchema` and `renderRun` branch on.
+   *
+   * "May", not "must": discovery measures one configuration without `sides` and
+   * compares two with them, so this no longer decides the shape by itself — the
+   * operator's A/B checkbox does.
    */
-  const requiresSides = harnessId !== null && REQUIRES_SIDES[harnessId] === true;
+  const supportsSides = harnessId !== null && SUPPORTS_SIDES[harnessId] === true;
 
-  /** The nine keys this harness can test, with the server's copy for each. */
-  const abFlags: readonly EnvFlagMeta[] = useMemo(
-    () => (state.metadata?.env ?? []).filter((flag) => DISCOVERY_ENV_KEYS.includes(flag.key)),
-    [state.metadata],
+  /**
+   * Whether the spec this page would post carries `sides`. The one fact the
+   * shape, the workload and the refusals all derive from.
+   */
+  const carriesSides = supportsSides && state.ab;
+
+  /**
+   * Exactly the keys this harness reads, with the server's copy for each.
+   *
+   * HARNESS_ENV_KEYS is generated from each harness's own import closure, so
+   * this is "what the code reads", not a hand-kept list — which is how the site
+   * came to offer nine flags for a graph that reads twenty-eight. Intersected
+   * with the metadata the server sent, because a key with no description has no
+   * value schema either, and offering it would invite a value that silently
+   * falls back.
+   */
+  const envFlags: readonly EnvFlagMeta[] = useMemo(
+    () =>
+      harnessId === null
+        ? []
+        : (state.metadata?.env ?? []).filter((flag) =>
+            (HARNESS_ENV_KEYS[harnessId] ?? []).includes(flag.key),
+          ),
+    [state.metadata, harnessId],
   );
 
   /**
-   * Every reason the server would refuse this pair, from the server's own
-   * function. Not re-derived here: a form with its own copy of these rules is
-   * how a page comes to accept a configuration the launch rejects — or, worse,
-   * to accept one the discovery graph silently falls back on.
+   * Every reason the server would refuse this configuration, from the server's
+   * own functions — `abSideIssues` for a pair, `singleConfigIssues` for one.
+   * Not re-derived here: a form with its own copy of these rules is how a page
+   * comes to accept a configuration the launch rejects, or worse, one the
+   * discovery graph silently falls back on.
+   *
+   * Only for a harness whose engine validates env this way. The scorecard
+   * harnesses' env reaches the child as plain overrides, which the server checks
+   * with validateConfigOverrides; running the discovery rules over them here
+   * would refuse keys ("not readable by the discovery graph") that this harness
+   * legitimately reads.
    */
-  const abIssues = useMemo(
-    // Only the harness that compares two configurations ever has rows: every
-    // other one is left with none by handleHarnessChange, and none of them can
-    // add any, so an empty list is "nothing to refuse" rather than "no sides".
-    () => (state.sides.length === 0 ? [] : abSideIssues(sidesFromRows(state.sides))),
-    [state.sides],
+  // Depends on `state.ab` rather than the derived `carriesSides`: the compiler
+  // cannot prove a value computed from two other locals is stable, and the two
+  // primitives it IS derived from are exactly as precise.
+  const envIssues = useMemo(() => {
+    if (!supportsSides || state.env.length === 0) return [];
+    return supportsSides && state.ab
+      ? abSideIssues(sidesFromRows(state.env))
+      : singleConfigIssues(envFromRows(state.env));
+  }, [supportsSides, state.ab, state.env]);
+
+  const envIssueFor = useCallback(
+    (column: string, key: string): string | undefined =>
+      envIssues.find((issue) =>
+        column === SINGLE_COLUMN
+          ? issue.path[0] === key
+          : issue.path[0] === column && issue.path[1] === key,
+      )?.message,
+    [envIssues],
   );
 
-  const abIssueFor = useCallback(
-    (side: 'a' | 'b', key: string): string | undefined =>
-      abIssues.find((issue) => issue.path[0] === side && issue.path[1] === key)?.message,
-    [abIssues],
-  );
+  /**
+   * The contradiction the operator must not be able to author invisibly: a
+   * per-agent model picker AND a typed EVAL_MODEL_OVERRIDES.
+   *
+   * resolveProfile writes EVAL_MODEL_OVERRIDES from the picker's models block,
+   * so the typed value is discarded and the run uses models the operator did not
+   * choose — while the page showed both as accepted. Refused here, naming both
+   * controls, rather than resolved silently in either direction.
+   */
+  const modelOverrideConflict = useMemo(() => {
+    const typed = state.env.some((row) => row.key === MODEL_OVERRIDE_KEY);
+    if (!typed) return false;
+    return Object.keys(state.models.reference).length > 0
+      || Object.keys(state.models.candidate).length > 0;
+  }, [state.env, state.models]);
 
-  // One row list per side, sharing the row's key: what makes an asymmetric pair
-  // unbuildable here rather than merely refused.
-  const rowsA: SideEnvRow[] = useMemo(
-    () => state.sides.map((row) => ({ key: row.key, value: row.a })),
-    [state.sides],
-  );
-  const rowsB: SideEnvRow[] = useMemo(
-    () => state.sides.map((row) => ({ key: row.key, value: row.b })),
-    [state.sides],
-  );
+  /**
+   * Keys the selected saved config sets that this harness does not read.
+   *
+   * Said BEFORE the launch, not after: the server reports these on the 202, but
+   * every launch path here navigates away from this page, so a notice rendered
+   * from the response would never be read. Derived with `unreadEnvKeys`, the
+   * server's own function, against the same generated catalogue — so the page
+   * names exactly the keys the 202 would.
+   *
+   * Not an error, and deliberately not blocking: a saved config is
+   * harness-agnostic and may carry a key this harness never reads because it is
+   * shared with one that does. EVAL_MODEL_OVERRIDES is excluded for the same
+   * reason the server excludes it — renderRun writes it from the config's models
+   * block, so naming it would tell the operator their model selection was
+   * ignored when it was in fact applied.
+   */
+  const unreadConfigKeys: readonly string[] = useMemo(() => {
+    if (harnessId === null) return [];
+    // Both columns' configs when the form is in A/B, so a key unread by this
+    // harness is named whichever column carries it. `state.ab` rather than the
+    // derived `ab`, which is declared below the hooks.
+    const names = new Set([
+      state.profile.reference,
+      ...(state.ab ? [state.profile.candidate] : []),
+    ]);
+    const keys = new Set<string>();
+    for (const name of names) {
+      const config = state.savedConfigs.find((candidate) => candidate.name === name)
+        ?? state.profiles.find((candidate) => candidate.name === name);
+      if (config === undefined) continue;
+      for (const key of unreadEnvKeys(harnessId, config.env ?? {})) {
+        if (key !== MODEL_OVERRIDE_KEY) keys.add(key);
+      }
+    }
+    return [...keys].sort();
+  }, [harnessId, state.profile, state.savedConfigs, state.profiles, state.ab]);
 
   // Every hook is above this line: the two returns below are conditional.
   if (state.error !== null) {
@@ -522,35 +652,41 @@ export function Launch() {
   const cases = state.selectedHarness === null ? 0 : fullCorpus ? state.selectedHarness.caseCount : 1;
 
   /**
-   * A/B is this form's own mode — two separate runs, one per column — and the
-   * operator's checkbox owns it. For a harness whose single run already carries
-   * both configurations it is not a choice at all, so it is pinned on and the
-   * checkbox is disabled rather than silently ignored. `state.ab` keeps the
-   * operator's own answer untouched underneath, for when they select a
-   * scorecard harness again.
+   * A/B is the operator's checkbox, for every harness that can express it. It is
+   * no longer pinned on for discovery: a run without `sides` measures one
+   * configuration, which is the cheaper of the two shapes and was previously
+   * unreachable from this page.
    */
-  const ab = requiresSides || state.ab;
+  const ab = state.ab;
 
-  // Two independent multipliers, and conflating them is what understated this
-  // page by half. SIDES_PER_RUN is how many times ONE run passes over the
-  // corpus — 2 for discovery, whether or not any box is ticked, because it
-  // evaluates every case under configuration a and configuration b (contract:
-  // "5 cases x 10 repetitions x 2 sides"). It is imported from the same module
-  // renderRun records the run's workload from, so the number confirmed here and
-  // the number stored on the record cannot drift. `launches` is the form's own
-  // A/B mode: two runs of a scorecard harness, queued back to back.
-  // `?? 1` is not decoration: SIDES_PER_RUN is keyed by the harnesses this build
-  // knows, and a server one release ahead can name one it does not. Without the
-  // default the workload line reads "= NaN" on a page whose whole job is to say
-  // what a run costs.
-  const sidesPerRun = harnessId === null ? 1 : (SIDES_PER_RUN[harnessId] ?? 1);
+  // Two independent multipliers, and conflating them is what overstated this
+  // page by double. `sidesPerRun` is how many times ONE run passes over the
+  // corpus, and it reads the SPEC rather than the harness: a discovery pair
+  // evaluates every case under both configurations in one invocation, while a
+  // single discovery run passes over the corpus once. The constant this replaced
+  // was pinned at 2 for discovery, so the page quoted 30 invocations for a
+  // single run that costs 15. It comes from the same module renderRun records
+  // the workload from, so the number confirmed here and the number stored on the
+  // record cannot drift.
+  //
+  // The guard is not decoration: a server one release ahead can name a harness
+  // this build does not know, and `sidesPerRun` would then be asked about a
+  // harness absent from its table. Without the fallback the workload line reads
+  // "= NaN" on a page whose whole job is to say what a run costs.
+  const passesPerLaunch =
+    harnessId === null
+      ? 1
+      : (sidesPerRun({ harness: harnessId, ...(carriesSides ? { sides: sidesFromRows(state.env) } : {}) }) || 1);
   // What this run DESTROYS, in the harness's own words, because the branch that
-  // shows it is `requiresSides` and not a harness name: discovery resets two
-  // Neon branches, and a second comparison harness must not inherit that claim
-  // from a sentence written here. A harness that names nothing gets no sentence.
+  // shows it is the descriptor's own field and not a harness name: discovery
+  // resets Neon branches, and another harness must not inherit that claim from a
+  // sentence written here. A harness that names nothing gets no sentence.
   const resets = state.selectedHarness?.resets;
-  const launches = requiresSides ? 1 : ab ? 2 : 1;
-  const passes = sidesPerRun * launches;
+  const destroys = resets !== undefined;
+  // A harness that carries both configurations in ONE run launches once; the
+  // form's own A/B mode for every other harness launches twice, back to back.
+  const launches = carriesSides ? 1 : ab ? 2 : 1;
+  const passes = passesPerLaunch * launches;
   const workload = cases * runs * passes;
 
   // Scoring differences are legitimate to compare but change what a verdict
@@ -565,11 +701,23 @@ export function Launch() {
    * is said once, plainly, and the server's own refusals are shown for what the
    * operator has actually filled in.
    */
-  const abIncomplete =
-    requiresSides
-    && (state.sides.length === 0
-      || state.sides.some((row) => row.key === '' || row.a.trim() === '' || row.b.trim() === ''));
-  const abGeneralIssues = abIncomplete ? [] : abIssues.filter((issue) => issue.path.length < 2);
+  //
+  // Scoped to the columns ON SCREEN, never to every key the row happens to
+  // carry: toggling A/B rebuilds `values` for the new shape, and judging a row
+  // by a column it no longer shows would block a launch on a field the operator
+  // cannot see, with a message pointing at nothing.
+  const activeColumns: readonly string[] = carriesSides ? SIDE_COLUMNS : SINGLE_COLUMNS;
+  const envIncomplete = state.env.some(
+    (row) =>
+      row.key === ''
+      || activeColumns.some((column) => (row.values[column] ?? '').trim() === ''),
+  );
+  // A harness that carries sides must configure something: a run with no flags
+  // set has nothing to compare. Every other harness may run with none, which is
+  // simply the committed default.
+  const sidesEmpty = carriesSides && state.env.length === 0;
+  const envGeneralIssues =
+    envIncomplete || sidesEmpty ? [] : envIssues.filter((issue) => issue.path.length < (carriesSides ? 2 : 1));
 
   // The specs this page would post, so a value is checked exactly where it would
   // be sent: shared selection alone for the harness that carries sides, and
@@ -580,7 +728,7 @@ export function Launch() {
       : refusedFlagValues(
           state.selectedHarness.harness,
           state.selectedHarness.flags,
-          requiresSides
+          carriesSides
             ? [state.selection]
             : ab
               ? [
@@ -591,7 +739,12 @@ export function Launch() {
         );
 
   const launchBlocked =
-    invalidSelectionFlags.length > 0 || flagIssues.length > 0 || abIncomplete || abIssues.length > 0;
+    invalidSelectionFlags.length > 0
+    || flagIssues.length > 0
+    || envIncomplete
+    || sidesEmpty
+    || modelOverrideConflict
+    || envIssues.length > 0;
   const saveConfigBlocked =
     state.configName.trim() === '' ||
     state.configDescription.trim() === '' ||
@@ -640,14 +793,32 @@ export function Launch() {
                 <input
                   type="checkbox"
                   checked={ab}
-                  // Not optional for a harness whose one run is both sides:
-                  // offering to turn it off would offer something that cannot
-                  // happen. The note beside it says why the control is fixed.
-                  disabled={requiresSides}
                   onChange={(e) =>
                     setState((prev) => ({
                       ...prev,
                       ab: e.target.checked,
+                      // Reshape the rows to the new column set, keeping the keys
+                      // the operator picked. Turning A/B on copies the single
+                      // value to both sides (identical sides are then refused,
+                      // which is the correct and visible next step); turning it
+                      // off keeps side a's value, because a single run measures
+                      // one configuration and a is the one the operator wrote first.
+                      env: prev.env.map((row): EnvFlagRow =>
+                        e.target.checked
+                          ? {
+                              key: row.key,
+                              values: {
+                                a: row.values[SINGLE_COLUMN] ?? row.values.a ?? '',
+                                b: row.values[SINGLE_COLUMN] ?? row.values.b ?? '',
+                              },
+                            }
+                          : {
+                              key: row.key,
+                              values: {
+                                [SINGLE_COLUMN]: row.values.a ?? row.values[SINGLE_COLUMN] ?? '',
+                              },
+                            },
+                      ),
                       awaitingConfirmation: false,
                       launchError: null,
                     }))
@@ -655,13 +826,13 @@ export function Launch() {
                 />
                 <span>A/B</span>
               </label>
-              {requiresSides && (
-                <span className="text-term-dim">— this harness always runs both sides</span>
+              {carriesSides && (
+                <span className="text-term-dim">— one run, both configurations</span>
               )}
             </div>
           </div>
 
-          {requiresSides ? (
+          {carriesSides ? (
             <div className="space-y-3">
               <p className="text-term-dim">
                 Both sides run the same models and the same environment, and differ only in the flags
@@ -669,30 +840,17 @@ export function Launch() {
                 sides at once, moving both pass rates without changing the difference this run
                 measures.
               </p>
-              <div className="grid grid-cols-2 gap-4">
-                <SideEnvEditor
-                  side="a"
-                  heading="A · side a"
-                  flags={abFlags}
-                  rows={rowsA}
-                  issueFor={(key) => abIssueFor('a', key)}
-                  onKeyChange={handleSideKeyChange}
-                  onValueChange={(index, value) => handleSideValueChange('a', index, value)}
-                  onAddRow={handleSideRowAdd}
-                  onRemoveRow={handleSideRowRemove}
-                />
-                <SideEnvEditor
-                  side="b"
-                  heading="B · side b"
-                  flags={abFlags}
-                  rows={rowsB}
-                  issueFor={(key) => abIssueFor('b', key)}
-                  onKeyChange={handleSideKeyChange}
-                  onValueChange={(index, value) => handleSideValueChange('b', index, value)}
-                  onAddRow={handleSideRowAdd}
-                  onRemoveRow={handleSideRowRemove}
-                />
-              </div>
+              <EnvConfigEditor
+                columns={SIDE_COLUMNS}
+                columnLabels={SIDE_COLUMN_LABELS}
+                flags={envFlags}
+                rows={state.env}
+                issueFor={envIssueFor}
+                onKeyChange={handleEnvKeyChange}
+                onValueChange={handleEnvValueChange}
+                onAddRow={handleEnvRowAdd}
+                onRemoveRow={handleEnvRowRemove}
+              />
             </div>
           ) : ab ? (
             <div className="grid grid-cols-2 gap-4">
@@ -755,6 +913,38 @@ export function Launch() {
               }
               onScoringChange={(name, value) => handleScoringChange('reference', name, value)}
             />
+          )}
+
+          {/* Env for every harness. A run carrying sides renders its editor above,
+              inside the note that explains why no config is offered there. */}
+          {!carriesSides && (
+            <EnvConfigEditor
+              columns={SINGLE_COLUMNS}
+              columnLabels={SINGLE_COLUMN_LABELS}
+              flags={envFlags}
+              rows={state.env}
+              issueFor={envIssueFor}
+              onKeyChange={handleEnvKeyChange}
+              onValueChange={handleEnvValueChange}
+              onAddRow={handleEnvRowAdd}
+              onRemoveRow={handleEnvRowRemove}
+            />
+          )}
+
+          {modelOverrideConflict && (
+            <p className="text-term-red">
+              {MODEL_OVERRIDE_KEY} is set here and the per-agent model pickers are also set. The
+              pickers write this same variable, so one of the two would be discarded and the run
+              would use models you did not choose. Clear one of them.
+            </p>
+          )}
+
+          {unreadConfigKeys.length > 0 && (
+            <p className="text-term-yellow">
+              Recorded but not read by {harnessId}: {unreadConfigKeys.join(', ')}. This config sets
+              them and the run will record them, but this harness's code never reads them, so they
+              will not affect the result.
+            </p>
           )}
 
           {scoringDiffers && (
@@ -850,14 +1040,17 @@ export function Launch() {
                   {message}
                 </p>
               ))}
-              {abIncomplete && (
+              {sidesEmpty && (
+                <p className="text-term-red">Add a flag to both sides before running.</p>
+              )}
+              {envIncomplete && (
                 <p className="text-term-red">
-                  {state.sides.length === 0
-                    ? 'Add a flag to both sides before running.'
-                    : 'Give every flag a value on both sides before running.'}
+                  {carriesSides
+                    ? 'Give every flag a value on both sides before running.'
+                    : 'Give every flag a value before running.'}
                 </p>
               )}
-              {abGeneralIssues.map((issue) => (
+              {envGeneralIssues.map((issue) => (
                 <p key={issue.message} className="text-term-red">
                   {issue.message}
                 </p>
@@ -869,10 +1062,8 @@ export function Launch() {
               )}
               {state.awaitingConfirmation && (
                 <p className="text-term-yellow">
-                  {requiresSides
-                    ? resets === undefined
-                      ? `Confirm run: ${workload} model invocations`
-                      : `Confirm run: this resets ${resets} and spends ${workload} model invocations`
+                  {destroys
+                    ? `Confirm run: this resets ${resets} and spends ${workload} model invocations`
                     : `Confirm full-corpus run: ${workload} model invocations`}
                 </p>
               )}
@@ -897,7 +1088,7 @@ export function Launch() {
               >
                 {state.awaitingConfirmation
                   ? 'Confirm and Run'
-                  : requiresSides
+                  : carriesSides
                     ? 'Run both sides'
                     : ab
                       ? 'Run A/B'
@@ -957,12 +1148,12 @@ function ConfigColumn(props: {
   // This gate asks about saved configs, never about the harness's `agents` — and
   // it cannot: a saved config's models reach any harness, including one that
   // declares no overridable agent and therefore gets no model editors. For
-  // discovery that would have been a live control with nothing on the page
-  // explaining it: the config's EVAL_MODEL_OVERRIDES really do change the models
-  // inside the discovery graph, under both sides at once. The fix is not a
-  // fourth condition here but the absence of this whole column: Launch renders
-  // SideEnvEditors for a harness that carries sides, and states above them that
-  // both sides run the same models and why no config is offered.
+  // a comparison run that would have been a live control with nothing on the
+  // page explaining it: the config's EVAL_MODEL_OVERRIDES really do change the
+  // models inside the discovery graph, under both sides at once. The fix is not
+  // a fourth condition here but the absence of this whole column: a run carrying
+  // sides renders an EnvConfigEditor instead, and states above it that both
+  // sides run the same models and why no config is offered.
   const showProfilePicker = savedConfigs.length > 0 || profiles.length > 1;
 
   return (
