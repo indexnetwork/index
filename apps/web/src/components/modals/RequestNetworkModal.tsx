@@ -74,7 +74,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
               </div>
               <h2 className="text-lg font-bold text-black mb-2">Your request is in</h2>
               <p className="text-sm text-gray-600">
-                We&apos;re reviewing <span className="font-medium text-black">{submitted.title}</span> and will get back to you personally.
+                We&apos;re reviewing <span className="font-medium text-black">{submitted.title}</span> and will get back to you shortly.
               </p>
               <p className="text-sm text-gray-500 mt-3">
                 Since networks are still early, we may reach out with a few questions about what you&apos;re building.
@@ -102,7 +102,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-1.5">Network name</label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Edge City Builders" disabled={isSubmitting} autoFocus required />
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Edge City" disabled={isSubmitting} autoFocus required />
                 </div>
 
                 <div>
@@ -151,7 +151,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
                 </div>
 
                 <p className="text-xs text-gray-500">
-                  Every request is currently reviewed by the Index team. We&apos;ll get back to you personally, usually within a day or two.
+                  Every request is currently reviewed by the Index team. We&apos;ll get back to you shortly.
                 </p>
 
                 <div className="flex justify-end gap-3 pt-1">
@@ -159,7 +159,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
                     Cancel
                   </Button>
                   <Button type="submit" disabled={!name.trim() || isSubmitting}>
-                    {isSubmitting ? 'Sending...' : isEdit ? 'Resubmit request' : 'Request network'}
+                    {isSubmitting ? 'Sending...' : isEdit ? 'Resubmit request' : 'Create network'}
                   </Button>
                 </div>
               </form>

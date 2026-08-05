@@ -126,6 +126,16 @@ export function createIndexApiClient(options = {}) {
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },
 
+    // Early-access "request a network" flow. Direct create (`networks.create`)
+    // is staff-only on the server; everyone else submits a reviewed request.
+    networkRequests: {
+      // Resolves { requests, canReview } — canReview gates the direct-create UI.
+      listMine: (options = {}) => request('/network-requests', options),
+      create: (body, options = {}) => request('/network-requests', { ...options, method: 'POST', body }),
+      update: (id, body, options = {}) => request(`/network-requests/${encodeURIComponent(id)}`, { ...options, method: 'PATCH', body }),
+      dismiss: (id, options = {}) => request(`/network-requests/${encodeURIComponent(id)}`, { ...options, method: 'DELETE' }),
+    },
+
     agents: {
       list: (options = {}) => request('/agents', options),
       createToken: (agentId, name, options = {}) => request(

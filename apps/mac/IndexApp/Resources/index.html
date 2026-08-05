@@ -33879,6 +33879,16 @@ function createIndexApiClient(options = {}) {
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },
 
+    // Early-access "request a network" flow. Direct create (`networks.create`)
+    // is staff-only on the server; everyone else submits a reviewed request.
+    networkRequests: {
+      // Resolves { requests, canReview } — canReview gates the direct-create UI.
+      listMine: (options = {}) => request('/network-requests', options),
+      create: (body, options = {}) => request('/network-requests', { ...options, method: 'POST', body }),
+      update: (id, body, options = {}) => request(`/network-requests/${encodeURIComponent(id)}`, { ...options, method: 'PATCH', body }),
+      dismiss: (id, options = {}) => request(`/network-requests/${encodeURIComponent(id)}`, { ...options, method: 'DELETE' }),
+    },
+
     agents: {
       list: (options = {}) => request('/agents', options),
       createToken: (agentId, name, options = {}) => request(
@@ -37066,9 +37076,9 @@ function ChoiceCard({ title, sub, selected, onClick }) {
         <span style={{
           fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:600, color:"#000",
         }}>{title}</span>
-        <span style={{
+        {sub && <span style={{
           fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-2)",
-        }}>{sub}</span>
+        }}>{sub}</span>}
       </span>
     </button>
   );
@@ -37230,6 +37240,247 @@ function CreateNetwork({ onCancel, onCreate }) {
           </div>
         </MacWindow>
       </div>
+    </div>
+  );
+}
+
+// Rough-size brackets for the request form. Match the web modal's options so
+// the same question reads the same on every surface.
+const NET_SIZE_OPTIONS = ["Under 100", "100 – 1K", "1K – 10K", "10K+"];
+
+// Early-access "request a network" screen. Same frame as CreateNetwork, but it
+// submits to /network-requests (reviewed) instead of creating a live network,
+// and ends on a confirmation panel. Also handles resubmitting a "needs changes"
+// request when `initial` is passed.
+function RequestNetwork({ initial, onCancel, onSubmit }) {
+  const [name, setName]       = useState((initial && initial.title) || "");
+  const [purpose, setPurpose] = useState((initial && initial.purpose) || "");
+  const [size, setSize]       = useState((initial && initial.expectedSize) || "");
+  const [notes, setNotes]     = useState((initial && initial.notes) || "");
+  const [sending, setSending] = useState(false);
+  const [done, setDone]       = useState(null);
+
+  const named = name.trim();
+  const canSend = named.length > 0 && !sending;
+  const isEdit = !!initial;
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onCancel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onCancel]);
+
+  const submit = () => {
+    if (!canSend) return;
+    setSending(true);
+    Promise.resolve(onSubmit({
+      name: named,
+      purpose: purpose.trim() || undefined,
+      expectedSize: size || undefined,
+      notes: notes.trim() || undefined,
+    }))
+      .then((req) => setDone(req || { title: named }))
+      .catch(() => {})
+      .finally(() => setSending(false));
+  };
+
+  return (
+    <div style={{
+      position:"absolute", inset:0,
+      display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)",
+      padding:"56px 40px", overflow:"auto",
+    }}>
+      <div style={{
+        width:860, maxWidth:"100%",
+        height:"min(660px, calc(100vh - 112px))",
+      }}>
+        <MacWindow
+          title="index · request a network"
+          onClose={onCancel}
+          style={{ height:"100%", minHeight:0 }}>
+
+          {done ? (
+            <div style={{
+              flex:"1 1 auto", minHeight:0, overflowY:"auto",
+              display:"grid", placeItems:"center", padding:"40px 32px", textAlign:"center",
+            }}>
+              <div>
+                <div style={{
+                  margin:"0 auto 16px", width:40, height:40, border:"1px solid #000",
+                  display:"grid", placeItems:"center", background:"#F2EFE6",
+                  fontFamily:"var(--mac-mono)", fontSize:20, color:"#000",
+                }}>✓</div>
+                <div style={{
+                  fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000", marginBottom:8,
+                }}>your request is in</div>
+                <div style={{
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)", maxWidth:360, margin:"0 auto",
+                }}>
+                  we&apos;re reviewing <b style={{ color:"#000" }}>{(done && done.title) || named}</b> and
+                  will get back to you shortly.
+                </div>
+                <div style={{ marginTop:22 }}>
+                  <ActionButton onClick={onCancel}>back to networks</ActionButton>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ padding:"14px 24px 16px", borderBottom:"2px solid #000" }}>
+                <button
+                  onClick={onCancel}
+                  style={{
+                    padding:0, border:"none", background:"transparent", cursor:"pointer",
+                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                  }}>← back</button>
+
+                <div style={{
+                  marginTop:12, padding:"9px 12px",
+                  border:"1px solid #000", borderLeft:"3px solid #FF8A00",
+                  background:"#F2EFE6",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>network creation is still early. tell us what you&apos;re hoping to build and we&apos;ll get back to you.</div>
+              </div>
+
+              <div className="mac-scroll" style={{
+                flex:"1 1 auto", minHeight:0, overflowY:"auto",
+                padding:"20px 24px 22px",
+              }}>
+                <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px" }}>
+                  <TextField
+                    label="network name" required
+                    value={name}
+                    onChange={setName}
+                    placeholder="e.g. Edge City"
+                  />
+                </div>
+
+                <div style={{ marginTop:14 }}>
+                  <FieldLabel>what are you hoping to build?</FieldLabel>
+                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
+                    <textarea
+                      value={purpose}
+                      onChange={e => setPurpose(e.target.value)}
+                      placeholder="who is it for, who do you expect to join, and what should people or agents be able to discover through it?"
+                      rows={3}
+                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
+                    />
+                  </div>
+                </div>
+
+                <SectionRule>how many people are you hoping to bring together?</SectionRule>
+                <div style={{
+                  marginTop:12, display:"grid",
+                  gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"8px 14px",
+                }}>
+                  {NET_SIZE_OPTIONS.map(opt => (
+                    <ChoiceCard
+                      key={opt}
+                      title={opt}
+                      selected={size === opt}
+                      onClick={() => setSize(size === opt ? "" : opt)}
+                    />
+                  ))}
+                </div>
+
+                <div style={{ marginTop:14 }}>
+                  <FieldLabel right={
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>optional</span>
+                  }>anything else we should know?</FieldLabel>
+                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
+                    <textarea
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder="links, timing, context, or what you'd like to experiment with."
+                      rows={2}
+                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{
+                  marginTop:16,
+                  fontFamily:"var(--mac-sans)", fontSize:12, color:"var(--ink-3)",
+                }}>every request is currently reviewed by the Index team.</div>
+              </div>
+
+              <div style={{
+                borderTop:"2px solid #000", padding:"11px 24px",
+                display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10,
+              }}>
+                <button
+                  onClick={onCancel}
+                  style={{
+                    fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 17px",
+                    border:"1px solid #000", background:"#fff", color:"#000",
+                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
+                  }}>cancel</button>
+                <button
+                  onClick={submit}
+                  disabled={!canSend}
+                  title={named ? undefined : "give the network a name first"}
+                  style={{
+                    fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 19px",
+                    border:"1px solid #000",
+                    background: canSend ? "#000" : "#EDEAE1",
+                    color: canSend ? "#fff" : "var(--ink-3)",
+                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                    cursor: canSend ? "pointer" : "default",
+                    fontWeight:700,
+                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "create network"}</button>
+              </div>
+            </>
+          )}
+        </MacWindow>
+      </div>
+    </div>
+  );
+}
+
+// A pending / needs-changes request the signed-in user submitted. Shown above
+// the joined networks on the "my networks" tab, mirroring the web page.
+function RequestStatusRow({ req, onEdit, onDismiss }) {
+  const needsChanges = req.status === "needs_changes";
+  return (
+    <div style={{
+      display:"flex", alignItems:"flex-start", gap:12,
+      padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
+    }}>
+      <NetworkTile name={req.title}/>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:15, fontWeight:700, color:"#000",
+          }}>{req.title}</span>
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            color: needsChanges ? "var(--ink-warn)" : "var(--ink-3)",
+          }}>{needsChanges ? "needs changes" : "in review"}</span>
+        </div>
+        {needsChanges && req.reviewNote
+          ? <div style={{
+              marginTop:4, fontFamily:"var(--mac-sans)", fontSize:12,
+              color:"var(--ink-2)", fontStyle:"italic",
+            }}>“{req.reviewNote}”</div>
+          : <div style={{
+              marginTop:2, fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+            }}>we&apos;re reviewing your request.</div>}
+      </div>
+      {needsChanges ? (
+        <div style={{ display:"flex", alignItems:"center", gap:8, flex:"0 0 auto" }}>
+          <QuietChip onClick={() => onDismiss(req.id)} title="dismiss this request">dismiss</QuietChip>
+          <ActionButton onClick={() => onEdit(req)} title="update and resubmit">update</ActionButton>
+        </div>
+      ) : (
+        <QuietChip onClick={() => onDismiss(req.id)} title="withdraw this request">withdraw</QuietChip>
+      )}
     </div>
   );
 }
@@ -37454,9 +37705,29 @@ function Networks({ onClose }) {
   const [tab, setTab] = useState("mine");
   const [openNet, setOpenNet] = useState(null);
   const [creating, setCreating] = useState(false);
+  // Early-access request flow: non-staff submit a reviewed request instead of
+  // creating a live network. `canReview` (from the server) gates direct create.
+  const [requesting, setRequesting] = useState(false);
+  const [editingRequest, setEditingRequest] = useState(null);
+  const [myRequests, setMyRequests] = useState([]);
+  const [canReview, setCanReview] = useState(false);
   // Local mirror of the shared list so a new network renders immediately;
   // NETWORKS itself is still mutated so other screens see it too.
   const [nets, setNets] = useState(NETWORKS);
+
+  const loadRequests = () => {
+    if (!client) return;
+    client.networkRequests.listMine()
+      .then((r) => {
+        setMyRequests((r && r.requests) || []);
+        setCanReview(!!(r && r.canReview));
+      })
+      .catch(() => {});
+  };
+
+  // One-shot on mount: `client` is rebuilt each render, so depending on it would
+  // loop; a single load (refreshed explicitly after mutations) is enough.
+  useEffect(() => { loadRequests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // You made it, so you're in it and you run it.
   const createNetwork = ({ name, desc, access, photo }) => {
@@ -37483,6 +37754,34 @@ function Networks({ onClose }) {
     }
   };
 
+  // Submit (or resubmit) a network request; resolves the request so the form
+  // can show its confirmation panel.
+  const submitRequest = (input) => {
+    if (!client) return Promise.resolve(null);
+    const p = editingRequest
+      ? client.networkRequests.update(editingRequest.id, input)
+      : client.networkRequests.create(input);
+    return p.then((res) => {
+      loadRequests();
+      return (res && res.request) || res;
+    });
+  };
+
+  const dismissRequest = (id) => {
+    setMyRequests(prev => prev.filter(r => r.id !== id));
+    if (client) client.networkRequests.dismiss(id).catch(() => {});
+  };
+
+  const startCreate = () => {
+    // Staff create networks directly; everyone else submits a reviewed request.
+    if (canReview) {
+      setCreating(true);
+    } else {
+      setEditingRequest(null);
+      setRequesting(true);
+    }
+  };
+
   const joinNetwork = (net) => {
     setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: true, role: "member" } : n));
     if (client) client.networks.join(net.id).catch(() => {});
@@ -37500,6 +37799,15 @@ function Networks({ onClose }) {
   // Its own window, like the profile screen, not an overlay on this one.
   if (creating) {
     return <CreateNetwork onCancel={() => setCreating(false)} onCreate={createNetwork}/>;
+  }
+  if (requesting) {
+    return (
+      <RequestNetwork
+        initial={editingRequest}
+        onCancel={() => { setRequesting(false); setEditingRequest(null); }}
+        onSubmit={submitRequest}
+      />
+    );
   }
 
   const mine = nets.filter(n => n.joined);
@@ -37534,8 +37842,8 @@ function Networks({ onClose }) {
                 fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
               }}>networks</h2>
               <ActionButton
-                title="start a new network"
-                onClick={() => setCreating(true)}>+ create</ActionButton>
+                title={canReview ? "start a new network" : "request a new network"}
+                onClick={startCreate}>+ create</ActionButton>
             </div>
 
             <div style={{ padding:"14px 0" }}>
@@ -37555,9 +37863,18 @@ function Networks({ onClose }) {
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"6px 12px 14px",
           }}>
+            {tab === "mine" && myRequests.map(req => (
+              <RequestStatusRow
+                key={req.id}
+                req={req}
+                onEdit={(r) => { setEditingRequest(r); setRequesting(true); }}
+                onDismiss={dismissRequest}
+              />
+            ))}
+
             {shown.map(net => <NetworkRow key={net.id} net={net} onOpen={setOpenNet} onJoin={joinNetwork}/>)}
 
-            {!shown.length && (
+            {!shown.length && !(tab === "mine" && myRequests.length) && (
               <p style={{
                 margin:"18px 12px",
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",

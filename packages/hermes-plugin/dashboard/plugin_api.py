@@ -43,6 +43,9 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
         def patch(self, *_args, **_kwargs):
             return lambda fn: fn
 
+        def delete(self, *_args, **_kwargs):
+            return lambda fn: fn
+
 router = APIRouter()
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
@@ -1008,6 +1011,94 @@ def join_network(network_id: str) -> dict[str, Any]:
     if not network_id:
         return {"success": False, "error": "A network id is required."}
     payload = tools._api_request("POST", f"/networks/{quote(network_id, safe='')}/join")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+def _sanitize_network_request_input(body: Any) -> tuple[dict[str, Any] | None, str | None]:
+    """Validate/normalize the early-access request form fields before forwarding."""
+    if not isinstance(body, dict):
+        return None, "Request body must be an object."
+    name = _text(body.get("name"))
+    if not name:
+        return None, "A network name is required."
+    payload: dict[str, Any] = {"name": name[:200]}
+    for key in ("purpose", "expectedSize", "notes"):
+        value = _text(body.get(key))
+        if value:
+            payload[key] = value[:2000]
+    return payload, None
+
+
+def _normalize_network_request(request: Any) -> dict[str, Any]:
+    """Shape a NetworkRequest DTO into the fields the dashboard renders."""
+    if not isinstance(request, dict):
+        return {}
+    item: dict[str, Any] = {
+        "id": _text(request.get("id")),
+        "title": _text(request.get("title") or request.get("name"), "Untitled network"),
+        "status": _text(request.get("status"), "pending"),
+    }
+    for key in ("purpose", "expectedSize", "notes", "reviewNote", "submittedAt"):
+        value = _text(request.get(key))
+        if value:
+            item[key] = value
+    return item
+
+
+@router.get("/network-requests")
+def list_network_requests() -> dict[str, Any]:
+    """The caller's own early-access network requests, plus the staff `canReview` flag."""
+    payload = tools._api_request("GET", "/network-requests")
+    if payload.get("success") is False:
+        return payload
+    raw = payload.get("requests")
+    items = [_normalize_network_request(r) for r in raw] if isinstance(raw, list) else []
+    return {
+        "success": True,
+        "requests": [r for r in items if r.get("id")],
+        "canReview": payload.get("canReview") is True,
+    }
+
+
+@router.post("/network-requests")
+def create_network_request(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Submit a reviewed "create a network" request via REST `POST /network-requests`."""
+    request_body, validation_error = _sanitize_network_request_input(body)
+    if validation_error:
+        return {"success": False, "error": validation_error}
+    payload = tools._api_request("POST", "/network-requests", request_body)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "request": _normalize_network_request(payload.get("request"))}
+
+
+@router.patch("/network-requests/{request_id}")
+def update_network_request(
+    request_id: str,
+    body: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    """Update and resubmit the caller's own request via REST `PATCH /network-requests/:id`."""
+    request_id = _text(request_id)
+    if not request_id:
+        return {"success": False, "error": "A request id is required."}
+    request_body, validation_error = _sanitize_network_request_input(body)
+    if validation_error:
+        return {"success": False, "error": validation_error}
+    payload = tools._api_request("PATCH", f"/network-requests/{quote(request_id, safe='')}", request_body)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "request": _normalize_network_request(payload.get("request"))}
+
+
+@router.delete("/network-requests/{request_id}")
+def dismiss_network_request(request_id: str) -> dict[str, Any]:
+    """Dismiss (withdraw) the caller's own request via REST `DELETE /network-requests/:id`."""
+    request_id = _text(request_id)
+    if not request_id:
+        return {"success": False, "error": "A request id is required."}
+    payload = tools._api_request("DELETE", f"/network-requests/{quote(request_id, safe='')}")
     if payload.get("success") is False:
         return payload
     return {"success": True}

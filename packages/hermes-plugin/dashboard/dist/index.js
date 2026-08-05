@@ -111,21 +111,13 @@
     return React.createElement("path", { key: d, d: d });
   }
 
-  function ICON_TARGET() {
+  function ICON_SPARKLES() {
     return svgIcon("h-4 w-4", [
-      React.createElement("circle", { key: "a", cx: 12, cy: 12, r: 10 }),
-      React.createElement("circle", { key: "b", cx: 12, cy: 12, r: 6 }),
-      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 2 }),
-    ]);
-  }
-
-  function ICON_NETWORK() {
-    return svgIcon("h-4 w-4", [
-      React.createElement("rect", { key: "a", x: 16, y: 16, width: 6, height: 6, rx: 1 }),
-      React.createElement("rect", { key: "b", x: 2, y: 16, width: 6, height: 6, rx: 1 }),
-      React.createElement("rect", { key: "c", x: 9, y: 2, width: 6, height: 6, rx: 1 }),
-      svgPath("M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"),
-      svgPath("M12 12V8"),
+      svgPath("M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"),
+      svgPath("M20 3v4"),
+      svgPath("M22 5h-4"),
+      svgPath("M4 17v2"),
+      svgPath("M5 18H3"),
     ]);
   }
 
@@ -655,6 +647,14 @@
     ]);
   }
 
+  function ICON_GLOBE() {
+    return svgIcon("index-dashboard__net-tab-icon", [
+      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 10 }),
+      svgPath("M2 12h20"),
+      svgPath("M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"),
+    ]);
+  }
+
   // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
   // palette, so dashboard network avatars match the Index web app exactly.
   const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
@@ -792,51 +792,190 @@
     );
   }
 
-  function ICON_COMPASS() {
+  function ICON_PLUS() {
     return svgIcon("index-dashboard__net-discover-icon", [
-      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 10 }),
-      React.createElement("polygon", { key: "n", points: "16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" }),
+      React.createElement("line", { key: "v", x1: 12, y1: 5, x2: 12, y2: 19 }),
+      React.createElement("line", { key: "h", x1: 5, y1: 12, x2: 19, y2: 12 }),
     ]);
   }
 
-  function NetworkDiscoverModal(props) {
+  // Rough-size brackets for the request form, matching the web modal's options
+  // so the same question reads the same on every surface.
+  const NETWORK_SIZE_OPTIONS = ["Under 100", "100 – 1K", "1K – 10K", "10K+"];
+
+  // A pending / needs-changes request the caller submitted. Rendered above the
+  // joined networks, mirroring the web /networks page.
+  function NetworkRequestRow(props) {
+    const req = props.request;
+    const needsChanges = req.status === "needs_changes";
+    return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
+      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
+        React.createElement(BoringAvatar, { seed: req.id || req.title }),
+      ),
+      React.createElement("span", { className: "index-dashboard__net-meta" },
+        React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
+        React.createElement("span", { className: "index-dashboard__net-sub" }, needsChanges ? "Needs changes" : "In review"),
+        needsChanges && req.reviewNote
+          ? React.createElement("span", { className: "index-dashboard__net-request-review" }, "“" + req.reviewNote + "”")
+          : null,
+      ),
+      React.createElement("span", { className: "index-dashboard__net-request-btns" },
+        needsChanges
+          ? React.createElement(Button, { type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md", onClick: function () { if (props.onEdit) props.onEdit(req); } }, "Update")
+          : React.createElement(BadgeText, { tone: "secondary" }, "Pending"),
+        React.createElement("button", { type: "button", className: "index-dashboard__net-request-dismiss", onClick: function () { if (props.onDismiss) props.onDismiss(req.id); } }, needsChanges ? "Dismiss" : "Withdraw"),
+      ),
+    );
+  }
+
+  // Early-access "request a network" form body (no chrome of its own — it lives
+  // inside the Manage modal's Request tab). Submits to /network-requests
+  // (reviewed) rather than creating a live network, and ends on a confirmation.
+  // `initial` (a needs-changes request) switches it into resubmit mode.
+  function RequestNetworkForm(props) {
+    const useState = React.useState;
+    const initial = props.initial || null;
+    const nameState = useState(initial ? (initial.title || "") : "");
+    const name = nameState[0]; const setName = nameState[1];
+    const purposeState = useState(initial ? (initial.purpose || "") : "");
+    const purpose = purposeState[0]; const setPurpose = purposeState[1];
+    const sizeState = useState(initial ? (initial.expectedSize || "") : "");
+    const size = sizeState[0]; const setSize = sizeState[1];
+    const notesState = useState(initial ? (initial.notes || "") : "");
+    const notes = notesState[0]; const setNotes = notesState[1];
+    const sendingState = useState(false);
+    const sending = sendingState[0]; const setSending = sendingState[1];
+    const errState = useState(null);
+    const err = errState[0]; const setErr = errState[1];
+    const doneState = useState(null);
+    const done = doneState[0]; const setDone = doneState[1];
+
+    const trimmed = (name || "").trim();
+    const canSend = trimmed.length > 0 && !sending;
+    const isEdit = !!initial;
+
+    function submit() {
+      if (!canSend) return;
+      setSending(true);
+      setErr(null);
+      Promise.resolve(props.onSubmit({
+        name: trimmed,
+        purpose: (purpose || "").trim() || undefined,
+        expectedSize: size || undefined,
+        notes: (notes || "").trim() || undefined,
+      }))
+        .then(function (req) { setDone(req || { title: trimmed }); })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setSending(false); });
+    }
+
+    if (done) {
+      return React.createElement("div", { className: "index-dashboard__profile-section" },
+        React.createElement("p", { className: "index-dashboard__net-request-note" },
+          "We’re reviewing ", React.createElement("strong", null, (done && done.title) || trimmed),
+          " and will get back to you shortly."),
+        React.createElement("div", { className: "index-dashboard__net-request-actions" },
+          React.createElement(Button, { type: "button", size: "sm", onClick: props.onClose }, "Back to networks"),
+        ),
+      );
+    }
+
+    return React.createElement("div", { className: "index-dashboard__profile-section" },
+      React.createElement("p", { className: "index-dashboard__net-request-intro" },
+        "Network creation is still early. Tell us what you’re hoping to build and we’ll get back to you."),
+      React.createElement(ProfileField, { label: "Network name" },
+        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "e.g. Edge City", onChange: function (e) { setName(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "What are you hoping to build?" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: purpose, placeholder: "Who is it for, who do you expect to join, and what should people or agents be able to discover through it?", onChange: function (e) { setPurpose(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+          NETWORK_SIZE_OPTIONS.map(function (opt) {
+            const active = size === opt;
+            return React.createElement("button", {
+              key: opt, type: "button",
+              className: "index-dashboard__net-size" + (active ? " index-dashboard__net-size--on" : ""),
+              onClick: function () { setSize(active ? "" : opt); },
+            }, opt);
+          }),
+        ),
+      ),
+      React.createElement(ProfileField, { label: "Anything else we should know?", hint: "Optional" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 2, value: notes, placeholder: "Links, timing, context, or what you’d like to experiment with.", onChange: function (e) { setNotes(e.target.value); } }),
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+      React.createElement("div", { className: "index-dashboard__net-request-actions" },
+        React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
+        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Create network")),
+      ),
+    );
+  }
+
+  // Create-a-network modal (early-access → submits a reviewed request). Opened
+  // from the card's Create button, or prefilled from a needs-changes "Update".
+  function NetworkCreateModal(props) {
+    const isEdit = !!props.initial;
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
       React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__net-modal", onClick: function (e) { e.stopPropagation(); } },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Discover networks"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, isEdit ? "Update request" : "Create a network"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
         React.createElement("div", { className: "index-dashboard__net-modal-body" },
-          React.createElement(NetworkRows, { items: props.discover, discover: true, error: props.error, empty: "No public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId }),
+          React.createElement(RequestNetworkForm, { initial: props.initial, onSubmit: props.onSubmit, onClose: props.onClose }),
         ),
       ),
     );
   }
 
+  // Networks card: "My networks" / "Discover" tabs on the left, a Create button
+  // on the right. Create opens the (reviewed) request form as a modal.
   function NetworksMini(props) {
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
     const discover = Array.isArray(networks.discover) ? networks.discover : [];
-    const openState = React.useState(false);
-    const open = openState[0];
-    const setOpen = openState[1];
+    const requests = Array.isArray(props.requests) ? props.requests : [];
+    const tabState = React.useState("mine");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    function tabButton(id, label, icon) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab index-dashboard__net-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, icon || null, React.createElement("span", null, label));
+    }
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
-        React.createElement("h2", { className: "index-dashboard__net-heading" }, ICON_NETWORK(), "Networks (" + formatCount(networks.count || items.length) + ")"),
+        React.createElement("div", { className: "index-dashboard__profile-tabs index-dashboard__net-tabs" },
+          tabButton("mine", "My networks (" + formatCount(networks.count || items.length) + ")"),
+          tabButton("discover", "Discover", ICON_GLOBE()),
+        ),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
-          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { setOpen(true); } }, ICON_COMPASS(), "Discover"),
+          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { if (props.onCreate) props.onCreate(); } }, ICON_PLUS(), "Create"),
         ),
       ),
-      networks.error
-        ? React.createElement("div", { className: "index-dashboard__error" }, networks.error)
-        : items.length === 0
-          ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
-          : React.createElement("div", { className: "index-dashboard__net-list" },
-            items.map(function (network, index) {
-              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
-            }),
-          ),
-      open ? React.createElement(NetworkDiscoverModal, { discover: discover, error: networks.error, onJoin: props.onJoin, joiningId: props.joiningId, onClose: function () { setOpen(false); } }) : null,
+      tab === "discover"
+        ? React.createElement(NetworkRows, { items: discover, discover: true, error: networks.error, empty: "No public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId })
+        : React.createElement("div", null,
+          requests.length
+            ? React.createElement("div", { className: "index-dashboard__net-list index-dashboard__net-request-list" },
+              requests.map(function (req, index) {
+                return React.createElement(NetworkRequestRow, { key: req.id || String(index), request: req, onEdit: props.onEditRequest, onDismiss: props.onDismissRequest });
+              }),
+            )
+            : null,
+          networks.error
+            ? React.createElement("div", { className: "index-dashboard__error" }, networks.error)
+            : items.length === 0
+              ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
+              : React.createElement("div", { className: "index-dashboard__net-list" },
+                items.map(function (network, index) {
+                  return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+                }),
+              ),
+        ),
     );
   }
 
@@ -1863,6 +2002,15 @@
     const joiningState = useState(null);
     const joiningId = joiningState[0];
     const setJoiningId = joiningState[1];
+    const networkRequestsState = useState([]);
+    const networkRequests = networkRequestsState[0];
+    const setNetworkRequests = networkRequestsState[1];
+    const createOpenState = useState(false);
+    const createOpen = createOpenState[0];
+    const setCreateOpen = createOpenState[1];
+    const editingRequestState = useState(null);
+    const editingRequest = editingRequestState[0];
+    const setEditingRequest = editingRequestState[1];
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
@@ -2184,10 +2332,52 @@
         });
     }
 
+    function loadNetworkRequests() {
+      fetchPluginJSON(API + "/network-requests")
+        .then(function (payload) {
+          if (!payload || payload.success === false) return;
+          setNetworkRequests(Array.isArray(payload.requests) ? payload.requests : []);
+        })
+        .catch(function () {});
+    }
+
+    // Submit or resubmit a network request; resolves the request so the modal
+    // can show its confirmation. `editingRequest` selects create vs update.
+    function submitNetworkRequest(input) {
+      const editing = editingRequest;
+      const path = editing
+        ? API + "/network-requests/" + encodeURIComponent(editing.id)
+        : API + "/network-requests";
+      return fetchPluginJSON(path, {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }).then(function (payload) {
+        if (!payload || payload.success === false) {
+          throw new Error((payload && payload.error) || "Your request could not be submitted.");
+        }
+        loadNetworkRequests();
+        return payload.request || { title: input.name };
+      });
+    }
+
+    function dismissNetworkRequest(id) {
+      if (!id) return;
+      setNetworkRequests(function (prev) { return (prev || []).filter(function (r) { return r.id !== id; }); });
+      fetchPluginJSON(API + "/network-requests/" + encodeURIComponent(id), { method: "DELETE" })
+        .then(function () { loadNetworkRequests(); })
+        .catch(function () {});
+    }
+
+    function openCreate() { setEditingRequest(null); setCreateOpen(true); }
+    function editNetworkRequest(req) { setEditingRequest(req); setCreateOpen(true); }
+    function closeCreate() { setCreateOpen(false); setEditingRequest(null); }
+
     loadRef.current = load;
 
     useEffect(function () {
       load();
+      loadNetworkRequests();
     }, []);
 
     useEffect(function () {
@@ -2346,11 +2536,11 @@
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
-          React.createElement(Panel, { icon: ICON_TARGET(), title: "Intents", count: intents.length },
+          React.createElement(Panel, { icon: ICON_SPARKLES(), title: "Intents", count: intents.length },
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, onJoin: joinNetwork, joiningId: joiningId }),
+            React.createElement(NetworksMini, { networks: summary && summary.networks, requests: networkRequests, onCreate: openCreate, onJoin: joinNetwork, joiningId: joiningId, onEditRequest: editNetworkRequest, onDismissRequest: dismissNetworkRequest }),
           ),
         ),
       );
@@ -2372,6 +2562,9 @@
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
+        : null,
+      createOpen
+        ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
         : null,
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
