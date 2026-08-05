@@ -100,8 +100,8 @@ describe('mac deep-link routing contract', () => {
     // Routable links are ours.
     expect(isIndexDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`)).toBe(true);
     expect(isIndexDeepLink(`index://u/${USER_ID}`)).toBe(true);
-    // Claimed host, no route in the app: the AASA claims /u/* and `*` matches
-    // separators, so macOS hands over web-only routes like /u/<id>/chat.
+    // Supported host, no route in the app: parser ownership is deliberately
+    // broader than OS interception; AASA filters web-only /u/<id>/chat paths.
     expect(parseDeepLink(`https://index.network/u/${USER_ID}/chat`)).toBeNull();
     expect(isIndexDeepLink(`https://index.network/u/${USER_ID}/chat`)).toBe(true);
     expect(isIndexDeepLink('https://index.network/settings')).toBe(true);
