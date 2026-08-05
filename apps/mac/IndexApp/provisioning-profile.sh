@@ -58,7 +58,9 @@ if application_id != f'{expected_team}.{bundle_id}':
     fail('application identifier does not match the bundle')
 
 domains = entitlements.get('com.apple.developer.associated-domains')
-if not isinstance(domains, list) or not all(isinstance(value, str) for value in domains):
+if isinstance(domains, str):
+    domains = [domains]
+elif not isinstance(domains, list) or not all(isinstance(value, str) for value in domains):
     fail('does not authorize Associated Domains')
 expected_domain = f'applinks:{host}'
 if expected_domain not in domains and 'applinks:*' not in domains and '*' not in domains:

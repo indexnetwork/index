@@ -132,6 +132,15 @@ describe('Developer ID provisioning profile validation', () => {
     expect(validate(path).exitCode).toBe(0);
   });
 
+  test('accepts Apple scalar wildcard authorization', async () => {
+    const path = await writeProfile({ Entitlements: {
+      'com.apple.application-identifier': 'TEAM123.network.index.system6',
+      'com.apple.developer.team-identifier': 'TEAM123',
+      'com.apple.developer.associated-domains': '*',
+    }});
+    expect(validate(path).exitCode).toBe(0);
+  });
+
   test('rejects an expired profile', async () => {
     await expectRejected(await writeProfile({ ExpirationDate: '2020-01-01T00:00:00Z' }), 'is expired');
   });
