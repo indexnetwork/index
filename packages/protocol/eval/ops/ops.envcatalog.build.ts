@@ -14,6 +14,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
+import { ENV_FLAG_METADATA } from "./ops.metadata.js";
 import { reachableEnvKeys, referencedEnvKeys } from "./ops.envscan.js";
 import { OPS_HARNESSES } from "./ops.registry.js";
 import type { OpsHarness } from "./ops.types.js";
@@ -141,6 +142,34 @@ ${entries}
  */
 export function renderEngineFlags(catalog: Record<OpsHarness, string[]>): string {
   const keys = catalog.discovery.map((key) => `  '${key}',`).join("\n");
+  // The credentials the graph itself reads, so the engine can refuse them for
+  // the real reason. Derived from the same scan rather than listed: a credential
+  // added to the graph tomorrow must not fall through to "cannot read it".
+  const credentialKeys = [...reachableEnvKeys(
+    path.join(PROTOCOL_ROOT, HARNESS_ENTRY_POINTS.discovery),
+    [...referencedEnvKeys(CANDIDATE_ROOTS.map((dir) => path.join(PROTOCOL_ROOT, dir)))],
+  )]
+    .filter((key) => isCredentialEnvKey(key))
+    .sort()
+    .map((key) => `  '${key}',`)
+    .join("\n");
+
+  // Each offered flag's accepted shape, copied from ENV_FLAG_METADATA so the
+  // engine refuses exactly what the site refuses. Without this the engine
+  // accepts any non-blank string, and a value the graph does not recognise does
+  // not fail there — it falls back, so the run measures the default while the
+  // artifact records the value the operator typed.
+  const offered = new Set(catalog.discovery);
+  const valueRules = ENV_FLAG_METADATA
+    .filter((meta) => offered.has(meta.key))
+    .map((meta) => {
+      const fields = [`kind: '${meta.kind}'`];
+      if (meta.values !== undefined) fields.push(`values: [${meta.values.map((value) => `'${value}'`).join(", ")}]`);
+      if (meta.min !== undefined) fields.push(`min: ${meta.min}`);
+      return `  ${meta.key}: { ${fields.join(", ")} },`;
+    })
+    .sort()
+    .join("\n");
   return `/**
  * GENERATED LIST — regenerate with:
  *   cd packages/protocol && bun ./eval/ops/ops.envcatalog.build.ts
@@ -177,7 +206,82 @@ ${keys}
 export type AbEnvConfig = Readonly<Record<string, string>>;
 
 /**
- * Throws when a config names a flag this harness cannot honestly exercise.
+ * Credentials, refused separately from unreadable keys because the reason
+ * differs and the operator acts on it differently.
+ *
+ * The discovery graph genuinely reads OPENROUTER_API_KEY and
+ * OPENROUTER_BASE_URL — they are absent from the catalogue because they are
+ * credentials, not because they are inert. Telling an operator the graph cannot
+ * read them would be false, and would send someone hunting for a code path that
+ * is right there.
+ */
+const CREDENTIAL_KEYS: readonly string[] = Object.freeze([
+${credentialKeys}
+]);
+
+/**
+ * What each offered flag's own read site accepts, mirrored from
+ * ENV_FLAG_METADATA in packages/protocol/eval/ops/ops.metadata.ts.
+ *
+ * Needed because an unrecognised value does not fail at the read site — it
+ * falls back. \`DISCOVERY_PROFILE_SOURCE=user-context\` (hyphen) warns once and
+ * runs \`premise\`, so without this check a run would measure the default while
+ * its artifact recorded the value the operator typed.
+ */
+interface EnvValueRule {
+  kind: 'enum' | 'boolean' | 'csv-enum' | 'integer' | 'number' | 'string' | 'json-model-map';
+  values?: readonly string[];
+  min?: number;
+}
+
+const ENV_VALUE_RULES: Readonly<Record<string, EnvValueRule>> = Object.freeze({
+${valueRules}
+});
+
+/** The problem with \`value\` for this flag, or null when the graph will honour it. */
+export function discoveryEnvValueIssue(key: string, value: string): string | null {
+  const rule = ENV_VALUE_RULES[key];
+  if (rule === undefined) return null;
+  switch (rule.kind) {
+    case 'enum':
+    case 'boolean':
+      return rule.values?.includes(value) === true
+        ? null
+        : \`must be one of: \${rule.values?.join(', ') ?? '(no values defined)'}\`;
+    case 'csv-enum': {
+      const allowed = rule.values ?? [];
+      const tokens = value.split(',').map((token) => token.trim().toLowerCase()).filter((token) => token !== '');
+      const legal = tokens.length > 0 && tokens.every((token) => allowed.includes(token));
+      return legal ? null : \`must be a comma-separated list of: \${allowed.join(', ') || '(no values defined)'}\`;
+    }
+    case 'integer':
+      if (!/^\\d+$/.test(value)) return 'must be an integer';
+      if (rule.min !== undefined && Number(value) < rule.min) return \`must be an integer of at least \${rule.min}\`;
+      return null;
+    case 'number': {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return 'must be a positive number';
+      if (rule.min !== undefined && parsed < rule.min) return \`must be at least \${rule.min}\`;
+      return null;
+    }
+    case 'json-model-map':
+      // Deliberately not validated here. The site's rule for this flag is not
+      // 'parseable JSON' but 'names a reviewed model and a known agent', and the
+      // reviewed-model list lives in the ops registry, which this package cannot
+      // import (services/api sets rootDir ./src). Duplicating that list here is
+      // the drift this whole module exists to prevent, and a stale copy would
+      // refuse a model the site had just approved. A malformed value still fails
+      // at the read site rather than being silently ignored — readModelOverrides
+      // throws — so the failure is loud either way.
+      return null;
+    case 'string':
+      return null;
+  }
+}
+
+/**
+ * Throws when a config names a flag this harness cannot honestly exercise, or
+ * gives one a value the graph will not honour.
  *
  * The refusal is kept — a key the graph never reads is a control that moves
  * nothing, and accepting it would let a run attribute noise to a flag that was
@@ -185,11 +289,24 @@ export type AbEnvConfig = Readonly<Record<string, string>>;
  */
 export function assertAbEnvConfig(config: AbEnvConfig): void {
   for (const [key, value] of Object.entries(config)) {
+    if (CREDENTIAL_KEYS.includes(key)) {
+      throw new Error(
+        \`\${key} is a credential and is never configurable from a run; the discovery graph does read it, \`
+        + 'but letting a run set it would repoint the run at another provider account or endpoint',
+      );
+    }
     if (!DISCOVERY_ENV_KEYS.includes(key)) {
       throw new Error(\`\${key} is not readable by the discovery graph; this harness cannot test it\`);
     }
     if (value.trim() === '') {
       throw new Error(\`\${key} has an empty value; unset it instead of blanking it\`);
+    }
+    const issue = discoveryEnvValueIssue(key, value);
+    if (issue !== null) {
+      throw new Error(
+        \`\${key}=\${value} \${issue}. The graph does not refuse a value it does not recognise, it falls back \`
+        + 'to its default, so this run would measure the default and record the value you typed',
+      );
     }
   }
 }

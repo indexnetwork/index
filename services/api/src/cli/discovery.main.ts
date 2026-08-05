@@ -26,10 +26,10 @@ import { statSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-import { AB_BASE_BRANCH, AB_DEFAULT_REPETITIONS, AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abUsage, classifyAbParentFailure, type AbRunStage } from './discovery.contract';
+import { AB_BASE_BRANCH, AB_DEFAULT_REPETITIONS, AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abUsage, classifyAbParentFailure, type AbRunShape, type AbRunStage } from './discovery.contract';
 import { AB_SIDE_BRANCH_ENV, AbGateError, assertAbConfirmation, assertAbSideEnvironment } from './discovery.gate';
 import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, resetAbBranch, type AbTarget } from './discovery.neon';
-import { buildAbPlan, configDiff } from './discovery.plan';
+import { buildAbPlan, configDiff, isAbPair } from './discovery.plan';
 import { expectedBaseMetadata, verifyBaseFixtureIntegrity, verifyProtectedBase } from './discovery-env-matrix-base.main';
 import { ATTEMPT_TIMEOUT_MS, MatrixExecutionError, awaitMatrixChildProcess, buildMatrixArtifactEvidence, closeChildResources, collectCandidates, collectEvaluatorTraces, composeCaseRuntime, createChildDependencies, databaseCase, loadJudge, loadMatrixEval, projectFinalCandidates, resolveFixtureTriggerIntent, runBoundedChildTasks, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixCandidate, type MatrixEvaluatorTrace, type MatrixExecutionEvidence, type MatrixGraphRuntimeInput, type MatrixRetrievalCandidate, type MatrixSlotResult } from './discovery-env-matrix.main';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
@@ -37,7 +37,7 @@ import { withDiscoveryEnvironment } from './discovery-env-matrix.runtime';
 import { baseSeedPayload, type HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 
 import type { AbEnvConfig } from './discovery.flags';
-import type { AbSide, AbSideId, AbSlot } from './discovery.plan';
+import type { AbSide, AbSideId, AbSides, AbSlot } from './discovery.plan';
 
 const HARNESS = 'discovery';
 const HARNESS_VERSION = '1';
@@ -331,7 +331,12 @@ export interface AbRunSelection {
   /** Empty means the full corpus. */
   caseIds: string[];
   repetitions: number;
-  sides: [AbSide, AbSide];
+  /**
+   * One side (`--env`) measures a configuration; two (`--a`/`--b`) compare a
+   * pair. Which it is decides how many branches this run resets and how many
+   * children it spawns, so it is read rather than assumed everywhere below.
+   */
+  sides: AbSides;
   force: boolean;
   /**
    * Where the run report must be written, absolute. Absent means this run names
@@ -378,6 +383,40 @@ function parseAbSideConfig(args: readonly string[], flag: string, sideId: AbSide
 }
 
 /**
+ * Which shape the operator asked for, refusing the two ways of asking for
+ * neither or both.
+ *
+ * Both refusals are pre-flight and cost nothing, which is the point: a run that
+ * guessed would reset a branch first and be wrong afterwards. `--env` with
+ * `--a` is not a run with a default side — the two express different runs (one
+ * branch or two, a scorecard or a comparison) and there is no honest way to
+ * pick one, so it is refused rather than resolved.
+ */
+function parseAbShape(args: readonly string[]): AbSides {
+  const single = args.includes('--env');
+  const pair = args.includes('--a') || args.includes('--b');
+  if (single && pair) {
+    throw new Error(
+      '--env configures a single run and --a/--b configure a comparison; pass one shape or the other. '
+      + 'They reset a different number of branches and produce a different artifact, so this run cannot pick for you',
+    );
+  }
+  if (single) {
+    return [{ id: 'a', config: parseAbSideConfig(args, '--env', 'a') }] as const;
+  }
+  if (!pair) {
+    throw new Error(
+      'A discovery run needs a configuration: --env KEY=VALUE to measure one, '
+      + 'or --a KEY=VALUE --b KEY=VALUE to compare two',
+    );
+  }
+  return [
+    { id: 'a', config: parseAbSideConfig(args, '--a', 'a') },
+    { id: 'b', config: parseAbSideConfig(args, '--b', 'b') },
+  ] as const;
+}
+
+/**
  * The artifact destination `--report` names, resolved to an absolute path.
  *
  * Resolved here, against the working directory the operator typed the flag in,
@@ -420,7 +459,10 @@ export function abRunReportPath(selection: { reportPath?: string }, stamp: strin
   return selection.reportPath ?? path.resolve(RUNS_DIR, `${stamp}.json`);
 }
 
-/** Parses the operator's run contract: `--case <id>* --runs <n> --a K=V* --b K=V* [--report <path>] [--force]`. */
+/**
+ * Parses the operator's run contract:
+ * `--case <id>* --runs <n> (--env K=V* | --a K=V* --b K=V*) [--report <path>] [--force]`.
+ */
 export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
   const caseIds = collectFlagValues(args, '--case');
   if (new Set(caseIds).size !== caseIds.length) throw new Error('--case names the same case twice');
@@ -438,10 +480,7 @@ export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
   return {
     caseIds,
     repetitions,
-    sides: [
-      { id: 'a', config: parseAbSideConfig(args, '--a', 'a') },
-      { id: 'b', config: parseAbSideConfig(args, '--b', 'b') },
-    ],
+    sides: parseAbShape(args),
     force: args.includes('--force'),
     ...(reportPath === undefined ? {} : { reportPath }),
   };
@@ -456,11 +495,24 @@ export function parseAbRunArgs(args: readonly string[]): AbRunSelection {
  * selection. `--force` and `--report` are deliberately not forwarded — only the
  * parent writes the run report; a child writes the `--child-output` it is
  * given.
+ *
+ * The shape is preserved, not normalized to a pair: a child re-parses these
+ * arguments and re-plans from them, so rendering a single run as `--a` would
+ * have it plan a comparison whose side b never existed.
  */
 export function formatAbRunArgs(selection: AbRunSelection): string[] {
-  return [
+  const shared = [
     ...selection.caseIds.flatMap((caseId) => ['--case', caseId]),
     '--runs', String(selection.repetitions),
+  ];
+  if (!isAbPair(selection.sides)) {
+    return [
+      ...shared,
+      ...abConfigDeltas(selection.sides[0].config).flatMap((delta) => ['--env', `${delta.key}=${delta.after}`]),
+    ];
+  }
+  return [
+    ...shared,
     ...abConfigDeltas(selection.sides[0].config).flatMap((delta) => ['--a', `${delta.key}=${delta.after}`]),
     ...abConfigDeltas(selection.sides[1].config).flatMap((delta) => ['--b', `${delta.key}=${delta.after}`]),
   ];
@@ -485,7 +537,7 @@ export function abSelectionFilters(caseIds: readonly string[]): Record<string, s
 }
 
 export interface AbArtifactMetaInput {
-  sides: readonly [AbSide, AbSide];
+  sides: AbSides;
   cases: readonly HistoricalMatrixFixture[];
   repetitions: number;
   startedAt: string;
@@ -520,8 +572,14 @@ export async function buildAbArtifactMeta(input: AbArtifactMetaInput): Promise<R
     models: [...new Set([process.env.CHAT_MODEL ?? 'configured runtime models', resolveEvalJudgeModelId() as string])],
     runs: 1,
     selection: { fullCorpus: Object.keys(filters).length === 0, filters },
-    configs: { a: { ...input.sides[0].config }, b: { ...input.sides[1].config } },
-    configDiff: configDiff(input.sides[0].config, input.sides[1].config),
+    // Keyed by side id, so a single run records `{ a }` and carries no `b` key
+    // rather than a null one. `configDiff` is omitted entirely for a single run:
+    // an empty array there would read as "compared, found no difference", which
+    // is a claim about a comparison that did not happen.
+    configs: Object.fromEntries(input.sides.map((side) => [side.id, { ...side.config }])),
+    ...(isAbPair(input.sides)
+      ? { configDiff: configDiff(input.sides[0].config, input.sides[1].config) }
+      : {}),
     corpusFingerprint: fingerprintEvalCorpus(input.cases) as string,
     // The two configurations and the repetition count go through
     // `scorerConfig`, which is the only field `buildEvalScoringConfigFingerprint`
@@ -613,8 +671,22 @@ export function toGovernedRunMeta(
   };
 }
 
-/** Renders the two configurations and their difference for the console. */
+/**
+ * Renders the run's configuration for the console: the difference between two
+ * sides, or the single configuration that was measured.
+ *
+ * A single run has no difference to show, and printing "compared two
+ * configurations with no recorded difference" for it would describe a
+ * comparison that never happened. What an operator needs instead is the
+ * configuration the scorecard belongs to, which is otherwise only on disk.
+ */
 export function formatAbConfigDiff(meta: Record<string, unknown>): string {
+  const configs = meta.configs as Record<string, Record<string, string>> | undefined;
+  if (configs !== undefined && meta.configDiff === undefined) {
+    const entries = Object.entries(configs.a ?? {}).sort(([left], [right]) => left.localeCompare(right));
+    if (entries.length === 0) return 'Discovery measured the graph with no environment overrides';
+    return ['Discovery configuration:', ...entries.map(([key, value]) => `  ${key}=${value}`)].join('\n');
+  }
   const diff = meta.configDiff;
   if (!Array.isArray(diff) || diff.length === 0) return 'Discovery compared two configurations with no recorded difference';
   const rows = diff.map((entry) => {
@@ -635,13 +707,13 @@ export function formatAbConfigDiff(meta: Record<string, unknown>): string {
  */
 export function assertAbConfigProvenance(
   slots: readonly MatrixSlotResult[],
-  sides: readonly [AbSide, AbSide],
+  sides: AbSides,
 ): void {
   const expected = new Map(sides.map((side) => [side.id as string, JSON.stringify(abConfigDeltas(side.config))]));
   for (const slot of slots) {
     const wanted = expected.get(slot.rowId);
     if (wanted === undefined) {
-      throw new Error(`Discovery slot ${slot.caseId} names side ${slot.rowId}, which this run did not compare`);
+      throw new Error(`Discovery slot ${slot.caseId} names side ${slot.rowId}, which this run did not run`);
     }
     if (JSON.stringify(slot.configDeltas ?? null) !== wanted) {
       throw new Error(
@@ -672,18 +744,22 @@ export interface AbRunOutcome {
 }
 
 /**
- * Decides whether this run produced a comparison at all.
+ * Decides whether this run produced a result at all.
  *
  * A side is complete only when it returned every slot it was planned and every
  * one of them was scored; a slot that exhausted its attempts comes back with
- * `runs: 0` and is a failure, not a zero. If either side is incomplete the run
+ * `runs: 0` and is a failure, not a zero. If any side is incomplete the run
  * reports **no verdict** and exits non-zero, naming the side — reporting one
  * side's numbers as though they were a comparison is the specific dishonesty
  * this harness has to avoid.
+ *
+ * The same rule serves a single run for a different reason: a scorecard built
+ * from the subset of slots that happened to succeed is a pass rate over an
+ * unstated denominator, which reads as a measurement and is not one.
  */
 export function resolveAbRunOutcome(input: {
   slots: readonly MatrixSlotResult[];
-  sides: readonly [AbSide, AbSide];
+  sides: AbSides;
   expectedSlotsPerSide: number;
 }): AbRunOutcome {
   const sides = input.sides.map((side): AbSideCompleteness => {
@@ -710,7 +786,10 @@ export function resolveAbRunOutcome(input: {
       incompleteSides,
       verdict: null,
       exitCode: AB_EXIT_INSUFFICIENT_EVIDENCE,
-      summary: `Discovery reports no verdict: ${detail}. A comparison with one side missing is not a comparison.`,
+      summary: `Discovery reports no verdict: ${detail}. `
+        + (isAbPair(input.sides)
+          ? 'A comparison with one side missing is not a comparison.'
+          : 'A pass rate over the slots that happened to succeed states no denominator.'),
     };
   }
   const verdict = sides.map((side) => ({
@@ -724,6 +803,8 @@ export function resolveAbRunOutcome(input: {
     incompleteSides,
     verdict,
     exitCode: AB_EXIT_COMPARISON,
+    // "vs" only when there is something to be versus. A single side reads as a
+    // scorecard, which is what it is.
     summary: `Discovery result: ${verdict.map((entry) => `side ${entry.sideId} ${entry.passes}/${entry.runs} (${(entry.passRate * 100).toFixed(1)}%)`).join('  vs  ')}`,
   };
 }
@@ -788,6 +869,13 @@ export interface AbRunProgress {
   stage: AbRunStage | null;
   /** Set with the `'written'` stage, so the failure report can name the artifact. */
   artifactPath?: string;
+  /**
+   * Set as soon as the arguments are parsed — before the first reset — so every
+   * cost message names the number of branches and children this run really
+   * involved. Left unset, the report assumes a pair, which overstates rather
+   * than understates what was touched.
+   */
+  shape?: AbRunShape;
 }
 
 /**
@@ -800,12 +888,29 @@ export interface AbRunProgress {
  * so rather than left to work out whether "Discovery command failed" meant
  * a typo or forty minutes and two overwritten branches.
  */
+/**
+ * The shape a selection will run as, for the cost messages.
+ *
+ * A one-line mapping, exported because the line that *uses* it sits inside
+ * `runAbComparison` — unreachable without live Neon credentials and two branch
+ * resets. Deleting the assignment there is a silent regression that turns every
+ * single-run failure report into a claim that two branches were overwritten, so
+ * the mapping is pinned here and the assignment is checked by `abRunShape`
+ * being the only thing that can produce it.
+ */
+export function abRunShape(sides: AbSides): AbRunShape {
+  return isAbPair(sides) ? 'pair' : 'single';
+}
+
 export async function withAbSpendAccounting(run: (progress: AbRunProgress) => Promise<void>): Promise<void> {
   const progress: AbRunProgress = { stage: null };
   try {
     await run(progress);
   } catch (error) {
-    throw classifyAbParentFailure(progress.stage, error, { artifactPath: progress.artifactPath });
+    throw classifyAbParentFailure(progress.stage, error, {
+      artifactPath: progress.artifactPath,
+      ...(progress.shape === undefined ? {} : { shape: progress.shape }),
+    });
   }
 }
 
@@ -827,6 +932,9 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   const manifest = parseAbManifest(process.env.DISCOVERY_TARGETS);
   const attested = await attestAbTargets({ manifest, controlPlane: createNeonControlPlane(apiKey) });
   const selection = parseAbRunArgs(args);
+  // Recorded before anything is reset: from here every cost message names the
+  // branches and children this shape really involves.
+  progress.shape = abRunShape(selection.sides);
   const {
     HISTORICAL_MATRIX_CASES, assertEvalWritePlan, readEvalGitProvenance,
     buildScorecard, writeRunReport, formatConsole,
@@ -836,6 +944,20 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   // before a single branch is reset or a single graph call is paid for.
   const plan = buildAbPlan(cases, selection.sides, selection.repetitions);
   const slotsPerSide = plan.filter((slot) => slot.side.id === 'a').length;
+
+  // Only the branches this run actually uses. A single run resets one branch
+  // and leaves eval-ab-b untouched: resetting a branch it will not read would
+  // destroy another operator's evidence for no reason, and would make every
+  // spend message that says "both branches" false.
+  const runningSideIds = new Set<string>(selection.sides.map((side) => side.id));
+  const runningTargets = attested.targets.filter((target) => runningSideIds.has(target.sideId));
+  if (runningTargets.length !== selection.sides.length) {
+    throw new Error(
+      `DISCOVERY_TARGETS does not declare every side this run needs `
+      + `(needs ${[...runningSideIds].sort().join(', ')}; manifest declares `
+      + `${attested.targets.map((target) => target.sideId).sort().join(', ')})`,
+    );
+  }
 
   // `--report` names the destination; without it the run names its own
   // timestamped path. Either way the plan below is what guards the write, so an
@@ -854,7 +976,7 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   // both" is true - a restore refused on side a overwrites nothing at all - so
   // 'reset', which claims both, is not set until the loop has finished.
   progress.stage = 'resetting';
-  for (const target of attested.targets) {
+  for (const target of runningTargets) {
     await resetAbBranch({ manifest: attested, branchId: target.branchId, apiKey });
     console.log(`Discovery reset side ${target.sideId} (${AB_BRANCH_NAMES[target.sideId]}) from ${AB_BASE_BRANCH}`);
   }
@@ -866,7 +988,7 @@ async function runAbComparison(args: readonly string[], progress: AbRunProgress)
   try {
     const activeChildren = new Set<AbChildProcess>();
     const outputs: AbChildOutput[] = await runBoundedChildTasks({
-      items: attested.targets,
+      items: runningTargets,
       concurrency: AB_CHILD_CONCURRENCY,
       onFailure: () => {
         for (const active of activeChildren) active.kill('SIGTERM');

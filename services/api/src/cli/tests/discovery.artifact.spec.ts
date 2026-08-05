@@ -168,6 +168,54 @@ describe('formatAbConfigDiff', () => {
   it('says so plainly when there is no recorded difference', () => {
     expect(formatAbConfigDiff({ configDiff: [] })).toMatch(/no recorded difference/);
   });
+
+  it('prints the configuration itself for a single run, which has no difference to show', async () => {
+    // "compared two configurations with no recorded difference" would describe a
+    // comparison that never happened. What the operator needs is the
+    // configuration the scorecard belongs to.
+    const single = await buildAbArtifactMeta({
+      sides: [sides[0]], cases, repetitions: 3, startedAt: '2026-08-04T00:00:00.000Z', git,
+    });
+    const printed = formatAbConfigDiff(single);
+    expect(printed).toContain('Discovery configuration:');
+    expect(printed).toContain('DISCOVERY_ALLOWED_TYPES=intent');
+    expect(printed).toContain('DISCOVERY_SOURCE_PREMISE_LIMIT=40');
+    expect(printed).not.toContain('compared');
+    expect(printed).not.toMatch(/\bb=/);
+  });
+});
+
+describe('buildAbArtifactMeta for a single run', () => {
+  it('records one configuration and omits configDiff entirely', async () => {
+    // An empty configDiff would read as "compared, found no difference", which
+    // is a claim about a comparison this run did not make.
+    const single = await buildAbArtifactMeta({
+      sides: [sides[0]], cases, repetitions: 3, startedAt: '2026-08-04T00:00:00.000Z', git,
+    });
+    expect(single.configs).toEqual({ a: { DISCOVERY_ALLOWED_TYPES: 'intent', DISCOVERY_SOURCE_PREMISE_LIMIT: '40' } });
+    expect(single).not.toHaveProperty('configDiff');
+  });
+
+  it('fingerprints a single run differently from the pair that shares its side a', async () => {
+    // The fingerprint has to separate "measured this configuration" from
+    // "compared it against another", or two different runs would collide.
+    const single = await buildAbArtifactMeta({
+      sides: [sides[0]], cases, repetitions: 3, startedAt: '2026-08-04T00:00:00.000Z', git,
+    });
+    expect(single.configFingerprint).not.toEqual(meta.configFingerprint);
+  });
+
+  it('projects onto the governed envelope the same way a pair does', async () => {
+    const single = await buildAbArtifactMeta({
+      sides: [sides[0]], cases, repetitions: 3, startedAt: '2026-08-04T00:00:00.000Z', git,
+    });
+    const governed = toGovernedRunMeta(single, {
+      completedAt: '2026-08-04T00:10:00.000Z',
+      execution: { policy: 'strict', runs: [] },
+    });
+    expect(governed.harness).toBe('discovery');
+    expect(governed).not.toHaveProperty('configs');
+  });
 });
 
 describe('assertAbConfigProvenance', () => {
@@ -213,9 +261,9 @@ describe('assertAbConfigProvenance', () => {
     expect(() => assertAbConfigProvenance([mislabelled as MatrixSlotResult], sides)).toThrow(/does not record side a's configuration/);
   });
 
-  it('refuses a slot from a side this run did not compare', async () => {
+  it('refuses a slot from a side this run did not run', async () => {
     const foreign = { ...(await score(sides[0], true)), rowId: 'intent-only' };
-    expect(() => assertAbConfigProvenance([foreign as MatrixSlotResult], sides)).toThrow(/did not compare/);
+    expect(() => assertAbConfigProvenance([foreign as MatrixSlotResult], sides)).toThrow(/did not run/);
   });
 });
 

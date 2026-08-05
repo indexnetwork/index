@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'bun:test';
 
 import { AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, describeAbFailure } from '../discovery.contract';
-import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery.main';
+import { AB_DEFAULT_REPETITIONS, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_MAX_REPETITIONS, abChildTimeoutMs, abRunReportPath, abRunShape, abSelectionFilters, finalizeAbChildArtifacts, formatAbRunArgs, parseAbRunArgs, resolveAbCases, resolveAbRunOutcome, withAbSpendAccounting } from '../discovery.main';
 import { buildAbPlan, type AbSide } from '../discovery.plan';
 
 import type { MatrixSlotResult } from '../discovery-env-matrix.main';
@@ -83,6 +83,28 @@ describe('parseAbRunArgs', () => {
     expect(buildAbPlan([testCase('c1')], selection.sides, selection.repetitions)).toHaveLength(2);
   });
 
+  it('parses --env into a single side a', () => {
+    const selection = parseAbRunArgs(['--runs', '1', '--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    expect(selection.sides).toHaveLength(1);
+    expect(selection.sides[0]).toEqual({ id: 'a', config: { DISCOVERY_ALLOWED_TYPES: 'intent' } });
+  });
+
+  it('plans one slot per case per repetition for a single run, not two', () => {
+    // The whole point of the shape: half the invocations, half the branches.
+    const selection = parseAbRunArgs(['--runs', '2', '--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    const plan = buildAbPlan([testCase('c1'), testCase('c2')], selection.sides, selection.repetitions);
+    expect(plan).toHaveLength(4);
+    expect(new Set(plan.map((slot) => slot.side.id))).toEqual(new Set(['a']));
+  });
+
+  it('accepts a single run whose one key would be asymmetric in a pair', () => {
+    // Symmetry and difference are rules about a comparison. Applied to one side
+    // they would refuse every valid single run, since there is no other side to
+    // match keys with.
+    const selection = parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    expect(() => buildAbPlan([testCase('c1')], selection.sides, 1)).not.toThrow();
+  });
+
   it.each([
     [['--case', '--runs', '1', ...configArgs], /--case requires a value/],
     [['--case', 'c1', '--case', 'c1', ...configArgs], /same case twice/],
@@ -97,6 +119,16 @@ describe('parseAbRunArgs', () => {
     [['--a', 'DISCOVERY_ALLOWED_TYPES', '--b', 'DISCOVERY_ALLOWED_TYPES=x'], /--a expects KEY=VALUE/],
     [['--a', 'X=1', '--a', 'X=2', '--b', 'X=3'], /--a sets X twice/],
     [['--a', '--b', 'X=1'], /--a requires a value/],
+    // The two ways of asking for neither shape or both. Both refusals are
+    // pre-flight and cost nothing, which is the point: a run that guessed would
+    // reset a branch first and be wrong afterwards.
+    [['--runs', '1'], /needs a configuration/],
+    [['--case', 'c1'], /--env KEY=VALUE to measure one/],
+    [['--env', 'X=1', '--a', 'Y=2', '--b', 'Y=3'], /pass one shape or the other/],
+    [['--env', 'X=1', '--b', 'Y=2'], /pass one shape or the other/],
+    [['--env', 'DISCOVERY_ALLOWED_TYPES'], /--env expects KEY=VALUE/],
+    [['--env', 'X=1', '--env', 'X=2'], /--env sets X twice/],
+    [['--env'], /--env requires a value/],
     [[...configArgs, '--report'], /--report requires a value/],
     [[...configArgs, '--report', '   '], /--report requires a value/],
     [[...configArgs, '--report', '/tmp/a.json', '--report', '/tmp/b.json'], /--report may be given at most once/],
@@ -116,6 +148,18 @@ describe('formatAbRunArgs', () => {
     const selection = parseAbRunArgs(['--case', 'c2', '--runs', '2', ...configArgs, '--force']);
     // --force is deliberately not forwarded: only the parent writes an artifact.
     expect(parseAbRunArgs(formatAbRunArgs(selection))).toEqual({ ...selection, force: false });
+  });
+
+  it('round-trips a single run as --env, not as a pair with a missing side', () => {
+    // The child re-parses these arguments and re-plans from them. Rendering a
+    // single run as --a would have it plan a comparison whose side b never
+    // existed, and the plan would refuse it after the branch was already reset.
+    const selection = parseAbRunArgs(['--case', 'c2', '--runs', '2', '--env', 'DISCOVERY_ALLOWED_TYPES=intent']);
+    const rendered = formatAbRunArgs(selection);
+    expect(rendered).toContain('--env');
+    expect(rendered).not.toContain('--a');
+    expect(rendered).not.toContain('--b');
+    expect(parseAbRunArgs(rendered)).toEqual({ ...selection, force: false });
   });
 
   it('is independent of the order the operator typed the flags in', () => {
@@ -221,6 +265,35 @@ describe('resolveAbRunOutcome', () => {
     expect(outcome.summary).toContain('side b 2/2');
   });
 
+  it('scores a single run without inventing a side it never had', () => {
+    const outcome = resolveAbRunOutcome({
+      slots: [complete[0]!, complete[1]!],
+      sides: [sides[0]],
+      expectedSlotsPerSide: 2,
+    });
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.verdict).toEqual([{ sideId: 'a', passes: 1, runs: 2, passRate: 0.5 }]);
+    expect(outcome.summary).toContain('side a 1/2');
+    // No "vs": there is nothing to be versus.
+    expect(outcome.summary).not.toContain('vs');
+    expect(outcome.summary).not.toContain('side b');
+  });
+
+  it('withholds a verdict from an incomplete single run, naming the real reason', () => {
+    // "A comparison with one side missing is not a comparison" would be false
+    // here — nothing is missing a side. What is wrong is that a pass rate over
+    // the slots that happened to succeed states no denominator.
+    const outcome = resolveAbRunOutcome({
+      slots: [complete[0]!, slot('a', 'c2/a/r1', 0, 0)],
+      sides: [sides[0]],
+      expectedSlotsPerSide: 2,
+    });
+    expect(outcome.verdict).toBeNull();
+    expect(outcome.exitCode).toBe(AB_EXIT_INSUFFICIENT_EVIDENCE);
+    expect(outcome.summary).toContain('states no denominator');
+    expect(outcome.summary).not.toContain('comparison');
+  });
+
   it('reports no verdict and exits non-zero when one side has a failed slot', () => {
     const slots = [complete[0]!, complete[1]!, complete[2]!, slot('b', 'c2/b/r1', 0, 0)];
     const outcome = resolveAbRunOutcome({ slots, sides, expectedSlotsPerSide: 2 });
@@ -274,9 +347,40 @@ describe('resolveAbRunOutcome', () => {
  * This is the wrapper `runAbParent` runs its whole body through, so what it
  * decides is what the operator's exit code is.
  */
+describe('abRunShape', () => {
+  /**
+   * The mapping the cost messages depend on. It is exported and pinned here
+   * because its only caller sits inside `runAbComparison`, which needs live
+   * Neon credentials and two branch resets to reach — so a deleted assignment
+   * there would otherwise be invisible, and would turn every single-run failure
+   * report into a claim that two branches were overwritten.
+   */
+  it('maps each selection to what it actually resets', () => {
+    expect(abRunShape(sides)).toBe('pair');
+    expect(abRunShape([sides[0]])).toBe('single');
+  });
+
+  it('agrees with what the parser produces for each shape of argv', () => {
+    expect(abRunShape(parseAbRunArgs(configArgs).sides)).toBe('pair');
+    expect(abRunShape(parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']).sides)).toBe('single');
+  });
+});
+
 describe('withAbSpendAccounting', () => {
   it('passes a successful run through untouched', async () => {
     await expect(withAbSpendAccounting(async () => undefined)).resolves.toBeUndefined();
+  });
+
+  it('carries the shape into the cost report, so a single run is not reported as two branches', async () => {
+    const thrown = await withAbSpendAccounting(async (progress) => {
+      progress.shape = abRunShape(parseAbRunArgs(['--env', 'DISCOVERY_ALLOWED_TYPES=intent']).sides);
+      progress.stage = 'reset';
+      throw new Error('boom');
+    }).catch((error: unknown) => error);
+    const report = describeAbFailure(thrown);
+    expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
+    expect(report.message).toContain('eval-ab-a');
+    expect(report.message).not.toContain('eval-ab-b');
   });
 
   it('leaves a failure before the first reset as the pre-flight refusal it is', async () => {

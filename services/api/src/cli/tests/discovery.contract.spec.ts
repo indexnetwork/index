@@ -138,9 +138,19 @@ describe('abUsage', () => {
   });
 
   it('states the reset-from-base behaviour and the no-baseline property', () => {
-    expect(usage).toContain('resets both attested');
+    expect(usage).toContain('resets the attested');
     expect(usage).toContain('eval-discovery-base');
     expect(usage).toContain('never reads, writes or compares a baseline');
+  });
+
+  it('says which branches each shape resets, since one of them costs half as much', () => {
+    // The reason an operator picks --env is that it resets one branch and runs
+    // one child. If the help text only described the pair, the cheaper shape
+    // would be invisible.
+    expect(usage).toContain('Exactly one of --env or --a/--b');
+    expect(usage).toContain('--env KEY=VALUE');
+    expect(usage).toContain('eval-ab-a alone with --env');
+    expect(usage).toContain('Neither\nrule applies to --env');
   });
 
   it('states what each exit code means, since two of them are failures with very different costs', () => {
@@ -264,8 +274,42 @@ describe('classifyAbParentFailure', () => {
     expect(report.message).toContain('provider spend and wall-clock time may already be gone');
     expect(report.message).not.toContain('wall-clock time are gone');
     // It is still certain about the two things the stage does fix.
-    expect(report.message).toContain('both A/B branches were reset');
+    expect(report.message).toContain('the A/B branches (eval-ab-a, eval-ab-b) were reset');
     expect(report.message).toContain('there is no verdict');
+  });
+
+  it('names one branch and one child after a single run, because two would be false', () => {
+    // A single run never opens eval-ab-b. Reporting "both A/B branches were
+    // reset" would send an operator to inspect a branch this run did not touch,
+    // and would double the spend they think they lost.
+    const report = describeAbFailure(
+      classifyAbParentFailure('spawned', new Error('child exited with code 2'), { shape: 'single' }),
+    );
+    expect(report.message).toContain('the A/B branch eval-ab-a was reset');
+    expect(report.message).not.toContain('eval-ab-b');
+    expect(report.message).not.toContain('both');
+    expect(report.message).toContain('pays for the whole run again');
+  });
+
+  it('assumes a pair when the shape is unknown, overstating rather than understating', () => {
+    // The default has to fail in the safe direction: claiming more was touched
+    // sends an operator to check a clean branch, where the reverse would tell
+    // them a dirty branch was untouched.
+    const unknown = classifyAbParentFailure('reset', new Error('boom')) as AbSpentRunError;
+    expect(unknown.shape).toBe('pair');
+    expect(unknown.message).toContain('eval-ab-b');
+  });
+
+  it('reports every stage truthfully for a single run', () => {
+    // Each stage authors its own sentence, so each needs its own check: a stage
+    // that forgot the shape would claim two branches at exactly the moment an
+    // operator is deciding what to go and clean up.
+    for (const stage of ['resetting', 'reset', 'spawned', 'written'] as const) {
+      const message = (classifyAbParentFailure(stage, new Error('boom'), { shape: 'single' }) as AbSpentRunError).message;
+      expect(message, `${stage} names eval-ab-b`).not.toContain('eval-ab-b');
+      expect(message, `${stage} claims both branches`).not.toContain('both branches');
+      expect(message, `${stage} omits the branch it did touch`).toContain('eval-ab-a');
+    }
   });
 
   it('keeps the original failure as a cause without ever printing it', () => {
