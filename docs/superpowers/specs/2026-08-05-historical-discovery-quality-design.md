@@ -1,9 +1,9 @@
 # Historical Discovery Quality — Design
 
-**Status:** Draft for written review
+**Status:** Approved
 **Date:** 2026-08-05
 **Scope:** `packages/protocol/eval/` and the existing API-owned discovery eval runtime
-**Linear project:** Historical Discovery Quality (to be created after written-spec approval)
+**Linear project:** [Historical Discovery Quality](https://linear.app/indexnetwork/project/historical-discovery-quality-258e7e9edd74)
 
 ## Purpose
 
@@ -207,29 +207,29 @@ Raw live artifacts remain in protected/internal run storage. The repository rece
 
 ### Milestone 1 — Trustworthy pilot
 
-1. **Lock historical discovery measurement contract**
+1. **IND-636 — Lock historical discovery measurement contract**
    - Encode corpus provenance/cutoffs, projection, stable identity, trigger shapes, deduplicated ranking, evaluator admission/submission states, failure-stage precedence, completeness-only transport fields, single-attempt workload cap, and one-factor A/B invariants in provider-free tests and types.
 
-2. **Re-source and harden the existing five historical pairs**
+2. **IND-637 — Re-source and harden the existing five historical pairs**
    - Add citations, repair unsupported reconstructions, complete adversarial anonymization review, and replace the composite source identity.
 
-3. **Run the five-pair shared-pool dual-trigger pilot**
+3. **IND-638 — Run the five-pair shared-pool dual-trigger pilot**
    - Build the pilot shared fixture with frozen reviewed premises/contexts, add the read-only base attestation, restore per slot, isolate caches, extend trigger/metric dimensions, verify both trigger shapes, and run one-case live smokes.
 
 ### Milestone 2 — Full corpus
 
-4. **Expand to 15 pairs and approximately 35 backgrounds**
+4. **IND-639 — Expand to 15 pairs and approximately 35 backgrounds**
    - Parent issue for small domain-batch authoring/review child issues. Batches may proceed in parallel only after issue 3 fixes the schema.
 
-5. **Integrate and verify historical corpus v2**
+5. **IND-640 — Integrate and verify historical corpus v2**
    - Assemble the full shared pool under one reviewed network prompt, seed/freeze derived retrieval artifacts, refresh the protected base deliberately, and prove fixture isolation/fingerprints before child resets.
 
 ### Milestone 3 — Measurements
 
-6. **Harden paired model and environment comparisons**
+6. **IND-641 — Harden paired model and environment comparisons**
    - Apply configuration at child spawn before model-dependent imports, record resolved provenance, enforce semantic one-factor comparisons, update workload pricing, and run a paired live smoke.
 
-7. **Run canonical measurements and publish findings**
+7. **IND-642 — Run canonical measurements and publish findings**
    - Run the default configuration and selected model/environment comparisons, publish the privacy-safe report, and create separate tuning issues from observed failures.
 
 Dependency spine: `1 → 2 → 3 → 5 → 6 → 7`. Issue 4 starts after issue 3 and also blocks issue 5.
