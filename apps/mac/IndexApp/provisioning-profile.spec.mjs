@@ -87,6 +87,37 @@ test('certificate lookup failure under inherited errexit reports the redacted di
   }
 });
 
+test('existing embedded profile reaches CMS decoding after temporary file creation', async () => {
+  const fixtureRoot = `${Bun.env.TMPDIR ?? '/tmp'}/index-embedded-profile-${crypto.randomUUID()}`;
+  const app = `${fixtureRoot}/index.app`;
+  const marker = `${fixtureRoot}/security-called`;
+  try {
+    await mkdir(`${app}/Contents`, { recursive: true });
+    await writeFile(`${app}/Contents/embedded.provisionprofile`, 'test profile placeholder');
+    await writeFile(`${app}/Contents/Info.plist`, `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>network.index.system6</string>
+</dict></plist>`);
+
+    const result = Bun.spawnSync([
+      'bash',
+      '-c',
+      'set -e; source "$1"; mktemp() { case "$1" in *XXXXXX) /usr/bin/mktemp "$1" ;; *) return 1 ;; esac; }; codesign() { printf "TeamIdentifier=TEAM123\\n"; }; security() { printf "called\\n" > "$SECURITY_MARKER"; return 1; }; validate_embedded_profile "$2" dev.index.network',
+      'test-shell',
+      helper,
+      app,
+    ], {
+      env: { ...Bun.env, SECURITY_MARKER: marker },
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain('could not be decoded');
+    expect(await Bun.file(marker).exists()).toBe(true);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 describe('Developer ID provisioning profile validation', () => {
   test('accepts an exact associated domain', async () => {
     expect(validate(await writeProfile()).exitCode).toBe(0);

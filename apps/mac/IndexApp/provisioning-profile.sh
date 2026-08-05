@@ -71,7 +71,7 @@ embed_provisioning_profile() (
   [ -f "$profile" ] || profile_error 'file does not exist'
   team_id="$(certificate_team_id "$identity")" || team_id=''
   [ -n "$team_id" ] || profile_error 'could not derive the signing team'
-  decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.XXXXXX.plist")"
+  decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.plist.XXXXXX")"
   trap 'rm -f "$decoded"' EXIT
   security cms -D -i "$profile" -o "$decoded" >/dev/null 2>&1 \
     || profile_error 'could not be decoded'
@@ -95,8 +95,8 @@ validate_embedded_profile() (
   decoded=''
   signed_entitlements=''
   trap '[ -z "$decoded" ] || rm -f "$decoded"; [ -z "$signed_entitlements" ] || rm -f "$signed_entitlements"' EXIT
-  decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.XXXXXX.plist")"
-  signed_entitlements="$(mktemp "${TMPDIR:-/tmp}/index-entitlements.XXXXXX.plist")"
+  decoded="$(mktemp "${TMPDIR:-/tmp}/index-profile.plist.XXXXXX")"
+  signed_entitlements="$(mktemp "${TMPDIR:-/tmp}/index-entitlements.plist.XXXXXX")"
 
   security cms -D -i "$profile" -o "$decoded" >/dev/null 2>&1 \
     || profile_error 'could not be decoded'
