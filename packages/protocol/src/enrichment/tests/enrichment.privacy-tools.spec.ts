@@ -127,15 +127,6 @@ describe("onboarding privacy profile tools", () => {
     expect(saveProfile).not.toHaveBeenCalled();
   });
 
-  it("preview accepts EdgeOS/event profile data", async () => {
-    const tool = tools.find((t) => t.name === "preview_user_context")!;
-    const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosProfileText: "Alice joined from an EdgeOS event." } }));
-
-    expect(result.success).toBe(true);
-    expect(enricher).not.toHaveBeenCalled();
-    expect(saveProfile).not.toHaveBeenCalled();
-  });
-
   it("preview uses staged signup data", async () => {
     onboarding = {
       profileSeeds: [{

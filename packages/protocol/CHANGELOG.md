@@ -35,11 +35,12 @@ pin a supported release, use `latest`.
   Major bump: removes a public tool and exported types. Enrichment opt-in/opt-out
   moves to a separate service, defined per implementation/application.
 - Remove public profile lookup from `preview_user_context` (10.0.0). The
-  `allowPublicLookup` parameter and the `publicLookup` identity-check block are
-  gone; the preview draft is built only from explicit text, EdgeOS/event data,
-  staged seeds, and user-provided social URLs. Public profile lookup moves to
-  the separate enrichment service. `create_user_context` (legacy) and
-  background member enrichment are unchanged.
+  `allowPublicLookup` parameter, the `publicLookup` identity-check block, and
+  the `edgeosProfileText` pass-through parameter are gone; the preview draft is
+  built only from explicit text, server-staged signup/import seeds, and
+  user-provided social URLs. Public profile lookup moves to the separate
+  enrichment service. `create_user_context` (legacy) and background member
+  enrichment are unchanged.
 
 ### Added
 - Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`

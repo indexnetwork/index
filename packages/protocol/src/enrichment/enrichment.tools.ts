@@ -169,14 +169,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     name?: string;
     location?: string;
     bioOrDescription?: string;
-    edgeosProfileText?: string;
     socials?: Array<{ label: string; value: string }>;
   }): string {
     const lines: string[] = [];
     if (parts.name) lines.push(`Name: ${parts.name}`);
     if (parts.location) lines.push(`Location: ${parts.location}`);
     if (parts.bioOrDescription) lines.push(parts.bioOrDescription);
-    if (parts.edgeosProfileText) lines.push(`Event-provided profile information:\n${parts.edgeosProfileText}`);
     if (parts.socials?.length) {
       lines.push(`User-provided public links:\n${parts.socials.map((s) => `${s.label}: ${s.value}`).join('\n')}`);
     }
@@ -484,13 +482,12 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     name: "preview_user_context",
     description:
       "Builds a structured profile draft for onboarding without saving anything. Use this before asking the user to approve the profile. " +
-      "This tool never runs public internet lookup; it uses only explicit text, EdgeOS/event data, staged signup/import seeds, and user-provided social URLs. " +
+      "This tool never runs public internet lookup; it uses only explicit text, staged signup/import seeds, and user-provided social URLs. " +
       "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_enrichment_run until status is `succeeded`, then present its `result`.",
     querySchema: z.object({
       name: z.string().optional().describe("Name explicitly provided by the user. The account identity is used first and this is only a fallback."),
-      location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
+      location: z.string().optional().describe("Location explicitly provided by the user."),
       bioOrDescription: z.string().optional().describe("Explicit self-description provided by the user."),
-      edgeosProfileText: z.string().optional().describe("EdgeOS/event profile text."),
       linkedinUrl: z.string().optional().describe("LinkedIn URL explicitly provided by the user."),
       githubUrl: z.string().optional().describe("GitHub URL explicitly provided by the user."),
       twitterUrl: z.string().optional().describe("X/Twitter URL explicitly provided by the user."),
@@ -518,7 +515,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       const name = seed?.name || accountName || query.name?.trim() || undefined;
       const location = query.location?.trim() || seed?.location || user.location || undefined;
       const bioOrDescription = query.bioOrDescription?.trim() || seed?.bio || user.intro || undefined;
-      const edgeosProfileText = query.edgeosProfileText?.trim() || undefined;
       const linkedinUrl = query.linkedinUrl?.trim();
       const githubUrl = query.githubUrl?.trim();
       const twitterUrl = query.twitterUrl?.trim();
@@ -531,11 +527,11 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
         ...websites.map((value) => ({ label: detectSocialLabel(value), value })),
       ];
 
-      const input = buildProfileInput({ name, location, bioOrDescription, edgeosProfileText, socials });
+      const input = buildProfileInput({ name, location, bioOrDescription, socials });
       if (!input.trim()) {
         return needsClarification({
           missingFields: ['profile_description'],
-          message: "Please share a short description, allowed EdgeOS profile text, or user-provided profile links so I can draft your profile.",
+          message: "Please share a short description or profile links so I can draft your profile.",
         });
       }
 
