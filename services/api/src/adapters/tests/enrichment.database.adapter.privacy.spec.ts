@@ -11,8 +11,8 @@ import { EnrichmentDatabaseAdapter } from '../enrichment.database.adapter';
 // reads `premises`, not the user_profiles table removed in WS8.
 const fromTables: unknown[] = [];
 let premiseRows: Array<{ id: string }> = [];
-const userRows = [{ onboarding: null, isGhost: false }];
-const networkRows = [{ permissions: [] as unknown }];
+const userRows = [{ id: 'u1' }];
+const networkRows = [{ id: 'n1' }];
 
 function makeQuery(rows: unknown[]) {
   const builder = {
@@ -43,8 +43,8 @@ describe('EnrichmentDatabaseAdapter.getEnrichmentPrivacyContext — enrichment s
     const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentPrivacyContext('u1', 'n1');
 
     expect(ctx.hasActivePremise).toBe(true);
-    expect(ctx.user).toEqual({ onboarding: null, isGhost: false });
-    expect(ctx.network).toEqual({ permissions: [] });
+    expect(ctx.userExists).toBe(true);
+    expect(ctx.networkExists).toBe(true);
     expect(fromTables).toContain(premises);
     expect(fromTables).toContain(users);
     expect(fromTables).toContain(networks);

@@ -1940,7 +1940,7 @@ Soft-delete a network. Owner only.
 
 ### POST /api/networks/:id/master-key
 
-Enable master-key signup on a network. Owner only, any network. Generates a master key, stores only its hash, and returns the plaintext exactly once — the caller must store it. Enabling forces consent-safe permissions on the network (`joinPolicy: 'invite_only'`, `profileEnrichment: 'consent_required'`, `allowGuestVibeCheck: false`) because key/import-provisioned users never pass a consenting UI; owners can change these permissions afterwards.
+Enable master-key signup on a network. Owner only, any network. Generates a master key, stores only its hash, and returns the plaintext exactly once — the caller must store it. Enabling forces `joinPolicy: 'invite_only'` on the network so key-provisioned networks are not openly joinable; owners can change the permissions afterwards.
 
 **Auth**: `AuthGuard` (session or API key)
 
@@ -2160,7 +2160,7 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding. Enabling master-key signup forces `profileEnrichment: 'consent_required'` on the network, so automatic public enrichment jobs carry `networkId`/reason context and self-skip until the user records public profile lookup consent during onboarding.
+Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding.
 
 **Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key (issued once when master-key signup is enabled via `POST /api/networks/:id/master-key`, stored by the caller).
 
@@ -2278,7 +2278,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, any 
 
 ### POST /api/networks/:id/members/import
 
-Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding. Running an import forces `profileEnrichment: 'consent_required'` and `allowGuestVibeCheck: false` on the network, because imported users never pass a consenting UI; public profile enrichment is skipped until consent is recorded.
+Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2307,7 +2307,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, any n
 
 ### POST /api/networks/:id/members/invite
 
-Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is. Inviting forces `profileEnrichment: 'consent_required'` and `allowGuestVibeCheck: false` on the network, because invited users never pass a consenting UI.
+Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
 
 **Auth**: `AuthGuard`; caller must own the network.
 

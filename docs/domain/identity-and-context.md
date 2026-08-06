@@ -51,9 +51,9 @@ The synthesis pipeline that produces identity and context from raw data is calle
 
 ### Web scraping
 
-When a user connects social accounts or provides URLs (LinkedIn, GitHub, personal website), the system can scrape publicly available information and feed it to enrichment. Networks may opt into `profileEnrichment: 'consent_required'`, in which case automatic member-enrichment jobs run public lookup only after `privacy.publicProfileLookup.granted === true`; `profileEnrichment: 'disabled'` blocks network-triggered public enrichment entirely. Missing policy means `auto` for backward compatibility.
+When a user connects social accounts or provides URLs (LinkedIn, GitHub, personal website), the system can scrape publicly available information and feed it to enrichment. Network-triggered public enrichment runs automatically for members; the former `profileEnrichment` network permission has been removed, and any leftover value in stored permissions JSON is ignored.
 
-> The `profileEnrichment` network policy and the `publicProfileLookup` consent key are persisted/serialized identifiers and are retained as-is.
+> The `publicProfileLookup` consent key is a persisted/serialized identifier and is retained as-is.
 
 ### Event/import seeds and onboarding drafts
 

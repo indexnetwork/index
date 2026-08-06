@@ -16,16 +16,14 @@ function createQueue(deps: EnrichmentQueueDeps = {}): EnrichmentQueue {
   return new EnrichmentQueue({ queue: queue as never, ...deps });
 }
 
-const allow = (policy: EnrichmentPrivacyDecision['policy'] = 'auto'): EnrichmentPrivacyDecision => ({
+const allow = (): EnrichmentPrivacyDecision => ({
   allowed: true,
-  policy,
   reason: 'ok',
   hasExistingProfile: false,
 });
 
-const deny = (reason: string, policy: EnrichmentPrivacyDecision['policy'] = 'consent_required'): EnrichmentPrivacyDecision => ({
+const deny = (reason: string): EnrichmentPrivacyDecision => ({
   allowed: false,
-  policy,
   reason,
   hasExistingProfile: false,
 });
@@ -40,12 +38,12 @@ describe('EnrichmentQueue', () => {
     expect(mockAdd).toHaveBeenCalledWith('ensure_profile_hyde', data, expect.any(Object));
   });
 
-  it('skips enrich.user under consent_required without consent', async () => {
+  it('skips enrich.user when the privacy check denies enrichment', async () => {
     const invokeEnrichUser = mock(async (_userId: string) => {});
     const onComplete = mock((_userId: string) => {});
     const queue = createQueue({
       invokeEnrichUser,
-      checkPrivacy: async () => deny('public_profile_lookup_consent_missing'),
+      checkPrivacy: async () => deny('user_not_found'),
     });
     queue.onEnrichmentComplete = onComplete;
 
@@ -55,12 +53,12 @@ describe('EnrichmentQueue', () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
-  it('runs enrich.user when consent_required policy is allowed', async () => {
+  it('runs enrich.user when the privacy check allows enrichment', async () => {
     const invokeEnrichUser = mock(async (_userId: string) => {});
     const onComplete = mock((_userId: string) => {});
     const queue = createQueue({
       invokeEnrichUser,
-      checkPrivacy: async () => allow('consent_required'),
+      checkPrivacy: async () => allow(),
     });
     queue.onEnrichmentComplete = onComplete;
 
@@ -70,23 +68,11 @@ describe('EnrichmentQueue', () => {
     expect(onComplete).toHaveBeenCalledWith('u1');
   });
 
-  it('skips ghost users under consent_required policy', async () => {
-    const invokeEnrichUser = mock(async (_userId: string) => {});
-    const queue = createQueue({
-      invokeEnrichUser,
-      checkPrivacy: async () => deny('ghost_user_cannot_consent'),
-    });
-
-    await queue.processJob('enrich.user', { userId: 'ghost', networkId: 'n1', reason: 'experiment_import' });
-
-    expect(invokeEnrichUser).not.toHaveBeenCalled();
-  });
-
   it('skips stale jobs when the scoped network is missing', async () => {
     const invokeEnrichUser = mock(async (_userId: string) => {});
     const queue = createQueue({
       invokeEnrichUser,
-      checkPrivacy: async () => deny('network_not_found', 'disabled'),
+      checkPrivacy: async () => deny('network_not_found'),
     });
 
     await queue.processJob('enrich.user', { userId: 'u1', networkId: 'deleted-network', reason: 'experiment_import' });
@@ -94,11 +80,11 @@ describe('EnrichmentQueue', () => {
     expect(invokeEnrichUser).not.toHaveBeenCalled();
   });
 
-  it('skips ensure_profile_hyde for missing profile when policy denies', async () => {
+  it('skips ensure_profile_hyde when the privacy check denies', async () => {
     const invokeProfileWrite = mock(async (_userId: string) => {});
     const queue = createQueue({
       invokeProfileWrite,
-      checkPrivacy: async () => deny('public_profile_lookup_consent_missing'),
+      checkPrivacy: async () => deny('user_not_found'),
     });
 
     await queue.processJob('ensure_profile_hyde', { userId: 'u1', networkId: 'n1', reason: 'network_membership' });
@@ -110,7 +96,7 @@ describe('EnrichmentQueue', () => {
     const invokeProfileWrite = mock(async (_userId: string) => {});
     const queue = createQueue({
       invokeProfileWrite,
-      checkPrivacy: async () => ({ ...allow('consent_required'), reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile: true }),
+      checkPrivacy: async () => ({ ...allow(), reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile: true }),
     });
 
     await queue.processJob('ensure_profile_hyde', { userId: 'u1', networkId: 'n1', reason: 'network_membership' });

@@ -55,14 +55,11 @@ export interface OnboardingState {
   profileSeeds?: OnboardingProfileSeed[];
 }
 
-export type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
-
 export interface NetworkPermissionsState {
   joinPolicy: 'anyone' | 'invite_only';
   invitationLink: { code: string } | null;
   allowGuestVibeCheck: boolean;
   contextInjection?: { discovery: boolean };
-  profileEnrichment?: ProfileEnrichmentPolicy;
 }
 
 /**

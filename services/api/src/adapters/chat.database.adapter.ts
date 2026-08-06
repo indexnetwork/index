@@ -1665,7 +1665,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1696,13 +1696,12 @@ export class ChatDatabaseAdapter {
       };
     }
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
-    if (data.contextInjection !== undefined || data.profileEnrichment !== undefined) {
+    if (data.contextInjection !== undefined) {
       const currentPerms = (existing.permissions as unknown as Record<string, unknown> | null) ?? {};
       updateData.permissions = {
         ...currentPerms,
         ...((updateData.permissions as Record<string, unknown>) ?? {}),
-        ...(data.contextInjection !== undefined && { contextInjection: data.contextInjection }),
-        ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
+        contextInjection: data.contextInjection,
       };
     }
 
@@ -1771,7 +1770,6 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
         invitationLink: perms.invitationLink ?? null,
         ...(perms.contextInjection !== undefined && { contextInjection: perms.contextInjection }),
-        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
       },
       isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
@@ -1977,7 +1975,6 @@ export class ChatDatabaseAdapter {
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
     allowGuestVibeCheck?: boolean;
-    profileEnrichment?: schema.ProfileEnrichmentPolicy;
     metadata?: Record<string, unknown>;
   }): Promise<{
     id: string;
@@ -1992,7 +1989,6 @@ export class ChatDatabaseAdapter {
       joinPolicy: finalJoinPolicy,
       invitationLink: { code: crypto.randomUUID() },
       allowGuestVibeCheck: data.allowGuestVibeCheck ?? false,
-      ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
     };
     const [row] = await db
       .insert(networks)
@@ -2026,7 +2022,6 @@ export class ChatDatabaseAdapter {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
         invitationLink: perms.invitationLink ?? null,
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
-        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
       },
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
     };

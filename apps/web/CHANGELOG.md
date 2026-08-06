@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Removed
+- Remove the "Automatic Member Enrichment" policy section from network Access
+  settings (web 0.49.0); the backing `profileEnrichment` network permission was
+  removed from the API. Enrichment preferences will move to a separate service,
+  defined per implementation/application rather than per network.
+
 ### Changed
 
 - Make the intent workspace Personal Agent and Radar columns equal width (50/50) on desktop (lg+), replacing the previous 40/60 split (IND-503).

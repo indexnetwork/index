@@ -3,14 +3,14 @@ import { describe, expect, it } from 'bun:test';
 import { EnrichmentQueue } from '../enrichment.queue';
 
 // The adapter's data-source behavior is covered separately. These tests inject
-// its narrow read contract and exercise the queue's real policy decision logic.
+// its narrow read contract and exercise the queue's real decision logic.
 let privacyContext: {
-  user: { onboarding: unknown; isGhost: boolean } | null;
-  network: { permissions: unknown } | null;
+  userExists: boolean;
+  networkExists: boolean;
   hasActivePremise: boolean;
 } = {
-  user: { onboarding: null, isGhost: false },
-  network: { permissions: [] },
+  userExists: true,
+  networkExists: true,
   hasActivePremise: false,
 };
 const privacyContextCalls: Array<[string, string]> = [];
@@ -36,8 +36,8 @@ describe('EnrichmentQueue.resolvePrivacyDecision — enrichment signal (WS10)', 
   it('keys hasExistingProfile on the adapter-reported ACTIVE premise', async () => {
     privacyContextCalls.length = 0;
     privacyContext = {
-      user: { onboarding: null, isGhost: false },
-      network: { permissions: [] },
+      userExists: true,
+      networkExists: true,
       hasActivePremise: true,
     };
 
@@ -52,8 +52,8 @@ describe('EnrichmentQueue.resolvePrivacyDecision — enrichment signal (WS10)', 
   it('treats a user with no ACTIVE premises as not-yet-enriched', async () => {
     privacyContextCalls.length = 0;
     privacyContext = {
-      user: { onboarding: null, isGhost: false },
-      network: { permissions: [] },
+      userExists: true,
+      networkExists: true,
       hasActivePremise: false,
     };
 
@@ -67,14 +67,14 @@ describe('EnrichmentQueue.resolvePrivacyDecision — enrichment signal (WS10)', 
   it('short-circuits before any adapter read when the job has no network', async () => {
     privacyContextCalls.length = 0;
     privacyContext = {
-      user: { onboarding: null, isGhost: false },
-      network: { permissions: [] },
+      userExists: true,
+      networkExists: true,
       hasActivePremise: true,
     };
 
     const decision = await callGate({ userId: 'u3' });
 
-    expect(decision.reason).toBe('no_network_policy');
+    expect(decision.reason).toBe('no_network_scope');
     expect(privacyContextCalls).toHaveLength(0);
   });
 });

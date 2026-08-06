@@ -9,6 +9,18 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- Remove the network-level enrichment consent flow and the `profileEnrichment`
+  network permission entirely (API 0.76.0). The `consent_required` policy, the
+  `forceHeadlessProvisioningPermissions` consent-safe forcing on invites, CSV
+  imports, and master-key enablement, and the `auto`/`disabled` setting itself
+  are gone; enabling a master key now forces only `joinPolicy: 'invite_only'`.
+  The enrichment queue gate reduces to user/network existence plus the
+  active-premise short-circuit, and leftover `profileEnrichment` values in
+  stored permissions JSON are ignored. Enrichment opt-in/opt-out is planned to
+  move to a separate service, defined per implementation/application rather
+  than per network.
+
 ### Added
 - Wire the MCP authorization-observability seam at the host boundary (IND-581;
   protocol 7.8.0, API 0.64.0). The composition root now injects a concrete

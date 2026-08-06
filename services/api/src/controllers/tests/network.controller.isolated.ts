@@ -398,15 +398,13 @@ describe("NetworkController Integration", () => {
       expect(data.masterKey!.length).toBe(64);
     });
 
-    test("forces joinPolicy invite_only while preserving invitationLink", async () => {
-      // Seed non-consent-safe permissions with an invitation link to preserve.
+    test("forces joinPolicy invite_only while preserving other permissions", async () => {
       await db.update(schema.networks)
         .set({
           permissions: {
             joinPolicy: 'anyone',
             invitationLink: { code: 'preserve-me' },
             allowGuestVibeCheck: true,
-            profileEnrichment: 'auto',
           },
         })
         .where(eq(schema.networks.id, enableNetworkId));
@@ -422,8 +420,7 @@ describe("NetworkController Integration", () => {
         .from(schema.networks)
         .where(eq(schema.networks.id, enableNetworkId));
       expect(net.permissions.joinPolicy).toBe('invite_only');
-      expect(net.permissions.allowGuestVibeCheck).toBe(false);
-      expect(net.permissions.profileEnrichment).toBe('consent_required');
+      expect(net.permissions.allowGuestVibeCheck).toBe(true);
       expect(net.permissions.invitationLink).toEqual({ code: 'preserve-me' });
     });
 

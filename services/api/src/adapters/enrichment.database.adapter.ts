@@ -34,28 +34,27 @@ export class EnrichmentDatabaseAdapter {
   }
 
   /**
-   * Reads needed to make a public-enrichment privacy decision for (user, network):
-   * the user's onboarding/ghost flags, the network's permissions JSON, and whether the
-   * user has any ACTIVE premise. "Has been enriched?" keys on ACTIVE premises — the
-   * source of truth — not a user_profiles row (WS10/IND-367). Returns null user/network
-   * when the row is absent or soft-deleted.
+   * Reads needed to gate enrichment for (user, network): whether the user and
+   * network rows exist (not soft-deleted) and whether the user has any ACTIVE
+   * premise. "Has been enriched?" keys on ACTIVE premises — the source of
+   * truth — not a user_profiles row (WS10/IND-367).
    * @param userId - The user being enriched
-   * @param networkId - The network whose enrichment policy gates the decision
-   * @returns user (onboarding + ghost flag), network (permissions), and hasActivePremise
+   * @param networkId - The network scoping the enrichment job
+   * @returns userExists, networkExists, and hasActivePremise
    */
   async getEnrichmentPrivacyContext(userId: string, networkId: string): Promise<{
-    user: { onboarding: OnboardingState | null | undefined; isGhost: boolean } | null;
-    network: { permissions: Record<string, unknown> | null } | null;
+    userExists: boolean;
+    networkExists: boolean;
     hasActivePremise: boolean;
   }> {
     const [[user], [network], [premise]] = await Promise.all([
       this.database
-        .select({ onboarding: schema.users.onboarding, isGhost: schema.users.isGhost })
+        .select({ id: schema.users.id })
         .from(schema.users)
         .where(and(eq(schema.users.id, userId), isNull(schema.users.deletedAt)))
         .limit(1),
       this.database
-        .select({ permissions: schema.networks.permissions })
+        .select({ id: schema.networks.id })
         .from(schema.networks)
         .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
         .limit(1),
@@ -66,8 +65,8 @@ export class EnrichmentDatabaseAdapter {
         .limit(1),
     ]);
     return {
-      user: user ? { onboarding: user.onboarding as OnboardingState | null | undefined, isGhost: user.isGhost } : null,
-      network: network ? { permissions: network.permissions as unknown as Record<string, unknown> | null } : null,
+      userExists: !!user,
+      networkExists: !!network,
       hasActivePremise: !!premise,
     };
   }

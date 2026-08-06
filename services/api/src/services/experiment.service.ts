@@ -5,7 +5,6 @@ import { log } from '../lib/log';
 import { experimentImportCredentialsTemplate } from '../lib/email/templates/experiment-import-credentials.template';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
-import { forceHeadlessProvisioningPermissions } from '../lib/network-permissions';
 import * as schema from '../schemas/database.schema';
 
 /**
@@ -171,11 +170,6 @@ export class ExperimentService {
     networkId: string,
     rows: ImportRow[],
   ): Promise<{ imported: number; skipped: number; ownersNotified: number }> {
-    // CSV import is headless provisioning: imported users never pass a
-    // consenting UI, so the network is forced to consent-safe permissions
-    // (profileEnrichment: 'consent_required', allowGuestVibeCheck: false).
-    await forceHeadlessProvisioningPermissions(networkId);
-
     let imported = 0;
     let skipped = 0;
     const credentials: ImportCredential[] = [];
