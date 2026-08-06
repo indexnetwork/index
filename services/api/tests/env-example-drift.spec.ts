@@ -102,4 +102,9 @@ describe('root .env.example ↔ startup.env.ts schema', () => {
       "NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional()",
     );
   });
+
+  it('keeps OPPORTUNITY_OWNER_APPROVAL_SECRET optional', () => {
+    expect(schemaSource).toContain('OPPORTUNITY_OWNER_APPROVAL_SECRET: z.string().optional()');
+    expect(schemaSource).not.toContain('OPPORTUNITY_OWNER_APPROVAL_SECRET: requiredInProduction');
+  });
 });
