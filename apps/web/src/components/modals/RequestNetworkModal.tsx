@@ -80,7 +80,7 @@ export default function RequestNetworkModal({ open, onOpenChange, onSubmit, init
                 Since networks are still early, we may reach out with a few questions about what you&apos;re building.
               </p>
               <div className="mt-6">
-                <Button type="button" onClick={() => onOpenChange(false)}>Back to networks</Button>
+                <Button type="button" onClick={() => onOpenChange(false)}>Close</Button>
               </div>
             </div>
           ) : (

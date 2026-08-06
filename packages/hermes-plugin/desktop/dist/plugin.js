@@ -1053,7 +1053,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           "We’re reviewing ", React.createElement("strong", null, (done && done.title) || trimmed),
           " and will get back to you shortly."),
         React.createElement("div", { className: "index-dashboard__net-request-actions" },
-          React.createElement(Button, { type: "button", size: "sm", onClick: props.onClose }, "Back to networks"),
+          React.createElement(Button, { type: "button", size: "sm", onClick: props.onClose }, "Close"),
         ),
       );
     }
