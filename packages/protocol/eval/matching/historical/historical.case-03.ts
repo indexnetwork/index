@@ -12,16 +12,16 @@ const source = {
 } as const;
 
 const partner = {
-  bio: "Teenage popular-music enthusiast who demonstrated practical guitar capability, including tuning and performance from memory.",
+  bio: "Teenage popular-music player with demonstrated guitar ability.",
   location: "",
-  interests: ["popular music", "guitar", "instrument practice"],
-  skills: ["guitar playing", "instrument tuning", "musical memory"],
+  interests: ["popular music", "guitar"],
+  skills: ["guitar playing"],
   intent: "Perform popular music on guitar.",
 } as const;
 
 const semanticNegatives = {
   "h3-c": "Same-side group leader seeks another guitarist but is not available to join and strengthen the source participant’s group.",
-  "h3-d": "Non-performing promoter can arrange events but cannot provide the required guitar performance skill.",
+  "h3-d": "Non-performing promoter can arrange performances but cannot provide the required guitar performance skill.",
   "h3-e": "Technically trained musician has strong instrumental skill but is uninterested in popular group performance.",
 } as const;
 
@@ -78,9 +78,9 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-description",
-    text: "An amateur group leader seeking stronger guitar capability is paired with a player who demonstrated relevant instrumental skills before being invited to join.",
-    basisClaimIds: ["fact-guitarist-recruitment", "fact-partner-guitar-demonstration", "fact-northern-england-meeting"],
-    rationale: "Generalizes the evidenced recruitment need and demonstrated pre-invitation capabilities without place, songwriting, or later-success clues.",
+    text: "A teenage amateur-group leader seeking stronger guitar capability is paired with a teenage popular-music player with demonstrated guitar ability.",
+    basisClaimIds: ["fact-guitarist-recruitment", "fact-partner-guitar-demonstration"],
+    rationale: "Generalizes the evidenced recruitment need and demonstrated guitar capability without identifying details or the invitation sequence.",
   },
   {
     kind: "derived",
@@ -94,7 +94,7 @@ const claims: HistoricalClaim[] = [
     id: "model-popular-music",
     text: "popular music",
     basisClaimIds: ["fact-source-group-performance", "fact-partner-guitar-demonstration"],
-    rationale: "Broad shared interest supported by the source group’s repertoire and the partner’s demonstrated contemporary-song recall.",
+    rationale: "Broad shared interest supported by the source group's performance and the partner's demonstrated guitar playing.",
   },
   {
     kind: "derived",
@@ -142,15 +142,8 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-partner-bio",
     text: partner.bio,
-    basisClaimIds: ["fact-partner-guitar-demonstration", "fact-northern-england-meeting"],
-    rationale: "Generalizes the documented teenage musician and pre-invitation guitar demonstration without place, song title, or songwriting details.",
-  },
-  {
-    kind: "derived",
-    id: "model-partner-instrument-practice",
-    text: "instrument practice",
     basisClaimIds: ["fact-partner-guitar-demonstration"],
-    rationale: "Generalizes the documented guitar performance at the first meeting.",
+    rationale: "Generalizes only the documented teenage musician and demonstrated guitar ability.",
   },
   {
     kind: "derived",
@@ -158,20 +151,6 @@ const claims: HistoricalClaim[] = [
     text: "guitar playing",
     basisClaimIds: ["fact-partner-guitar-demonstration"],
     rationale: "Uses the capability demonstrated at the first meeting.",
-  },
-  {
-    kind: "derived",
-    id: "model-partner-tuning",
-    text: "instrument tuning",
-    basisClaimIds: ["fact-partner-guitar-demonstration"],
-    rationale: "Generalizes the documented ability to tune the instrument.",
-  },
-  {
-    kind: "derived",
-    id: "model-partner-song-recall",
-    text: "musical memory",
-    basisClaimIds: ["fact-partner-guitar-demonstration"],
-    rationale: "Conservative capability abstraction from accurately remembering and performing contemporary songs.",
   },
   {
     kind: "derived",
@@ -183,13 +162,12 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-network-context",
-    text: "An amateur popular-music setting connecting a group leader with other instrumentalists.",
+    text: "An amateur popular-music setting connecting a group leader with other guitar players.",
     basisClaimIds: ["fact-source-group-performance", "fact-partner-guitar-demonstration"],
-    rationale: "Generalizes the documented amateur-performance setting without region, event, song, or group details.",
+    rationale: "Generalizes the documented amateur-music setting without identifying details.",
   },
   ...[
-    ["h3-c-bio", "Teenage guitarist who already leads a local popular-music group and wants an additional player for that group."],
-    ["h3-c-location", "Northern England"],
+    ["h3-c-bio", "Teenage guitarist who already leads an amateur popular-music group and wants an additional player for that group."],
     ["h3-c-interest-popular", "popular music"],
     ["h3-c-interest-guitar", "guitar"],
     ["h3-c-skill-guitar", "guitar playing"],
@@ -203,13 +181,12 @@ const claims: HistoricalClaim[] = [
     violatedRequirement: semanticNegatives["h3-c"],
   })),
   ...[
-    ["h3-d-bio", "Local event promoter who arranges performance opportunities but does not perform music."],
-    ["h3-d-location", "Northern England"],
-    ["h3-d-interest-events", "community events"],
+    ["h3-d-bio", "Performance promoter who arranges appearances but does not perform music."],
+    ["h3-d-interest-performance", "performance promotion"],
     ["h3-d-interest-promotion", "music promotion"],
-    ["h3-d-skill-booking", "event booking"],
+    ["h3-d-skill-booking", "performance booking"],
     ["h3-d-skill-publicity", "publicity"],
-    ["h3-d-intent", "Arrange event appearances for amateur groups without joining as a performer."],
+    ["h3-d-intent", "Arrange performance appearances for amateur groups without joining as a performer."],
   ].map(([id, text]) => ({
     kind: "authored" as const,
     id: id!,
@@ -219,7 +196,6 @@ const claims: HistoricalClaim[] = [
   })),
   ...[
     ["h3-e-bio", "Technically trained instrumentalist focused on formal recital work and uninterested in popular group performance."],
-    ["h3-e-location", "Northern England"],
     ["h3-e-interest-recitals", "formal recitals"],
     ["h3-e-interest-technique", "instrumental technique"],
     ["h3-e-skill-reading", "sight-reading"],
@@ -239,7 +215,7 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
   rule: "historical",
   tier: 3,
   domains: ["arts"],
-  description: "An amateur group leader seeking stronger guitar capability is paired with a player who demonstrated relevant instrumental skills before being invited to join.",
+  description: "A teenage amateur-group leader seeking stronger guitar capability is paired with a teenage popular-music player with demonstrated guitar ability.",
   input: {
     discovererId: "h3-a",
     entities: [
@@ -272,8 +248,8 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
         userId: "h3-c",
         profile: {
           name: "Participant C",
-          bio: "Teenage guitarist who already leads a local popular-music group and wants an additional player for that group.",
-          location: "Northern England",
+          bio: "Teenage guitarist who already leads an amateur popular-music group and wants an additional player for that group.",
+          location: "",
           interests: ["popular music", "guitar"],
           skills: ["guitar playing", "group leadership"],
         },
@@ -285,12 +261,12 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
         userId: "h3-d",
         profile: {
           name: "Participant D",
-          bio: "Local event promoter who arranges performance opportunities but does not perform music.",
-          location: "Northern England",
-          interests: ["community events", "music promotion"],
-          skills: ["event booking", "publicity"],
+          bio: "Performance promoter who arranges appearances but does not perform music.",
+          location: "",
+          interests: ["performance promotion", "music promotion"],
+          skills: ["performance booking", "publicity"],
         },
-        intents: [{ intentId: "h3-d-1", payload: "Arrange event appearances for amateur groups without joining as a performer." }],
+        intents: [{ intentId: "h3-d-1", payload: "Arrange performance appearances for amateur groups without joining as a performer." }],
         networkId: NETWORK_ID,
         ragScore: 70,
       },
@@ -299,7 +275,7 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
         profile: {
           name: "Participant E",
           bio: "Technically trained instrumentalist focused on formal recital work and uninterested in popular group performance.",
-          location: "Northern England",
+          location: "",
           interests: ["formal recitals", "instrumental technique"],
           skills: ["sight-reading", "instrumental performance"],
         },
@@ -309,7 +285,7 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
       },
     ],
     networkContexts: {
-      [NETWORK_ID]: "An amateur popular-music setting connecting a group leader with other instrumentalists.",
+      [NETWORK_ID]: "An amateur popular-music setting connecting a group leader with other guitar players.",
     },
   },
   expect: [
@@ -380,27 +356,21 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
       "/input/entities/1/profile/bio": ["model-partner-bio"],
       "/input/entities/1/profile/interests/0": ["model-popular-music"],
       "/input/entities/1/profile/interests/1": ["model-guitar"],
-      "/input/entities/1/profile/interests/2": ["model-partner-instrument-practice"],
       "/input/entities/1/profile/skills/0": ["model-partner-guitar-playing"],
-      "/input/entities/1/profile/skills/1": ["model-partner-tuning"],
-      "/input/entities/1/profile/skills/2": ["model-partner-song-recall"],
       "/input/entities/1/intents/0/payload": ["model-partner-intent"],
       "/input/entities/2/profile/bio": ["h3-c-bio"],
-      "/input/entities/2/profile/location": ["h3-c-location"],
       "/input/entities/2/profile/interests/0": ["h3-c-interest-popular"],
       "/input/entities/2/profile/interests/1": ["h3-c-interest-guitar"],
       "/input/entities/2/profile/skills/0": ["h3-c-skill-guitar"],
       "/input/entities/2/profile/skills/1": ["h3-c-skill-leadership"],
       "/input/entities/2/intents/0/payload": ["h3-c-intent"],
       "/input/entities/3/profile/bio": ["h3-d-bio"],
-      "/input/entities/3/profile/location": ["h3-d-location"],
-      "/input/entities/3/profile/interests/0": ["h3-d-interest-events"],
+      "/input/entities/3/profile/interests/0": ["h3-d-interest-performance"],
       "/input/entities/3/profile/interests/1": ["h3-d-interest-promotion"],
       "/input/entities/3/profile/skills/0": ["h3-d-skill-booking"],
       "/input/entities/3/profile/skills/1": ["h3-d-skill-publicity"],
       "/input/entities/3/intents/0/payload": ["h3-d-intent"],
       "/input/entities/4/profile/bio": ["h3-e-bio"],
-      "/input/entities/4/profile/location": ["h3-e-location"],
       "/input/entities/4/profile/interests/0": ["h3-e-interest-recitals"],
       "/input/entities/4/profile/interests/1": ["h3-e-interest-technique"],
       "/input/entities/4/profile/skills/0": ["h3-e-skill-reading"],
