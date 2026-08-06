@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Removed
+- Remove the "Automatic Member Enrichment" policy section from network Access
+  settings (web 0.49.0); the backing `profileEnrichment` network permission was
+  removed from the API. Enrichment preferences will move to a separate service,
+  defined per implementation/application rather than per network.
+
 ### Changed
 
 - Make the intent workspace Personal Agent and Radar columns equal width (50/50) on desktop (lg+), replacing the previous 40/60 split (IND-503).
@@ -33,7 +39,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Replace flag-on web onboarding with a restricted two-phase handoff (IND-450): explicit public-lookup consent and approved profile persistence first, followed by the same extracted live guided-signal renderer used by `/i/new`. Exact intent confirmation is idempotent and retry-safe, onboarding completion is awaited before deferred invitation acceptance/membership refresh/navigation, refresh recovery resumes the exact created signal, and successful handoff opens `/i/:intentId`; flag-off retains the legacy page.
+- Replace flag-on web onboarding with a restricted two-phase handoff (IND-450): profile review and confirmation first, followed by the same extracted live guided-signal renderer used by `/i/new`. Automatic enrichment no longer depends on an onboarding public-lookup consent step. Exact intent confirmation is idempotent and retry-safe, onboarding completion is awaited before deferred invitation acceptance/membership refresh/navigation, refresh recovery resumes the exact created signal, and successful handoff opens `/i/:intentId`; flag-off retains the legacy page.
 - Add the reporter cleanup-action proposal card for strict `agent_action_proposal` fences, canonical owner-and-conversation-scoped hydration before rendering or confirmation, exact narrow-signal replacement copy, hydrated reporter-session read-only safety, idempotent replay results, and inert malformed, partial, or failed-hydration retry handling (IND-493).
 - Add the flag-gated read-only Reporter Agent surface on `/agent` (IND-476): opening briefings use the shared reporter kickoff marker, status counts use fetched signals and pending questions, and suggested asks route through the reporter persona.
 - Add unread indicators to conversation rows and a thread-count badge to the Chats navigation entry, with mark-read wiring for open threads (IND-475).

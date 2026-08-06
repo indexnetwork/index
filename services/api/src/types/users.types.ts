@@ -12,19 +12,6 @@ export interface NotificationPreferences {
   weeklyNewsletter: boolean;
 }
 
-export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
-
-export interface PrivacyConsentDecision {
-  granted: boolean;
-  decidedAt: ISODateString;
-  source: PrivacyConsentSource;
-}
-
-export interface OnboardingPrivacyState {
-  edgeosImport?: PrivacyConsentDecision;
-  publicProfileLookup?: PrivacyConsentDecision;
-}
-
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
   networkId: UUID;
@@ -43,7 +30,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: UUID | null;
   invitationCode?: string;
-  privacy?: OnboardingPrivacyState;
   profileSeeds?: OnboardingProfileSeed[];
 }
 

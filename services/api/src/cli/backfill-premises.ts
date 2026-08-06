@@ -16,6 +16,7 @@ import { and, eq, isNull } from 'drizzle-orm/sql';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { networkMembers, users } from '../schemas/database.schema';
 import { enrichmentQueue } from '../queues/enrichment.queue';
+import { buildBackfillEnrichmentItems } from './backfill-premises.payload';
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -78,7 +79,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const items = members.map((m) => ({ userId: m.userId }));
+  const items = buildBackfillEnrichmentItems(members, networkId);
   const jobs = await enrichmentQueue.addEnrichUserJobBulk(items);
   console.log(`Enqueued ${jobs.length} enrichment jobs`);
 }

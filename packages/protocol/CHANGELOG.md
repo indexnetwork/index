@@ -22,6 +22,26 @@ pin a supported release, use `latest`.
 
 ## [Unreleased]
 
+### Removed
+- Remove the onboarding privacy-consent layer (10.0.0). The
+  `record_onboarding_privacy_consent` tool is gone from the tool registry, the
+  onboarding persona/prompt, the MCP authorization matrix and onboarding
+  allowlist, and the MCP onboarding-gate instructions. `preview_user_context`
+  no longer gates EdgeOS/event data on recorded consent, and staged profile
+  seeds are used without an import-consent check. The
+  `OnboardingPrivacyState` / `PrivacyConsentDecision` / `PrivacyConsentSource`
+  types and the `onboarding.privacy` field are removed from the database
+  interface; leftover `privacy` values in stored onboarding JSON are ignored.
+  Major bump: removes a public tool and exported types. Enrichment opt-in/opt-out
+  moves to a separate service, defined per implementation/application.
+- Remove public profile lookup from `preview_user_context` (10.0.0). The
+  `allowPublicLookup` parameter, the `publicLookup` identity-check block, and
+  the `edgeosProfileText` pass-through parameter are gone; the preview draft is
+  built only from explicit text, server-staged signup/import seeds, and
+  user-provided social URLs. Public profile lookup moves to the separate
+  enrichment service. `create_user_context` (legacy) and background member
+  enrichment are unchanged.
+
 ### Added
 - Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
   precomputes a per-user intake brief plus round-1 question, and

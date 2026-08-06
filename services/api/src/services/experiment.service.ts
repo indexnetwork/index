@@ -5,7 +5,6 @@ import { log } from '../lib/log';
 import { experimentImportCredentialsTemplate } from '../lib/email/templates/experiment-import-credentials.template';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
-import { forceHeadlessProvisioningPermissions } from '../lib/network-permissions';
 import * as schema from '../schemas/database.schema';
 
 /**
@@ -171,11 +170,6 @@ export class ExperimentService {
     networkId: string,
     rows: ImportRow[],
   ): Promise<{ imported: number; skipped: number; ownersNotified: number }> {
-    // CSV import is headless provisioning: imported users never pass a
-    // consenting UI, so the network is forced to consent-safe permissions
-    // (profileEnrichment: 'consent_required', allowGuestVibeCheck: false).
-    await forceHeadlessProvisioningPermissions(networkId);
-
     let imported = 0;
     let skipped = 0;
     const credentials: ImportCredential[] = [];
@@ -326,12 +320,12 @@ export class ExperimentService {
   }
 
   /**
-   * Stages optional profile/social data from headless experiment signup or CSV
-   * import without activating it on the user/profile tables. The onboarding
-   * profile tools may use this seed only after the user grants EdgeOS/event
-   * import consent and verifies the generated profile draft.
+   * Retains optional profile/social data from headless experiment signup or CSV
+   * import as an onboarding provenance seed after applying it immediately to the
+   * user/profile tables. Profile tools use the seed to explain and refine the
+   * active profile during onboarding review.
    *
-   * @param userId - User receiving the staged seed.
+   * @param userId - User receiving the provenance seed.
    * @param networkId - Experiment network that supplied the seed.
    * @param row - Import/signup row carrying optional profile fields.
    * @param source - Source flow for provenance.

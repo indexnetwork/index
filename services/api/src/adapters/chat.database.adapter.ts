@@ -7,11 +7,41 @@ import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
 import { IntentEvents } from '../events/intent.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { toPublicNetworkPermissions } from '../lib/network-permissions';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
 import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questioner.adapter';
+
+export interface NetworkShareResponseRow {
+  id: string;
+  title: string;
+  prompt: string | null;
+  imageUrl: string | null;
+  permissions: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  ownerId: string;
+  userName: string;
+  userAvatar: string | null;
+}
+
+/** Map a share-code lookup row to its public invitation response contract. */
+export function buildNetworkShareResponse(row: NetworkShareResponseRow, memberCount: number) {
+  const permissions = toPublicNetworkPermissions(row.permissions);
+  return {
+    id: row.id,
+    title: row.title,
+    prompt: row.prompt,
+    imageUrl: row.imageUrl,
+    joinPolicy: permissions.joinPolicy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+    _count: { members: memberCount },
+  };
+}
 
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
@@ -592,7 +622,7 @@ export class ChatDatabaseAdapter {
       .limit(1);
     const row = rows[0];
     if (!row) return null;
-    return { ...row, permissions: row.permissions as unknown as Record<string, unknown> | null };
+    return { ...row, permissions: { ...toPublicNetworkPermissions(row.permissions) } };
   }
 
   /**
@@ -727,7 +757,7 @@ export class ChatDatabaseAdapter {
           prompt: row.prompt,
           imageUrl: row.imageUrl,
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
-          permissions: row.permissions,
+          permissions: toPublicNetworkPermissions(row.permissions),
           isPersonal: row.isPersonal,
           hidden: row.hidden,
           hasMasterKey: row.masterKeyHash != null,
@@ -835,8 +865,8 @@ export class ChatDatabaseAdapter {
 
     const result = [];
     for (const row of publicIndexes) {
-      const perms = (row.permissions as { joinPolicy?: string } | null);
-      if (perms?.joinPolicy !== 'anyone') continue;
+      const permissions = toPublicNetworkPermissions(row.permissions);
+      if (permissions.joinPolicy !== 'anyone') continue;
 
       const [ownerMember] = await db
         .select({
@@ -865,7 +895,7 @@ export class ChatDatabaseAdapter {
         prompt: row.prompt,
         imageUrl: row.imageUrl,
         createdAt: row.createdAt,
-        permissions: row.permissions,
+        permissions,
         memberCount: Number(countResult?.count ?? 0),
         owner: ownerMember ? {
           id: ownerMember.userId,
@@ -1665,7 +1695,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1696,13 +1726,12 @@ export class ChatDatabaseAdapter {
       };
     }
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
-    if (data.contextInjection !== undefined || data.profileEnrichment !== undefined) {
+    if (data.contextInjection !== undefined) {
       const currentPerms = (existing.permissions as unknown as Record<string, unknown> | null) ?? {};
       updateData.permissions = {
         ...currentPerms,
         ...((updateData.permissions as Record<string, unknown>) ?? {}),
-        ...(data.contextInjection !== undefined && { contextInjection: data.contextInjection }),
-        ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
+        contextInjection: data.contextInjection,
       };
     }
 
@@ -1754,11 +1783,7 @@ export class ChatDatabaseAdapter {
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
       db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
-    const perms = (updatedRow.permissions as schema.NetworkPermissionsState | null) ?? {
-      joinPolicy: 'invite_only',
-      invitationLink: null,
-      allowGuestVibeCheck: false,
-    };
+    const permissions = toPublicNetworkPermissions(updatedRow.permissions);
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
     return {
       id: updatedRow.id,
@@ -1766,13 +1791,7 @@ export class ChatDatabaseAdapter {
       prompt: updatedRow.prompt,
       imageUrl: updatedRow.imageUrl,
       metadata: (updatedRow.metadata ?? {}) as Record<string, unknown>,
-      permissions: {
-        joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-        allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
-        invitationLink: perms.invitationLink ?? null,
-        ...(perms.contextInjection !== undefined && { contextInjection: perms.contextInjection }),
-        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
-      },
+      permissions,
       isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
       updatedAt: updatedRow.updatedAt,
@@ -1977,7 +1996,6 @@ export class ChatDatabaseAdapter {
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
     allowGuestVibeCheck?: boolean;
-    profileEnrichment?: schema.ProfileEnrichmentPolicy;
     metadata?: Record<string, unknown>;
   }): Promise<{
     id: string;
@@ -1992,7 +2010,6 @@ export class ChatDatabaseAdapter {
       joinPolicy: finalJoinPolicy,
       invitationLink: { code: crypto.randomUUID() },
       allowGuestVibeCheck: data.allowGuestVibeCheck ?? false,
-      ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
     };
     const [row] = await db
       .insert(networks)
@@ -2012,22 +2029,12 @@ export class ChatDatabaseAdapter {
         metadata: networks.metadata,
       });
     if (!row) throw new Error('Failed to create network');
-    const perms = (row.permissions as schema.NetworkPermissionsState | null) ?? {
-      joinPolicy: 'invite_only',
-      invitationLink: null,
-      allowGuestVibeCheck: false,
-    };
     return {
       id: row.id,
       title: row.title,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
-      permissions: {
-        joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-        invitationLink: perms.invitationLink ?? null,
-        allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
-        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
-      },
+      permissions: toPublicNetworkPermissions(row.permissions),
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
     };
   }
@@ -2173,7 +2180,7 @@ export class ChatDatabaseAdapter {
       title: row.title,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
-      permissions: row.permissions,
+      permissions: toPublicNetworkPermissions(row.permissions),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
@@ -2222,20 +2229,7 @@ export class ChatDatabaseAdapter {
     if (!row) return null;
 
     const memberCount = await this.getNetworkMemberCount(row.id);
-
-    const perms = row.permissions as { joinPolicy?: string } | null;
-
-    return {
-      id: row.id,
-      title: row.title,
-      prompt: row.prompt,
-      imageUrl: row.imageUrl,
-      joinPolicy: (perms?.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
-      _count: { members: memberCount },
-    };
+    return buildNetworkShareResponse(row, memberCount);
   }
 
   /**
@@ -2331,7 +2325,7 @@ export class ChatDatabaseAdapter {
       prompt: row.prompt,
       imageUrl: row.imageUrl,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
-      permissions: row.permissions,
+      permissions: toPublicNetworkPermissions(row.permissions),
       isPersonal: row.isPersonal,
       hidden: row.hidden,
       hasMasterKey: row.masterKeyHash != null,

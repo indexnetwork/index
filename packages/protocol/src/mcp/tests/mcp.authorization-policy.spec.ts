@@ -608,48 +608,48 @@ function globalAgentSubject(actions: string[]) {
   });
 }
 
-describe('human-only onboarding privacy consent (IND-583)', () => {
-  const CONSENT_TOOLS = ['record_onboarding_privacy_consent', 'complete_onboarding'] as const;
+describe('human-only onboarding completion (IND-583)', () => {
+  const HUMAN_ONLY_TOOLS = ['complete_onboarding'] as const;
 
-  test('the canonical matrix classifies both consent tools human_only', () => {
-    for (const tool of CONSENT_TOOLS) {
+  test('the canonical matrix classifies completion human_only', () => {
+    for (const tool of HUMAN_ONLY_TOOLS) {
       expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(tool)).toEqual({ access: 'human_only', reach: 'principal' });
     }
   });
 
-  test('the session human is admitted to both consent tools', () => {
+  test('the session human is admitted to completion', () => {
     const human = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
       isOnboarding: false,
     });
-    for (const tool of CONSENT_TOOLS) {
+    for (const tool of HUMAN_ONLY_TOOLS) {
       expect(policy.authorize(human, tool).allowed).toBe(true);
     }
-    expect(policy.visibleToolNames(human, [...CONSENT_TOOLS])).toEqual([...CONSENT_TOOLS]);
+    expect(policy.visibleToolNames(human, [...HUMAN_ONLY_TOOLS])).toEqual([...HUMAN_ONLY_TOOLS]);
   });
 
-  test('the onboarding human is admitted (both consent tools are onboarding-allowed)', () => {
+  test('the onboarding human is admitted (completion is onboarding-allowed)', () => {
     const onboardingHuman = resolveMcpCapabilitySubject({
       identity: identity({ isSessionAuth: true }),
       isOnboarding: true,
     });
-    for (const tool of CONSENT_TOOLS) {
+    for (const tool of HUMAN_ONLY_TOOLS) {
       expect(policy.authorize(onboardingHuman, tool).allowed).toBe(true);
     }
   });
 
-  test('an agent holding identity+premises grants is denied both consent tools and never lists them', () => {
+  test('an agent holding identity+premises grants is denied completion and never lists it', () => {
     // manage:identity + manage:premises is exactly what the retired manage:profile
-    // grant projects to; holding both must not unlock the human-only consent flow.
+    // grant projects to; holding both must not unlock the human-only completion flow.
     const agent = globalAgentSubject(['manage:identity', 'manage:premises']);
     expect(agent.profile).toBe('registered_global_agent');
-    for (const tool of CONSENT_TOOLS) {
+    for (const tool of HUMAN_ONLY_TOOLS) {
       expect(policy.authorize(agent, tool)).toMatchObject({ allowed: false, reason: 'human_only' });
     }
-    expect(policy.visibleToolNames(agent, [...CONSENT_TOOLS])).toEqual([]);
+    expect(policy.visibleToolNames(agent, [...HUMAN_ONLY_TOOLS])).toEqual([]);
   });
 
-  test('a network agent, an enrollment key, and an invalid agent are all denied the consent tools', () => {
+  test('a network agent, an enrollment key, and an invalid agent are all denied completion', () => {
     const networkAgent = resolveMcpCapabilitySubject({
       identity: identity({ agentId: AGENT_ID, networkScopeId: NETWORK_ID }),
       isOnboarding: false,
@@ -673,10 +673,10 @@ describe('human-only onboarding privacy consent (IND-583)', () => {
       agent: null,
     });
     for (const subject of [networkAgent, enrollmentKey, invalidAgent]) {
-      for (const tool of CONSENT_TOOLS) {
+      for (const tool of HUMAN_ONLY_TOOLS) {
         expect(policy.authorize(subject, tool).allowed).toBe(false);
       }
-      expect(policy.visibleToolNames(subject, [...CONSENT_TOOLS])).toEqual([]);
+      expect(policy.visibleToolNames(subject, [...HUMAN_ONLY_TOOLS])).toEqual([]);
     }
   });
 });

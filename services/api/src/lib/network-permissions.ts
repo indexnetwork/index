@@ -1,35 +1,28 @@
-import { eq } from 'drizzle-orm/sql';
+import type { NetworkPermissionsState } from '../schemas/database.schema';
 
-import db from './drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 /**
- * Headless provisioning paths (CSV import, email invite, master-key signup)
- * create members who never pass a consenting UI. Force consent-safe network
- * permissions — `profileEnrichment: 'consent_required'` and
- * `allowGuestVibeCheck: false` — while spread-merging so `joinPolicy`,
- * `invitationLink`, and any other keys survive.
- *
- * This is not a lock: owners can still change permissions afterwards via the
- * normal update path.
- *
- * @throws Error('Network not found') when the network row is missing.
+ * Project stored network permission JSON to the supported public contract.
+ * Unknown and retired keys remain stored but are never returned to clients.
  */
-export async function forceHeadlessProvisioningPermissions(networkId: string): Promise<void> {
-  const [existing] = await db
-    .select({ permissions: schema.networks.permissions })
-    .from(schema.networks)
-    .where(eq(schema.networks.id, networkId))
-    .limit(1);
-  if (!existing) throw new Error('Network not found');
+export function toPublicNetworkPermissions(value: unknown): NetworkPermissionsState {
+  const stored = isRecord(value) ? value : {};
+  const invitationLink = isRecord(stored.invitationLink)
+    && typeof stored.invitationLink.code === 'string'
+    ? { code: stored.invitationLink.code }
+    : null;
+  const contextInjection = isRecord(stored.contextInjection)
+    && typeof stored.contextInjection.discovery === 'boolean'
+    ? { discovery: stored.contextInjection.discovery }
+    : undefined;
 
-  const permissions: schema.NetworkPermissionsState = {
-    ...(existing.permissions as schema.NetworkPermissionsState),
-    allowGuestVibeCheck: false,
-    profileEnrichment: 'consent_required',
+  return {
+    joinPolicy: stored.joinPolicy === 'anyone' ? 'anyone' : 'invite_only',
+    invitationLink,
+    allowGuestVibeCheck: stored.allowGuestVibeCheck === true,
+    ...(contextInjection ? { contextInjection } : {}),
   };
-  await db
-    .update(schema.networks)
-    .set({ permissions })
-    .where(eq(schema.networks.id, networkId));
 }

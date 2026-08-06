@@ -9,6 +9,31 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- Remove the onboarding privacy-consent layer (protocol 10.0.0, API 0.77.0).
+  The `record_onboarding_privacy_consent` MCP/persona tool, the
+  `publicProfileLookup` and `edgeosImport` consent decisions, and the
+  `OnboardingPrivacyState` / `PrivacyConsentDecision` / `PrivacyConsentSource`
+  types are gone from the API schema/types and the Hermes plugin manifest.
+  `preview_user_context` and profile provenance seeds no longer require recorded
+  consent; leftover `privacy` values in stored onboarding JSON are ignored.
+  Like the network-level flow below, opt-in/opt-out moves to a separate
+  enrichment service defined per implementation/application. Public profile
+  lookup is also removed from the onboarding preview: the `allowPublicLookup`
+  and `edgeosProfileText` enrichment-run input fields are dropped (protocol
+  10.0.0 removes the tool parameters and `publicLookup` response block).
+- Remove the network-level enrichment consent flow and the `profileEnrichment`
+  network permission entirely (API 0.76.0). The `consent_required` policy, the
+  `forceHeadlessProvisioningPermissions` consent-safe forcing on invites, CSV
+  imports, and master-key enablement, and the `auto`/`disabled` setting itself
+  are gone; enabling a master key now forces only `joinPolicy: 'invite_only'`.
+  Scoped enrichment jobs require current active membership after user/network
+  existence checks and before the active-premise short-circuit. Leftover
+  `profileEnrichment` values in stored permissions JSON are ignored. Enrichment
+  opt-in/opt-out is planned to
+  move to a separate service, defined per implementation/application rather
+  than per network.
+
 ### Added
 - Wire the MCP authorization-observability seam at the host boundary (IND-581;
   protocol 7.8.0, API 0.64.0). The composition root now injects a concrete

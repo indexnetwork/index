@@ -20,19 +20,6 @@ export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 
 export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
-export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
-
-export interface PrivacyConsentDecision {
-  granted: boolean;
-  decidedAt: string;
-  source: PrivacyConsentSource;
-}
-
-export interface OnboardingPrivacyState {
-  edgeosImport?: PrivacyConsentDecision;
-  publicProfileLookup?: PrivacyConsentDecision;
-}
-
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
   networkId: string;
@@ -51,18 +38,14 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  privacy?: OnboardingPrivacyState;
   profileSeeds?: OnboardingProfileSeed[];
 }
-
-export type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
 
 export interface NetworkPermissionsState {
   joinPolicy: 'anyone' | 'invite_only';
   invitationLink: { code: string } | null;
   allowGuestVibeCheck: boolean;
   contextInjection?: { discovery: boolean };
-  profileEnrichment?: ProfileEnrichmentPolicy;
 }
 
 /**
