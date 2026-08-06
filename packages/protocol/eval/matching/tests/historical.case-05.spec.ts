@@ -6,19 +6,19 @@ import { HISTORICAL_CASE_05 } from "../historical/historical.case-05.js";
 const participantIds = ["h5-a", "h5-b", "h5-c", "h5-d", "h5-e"] as const;
 
 const source = {
-  bio: "Biochemist on the U.S. East Coast focused on RNA-mediated protein therapy, experienced in producing laboratory-made messenger RNA and studying how RNA can direct protein production.",
+  bio: "Biochemist on the U.S. East Coast experienced in laboratory nucleic-acid production and cell-based protein-expression studies.",
   location: "U.S. East Coast",
-  interests: ["RNA biology", "therapeutic protein production", "experimental optimization"],
-  skills: ["biochemistry", "RNA production", "in-vitro transcription", "RNA-focused cell experiments"],
-  intent: "Find an immunologist with immune-cell and vaccine experience to test how laboratory-made messenger RNA interacts with immune cells.",
+  interests: ["nucleic-acid biology", "therapeutic protein research", "experimental methods"],
+  skills: ["biochemistry", "nucleic-acid production", "laboratory transcription", "cell-based expression studies"],
+  intent: "Develop laboratory-produced nucleic acids for therapeutic protein expression in cell-based experiments.",
 };
 
 const partner = {
-  bio: "Physician-scientist on the U.S. East Coast with training in immunology and microbiology, research on dendritic cells and viral disease, and an interest in vaccine approaches. Does not have direct RNA-production expertise.",
+  bio: "Physician-scientist on the U.S. East Coast trained in immune and microbial research, with experience studying host responses to viral disease.",
   location: "U.S. East Coast",
-  interests: ["dendritic cells", "viral disease", "vaccines", "antigen delivery"],
-  skills: ["clinical medicine", "immunology", "microbiology", "immune-cell research"],
-  intent: "Explore how antigen-delivery approaches affect dendritic cells with a collaborator who can produce a promising molecular payload.",
+  interests: ["immune biology", "infectious disease", "vaccine research"],
+  skills: ["clinical medicine", "immunology", "microbiology", "cellular immune methods"],
+  intent: "Study immune responses in viral disease and investigate vaccine approaches.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -74,7 +74,7 @@ describe("historical case 05", () => {
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
     expect(HISTORICAL_CASE_05.description).toBe(
-      "An RNA biochemist seeking immune-cell and vaccine expertise should surface a physician-scientist with complementary immunology and microbiology experience.",
+      "A biochemist developing nucleic-acid methods is paired with a physician-scientist bringing complementary immune-system expertise.",
     );
 
     const citations = new Map(HISTORICAL_CASE_05.historicalQuality.citations.map((citation) => [citation.id, citation]));
@@ -87,13 +87,19 @@ describe("historical case 05", () => {
     expect(citations.get("nobel-kariko-banquet-speech")?.excerpt).toContain("in 1997");
     expect(citations.get("nobel-kariko-banquet-speech")?.excerpt).toContain("Drew and I started to work together");
     expect(citations.get("cell-persistent-progress")?.url).toBe("https://pmc.ncbi.nlm.nih.gov/articles/PMC8462135/");
-    expect(citations.get("nobel-medicine-2023-press-release")?.url).toBe(
-      "https://www.nobelprize.org/prizes/medicine/2023/press-release/",
-    );
+    expect(citations.get("cell-persistent-progress")?.excerpt).toContain("I started at the University of Pennsylvania in ‘89");
+    expect(citations.get("cell-persistent-progress")?.excerpt).not.toContain("didn’t have access to RNA");
+    expect(citations.get("nobel-medicine-2023-press-release")).toMatchObject({
+      url: "https://www.nobelprize.org/prizes/medicine/2023/press-release/",
+      title: "Press release: The Nobel Prize in Physiology or Medicine 2023",
+    });
     expect(citations.get("nobel-medicine-2023-advanced-information")?.url).toBe(
       "https://www.nobelprize.org/prizes/medicine/2023/advanced-information/",
     );
-    expect(citations.get("pnas-kariko-weissman-profile")?.url).toBe("https://pmc.ncbi.nlm.nih.gov/articles/PMC10907315/");
+    expect(citations.get("pnas-kariko-weissman-profile")).toMatchObject({
+      url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC10907315/",
+      title: "Profile of Katalin Karikó and Drew Weissman: 2023 Nobel laureates in Physiology or Medicine",
+    });
     expect(HISTORICAL_CASE_05.historicalQuality.outcomeCitationIds).toEqual(["pnas-kariko-weissman-profile"]);
   });
 
@@ -121,7 +127,7 @@ describe("historical case 05", () => {
 
   it("excludes meeting, shared-institution, joint-work, and later-outcome leakage from model text", () => {
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_05));
-    const forbidden = /karik[oó]|weissman|drew|katalin|xerox|copier|copy machine|photocop|university of pennsylvania|penn medicine|philadelphia|shared institution|met at|meeting|template exchange|exchang(?:e|ed|ing) templates?|joint experiments?|work(?:ed|ing)? together|collaboration began|immune reaction that blocks|modified nucleosides?|pseudouridine|nucleoside modification|later (?:finding|discovery)|covid|pandemic|vaccines? saved|millions of lives|biotech|company|companies|biontech|moderna|nobel|prize|award/i;
+    const forbidden = /karik[oó]|weissman|drew|katalin|xerox|copier|copy machine|photocop|university of pennsylvania|penn medicine|philadelphia|shared institution|met at|meeting|template exchange|exchang(?:e|ed|ing) templates?|joint experiments?|work(?:ed|ing)? together|collaboration began|immune reaction that blocks|modified nucleosides?|pseudouridine|nucleoside modification|later (?:finding|discovery)|covid|pandemic|vaccines? saved|millions of lives|biotech|company|companies|biontech|moderna|nobel|prize|award|messenger rna|dendritic|\bhiv\b|antigen delivery|molecular payload/i;
     expect(modelText).not.toMatch(forbidden);
   });
 
@@ -131,9 +137,9 @@ describe("historical case 05", () => {
     expect(Object.keys(negatives)).toEqual(negativeIds);
     expect(new Set(Object.values(negatives)).size).toBe(3);
     expect(negatives).toEqual({
-      "h5-c": "Same-side RNA producer is also seeking immune expertise rather than supplying the complementary immunology role.",
-      "h5-d": "Population-level infectious-disease analyst lacks laboratory immune-cell methods for testing a molecular payload.",
-      "h5-e": "Plant immune-signaling researcher works in the wrong biological domain for human dendritic-cell and vaccine research.",
+      "h5-c": "Same-side nucleic-acid researcher lacks the complementary immune-system expertise.",
+      "h5-d": "Population-level infectious-disease analyst lacks laboratory cellular-immunity methods.",
+      "h5-e": "Plant immune-signaling researcher works in the wrong biological domain for human immune research.",
     });
     for (const participantId of negativeIds) {
       const participantClaims = HISTORICAL_CASE_05.historicalQuality.claims.filter(

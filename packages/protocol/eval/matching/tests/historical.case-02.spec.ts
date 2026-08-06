@@ -6,19 +6,19 @@ import { HISTORICAL_CASE_02 } from "../historical/historical.case-02.js";
 const participantIds = ["h2-a", "h2-b", "h2-c", "h2-d", "h2-e"] as const;
 
 const source = {
-  bio: "Young biologist trained in zoology and virus research who recently redirected his work toward the structural chemistry of nucleic acids after seeing X-ray images at a scientific meeting.",
-  location: "Continental Europe",
-  interests: ["nucleic acids", "molecular structure", "virus research"],
-  skills: ["biology", "experimental interpretation", "virus research"],
-  intent: "Work with a researcher experienced in physical modeling and crystallographic methods to investigate nucleic-acid structure.",
+  bio: "Biologist trained in zoology and virus research who redirected his work toward the structural chemistry of biological macromolecules.",
+  location: "Europe",
+  interests: ["biological macromolecules", "structural chemistry", "virus research"],
+  skills: ["biology", "experimental biology", "virus research"],
+  intent: "Investigate biological macromolecular structure through structural chemistry.",
 };
 
 const partner = {
-  bio: "Physics-trained researcher in southern England studying protein structure with X-ray crystallography and reading broadly about genetic material and protein structure.",
-  location: "Southern England",
-  interests: ["genetic material", "protein structure", "molecular structure"],
-  skills: ["physics", "X-ray crystallography", "structural analysis"],
-  intent: "Apply physical and crystallographic reasoning to a significant biological structure problem.",
+  bio: "Physics-trained researcher using crystallographic methods to study biological macromolecules.",
+  location: "United Kingdom",
+  interests: ["biological structure", "macromolecules", "structural chemistry"],
+  skills: ["physical methods", "X-ray crystallography", "structural analysis"],
+  intent: "Study biological structure using physical and crystallographic methods.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -81,7 +81,10 @@ describe("historical case 02", () => {
     expect(citations.get("nobel-watson-biographical")?.excerpt).toContain("started work in early October 1951. He soon met Crick");
     expect(citations.get("wellcome-crick-archives")?.url).toBe("https://wellcomecollection.org/works/hz43r7re");
     expect(citations.get("wellcome-crick-archives")?.excerpt).toContain("June 1949");
-    expect(citations.get("asu-1953-paper-history")?.excerpt).toContain("began in October 1951 soon after Watson arrived");
+    expect(citations.get("asu-1953-paper-history")).toMatchObject({
+      title: "“Molecular Structure of Nucleic Acids: A Structure for Deoxyribose Nucleic Acid” (1953), by James Watson and Francis Crick",
+      excerpt: "The collaboration … began in October 1951 soon after Watson arrived…",
+    });
     expect(citations.get("science-history-biographies")?.excerpt).toContain("saw some of the X-ray images");
     expect(HISTORICAL_CASE_02.historicalQuality.outcomeCitationIds).toEqual(["nobel-1962-summary"]);
 
@@ -115,7 +118,7 @@ describe("historical case 02", () => {
 
   it("keeps diffraction-data possession, outcome hindsight, and post-meeting work out of model-facing text", () => {
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_02));
-    const forbidden = /access to (?:x-ray )?diffraction data|(?:his|her|their|own) diffraction data|possess(?:es|ed|ion)?[^.]*data|franklin|gosling|photo(?:graph)?\s*51|double helix|landmark|nobel|award|certain[^.]*solv|within reach|crack(?:ed|ing)?[^.]*shape|started work|soon met|collaboration began|builds? structural models?|restless/i;
+    const forbidden = /access to (?:x-ray )?diffraction data|(?:his|her|their|own) diffraction data|possess(?:es|ed|ion)?[^.]*data|franklin|gosling|photo(?:graph)?\s*51|double helix|landmark|nobel|award|certain[^.]*solv|within reach|crack(?:ed|ing)?[^.]*shape|started work|soon met|collaboration began|builds? structural models?|restless|scientific meeting|x-ray images|experimental interpretation|physical modeling|\byoung\b|nucleic acids|genetic material/i;
     expect(modelText).not.toMatch(forbidden);
   });
 

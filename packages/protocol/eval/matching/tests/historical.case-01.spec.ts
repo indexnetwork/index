@@ -6,19 +6,19 @@ import { HISTORICAL_CASE_01 } from "../historical/historical.case-01.js";
 const participantIds = ["h1-a", "h1-b", "h1-c", "h1-d", "h1-e"] as const;
 
 const source = {
-  bio: "Teenage Northern California electronics hobbyist who learned basic electronics from family and a nearby engineer, assembled build-it-yourself electronics kits, and had early exposure to computers.",
-  location: "Northern California",
+  bio: "Electronics hobbyist with basic hands-on kit experience and early computer exposure.",
+  location: "",
   interests: ["electronics", "build-it-yourself devices", "computers"],
   skills: ["electronics fundamentals", "kit assembly", "hands-on construction"],
-  intent: "Explore an electronics project with another hobbyist who has deeper circuit-design experience.",
+  intent: "Build and understand electronics devices through hands-on projects.",
 };
 
 const partner = {
-  bio: "Young electronics hobbyist with extensive practice designing computer circuits and building computer and radio projects. Had already built a computer project with a school friend.",
+  bio: "Electronics hobbyist with substantially deeper computer-circuit design and construction practice.",
   location: "",
-  interests: ["electronics", "computer design", "amateur radio"],
+  interests: ["electronics", "computer systems", "circuit design"],
   skills: ["computer-circuit design", "electronics construction", "technical experimentation"],
-  intent: "Apply prior circuit-design experience in an electronics project with another hobbyist.",
+  intent: "Design and build computer circuits through repeated technical projects.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -54,7 +54,7 @@ describe("historical case 01", () => {
       date: "1971",
       precision: "year",
       exclusive: true,
-      orderingCitationIds: ["esquire-1971", "npr-wozniak-2006", "computerworld-jobs-1995", "npr-wozniak-transcript"],
+      orderingCitationIds: ["esquire-1971", "npr-jobs-lost-interview", "computerworld-jobs-1995", "npr-wozniak-transcript"],
     });
 
     const [sourceEntity, partnerEntity] = HISTORICAL_CASE_01.input.entities;
@@ -73,13 +73,14 @@ describe("historical case 01", () => {
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
     expect(HISTORICAL_CASE_01.description).toBe(
-      "Two young electronics hobbyists brought complementary pre-project experience: one had hands-on electronics familiarity, while the other had extensive computer-circuit design practice.",
+      "An electronics hobbyist with basic hands-on construction experience is paired with another hobbyist bringing substantially deeper circuit-design practice.",
     );
     expect(HISTORICAL_CASE_01.description).not.toMatch(/three|negative|synthetic|participant/i);
     expect(HISTORICAL_CASE_01.input.networkContexts?.["h1-electronics"]).toBe(
-      "Two electronics hobbyists introduced by a mutual friend in 1971.",
+      "An electronics setting connecting hobbyists with unequal circuit-design and construction experience.",
     );
-    expect(HISTORICAL_CASE_01.input.networkContexts?.["h1-electronics"]).not.toMatch(/community|Northern California/i);
+    expect(HISTORICAL_CASE_01.input.networkContexts?.["h1-electronics"]).not.toMatch(/friend|1971|community|Northern California/i);
+    expect(HISTORICAL_CASE_01.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/0/profile/location");
     expect(HISTORICAL_CASE_01.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/1/profile/location");
 
     const citations = new Map(HISTORICAL_CASE_01.historicalQuality.citations.map((citation) => [citation.id, citation]));
@@ -90,15 +91,20 @@ describe("historical case 01", () => {
       "I had designed -in high school designed hundreds and hundreds of computers over and over and over, so I developed these skills without ever thinking I’d do it in life as job.",
     );
     expect(citations.get("computerworld-jobs-1995")?.excerpt).toContain("He showed me the rudiments of electronics and I got very interested in that");
-    expect(citations.get("computerworld-jobs-1995")?.excerpt).toContain(
-      "I grew up in Silicon Valley. My parents moved from San Francisco to Mountain View when I was five. My dad got transferred and that was right in the heart of Silicon Valley so there were engineers all around.",
-    );
+    expect(citations.get("computerworld-jobs-1995")?.excerpt).toContain("I’ve built two other Heathkits so I could build that");
+    expect(citations.get("computerworld-jobs-1995")?.excerpt).toContain("When I was ten or eleven I saw my first computer");
+    expect(citations.get("npr-jobs-lost-interview")).toMatchObject({
+      title: "Steve Jobs Dishes On The Tech Business In 'Lost Interview' From 1995",
+      publisher: "NPR",
+    });
+    expect(citations.get("npr-jobs-lost-interview")?.excerpt).toContain("The first big project by the men");
     expect(citations.get("npr-wozniak-transcript")?.excerpt).toContain("I had built a computer");
     expect(citations.get("computer-history-museum-jobs")).toMatchObject({
       url: "https://computerhistory.org/blog/steve-jobs/",
       title: "Steve Jobs: From Garage to World’s Most Valuable Company",
       excerpt: "Jobs and Wozniak had been friends for some time. They met in 1971 when their mutual friend, Bill Fernandez, introduced then 21-year-old Wozniak to 16-year-old Jobs.",
     });
+    expect(citations.get("loc-apple-founding")?.excerpt).toContain("by college dropouts Steve Jobs and Steve Wozniak");
     expect(HISTORICAL_CASE_01.historicalQuality.outcomeCitationIds).toEqual(["loc-apple-founding"]);
 
     const claims = new Map(HISTORICAL_CASE_01.historicalQuality.claims.map((claim) => [claim.id, claim]));
@@ -115,6 +121,7 @@ describe("historical case 01", () => {
       for (const claimId of claimIds) collectCitations(claimId);
     }
     expect(modelCitationIds.has("esquire-1971")).toBeFalse();
+    expect(modelCitationIds.has("npr-jobs-lost-interview")).toBeFalse();
 
     const dependsOnClaim = (claimId: string, requiredClaimId: string): boolean => {
       if (claimId === requiredClaimId) return true;
@@ -123,7 +130,6 @@ describe("historical case 01", () => {
     };
     for (const path of [
       "/description",
-      "/input/entities/0/intents/0/payload",
       "/input/entities/1/profile/bio",
       "/input/entities/1/profile/interests/1",
       "/input/entities/1/profile/skills/0",
@@ -132,6 +138,9 @@ describe("historical case 01", () => {
       const claimIds = HISTORICAL_CASE_01.historicalQuality.claimProvenance[path]!;
       expect(claimIds.some((claimId) => dependsOnClaim(claimId, "fact-wozniak-design-practice")), path).toBeTrue();
     }
+    const sourceIntentClaims = HISTORICAL_CASE_01.historicalQuality.claimProvenance["/input/entities/0/intents/0/payload"]!;
+    expect(sourceIntentClaims.some((claimId) => dependsOnClaim(claimId, "fact-jobs-childhood-electronics"))).toBeTrue();
+    expect(sourceIntentClaims.some((claimId) => dependsOnClaim(claimId, "fact-wozniak-design-practice"))).toBeFalse();
   });
 
   it("remains pending independent review while passing authoring validation", () => {
@@ -144,6 +153,8 @@ describe("historical case 01", () => {
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_01));
     const forbidden = /personal computers?|homebrew|selling|persuasion|parts sourcing|apple|blue boxes?|telephone tones?|co-?found(?:er|ing)?|commercial(?:ize|ization)?|sales|marketing|business role/i;
     expect(modelText).not.toMatch(forbidden);
+    const historicalProfiles = JSON.stringify(HISTORICAL_CASE_01.input.entities.slice(0, 2));
+    expect(historicalProfiles).not.toMatch(/school friend|mutual friend|ham radio|nearby engineer|1971/i);
   });
 
   it("authors three distinct generic electronics negatives with exact reasons", () => {

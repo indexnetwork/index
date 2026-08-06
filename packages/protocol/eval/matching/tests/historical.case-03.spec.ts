@@ -6,19 +6,19 @@ import { HISTORICAL_CASE_03 } from "../historical/historical.case-03.js";
 const participantIds = ["h3-a", "h3-b", "h3-c", "h3-d", "h3-e"] as const;
 
 const source = {
-  bio: "Teenage guitarist in northern England who leads an amateur popular-music group and performs at community events. Interested in improving the group’s musicianship.",
-  location: "Northern England",
-  interests: ["popular music", "guitar", "live performance"],
-  skills: ["guitar", "live performance", "group leadership"],
-  intent: "Find a capable local guitarist to strengthen an amateur performance group.",
+  bio: "Teenage guitarist leading an amateur popular-music group and seeking stronger instrumental capability for the group.",
+  location: "",
+  interests: ["popular music", "guitar", "group performance"],
+  skills: ["guitar", "group performance", "group leadership"],
+  intent: "Find a capable guitarist to strengthen an amateur performance group.",
 };
 
 const partner = {
-  bio: "Teenage popular-music enthusiast in northern England who plays guitar, can tune it, remembers songs accurately, and had already tried writing a song.",
-  location: "Northern England",
-  interests: ["popular music", "guitar", "early songwriting"],
-  skills: ["guitar playing", "instrument tuning", "song recall"],
-  intent: "Play and improve at contemporary popular music, including guitar and early songwriting.",
+  bio: "Teenage popular-music enthusiast who demonstrated practical guitar capability, including tuning and performance from memory.",
+  location: "",
+  interests: ["popular music", "guitar", "instrument practice"],
+  skills: ["guitar playing", "instrument tuning", "musical memory"],
+  intent: "Perform popular music on guitar.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -49,10 +49,10 @@ describe("historical case 03", () => {
     });
   });
 
-  it("uses the approved profiles, exclusive meeting-day cutoff, and guitarist-recruitment trigger", () => {
+  it("uses the approved profiles, first-substantive-collaboration cutoff, and guitarist-recruitment trigger", () => {
     expect(HISTORICAL_CASE_03.historicalQuality.cutoff).toEqual({
-      date: "1957-07-06",
-      precision: "day",
+      date: "1957-07",
+      precision: "month",
       exclusive: true,
       orderingCitationIds: ["nml-first-meeting", "national-trust-history"],
     });
@@ -73,7 +73,7 @@ describe("historical case 03", () => {
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
     expect(HISTORICAL_CASE_03.description).toBe(
-      "A teenage group leader seeking a better guitarist encountered a local player who demonstrated relevant guitar skills and had already begun exploring songwriting.",
+      "An amateur group leader seeking stronger guitar capability is paired with a player who demonstrated relevant instrumental skills before being invited to join.",
     );
 
     const citations = new Map(HISTORICAL_CASE_03.historicalQuality.citations.map((citation) => [citation.id, citation]));
@@ -83,15 +83,25 @@ describe("historical case 03", () => {
       publisher: "National Museums Liverpool",
     });
     expect(citations.get("nml-first-meeting")?.excerpt).toContain("6 July 1957");
-    expect(citations.get("nml-first-meeting")?.excerpt).toContain("improvised words");
-    expect(citations.get("nml-first-meeting")?.excerpt).toContain("tune a guitar");
+    expect(citations.get("nml-first-meeting")?.excerpt).toContain("word perfect, virtuoso performance");
+    expect(citations.get("nml-first-meeting")?.excerpt).toContain("A few weeks after that fateful meeting, John asked him to join his group");
     expect(citations.get("john-lennon-mother")?.url).toBe(
       "https://www.johnlennon.com/news/mother-%E2%86%92-watch-the-4k-remastered-video-discover-more-about-johns-childhood/",
     );
-    expect(citations.get("john-lennon-mother")?.excerpt).toContain("banjo chords");
+    expect(citations.get("john-lennon-mother")).toMatchObject({
+      title: "MOTHER. → Watch the 4K Remastered Video & discover more about John's childhood.",
+    });
+    expect(citations.get("john-lennon-mother")?.excerpt).toContain("I played it all the time and got a lot of practice");
+    expect(citations.get("mccartney-lyrics-special")?.title).toBe("You Gave Me The Answer - 'The Lyrics: 1956 to the Present' Special");
     expect(citations.get("mccartney-lyrics-special")?.excerpt).toContain("the first song I ever wrote");
     expect(citations.get("mccartney-lyrics-special")?.excerpt).toContain("when I was fourteen");
+    expect(citations.get("national-trust-history")).toMatchObject({
+      title: "History of the Beatles' Childhood Homes",
+    });
     expect(citations.get("national-trust-history")?.excerpt).toContain("he'd been looking for a better guitarist for his group");
+    expect(citations.get("guinness-songwriter-number-ones")?.excerpt).toContain("32 No.1 singles on the US Billboard Hot 100");
+    expect(HISTORICAL_CASE_03.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/0/profile/location");
+    expect(HISTORICAL_CASE_03.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/1/profile/location");
     expect(HISTORICAL_CASE_03.historicalQuality.outcomeCitationIds).toEqual(["guinness-songwriter-number-ones"]);
 
     const claims = new Map(HISTORICAL_CASE_03.historicalQuality.claims.map((claim) => [claim.id, claim]));
@@ -117,12 +127,7 @@ describe("historical case 03", () => {
     for (const claimIds of Object.values(HISTORICAL_CASE_03.historicalQuality.claimProvenance)) {
       for (const claimId of claimIds) collectCitations(claimId);
     }
-    expect([...modelCitationIds].sort()).toEqual([
-      "john-lennon-mother",
-      "mccartney-lyrics-special",
-      "national-trust-history",
-      "nml-first-meeting",
-    ]);
+    expect([...modelCitationIds].sort()).toEqual(["john-lennon-mother", "national-trust-history", "nml-first-meeting"]);
     expect(modelCitationIds.has("guinness-songwriter-number-ones")).toBeFalse();
   });
 
@@ -136,6 +141,9 @@ describe("historical case 03", () => {
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_03));
     const forbidden = /bass|half-finished|melodically gifted|co-writer|john|lennon|paul|mccartney|julia|mimi|ivan vaughan|eric griffiths|pete shotton|colin hanton|rod davis|len garry|eddie cochran|gene vincent|little richard|quarry\s*men|beatles|liverpool|lancashire|woolton|st\.? peter|mendips|forthlin|menlove|cavern|twenty flight rock|be-bop-a-lula|i lost my little girl|long tall sally|that(?:’|'|’)ll be the day|mother|port city|club circuit|harmony|arrangement|edgy|melodic/i;
     expect(modelText).not.toMatch(forbidden);
+    const historicalProfiles = JSON.stringify(HISTORICAL_CASE_03.input.entities.slice(0, 2));
+    expect(historicalProfiles).not.toMatch(/northern england|community event|early songwriting|few weeks|1957/i);
+    expect(HISTORICAL_CASE_03.input.networkContexts?.["h3-music"]).not.toMatch(/northern|community|event|songwriting/i);
   });
 
   it("authors three distinct guitarist-recruitment negatives with exact reasons", () => {

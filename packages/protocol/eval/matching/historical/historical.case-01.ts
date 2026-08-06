@@ -4,19 +4,19 @@ import { defineHistoricalQualityCase } from "../../discovery-env-matrix/historic
 const NETWORK_ID = "h1-electronics";
 
 const source = {
-  bio: "Teenage Northern California electronics hobbyist who learned basic electronics from family and a nearby engineer, assembled build-it-yourself electronics kits, and had early exposure to computers.",
-  location: "Northern California",
+  bio: "Electronics hobbyist with basic hands-on kit experience and early computer exposure.",
+  location: "",
   interests: ["electronics", "build-it-yourself devices", "computers"],
   skills: ["electronics fundamentals", "kit assembly", "hands-on construction"],
-  intent: "Explore an electronics project with another hobbyist who has deeper circuit-design experience.",
+  intent: "Build and understand electronics devices through hands-on projects.",
 } as const;
 
 const partner = {
-  bio: "Young electronics hobbyist with extensive practice designing computer circuits and building computer and radio projects. Had already built a computer project with a school friend.",
+  bio: "Electronics hobbyist with substantially deeper computer-circuit design and construction practice.",
   location: "",
-  interests: ["electronics", "computer design", "amateur radio"],
+  interests: ["electronics", "computer systems", "circuit design"],
   skills: ["computer-circuit design", "electronics construction", "technical experimentation"],
-  intent: "Apply prior circuit-design experience in an electronics project with another hobbyist.",
+  intent: "Design and build computer circuits through repeated technical projects.",
 } as const;
 
 const semanticNegatives = {
@@ -64,7 +64,7 @@ const claims: HistoricalClaim[] = [
   {
     kind: "historical",
     id: "fact-wozniak-prior-computer",
-    text: "Wozniak had already built a computer with a school friend before that friend suggested he meet Jobs.",
+    text: "Wozniak had already built a computer with another person before that person suggested he meet Jobs.",
     citationIds: ["npr-wozniak-transcript"],
     preConnection: true,
   },
@@ -78,30 +78,23 @@ const claims: HistoricalClaim[] = [
   {
     kind: "historical",
     id: "fact-1971-ordering",
-    text: "The October 1971 magazine article preceded the pair's first substantive joint electronics project.",
-    citationIds: ["esquire-1971", "npr-wozniak-2006"],
+    text: "The October 1971 magazine article preceded the pair's first big joint electronics project.",
+    citationIds: ["esquire-1971", "npr-jobs-lost-interview"],
     preConnection: true,
   },
   {
     kind: "derived",
     id: "model-description",
-    text: "Two young electronics hobbyists brought complementary pre-project experience: one had hands-on electronics familiarity, while the other had extensive computer-circuit design practice.",
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-design-practice", "fact-pair-introduction"],
-    rationale: "Summarizes only the two historical participants' documented ages and complementary pre-project capabilities.",
+    text: "An electronics hobbyist with basic hands-on construction experience is paired with another hobbyist bringing substantially deeper circuit-design practice.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-design-practice"],
+    rationale: "Generalizes only the participants' unequal pre-project electronics capabilities.",
   },
   {
     kind: "derived",
     id: "model-source-bio",
     text: source.bio,
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-jobs-early-computers", "fact-jobs-northern-california", "fact-pair-introduction"],
-    rationale: "Conservative paraphrase of the interview's childhood electronics, kit, computer, and location recollections plus the independently reported age at introduction.",
-  },
-  {
-    kind: "derived",
-    id: "model-source-location",
-    text: source.location,
-    basisClaimIds: ["fact-jobs-northern-california"],
-    rationale: "Generalizes the cited Silicon Valley and Mountain View childhood location to Northern California for the source participant only.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-jobs-early-computers"],
+    rationale: "Generalizes the documented childhood kit practice and early computer exposure without age, place, or nearby-engineer details.",
   },
   {
     kind: "derived",
@@ -149,29 +142,29 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-source-intent",
     text: source.intent,
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-design-practice"],
-    rationale: "Reconstructs a generic pre-project intent from the source's practice and the partner's documented deeper circuit-design experience.",
+    basisClaimIds: ["fact-jobs-childhood-electronics"],
+    rationale: "Expresses only the source participant's documented hands-on electronics activity, without reconstructing collaborative desire.",
   },
   {
     kind: "derived",
     id: "model-partner-bio",
     text: partner.bio,
-    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-design-practice", "fact-wozniak-prior-computer", "fact-pair-introduction"],
-    rationale: "Combines documented age, high-school design practice, childhood project practice, and the computer built before meeting the source participant.",
+    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-design-practice"],
+    rationale: "Generalizes documented sustained construction and computer-design practice without age, radio, or prior-collaborator details.",
   },
   {
     kind: "derived",
     id: "model-partner-computer-design",
-    text: "computer design",
+    text: "computer systems",
     basisClaimIds: ["fact-wozniak-design-practice"],
     rationale: "Broad interest inferred from documented extensive high-school computer-design practice.",
   },
   {
     kind: "derived",
     id: "model-partner-radio",
-    text: "amateur radio",
-    basisClaimIds: ["fact-wozniak-long-practice"],
-    rationale: "Uses the standard general term for the cited ham-radio practice.",
+    text: "circuit design",
+    basisClaimIds: ["fact-wozniak-design-practice"],
+    rationale: "Generalizes the documented repeated computer-design practice.",
   },
   {
     kind: "derived",
@@ -198,15 +191,15 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-partner-intent",
     text: partner.intent,
-    basisClaimIds: ["fact-wozniak-design-practice", "fact-pair-introduction"],
-    rationale: "Reconstructs a generic pre-project intent from documented prior design practice and acquaintance with the other hobbyist.",
+    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-design-practice"],
+    rationale: "Expresses only the partner participant's documented circuit-design and construction activity, without reconstructing collaborative desire.",
   },
   {
     kind: "derived",
     id: "model-network-context",
-    text: "Two electronics hobbyists introduced by a mutual friend in 1971.",
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-long-practice", "fact-pair-introduction"],
-    rationale: "States only the narrow documented acquaintance and each participant's electronics practice, without inferring a broader community or shared geography.",
+    text: "An electronics setting connecting hobbyists with unequal circuit-design and construction experience.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-design-practice"],
+    rationale: "Generalizes the complementary pre-project electronics experience without date, place, introduction, or relationship details.",
   },
   ...[
     ["h1-c-bio", "Local electronics beginner interested in joining a project but without advanced computer-circuit design experience."],
@@ -260,7 +253,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
   rule: "historical",
   tier: 3,
   domains: ["technology"],
-  description: "Two young electronics hobbyists brought complementary pre-project experience: one had hands-on electronics familiarity, while the other had extensive computer-circuit design practice.",
+  description: "An electronics hobbyist with basic hands-on construction experience is paired with another hobbyist bringing substantially deeper circuit-design practice.",
   input: {
     discovererId: "h1-a",
     entities: [
@@ -330,7 +323,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
       },
     ],
     networkContexts: {
-      [NETWORK_ID]: "Two electronics hobbyists introduced by a mutual friend in 1971.",
+      [NETWORK_ID]: "An electronics setting connecting hobbyists with unequal circuit-design and construction experience.",
     },
   },
   expect: [
@@ -348,7 +341,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
       date: "1971",
       precision: "year",
       exclusive: true,
-      orderingCitationIds: ["esquire-1971", "npr-wozniak-2006", "computerworld-jobs-1995", "npr-wozniak-transcript"],
+      orderingCitationIds: ["esquire-1971", "npr-jobs-lost-interview", "computerworld-jobs-1995", "npr-wozniak-transcript"],
     },
     citations: [
       {
@@ -370,7 +363,14 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
         url: "https://www.computerworld.com/article/1476597/steve-jobs-interview-one-on-one-in-1995.html",
         title: "Steve Jobs interview: One-on-one in 1995",
         publisher: "Computerworld",
-        excerpt: "He showed me the rudiments of electronics and I got very interested in that. I grew up in Silicon Valley. My parents moved from San Francisco to Mountain View when I was five. My dad got transferred and that was right in the heart of Silicon Valley so there were engineers all around. The interview also recounts childhood electronics-kit assembly and early exposure to computers.",
+        excerpt: "He showed me the rudiments of electronics and I got very interested in that. … I mean you looked at a television set you would think that “I haven’t built one of those but I could. There’s one of those in the Heathkit catalog and I’ve built two other Heathkits so I could build that.” … When I was ten or eleven I saw my first computer. It was down at NASA Ames [Research Center].",
+      },
+      {
+        id: "npr-jobs-lost-interview",
+        url: "https://www.npr.org/sections/alltechconsidered/2011/11/16/142373973/steve-jobs-dishes-on-the-tech-business-in-lost-interview-from-1995",
+        title: "Steve Jobs Dishes On The Tech Business In 'Lost Interview' From 1995",
+        publisher: "NPR",
+        excerpt: "The first big project by the men who would go on to found Apple involved two things that, with hindsight, make an elaborate prank seem prescient. … Jobs and Wozniak were inspired by a story in Esquire about a man named ‘Captain Crunch,’ who had built a device that let him make free telephone calls. … So in 1971, the two friends hit the library, Jobs says, ‘looking for the secret tones that would allow you to do this.’",
       },
       {
         id: "npr-wozniak-transcript",
@@ -391,14 +391,13 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
         url: "https://guides.loc.gov/this-month-in-business-history/april/apple-computer-founded",
         title: "The Founding of Apple Computer, Inc.",
         publisher: "Library of Congress",
-        excerpt: "Apple Computer, Inc. was founded on April 1, 1976, by Steve Jobs and Steve Wozniak. Sales jumped from $7.8 million in 1978 to $117 million in 1980, the year Apple went public.",
+        excerpt: "Apple Computer, Inc. was founded on April 1, 1976, by college dropouts Steve Jobs and Steve Wozniak. Sales jumped from $7.8 million in 1978 to $117 million in 1980, the year Apple went public.",
       },
     ],
     claims,
     claimProvenance: {
       "/description": ["model-description"],
       "/input/entities/0/profile/bio": ["model-source-bio"],
-      "/input/entities/0/profile/location": ["model-source-location"],
       "/input/entities/0/profile/interests/0": ["model-shared-electronics"],
       "/input/entities/0/profile/interests/1": ["model-source-build-devices"],
       "/input/entities/0/profile/interests/2": ["model-source-computers"],
@@ -452,7 +451,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
     anonymizationReview: {
       reviewer: "independent-review-pending",
       reviewedAt: "not-yet-reviewed",
-      recognizability: "medium",
+      recognizability: "high",
       decision: "pending",
       rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
     },

@@ -6,19 +6,19 @@ import { HISTORICAL_CASE_04 } from "../historical/historical.case-04.js";
 const participantIds = ["h4-a", "h4-b", "h4-c", "h4-d", "h4-e"] as const;
 
 const source = {
-  bio: "Graduate computer-science researcher developing a working web-information system with another graduate researcher. The prototype used the Web’s link structure to improve result quality, operated across millions of pages, and had demonstrated enough technical and commercial promise for the researchers to pursue a company.",
+  bio: "Graduate researcher developing a working large-scale information-retrieval prototype with another researcher as the team considered a company transition.",
   location: "Northern California",
-  interests: ["web information retrieval", "large-scale systems", "search quality"],
-  skills: ["link analysis", "search-system architecture", "web crawling and indexing"],
-  intent: "Find a technically fluent outside backer willing to evaluate a working information-retrieval prototype and consider funding its transition into a company.",
+  interests: ["information retrieval", "scalable systems", "system quality"],
+  skills: ["ranking methods", "systems design", "data collection and indexing"],
+  intent: "Find a technically fluent outside evaluator willing to assess a working information-retrieval prototype during a possible company transition.",
 };
 
 const partner = {
-  bio: "Computer-systems engineer and repeat technical-company founder with experience designing and commercializing workstations, building a high-speed networking venture, and leading an acquired networking business. A trusted technical contact has invited him to evaluate a graduate team’s working information-retrieval demonstration.",
+  bio: "Computer-systems engineer and repeat technical-company founder with experience building and commercializing computing and networking systems. A technical contact has invited him to evaluate a graduate team’s working information-retrieval demonstration.",
   location: "Northern California",
-  interests: ["computer systems", "high-speed networking", "technical ventures"],
-  skills: ["systems architecture", "computer engineering", "technical company building"],
-  intent: "Evaluate an interesting technical demonstration introduced through a trusted systems colleague.",
+  interests: ["computer systems", "technical systems", "technical ventures"],
+  skills: ["systems design", "computer engineering", "technical company building"],
+  intent: "Evaluate an interesting technical demonstration introduced through a technical contact.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -96,6 +96,9 @@ describe("historical case 04", () => {
     expect(citations.get("stanford-engineering-hero-talk")?.url).toBe(
       "https://engineering.stanford.edu/news/andy-bechtolsheim-hero-talks-innovation-success-and-engineering",
     );
+    expect(citations.get("stanford-engineering-hero-talk")?.excerpt).toBe(
+      "In 1998, Stanford professor David Cheriton invited Bechtolsheim to meet two students who had an interesting product to demonstrate; the account places the check after the demonstration.",
+    );
     expect(citations.get("stanford-engineering-bechtolsheim")?.url).toBe(
       "https://engineering.stanford.edu/about/history/heroes/2012-heroes/andreas-bechtolsheim",
     );
@@ -148,6 +151,8 @@ describe("historical case 04", () => {
     const postDemonstrationForbidden = /incorporat(?:e|ed|ion)|funding decision|investment decision|post[- ]demonstration|after (?:the )?demonstration|after (?:he|they) saw|decided to (?:fund|invest)|immediate(?:ly)? (?:fund|invest|decision)|funding enabled|(?:funding|investment) sequence|relocat(?:e|ed|ion)|deposit(?:ed)?|payee|\$100\s*k|\b100,?000\b/i;
     expect(modelText).not.toMatch(forbidden);
     expect(modelText).not.toMatch(postDemonstrationForbidden);
+    const historicalProfiles = JSON.stringify(HISTORICAL_CASE_04.input.entities.slice(0, 2));
+    expect(historicalProfiles).not.toMatch(/trusted|outside backer|consider funding|millions of pages|web.{0,20}link|workstation|high-speed|gigabit|acquired/i);
   });
 
   it("authors three distinct negatives for capital direction, stage, and technical relevance", () => {

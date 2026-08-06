@@ -4,19 +4,19 @@ import { defineHistoricalQualityCase } from "../../discovery-env-matrix/historic
 const NETWORK_ID = "h4-spinout";
 
 const source = {
-  bio: "Graduate computer-science researcher developing a working web-information system with another graduate researcher. The prototype used the Web’s link structure to improve result quality, operated across millions of pages, and had demonstrated enough technical and commercial promise for the researchers to pursue a company.",
+  bio: "Graduate researcher developing a working large-scale information-retrieval prototype with another researcher as the team considered a company transition.",
   location: "Northern California",
-  interests: ["web information retrieval", "large-scale systems", "search quality"],
-  skills: ["link analysis", "search-system architecture", "web crawling and indexing"],
-  intent: "Find a technically fluent outside backer willing to evaluate a working information-retrieval prototype and consider funding its transition into a company.",
+  interests: ["information retrieval", "scalable systems", "system quality"],
+  skills: ["ranking methods", "systems design", "data collection and indexing"],
+  intent: "Find a technically fluent outside evaluator willing to assess a working information-retrieval prototype during a possible company transition.",
 } as const;
 
 const partner = {
-  bio: "Computer-systems engineer and repeat technical-company founder with experience designing and commercializing workstations, building a high-speed networking venture, and leading an acquired networking business. A trusted technical contact has invited him to evaluate a graduate team’s working information-retrieval demonstration.",
+  bio: "Computer-systems engineer and repeat technical-company founder with experience building and commercializing computing and networking systems. A technical contact has invited him to evaluate a graduate team’s working information-retrieval demonstration.",
   location: "Northern California",
-  interests: ["computer systems", "high-speed networking", "technical ventures"],
-  skills: ["systems architecture", "computer engineering", "technical company building"],
-  intent: "Evaluate an interesting technical demonstration introduced through a trusted systems colleague.",
+  interests: ["computer systems", "technical systems", "technical ventures"],
+  skills: ["systems design", "computer engineering", "technical company building"],
+  intent: "Evaluate an interesting technical demonstration introduced through a technical contact.",
 } as const;
 
 const semanticNegatives = {
@@ -50,7 +50,7 @@ const claims: HistoricalClaim[] = [
   {
     kind: "historical",
     id: "fact-invited-demonstration",
-    text: "A trusted systems colleague invited Bechtolsheim to evaluate the graduate researchers' working technical demonstration.",
+    text: "A technical contact invited Bechtolsheim to evaluate the graduate researchers' working technical demonstration.",
     citationIds: ["stanford-engineering-hero-talk"],
     preConnection: true,
   },
@@ -78,16 +78,16 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-description",
-    text: "A graduate researcher with a working web-information prototype seeks a technically fluent systems builder willing to evaluate it and consider funding a company transition.",
+    text: "A graduate researcher with a working information-retrieval prototype is paired with a technically fluent systems builder willing to evaluate a possible company transition.",
     basisClaimIds: ["fact-working-search-prototype", "fact-company-decision-before-demonstration", "fact-invited-demonstration", "fact-partner-systems-background"],
-    rationale: "Frames the evidenced pre-demonstration need and complementary technical evaluator without identifying the people, institution, system, or transaction.",
+    rationale: "Frames the evidenced pre-demonstration evaluation and complementary technical background without claiming pre-connection funding intent.",
   },
   {
     kind: "derived",
     id: "model-source-bio",
     text: source.bio,
     basisClaimIds: ["fact-working-search-prototype", "fact-page-link-ranking-collaboration", "fact-company-decision-before-demonstration"],
-    rationale: "Generalizes Page's documented prototype, link-ranking work, unnamed research collaboration, scale, quality goal, and pre-demonstration company decision.",
+    rationale: "Generalizes the documented working prototype, unnamed research collaboration, scale, and pre-demonstration company decision without the distinctive web-link/page-count cluster.",
   },
   {
     kind: "derived",
@@ -99,58 +99,58 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-source-web-retrieval",
-    text: "web information retrieval",
+    text: "information retrieval",
     basisClaimIds: ["fact-working-search-prototype"],
     rationale: "Broadly describes the documented web-search research system.",
   },
   {
     kind: "derived",
     id: "model-source-large-scale-systems",
-    text: "large-scale systems",
+    text: "scalable systems",
     basisClaimIds: ["fact-working-search-prototype"],
     rationale: "Conservative interest abstraction from a working system operating over millions of pages.",
   },
   {
     kind: "derived",
     id: "model-source-search-quality",
-    text: "search quality",
+    text: "system quality",
     basisClaimIds: ["fact-working-search-prototype"],
     rationale: "Uses the paper's documented quality objective without naming the system.",
   },
   {
     kind: "derived",
     id: "model-source-link-analysis",
-    text: "link analysis",
+    text: "ranking methods",
     basisClaimIds: ["fact-page-link-ranking-collaboration"],
-    rationale: "Generalizes Page's documented insight about using web links for ranking.",
+    rationale: "Generalizes the documented link-ranking insight without naming the web-link mechanism.",
   },
   {
     kind: "derived",
     id: "model-source-search-architecture",
-    text: "search-system architecture",
+    text: "systems design",
     basisClaimIds: ["fact-working-search-prototype"],
-    rationale: "Conservative capability abstraction from building the documented working large-scale prototype.",
+    rationale: "Conservative capability abstraction from building the documented working prototype.",
   },
   {
     kind: "derived",
     id: "model-source-crawling-indexing",
-    text: "web crawling and indexing",
+    text: "data collection and indexing",
     basisClaimIds: ["fact-working-search-prototype"],
-    rationale: "Generalizes the prototype's documented collection and database of web pages, full text, and hyperlinks.",
+    rationale: "Generalizes the prototype's documented collection and indexing operations.",
   },
   {
     kind: "derived",
     id: "model-source-intent",
     text: source.intent,
     basisClaimIds: ["fact-working-search-prototype", "fact-company-decision-before-demonstration", "fact-invited-demonstration", "fact-partner-systems-background"],
-    rationale: "Reconstructs the pre-demonstration search for technically informed evaluation and possible funding without claiming a habitual investor pattern or later transaction.",
+    rationale: "Generalizes the documented invitation and demonstration as a request for technically informed evaluation, without asserting funding willingness.",
   },
   {
     kind: "derived",
     id: "model-partner-bio",
     text: partner.bio,
     basisClaimIds: ["fact-invited-demonstration", "fact-partner-systems-background", "fact-partner-networking-ventures"],
-    rationale: "Generalizes the documented systems, workstation, networking, and operating background plus the invitation; both separate documented pre-1998 founding roles support the repeat-founder description.",
+    rationale: "Generalizes the documented computing, networking, and operating background plus the invitation; both separate documented pre-1998 founding roles support only the repeat-founder abstraction.",
   },
   {
     kind: "derived",
@@ -162,7 +162,7 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-partner-networking",
-    text: "high-speed networking",
+    text: "technical systems",
     basisClaimIds: ["fact-partner-networking-ventures"],
     rationale: "Uses the documented technical focus of the partner's networking venture.",
   },
@@ -176,7 +176,7 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-partner-systems-architecture",
-    text: "systems architecture",
+    text: "systems design",
     basisClaimIds: ["fact-partner-systems-background"],
     rationale: "Uses the documented computer-systems design background.",
   },
@@ -199,7 +199,7 @@ const claims: HistoricalClaim[] = [
     id: "model-partner-intent",
     text: partner.intent,
     basisClaimIds: ["fact-invited-demonstration", "fact-partner-systems-background"],
-    rationale: "Reconstructs only willingness to evaluate the invited technical demonstration, without adding unsupported recurring support patterns.",
+    rationale: "Expresses only the evaluation activity documented by the invitation, without trust, funding, or recurring-support claims.",
   },
   {
     kind: "derived",
@@ -260,7 +260,7 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
   rule: "historical",
   tier: 3,
   domains: ["technology", "funding"],
-  description: "A graduate researcher with a working web-information prototype seeks a technically fluent systems builder willing to evaluate it and consider funding a company transition.",
+  description: "A graduate researcher with a working information-retrieval prototype is paired with a technically fluent systems builder willing to evaluate a possible company transition.",
   input: {
     discovererId: "h4-a",
     entities: [
@@ -377,7 +377,7 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
         url: "https://engineering.stanford.edu/news/andy-bechtolsheim-hero-talks-innovation-success-and-engineering",
         title: "Andy Bechtolsheim: Hero talks innovation, success and engineering",
         publisher: "Stanford Engineering",
-        excerpt: "A trusted systems colleague invited Bechtolsheim to an August 1998 demonstration; the account places his funding decision after he saw the demonstration.",
+        excerpt: "In 1998, Stanford professor David Cheriton invited Bechtolsheim to meet two students who had an interesting product to demonstrate; the account places the check after the demonstration.",
       },
       {
         id: "stanford-engineering-bechtolsheim",
@@ -453,7 +453,7 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
     anonymizationReview: {
       reviewer: "independent-review-pending",
       reviewedAt: "not-yet-reviewed",
-      recognizability: "medium",
+      recognizability: "high",
       decision: "pending",
       rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
     },
