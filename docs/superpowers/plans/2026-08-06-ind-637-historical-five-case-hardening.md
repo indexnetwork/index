@@ -416,7 +416,7 @@ git commit -m "test(eval): re-source historical structure case"
 
 **Evidence to encode:**
 
-- National Museums Liverpool, “When Paul McCartney met John Lennon,” https://www.liverpoolmuseums.org.uk/stories/when-paul-mccartney-met-john-lennon — first meeting `6 July 1957`, Lennon’s group leadership/improvised words, McCartney’s tuning/guitar demonstration, and later joint writing.
+- National Museums Liverpool, “When Paul McCartney met John Lennon,” https://www.liverpoolmuseums.org.uk/stories/when-paul-mccartney-met-john-lennon — first meeting and guitar demonstration `6 July 1957`, followed by the invitation/joining a few weeks later; later joint writing remains outcome context.
 - JohnLennon.com, “MOTHER… discover more about John’s childhood,” https://www.johnlennon.com/news/mother-%E2%86%92-watch-the-4k-remastered-video-discover-more-about-johns-childhood/ — Lennon learned banjo chords, progressed to guitar, and practiced before the dated performance.
 - PaulMcCartney.com, “The Lyrics: 1956 to the Present Special,” https://www.paulmccartney.com/news/you-gave-me-the-answer-the-lyrics-1956-to-the-present-special — `“the first song I ever wrote … when I was fourteen”` establishes pre-meeting songwriting.
 - National Trust, “The Beatles | History,” https://www.nationaltrust.org.uk/visit/liverpool-lancashire/the-beatles-childhood-homes/history-of-the-beatles-childhood-homes — `“he'd been looking for a better guitarist for his group”` and the later invitation.
@@ -442,7 +442,7 @@ const partner = {
 };
 ```
 
-Use cutoff `{ date: "1957-07-06", precision: "day", exclusive: true }`. Remove port-city/club-circuit combinations, half-finished notebook, edgy-versus-melodic polarity, harmony/arrangement/bass, and mutual co-writer searches. Synthetic negatives become same-side group leader, non-performing promoter, and technically trained musician uninterested in popular group performance.
+Use the first-substantive-collaboration cutoff `{ date: "1957-07", precision: "month", exclusive: true }`. Ordering evidence must establish that the 6 July meeting and guitar demonstration preceded the invitation/joining a few weeks later; do not move the boundary after substantive collaboration. Remove port-city/club-circuit combinations, half-finished notebook, edgy-versus-melodic polarity, harmony/arrangement/bass, and mutual co-writer searches. Synthetic negatives become same-side group leader, non-performing promoter, and technically trained musician uninterested in popular group performance.
 
 - [ ] **Step 1: Write the failing case spec** including the exact forbidden terms `bass`, `half-finished`, `melodically gifted`, `co-writer`, and unique group/song/place names.
 - [ ] **Step 2: Run RED:** `bun test eval/matching/tests/historical.case-03.spec.ts`.
@@ -465,7 +465,7 @@ git commit -m "test(eval): re-source historical music case"
 
 ### Success Criteria
 
-- Automated: cutoff is exactly `1957-07-06`, exclusive, and the recruitment trigger maps to the National Trust evidence.
+- Automated: cutoff is exactly month-precision `1957-07`, exclusive; ordering evidence places the 6 July meeting/demonstration before invitation/joining a few weeks later, and the recruitment trigger maps to the National Trust evidence.
 - Automated: every listed unique group/song/place term plus `bass`, `half-finished`, `melodically gifted`, and `co-writer` is absent from serialized model input.
 - Automated: historical fields resolve only to the four pre-connection sources; Guinness evidence is outcome-only.
 - Automated: three synthetic negatives each violate a different guitarist-recruitment requirement and all frozen text is immutable.
@@ -635,7 +635,7 @@ RATIONALE: evidence-backed explanation
 REQUIRED CHANGES: concrete field paths and replacements, or "none"
 ```
 
-Reviewers are read-only, fresh-context, and independent of the authoring workers.
+Reviewers are read-only, fresh-context, and independent of the authoring workers. They must apply the project-wide first-substantive-collaboration boundary when assessing cutoff ordering; for Case 03, the 6 July meeting/demonstration precedes the invitation/joining a few weeks later within the exclusive month-precision `1957-07` boundary.
 
 - [ ] **Step 2: Apply every required correction with one writer**
 
