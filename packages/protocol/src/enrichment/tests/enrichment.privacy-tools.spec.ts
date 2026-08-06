@@ -105,9 +105,9 @@ describe("onboarding privacy profile tools", () => {
     } as unknown as ToolDeps);
   });
 
-  it("preview without public lookup neither enriches nor persists", async () => {
+  it("preview never enriches nor persists", async () => {
     const tool = tools.find((t) => t.name === "preview_user_context")!;
-    const result = parseToolResult(await tool.handler({ context: context(), query: { bioOrDescription: "I build AI tools.", allowPublicLookup: false } }));
+    const result = parseToolResult(await tool.handler({ context: context(), query: { bioOrDescription: "I build AI tools." } }));
 
     expect(result.success).toBe(true);
     expect(enricher).not.toHaveBeenCalled();
@@ -116,23 +116,20 @@ describe("onboarding privacy profile tools", () => {
     expect(saveProfile).not.toHaveBeenCalled();
   });
 
-  it("preview with public lookup prefers authenticated identity over agent-supplied name", async () => {
+  it("preview prefers the authenticated account name over an agent-supplied name", async () => {
     currentUser = { ...currentUser, name: "Steven Paul Jobs", email: "steve@apple.com" };
     const tool = tools.find((t) => t.name === "preview_user_context")!;
-    const result = parseToolResult(await tool.handler({ context: context(), query: { name: "Steve", allowPublicLookup: true } }));
+    const result = parseToolResult(await tool.handler({ context: context(), query: { name: "Steve" } }));
 
     expect(result.success).toBe(true);
-    expect(enricher).toHaveBeenCalledTimes(1);
-    const enrichmentRequest = enricher.mock.calls[0][0] as Record<string, unknown>;
-    expect(enrichmentRequest.name).toBe("Steven Paul Jobs");
-    expect(enrichmentRequest.email).toBe("steve@apple.com");
+    expect(enricher).not.toHaveBeenCalled();
     expect(generatedInputs[0]).toContain("Name: Steven Paul Jobs");
     expect(saveProfile).not.toHaveBeenCalled();
   });
 
   it("preview accepts EdgeOS/event profile data", async () => {
     const tool = tools.find((t) => t.name === "preview_user_context")!;
-    const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosProfileText: "Alice joined from an EdgeOS event.", allowPublicLookup: false } }));
+    const result = parseToolResult(await tool.handler({ context: context(), query: { edgeosProfileText: "Alice joined from an EdgeOS event." } }));
 
     expect(result.success).toBe(true);
     expect(enricher).not.toHaveBeenCalled();
@@ -152,7 +149,7 @@ describe("onboarding privacy profile tools", () => {
       }],
     };
     const tool = tools.find((t) => t.name === "preview_user_context")!;
-    const result = parseToolResult(await tool.handler({ context: { ...context(), networkId: "n1" }, query: { allowPublicLookup: false } }));
+    const result = parseToolResult(await tool.handler({ context: { ...context(), networkId: "n1" }, query: {} }));
 
     expect(result.success).toBe(true);
     expect(generatedInputs[0]).toContain("Name: Seed Alice");

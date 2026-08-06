@@ -49,14 +49,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     return normalized === 'unknown' || normalized === 'user';
   }
 
-  function resolveAuthenticatedLookupIdentity(user: UserRecord, context: { userName?: string; userEmail?: string }) {
-    const userName = trimToUndefined(user.name);
-    const contextName = trimToUndefined(context.userName);
-    const name = [userName, contextName].find((candidate) => candidate !== undefined && !isPlaceholderName(candidate));
-    const email = trimToUndefined(user.email) ?? trimToUndefined(context.userEmail);
-    return { name, email };
-  }
-
   async function enrichFromUserRecord(user: { name?: string | null; email?: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }> }) {
     const enrichmentSocials = socialsToEnrichmentRequest(user.socials);
     return enricher.enrichUserProfile({
@@ -178,7 +170,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     location?: string;
     bioOrDescription?: string;
     edgeosProfileText?: string;
-    enrichment?: EnrichmentResult | null;
     socials?: Array<{ label: string; value: string }>;
   }): string {
     const lines: string[] = [];
@@ -188,17 +179,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     if (parts.edgeosProfileText) lines.push(`Event-provided profile information:\n${parts.edgeosProfileText}`);
     if (parts.socials?.length) {
       lines.push(`User-provided public links:\n${parts.socials.map((s) => `${s.label}: ${s.value}`).join('\n')}`);
-    }
-    const enrichment = parts.enrichment ?? null;
-    if (isMeaningfulEnrichment(enrichment)) {
-      lines.push([
-        enrichment.identity.name ? `Enriched name: ${enrichment.identity.name}` : '',
-        enrichment.identity.location ? `Enriched location: ${enrichment.identity.location}` : '',
-        enrichment.identity.bio ? `Enriched bio: ${enrichment.identity.bio}` : '',
-        enrichment.narrative.context ? `Enriched context: ${enrichment.narrative.context}` : '',
-        enrichment.attributes.skills.length ? `Skills: ${enrichment.attributes.skills.join(', ')}` : '',
-        enrichment.attributes.interests.length ? `Interests: ${enrichment.attributes.interests.join(', ')}` : '',
-      ].filter(Boolean).join('\n'));
     }
     return lines.filter((line) => line.trim().length > 0).join('\n\n');
   }
@@ -504,15 +484,13 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     name: "preview_user_context",
     description:
       "Builds a structured profile draft for onboarding without saving anything. Use this before asking the user to approve the profile. " +
-      "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data, and user-provided social URLs. " +
-      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_enrichment_run until status is `succeeded`, then present its `result`." +
-      " When public lookup runs, the result includes a `publicLookup` block reporting whether a candidate identity was found (`used`, `confidentMatch`) and what it was (`identity` of name/role/location, plus `socials`), so the caller can confirm identity before saving. A candidate can be returned (`used: true`) without being confident enough to enter the draft; when no lookup runs the block is `{ used: false }`.",
+      "This tool never runs public internet lookup; it uses only explicit text, EdgeOS/event data, staged signup/import seeds, and user-provided social URLs. " +
+      "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_enrichment_run until status is `succeeded`, then present its `result`.",
     querySchema: z.object({
-      name: z.string().optional().describe("Name explicitly provided by the user. For authenticated public lookup, the account identity is used first and this is only a fallback."),
+      name: z.string().optional().describe("Name explicitly provided by the user. The account identity is used first and this is only a fallback."),
       location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
       bioOrDescription: z.string().optional().describe("Explicit self-description provided by the user."),
       edgeosProfileText: z.string().optional().describe("EdgeOS/event profile text."),
-      allowPublicLookup: z.boolean().optional().default(false).describe("Whether to include public profile lookup."),
       linkedinUrl: z.string().optional().describe("LinkedIn URL explicitly provided by the user."),
       githubUrl: z.string().optional().describe("GitHub URL explicitly provided by the user."),
       twitterUrl: z.string().optional().describe("X/Twitter URL explicitly provided by the user."),
@@ -534,8 +512,10 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       const scopedNetworkId = focusedNetworkId(context);
       const onboarding = user.onboarding ?? context.user.onboarding;
       const seed = selectProfileSeed(onboarding, scopedNetworkId);
-      const authenticatedIdentity = resolveAuthenticatedLookupIdentity(user, context);
-      const name = seed?.name || authenticatedIdentity.name || query.name?.trim() || undefined;
+      // Prefer the authenticated account identity over an agent-supplied name.
+      const accountName = [trimToUndefined(user.name), trimToUndefined(context.userName)]
+        .find((candidate) => candidate !== undefined && !isPlaceholderName(candidate));
+      const name = seed?.name || accountName || query.name?.trim() || undefined;
       const location = query.location?.trim() || seed?.location || user.location || undefined;
       const bioOrDescription = query.bioOrDescription?.trim() || seed?.bio || user.intro || undefined;
       const edgeosProfileText = query.edgeosProfileText?.trim() || undefined;
@@ -551,17 +531,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
         ...websites.map((value) => ({ label: detectSocialLabel(value), value })),
       ];
 
-      let enrichment: EnrichmentResult | null = null;
-      if (query.allowPublicLookup) {
-        const hasAuthenticatedIdentity = authenticatedIdentity.name !== undefined || authenticatedIdentity.email !== undefined;
-        enrichment = await enrichFromUserRecord({
-          name: authenticatedIdentity.name ?? (hasAuthenticatedIdentity ? undefined : name),
-          email: authenticatedIdentity.email,
-          socials: socials.map((social, index) => ({ id: `preview-${index}`, userId: context.userId, ...social })),
-        });
-      }
-
-      const input = buildProfileInput({ name, location, bioOrDescription, edgeosProfileText, enrichment, socials });
+      const input = buildProfileInput({ name, location, bioOrDescription, edgeosProfileText, socials });
       if (!input.trim()) {
         return needsClarification({
           missingFields: ['profile_description'],
@@ -577,19 +547,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
         message: "Profile draft generated. Show this to the user and ask whether it looks right before calling confirm_user_context.",
         profile: toProfileSummary(profile),
         draft: profile,
-        publicLookup: enrichment
-          ? {
-              used: true,
-              confidentMatch: enrichment.confidentMatch,
-              // identity.bio is the role/headline string returned by the lookup
-              identity: {
-                name: enrichment.identity.name,
-                role: enrichment.identity.bio,
-                location: enrichment.identity.location,
-              },
-              socials: enrichment.socials,
-            }
-          : { used: false },
       });
     },
   });

@@ -18,7 +18,10 @@ section before promoting to `main`).
   `preview_user_context` and staged profile seeds no longer require recorded
   consent; leftover `privacy` values in stored onboarding JSON are ignored.
   Like the network-level flow below, opt-in/opt-out moves to a separate
-  enrichment service defined per implementation/application.
+  enrichment service defined per implementation/application. Public profile
+  lookup is also removed from the onboarding preview: the `allowPublicLookup`
+  enrichment-run input field is dropped (protocol 10.0.0 removes the tool
+  parameter and `publicLookup` response block).
 - Remove the network-level enrichment consent flow and the `profileEnrichment`
   network permission entirely (API 0.76.0). The `consent_required` policy, the
   `forceHeadlessProvisioningPermissions` consent-safe forcing on invites, CSV
