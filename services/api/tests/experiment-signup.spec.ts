@@ -77,7 +77,7 @@ describe('experimentService.signup', () => {
     expect(result.created).toBe(true);
   }, 15_000);
 
-  it('stages name, bio, location, and socials from rich payload for consented onboarding', async () => {
+  it('stages name, bio, location, and socials from rich payload for onboarding', async () => {
     const { networkId } = await setupMasterKeyNetwork();
     const email = `rich-${randomUUID()}@example.com`;
 

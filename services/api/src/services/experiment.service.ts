@@ -322,8 +322,7 @@ export class ExperimentService {
   /**
    * Stages optional profile/social data from headless experiment signup or CSV
    * import without activating it on the user/profile tables. The onboarding
-   * profile tools may use this seed only after the user grants EdgeOS/event
-   * import consent and verifies the generated profile draft.
+   * profile tools use this seed to draft a profile the user then verifies.
    *
    * @param userId - User receiving the staged seed.
    * @param networkId - Experiment network that supplied the seed.
