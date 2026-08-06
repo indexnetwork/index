@@ -38,13 +38,13 @@ describe("tier-3 historical corpus", () => {
         JSON.stringify(historicalModelSafeProjection(historicalCase)),
         JSON.stringify(historicalMatchingCaseProjection(historicalCase).input),
       ];
-      const outcomeCitations = new Set(historicalCase.historicalQuality.outcomeCitationIds);
       const forbidden = [
         ...Object.values(historicalCase.reportNames ?? {}),
         ...historicalCase.historicalQuality.citations.flatMap((citation) => [
           citation.url,
+          citation.title,
+          citation.publisher,
           citation.excerpt,
-          ...(outcomeCitations.has(citation.id) ? [citation.title] : []),
         ]),
         ...Object.values(historicalCase.historicalQuality.semanticNegatives),
         ...auditKeys,

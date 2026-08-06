@@ -21,6 +21,42 @@ const partner = {
   intent: "Evaluate an interesting technical demonstration introduced through a technical contact.",
 };
 
+const syntheticNegatives = [
+  {
+    userId: "h4-c",
+    profile: {
+      name: "Participant C",
+      bio: "Technical founder developing an early information system and currently seeking outside capital for it.",
+      location: "Northern California",
+      interests: ["information systems", "technical ventures"],
+      skills: ["software engineering", "prototyping"],
+    },
+    intent: "Find a capital provider for an early technical system rather than fund another researcher's transition.",
+  },
+  {
+    userId: "h4-d",
+    profile: {
+      name: "Participant D",
+      bio: "Capital provider focused on established technology businesses with proven revenue and expansion needs.",
+      location: "Northern California",
+      interests: ["growth-stage businesses", "business scaling"],
+      skills: ["financial analysis", "board governance"],
+    },
+    intent: "Fund established businesses with proven revenue rather than working research prototypes.",
+  },
+  {
+    userId: "h4-e",
+    profile: {
+      name: "Participant E",
+      bio: "Early capital provider for consumer brands whose evaluation experience is commercial rather than computer-systems technical.",
+      location: "Northern California",
+      interests: ["consumer brands", "retail"],
+      skills: ["brand development", "consumer distribution"],
+    },
+    intent: "Evaluate early consumer-brand businesses rather than technically assess an information-retrieval prototype.",
+  },
+];
+
 function expectDeeplyFrozen(value: unknown): void {
   if (value === null || typeof value !== "object") return;
   expect(Object.isFrozen(value)).toBeTrue();
@@ -178,6 +214,12 @@ describe("historical case 04", () => {
       "h4-d": "Later-stage capital provider does not evaluate or fund working prototypes at this transition stage.",
       "h4-e": "Early capital provider lacks the computer-systems background needed for technically fluent evaluation of this prototype.",
     });
+    const modelFacingNegatives = historicalModelSafeProjection(HISTORICAL_CASE_04).input.entities.slice(2);
+    for (const [index, expectedNegative] of syntheticNegatives.entries()) {
+      expect(modelFacingNegatives[index]!.userId).toBe(expectedNegative.userId);
+      expect(modelFacingNegatives[index]!.profile).toEqual(expectedNegative.profile);
+      expect(modelFacingNegatives[index]!.intents?.[0]?.payload).toBe(expectedNegative.intent);
+    }
     for (const participantId of negativeIds) {
       const participantClaims = HISTORICAL_CASE_04.historicalQuality.claims.filter(
         (claim) => claim.kind === "authored" && claim.participantId === participantId,

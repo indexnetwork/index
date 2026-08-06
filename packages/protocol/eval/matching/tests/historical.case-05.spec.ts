@@ -21,6 +21,42 @@ const partner = {
   intent: "Study immune responses in viral disease and investigate vaccine approaches.",
 };
 
+const syntheticNegatives = [
+  {
+    userId: "h5-c",
+    profile: {
+      name: "Participant C",
+      bio: "Nucleic-acid biochemist who needs complementary immune-system expertise.",
+      location: "U.S. East Coast",
+      interests: ["nucleic-acid biology", "therapeutic proteins"],
+      skills: ["nucleic-acid production", "laboratory transcription"],
+    },
+    intent: "Find immune-system expertise rather than provide the needed immunology capability.",
+  },
+  {
+    userId: "h5-d",
+    profile: {
+      name: "Participant D",
+      bio: "Infectious-disease epidemiologist who evaluates population trends without conducting laboratory cellular-immunity experiments.",
+      location: "U.S. East Coast",
+      interests: ["infectious-disease epidemiology", "population health"],
+      skills: ["statistical modeling", "disease surveillance"],
+    },
+    intent: "Analyze population-level disease data rather than conduct cellular-immunity experiments.",
+  },
+  {
+    userId: "h5-e",
+    profile: {
+      name: "Participant E",
+      bio: "Plant molecular biologist studying immune signaling in crops rather than human immune biology.",
+      location: "U.S. East Coast",
+      interests: ["plant immunity", "crop disease resistance"],
+      skills: ["plant cell biology", "plant genetics"],
+    },
+    intent: "Study immune signaling and disease resistance in plants rather than human cellular immunity.",
+  },
+];
+
 function expectDeeplyFrozen(value: unknown): void {
   if (value === null || typeof value !== "object") return;
   expect(Object.isFrozen(value)).toBeTrue();
@@ -141,6 +177,12 @@ describe("historical case 05", () => {
       "h5-d": "Population-level infectious-disease analyst lacks laboratory cellular-immunity methods.",
       "h5-e": "Plant immune-signaling researcher works in the wrong biological domain for human immune research.",
     });
+    const modelFacingNegatives = historicalModelSafeProjection(HISTORICAL_CASE_05).input.entities.slice(2);
+    for (const [index, expectedNegative] of syntheticNegatives.entries()) {
+      expect(modelFacingNegatives[index]!.userId).toBe(expectedNegative.userId);
+      expect(modelFacingNegatives[index]!.profile).toEqual(expectedNegative.profile);
+      expect(modelFacingNegatives[index]!.intents?.[0]?.payload).toBe(expectedNegative.intent);
+    }
     for (const participantId of negativeIds) {
       const participantClaims = HISTORICAL_CASE_05.historicalQuality.claims.filter(
         (claim) => claim.kind === "authored" && claim.participantId === participantId,

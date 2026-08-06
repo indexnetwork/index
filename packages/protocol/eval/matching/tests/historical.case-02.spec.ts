@@ -21,6 +21,42 @@ const partner = {
   intent: "Study biological structure using physical and crystallographic methods.",
 };
 
+const syntheticNegatives = [
+  {
+    userId: "h2-c",
+    profile: {
+      name: "Participant C",
+      bio: "Experimental biologist studying biological structure through laboratory work and seeking complementary physical analysis.",
+      location: "Southern England",
+      interests: ["experimental biology", "biological structure"],
+      skills: ["biology", "laboratory experimentation"],
+    },
+    intent: "Find a collaborator with physical and crystallographic methods for a biological structure problem.",
+  },
+  {
+    userId: "h2-d",
+    profile: {
+      name: "Participant D",
+      bio: "Laboratory administrator who manages funding, equipment, and scheduling but does not conduct scientific analysis.",
+      location: "Southern England",
+      interests: ["research administration", "laboratory operations"],
+      skills: ["budgeting", "laboratory management"],
+    },
+    intent: "Support a research group through administration and operations rather than scientific collaboration.",
+  },
+  {
+    userId: "h2-e",
+    profile: {
+      name: "Participant E",
+      bio: "Chemist studying reactions of small industrial compounds rather than biological macromolecular structure.",
+      location: "Southern England",
+      interests: ["small-molecule chemistry", "reaction kinetics"],
+      skills: ["organic synthesis", "kinetic analysis"],
+    },
+    intent: "Investigate synthesis and reaction rates for small industrial compounds.",
+  },
+];
+
 function expectDeeplyFrozen(value: unknown): void {
   if (value === null || typeof value !== "object") return;
   expect(Object.isFrozen(value)).toBeTrue();
@@ -140,6 +176,12 @@ describe("historical case 02", () => {
     const negatives = HISTORICAL_CASE_02.historicalQuality.semanticNegatives;
     expect(Object.keys(negatives)).toEqual(negativeIds);
     expect(new Set(Object.values(negatives)).size).toBe(3);
+    const modelFacingNegatives = historicalModelSafeProjection(HISTORICAL_CASE_02).input.entities.slice(2);
+    for (const [index, expectedNegative] of syntheticNegatives.entries()) {
+      expect(modelFacingNegatives[index]!.userId).toBe(expectedNegative.userId);
+      expect(modelFacingNegatives[index]!.profile).toEqual(expectedNegative.profile);
+      expect(modelFacingNegatives[index]!.intents?.[0]?.payload).toBe(expectedNegative.intent);
+    }
     for (const participantId of negativeIds) {
       expect(negatives[participantId].trim().length).toBeGreaterThan(0);
       const participantClaims = HISTORICAL_CASE_02.historicalQuality.claims.filter(

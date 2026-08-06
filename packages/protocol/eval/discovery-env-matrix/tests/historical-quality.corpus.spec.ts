@@ -248,7 +248,11 @@ describe("historical quality corpus contract", () => {
 
     const overlappingOutcome = validCase();
     overlappingOutcome.historicalQuality.outcomeCitationIds = ["citation-pre"];
-    expect(() => validateHistoricalQualityCase(overlappingOutcome)).toThrow(/outcome requires an independent citation/);
+    expect(() => validateHistoricalQualityCase(overlappingOutcome)).toThrow(/outcome citations must be disjoint from pre-connection citations/);
+
+    const mixedOverlapOutcome = validCase();
+    mixedOverlapOutcome.historicalQuality.outcomeCitationIds = ["citation-pre", "citation-outcome"];
+    expect(() => validateHistoricalQualityCase(mixedOverlapOutcome)).toThrow(/outcome citations must be disjoint from pre-connection citations/);
   });
 
   it("requires approved review by default but permits complete pending authoring cases explicitly", () => {
@@ -343,6 +347,10 @@ describe("historical quality corpus contract", () => {
     const namedSynthetic = validCase();
     namedSynthetic.reportNames!["p-negative-1"] = "Not a historical identity";
     expect(() => validateHistoricalQualityCase(namedSynthetic)).toThrow(/report name cannot identify synthetic participant p-negative-1/);
+
+    const unknownReportName = validCase();
+    unknownReportName.reportNames!.unknown = "Unknown identity";
+    expect(() => validateHistoricalQualityCase(unknownReportName)).toThrow(/report name references unknown participant unknown/);
   });
 
   it("requires exact field-level provenance for every projected claim-bearing string", () => {

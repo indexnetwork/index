@@ -59,14 +59,14 @@ describe("historical discovery environment matrix fixtures", () => {
         JSON.stringify(input),
         JSON.stringify(HISTORICAL_CASES[caseIndex]!.input),
       ];
-      const outcomeCitations = new Set(auditedCase.historicalQuality.outcomeCitationIds);
       const forbidden = [
         auditedCase.id,
         ...Object.values(auditedCase.reportNames ?? {}),
         ...auditedCase.historicalQuality.citations.flatMap((citation) => [
           citation.url,
+          citation.title,
+          citation.publisher,
           citation.excerpt,
-          ...(outcomeCitations.has(citation.id) ? [citation.title] : []),
         ]),
         ...Object.values(auditedCase.historicalQuality.semanticNegatives),
         ...auditKeys,

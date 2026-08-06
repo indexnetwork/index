@@ -21,6 +21,42 @@ const partner = {
   intent: "Perform popular music on guitar.",
 };
 
+const syntheticNegatives = [
+  {
+    userId: "h3-c",
+    profile: {
+      name: "Participant C",
+      bio: "Teenage guitarist who already leads an amateur popular-music group and wants an additional player for that group.",
+      location: "",
+      interests: ["popular music", "guitar"],
+      skills: ["guitar playing", "group leadership"],
+    },
+    intent: "Recruit a guitarist for an existing group rather than join and strengthen another group.",
+  },
+  {
+    userId: "h3-d",
+    profile: {
+      name: "Participant D",
+      bio: "Performance promoter who arranges appearances but does not perform music.",
+      location: "",
+      interests: ["performance promotion", "music promotion"],
+      skills: ["performance booking", "publicity"],
+    },
+    intent: "Arrange performance appearances for amateur groups without joining as a performer.",
+  },
+  {
+    userId: "h3-e",
+    profile: {
+      name: "Participant E",
+      bio: "Technically trained instrumentalist focused on formal recital work and uninterested in popular group performance.",
+      location: "",
+      interests: ["formal recitals", "instrumental technique"],
+      skills: ["sight-reading", "instrumental performance"],
+    },
+    intent: "Continue formal recital work rather than perform popular music with an amateur group.",
+  },
+];
+
 function expectDeeplyFrozen(value: unknown): void {
   if (value === null || typeof value !== "object") return;
   expect(Object.isFrozen(value)).toBeTrue();
@@ -190,6 +226,12 @@ describe("historical case 03", () => {
       "h3-d": "Non-performing promoter can arrange performances but cannot provide the required guitar performance skill.",
       "h3-e": "Technically trained musician has strong instrumental skill but is uninterested in popular group performance.",
     });
+    const modelFacingNegatives = historicalModelSafeProjection(HISTORICAL_CASE_03).input.entities.slice(2);
+    for (const [index, expectedNegative] of syntheticNegatives.entries()) {
+      expect(modelFacingNegatives[index]!.userId).toBe(expectedNegative.userId);
+      expect(modelFacingNegatives[index]!.profile).toEqual(expectedNegative.profile);
+      expect(modelFacingNegatives[index]!.intents?.[0]?.payload).toBe(expectedNegative.intent);
+    }
     for (const [index, participantId] of negativeIds.entries()) {
       const participantClaims = HISTORICAL_CASE_03.historicalQuality.claims.filter(
         (claim) => claim.kind === "authored" && claim.participantId === participantId,

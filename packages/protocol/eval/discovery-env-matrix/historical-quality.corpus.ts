@@ -214,6 +214,7 @@ export function validateHistoricalQualityCase(
   }
 
   for (const participantId of Object.keys(input.reportNames ?? {})) {
+    if (!ids.has(participantId)) fail(`report name references unknown participant ${participantId}`);
     if (participantKinds[participantId] === "synthetic") {
       fail(`report name cannot identify synthetic participant ${participantId}`);
     }
@@ -333,8 +334,8 @@ export function validateHistoricalQualityCase(
     }
   }
 
-  if (input.historicalQuality.outcomeCitationIds.every((citationId) => preConnectionCitationIds.has(citationId))) {
-    fail("outcome requires an independent citation");
+  if (input.historicalQuality.outcomeCitationIds.some((citationId) => preConnectionCitationIds.has(citationId))) {
+    fail("outcome citations must be disjoint from pre-connection citations");
   }
 
   const review = input.historicalQuality.anonymizationReview;
