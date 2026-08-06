@@ -2169,7 +2169,7 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user approves a draft during onboarding.
+Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are applied to the account immediately, and automatic enrichment may run while the user remains a current network member. The same imported fields are retained as provenance seeds so onboarding preview and confirmation can explain and refine the active profile; network-scoped seed reads never fall back across networks.
 
 **Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key (issued once when master-key signup is enabled via `POST /api/networks/:id/master-key`, stored by the caller).
 
@@ -2287,7 +2287,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, any 
 
 ### POST /api/networks/:id/members/import
 
-Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member approves a draft during onboarding.
+Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately and apply optional profile columns (`name`, `bio`, `location`, socials) to the active account. Automatic enrichment may run while each user remains a current network member. The same imported fields are retained as provenance seeds so onboarding preview and confirmation can explain and refine the active profile; network-scoped seed reads never fall back across networks.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2304,7 +2304,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, any n
 { "imported": 42, "skipped": 3, "ownersNotified": 1 }
 ```
 
-- `imported` — Number of accounts provisioned and added as members. Rich profile fields are staged, not activated.
+- `imported` — Number of accounts provisioned and added as members. Rich profile fields are applied immediately and retained as provenance seeds.
 - `skipped` — Number of rows that were skipped (errors).
 - `ownersNotified` — Number of network owners who received a credentials summary email. The email contains an inline CSV with every minted API key (`email,name,api_key`). Per-user invitation emails are not sent for bulk imports — the owner distributes keys out-of-band.
 

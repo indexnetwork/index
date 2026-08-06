@@ -55,7 +55,7 @@ When a user connects social accounts or provides URLs (LinkedIn, GitHub, persona
 
 ### Event/import seeds and onboarding drafts
 
-Master-key `/signup` and CSV import provision the user, scoped agent, and membership immediately, but rich payloads (`name`, `bio`, `location`, socials) are staged under `users.onboarding.profileSeeds` instead of being written to active identity fields. The onboarding-safe `preview_user_profile` tool synthesizes a draft from staged seeds and user-provided inputs without persisting it, and `confirm_user_profile` saves only the approved draft or approved correction text.
+Master-key `/signup` and CSV import provision the user, scoped agent, and membership immediately and apply rich payloads (`name`, `bio`, `location`, socials) to the active account. Automatic enrichment may then run for current network members. The same imported fields are retained under `users.onboarding.profileSeeds` as provenance so `preview_user_context` can explain and refine the active profile without persisting its draft; `confirm_user_context` saves approved refinements. Network-scoped seed reads never fall back across networks.
 
 ### User-directed updates
 
