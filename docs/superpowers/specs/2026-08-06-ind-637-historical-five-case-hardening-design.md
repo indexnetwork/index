@@ -132,7 +132,7 @@ After authoring and deterministic validation, a fresh-context agent independentl
 7. challenge recognizability through combinations of otherwise generalized facts;
 8. approve or request revision per case.
 
-The review output is preserved in a committed five-case review record. The corpus stores the resulting reviewer identifier, date, recognizability rating, decision, and rationale. The authoring agent may apply requested changes, but the same independent reviewer must re-check changed cases before they become approved.
+The review output is preserved in a committed five-case review record. The corpus stores the resulting reviewer identifier, date, recognizability rating, decision, and rationale. The authoring agent may apply requested changes, but the same independent reviewer must re-check changed cases before they become approved. After the matching and matrix adapters switch to the audited corpus, each original reviewer also inspects the final serialized matching and matrix payloads at an exact integration commit; the durable receipt is not final until those projection checks pass.
 
 ## Validation and Failure Behavior
 

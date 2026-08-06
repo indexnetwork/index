@@ -152,8 +152,19 @@ input.input.entities[1]!.userId = input.input.entities[0]!.userId;
 delete input.historicalQuality.participantKinds["p-target"];
 input.historicalQuality.participantKinds.unknown = "synthetic";
 
-// source or positive marked synthetic
+// source marked synthetic
 input.historicalQuality.participantKinds["p-source"] = "synthetic";
+
+// sole positive marked synthetic
+input.historicalQuality.participantKinds["p-target"] = "synthetic";
+
+// sixth unreferenced entity violates exact five-participant cardinality
+input.input.entities.push({
+  userId: "p-extra",
+  profile: { name: "Participant F", bio: "Extra participant.", interests: [], skills: [] },
+  networkId: "historical-v2-pool",
+});
+input.historicalQuality.participantKinds["p-extra"] = "historical";
 
 // authored violated requirement drifting from semanticNegatives
 negativeClaim.violatedRequirement = "different reason";
@@ -204,7 +215,7 @@ export function historicalMatchingCaseProjection(input: HistoricalQualityCase): 
 }
 ```
 
-Reject duplicate entity IDs before constructing participant sets. Require `participantKinds` to cover the entity IDs exactly, the discoverer and sole positive to be historical, and exactly three rejected synthetic participants to be represented by `semanticNegatives`. Use DFS over `basisClaimIds` to reject cycles and require every derived path to terminate only in `historical` claims. Resolve entity JSON-pointer paths back to participant IDs: historical participants may use only historical/derived claims; synthetic participants may use only authored claims whose `participantId` and `violatedRequirement` exactly match `semanticNegatives`.
+Reject duplicate entity IDs before constructing participant sets. Require exactly five entities, `participantKinds` to cover the entity IDs exactly, the discoverer and sole positive to be historical, and exactly three rejected synthetic participants to be represented by `semanticNegatives`. Use DFS over `basisClaimIds` to reject cycles and require every derived path to terminate only in `historical` claims. Resolve entity JSON-pointer paths back to participant IDs: historical participants may use only historical/derived claims; synthetic participants may use only authored claims whose `participantId` and `violatedRequirement` exactly match `semanticNegatives`. Independently require `/description` and every `/triggerInputs/**` path to use historical claims or derived claims that terminate exclusively in historical claims; authored fixture claims are forbidden on those non-participant model fields.
 
 Add a recursive `deepFreeze` private helper and export:
 
@@ -618,7 +629,7 @@ CUTOFF: PASS|FAIL — exclusive boundary and ordering findings
 PROVENANCE: PASS|FAIL — every historical/derived field supported
 SYNTHETIC NEGATIVES: PASS|FAIL — authored-only and requirement-specific
 LEAKAGE: low|medium|high — combination-based recognizability analysis
-SERIALIZED PROJECTIONS: PASS|FAIL — inspect historicalModelSafeProjection, matrixModelInput, and matching evaluator input
+SERIALIZED PROJECTIONS: PASS|FAIL/PENDING — inspect historicalModelSafeProjection and canonical matching evaluator input now; record matrixModelInput as PENDING until Task 8 switches the adapter
 DECISION: approved|revise
 RATIONALE: evidence-backed explanation
 REQUIRED CHANGES: concrete field paths and replacements, or "none"
@@ -692,7 +703,7 @@ git commit -m "docs(eval): record independent historical corpus review"
 ### Success Criteria
 
 - Manual/committed: the receipt has one PASS/FAIL row for every citation listed in Tasks 2–6, verifying URL, title, publisher, exact excerpt, fact ordering, mapped field paths, and outcome-only use where required.
-- Manual/committed: each case records cutoff, provenance, synthetic-negative, serialized-projection, and combination-leakage verdicts plus the original reviewer identifier and exact reviewed checkpoint SHA.
+- Manual/committed: each case records cutoff, provenance, synthetic-negative, historical/matching serialization, and combination-leakage verdicts plus the original reviewer identifier and exact reviewed checkpoint SHA; matrix serialization is explicitly pending Task 8.
 - Manual/committed: reviewers are read-only and the receipt identifies the sole patch-applying writer.
 - Automated: all five cases pass strict validation only after their independent decisions become approved; cloned pending/revise mutations still fail.
 
@@ -810,12 +821,43 @@ git add packages/protocol/eval/matching/matching.historical.ts \
 git commit -m "test(eval): adopt audited historical corpus"
 ```
 
+Record this integration commit SHA.
+
+- [ ] **Step 8: Resume the original case reviewers on final serializers**
+
+For each case, resume the original reviewer session from Task 7 against the integration commit. The reviewer must inspect the final `historicalModelSafeProjection`, exact matching evaluator `case.input`, and final `matrixModelInput`, then return `SERIALIZED PROJECTIONS: PASS|FAIL` with concrete leaked strings/paths.
+
+- [ ] **Step 9: Fix and re-review any final-serialization finding**
+
+Use one writer. Commit any correction while review metadata remains pending for the affected case, then resume that same reviewer session again. Do not accept a projection fix solely because tests pass.
+
+- [ ] **Step 10: Finalize the review receipt**
+
+Update `docs/research/2026-08-06-historical-five-case-review.md` with the final integration/fix commit SHA, matrix serialization PASS for every case, correction history, and original reviewer run/session IDs. Update affected case review rationales/dates without changing reviewer identity.
+
+- [ ] **Step 11: Re-run affected focused tests and commit final serialization approval**
+
+```bash
+cd packages/protocol
+bun test eval/matching/tests/historical.case-*.spec.ts \
+  eval/matching/tests/matching.historical.spec.ts \
+  eval/discovery-env-matrix/tests/historical-quality.corpus.spec.ts \
+  eval/discovery-env-matrix/tests/historical-matrix.cases.spec.ts
+cd ../..
+git add packages/protocol/eval/matching/historical \
+  packages/protocol/eval/matching/tests \
+  packages/protocol/eval/discovery-env-matrix \
+  docs/research/2026-08-06-historical-five-case-review.md
+git commit -m "docs(eval): approve final historical projections"
+```
+
 ### Success Criteria
 
 - Automated: the aggregate contains exactly the five stable case IDs and each case has exactly five stable anonymous participant IDs; descriptive case IDs are absent from the exact matching/matrix LLM payload strings.
 - Automated: serialized `historicalModelSafeProjection`, `matrixModelInput`, and matching evaluator input contain none of the report identities, URLs, excerpts, audit keys, reviewed unique proper nouns, negative labels/reasons, or outcome terms.
 - Automated/static: `RECONSTRUCTED_INTENTS` and `historically_grounded_reconstruction` are absent; each matrix intent equals its canonical frozen participant intent.
 - Automated: fixture metadata is `historical-matrix-v2`; v1 protected-base metadata is refused by provider-free API tests before any reset/spend path.
+- Manual/committed: each original case reviewer approves the final integration commit’s matching and matrix serializations; the receipt records the exact reviewed SHA and reviewer session ID.
 
 ---
 
