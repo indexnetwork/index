@@ -34439,13 +34439,13 @@ function parseDeepLink(rawUrl, options = {}) {
 }
 
 /**
- * Is this URL ours at all — the `index:` scheme, or https on a host we claim —
- * regardless of whether it resolves to a route?
+ * Is this URL ours at all — the `index:` scheme, or https on a supported Index
+ * host — regardless of whether it resolves to a route?
  *
- * The two questions are genuinely different: the web AASA claims `/u/*`, and
- * `*` matches path separators, so macOS can hand over `https://index.network/
- * u/<id>/chat` — a real web route with no screen in the app. The window has
- * already been raised by then, so the app says so instead of dropping it.
+ * This predicate deliberately recognizes supported hosts and schemes more
+ * broadly than routeability. The web AASA filters deeper profile paths such as
+ * `/u/<id>/chat` before macOS delivery, but a direct or manual invocation of an
+ * unsupported Index URL can still reach this check and receive the app notice.
  *
  * @param {unknown} rawUrl
  * @param {{ hosts?: Array<string> }} [options]
@@ -34467,7 +34467,7 @@ function claimedPath(rawUrl, options) {
   const raw = rawUrl.trim();
   if (!raw) return null;
 
-  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/.exec(raw);
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(raw);
   if (!schemeMatch) return null;
   const scheme = schemeMatch[1].toLowerCase();
 
@@ -34484,7 +34484,7 @@ function claimedPath(rawUrl, options) {
   let url;
   try {
     url = new URL(raw);
-  } catch (error) {
+  } catch {
     return null;
   }
 
@@ -34535,7 +34535,7 @@ function routeFromPath(path) {
 function safeDecode(segment) {
   try {
     return decodeURIComponent(segment);
-  } catch (error) {
+  } catch {
     return segment;
   }
 }
@@ -42954,15 +42954,19 @@ function App() {
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
     return window.IndexApp.onDeepLink((url) => {
+      const deepLinkHosts = Array.isArray(window.INDEX_NATIVE?.deepLinkHosts)
+        && window.INDEX_NATIVE.deepLinkHosts.length
+        ? { hosts: window.INDEX_NATIVE.deepLinkHosts }
+        : undefined;
       const route = (window.IndexApi && window.IndexApi.parseDeepLink)
-        ? window.IndexApi.parseDeepLink(url)
+        ? window.IndexApi.parseDeepLink(url, deepLinkHosts)
         : null;
       if (!route) {
-        // Not ours: stay quiet. Ours but unroutable (the AASA claims `/u/*`,
-        // and macOS hands over web-only routes like `/u/<id>/chat`): the
-        // window is already up, so say something instead of dropping it.
+        // Not ours: stay quiet. Direct or manual invocation can still provide
+        // a recognized-host URL the app cannot route; AASA excludes deeper
+        // web-only profile paths before normal macOS delivery.
         const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
-          ? window.IndexApi.isIndexDeepLink(url)
+          ? window.IndexApi.isIndexDeepLink(url, deepLinkHosts)
           : false;
         if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
         return;

@@ -104,15 +104,19 @@ function App() {
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
     return window.IndexApp.onDeepLink((url) => {
+      const deepLinkHosts = Array.isArray(window.INDEX_NATIVE?.deepLinkHosts)
+        && window.INDEX_NATIVE.deepLinkHosts.length
+        ? { hosts: window.INDEX_NATIVE.deepLinkHosts }
+        : undefined;
       const route = (window.IndexApi && window.IndexApi.parseDeepLink)
-        ? window.IndexApi.parseDeepLink(url)
+        ? window.IndexApi.parseDeepLink(url, deepLinkHosts)
         : null;
       if (!route) {
-        // Not ours: stay quiet. Ours but unroutable (the AASA claims `/u/*`,
-        // and macOS hands over web-only routes like `/u/<id>/chat`): the
-        // window is already up, so say something instead of dropping it.
+        // Not ours: stay quiet. Direct or manual invocation can still provide
+        // a recognized-host URL the app cannot route; AASA excludes deeper
+        // web-only profile paths before normal macOS delivery.
         const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
-          ? window.IndexApi.isIndexDeepLink(url)
+          ? window.IndexApi.isIndexDeepLink(url, deepLinkHosts)
           : false;
         if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
         return;

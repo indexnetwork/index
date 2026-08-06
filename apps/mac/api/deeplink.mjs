@@ -52,13 +52,13 @@ export function parseDeepLink(rawUrl, options = {}) {
 }
 
 /**
- * Is this URL ours at all — the `index:` scheme, or https on a host we claim —
- * regardless of whether it resolves to a route?
+ * Is this URL ours at all — the `index:` scheme, or https on a supported Index
+ * host — regardless of whether it resolves to a route?
  *
- * The two questions are genuinely different: the web AASA claims `/u/*`, and
- * `*` matches path separators, so macOS can hand over `https://index.network/
- * u/<id>/chat` — a real web route with no screen in the app. The window has
- * already been raised by then, so the app says so instead of dropping it.
+ * This predicate deliberately recognizes supported hosts and schemes more
+ * broadly than routeability. The web AASA filters deeper profile paths such as
+ * `/u/<id>/chat` before macOS delivery, but a direct or manual invocation of an
+ * unsupported Index URL can still reach this check and receive the app notice.
  *
  * @param {unknown} rawUrl
  * @param {{ hosts?: Array<string> }} [options]
@@ -80,7 +80,7 @@ function claimedPath(rawUrl, options) {
   const raw = rawUrl.trim();
   if (!raw) return null;
 
-  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/.exec(raw);
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(raw);
   if (!schemeMatch) return null;
   const scheme = schemeMatch[1].toLowerCase();
 
@@ -97,7 +97,7 @@ function claimedPath(rawUrl, options) {
   let url;
   try {
     url = new URL(raw);
-  } catch (error) {
+  } catch {
     return null;
   }
 
@@ -148,7 +148,7 @@ function routeFromPath(path) {
 function safeDecode(segment) {
   try {
     return decodeURIComponent(segment);
-  } catch (error) {
+  } catch {
     return segment;
   }
 }

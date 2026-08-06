@@ -54,12 +54,14 @@ describe("production web server", () => {
       applinks: { details: Array<{ components: Array<{ "/": string; exclude?: boolean }> }> };
     };
     const components = aasa.applinks.details[0].components;
-    const excludedIndex = components.findIndex((c) => c["/"] === "/u/*/*");
+    const excludedComponents = components.filter((c) => c.exclude === true);
+    const excludedIndex = components.findIndex((c) => c["/"] === "/u/*/?*");
     const claimedIndex = components.findIndex((c) => c["/"] === "/u/*");
 
+    expect(excludedComponents.map((c) => c["/"])).toEqual(["/u/*/?*"]);
+    expect(excludedIndex).toBeGreaterThanOrEqual(0);
     expect(components[excludedIndex].exclude).toBe(true);
     // First match wins, so the exclusion has to precede the broad claim.
-    expect(excludedIndex).toBeGreaterThanOrEqual(0);
     expect(excludedIndex).toBeLessThan(claimedIndex);
     // The other claimed paths are untouched.
     expect(components.filter((c) => c.exclude !== true).map((c) => c["/"])).toEqual([

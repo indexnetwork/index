@@ -193,12 +193,21 @@ Opportunity and profile links are plain `https://index.network/...` URLs that op
     "details": [
       {
         "appIDs": ["<APPLE_TEAM_ID>.network.index.system6"],
-        "components": [{ "/": "/c/*" }, { "/": "/o/*" }, { "/": "/u/*" }]
+        "components": [
+          { "/": "/c/*" },
+          { "/": "/o/*" },
+          { "/": "/u/*/?*", "exclude": true },
+          { "/": "/u/*" }
+        ]
       }
     ]
   }
 }
 ```
+
+The ordered `/u/*/?*` exclusion requires a non-empty deeper profile segment, so
+base `/u/<id>` profiles are claimed by the following `/u/*` component while routes
+such as `/u/<id>/chat` remain browser-only.
 
 `APPLE_TEAM_ID` comes from the web host's environment. It is **not set in deploys yet**: the server logs a startup warning and serves the literal placeholder `TEAMIDPLACEHOLDER`, so universal links do not resolve to the app until the real team ID is configured and a signed, notarized app ships. Until then the links behave as ordinary web URLs.
 
