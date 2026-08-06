@@ -2,6 +2,7 @@ import type { MatchingCase } from "../matching/matching.types.js";
 
 export type HistoricalDatePrecision = "day" | "month" | "year";
 export type HistoricalRecognizability = "low" | "medium" | "high";
+export type HistoricalParticipantKind = "historical" | "synthetic";
 
 export interface HistoricalCitation {
   id: string;
@@ -11,12 +12,31 @@ export interface HistoricalCitation {
   excerpt: string;
 }
 
-export interface HistoricalClaim {
+export interface HistoricalFactClaim {
+  kind: "historical";
   id: string;
   text: string;
   citationIds: string[];
   preConnection: true;
 }
+
+export interface HistoricalDerivedClaim {
+  kind: "derived";
+  id: string;
+  text: string;
+  basisClaimIds: string[];
+  rationale: string;
+}
+
+export interface HistoricalAuthoredClaim {
+  kind: "authored";
+  id: string;
+  text: string;
+  participantId: string;
+  violatedRequirement: string;
+}
+
+export type HistoricalClaim = HistoricalFactClaim | HistoricalDerivedClaim | HistoricalAuthoredClaim;
 
 export interface HistoricalQualityMetadata {
   cutoff: {
@@ -29,12 +49,13 @@ export interface HistoricalQualityMetadata {
   claims: HistoricalClaim[];
   /** JSON-pointer field paths in the model-safe projection mapped to supporting claim IDs. */
   claimProvenance: Record<string, string[]>;
+  participantKinds: Record<string, HistoricalParticipantKind>;
   outcomeCitationIds: string[];
   anonymizationReview: {
     reviewer: string;
     reviewedAt: string;
     recognizability: HistoricalRecognizability;
-    decision: "approved" | "revise";
+    decision: "approved" | "pending" | "revise";
     rationale: string;
   };
   semanticNegatives: Record<string, string>;
@@ -49,16 +70,29 @@ export interface HistoricalQualityCase extends MatchingCase {
 }
 
 export interface HistoricalModelSafeProjection {
-  id: string;
+  description: string;
   input: MatchingCase["input"];
   triggerInputs: HistoricalQualityMetadata["triggerInputs"];
 }
 
 export function historicalModelSafeProjection(input: HistoricalQualityCase): HistoricalModelSafeProjection {
   return {
-    id: input.id,
+    description: input.description,
     input: structuredClone(input.input),
     triggerInputs: structuredClone(input.historicalQuality.triggerInputs),
+  };
+}
+
+export function historicalMatchingCaseProjection(input: HistoricalQualityCase): MatchingCase {
+  return {
+    id: input.id,
+    rule: input.rule,
+    tier: input.tier,
+    domains: structuredClone(input.domains),
+    description: input.description,
+    input: structuredClone(input.input),
+    expect: structuredClone(input.expect),
+    reportNames: input.reportNames ? structuredClone(input.reportNames) : undefined,
   };
 }
 
@@ -72,6 +106,7 @@ function claimBearingProjectionFields(input: HistoricalQualityCase): Map<string,
     if (value !== undefined && value.trim() !== "") fields.set(path, value);
   };
 
+  add("/description", input.description);
   for (const [entityIndex, entity] of input.input.entities.entries()) {
     const entityPath = `/input/entities/${entityIndex}`;
     add(`${entityPath}/profile/bio`, entity.profile.bio);
@@ -112,16 +147,76 @@ function claimBearingProjectionFields(input: HistoricalQualityCase): Map<string,
   return fields;
 }
 
-export function validateHistoricalQualityCase(input: HistoricalQualityCase): void {
+export interface HistoricalValidationOptions {
+  requireApprovedReview?: boolean;
+}
+
+export function validateHistoricalQualityCase(
+  input: HistoricalQualityCase,
+  options: HistoricalValidationOptions = {},
+): void {
   const fail = (message: string): never => { throw new Error(`${input.id}: ${message}`); };
   const nonblank = (value: string, field: string): void => {
     if (value.trim() === "") fail(`${field} must be non-empty`);
   };
 
-  const ids = new Set(input.input.entities.map((entity) => entity.userId));
+  const ids = new Set<string>();
+  for (const entity of input.input.entities) {
+    if (ids.has(entity.userId)) fail(`duplicate participant ${entity.userId}`);
+    ids.add(entity.userId);
+  }
+  if (input.input.entities.length !== 5) fail("requires exactly five participants");
+
+  const participantKinds = input.historicalQuality.participantKinds;
+  for (const participantId of ids) {
+    if (!Object.prototype.hasOwnProperty.call(participantKinds, participantId)) {
+      fail(`missing participant kind for ${participantId}`);
+    }
+  }
+  for (const participantId of Object.keys(participantKinds)) {
+    if (!ids.has(participantId)) fail(`unknown participant kind ${participantId}`);
+  }
+
   if (!ids.has(input.input.discovererId)) fail("discoverer must reference an entity");
+  if (participantKinds[input.input.discovererId] !== "historical") {
+    fail(`discoverer ${input.input.discovererId} must be historical`);
+  }
+
   const positives = input.expect.filter((expectation) => expectation.match);
   if (positives.length !== 1) fail("requires exactly one positive partner");
+  const positiveId = positives[0]!.candidateId;
+  if (!ids.has(positiveId)) fail(`positive participant ${positiveId} is not a participant`);
+  if (participantKinds[positiveId] !== "historical") fail(`positive participant ${positiveId} must be historical`);
+
+  const rejectedIds = input.expect.filter((expectation) => !expectation.match).map((expectation) => expectation.candidateId);
+  const rejected = new Set(rejectedIds);
+  if (rejected.size !== 3 || rejectedIds.length !== 3) fail("requires exactly three rejected participants");
+  for (const participantId of rejected) {
+    if (!ids.has(participantId)) fail(`rejected participant ${participantId} is not a participant`);
+    if (participantKinds[participantId] !== "synthetic") fail(`rejected participant ${participantId} must be synthetic`);
+  }
+  const expectedParticipants = new Set([input.input.discovererId, positiveId, ...rejected]);
+  if (expectedParticipants.size !== ids.size || [...ids].some((participantId) => !expectedParticipants.has(participantId))) {
+    fail("expectations must cover every participant other than the discoverer");
+  }
+
+  const negativeEntries = Object.entries(input.historicalQuality.semanticNegatives);
+  const negativeIds = new Set(negativeEntries.map(([participantId]) => participantId));
+  if (negativeIds.size !== rejected.size || [...rejected].some((participantId) => !negativeIds.has(participantId))) {
+    fail("semantic negatives must exactly cover rejected synthetic participants");
+  }
+  for (const [participantId, reason] of negativeEntries) {
+    if (!ids.has(participantId) || participantKinds[participantId] !== "synthetic" || !rejected.has(participantId)) {
+      fail(`semantic negative ${participantId} must reference a rejected synthetic participant`);
+    }
+    nonblank(reason, `semantic negative ${participantId} reason`);
+  }
+
+  for (const participantId of Object.keys(input.reportNames ?? {})) {
+    if (participantKinds[participantId] === "synthetic") {
+      fail(`report name cannot identify synthetic participant ${participantId}`);
+    }
+  }
 
   const citations = new Map<string, HistoricalCitation>();
   for (const citation of input.historicalQuality.citations) {
@@ -159,6 +254,7 @@ export function validateHistoricalQualityCase(input: HistoricalQualityCase): voi
   }
   assertCitationIds(input.historicalQuality.cutoff.orderingCitationIds, "cutoff ordering");
   assertCitationIds(input.historicalQuality.outcomeCitationIds, "outcome");
+
   const claims = new Map<string, HistoricalClaim>();
   const preConnectionCitationIds = new Set(input.historicalQuality.cutoff.orderingCitationIds);
   for (const claim of input.historicalQuality.claims) {
@@ -166,9 +262,38 @@ export function validateHistoricalQualityCase(input: HistoricalQualityCase): voi
     if (claims.has(claim.id)) fail(`duplicate claim ${claim.id}`);
     claims.set(claim.id, claim);
     nonblank(claim.text, `claim ${claim.id} text`);
-    if (claim.preConnection !== true) fail(`claim ${claim.id} must attest preConnection`);
-    assertCitationIds(claim.citationIds, `claim ${claim.id}`);
-    for (const citationId of claim.citationIds) preConnectionCitationIds.add(citationId);
+    if (claim.kind === "historical") {
+      if (claim.preConnection !== true) fail(`claim ${claim.id} must attest preConnection`);
+      assertCitationIds(claim.citationIds, `claim ${claim.id}`);
+      for (const citationId of claim.citationIds) preConnectionCitationIds.add(citationId);
+    } else if (claim.kind === "derived") {
+      if (claim.basisClaimIds.length === 0) fail(`derived claim ${claim.id} requires at least one basis claim`);
+      nonblank(claim.rationale, `derived claim ${claim.id} rationale`);
+    } else {
+      if (!ids.has(claim.participantId)) fail(`authored claim ${claim.id} references unknown participant ${claim.participantId}`);
+      nonblank(claim.violatedRequirement, `authored claim ${claim.id} violatedRequirement`);
+    }
+  }
+
+  const derivedState = new Map<string, "visiting" | "historical">();
+  const terminatesInHistoricalClaims = (claim: HistoricalClaim): boolean => {
+    if (claim.kind === "historical") return true;
+    if (claim.kind === "authored") return false;
+    const state = derivedState.get(claim.id);
+    if (state === "visiting") fail(`derived claim cycle at ${claim.id}`);
+    if (state === "historical") return true;
+    derivedState.set(claim.id, "visiting");
+    for (const basisClaimId of claim.basisClaimIds) {
+      const basis = claims.get(basisClaimId) ?? fail(`derived claim ${claim.id} references unknown basis claim ${basisClaimId}`);
+      if (!terminatesInHistoricalClaims(basis)) {
+        fail(`derived claim ${claim.id} must terminate only in historical claims`);
+      }
+    }
+    derivedState.set(claim.id, "historical");
+    return true;
+  };
+  for (const claim of claims.values()) {
+    if (claim.kind === "derived") terminatesInHistoricalClaims(claim);
   }
 
   const requiredClaimFields = claimBearingProjectionFields(input);
@@ -181,9 +306,29 @@ export function validateHistoricalQualityCase(input: HistoricalQualityCase): voi
     if (fieldText === undefined) fail(`unknown claim provenance path ${path}`);
     const mappedClaimIds = claimProvenance[path]!;
     if (mappedClaimIds.length === 0) fail(`claim provenance for ${path} requires at least one claim`);
+    const entityMatch = /^\/input\/entities\/(\d+)(?:\/|$)/.exec(path);
+    const participantId = entityMatch ? input.input.entities[Number(entityMatch[1])]?.userId : undefined;
     for (const claimId of mappedClaimIds) {
       const claim = claims.get(claimId) ?? fail(`claim provenance for ${path} references unknown claim ${claimId}`);
       if (claim.text !== fieldText) fail(`claim ${claimId} text does not match ${path}`);
+      if (participantId !== undefined) {
+        if (participantKinds[participantId] === "historical") {
+          if (claim.kind === "authored") fail(`historical participant ${participantId} path ${path} cannot use authored claim ${claim.id}`);
+          terminatesInHistoricalClaims(claim);
+        } else if (claim.kind === "authored") {
+          if (claim.participantId !== participantId) {
+            fail(`authored claim ${claim.id} participantId does not match synthetic participant ${participantId}`);
+          }
+          if (claim.violatedRequirement !== input.historicalQuality.semanticNegatives[participantId]) {
+            fail(`authored claim ${claim.id} violatedRequirement does not match semantic negative ${participantId}`);
+          }
+        } else {
+          fail(`synthetic participant ${participantId} path ${path} cannot use ${claim.kind} claim ${claim.id}`);
+        }
+      } else {
+        if (claim.kind === "authored") fail(`non-participant path ${path} cannot use authored claim ${claim.id}`);
+        terminatesInHistoricalClaims(claim);
+      }
     }
   }
 
@@ -192,19 +337,12 @@ export function validateHistoricalQualityCase(input: HistoricalQualityCase): voi
   }
 
   const review = input.historicalQuality.anonymizationReview;
-  if (review.decision !== "approved") fail("anonymization review must be approved");
+  if ((options.requireApprovedReview ?? true) && review.decision !== "approved") {
+    fail("anonymization review must be approved");
+  }
   nonblank(review.reviewer, "anonymization reviewer");
   nonblank(review.reviewedAt, "anonymization reviewedAt");
   nonblank(review.rationale, "anonymization rationale");
-
-  const negativeEntries = Object.entries(input.historicalQuality.semanticNegatives);
-  if (negativeEntries.length < 3) fail("requires at least three semantic negatives");
-  const rejected = new Set(input.expect.filter((expectation) => !expectation.match).map((expectation) => expectation.candidateId));
-  for (const [participantId, reason] of negativeEntries) {
-    if (!ids.has(participantId)) fail(`semantic negative ${participantId} is not a participant`);
-    if (!rejected.has(participantId)) fail(`semantic negative ${participantId} must reference a rejected candidate`);
-    nonblank(reason, `semantic negative ${participantId} reason`);
-  }
 
   nonblank(input.historicalQuality.triggerInputs.intent.text, "intent trigger text");
   if (input.historicalQuality.triggerInputs.enrichment.premises.length === 0) fail("enrichment requires at least one premise");
@@ -217,4 +355,17 @@ export function validateHistoricalQualityCase(input: HistoricalQualityCase): voi
       fail(`report name ${reportName} is present in model-safe projection`);
     }
   }
+}
+
+function deepFreeze<T>(input: T): T {
+  if (input !== null && typeof input === "object" && !Object.isFrozen(input)) {
+    for (const value of Object.values(input)) deepFreeze(value);
+    Object.freeze(input);
+  }
+  return input;
+}
+
+export function defineHistoricalQualityCase(input: HistoricalQualityCase): HistoricalQualityCase {
+  validateHistoricalQualityCase(input, { requireApprovedReview: false });
+  return deepFreeze(input);
 }

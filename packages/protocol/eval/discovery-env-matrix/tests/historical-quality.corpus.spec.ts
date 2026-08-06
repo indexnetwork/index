@@ -1,9 +1,16 @@
 import { describe, expect, it } from "bun:test";
 
-import type { HistoricalQualityCase } from "../historical-quality.corpus.js";
-import { historicalModelSafeProjection, validateHistoricalQualityCase } from "../historical-quality.corpus.js";
+import type { HistoricalClaim, HistoricalDerivedClaim, HistoricalQualityCase } from "../historical-quality.corpus.js";
+import { defineHistoricalQualityCase, historicalMatchingCaseProjection, historicalModelSafeProjection, validateHistoricalQualityCase } from "../historical-quality.corpus.js";
+
+const semanticNegatives = {
+  "p-negative-1": "Same-side operator; lacks the required builder role.",
+  "p-negative-2": "Supplier relationship does not satisfy the co-builder requirement.",
+  "p-negative-3": "No product-building commitment.",
+} as const;
 
 const claimTextByPath = {
+  "/description": "An operator needs a complementary hardware builder.",
   "/input/entities/0/profile/bio": "Commercial operator.",
   "/input/entities/0/profile/location": "West Coast",
   "/input/entities/0/profile/interests/0": "personal computing",
@@ -39,14 +46,38 @@ const claimTextByPath = {
   "/triggerInputs/enrichment/userContext": "Commercial operator seeking a complementary technical collaborator.",
 } as const;
 
+const participantIdForPath = (path: string): string | undefined => {
+  const match = /^\/input\/entities\/(\d+)\//.exec(path);
+  if (!match) return undefined;
+  return ["p-source", "p-target", "p-negative-1", "p-negative-2", "p-negative-3"][Number(match[1])];
+};
+
 const validCase = (): HistoricalQualityCase => {
   const claimEntries = Object.entries(claimTextByPath);
-  const claims = claimEntries.map(([, text], index) => ({
-    id: `claim-${index + 1}`,
-    text,
+  const claims: HistoricalClaim[] = claimEntries.map(([path, text], index) => {
+    const id = `claim-${index + 1}`;
+    const participantId = participantIdForPath(path);
+    if (participantId && participantId in semanticNegatives) {
+      return {
+        kind: "authored",
+        id,
+        text,
+        participantId,
+        violatedRequirement: semanticNegatives[participantId as keyof typeof semanticNegatives],
+      };
+    }
+    if (path === "/input/entities/0/profile/bio") {
+      return { kind: "derived", id, text, basisClaimIds: ["claim-source-bio-basis"], rationale: "Generalized from the cited role." };
+    }
+    return { kind: "historical", id, text, citationIds: ["citation-pre"], preConnection: true };
+  });
+  claims.push({
+    kind: "historical",
+    id: "claim-source-bio-basis",
+    text: "Commercial operator.",
     citationIds: ["citation-pre"],
-    preConnection: true as const,
-  }));
+    preConnection: true,
+  });
 
   return {
     id: "historical-v2/builder-operator",
@@ -144,6 +175,13 @@ const validCase = (): HistoricalQualityCase => {
       ],
       claims,
       claimProvenance: Object.fromEntries(claimEntries.map(([path], index) => [path, [`claim-${index + 1}`]])),
+      participantKinds: {
+        "p-source": "historical",
+        "p-target": "historical",
+        "p-negative-1": "synthetic",
+        "p-negative-2": "synthetic",
+        "p-negative-3": "synthetic",
+      },
       outcomeCitationIds: ["citation-outcome"],
       anonymizationReview: {
         reviewer: "independent-reviewer",
@@ -152,11 +190,7 @@ const validCase = (): HistoricalQualityCase => {
         decision: "approved",
         rationale: "Unique names and outcome terms are absent from model input.",
       },
-      semanticNegatives: {
-        "p-negative-1": "Same-side operator; lacks the required builder role.",
-        "p-negative-2": "Supplier relationship does not satisfy the co-builder requirement.",
-        "p-negative-3": "No product-building commitment.",
-      },
+      semanticNegatives: { ...semanticNegatives },
       triggerInputs: {
         intent: { text: "Find a hardware builder." },
         enrichment: {
@@ -171,14 +205,28 @@ const validCase = (): HistoricalQualityCase => {
   };
 };
 
+const claimAtPath = (input: HistoricalQualityCase, path: string): HistoricalClaim => {
+  const claimId = input.historicalQuality.claimProvenance[path]![0]!;
+  return input.historicalQuality.claims.find((claim) => claim.id === claimId)!;
+};
+
 describe("historical quality corpus contract", () => {
-  it("accepts complete cited pre-connection evidence", () => {
-    expect(() => validateHistoricalQualityCase(validCase())).not.toThrow();
+  it("accepts complete cited provenance with explicit historical and synthetic participants", () => {
+    const input = validCase();
+    expect(() => validateHistoricalQualityCase(input)).not.toThrow();
+    expect(Object.values(input.historicalQuality.participantKinds).sort()).toEqual([
+      "historical",
+      "historical",
+      "synthetic",
+      "synthetic",
+      "synthetic",
+    ]);
   });
 
-  it("rejects missing citations, non-exclusive cutoffs, unproved year ordering, and unapproved anonymization", () => {
+  it("rejects missing citations, non-exclusive cutoffs, unproved year ordering, and reused-only outcome citations", () => {
     const missing = validCase();
-    missing.historicalQuality.claims[0]!.citationIds = ["missing"];
+    const historical = missing.historicalQuality.claims.find((claim) => claim.kind === "historical")!;
+    if (historical.kind === "historical") historical.citationIds = ["missing"];
     expect(() => validateHistoricalQualityCase(missing)).toThrow(/unknown citation missing/);
 
     const inclusive = validCase();
@@ -201,20 +249,100 @@ describe("historical quality corpus contract", () => {
     const overlappingOutcome = validCase();
     overlappingOutcome.historicalQuality.outcomeCitationIds = ["citation-pre"];
     expect(() => validateHistoricalQualityCase(overlappingOutcome)).toThrow(/outcome requires an independent citation/);
-
-    const unapproved = validCase();
-    unapproved.historicalQuality.anonymizationReview.decision = "revise";
-    expect(() => validateHistoricalQualityCase(unapproved)).toThrow(/anonymization review must be approved/);
   });
 
-  it("requires one positive and at least three authored semantic negatives that reference rejected candidates", () => {
-    const tooFew = validCase();
-    delete tooFew.historicalQuality.semanticNegatives["p-negative-3"];
-    expect(() => validateHistoricalQualityCase(tooFew)).toThrow(/at least three semantic negatives/);
+  it("requires approved review by default but permits complete pending authoring cases explicitly", () => {
+    const pending = validCase();
+    pending.historicalQuality.anonymizationReview.decision = "pending";
+    expect(() => validateHistoricalQualityCase(pending)).toThrow(/anonymization review must be approved/);
+    expect(() => validateHistoricalQualityCase(pending, { requireApprovedReview: false })).not.toThrow();
+  });
 
-    const positiveAsNegative = validCase();
-    positiveAsNegative.historicalQuality.semanticNegatives["p-target"] = "invalid";
-    expect(() => validateHistoricalQualityCase(positiveAsNegative)).toThrow(/must reference a rejected candidate/);
+  it("rejects authored claims for historical participants and historical claims for synthetic participants", () => {
+    const authoredSource = validCase();
+    const sourceClaim = claimAtPath(authoredSource, "/input/entities/0/profile/bio");
+    const sourceIndex = authoredSource.historicalQuality.claims.indexOf(sourceClaim);
+    authoredSource.historicalQuality.claims[sourceIndex] = {
+      kind: "authored",
+      id: sourceClaim.id,
+      text: sourceClaim.text,
+      participantId: "p-source",
+      violatedRequirement: "Historical source text cannot be authored fixture text.",
+    };
+    expect(() => validateHistoricalQualityCase(authoredSource)).toThrow(/historical participant p-source.*authored/);
+
+    const historicalNegative = validCase();
+    const negativeClaim = claimAtPath(historicalNegative, "/input/entities/2/profile/bio");
+    const negativeIndex = historicalNegative.historicalQuality.claims.indexOf(negativeClaim);
+    historicalNegative.historicalQuality.claims[negativeIndex] = {
+      kind: "historical",
+      id: negativeClaim.id,
+      text: negativeClaim.text,
+      citationIds: ["citation-pre"],
+      preConnection: true,
+    };
+    expect(() => validateHistoricalQualityCase(historicalNegative)).toThrow(/synthetic participant p-negative-1.*historical/);
+  });
+
+  it("rejects derived claims with authored roots or cycles", () => {
+    const authoredBasis = validCase();
+    const sourceDerived = claimAtPath(authoredBasis, "/input/entities/0/profile/bio") as HistoricalDerivedClaim;
+    const negativeClaim = claimAtPath(authoredBasis, "/input/entities/2/profile/bio");
+    sourceDerived.basisClaimIds = [negativeClaim.id];
+    expect(() => validateHistoricalQualityCase(authoredBasis)).toThrow(/derived claim .* must terminate only in historical claims/);
+
+    const cyclic = validCase();
+    const cyclicDerived = claimAtPath(cyclic, "/input/entities/0/profile/bio") as HistoricalDerivedClaim;
+    cyclicDerived.basisClaimIds = [cyclicDerived.id];
+    expect(() => validateHistoricalQualityCase(cyclic)).toThrow(/derived claim cycle/);
+  });
+
+  it("requires five unique and exactly classified participants", () => {
+    const duplicate = validCase();
+    duplicate.input.entities[1]!.userId = duplicate.input.entities[0]!.userId;
+    expect(() => validateHistoricalQualityCase(duplicate)).toThrow(/duplicate participant p-source/);
+
+    const missing = validCase();
+    delete missing.historicalQuality.participantKinds["p-target"];
+    expect(() => validateHistoricalQualityCase(missing)).toThrow(/missing participant kind for p-target/);
+
+    const unknown = validCase();
+    unknown.historicalQuality.participantKinds.unknown = "synthetic";
+    expect(() => validateHistoricalQualityCase(unknown)).toThrow(/unknown participant kind unknown/);
+
+    const extra = validCase();
+    extra.input.entities.push({
+      userId: "p-extra",
+      profile: { name: "Participant F", bio: "Extra participant.", interests: [], skills: [] },
+      networkId: "historical-v2-pool",
+    });
+    extra.historicalQuality.participantKinds["p-extra"] = "historical";
+    expect(() => validateHistoricalQualityCase(extra)).toThrow(/requires exactly five participants/);
+  });
+
+  it("requires a historical discoverer and sole positive plus exactly three rejected synthetic negatives", () => {
+    const syntheticSource = validCase();
+    syntheticSource.historicalQuality.participantKinds["p-source"] = "synthetic";
+    expect(() => validateHistoricalQualityCase(syntheticSource)).toThrow(/discoverer p-source must be historical/);
+
+    const syntheticPositive = validCase();
+    syntheticPositive.historicalQuality.participantKinds["p-target"] = "synthetic";
+    expect(() => validateHistoricalQualityCase(syntheticPositive)).toThrow(/positive participant p-target must be historical/);
+
+    const missingNegative = validCase();
+    delete missingNegative.historicalQuality.semanticNegatives["p-negative-3"];
+    expect(() => validateHistoricalQualityCase(missingNegative)).toThrow(/semantic negatives must exactly cover rejected synthetic participants/);
+  });
+
+  it("binds authored negative claims and report names to synthetic participant policy", () => {
+    const drifted = validCase();
+    const negativeClaim = claimAtPath(drifted, "/input/entities/2/profile/bio");
+    if (negativeClaim.kind === "authored") negativeClaim.violatedRequirement = "different reason";
+    expect(() => validateHistoricalQualityCase(drifted)).toThrow(/violatedRequirement does not match semantic negative p-negative-1/);
+
+    const namedSynthetic = validCase();
+    namedSynthetic.reportNames!["p-negative-1"] = "Not a historical identity";
+    expect(() => validateHistoricalQualityCase(namedSynthetic)).toThrow(/report name cannot identify synthetic participant p-negative-1/);
   });
 
   it("requires exact field-level provenance for every projected claim-bearing string", () => {
@@ -231,35 +359,64 @@ describe("historical quality corpus contract", () => {
     expect(() => validateHistoricalQualityCase(unknown)).toThrow(/unknown claim provenance path \/input\/entities\/0\/profile\/name/);
   });
 
-  it("rejects empty or unrelated claims for projected fields", () => {
+  it("rejects empty or unrelated claims and authored claims on non-participant model fields", () => {
     const empty = validCase();
     empty.historicalQuality.claims = [];
     expect(() => validateHistoricalQualityCase(empty)).toThrow(/references unknown claim claim-1/);
 
     const unrelated = validCase();
-    unrelated.historicalQuality.claimProvenance["/input/entities/0/profile/bio"] = ["claim-2"];
-    expect(() => validateHistoricalQualityCase(unrelated)).toThrow(/claim-2 text does not match \/input\/entities\/0\/profile\/bio/);
+    unrelated.historicalQuality.claimProvenance["/input/entities/0/profile/bio"] = ["claim-1"];
+    expect(() => validateHistoricalQualityCase(unrelated)).toThrow(/text does not match \/input\/entities\/0\/profile\/bio/);
 
-    const uncitedChange = validCase();
-    uncitedChange.input.entities[0]!.profile.bio = "Uncited new biography.";
-    expect(() => validateHistoricalQualityCase(uncitedChange)).toThrow(/claim-1 text does not match \/input\/entities\/0\/profile\/bio/);
+    const authoredDescription = validCase();
+    const descriptionClaim = claimAtPath(authoredDescription, "/description");
+    const descriptionIndex = authoredDescription.historicalQuality.claims.indexOf(descriptionClaim);
+    authoredDescription.historicalQuality.claims[descriptionIndex] = {
+      kind: "authored",
+      id: descriptionClaim.id,
+      text: descriptionClaim.text,
+      participantId: "p-negative-1",
+      violatedRequirement: semanticNegatives["p-negative-1"],
+    };
+    expect(() => validateHistoricalQualityCase(authoredDescription)).toThrow(/non-participant path \/description.*authored/);
   });
 
-  it("projects only model-safe matching and trigger inputs while exempting structural fields", () => {
+  it("projects audited descriptions without descriptive control IDs or audit metadata", () => {
     const input = validCase();
     const projection = historicalModelSafeProjection(input);
     const serialized = JSON.stringify(projection);
-    expect(Object.keys(projection).sort()).toEqual(["id", "input", "triggerInputs"]);
-    for (const forbidden of ["reportNames", "historicalQuality", "citations", "claims", "anonymizationReview", "Real Source", "https://example.org/"]) {
+    expect(Object.keys(projection).sort()).toEqual(["description", "input", "triggerInputs"]);
+    expect(projection.description).toBe(input.description);
+    for (const forbidden of [input.id, "reportNames", "historicalQuality", "citations", "claims", "anonymizationReview", "Real Source", "https://example.org/"]) {
       expect(serialized).not.toContain(forbidden);
     }
 
-    for (const exemptPath of ["/id", "/input/discovererId", "/input/entities/0/userId", "/input/entities/0/profile/name", "/input/entities/0/networkId", "/input/entities/0/evidenceKey", "/input/entities/0/ragScore", "/input/entities/0/evidence/0/lens", "/input/entities/0/evidence/0/matchedStrategies/0"]) {
-      expect(input.historicalQuality.claimProvenance).not.toHaveProperty(exemptPath);
-    }
+    const matchingProjection = historicalMatchingCaseProjection(input);
+    expect(matchingProjection).toEqual({
+      id: input.id,
+      rule: input.rule,
+      tier: input.tier,
+      domains: input.domains,
+      description: input.description,
+      input: input.input,
+      expect: input.expect,
+      reportNames: input.reportNames,
+    });
+    expect(matchingProjection).not.toHaveProperty("historicalQuality");
+    expect(matchingProjection.input).not.toBe(input.input);
 
     const leakedName = validCase();
     leakedName.input.entities[0]!.profile.name = "Real Source";
     expect(() => validateHistoricalQualityCase(leakedName)).toThrow(/report name Real Source is present in model-safe projection/);
+  });
+
+  it("defines authoring cases with validation and recursive freezing", () => {
+    const pending = validCase();
+    pending.historicalQuality.anonymizationReview.decision = "pending";
+    const defined = defineHistoricalQualityCase(pending);
+    expect(defined).toBe(pending);
+    expect(Object.isFrozen(defined)).toBeTrue();
+    expect(Object.isFrozen(defined.input.entities)).toBeTrue();
+    expect(Object.isFrozen(defined.historicalQuality.triggerInputs.enrichment.premises)).toBeTrue();
   });
 });
