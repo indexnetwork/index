@@ -62,12 +62,6 @@
   margin: 0 0 48px;
 }
 
-.post-divider {
-  border: 0;
-  border-top: 1px dashed var(--rule);
-  margin: 0 0 40px;
-}
-
 .post-body {
   font-family: 'Public Sans', sans-serif;
   font-size: 17px;
@@ -77,12 +71,6 @@
 .post-body p { margin: 0 0 22px; }
 .post-body strong { color: var(--cream); font-weight: 600; }
 .post-body em { font-style: italic; }
-
-.post-body hr {
-  border: 0;
-  border-top: 1px dashed var(--rule);
-  margin: 32px 0;
-}
 
 .post-body h2 {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;

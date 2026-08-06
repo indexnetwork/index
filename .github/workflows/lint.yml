@@ -92,11 +92,11 @@ jobs:
 
       # `bun run build` compiles services/api/tsconfig.json, which excludes
       # `src/**/*.spec.ts`, so no spec is type-checked by the step above. That
-      # matters for the discovery A/B CLI specs, where one assertion *is* a type
-      # assertion: `discovery-ab.neon.spec.ts` proves `resetAbBranch` refuses an
+      # matters for the discovery CLI specs, where one assertion *is* a type
+      # assertion: `discovery.neon.spec.ts` proves `resetAbBranch` refuses an
       # unattested manifest with a `@ts-expect-error`, and a directive nobody
       # compiles proves nothing. See services/api/tsconfig.spec.json.
-      - name: Type check the discovery A/B CLI specs
+      - name: Type check the discovery CLI specs
         run: cd services/api && bun run typecheck:cli-specs
 
   test:
@@ -138,13 +138,15 @@ jobs:
   eval-cli-tests:
     # The services/api eval CLI specs, which ran local-only until now. They are
     # drift guards, and a drift guard nobody runs guards nothing: the discovery
-    # A/B set derives the nine offerable flags from the discovery graph's own
-    # import closure and fails when that set moves, refuses an asymmetric or
-    # identical configuration pair, and proves every artifact case row carries
-    # the configuration it was produced under.
+    # set derives its offerable flags from the discovery graph's own import
+    # closure and fails when that set moves, refuses an asymmetric or identical
+    # configuration pair, and proves every artifact case row carries the
+    # configuration it was produced under. The per-harness catalogue that feeds
+    # the launch form is derived the same way and pinned in packages/protocol
+    # (eval/ops/tests/envcatalog.spec.ts), which the `test` job runs.
     #
     # Separate from the `test` job above because these are not dist-free: the
-    # A/B artifact and child specs import `discovery-ab.main.ts`, which imports
+    # discovery artifact and child specs import `discovery.main.ts`, which imports
     # `@indexnetwork/protocol` (that is, `packages/protocol/dist`, gitignored).
     # Hence the explicit build step. No secrets and no database: every spec here
     # fakes the control plane, the graph and the judge, and provider
@@ -166,7 +168,7 @@ jobs:
       - name: Build packages/protocol
         run: cd packages/protocol && bun run build
 
-      - name: Run the eval CLI specs (discovery A/B and env matrix)
+      - name: Run the eval CLI specs (discovery and env matrix)
         run: |
           unset OPENROUTER_API_KEY OPENAI_API_KEY
           cd services/api
@@ -267,7 +269,8 @@ jobs:
 
   eval-ops:
     # The eval-ops app was excluded from the root build (by design: it is not
-    # part of the production deployment) but was also absent from CI entirely,
+    # part of the API's deployment — it deploys as its own Railway service from
+    # apps/eval-ops/railway.toml) but was also absent from CI entirely,
     # so neither typecheck nor the 47 vitest tests written in Tasks 12–17 gated
     # anything — which is how 8 type errors accumulated unnoticed.
     runs-on: blacksmith-4vcpu-ubuntu-2404

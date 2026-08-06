@@ -51,15 +51,132 @@
     } catch (e) { /* no-op */ }
     return "";
   })();
+  // The animated art is line work on transparency, so one rendering can only
+  // read against one kind of surface: every role ships a dark file and a light
+  // file, picked by the host theme (see useColorScheme below). Keys are
+  // "<role>-<scheme>"; keep this map in step with desktop/tail.js and the
+  // allow-list in dashboard/plugin_api.py, which serve the same files.
+  const ASSET_FILES = {
+    "pitch-dark": "loading-white.webp",
+    "pitch-light": "loading-black.webp",
+    "radar-dark": "eye-white.webp",
+    "radar-light": "eye-black.webp",
+    "loading-dark": "loading2-white.webp",
+    "loading-light": "loading2.png",
+  };
   // In the desktop host, assets arrive async as blob URLs (DESKTOP_ENV.assets)
   // — resolve lazily and let callers skip the <img> while empty.
-  function assetSrc(key, file) {
+  function assetSrc(key) {
     if (DESKTOP_ENV) return (DESKTOP_ENV.assets && DESKTOP_ENV.assets[key]) || "";
-    return ASSET_BASE + file;
+    return ASSET_BASE + ASSET_FILES[key];
   }
-  function PITCH_IMAGE() { return assetSrc("pitch", "loading-white.webp"); }
-  function RADAR_IMAGE() { return assetSrc("radar", "eye-white.webp"); }
-  function LOADING_IMAGE() { return assetSrc("loading", "loading2.png"); }
+  // Resolved theme for the current render pass. The root component assigns it
+  // before React descends into the children that read it, which keeps the
+  // asset choice out of every component's props.
+  let SCHEME = "dark";
+  function PITCH_IMAGE() { return assetSrc("pitch-" + SCHEME); }
+  function RADAR_IMAGE() { return assetSrc("radar-" + SCHEME); }
+  function LOADING_IMAGE() { return assetSrc("loading-" + SCHEME); }
+
+  // Theme seam for the animated art. The pitch and radar frames ship as white
+  // line work on transparent, so they vanish on a light surface: style.css
+  // carries a light and a dark treatment and picks between them off the
+  // `data-scheme` attribute this resolves onto the dashboard root. Hosts
+  // signal the scheme differently — the desktop app stamps data-hermes-mode
+  // and .dark on <html>, the web dashboard only swaps palette variables — so
+  // try the explicit signals first and fall back to the measured luminance of
+  // the surface we actually paint on.
+  let COLOR_SWATCH = null;
+  function readColor(color) {
+    if (!color) return null;
+    const plain = /^rgba?\(([^)]+)\)$/i.exec(String(color).trim());
+    if (plain) {
+      const nums = plain[1].split(/[,\s/]+/).filter(Boolean).map(parseFloat);
+      if (nums.length >= 3) return [nums[0], nums[1], nums[2], nums.length > 3 ? nums[3] : 1];
+    }
+    // Both hosts build surfaces out of color-mix(), which computed styles
+    // report back in syntaxes not worth hand-parsing — let a canvas resolve
+    // whatever the browser hands us.
+    try {
+      if (!COLOR_SWATCH) {
+        COLOR_SWATCH = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      }
+      if (!COLOR_SWATCH) return null;
+      COLOR_SWATCH.clearRect(0, 0, 1, 1);
+      COLOR_SWATCH.fillStyle = "rgba(0, 0, 0, 0)";
+      COLOR_SWATCH.fillStyle = color;
+      COLOR_SWATCH.fillRect(0, 0, 1, 1);
+      const px = COLOR_SWATCH.getImageData(0, 0, 1, 1).data;
+      return [px[0], px[1], px[2], px[3] / 255];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function backgroundLuminance(color) {
+    const rgba = readColor(color);
+    if (!rgba || rgba[3] < 0.05) return null; // unpainted — keep walking up
+    return (0.2126 * rgba[0] + 0.7152 * rgba[1] + 0.0722 * rgba[2]) / 255;
+  }
+
+  // Walk up to the first ancestor that actually paints a background.
+  function surfaceScheme(node) {
+    let el = node;
+    while (el && el.nodeType === 1) {
+      const lum = backgroundLuminance(window.getComputedStyle(el).backgroundColor);
+      if (lum !== null) return lum < 0.5 ? "dark" : "light";
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function resolveScheme(node) {
+    const root = document.documentElement;
+    const mode = root.dataset ? root.dataset.hermesMode : null;
+    if (mode === "light" || mode === "dark") return mode;
+    const declared = (window.getComputedStyle(root).colorScheme || "").toLowerCase();
+    const declaresDark = declared.indexOf("dark") >= 0;
+    const declaresLight = declared.indexOf("light") >= 0;
+    if (declaresDark !== declaresLight) return declaresDark ? "dark" : "light";
+    if (root.classList && root.classList.contains("dark")) return "dark";
+    const measured = surfaceScheme(node);
+    if (measured) return measured;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  // Re-resolves whenever the host flips its theme (attribute/variable swap on
+  // <html>) or the OS scheme changes under a `system` theme setting.
+  function useColorScheme(nodeRef) {
+    const schemeState = React.useState("dark");
+    React.useEffect(function () {
+      let alive = true;
+      const setScheme = schemeState[1];
+      const update = function () {
+        if (!alive) return;
+        const next = resolveScheme(nodeRef.current);
+        setScheme(function (prev) { return prev === next ? prev : next; });
+      };
+      update();
+      let observer = null;
+      try {
+        observer = new MutationObserver(update);
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["class", "style", "data-hermes-mode", "data-theme"],
+        });
+      } catch (e) { /* no-op */ }
+      const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+      if (media && media.addEventListener) media.addEventListener("change", update);
+      else if (media && media.addListener) media.addListener(update);
+      return function () {
+        alive = false;
+        if (observer) observer.disconnect();
+        if (media && media.removeEventListener) media.removeEventListener("change", update);
+        else if (media && media.removeListener) media.removeListener(update);
+      };
+    }, []);
+    return schemeState[0];
+  }
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -111,21 +228,13 @@
     return React.createElement("path", { key: d, d: d });
   }
 
-  function ICON_TARGET() {
+  function ICON_SPARKLES() {
     return svgIcon("h-4 w-4", [
-      React.createElement("circle", { key: "a", cx: 12, cy: 12, r: 10 }),
-      React.createElement("circle", { key: "b", cx: 12, cy: 12, r: 6 }),
-      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 2 }),
-    ]);
-  }
-
-  function ICON_NETWORK() {
-    return svgIcon("h-4 w-4", [
-      React.createElement("rect", { key: "a", x: 16, y: 16, width: 6, height: 6, rx: 1 }),
-      React.createElement("rect", { key: "b", x: 2, y: 16, width: 6, height: 6, rx: 1 }),
-      React.createElement("rect", { key: "c", x: 9, y: 2, width: 6, height: 6, rx: 1 }),
-      svgPath("M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"),
-      svgPath("M12 12V8"),
+      svgPath("M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"),
+      svgPath("M20 3v4"),
+      svgPath("M22 5h-4"),
+      svgPath("M4 17v2"),
+      svgPath("M5 18H3"),
     ]);
   }
 
@@ -655,6 +764,14 @@
     ]);
   }
 
+  function ICON_GLOBE() {
+    return svgIcon("index-dashboard__net-tab-icon", [
+      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 10 }),
+      svgPath("M2 12h20"),
+      svgPath("M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"),
+    ]);
+  }
+
   // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
   // palette, so dashboard network avatars match the Index web app exactly.
   const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
@@ -792,51 +909,190 @@
     );
   }
 
-  function ICON_COMPASS() {
+  function ICON_PLUS() {
     return svgIcon("index-dashboard__net-discover-icon", [
-      React.createElement("circle", { key: "c", cx: 12, cy: 12, r: 10 }),
-      React.createElement("polygon", { key: "n", points: "16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" }),
+      React.createElement("line", { key: "v", x1: 12, y1: 5, x2: 12, y2: 19 }),
+      React.createElement("line", { key: "h", x1: 5, y1: 12, x2: 19, y2: 12 }),
     ]);
   }
 
-  function NetworkDiscoverModal(props) {
+  // Rough-size brackets for the request form, matching the web modal's options
+  // so the same question reads the same on every surface.
+  const NETWORK_SIZE_OPTIONS = ["Under 100", "100 – 1K", "1K – 10K", "10K+"];
+
+  // A pending / needs-changes request the caller submitted. Rendered above the
+  // joined networks, mirroring the web /networks page.
+  function NetworkRequestRow(props) {
+    const req = props.request;
+    const needsChanges = req.status === "needs_changes";
+    return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
+      React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
+        React.createElement(BoringAvatar, { seed: req.id || req.title }),
+      ),
+      React.createElement("span", { className: "index-dashboard__net-meta" },
+        React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
+        React.createElement("span", { className: "index-dashboard__net-sub" }, needsChanges ? "Needs changes" : "In review"),
+        needsChanges && req.reviewNote
+          ? React.createElement("span", { className: "index-dashboard__net-request-review" }, "“" + req.reviewNote + "”")
+          : null,
+      ),
+      React.createElement("span", { className: "index-dashboard__net-request-btns" },
+        needsChanges
+          ? React.createElement(Button, { type: "button", outlined: true, size: "sm", className: "index-dashboard__btn-md", onClick: function () { if (props.onEdit) props.onEdit(req); } }, "Update")
+          : React.createElement(BadgeText, { tone: "secondary" }, "Pending"),
+        React.createElement("button", { type: "button", className: "index-dashboard__net-request-dismiss", onClick: function () { if (props.onDismiss) props.onDismiss(req.id); } }, needsChanges ? "Dismiss" : "Withdraw"),
+      ),
+    );
+  }
+
+  // Early-access "request a network" form body (no chrome of its own — it lives
+  // inside the Manage modal's Request tab). Submits to /network-requests
+  // (reviewed) rather than creating a live network, and ends on a confirmation.
+  // `initial` (a needs-changes request) switches it into resubmit mode.
+  function RequestNetworkForm(props) {
+    const useState = React.useState;
+    const initial = props.initial || null;
+    const nameState = useState(initial ? (initial.title || "") : "");
+    const name = nameState[0]; const setName = nameState[1];
+    const purposeState = useState(initial ? (initial.purpose || "") : "");
+    const purpose = purposeState[0]; const setPurpose = purposeState[1];
+    const sizeState = useState(initial ? (initial.expectedSize || "") : "");
+    const size = sizeState[0]; const setSize = sizeState[1];
+    const notesState = useState(initial ? (initial.notes || "") : "");
+    const notes = notesState[0]; const setNotes = notesState[1];
+    const sendingState = useState(false);
+    const sending = sendingState[0]; const setSending = sendingState[1];
+    const errState = useState(null);
+    const err = errState[0]; const setErr = errState[1];
+    const doneState = useState(null);
+    const done = doneState[0]; const setDone = doneState[1];
+
+    const trimmed = (name || "").trim();
+    const canSend = trimmed.length > 0 && !sending;
+    const isEdit = !!initial;
+
+    function submit() {
+      if (!canSend) return;
+      setSending(true);
+      setErr(null);
+      Promise.resolve(props.onSubmit({
+        name: trimmed,
+        purpose: (purpose || "").trim() || undefined,
+        expectedSize: size || undefined,
+        notes: (notes || "").trim() || undefined,
+      }))
+        .then(function (req) { setDone(req || { title: trimmed }); })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setSending(false); });
+    }
+
+    if (done) {
+      return React.createElement("div", { className: "index-dashboard__profile-section" },
+        React.createElement("p", { className: "index-dashboard__net-request-note" },
+          "We’re reviewing ", React.createElement("strong", null, (done && done.title) || trimmed),
+          " and will get back to you shortly."),
+        React.createElement("div", { className: "index-dashboard__net-request-actions" },
+          React.createElement(Button, { type: "button", size: "sm", onClick: props.onClose }, "Close"),
+        ),
+      );
+    }
+
+    return React.createElement("div", { className: "index-dashboard__profile-section" },
+      React.createElement("p", { className: "index-dashboard__net-request-intro" },
+        "Network creation is still early. Tell us what you’re hoping to build and we’ll get back to you."),
+      React.createElement(ProfileField, { label: "Network name" },
+        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "e.g. Edge City", onChange: function (e) { setName(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "What are you hoping to build?" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: purpose, placeholder: "Who is it for, who do you expect to join, and what should people or agents be able to discover through it?", onChange: function (e) { setPurpose(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+          NETWORK_SIZE_OPTIONS.map(function (opt) {
+            const active = size === opt;
+            return React.createElement("button", {
+              key: opt, type: "button",
+              className: "index-dashboard__net-size" + (active ? " index-dashboard__net-size--on" : ""),
+              onClick: function () { setSize(active ? "" : opt); },
+            }, opt);
+          }),
+        ),
+      ),
+      React.createElement(ProfileField, { label: "Anything else we should know?", hint: "Optional" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 2, value: notes, placeholder: "Links, timing, context, or what you’d like to experiment with.", onChange: function (e) { setNotes(e.target.value); } }),
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+      React.createElement("div", { className: "index-dashboard__net-request-actions" },
+        React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
+        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Create network")),
+      ),
+    );
+  }
+
+  // Create-a-network modal (early-access → submits a reviewed request). Opened
+  // from the card's Create button, or prefilled from a needs-changes "Update".
+  function NetworkCreateModal(props) {
+    const isEdit = !!props.initial;
     return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
       React.createElement("div", { className: "index-dashboard__profile-panel index-dashboard__net-modal", onClick: function (e) { e.stopPropagation(); } },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Discover networks"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, isEdit ? "Update request" : "Create a network"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
         React.createElement("div", { className: "index-dashboard__net-modal-body" },
-          React.createElement(NetworkRows, { items: props.discover, discover: true, error: props.error, empty: "No public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId }),
+          React.createElement(RequestNetworkForm, { initial: props.initial, onSubmit: props.onSubmit, onClose: props.onClose }),
         ),
       ),
     );
   }
 
+  // Networks card: "My networks" / "Discover" tabs on the left, a Create button
+  // on the right. Create opens the (reviewed) request form as a modal.
   function NetworksMini(props) {
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
     const discover = Array.isArray(networks.discover) ? networks.discover : [];
-    const openState = React.useState(false);
-    const open = openState[0];
-    const setOpen = openState[1];
+    const requests = Array.isArray(props.requests) ? props.requests : [];
+    const tabState = React.useState("mine");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    function tabButton(id, label, icon) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab index-dashboard__net-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, icon || null, React.createElement("span", null, label));
+    }
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
-        React.createElement("h2", { className: "index-dashboard__net-heading" }, ICON_NETWORK(), "Networks (" + formatCount(networks.count || items.length) + ")"),
+        React.createElement("div", { className: "index-dashboard__profile-tabs index-dashboard__net-tabs" },
+          tabButton("mine", "My networks (" + formatCount(networks.count || items.length) + ")"),
+          tabButton("discover", "Discover", ICON_GLOBE()),
+        ),
         React.createElement("div", { className: "index-dashboard__net-head-actions" },
-          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { setOpen(true); } }, ICON_COMPASS(), "Discover"),
+          React.createElement("button", { type: "button", className: "index-dashboard__net-discover-btn", onClick: function () { if (props.onCreate) props.onCreate(); } }, ICON_PLUS(), "Create"),
         ),
       ),
-      networks.error
-        ? React.createElement("div", { className: "index-dashboard__error" }, networks.error)
-        : items.length === 0
-          ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
-          : React.createElement("div", { className: "index-dashboard__net-list" },
-            items.map(function (network, index) {
-              return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
-            }),
-          ),
-      open ? React.createElement(NetworkDiscoverModal, { discover: discover, error: networks.error, onJoin: props.onJoin, joiningId: props.joiningId, onClose: function () { setOpen(false); } }) : null,
+      tab === "discover"
+        ? React.createElement(NetworkRows, { items: discover, discover: true, error: networks.error, empty: "No public networks to discover right now.", onJoin: props.onJoin, joiningId: props.joiningId })
+        : React.createElement("div", null,
+          requests.length
+            ? React.createElement("div", { className: "index-dashboard__net-list index-dashboard__net-request-list" },
+              requests.map(function (req, index) {
+                return React.createElement(NetworkRequestRow, { key: req.id || String(index), request: req, onEdit: props.onEditRequest, onDismiss: props.onDismissRequest });
+              }),
+            )
+            : null,
+          networks.error
+            ? React.createElement("div", { className: "index-dashboard__error" }, networks.error)
+            : items.length === 0
+              ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
+              : React.createElement("div", { className: "index-dashboard__net-list" },
+                items.map(function (network, index) {
+                  return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+                }),
+              ),
+        ),
     );
   }
 
@@ -1840,6 +2096,10 @@
     const useEffect = React.useEffect;
     const useRef = React.useRef;
     const initial = parseHash();
+    // Root node + host theme; every animated asset resolves against SCHEME.
+    const rootRef = useRef(null);
+    const scheme = useColorScheme(rootRef);
+    SCHEME = scheme;
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
@@ -1863,6 +2123,15 @@
     const joiningState = useState(null);
     const joiningId = joiningState[0];
     const setJoiningId = joiningState[1];
+    const networkRequestsState = useState([]);
+    const networkRequests = networkRequestsState[0];
+    const setNetworkRequests = networkRequestsState[1];
+    const createOpenState = useState(false);
+    const createOpen = createOpenState[0];
+    const setCreateOpen = createOpenState[1];
+    const editingRequestState = useState(null);
+    const editingRequest = editingRequestState[0];
+    const setEditingRequest = editingRequestState[1];
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
@@ -2184,10 +2453,52 @@
         });
     }
 
+    function loadNetworkRequests() {
+      fetchPluginJSON(API + "/network-requests")
+        .then(function (payload) {
+          if (!payload || payload.success === false) return;
+          setNetworkRequests(Array.isArray(payload.requests) ? payload.requests : []);
+        })
+        .catch(function () {});
+    }
+
+    // Submit or resubmit a network request; resolves the request so the modal
+    // can show its confirmation. `editingRequest` selects create vs update.
+    function submitNetworkRequest(input) {
+      const editing = editingRequest;
+      const path = editing
+        ? API + "/network-requests/" + encodeURIComponent(editing.id)
+        : API + "/network-requests";
+      return fetchPluginJSON(path, {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }).then(function (payload) {
+        if (!payload || payload.success === false) {
+          throw new Error((payload && payload.error) || "Your request could not be submitted.");
+        }
+        loadNetworkRequests();
+        return payload.request || { title: input.name };
+      });
+    }
+
+    function dismissNetworkRequest(id) {
+      if (!id) return;
+      setNetworkRequests(function (prev) { return (prev || []).filter(function (r) { return r.id !== id; }); });
+      fetchPluginJSON(API + "/network-requests/" + encodeURIComponent(id), { method: "DELETE" })
+        .then(function () { loadNetworkRequests(); })
+        .catch(function () {});
+    }
+
+    function openCreate() { setEditingRequest(null); setCreateOpen(true); }
+    function editNetworkRequest(req) { setEditingRequest(req); setCreateOpen(true); }
+    function closeCreate() { setCreateOpen(false); setEditingRequest(null); }
+
     loadRef.current = load;
 
     useEffect(function () {
       load();
+      loadNetworkRequests();
     }, []);
 
     useEffect(function () {
@@ -2346,16 +2657,16 @@
       : React.createElement("div", { className: "index-dashboard__list-page" },
         React.createElement(IntentPitch, null),
         React.createElement("div", { className: "index-dashboard__list-cols" },
-          React.createElement(Panel, { icon: ICON_TARGET(), title: "Intents", count: intents.length },
+          React.createElement(Panel, { icon: ICON_SPARKLES(), title: "Intents", count: intents.length },
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, onJoin: joinNetwork, joiningId: joiningId }),
+            React.createElement(NetworksMini, { networks: summary && summary.networks, requests: networkRequests, onCreate: openCreate, onJoin: joinNetwork, joiningId: joiningId, onEditRequest: editNetworkRequest, onDismissRequest: dismissNetworkRequest }),
           ),
         ),
       );
 
-    return React.createElement("div", { className: "index-dashboard" },
+    return React.createElement("div", { className: "index-dashboard", ref: rootRef, "data-scheme": scheme },
       inlineHdr
         ? React.createElement(InlineHeaderControls, {
           autoRefresh: autoRefresh,
@@ -2372,6 +2683,9 @@
         : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
+        : null,
+      createOpen
+        ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
         : null,
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)

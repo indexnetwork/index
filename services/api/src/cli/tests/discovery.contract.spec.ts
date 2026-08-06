@@ -2,11 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, abAttestationRefusal, abUsage, classifyAbParentFailure, describeAbFailure } from '../discovery-ab.contract';
-import { AbGateError } from '../discovery-ab.gate';
+import { AB_EXIT_COMPARISON, AB_EXIT_INSUFFICIENT_EVIDENCE, AB_EXIT_PREFLIGHT_REFUSED, AB_EXIT_SPENT_WITHOUT_ARTIFACT, AbSpentRunError, abAttestationRefusal, abUsage, classifyAbParentFailure, describeAbFailure } from '../discovery.contract';
+import { AbGateError } from '../discovery.gate';
 
 const CLI_DIR = path.resolve(import.meta.dir, '..');
-const BOOTSTRAP = path.resolve(CLI_DIR, 'discovery-ab.ts');
+const BOOTSTRAP = path.resolve(CLI_DIR, 'discovery.ts');
 
 /**
  * The bootstrap's whole reason to exist is an import-ordering property: nothing
@@ -57,25 +57,25 @@ async function staticImportClosure(entry: string): Promise<{ files: string[]; pa
   return { files: [...seen], packages: [...packages] };
 }
 
-describe('the discovery A/B bootstrap import closure', () => {
+describe('the discovery bootstrap import closure', () => {
   it('still reaches nothing that can compose a database', async () => {
     const { files, packages } = await staticImportClosure(BOOTSTRAP);
     // Every static dependency is either local CLI code or a node builtin.
     expect(packages.filter((specifier) => !specifier.startsWith('node:'))).toEqual([]);
     expect(packages).not.toContain('@indexnetwork/protocol');
     expect(packages.filter((specifier) => specifier.includes('drizzle'))).toEqual([]);
-    expect(files.map((file) => path.basename(file))).not.toContain('discovery-ab.main.ts');
-    expect(files.map((file) => path.basename(file)).sort()).toContain('discovery-ab.contract.ts');
+    expect(files.map((file) => path.basename(file))).not.toContain('discovery.main.ts');
+    expect(files.map((file) => path.basename(file)).sort()).toContain('discovery.contract.ts');
   });
 
   it('reaches the runtime only through a dynamic import, and prints no error text', async () => {
     const source = await readFile(BOOTSTRAP, 'utf8');
-    expect(source).toContain("await import('./discovery-ab.main')");
+    expect(source).toContain("await import('./discovery.main')");
     expect(source).not.toContain('error.message');
   });
 });
 
-describe('discovery-ab --help', () => {
+describe('discovery --help', () => {
   /**
    * Run with `env: {}`: the help text exists to tell an operator what this
    * command requires, so needing any of it first would make it useless.
@@ -115,21 +115,42 @@ describe('abUsage', () => {
   const usage = abUsage();
 
   it('states the manifest shape, so an operator can build one from the help alone', () => {
-    expect(usage).toContain('DISCOVERY_AB_TARGETS');
+    expect(usage).toContain('DISCOVERY_TARGETS');
     expect(usage).toContain('"sideId":"a"');
     expect(usage).toContain('"baseBranchId":"br-..."');
   });
 
   it('states every flag', () => {
-    for (const flag of ['--case', '--runs', '--a KEY=VALUE', '--b KEY=VALUE', '--force']) {
+    for (const flag of ['--case', '--runs', '--a KEY=VALUE', '--b KEY=VALUE', '--report <path>', '--force']) {
       expect(usage).toContain(flag);
     }
   });
 
+  /**
+   * Naming the flag is not stating it: an operator reading `--report <path>`
+   * cannot tell what a relative path resolves against, nor that the overwrite
+   * consent they already know about still applies to a path they chose.
+   */
+  it('states what a relative --report resolves against and that overwriting it still needs --force', () => {
+    expect(usage).toContain('resolved against the working directory this command');
+    expect(usage).toContain('An existing file is replaced only with --force');
+    expect(usage).toContain('existing directory is refused before anything runs');
+  });
+
   it('states the reset-from-base behaviour and the no-baseline property', () => {
-    expect(usage).toContain('resets both attested');
+    expect(usage).toContain('resets the attested');
     expect(usage).toContain('eval-discovery-base');
     expect(usage).toContain('never reads, writes or compares a baseline');
+  });
+
+  it('says which branches each shape resets, since one of them costs half as much', () => {
+    // The reason an operator picks --env is that it resets one branch and runs
+    // one child. If the help text only described the pair, the cheaper shape
+    // would be invisible.
+    expect(usage).toContain('Exactly one of --env or --a/--b');
+    expect(usage).toContain('--env KEY=VALUE');
+    expect(usage).toContain('eval-ab-a alone with --env');
+    expect(usage).toContain('Neither\nrule applies to --env');
   });
 
   it('states what each exit code means, since two of them are failures with very different costs', () => {
@@ -156,11 +177,11 @@ describe('exit codes', () => {
 
 describe('classifyAbParentFailure', () => {
   it('leaves a pre-flight failure exactly as it was, because its own message is the useful one', () => {
-    const refusal = new AbGateError('Refusing to mutate: set DISCOVERY_AB_CONFIRM=1');
+    const refusal = new AbGateError('Refusing to mutate: set DISCOVERY_CONFIRM=1');
     expect(classifyAbParentFailure(null, refusal)).toBe(refusal);
     expect(describeAbFailure(classifyAbParentFailure(null, refusal))).toEqual({
       exitCode: AB_EXIT_PREFLIGHT_REFUSED,
-      message: 'Refusing to mutate: set DISCOVERY_AB_CONFIRM=1',
+      message: 'Refusing to mutate: set DISCOVERY_CONFIRM=1',
     });
   });
 
@@ -191,8 +212,8 @@ describe('classifyAbParentFailure', () => {
   });
 
   it('names the artifact when the failure landed after it was written, rather than saying nothing survived', () => {
-    const runPath = '/repo/eval/discovery-ab/runs/2026-08-04T00-00-00-000Z.json';
-    const report = describeAbFailure(classifyAbParentFailure('written', new Error('EBUSY: rm /tmp/discovery-ab-x'), { artifactPath: runPath }));
+    const runPath = '/repo/eval/discovery/runs/2026-08-04T00-00-00-000Z.json';
+    const report = describeAbFailure(classifyAbParentFailure('written', new Error('EBUSY: rm /tmp/discovery-x'), { artifactPath: runPath }));
     expect(report.exitCode).toBe(AB_EXIT_SPENT_WITHOUT_ARTIFACT);
     expect(report.message).toContain(runPath);
     expect(report.message).toContain('after the run artifact was written');
@@ -253,8 +274,42 @@ describe('classifyAbParentFailure', () => {
     expect(report.message).toContain('provider spend and wall-clock time may already be gone');
     expect(report.message).not.toContain('wall-clock time are gone');
     // It is still certain about the two things the stage does fix.
-    expect(report.message).toContain('both A/B branches were reset');
+    expect(report.message).toContain('the A/B branches (eval-ab-a, eval-ab-b) were reset');
     expect(report.message).toContain('there is no verdict');
+  });
+
+  it('names one branch and one child after a single run, because two would be false', () => {
+    // A single run never opens eval-ab-b. Reporting "both A/B branches were
+    // reset" would send an operator to inspect a branch this run did not touch,
+    // and would double the spend they think they lost.
+    const report = describeAbFailure(
+      classifyAbParentFailure('spawned', new Error('child exited with code 2'), { shape: 'single' }),
+    );
+    expect(report.message).toContain('the A/B branch eval-ab-a was reset');
+    expect(report.message).not.toContain('eval-ab-b');
+    expect(report.message).not.toContain('both');
+    expect(report.message).toContain('pays for the whole run again');
+  });
+
+  it('assumes a pair when the shape is unknown, overstating rather than understating', () => {
+    // The default has to fail in the safe direction: claiming more was touched
+    // sends an operator to check a clean branch, where the reverse would tell
+    // them a dirty branch was untouched.
+    const unknown = classifyAbParentFailure('reset', new Error('boom')) as AbSpentRunError;
+    expect(unknown.shape).toBe('pair');
+    expect(unknown.message).toContain('eval-ab-b');
+  });
+
+  it('reports every stage truthfully for a single run', () => {
+    // Each stage authors its own sentence, so each needs its own check: a stage
+    // that forgot the shape would claim two branches at exactly the moment an
+    // operator is deciding what to go and clean up.
+    for (const stage of ['resetting', 'reset', 'spawned', 'written'] as const) {
+      const message = (classifyAbParentFailure(stage, new Error('boom'), { shape: 'single' }) as AbSpentRunError).message;
+      expect(message, `${stage} names eval-ab-b`).not.toContain('eval-ab-b');
+      expect(message, `${stage} claims both branches`).not.toContain('both branches');
+      expect(message, `${stage} omits the branch it did touch`).toContain('eval-ab-a');
+    }
   });
 
   it('keeps the original failure as a cause without ever printing it', () => {
@@ -288,7 +343,7 @@ describe('describeAbFailure', () => {
    * the operator's console in the middle of the loss it denies.
    */
   it('makes no cost claim for a child, which cannot know what the run cost', () => {
-    const report = describeAbFailure(new Error('EBUSY writing /tmp/discovery-ab-x/a.json'), 'child');
+    const report = describeAbFailure(new Error('EBUSY writing /tmp/discovery-x/a.json'), 'child');
     expect(report.exitCode).toBe(AB_EXIT_PREFLIGHT_REFUSED);
     expect(report.message).toContain('A child makes no claim about what this run cost');
     expect(report.message).toContain("the parent's exit code is the one to act on");
@@ -299,7 +354,7 @@ describe('describeAbFailure', () => {
   });
 
   it('prints a gate refusal verbatim in a child too, since a refusal names only variables', () => {
-    const refusal = new AbGateError('Refusing to mutate: DISCOVERY_AB_SIDE_BRANCH must be exactly eval-ab-a for side a');
+    const refusal = new AbGateError('Refusing to mutate: DISCOVERY_SIDE_BRANCH must be exactly eval-ab-a for side a');
     expect(describeAbFailure(refusal, 'child')).toEqual({
       exitCode: AB_EXIT_PREFLIGHT_REFUSED,
       message: refusal.message,
@@ -315,7 +370,7 @@ describe('abAttestationRefusal', () => {
   it('names what was refused and what would satisfy it, without the control-plane error', () => {
     const refusal = abAttestationRefusal('parent', { cause: new Error('status 401 for hunter2secret') });
     expect(refusal).toBeInstanceOf(AbGateError);
-    expect(refusal.message).toContain('DISCOVERY_AB_TARGETS was not attested');
+    expect(refusal.message).toContain('DISCOVERY_TARGETS was not attested');
     expect(refusal.message).toContain('eval-ab-a, eval-ab-b');
     expect(refusal.message).toContain('eval-discovery-base');
     expect(refusal.message).not.toContain('hunter2secret');

@@ -55,7 +55,7 @@ function asRecord(value: unknown, message: string): Record<string, unknown> {
 
 function asString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`Discovery A/B manifest ${field} must be a non-empty string`);
+    throw new Error(`Discovery manifest ${field} must be a non-empty string`);
   }
   return value;
 }
@@ -80,20 +80,20 @@ function parseUrl(value: string): URL | null {
 function assertNeonPostgresUrl(value: string, field: string): void {
   const url = parseUrl(value);
   if (!url || (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') || !url.hostname.endsWith('.neon.tech')) {
-    throw new Error(`Discovery A/B manifest ${field} must be a postgres URL on a Neon host`);
+    throw new Error(`Discovery manifest ${field} must be a postgres URL on a Neon host`);
   }
   if (url.pathname !== '/protocol_eval') {
-    throw new Error(`Discovery A/B manifest ${field} database must be exactly protocol_eval`);
+    throw new Error(`Discovery manifest ${field} database must be exactly protocol_eval`);
   }
   if (url.port && url.port !== '5432') {
-    throw new Error(`Discovery A/B manifest ${field} port must be exactly 5432`);
+    throw new Error(`Discovery manifest ${field} port must be exactly 5432`);
   }
 }
 
 function parseTarget(value: unknown, index: number): AbTarget {
-  const entry = asRecord(value, `Discovery A/B manifest target ${index} must be an object`);
+  const entry = asRecord(value, `Discovery manifest target ${index} must be an object`);
   const sideId = entry.sideId;
-  if (sideId !== 'a' && sideId !== 'b') throw new Error(`Discovery A/B manifest target ${index} sideId must be "a" or "b"`);
+  if (sideId !== 'a' && sideId !== 'b') throw new Error(`Discovery manifest target ${index} sideId must be "a" or "b"`);
   const target: AbTarget = {
     sideId,
     branchId: asString(entry.branchId, `target ${index} branchId`),
@@ -114,28 +114,28 @@ function parseTarget(value: unknown, index: number): AbTarget {
  * them without re-sorting.
  */
 export function parseAbManifest(raw: string | undefined): AbManifest {
-  if (raw === undefined || raw.trim() === '') throw new Error('Discovery A/B manifest is required');
+  if (raw === undefined || raw.trim() === '') throw new Error('Discovery manifest is required');
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error('Discovery A/B manifest must be valid JSON');
+    throw new Error('Discovery manifest must be valid JSON');
   }
-  const root = asRecord(parsed, 'Discovery A/B manifest must be an object');
+  const root = asRecord(parsed, 'Discovery manifest must be an object');
   const projectId = asString(root.projectId, 'projectId');
   const baseBranchId = asString(root.baseBranchId, 'baseBranchId');
   if (!Array.isArray(root.targets) || root.targets.length !== 2) {
-    throw new Error('Discovery A/B manifest must name exactly two sides');
+    throw new Error('Discovery manifest must name exactly two sides');
   }
   const targets = root.targets.map(parseTarget);
   const sideA = targets.find((target) => target.sideId === 'a');
   const sideB = targets.find((target) => target.sideId === 'b');
-  if (!sideA || !sideB) throw new Error('Discovery A/B manifest must name one side a and one side b');
+  if (!sideA || !sideB) throw new Error('Discovery manifest must name one side a and one side b');
   if (sideA.branchId === sideB.branchId || sideA.endpointId === sideB.endpointId) {
-    throw new Error('Discovery A/B manifest sides must name distinct branches and endpoints');
+    throw new Error('Discovery manifest sides must name distinct branches and endpoints');
   }
   if (sideA.branchId === baseBranchId || sideB.branchId === baseBranchId) {
-    throw new Error('Discovery A/B manifest sides must not name the base branch');
+    throw new Error('Discovery manifest sides must not name the base branch');
   }
   return { projectId, baseBranchId, targets: [sideA, sideB] };
 }

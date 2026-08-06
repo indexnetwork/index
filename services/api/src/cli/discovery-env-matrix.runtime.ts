@@ -1,4 +1,4 @@
-import { assertAbEnvConfig, type AbEnvConfig } from './discovery-ab.flags';
+import { assertAbEnvConfig, type AbEnvConfig } from './discovery.flags';
 import type { HistoricalMatrixFixture } from './discovery-env-matrix.shared';
 
 export const MATRIX_REPETITIONS = 3;

@@ -66,7 +66,7 @@ describe("historical discovery environment matrix policy", () => {
 
   it("scores an arm that is not a matrix row when it states its own allowed evidence", async () => {
     // Regression: scoring a slot whose rowId is a comparison-arm id (the
-    // discovery A/B harness names its sides "a" and "b") threw
+    // discovery harness names its sides "a" and "b") threw
     // "Unknown discovery environment matrix row: a" for every slot that
     // returned a candidate, because the allowed-evidence assertion resolved the
     // row. An arm that supplies its own permitted set must score instead.

@@ -9,7 +9,16 @@ delete window.__INDEX_NETWORK_DESKTOP_ENV__
 
 const PLUGIN_CSS = __PLUGIN_CSS__
 
-const ASSET_FILES = { pitch: 'loading-white.webp', radar: 'eye-white.webp', loading: 'loading2.png' }
+// Dark and light file per role — must match ASSET_FILES in dashboard/dist/index.js,
+// which resolves these keys, and the allow-list in dashboard/plugin_api.py.
+const ASSET_FILES = {
+  'pitch-dark': 'loading-white.webp',
+  'pitch-light': 'loading-black.webp',
+  'radar-dark': 'eye-white.webp',
+  'radar-light': 'eye-black.webp',
+  'loading-dark': 'loading2-white.webp',
+  'loading-light': 'loading2.png'
+}
 
 let assetsPromise = null
 

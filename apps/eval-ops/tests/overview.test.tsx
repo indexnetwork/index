@@ -83,6 +83,64 @@ describe('Overview', () => {
     expect(await screen.findByText(/97\.1%/)).toBeInTheDocument();
   });
 
+  /**
+   * A sides harness has no baseline by design and no aggregate that scores it:
+   * its run report's `aggregatePassRate` is the mean over two DIFFERENT
+   * configurations. Both cells are omitted rather than filled with "—" and a
+   * number about neither side.
+   */
+  it('gives a sides harness no baseline cell and no aggregate to read as its score', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith('/api/harnesses'))
+          return new Response(
+            JSON.stringify({
+              harnesses: [
+                { harness: 'discovery', script: 'eval:discovery', caseCount: 5, defaultRuns: 1, flags: [] },
+              ],
+            }),
+          );
+        if (String(url).endsWith('/api/artifacts'))
+          return new Response(
+            JSON.stringify({
+              refs: [
+                {
+                  id: 'ab',
+                  harness: 'discovery',
+                  kind: 'run',
+                  aggregatePassRate: 1,
+                  createdAt: '2026-08-04T18:19:06.257Z',
+                  models: ['google/gemini-3-flash-preview'],
+                  runs: 1,
+                  caseCount: 2,
+                  path: 'discovery/runs/2026-08-04T18-17-55-461Z.json',
+                },
+              ],
+              issues: [],
+            }),
+          );
+        if (String(url).endsWith('/api/runs'))
+          return new Response(JSON.stringify({ runs: [], issues: [] }));
+        if (String(url).endsWith('/api/fixture'))
+          return new Response(JSON.stringify({ allowed: false, reason: 'not configured' }));
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+
+    render(
+      <BrowserRouter>
+        <Overview />
+      </BrowserRouter>,
+    );
+
+    expect(await screen.findByTestId('harness-sides-discovery')).toBeInTheDocument();
+    expect(screen.queryByText('baseline:')).toBeNull();
+    expect(screen.queryByText('latest:')).toBeNull();
+    // 100.0% is the artifact's aggregate: the mean across both sides.
+    expect(screen.queryByText(/100\.0%/)).toBeNull();
+  });
+
   it('surfaces index issues instead of hiding them', async () => {
     render(
       <BrowserRouter>

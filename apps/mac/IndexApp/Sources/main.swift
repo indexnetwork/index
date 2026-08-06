@@ -471,6 +471,9 @@ enum HermesSetup {
         if status != 0 {
             return ["ok": false, "error": "hermes \(args.joined(separator: " ")): \(String(output.suffix(300)))"]
         }
+        // The plugin self-installs its Hermes Desktop bundle into
+        // ~/.hermes/desktop-plugins when the gateway loads it (see the
+        // plugin's __init__.py), so the restart below covers the desktop app.
         restartGatewayIfRunning(hermes)
         return ["ok": true]
     }
@@ -488,6 +491,7 @@ enum HermesSetup {
     /// ~/.hermes/.env. The agent (and its keys) are removed server-side by the
     /// caller; this only cleans the local runtime.
     static func teardown() -> [String: Any] {
+        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.hermes/desktop-plugins/index-network")
         if FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.hermes/plugins/index-network") {
             guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
                 return ["ok": false, "error": "hermes binary not found on this mac"]

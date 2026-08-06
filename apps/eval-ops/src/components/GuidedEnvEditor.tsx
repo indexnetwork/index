@@ -1,6 +1,20 @@
 import { useCallback, useId, useMemo } from 'react';
 
+import { ALLOWED_CONFIG_MODEL_IDS, envFlagValueIssue } from '../../../../packages/protocol/eval/ops/ops.metadata';
 import type { EnvFlagMeta } from '../api/client';
+
+/**
+ * Model bounds for a `json-model-map` value, so the form refuses exactly what
+ * the server would.
+ *
+ * Only the model half is knowable here. The agent half is derived from the
+ * harness registry on the server, and passing an undefined agent list makes
+ * envFlagValueIssue skip that check rather than guess — so an unknown agent is
+ * caught at submit instead of on keystroke. Silent divergence is the thing to
+ * avoid; a browser that refuses *less* than the server is safe, one that
+ * refuses more would block a legal launch.
+ */
+const CLIENT_MODEL_BOUNDS = { models: ALLOWED_CONFIG_MODEL_IDS };
 
 export interface EnvOverrideRow {
   /** Empty until the user picks a flag. */
@@ -12,31 +26,20 @@ export const EMPTY_ENV_ROW: EnvOverrideRow = { key: '', value: '' };
 
 /**
  * Human-readable problem with a non-empty value, or null when the value is
- * acceptable for the flag's kind. Mirrors validateProfileEnv in
- * packages/protocol/eval/ops/ops.profiles.ts — the server still re-validates,
- * this only gives the user feedback before submit. Empty values are not an
- * issue here; they are "incomplete", which envRowsValid reports separately.
- * Whitespace-only values are reported for every kind: envRowsToOverrides drops
- * them, so without a marker the row would silently block submit.
+ * acceptable for the flag's kind.
+ *
+ * Delegates to envFlagValueIssue in packages/protocol/eval/ops/ops.metadata.ts
+ * — the same function the server validates saved configs, ad-hoc launches and
+ * A/B sides with. Re-implementing the rules here is how a form comes to accept
+ * a value its own server refuses (or worse, to accept one the live pipeline
+ * silently falls back on). This wrapper adds only what is a UI concern: an
+ * empty value is "incomplete", which envRowsValid reports separately, and a
+ * whitespace-only value is marked for every kind because envRowsToOverrides
+ * drops it, so without a marker the row would silently block submit.
  */
 export function envValueIssue(flag: EnvFlagMeta, value: string): string | null {
   if (value !== '' && value.trim() === '') return 'must not be blank';
-  switch (flag.kind) {
-    case 'enum':
-    case 'boolean':
-      return flag.values?.includes(value)
-        ? null
-        : `expected one of: ${flag.values?.join(', ') ?? '(no values defined)'}`;
-    case 'integer':
-      // Non-negative digits only — mirrors optionalInt in services/api/src/startup.env.ts.
-      return /^\d+$/.test(value) ? null : 'must be an integer';
-    case 'number':
-      return Number.isFinite(Number(value)) && Number(value) > 0
-        ? null
-        : 'must be a positive number';
-    case 'string':
-      return null;
-  }
+  return envFlagValueIssue(flag, value, CLIENT_MODEL_BOUNDS);
 }
 
 /**
@@ -77,9 +80,13 @@ const INPUT_CLASS = 'bg-term-bg border border-term-rule px-[1ch] py-[0.5lh]';
 const VALUE_PLACEHOLDER: Record<EnvFlagMeta['kind'], string> = {
   enum: '',
   boolean: '',
+  'csv-enum': 'e.g. intent,profile',
   integer: 'e.g. 4',
   number: 'e.g. 7',
   string: 'value',
+  // Shows the shape rather than describing it: this is the one kind whose
+  // value is structured, and its read site throws on a malformed one.
+  'json-model-map': '{"opportunityEvaluator":"google/gemini-2.5-flash"}',
 };
 
 /**

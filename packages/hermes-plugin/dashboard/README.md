@@ -27,7 +27,7 @@ The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Ba
 
 The backend route reuses `../tools.py` rather than creating a second Index client. That keeps `INDEX_API_KEY`, `INDEX_MCP_URL`, timeout handling, Telegram forwarding, MCP response decoding, and network-scoped agent visibility in one place.
 
-The dashboard's persisted writes are: submitting an answer to an existing pending question, accepting/skipping an opportunity (MCP `update_opportunity` → `accepted`/`rejected`), self-joining an open community from the Networks **Discover** tab (MCP `create_network_membership`), archiving an intent (`PATCH /intents/:id/archive`), profile edits (`PATCH /auth/profile/update` + avatar upload to `POST /storage/avatars` + AI intro via `POST /enrichment/sync`), and sending direct messages (`POST /conversations/:id/messages`) — all scoped to the authenticated user/API-key principal.
+The dashboard's persisted writes are: submitting an answer to an existing pending question, accepting/skipping an opportunity (MCP `update_opportunity` → `accepted`/`rejected`), self-joining an open community from the Networks **Discover** tab (MCP `create_network_membership`), archiving an intent (`PATCH /intents/:id/archive`), submitting an early-access "create a network" request (`POST /network-requests`, plus `PATCH`/`DELETE` to update or withdraw it), profile edits (`PATCH /auth/profile/update` + avatar upload to `POST /storage/avatars` + AI intro via `POST /enrichment/sync`), and sending direct messages (`POST /conversations/:id/messages`) — all scoped to the authenticated user/API-key principal.
 
 The Profile panel reads what the plugin's `INDEX_API_KEY` can reach (`GET /profile` → identity name/bio/location/context via MCP `read_user_contexts` self-read, avatar/socials via public `GET /users/:id`, and email/timezone/notification preferences via `GET /auth/me`). Since #1077 unified `AuthGuard` to accept `x-api-key`, profile saves (`PATCH /profile` → `PATCH /auth/profile/update`), avatar uploads (`POST /profile/avatar` → multipart `POST /storage/avatars`), and AI intro generation (`POST /profile/intro` → `POST /enrichment/sync`) all persist for real; only `email` stays read-only (it is not in the profile update schema). The read-only counterpart view (`GET /profile/:id`) is backed by the public `GET /users/:id` plus `read_user_contexts(userId)` and is constrained to the current user's visible opportunity counterparts; the counterpart's `userId` is derived from the opportunity's non-introducer actors.
 
@@ -38,7 +38,7 @@ It does **not**:
 - claim pending negotiation turns;
 - submit negotiation responses;
 - run discovery;
-- create or delete intents, or mutate other Index records beyond the writes listed above (question answers, opportunity accept/skip, Discover self-join, intent archive, profile edits, and DM messages);
+- create networks directly (that stays staff-only on the server; the Networks card's **Create** button submits a reviewed request instead), claim or delete intents, or mutate other Index records beyond the writes listed above (question answers, opportunity accept/skip, Discover self-join, intent archive, network requests, profile edits, and DM messages);
 - expose raw tool envelopes, tokens, or assistant reasoning.
 
 ## Runtime behavior

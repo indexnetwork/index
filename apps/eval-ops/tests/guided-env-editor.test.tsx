@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
@@ -43,7 +43,8 @@ const FLAGS: EnvFlagMeta[] = [
     key: 'DISCOVERY_ALLOWED_TYPES',
     label: 'Discovery allowed types',
     description: 'Comma-separated type gate.',
-    kind: 'string',
+    kind: 'csv-enum',
+    values: ['intent', 'profile'],
     defaultDescription: 'both intent and profile',
   },
   {
@@ -179,6 +180,19 @@ describe('GuidedEnvEditor', () => {
     expect(screen.getByText(/must not be blank/)).toBeInTheDocument();
     expect(screen.getByLabelText('value 1')).toHaveAttribute('aria-invalid', 'true');
     expect(envRowsToOverrides(readRows())).toEqual({});
+  });
+
+  it('rejects an unknown token in a comma-separated flag, which the reader would ignore', () => {
+    // discoveryAllowedTypes drops tokens it does not know and falls back to
+    // "both allowed" when none survive, so a typo is not a narrower gate — it is
+    // the default gate under a name that says otherwise.
+    render(<Harness initial={[{ ...emptyRow, key: 'DISCOVERY_ALLOWED_TYPES' }]} />);
+    const input = screen.getByLabelText('value 1');
+    fireEvent.change(input, { target: { value: 'intnet' } });
+    expect(screen.getByTestId('valid').textContent).toBe('false');
+    expect(screen.getByText(/comma-separated list of: intent, profile/)).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'intent, profile' } });
+    expect(screen.getByTestId('valid').textContent).toBe('true');
   });
 
   it('never renders “undefined” in the enum issue message for a flag without values', () => {

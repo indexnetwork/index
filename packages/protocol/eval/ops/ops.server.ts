@@ -29,7 +29,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { renderRun, RunSpecSchema } from "./ops.argv.js";
+import { renderRun, RunSpecSchema, SUPPORTS_SIDES, singleConfigIssues } from "./ops.argv.js";
 import { decodeArtifactId, FsArtifactSource, type ArtifactSource } from "./ops.artifacts.js";
 import { ApiIdentityResolver, assessIdentity, buildBridgeUrl, JwtIdentityResolver, OneTimeStateStore, OpsSessionStore, type AllowedIdentity, type IdentityResolver } from "./ops.auth.js";
 import { compareArtifacts } from "./ops.compare.js";
@@ -37,11 +37,11 @@ import { BunSqlConfigStore, ConfigConflictError, InMemoryConfigStore, type Confi
 import { LocalProcessRunExecutor, tailLog, type ExecutionStep, type RunExecutor } from "./ops.executor.js";
 import { assessFixtureTarget, BunSqlFixtureInspector, buildResetPipeline, MAX_PERSONAS, redactDatabaseUrl, scrubCredentials, SEED_STEP_CWD, type FixtureInspector, type FixtureTarget } from "./ops.fixture.js";
 import { OPS_CALLBACK_PATH } from "./ops.paths.js";
-import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, resolveAdHoc, resolveProfile, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
+import { ALLOWED_CONFIG_MODELS, ConfigProfileSchema, DEFAULT_PROFILE_NAME, ENV_FLAG_METADATA, FLAG_METADATA, HARNESS_AGENT_METADATA, MODEL_METADATA, loadProfiles, readableEnv, resolveAdHoc, resolveProfile, unreadEnvKeys, validateConfigOverrides, type ConfigProfile, type ResolvedProfile } from "./ops.profiles.js";
 import { HARNESS_REGISTRY } from "./ops.registry.js";
-import { RunQueue } from "./ops.queue.js";
+import { EXCLUSIVE_HARNESSES, RunQueue } from "./ops.queue.js";
 import { FsRunStore, isTerminalStatus, type RunStore } from "./ops.store.js";
-import type { RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
+import type { OpsHarness, RunRecord, RunStatus, RunStepRecord } from "./ops.types.js";
 import { EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
 
 export interface OpsContext {
@@ -60,6 +60,18 @@ export interface OpsContext {
   configs: ConfigStore;
   /** Resolved from the server's own .env.test. Never from a request, never sent to a client. */
   databaseUrl: string | undefined;
+  /**
+   * This server's own environment: the only place a harness credential may come
+   * from.
+   *
+   * Injected rather than read from `process.env` where it is used, for two
+   * reasons. A test states the posture it means to test instead of mutating the
+   * process — including the posture where nothing is configured, which is a real
+   * deployment and must be refused rather than depend on whatever the developer
+   * happens to have exported. And a context that says nothing here holds no
+   * credentials at all, which is the fail-closed answer.
+   */
+  serverEnv?: Record<string, string | undefined>;
   /** Read-only live counts. Absent when no database client is configured. */
   inspector?: FixtureInspector;
   /**
@@ -954,6 +966,274 @@ async function deleteConfig(context: OpsContext, name: string): Promise<Response
 
 const RESET_IN_FLIGHT = "A test-database reset is in flight; a run launched now would see a half-seeded database.";
 
+/** What one harness needs from this server's own environment before it can run. */
+export interface HarnessCredentialRequirement {
+  /** Keys the harness's own gate demands, non-blank in the server's environment. Never in a record. */
+  keys: readonly string[];
+  /**
+   * Keys no gate checks, but without which the child cannot finish the run.
+   *
+   * Checked exactly like {@link keys} and separated from them only so the
+   * gate-parity guard in tests/server.spec.ts stays exact: it compares `keys`
+   * plus `asserts` against the variables `assertAbConfirmation` reads, and a
+   * runtime dependency listed there would break that comparison while proving
+   * nothing about the gate.
+   */
+  runtimeKeys: readonly string[];
+  /** Constants this server asserts on the operator's behalf. Not secrets. */
+  asserts: Readonly<Record<string, string>>;
+  /**
+   * Keys **removed** from what the child inherits from this server.
+   *
+   * The counterpart of `asserts`: some variables must be stated by their absence.
+   * A harness whose child tree must not reach a database this server happens to
+   * be pointed at names it here rather than hoping nobody inherits it.
+   */
+  unset: readonly string[];
+  /**
+   * What an operator must configure, appended to the refusal.
+   *
+   * Empty only when both `keys` and `runtimeKeys` are: the refusal is raised for
+   * a missing key from either list (`resolveHarnessEnvironment`), so advice that
+   * covered `keys` alone would leave a `runtimeKeys` refusal with nothing to act on.
+   */
+  advice: string;
+}
+
+/**
+ * A harness this server pre-checks nothing for.
+ *
+ * Not "a harness that needs no environment": the four scorecard harnesses read
+ * OPENROUTER_API_KEY like everything else that calls a model (`createModel`,
+ * src/shared/agent/model.config.ts). What is true is that nothing of theirs is
+ * destroyed before that key is read — they take the executor's own single-command
+ * path with no step plan, and a missing key surfaces as their first model
+ * construction throwing, with nothing reset and nothing spent. A pre-check there
+ * would move a message earlier; for discovery it prevents a destruction.
+ */
+const NO_CREDENTIALS: HarnessCredentialRequirement = Object.freeze({
+  keys: Object.freeze([]),
+  runtimeKeys: Object.freeze([]),
+  asserts: Object.freeze({}),
+  unset: Object.freeze([]),
+  advice: "",
+});
+
+/**
+ * What each harness needs from this server's own environment, and nowhere else.
+ *
+ * discovery's bootstrap refuses to run without four variables
+ * (`assertAbConfirmation`, services/api/src/cli/discovery.gate.ts), and they
+ * are two different kinds of thing. A third kind is below them: variables no
+ * gate mentions that the child cannot run without (`runtimeKeys`).
+ *
+ * `NEON_API_KEY` and `DISCOVERY_TARGETS` are secrets an operator configures
+ * once — a control-plane key that can create and delete branches, and an
+ * attested manifest carrying two `protocol_eval` connection strings, passwords
+ * included. They are `keys`: resolved at launch, handed to the child, written
+ * nowhere.
+ *
+ * `DISCOVERY_CONFIRM=1` and `TEST_DATABASE_SAFE=1` are attestations that the
+ * databases about to be mutated are disposable, and they are `asserts` because
+ * this server is in a position to make them. That decision has already been made
+ * by an operator, twice: once when they configured the manifest — which names
+ * the two designated evaluation branches and nothing else — and again when they
+ * launched a harness whose own description says it runs the real graph against
+ * them. The gate still re-derives each side's branch and refuses any URL that is
+ * not Neon, not `/protocol_eval`, or not that side's branch
+ * (`assertAbSideEnvironment`), so asserting them here widens nothing. Demanding
+ * them from the environment instead would add a variable meaning "yes, really"
+ * to a server already told exactly which branches to use, and an operator who
+ * set the manifest but not the flag would get a child that dies at the gate with
+ * nothing on the page explaining why.
+ *
+ * Exhaustive by type, and the four scorecard harnesses' `NO_CREDENTIALS` is the
+ * point of it: "this run received no credential" is then a statement the code
+ * makes rather than an omission, and a harness added later has to answer.
+ */
+export const HARNESS_CREDENTIALS: Readonly<Record<OpsHarness, HarnessCredentialRequirement>> = Object.freeze({
+  matching: NO_CREDENTIALS,
+  profile: NO_CREDENTIALS,
+  premise: NO_CREDENTIALS,
+  opportunity: NO_CREDENTIALS,
+  discovery: Object.freeze({
+    keys: Object.freeze(["NEON_API_KEY", "DISCOVERY_TARGETS"]),
+    /**
+     * The two variables the child composition needs and no gate asks for.
+     *
+     * They are here because of the ORDER this harness runs in: the parent resets
+     * the Neon branches the run's shape needs on entry — both for a comparison,
+     * eval-ab-a alone for a single configuration (`abRunningTargets`,
+     * services/api/src/cli/discovery.main.ts) — and only then spawns the children
+     * that read these. Without the pre-check, a server missing one passes every
+     * check on this route, destroys those branches, and fails afterwards — the
+     * expensive half of the run already spent on a configuration that could never
+     * finish.
+     *
+     * They arrive by inheritance rather than by gate, which is why nothing else
+     * catches them: `eval:discovery` is `bun --env-file=../../.env.test ...`
+     * (services/api/package.json), `.env.test` is gitignored, and Bun exits 0
+     * with no warning when an --env-file is missing. So a container that has
+     * neither the file nor the variable reads them as absent, silently.
+     *
+     * OPENROUTER_API_KEY — every model this harness builds resolves the key or
+     * throws (`createModel`, src/shared/agent/model.config.ts: "OPENROUTER_API_KEY
+     * is required"), and the embeddings the discovery graph runs on go through
+     * the same key (EmbedderAdapter, services/api/src/adapters/embedder.adapter.ts).
+     *
+     * REDIS_URL — `createChildDependencies` (services/api/src/cli/discovery-env-matrix.main.ts)
+     * hands the HyDE graph a RedisCacheAdapter, whose client falls back to
+     * localhost:6379 when neither REDIS_URL nor REDIS_HOST is set
+     * (services/api/src/adapters/cache.adapter.ts). The graph's cache_results node
+     * awaits `cache.set` with no catch around it (src/shared/hyde/hyde.graph.ts),
+     * and the adapter's `set` has none either, so an unreachable Redis fails the
+     * graph invocation rather than degrading to no cache. REDIS_URL and not
+     * REDIS_HOST: this server checks the one form, so a Redis configured by host
+     * and port is refused here even though the adapter would accept it. That is
+     * the deliberate direction to be wrong in — a refusal an operator can fix by
+     * setting REDIS_URL, rather than two reset branches and a failed run.
+     */
+    runtimeKeys: Object.freeze(["OPENROUTER_API_KEY", "REDIS_URL"]),
+    asserts: Object.freeze({ DISCOVERY_CONFIRM: "1", TEST_DATABASE_SAFE: "1" }),
+    // Deleted, not pinned, and this is the one variable that decides which
+    // database the child tree can reach — so it is stated rather than inherited.
+    //
+    // There is no value this server could honestly pin. Its own DATABASE_URL is
+    // the eval fixture database, and handing that to a child tree this same
+    // server is asserting TEST_DATABASE_SAFE=1 over is exactly the mistake worth
+    // preventing. Either side's URL out of the manifest would be a lie about the
+    // other side. And the parent discovery process composes no database at all:
+    // it resets the branches the run's shape needs through the Neon control plane
+    // and spawns one child per side — two of each for a comparison, one of each
+    // for a single configuration — each of which sets its own DATABASE_URL from
+    // the attested manifest
+    // (discovery.ts) and is then re-checked against that side's branch
+    // (`assertAbSideEnvironment`).
+    //
+    // Deleting hands the decision back to the script, which already made it:
+    // `eval:discovery` is `bun --env-file=../../.env.test ...`, and a parent
+    // environment beats --env-file in Bun, so this server's value was silently
+    // winning a question the script had already answered. With the key removed,
+    // .env.test decides — and where there is no .env.test, nothing does, which is
+    // the fail-closed answer: anything in the child tree that needs a database
+    // before a side is chosen refuses rather than reaching one it was not aimed at.
+    unset: Object.freeze(["DATABASE_URL"]),
+    // Returned to a browser: it names variables and what they are for, never a value.
+    advice:
+      "It resets the two designated Neon evaluation branches and then runs the real discovery graph against them, "
+      + "so this server's own environment must hold NEON_API_KEY (a Neon control-plane key), DISCOVERY_TARGETS "
+      + "(the attested manifest naming the project, the base branch, and both side branches with their "
+      + "protocol_eval databases), OPENROUTER_API_KEY (every model and embedding the graph runs on) and REDIS_URL "
+      + "(the HyDE cache the graph writes through). None of them is ever sent from a browser.",
+  }),
+});
+
+export type HarnessEnvironment =
+  /**
+   * Merged over the run's own environment when the child is spawned. A key whose
+   * value is `undefined` is deleted from what the child inherits — see
+   * {@link HarnessCredentialRequirement.unset} and `ExecutionStep.env`.
+   */
+  | { ok: true; env: Record<string, string | undefined> }
+  /** Names what is missing and what to configure. Safe to display: no value is in it. */
+  | { ok: false; reason: string };
+
+/**
+ * The environment a harness needs beyond its profile's, resolved from this
+ * server's own environment.
+ *
+ * Called before the run is queued, so a server that cannot run this harness says
+ * what to configure instead of spawning a child that dies at its own gate —
+ * which an operator would meet as an exit code and a log they cannot act on.
+ *
+ * A blank value counts as absent: `NEON_API_KEY=` in a dotenv file is an
+ * operator who has not set it, and passing it through would produce exactly the
+ * gate failure this refusal exists to replace.
+ *
+ * `keys` and `runtimeKeys` are checked together and treated identically from
+ * here on: both must be present before the run is admitted, and both are handed
+ * to the child as the trimmed value this check read, so what was verified is
+ * what runs.
+ */
+export function resolveHarnessEnvironment(
+  harness: OpsHarness,
+  env: Record<string, string | undefined>,
+): HarnessEnvironment {
+  const requirement = HARNESS_CREDENTIALS[harness];
+  const required = [...requirement.keys, ...requirement.runtimeKeys];
+
+  const missing = required.filter((key) => (env[key] ?? "").trim() === "");
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: `Refusing to launch ${harness}: this server has no ${missing.join(" or ")} configured. ${requirement.advice}`,
+    };
+  }
+
+  const resolved: Record<string, string | undefined> = { ...requirement.asserts };
+  for (const key of requirement.unset) resolved[key] = undefined;
+  for (const key of required) resolved[key] = (env[key] as string).trim();
+  return { ok: true, env: resolved };
+}
+
+/**
+ * Why a second run of an exclusive harness is refused, naming the run that holds
+ * the slot. The reason itself comes from {@link EXCLUSIVE_HARNESSES}, which is
+ * also what enforces the rule, so the explanation cannot outlive it.
+ *
+ * The advice has to hold for a holder this process never spawned, which is the
+ * case the durable half of the check exists for: `executor.cancel` finds no live
+ * entry for an orphan and {@link cancelRun} still answers accepted, so "cancel
+ * it" on its own would name a control that moves nothing exactly there. What is
+ * true in both cases is the pid: `storedRecordHoldsSlot` (ops.queue.ts) holds the
+ * slot only while the process is alive, so an orphan releases it by exiting.
+ */
+function exclusiveRefusal(harness: OpsHarness, holder: RunRecord): string {
+  return (
+    `Refusing a second ${harness} run: run ${holder.id} is already ${holder.status}. `
+    + `${EXCLUSIVE_HARNESSES[harness] ?? ""} The slot opens when that run's process exits. `
+    + `Cancelling it works while this server still owns the run; one left behind by an earlier server `
+    + `is out of reach of cancel and releases the slot itself when it exits.`
+  );
+}
+
+/**
+ * The step plan a run needs, or undefined when the executor's own single-command
+ * path is exactly right.
+ *
+ * A plan exists only for a run that needs something the record cannot express: a
+ * working directory other than packages/protocol — discovery's script and CLI
+ * live in services/api, and `bun run eval:discovery` resolves nowhere else —
+ * or an environment that must not be written down. The four scorecard harnesses
+ * need neither, so they keep the executor's own cwd and the record's own
+ * environment, unchanged by this harness existing.
+ */
+function harnessSteps(
+  context: OpsContext,
+  record: RunRecord,
+  harness: OpsHarness,
+  injected: Record<string, string | undefined>,
+): readonly ExecutionStep[] | undefined {
+  const descriptor = HARNESS_REGISTRY[harness];
+  if (descriptor.cwd === undefined && Object.keys(injected).length === 0) return undefined;
+  return [
+    {
+      label: harness,
+      argv: record.argv,
+      // The registry's cwd is repository-relative, exactly as a reset step's is:
+      // it resolves against the repository root, never against whatever directory
+      // this process was started in. The argv it runs is unaffected by it —
+      // --report already carries the store's absolute path (see launchRun).
+      cwd: descriptor.cwd === undefined ? context.protocolDir : path.join(context.repoRoot, descriptor.cwd),
+      // Injected last. A profile's environment is confined to the feature-flag
+      // allowlist (ops.allowlist.ts) and cannot name one of these keys today; if
+      // that ever changed, the server's own credential must still be the one the
+      // child receives.
+      env: { ...record.env, ...injected },
+    },
+  ];
+}
+
 async function launchRun(context: OpsContext, state: ServerState, request: Request): Promise<Response> {
   if (state.resetInFlight) return json({ error: RESET_IN_FLIGHT }, 409);
   const body = await readJson(request);
@@ -963,6 +1243,30 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // unknown key fails here rather than being silently ignored.
   const parsed = RunSpecSchema.safeParse(body.value);
   if (!parsed.success) return json({ error: describeIssues(parsed.error) }, 400);
+  const harness = parsed.data.harness;
+
+  // Both refusals below happen before a record exists, so they leave nothing
+  // behind. That is not true of the whole route: the two re-checks immediately
+  // before the enqueue run *after* the record has been written, and mark it
+  // `interrupted`. So run history can contain a record for a run that never
+  // started — one per launch that lost that race, which is what a double-clicked
+  // launch button produces. "Refused before a record exists" describes these two
+  // checks and nothing further down.
+
+  // At most one run of a harness that owns a shared physical resource. This check
+  // reads the store as well as this process's queue, so a run left behind by a
+  // server that restarted under it still holds the slot.
+  const holder = await context.queue.exclusiveConflict(harness);
+  if (holder !== null) return json({ error: exclusiveRefusal(harness, holder) }, 409);
+
+  // What this harness needs from this server's environment and nowhere else:
+  // the credentials its gate demands, and the variables its child needs after
+  // the run's destructive step has already happened. A browser never sends
+  // either, and a server that does not hold them refuses here rather than
+  // resetting branches and spawning children to die. 503 rather than 4xx:
+  // the request is valid, and it is this server that is not configured to serve it.
+  const harnessEnv = resolveHarnessEnvironment(harness, context.serverEnv ?? {});
+  if (!harnessEnv.ok) return json({ error: harnessEnv.reason }, 503);
 
   // Two ways to configure a run: ad-hoc overrides (the schema has already
   // confined them to profile "default"), or a named profile resolved from
@@ -970,7 +1274,9 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   // never arrive outside the validated overrides object.
   let resolved: ResolvedProfile;
   if (parsed.data.overrides !== undefined) {
-    const issues = validateConfigOverrides(parsed.data.overrides);
+    // Harness-aware: an ad-hoc override was typed for THIS run against THIS
+    // harness, so a key the harness cannot read is a refusal, not a note.
+    const issues = validateConfigOverrides(parsed.data.overrides, harness);
     if (issues.length > 0) return json({ error: issues.join("; ") }, 400);
     resolved = resolveAdHoc(parsed.data.overrides);
   } else {
@@ -982,6 +1288,62 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
     if (profile === undefined) return json({ error: `Unknown profile "${parsed.data.profile}"` }, 400);
     resolved = resolveProfile(profile);
   }
+
+  // A single-configuration run of a sides-capable harness must say what it is
+  // measuring, and only here is that knowable: the configuration may have come
+  // from a named profile, whose env RunSpecSchema cannot read (it is a file or a
+  // store record, and the refinement is synchronous). Checking it there against
+  // the absent `overrides` refused every named config on this harness with a
+  // message that was false — the operator's config is full of flags.
+  //
+  // Narrowed to the keys this harness can actually read, exactly as renderRun
+  // narrows before rendering `--env`: a config carrying only keys some OTHER
+  // harness reads configures nothing here, and would otherwise be spent as a run
+  // of the committed default while the record named the operator's config.
+  if (SUPPORTS_SIDES[harness] && parsed.data.sides === undefined) {
+    // `readableEnv`, not a local filter, because the launch form must ask this
+    // same question before enabling Run and the two must not drift: a config
+    // naming only keys some other harness reads configures nothing HERE, and a
+    // form that asked merely "is a config selected?" enabled the run, took the
+    // confirmation, and collected the 400 below.
+    const readable = readableEnv(harness, resolved.env);
+    const issues = singleConfigIssues(readable);
+    if (issues.length > 0) {
+      // The empty case gets a message true for the shape the operator used. A
+      // NAMED config that sets nothing this harness reads is a different mistake
+      // from a run that set nothing at all, and naming the config is what makes
+      // it fixable. "default" is excluded because it is not a config anyone
+      // chose: a bare launch and an empty ad-hoc override both mean "nothing was
+      // configured", which is what singleConfigIssues already says.
+      const empty = issues.find((issue) => issue.path.length === 0);
+      if (empty !== undefined && parsed.data.overrides === undefined && parsed.data.profile !== "default") {
+        const carried = Object.keys(resolved.env).filter((key) => key !== "EVAL_MODEL_OVERRIDES").sort();
+        return json({
+          error:
+            `Config "${parsed.data.profile}" sets nothing the ${harness} harness reads, so this run would `
+            + `measure the committed default while the record named your config`
+            + (carried.length > 0 ? ` (it sets ${carried.join(", ")})` : ""),
+        }, 400);
+      }
+      return json({ error: issues.map((issue) => issue.message).join("; ") }, 400);
+    }
+  }
+
+  // Recorded-but-not-read (spec §6). A saved config is harness-agnostic and may
+  // legitimately carry a key this harness never reads — it is shared with one
+  // that does — so the run proceeds and the keys are NAMED on the response. The
+  // ad-hoc path above never reaches here with such a key: it was already a 400.
+  //
+  // EVAL_MODEL_OVERRIDES is excluded because it is not an operator-chosen env
+  // key at all: renderRun writes it from the profile's `models` block (and
+  // writes "" when there is none), so reporting it would tell the operator their
+  // model selection was ignored when it was in fact applied.
+  //
+  // Today this filter removes nothing — every harness's catalogue contains the
+  // key, so unreadEnvKeys can never return it — and it is kept as a cheap guard
+  // for the case where one stops reading it: the key would then be reported as
+  // unread on that harness, which is the one thing this note must never say.
+  const unread = unreadEnvKeys(harness, resolved.env).filter((key) => key !== "EVAL_MODEL_OVERRIDES");
 
   // Two phases: the report path contains the run id, and the id is minted by the
   // store, so the record is created first and then completed with its argv.
@@ -995,6 +1357,10 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
   });
   let record;
   try {
+    // reportPath is ABSOLUTE, and must stay so: a run may be spawned with its own
+    // working directory (harnessSteps), and the engine resolves a relative
+    // --report against that directory. The eval-relative form the record stores
+    // is store.artifactPathFor, which the executor writes after the fact.
     const rendered = renderRun(parsed.data, resolved, context.store.reportPath(created.id));
     record = await context.store.update(created.id, {
       argv: rendered.argv,
@@ -1014,8 +1380,27 @@ async function launchRun(context: OpsContext, state: ServerState, request: Reque
     await context.store.update(record.id, { status: "interrupted", endedAt: new Date().toISOString() });
     return json({ error: RESET_IN_FLIGHT }, 409);
   }
-  context.queue.enqueue(record);
-  return json(record, 202);
+  // The same re-check for the exclusive slot, and for the same reason: two
+  // launches that both passed the check above — profile resolution and the
+  // record write are awaits, and another request runs during them — must not
+  // both end up holding the same two branches. In-process only, deliberately:
+  // this check must contain no await, or two requests could interleave inside
+  // it and it would decide nothing. The restart case is the earlier check's job.
+  //
+  // A launch refused here has already been written down, so unlike the checks
+  // above it does leave a record — marked `interrupted`, which is what a
+  // double-clicked launch button produces one of.
+  const raced = context.queue.inProcessConflict(harness);
+  if (raced !== null) {
+    await context.store.update(record.id, { status: "interrupted", endedAt: new Date().toISOString() });
+    return json({ error: exclusiveRefusal(harness, raced) }, 409);
+  }
+  context.queue.enqueue(record, harnessSteps(context, record, harness, harnessEnv.env));
+  // The run record's own shape is unchanged — every existing client reads these
+  // fields off the 202 body directly, and RunRecord is what the store persists
+  // and every other route returns. `unreadEnvKeys` rides alongside it, and only
+  // when non-empty, so a client that ignores it sees exactly what it saw before.
+  return json(unread.length > 0 ? { ...record, unreadEnvKeys: unread } : record, 202);
 }
 
 async function cancelRun(context: OpsContext, id: string): Promise<Response> {
@@ -1675,6 +2060,11 @@ export async function createDefaultOpsContext(options: {
     queue: new RunQueue({ executor, store }),
     configs,
     databaseUrl,
+    // The process environment is where a harness credential legitimately lives:
+    // set on the deployed service, or loaded from .env.test by `bun run eval:web`.
+    // Nothing is read out of it until a run of a harness that needs it is
+    // launched, and what is read never leaves the child process.
+    serverEnv: process.env,
     inspector: new BunSqlFixtureInspector(),
     publicOrigin,
     // One decision picks both the door and the resolver behind it, in a single

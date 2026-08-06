@@ -20,6 +20,19 @@ equivalent env) — harnesses call real models.
 | `clarification` | `bun run eval:clarification` | `IntentClarifier` QUD underspecification taxonomy (exact-match corpus)     |
 | `discovery-retrieval` | `bun run eval:discovery-retrieval` | paired real HyDE/embedding retrieval over frozen premise vs user-context profile corpora |
 
+### Historical discovery quality v2 contracts
+
+`eval/discovery-env-matrix/historical-quality.{corpus,metrics,experiment}.ts` defines the
+provider-free contract for the Historical Discovery Quality project (IND-636): cited
+pre-connection evidence, model-safe projection, user-level retrieval/evaluator attribution,
+and one-attempt/200-invocation one-factor experiment planning.
+
+These modules are deliberately **not wired into the current five cases or live discovery
+runner yet**. IND-637 migrates and independently reviews the historical corpus; IND-638
+builds the shared-pool dual-trigger fixture/runtime; IND-641 applies resolved side
+configuration at child spawn. Until those issues land, `eval:matching`,
+`eval:discovery-env-matrix`, and `eval:discovery` retain their existing behavior.
+
 Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·
 [`premise`](./premise/README.md) · [`profile`](./profile/README.md) ·
@@ -73,10 +86,10 @@ Common flags (most baseline-backed harnesses): `--runs N`, `--rule R`, `--case I
 takes `--component decompose|analyze`. Baseline/report writes refuse to replace existing
 files unless `--force` is passed (see the artifact envelope section below).
 
-## Eval ops site (internal, local-only)
+## Eval ops site (internal, local by default)
 
 [`eval/ops/`](./ops/README.md) is the provider-free core behind the **eval ops website**
-([`apps/eval-ops`](../../../apps/eval-ops/README.md)): a local console that indexes every
+([`apps/eval-ops`](../../../apps/eval-ops/README.md)): an internal console that indexes every
 baseline and run report at once, launches harness runs and streams their logs live,
 compares two artifacts, and drives a guarded test-database fixture reset.
 
@@ -89,15 +102,21 @@ It is **not** the public artifact viewer above, and the two are not interchangea
 
 | | `eval:view` (viewer) | `eval:web` + `dev:eval-ops` (ops site) |
 | :-- | :-- | :-- |
-| Output | one self-contained, deterministic HTML file | a live local web app |
+| Output | one self-contained, deterministic HTML file | a live web app |
 | Scope | exactly one artifact | every baseline and run report at once |
-| Audience | shareable/public | internal operator, loopback only |
+| Audience | shareable/public | internal operator; loopback unless one deployed origin is named |
 | Content | allowlisted **redacted** public projection | full internal detail, credentials excluded |
 | Capability | read-only rendering | can **launch runs that spend money** and flush the test database |
 
-Only the four baseline-backed scorecard harnesses (`matching`, `profile`, `premise`,
-`opportunity`) are supported by the ops site — they are the ones that emit the shared
-artifact envelope. Every other harness stays CLI-only.
+Five harnesses are launchable from the ops site (`OPS_HARNESSES`,
+[`ops/ops.registry.ts`](./ops/ops.registry.ts)). Four are the baseline-backed scorecard
+harnesses (`matching`, `profile`, `premise`, `opportunity`) — they emit the shared artifact
+envelope and are diffed against their committed baseline. `discovery` is the fifth and a
+different shape: it MAY carry two configurations rather than one — launched with `sides` it
+compares a pair, launched without them it measures a single configuration — runs in `services/api`, and
+has no baseline and never will, so its site-launched runs are indexed from `.ops-runs` like
+any other run but are never diffed or compared against a baseline. Every other harness
+stays CLI-only.
 
 Destructive flags (`--update-baseline`, `--force`) are structurally unreachable from the
 site: they are absent from both `HARNESS_REGISTRY` and the request schema, so no request
@@ -107,10 +126,14 @@ it is forced to `--no-save` (so it can never become `--rolling-baseline` fuel in
 `eval/<harness>/runs/` for everyone else) and is never diffed against the committed
 baseline.
 
-The API binds loopback **and** requires a verified `@index.network` Index identity on every
-route but the two that make signing in possible — defence in depth, not a licence to expose
-it: the loopback bind, the `Host` check and the `Origin` allowlist are what keep it local,
-and it is still not safe to expose. See
+The API binds loopback unless `EVAL_OPS_BIND` says otherwise (`resolveBindHostname`,
+[`ops/ops.server.ts`](./ops/ops.server.ts)) **and** requires a verified `@index.network`
+Index identity on every route but the three that make signing in possible (`PUBLIC_ROUTES`)
+— defence in depth, not a licence to expose it. What bounds who can reach it is the `Host`
+and `Origin` allowlists, and they are extended by exactly one entry, only when
+`EVAL_OPS_PUBLIC_ORIGIN` names one absolute `https` origin, validated at startup
+(`resolvePublicOrigin`); unset means loopback only. Nothing here makes it safe to expose
+more widely than that one origin. See
 [`eval/ops/README.md`](./ops/README.md) for the full security model, the profile contract,
 the exit-code→status map, the comparability refusal, and the fixture guard.
 

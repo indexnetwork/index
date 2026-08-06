@@ -58,10 +58,10 @@ packages/protocol/eval/opportunity/runs/
 packages/protocol/eval/canary/runs/
 packages/protocol/eval/discovery-retrieval/runs/
 services/api/eval/discovery-env-matrix/runs/
-# The A/B runs directory itself is tracked (via .gitkeep) so the harness has
+# The discovery runs directory itself is tracked (via .gitkeep) so the harness has
 # somewhere to write on a fresh clone; only its artifacts are ignored.
-services/api/eval/discovery-ab/runs/*
-!services/api/eval/discovery-ab/runs/.gitkeep
+services/api/eval/discovery/runs/*
+!services/api/eval/discovery/runs/.gitkeep
 packages/protocol/eval/.ops-runs/
 
 # superpowers brainstorm mockups

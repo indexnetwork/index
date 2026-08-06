@@ -1,37 +1,37 @@
 #!/usr/bin/env bun
 /**
- * Dependency-free attesting bootstrap for the discovery A/B harness.
+ * Dependency-free attesting bootstrap for the discovery harness.
  *
  * The property this file exists to preserve is an ordering one: the gate is
  * checked and both Neon targets are attested *before* anything that could
- * compose a database singleton is imported. `discovery-ab.main.ts` reaches
+ * compose a database singleton is imported. `discovery.main.ts` reaches
  * `@indexnetwork/protocol` through its very first import, so importing it
  * eagerly here would load the graph before the branches were proven. Every
  * import above is either `node:`-free control-plane code or the pure gate.
  *
  * Mirrors `discovery-env-matrix.ts`, with one difference: the A/B manifest
  * carries the same fields for parent and child, so there is no separate
- * attested projection to hand down — the child re-parses `DISCOVERY_AB_TARGETS`
+ * attested projection to hand down — the child re-parses `DISCOVERY_TARGETS`
  * and checks its own `DATABASE_URL` against it.
  *
- * `--help` is answered above all of it, from `discovery-ab.contract.ts`, which
+ * `--help` is answered above all of it, from `discovery.contract.ts`, which
  * imports nothing that can compose a database: an operator has to be able to
  * read what the command requires *before* they have any of it.
  */
-import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery-ab.neon';
-import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery-ab.gate';
-import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery-ab.contract';
+import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } from './discovery.neon';
+import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
+import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
 
-import type { AbSideId } from './discovery-ab.plan';
+import type { AbSideId } from './discovery.plan';
 
 /**
  * Attests both targets, reporting a refusal an operator can act on without
  * echoing anything the control plane said.
  *
- * The refusal itself is authored in `discovery-ab.contract.ts`, per role: the
+ * The refusal itself is authored in `discovery.contract.ts`, per role: the
  * same attestation runs in the parent and in every child, and a child is
- * attesting *after* the parent already reset both branches and spawned it, so
+ * attesting *after* the parent already reset this run's target branches and spawned it, so
  * the two cannot truthfully say the same thing about cost.
  */
 async function attestOrRefuse(manifest: AbManifest, role: AbInvocationRole): Promise<void> {
@@ -71,18 +71,18 @@ async function main(): Promise<void> {
   // First, and before any network call: an unconfirmed run must not even
   // reach the control plane, let alone a database.
   assertAbConfirmation(process.env);
-  const manifest = parseAbManifest(process.env.DISCOVERY_AB_TARGETS);
+  const manifest = parseAbManifest(process.env.DISCOVERY_TARGETS);
   await attestOrRefuse(manifest, abInvocationRole(args));
   const sideId = childSideId(args);
   if (sideId !== undefined) {
     const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
-    if (!target) throw new Error(`Discovery A/B manifest does not name side ${sideId}`);
+    if (!target) throw new Error(`Discovery manifest does not name side ${sideId}`);
     // The branch label is derived from the attested manifest, never from
     // operator-supplied text, so the child's gate checks an attested fact.
     process.env.DATABASE_URL = target.databaseUrl;
     process.env[AB_SIDE_BRANCH_ENV] = AB_BRANCH_NAMES[sideId];
   }
-  await (await import('./discovery-ab.main')).main(args);
+  await (await import('./discovery.main')).main(args);
 }
 
 if (import.meta.main) {

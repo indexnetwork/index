@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { margin: 0; font-family: system-ui; }
+  .pane { padding: 1rem 1.5rem 2rem; }
+  .pane[data-bg="dark"] { background: #0b0b0f; color: #eee; }
+  .pane[data-bg="light"] { background: #ffffff; color: #111; }
+  .row { display: flex; align-items: center; gap: 2.5rem; }
+  h3 { font-family: ui-monospace, Menlo, monospace; letter-spacing: 0.2em; text-transform: uppercase; font-size: 0.7rem; opacity: 0.6; }
+</style>
+
+<div class="pane" data-bg="dark">
+  <h3>dark</h3>
+  <div class="index-dashboard" data-scheme="dark">
+    <div class="row">
+      <img class="index-dashboard__pitch-media" src="loading-white.webp">
+      <img class="index-dashboard__radar-eye" src="eye-white.webp">
+      <img class="index-dashboard__loading-anim" src="loading2-white.webp" style="width:160px">
+    </div>
+    <h2 class="index-dashboard__card-title" style="margin-top:1.5rem">
+      RADAR (3)
+      <img class="index-dashboard__radar-eye" src="eye-white.webp">
+    </h2>
+  </div>
+</div>
+
+<div class="pane" data-bg="light">
+  <h3>light</h3>
+  <div class="index-dashboard" data-scheme="light">
+    <div class="row">
+      <img class="index-dashboard__pitch-media" src="loading-black.webp">
+      <img class="index-dashboard__radar-eye" src="eye-black.webp">
+      <img class="index-dashboard__loading-anim" src="loading2.png" style="width:160px">
+    </div>
+    <h2 class="index-dashboard__card-title" style="margin-top:1.5rem">
+      RADAR (3)
+      <img class="index-dashboard__radar-eye" src="eye-black.webp">
+    </h2>
+  </div>
+</div>

@@ -12,6 +12,7 @@
  * write plausible-sounding text that the code does not back.
  */
 
+import { HARNESS_REGISTRY } from "./ops.registry.js";
 import type { OpsHarness } from "./ops.types.js";
 
 export interface EnvFlagMeta {
@@ -20,18 +21,253 @@ export interface EnvFlagMeta {
   label: string;
   /** What the flag changes in the live pipeline, one or two sentences. */
   description: string;
-  kind: "enum" | "boolean" | "integer" | "number" | "string";
-  /** Allowed values for enum/boolean flags (mirrors startup.env.ts schemas). */
+  /**
+   * The shape the flag's own read site accepts — not the shape startup.env.ts
+   * happens to declare. Several flags are declared there as free text and
+   * parsed as an enum at the use site; describing those as `string` here would
+   * let an operator configure a value that silently falls back at runtime,
+   * which is a measurement of nothing dressed up as a difference.
+   *
+   * `csv-enum` is a comma-separated list drawn from `values`, mirroring
+   * DISCOVERY_ALLOWED_TYPES (src/opportunity/discovery.env.ts).
+   *
+   * `json-model-map` is a JSON object of agent id -> model id, mirroring
+   * EVAL_MODEL_OVERRIDES (src/shared/agent/model.config.ts). It exists because
+   * `string` would be a lie for that flag in a way that costs money: its read
+   * site THROWS on malformed JSON, on an unknown agent key and on a non-string
+   * model, and it is read lazily on the first model construction — so a typo
+   * surfaces as a crash after the branches have been reset and the run has
+   * started spending, not as a refusal at launch.
+   */
+  kind: "enum" | "boolean" | "csv-enum" | "integer" | "number" | "string" | "json-model-map";
+  /** Allowed values (or allowed tokens, for csv-enum) — mirrors the read site. */
   values?: readonly string[];
+  /** Smallest value the read site honours; below it the flag silently falls back. */
+  min?: number;
+  /**
+   * Largest value the read site honours. Only set where the read site really
+   * has a ceiling — NEGOTIATOR_TURN_TIMEOUT_MS rejects anything above
+   * Number.MAX_SAFE_INTEGER because AbortSignal.timeout() throws on it
+   * (src/negotiation/application/negotiation.agent.ts).
+   */
+  max?: number;
   /** Human-readable default, e.g. "off" or "7 days". */
   defaultDescription: string;
 }
 
 /**
- * All 16 PROFILE_ENV_ALLOWLIST flags, in allowlist order. Every flag tunes
- * the live discovery/negotiation services — the four scorecard harnesses do
- * not read them (eval/ops/ops.metadata.spec.ts pins the kind/values mirror of
- * services/api/src/startup.env.ts and the protocol use sites).
+ * Agent ids EVAL_MODEL_OVERRIDES may name, and the models it may name them to.
+ *
+ * Injected by the caller rather than imported: the agent list lives in
+ * src/shared/agent/model.config.ts (a `getBaseModelConfig` local, not exported)
+ * and ALLOWED_CONFIG_MODELS lives in ops.profiles.ts, which imports node:fs and
+ * therefore cannot be imported here — this module is in the browser bundle.
+ * eval/ops/tests/metadata.spec.ts pins both lists against their real sources.
+ */
+export interface ModelMapBounds {
+  /**
+   * Agent ids the map may name. Optional because only the server can derive
+   * it (from the harness registry): the browser passes just `models`, so an
+   * unknown agent is caught at submit rather than on keystroke. A validator
+   * that refuses *less* than the server is safe; one that refuses more would
+   * block a legal launch.
+   */
+  agents?: readonly string[];
+  models: readonly string[];
+}
+
+/**
+ * The only models a client may select, and the single definition of that list.
+ *
+ * It lives here rather than in ops.profiles.ts because the model-valued env
+ * flags below have to state their own accepted values, and this module is the
+ * dependency-free one — ops.profiles.ts imports node:fs and cannot be reached
+ * from the browser bundle. ops.profiles.ts re-exports it as
+ * ALLOWED_CONFIG_MODELS so every existing importer is unaffected.
+ *
+ * Live spend on a shared URL with no actor attribution yet: free-text slugs
+ * stay out until attribution exists. Repo profiles are code-reviewed and exempt.
+ */
+export const ALLOWED_CONFIG_MODEL_IDS = [
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-flash-lite",
+  "google/gemini-3-pro-preview",
+  "anthropic/claude-sonnet-4",
+  "anthropic/claude-haiku-4.5",
+  "openai/gpt-4.1-mini",
+] as const;
+
+/**
+ * The decimal shape `Number.parseFloat` reads in full, which is what every
+ * `number` read site accepts.
+ *
+ * Anchored at both ends on purpose. parseFloat consumes a leading decimal prefix
+ * and discards the rest, so "7abc" parses as 7 and "0x10" as 0 — the first would
+ * let a typo run as a valid value, the second is the phantom-difference case:
+ * Number("0x10") is 16, so an unanchored check accepted it as sixteen days while
+ * the graph fell back to its 7-day default. Leading sign is accepted here and
+ * rejected by the `parsed <= 0` test below, so the message says "positive"
+ * rather than "malformed" for "-1".
+ */
+const DECIMAL_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/**
+ * The problem with `value` for this flag, or null when the live service will
+ * honour it as written.
+ *
+ * The single definition of "is this value real", shared by every place a value
+ * can be chosen: `validateProfileEnv` (saved configs and ad-hoc launches),
+ * `abSideIssues` (the two sides of an A/B run) and the browser app's guided
+ * editor. Duplicating it is how a form and a server come to disagree about what
+ * a flag accepts.
+ *
+ * The bar is deliberately "what the read site honours", not "what startup.env.ts
+ * parses": a value the reader does not recognise is not refused at runtime, it
+ * falls back — `DISCOVERY_PROFILE_SOURCE=user-context` warns once and runs
+ * `premise`. Accepting it here would let an A/B run spend two branch resets and
+ * a full corpus to report a configuration difference that never existed.
+ *
+ * Unknown keys are not this function's business: membership is checked against
+ * PROFILE_ENV_ALLOWLIST / DISCOVERY_ENV_KEYS by the caller, so each problem
+ * is reported exactly once.
+ */
+export function envFlagValueIssue(meta: EnvFlagMeta, value: string, bounds?: ModelMapBounds): string | null {
+  switch (meta.kind) {
+    case "enum":
+    case "boolean":
+      return meta.values?.includes(value) === true
+        ? null
+        : `must be one of: ${meta.values?.join(", ") ?? "(no values defined)"}`;
+    case "csv-enum": {
+      // Mirrors discoveryAllowedTypes: tokens are trimmed and lower-cased, and a
+      // list with no valid token falls back to "everything allowed" — so an
+      // unknown token must be refused here rather than silently ignored.
+      const allowed = meta.values ?? [];
+      const tokens = value.split(",").map((token) => token.trim().toLowerCase()).filter((token) => token !== "");
+      const legal = tokens.length > 0 && tokens.every((token) => allowed.includes(token));
+      return legal ? null : `must be a comma-separated list of: ${allowed.join(", ") || "(no values defined)"}`;
+    }
+    case "integer":
+      // Non-negative digits only, mirroring optionalInt in services/api/src/startup.env.ts.
+      if (!/^\d+$/.test(value)) return "must be an integer";
+      if (meta.min !== undefined && Number(value) < meta.min) return `must be an integer of at least ${meta.min}`;
+      if (meta.max !== undefined && Number(value) > meta.max) return `must be an integer of at most ${meta.max}`;
+      return null;
+    case "number": {
+      // Shape first, and deliberately NOT Number(): every `number` read site
+      // parses with Number.parseFloat, which reads a DECIMAL prefix and returns
+      // NaN for "0x10" where Number() returns 16. Validating with Number() let
+      // "0x10" through as sixteen days while the read site fell back to its own
+      // default — a difference the artifact would name that never existed at
+      // runtime, which is precisely what this function's docblock forbids.
+      // parseFloat also IGNORES a trailing tail ("7abc" -> 7), so the shape is
+      // anchored here rather than left to the parse.
+      if (!DECIMAL_NUMBER.test(value.trim())) return "must be a positive number in decimal notation";
+      const parsed = Number.parseFloat(value.trim());
+      if (!Number.isFinite(parsed) || parsed <= 0) return "must be a positive number";
+      if (meta.min !== undefined && parsed < meta.min) return `must be at least ${meta.min}`;
+      if (meta.max !== undefined && parsed > meta.max) return `must be at most ${meta.max}`;
+      return null;
+    }
+    case "json-model-map": {
+      // Mirrors readModelOverrides (src/shared/agent/model.config.ts): every
+      // condition below is one the read site throws on. Refusing here turns a
+      // mid-run crash into a launch-time message.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        return "must be valid JSON";
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return "must be a JSON object of agent id to model id";
+      }
+      for (const [agent, model] of Object.entries(parsed as Record<string, unknown>)) {
+        if (bounds?.agents !== undefined && !bounds.agents.includes(agent)) {
+          return `names an unknown agent "${agent}". Known agents: ${[...bounds.agents].sort().join(", ")}`;
+        }
+        if (typeof model !== "string" || model.trim() === "") {
+          return `value for "${agent}" must be a non-empty model id string`;
+        }
+        // The read site accepts any string; the site does not. A run launched
+        // from a browser may only name a reviewed model, the same bar
+        // validateConfigOverrides applies to the per-agent model pickers —
+        // otherwise this flag is a hole straight through that restriction.
+        if (bounds !== undefined && !bounds.models.includes(model.trim())) {
+          return `model "${model.trim()}" is not selectable. Allowed: ${[...bounds.models].join(", ")}`;
+        }
+      }
+      return null;
+    }
+    case "string":
+      return null;
+  }
+}
+
+/**
+ * `envFlagValueIssue` for a key named at runtime. Null for a key with no
+ * metadata: whether the key may be set at all is the caller's allowlist check.
+ *
+ * `bounds` is optional in the TYPE and mandatory in PRACTICE for the one kind
+ * that has them. Omitting them does not weaken the check a little — for
+ * `json-model-map` the bounds ARE the rule, so a call without them returns null
+ * for a value naming an agent that does not exist and a model nobody may run.
+ * The launch form called it without bounds while `validateProfileEnv` called it
+ * with them, so the button was enabled, priced, confirmed and POSTED for a value
+ * the server then refused with a 400. Callers that have no bounds to give should
+ * pass {@link modelMapBounds}, not nothing.
+ */
+export function envValueIssueForKey(key: string, value: string, bounds?: ModelMapBounds): string | null {
+  const meta = ENV_FLAG_METADATA.find((flag) => flag.key === key);
+  return meta === undefined ? null : envFlagValueIssue(meta, value, bounds);
+}
+
+/**
+ * Bounds for a `json-model-map` value (EVAL_MODEL_OVERRIDES).
+ *
+ * Agents are the registry's overridable set, not every key `getBaseModelConfig`
+ * defines: that list is a function-local object literal in
+ * src/shared/agent/model.config.ts with no runtime export, and copying thirty
+ * names here would be a second source of truth that drifts. Scoping to the
+ * registry's agents is also the stricter and more coherent bar — it is exactly
+ * the set the per-agent model pickers already accept, so the two ways of naming
+ * an agent agree.
+ *
+ * Lives HERE, beside the rule it feeds, rather than in ops.profiles.ts where it
+ * began: that module imports node:fs and node:crypto, so the browser bundle
+ * cannot reach it, and the launch form was left calling `envValueIssueForKey`
+ * with no bounds at all. Both inputs are dependency-free (HARNESS_REGISTRY is
+ * type-only imports, ALLOWED_CONFIG_MODEL_IDS is declared in this module), so
+ * one definition now serves the form and the server instead of the server
+ * having the only copy.
+ */
+export function modelMapBounds(): ModelMapBounds {
+  return {
+    agents: [...new Set(Object.values(HARNESS_REGISTRY).flatMap((descriptor) => descriptor.agents))],
+    models: [...ALLOWED_CONFIG_MODEL_IDS],
+  };
+}
+
+/**
+ * Every environment key any harness offers, plus the PROFILE_ENV_ALLOWLIST
+ * flags a saved config may carry — 34 entries covering the 27 distinct keys in
+ * HARNESS_ENV_KEYS and the allowlisted flags no harness reaches (IND-630).
+ *
+ * "Offered implies documented" is enforced, not aspirational: metadata.spec.ts
+ * fails if any catalogued key lacks an entry here, because an undocumented key
+ * renders as a bare SCREAMING_SNAKE string with no validation — which is how a
+ * value that silently falls back at its read site gets typed into a form and
+ * spent (spec §4).
+ *
+ * The four scorecard harnesses DO read env: 8 keys each (CHAT_MODEL,
+ * CHAT_REASONING_EFFORT, EVAL_MODEL_OVERRIDES, SMARTEST_VERIFIER_MODEL and the
+ * OpenRouter retry/timeout/fallback set). An earlier version of this comment
+ * said they read none, which was true only of the 16 allowlisted flags and is
+ * the misreading this branch exists to correct.
+ *
+ * `kind`/`values`/`min`/`max` mirror each flag's own READ SITE, not the
+ * declaration in services/api/src/startup.env.ts; eval/ops/tests/metadata.spec.ts
+ * pins that mirror.
  */
 export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
   {
@@ -39,7 +275,8 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     label: "Discovery allowed types",
     description:
       "Comma-separated list (`intent`, `profile`) gating which data types may participate in opportunity matching. Unknown tokens are ignored with a warning; if nothing valid remains, both stay allowed so a typo never disables discovery (src/opportunity/discovery.env.ts).",
-    kind: "string",
+    kind: "csv-enum",
+    values: ["intent", "profile"],
     defaultDescription: "both intent and profile",
   },
   {
@@ -47,7 +284,8 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     label: "Discovery profile source",
     description:
       "Selects how profiles participate in matching: `premise` (atomic premises as the profile corpus) or `user_context` (synthesized context paragraphs). Unknown values warn once and fall back so discovery keeps running (src/opportunity/discovery.env.ts).",
-    kind: "string",
+    kind: "enum",
+    values: ["premise", "user_context"],
     defaultDescription: "premise",
   },
   {
@@ -106,17 +344,110 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     key: "NEGOTIATION_MAX_TURNS_CHAT",
     label: "Max negotiation turns (chat)",
     description:
-      "Turn cap for negotiations started from a chat conversation (src/opportunity/application/opportunity.graph.ts).",
+      "Turn cap for negotiations started from a chat conversation. Read as `Number(...) || 4`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunity/application/opportunity.graph.ts).",
     kind: "integer",
+    min: 1,
     defaultDescription: "4",
   },
   {
     key: "NEGOTIATION_MAX_TURNS_AMBIENT",
     label: "Max negotiation turns (ambient)",
     description:
-      "Turn cap for negotiations without a chat conversation (src/opportunity/application/opportunity.graph.ts).",
+      "Turn cap for negotiations without a chat conversation. Read as `Number(...) || 6`, so 0 is not \"no turns\" — it silently becomes the default (src/opportunity/application/opportunity.graph.ts).",
     kind: "integer",
+    min: 1,
     defaultDescription: "6",
+  },
+  {
+    key: "NEGOTIATION_PROTOCOL_VERSION",
+    label: "Negotiation protocol version",
+    description:
+      "Protocol version for negotiations with no prior task for the same opportunity. Read as a strict equality against `v2`, so every other value — including a typo — is `v1`. In-flight negotiations stay pinned to the version they were stamped with (src/negotiation/domain/negotiation.protocol.ts).",
+    kind: "enum",
+    values: ["v1", "v2"],
+    defaultDescription: "v1",
+  },
+  {
+    key: "NEGOTIATION_SCREEN_MODE",
+    label: "Outreach screen mode",
+    description:
+      "The pre-turn outreach gate: `off` never screens; `shadow` screens and records the verdict without acting on it; `enforce` lets a `pass` verdict stop the negotiation before any turn is exchanged. Unset or unrecognised is `off` (src/negotiation/domain/negotiation.screen.contracts.ts).",
+    kind: "enum",
+    values: ["off", "shadow", "enforce"],
+    defaultDescription: "off",
+  },
+  {
+    key: "NEGOTIATION_ASK_USER_ENABLED",
+    label: "Ask-user consult pause",
+    description:
+      "Whether a negotiation may pause to consult its principal (`ask_user`). Read as a strict equality against `true`, so any other value is off (src/negotiation/domain/negotiation.protocol.ts).",
+    kind: "boolean",
+    values: ["true", "false"],
+    defaultDescription: "false",
+  },
+  {
+    key: "NEGOTIATION_ASK_USER_WINDOW_MS",
+    label: "Ask-user answer window (ms)",
+    description:
+      "How long a paused negotiation waits for its principal's answer before expiring. Non-numeric or non-positive values fall back to 24 hours rather than failing (src/negotiation/domain/negotiation.protocol.ts). Declared `integer` though the read site parses with Number() and would honour a fraction of a millisecond: refusing one costs nothing an operator wants, and \"whole milliseconds\" is the honest offer.",
+    kind: "integer",
+    min: 1,
+    defaultDescription: "86400000 (24 hours)",
+  },
+  {
+    key: "NEGOTIATION_CONSULTATION_POLICY_MODE",
+    label: "Consultation policy",
+    description:
+      "Centralised switch for the consultation policy: `off` never consults; `shadow` evaluates eligibility and records it without pausing; `on` allows the pause. Invalid, absent and empty values all roll back to `off` (src/negotiation/domain/negotiation.consultation-policy.ts).",
+    kind: "enum",
+    values: ["off", "shadow", "on"],
+    defaultDescription: "off",
+  },
+  {
+    key: "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+    label: "Deadlock bargaining shift",
+    description:
+      "Whether a stalemated negotiation shifts into a bargaining stance. Read as a strict equality against `true`, so any other value is off (src/negotiation/domain/negotiation.deadlock.ts).",
+    kind: "boolean",
+    values: ["true", "false"],
+    defaultDescription: "false",
+  },
+  {
+    key: "NEGOTIATION_DEADLOCK_THRESHOLD",
+    label: "Deadlock threshold (turns)",
+    description:
+      "Consecutive non-convergent turns (counters and questions) that constitute a deadlock. Must be an integer of at least 2 — below that a single counter would read as a stalemate — and anything else falls back to 4 (src/negotiation/domain/negotiation.deadlock.ts).",
+    kind: "integer",
+    min: 2,
+    defaultDescription: "4 turns",
+  },
+  {
+    key: "NEGOTIATOR_STANCE",
+    label: "Negotiator stance",
+    description:
+      "The stance the negotiator argues from: `advocate` presses its own user's case; `evaluator` and `skeptic` additionally apply an opportunity-cost value bar and treat a discovery-query match as necessary rather than sufficient. Unset or unrecognised is `advocate` (src/negotiation/domain/negotiation.stance.contracts.ts).",
+    kind: "enum",
+    values: ["advocate", "evaluator", "skeptic"],
+    defaultDescription: "advocate",
+  },
+  {
+    key: "NEGOTIATOR_TURN_TIMEOUT_MS",
+    label: "Negotiator turn timeout (ms)",
+    description:
+      "Hard limit on one negotiation turn's LLM call. Must be above 0 and at most Number.MAX_SAFE_INTEGER: 0 would abort every turn before a response arrived, and a larger value throws inside AbortSignal.timeout(). Invalid values fall back to 15000 (src/negotiation/application/negotiation.agent.ts).",
+    kind: "integer",
+    min: 1,
+    max: Number.MAX_SAFE_INTEGER,
+    defaultDescription: "15000 (15 seconds)",
+  },
+  {
+    key: "HYDE_FRAME_CONSTRAINTS_ENABLED",
+    label: "Frame-constrained HyDE",
+    description:
+      "Switches hypothetical-document generation from `legacy` to the frame-constrained `frame-v1` mode. Read as a strict equality against `true`, so any other value keeps legacy generation (src/shared/hyde/hyde.env.ts).",
+    kind: "boolean",
+    values: ["true", "false"],
+    defaultDescription: "false (legacy generation)",
   },
   {
     key: "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
@@ -172,6 +503,77 @@ export const ENV_FLAG_METADATA: readonly EnvFlagMeta[] = Object.freeze([
     values: ["off", "on"],
     defaultDescription: "off",
   },
+  {
+    key: "EVAL_MODEL_OVERRIDES",
+    label: "Per-agent model overrides",
+    description:
+      "JSON object of agent id to model id, e.g. `{\"opportunityEvaluator\":\"anthropic/claude-sonnet-4\"}`. Applied on top of every other model setting, so it overrides CHAT_MODEL for the `chat` agent. Ignored entirely when NODE_ENV is production. Only the model id moves — temperature, token limits and reasoning effort stay fixed so a run measures a model swap and nothing else (src/shared/agent/model.config.ts).",
+    kind: "json-model-map",
+    defaultDescription: "no overrides",
+  },
+  {
+    key: "CHAT_MODEL",
+    label: "Chat model",
+    description:
+      "Model for the `chat` agent only; every other agent has a fixed default. Lowest precedence of the three ways to set it: an explicit ModelConfig argument wins, and EVAL_MODEL_OVERRIDES is applied afterwards on top of both (src/shared/agent/model.config.ts).",
+    kind: "enum",
+    values: [...ALLOWED_CONFIG_MODEL_IDS],
+    defaultDescription: "google/gemini-3-pro-preview",
+  },
+  {
+    key: "CHAT_REASONING_EFFORT",
+    label: "Chat reasoning effort",
+    description:
+      "Reasoning effort for the `chat` agent. Passed to the provider as written and never validated at the read site — the cast there is a type assertion, not a check — so the values offered here are those services/api/src/startup.env.ts accepts (src/shared/agent/model.config.ts).",
+    kind: "enum",
+    values: ["minimal", "low", "medium", "high", "xhigh"],
+    defaultDescription: "low",
+  },
+  {
+    key: "SMARTEST_VERIFIER_MODEL",
+    label: "LLM judge model",
+    description:
+      "Model for the LLM judge used by the scorecard harnesses' assertions. Read in a test-only helper the four eval harnesses import, which is why the discovery harness — production graph code — is not offered it (src/shared/agent/tests/llm-assert.ts). Also identifies the judge in a run's scoring fingerprint (eval/shared/governance.ts).",
+    kind: "enum",
+    values: [...ALLOWED_CONFIG_MODEL_IDS],
+    defaultDescription: "google/gemini-2.5-flash",
+  },
+  {
+    key: "OPENROUTER_FALLBACK_MODEL",
+    label: "Cross-vendor fallback model",
+    description:
+      "Model tried when an agent's primary fails, on a different vendor lane so a single provider outage does not stop a run. `none` or `off` disables fallback entirely; the fallback is also skipped when it would equal the primary (src/shared/agent/model.config.ts).",
+    kind: "enum",
+    values: [...ALLOWED_CONFIG_MODEL_IDS, "none", "off"],
+    defaultDescription: "openai/gpt-4o-mini",
+  },
+  {
+    key: "OPENROUTER_REQUEST_TIMEOUT_MS",
+    label: "Request timeout (ms)",
+    description:
+      "Hard upper bound on a single LLM HTTP call. Without it the client waits for the upstream to cut the socket, roughly three minutes through OpenRouter. Parsed with parseInt, and a non-positive or unparseable value falls back to 60000 (src/shared/agent/model.config.ts). `integer` is exact here rather than merely safe: parseInt truncates \"1.9\" to 1 millisecond, so accepting a fraction would run a value the operator did not choose.",
+    kind: "integer",
+    min: 1,
+    defaultDescription: "60000 (60 seconds)",
+  },
+  {
+    key: "OPENROUTER_MAX_RETRIES",
+    label: "HTTP retries per call",
+    description:
+      "Transport-level retries for one LLM call. 0 is honoured and means no retry — unlike the negotiation turn caps, whose read sites treat 0 as unset. Worst-case latency is bounded by (retries + 1) times the request timeout, since the first attempt waits the full timeout before the first retry, which is why the default is 1 rather than the library's 2 (src/shared/agent/model.config.ts).",
+    kind: "integer",
+    min: 0,
+    defaultDescription: "1",
+  },
+  {
+    key: "OPENROUTER_RUNNABLE_MAX_ATTEMPTS",
+    label: "Structured-output attempts",
+    description:
+      "Total attempts (1 means no retry) for retries wrapping the HTTP layer, which additionally cover structured-output parse and validation failures. A caller abort is never retried. Values below 1 fall back to 2 (src/shared/agent/model.config.ts). `integer` is exact here rather than merely safe: parseInt truncates a fraction, so accepting one would run a count the operator did not choose.",
+    kind: "integer",
+    min: 1,
+    defaultDescription: "2",
+  },
 ]);
 
 export interface AgentMeta {
@@ -184,9 +586,12 @@ export interface AgentMeta {
 }
 
 /**
- * The agents each scorecard harness exercises, in pipeline order. Kept in
- * sync with HARNESS_REGISTRY by test; roles are grounded in the agent class
+ * The agents each harness exercises, in pipeline order. Kept in sync with
+ * HARNESS_REGISTRY by test; roles are grounded in the agent class
  * docblocks/system prompts.
+ *
+ * A harness with no entries exercises no agent whose model is worth editing
+ * per run, and the launch form shows it no model editors.
  */
 export const HARNESS_AGENT_METADATA: Readonly<Record<OpsHarness, readonly AgentMeta[]>> = Object.freeze({
   matching: [
@@ -210,6 +615,14 @@ export const HARNESS_AGENT_METADATA: Readonly<Record<OpsHarness, readonly AgentM
       role: "Synthesizes the structured user profile — identity, bio, location, skills, interests — from raw data or applies a user request to an existing profile, under privacy rules (src/enrichment/enrichment.generator.ts).",
     },
   ],
+  // Deliberately empty, mirroring HARNESS_REGISTRY["discovery"].agents.
+  // Not because the harness runs no model — it invokes the real discovery graph
+  // and an LLM judge, all overridable through EVAL_MODEL_OVERRIDES — but because
+  // the two sides of an A/B run differ in environment configuration and never in
+  // models, so a per-side model editor could not change the comparison it looked
+  // like it configured. The launch form edits the DISCOVERY_ENV_KEYS environment
+  // instead (services/api/src/cli/discovery.flags.ts).
+  discovery: [],
   premise: [
     {
       id: "premiseDecomposer",

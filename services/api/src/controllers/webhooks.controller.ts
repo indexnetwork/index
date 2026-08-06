@@ -1,9 +1,13 @@
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 import { handleInbound } from '../gateways/telegram.gateway';
+import { isTelegramOutboundConfigured } from '../lib/telegram/bot-api';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('webhooks');
+
+/** Warn once per process that inbound updates are being dropped. */
+let droppedInboundWarned = false;
 
 /** Shape of a Telegram Update object (only fields we use). */
 interface TelegramUpdate {
@@ -40,6 +44,24 @@ export class WebhooksController {
       body = (await req.json()) as TelegramUpdate;
     } catch {
       return new Response('Bad Request', { status: 400 });
+    }
+
+    // Inbound (`TELEGRAM_WEBHOOK_SECRET`) and outbound (`TELEGRAM_BOT_TOKEN`)
+    // are gated separately, so a half-configured deployment authenticates
+    // updates it can never answer. Without this guard the full LLM graph runs
+    // — real token spend, chat session and message rows written — and every
+    // reply is then discarded at the bot-api boundary. Drop early instead.
+    //
+    // Still 200: a non-2xx makes Telegram retry the same update indefinitely.
+    if (!isTelegramOutboundConfigured()) {
+      if (!droppedInboundWarned) {
+        droppedInboundWarned = true;
+        logger.warn(
+          'Telegram inbound dropped: TELEGRAM_WEBHOOK_SECRET is set but TELEGRAM_BOT_TOKEN is not. '
+          + 'Unset both to disable the gateway cleanly.',
+        );
+      }
+      return new Response('OK', { status: 200 });
     }
 
     const message = body.message;

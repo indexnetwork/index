@@ -23,7 +23,8 @@ describe("Invitation Backend Gaps", () => {
   let outsiderUserId: string;
   const createdIndexIds: string[] = [];
 
-  const ownerEmail = `test-gaps-owner-${Date.now()}@example.com`;
+  // Staff domain: direct network creation via the controller is staff-only.
+  const ownerEmail = `test-gaps-owner-${Date.now()}@index.network`;
   const outsiderEmail = `test-gaps-outsider-${Date.now()}@example.com`;
 
   const mockOwner = (): AuthenticatedUser => ({ id: ownerUserId, email: ownerEmail, name: "Gaps Owner" });

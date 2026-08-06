@@ -7,6 +7,7 @@ import { MasterKeyGuard, type MasterKeyNetwork } from '../guards/master-key.guar
 import { log } from '../lib/log';
 import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { isStaff } from '../lib/staff';
 import { experimentService, SignupNotCompleteError, type ImportRow } from '../services/experiment.service';
 import { networkInvitationService } from '../services/network-invitation.service';
 import { networkService } from '../services/network.service';
@@ -71,6 +72,18 @@ export class NetworkController {
     if (!body.title) {
       return Response.json({ error: 'title is required' }, { status: 400 });
     }
+
+    // Early access: direct network creation is staff-only. Everyone else goes
+    // through the reviewed request flow (POST /network-requests). This is the
+    // server-side enforcement behind the web UI's "request a network" gate, so
+    // API/CLI clients cannot bypass it.
+    if (!isStaff(user)) {
+      return Response.json(
+        { error: 'Network creation is in early access. Submit a request at POST /network-requests.' },
+        { status: 403 },
+      );
+    }
+
 
     try {
       const result = await networkService.createNetwork(user.id, {

@@ -8,23 +8,38 @@ This directory is the whole server. The browser app is a thin client over the JS
 API in [`ops.server.ts`](./ops.server.ts); every decision that matters — what may run,
 under which configuration, against which database — is made here, including **who is
 allowed to ask**: every route but two requires a session belonging to a verified
-`@index.network` Index account. That is defence in depth on top of the loopback guards,
-not a replacement for them — the site is still loopback-only and still not safe to expose
-(see [§ Who may use this server](#who-may-use-this-server) below).
+`@index.network` Index account. That is defence in depth on top of the `Host` and
+`Origin` guards, not a replacement for them — the site is loopback-only unless
+`EVAL_OPS_PUBLIC_ORIGIN` names exactly one deployed origin, and even then it is nothing to
+expose further (see [§ Who may use this server](#who-may-use-this-server) below).
 
 Everything in this directory is provider-free and covered by `bun run eval:verify`
 (`suite: ops`).
 
-## Scope: only the four scorecard harnesses
+## Scope: four scorecard harnesses and one discovery harness
 
-`OPS_HARNESSES` is `matching`, `profile`, `premise`, `opportunity` — and nothing else.
+`OPS_HARNESSES` ([`ops.registry.ts`](./ops.registry.ts)) is `matching`, `profile`,
+`premise`, `opportunity`, `discovery` — and nothing else.
 
-These are the four harnesses that emit the shared scorecard artifact envelope
+The **four scorecard harnesses** emit the shared scorecard artifact envelope
 (`index-eval/baseline` / `index-eval/run-report`), which is what artifact indexing,
-baseline diffing and comparison all read. `hyde`, `clarification`,
-`discovery-retrieval`, `discovery-env-matrix`, `stance` and the canary are **not**
-launchable, indexable or comparable here; they use different evidence models and remain
-CLI-only. Adding one is a deliberate code change, not a configuration change.
+baseline diffing and comparison all read.
+
+**`discovery` is the fifth, and it is a different shape.** It has no baseline and never
+will, runs in `services/api` rather than here, and resets a Neon branch per side on entry —
+two when it compares a pair, one when it measures a single configuration. It is therefore
+launchable, and its site-launched runs are indexed from `.ops-runs` like any other run, but
+it is never diffed or compared against a baseline.
+
+Unlike the scorecard harnesses it can carry **two** configurations at once (`sides`), which
+is what makes a comparison a single run rather than two runs an operator must trust were
+alike. That is optional: omitting `sides` measures one configuration and emits an ordinary
+scorecard (see [the `discovery` sections below](#one-discovery-run-at-a-time)).
+
+`hyde`, `clarification`, `discovery-retrieval`, `discovery-env-matrix`, `stance` and the
+canary are **not** launchable, indexable or comparable here; they use different evidence
+models and remain CLI-only. Adding one is a deliberate code change, not a configuration
+change.
 
 ## Modules
 
@@ -34,11 +49,15 @@ CLI-only. Adding one is a deliberate code change, not a configuration change.
 | [`ops.registry.ts`](./ops.registry.ts) | `HARNESS_REGISTRY` — the single source of launchable capability. |
 | [`ops.argv.ts`](./ops.argv.ts) | `RunSpecSchema` (the trust boundary) and `renderRun` (spec → argv + child env). |
 | [`ops.profiles.ts`](./ops.profiles.ts) | Loads/validates [`profiles/`](./profiles), resolves a profile into injected env + fingerprint. |
+| [`ops.envcatalog.ts`](./ops.envcatalog.ts) | **Generated.** `HARNESS_ENV_KEYS` — the env keys each harness's own code reads. Never hand-edited. |
+| [`ops.envcatalog.build.ts`](./ops.envcatalog.build.ts) | `buildEnvCatalog` — renders the file above; imported by both the generator script and the drift test. |
+| [`ops.envscan.ts`](./ops.envscan.ts) | `reachableEnvKeys` — walks an entry point's import closure for `process.env` reads. Not browser-safe (`Bun.Transpiler`, `node:fs`). |
+| [`ops.envreach.ts`](./ops.envreach.ts) | `harnessesReading` / `unreadEnvKeys` — the catalogue asked in both directions. |
 | [`ops.artifacts.ts`](./ops.artifacts.ts) | `ArtifactSource` — filesystem index of baselines and run reports, addressable by id. |
 | [`ops.compare.ts`](./ops.compare.ts) | `compareArtifacts` — refuses incomparable artifacts, no new statistics. |
 | [`ops.store.ts`](./ops.store.ts) | `RunStore` — run records, logs, report paths, exit-code mapping, restart reconciliation. |
 | [`ops.executor.ts`](./ops.executor.ts) | `RunExecutor` — the one `Bun.spawn` path, log streaming, cancel. |
-| [`ops.queue.ts`](./ops.queue.ts) | FIFO queue, concurrency 1 by default. |
+| [`ops.queue.ts`](./ops.queue.ts) | FIFO queue, concurrency 1 by default; the single `discovery` slot. |
 | [`ops.fixture.ts`](./ops.fixture.ts) | The fixture guard, credential redaction, read-only inspector, reset pipeline. |
 | [`ops.server.ts`](./ops.server.ts) | The HTTP + SSE API and the default wiring. |
 | [`ops.serve.ts`](./ops.serve.ts) | Standalone entrypoint (`bun run eval:web`). |
@@ -56,16 +75,55 @@ one.
 ## `HARNESS_REGISTRY`: the single source of launchable capability
 
 ```ts
-matching:    40 cases, + --tier
-profile:      8 cases
-premise:     10 cases
-opportunity:  8 cases
+matching:     40 cases, + --tier
+profile:       8 cases
+premise:      10 cases
+opportunity:   8 cases
+discovery:     5 cases, only --runs (max 10) and --case; runs in services/api
 // common flags: --runs --case --rule --no-judge --alpha --attempt-timeout-ms --strict-evidence
 ```
 
-The launch form, the workload estimate (`cases × runs`) and `renderRun`'s argv rendering
-all read this one table, so the UI cannot offer a flag the CLI does not accept, and the
-form's numeric bounds are the same bounds `RunSpecSchema` enforces server-side.
+The launch form, the workload estimate and `renderRun`'s argv rendering all read this one
+table, so the UI cannot offer a flag the CLI does not accept, and the form's numeric
+bounds are the same bounds `RunSpecSchema` enforces server-side. Workload is `cases ×
+runs` for the scorecard harnesses, and for `discovery` it depends on the shape of the
+run: a comparison evaluates every case under both configurations and doubles, while a
+single configuration passes over the corpus once. `renderRun` and the launch form both
+multiply by the same `sidesPerRun(spec)` ([`ops.sides.ts`](./ops.sides.ts)) — a function
+of the spec, not a per-harness constant — so the number an operator confirms before
+spending and the number recorded on the run cannot drift apart.
+
+**`discovery` also carries two configurations.** Its spec has a `sides: { a, b }`
+object of environment values, rendered as `--a KEY=VALUE` / `--b KEY=VALUE` with keys
+sorted. It is *optional* for that harness — omitting it measures one configuration,
+rendered as `--env KEY=VALUE` — and refused for every other (a scorecard harness scores
+one configuration against a baseline, so a second has nothing to mean). Keys are
+confined to `DISCOVERY_ENV_KEYS` ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the 26
+flags the discovery graph actually reads, generated from its own import closure and
+pinned in `tests/argv.spec.ts` — and `abSideIssues` in [`ops.sides.ts`](./ops.sides.ts) mirrors the
+engine's `buildAbPlan` rules: same key set on both sides, at least one differing value, no
+empty values. The engine *ignores* argv it does not recognise and only reaches those rules
+after loading its eval modules, so mirroring them here is what turns a late, paid failure
+into a 400.
+
+`ops.sides.ts` is a module of its own, and dependency-free like `ops.allowlist.ts`, because
+the launch form imports these same rules and renders each refusal beside the control that
+produced it. Leaving them in `ops.argv.ts` would have made that import pull zod and
+`RunSpecSchema`'s module-level schema construction into the browser bundle (measured: +67 kB,
+against +13 kB for the rules and their metadata). `ops.argv.ts` re-exports them, so the
+server still reads them from where it validates.
+
+Values are checked too, and this is stricter than the engine on purpose. `assertAbEnvConfig`
+only refuses a blank value, and every read site in the discovery graph *falls back* rather
+than failing on a value it does not recognise — `DISCOVERY_PROFILE_SOURCE=user-context`
+(hyphen) warns once and runs `premise`. Both sides would then run the same configuration
+while the artifact reported a `configDiff` that never existed at runtime, after two Neon
+branch resets and a full corpus of live calls. So each value is checked against its flag's
+real read site through `envFlagValueIssue` ([`ops.metadata.ts`](./ops.metadata.ts)) — the
+same function that validates saved configs, ad-hoc launches and the browser app's guided
+editor — plus a length cap, a refusal of line breaks (the engine's `AB_ENV_ASSIGNMENT`
+pattern, pinned in `tests/argv.spec.ts`, would reject that argv) and an explicit refusal of
+`__proto__`, which zod's record would otherwise drop in silence.
 
 **Destructive flags are structurally unreachable.** `--update-baseline`, `--force` and
 `--reason` are absent from the registry *and* from `RunFlags`/`RunSpecSchema`. There is no
@@ -97,10 +155,12 @@ overrides and a small set of protocol feature flags:
   the child through `EVAL_MODEL_OVERRIDES`. Validation happens at run time: a profile
   naming an unknown agent loads and lists fine, but throws when the harness child reads
   the override.
-- `env` keys must appear in `PROFILE_ENV_ALLOWLIST` ([`ops.profiles.ts`](./ops.profiles.ts)) —
-  protocol feature flags only. Credentials, connection strings and `NODE_ENV` are
-  deliberately absent, so a profile can never repoint a run at another database or
-  provider account. Adding a key is a reviewed code change.
+- `env` keys must be offered by some harness or named by `PROFILE_ENV_ALLOWLIST`
+  ([`ops.allowlist.ts`](./ops.allowlist.ts)) — the same boundary a config saved from the
+  site is held to, so a committed profile can set exactly what a saved config can. It was
+  briefly narrower, which made the code-reviewed artefact the more restricted one.
+  Credentials are refused outright by `isCredentialEnvKey`, so a profile can never repoint
+  a run at another database or provider account.
 - The file name must match `name`, and `default` must declare no override at all.
 - Each profile has a stable `fingerprint` (SHA-256 over models + env), recorded on every
   run record.
@@ -161,6 +221,71 @@ the executor spawns one child with combined stdout/stderr streamed to that log. 
 defaults to 1 (`EVAL_OPS_MAX_CONCURRENT_RUNS` raises it): evals cost real tokens and share
 provider rate limits, so concurrent runs make both logs and spend unattributable.
 
+### Where a run is spawned, and with what environment
+
+By default a run is spawned in `packages/protocol` with the record's own environment.
+A run that needs more is enqueued with a one-step **plan** (`ExecutionStep`), which the
+queue holds in memory and writes nowhere:
+
+- **its own working directory**, from the registry's repository-relative `cwd` resolved
+  against the repository root. `discovery` declares `services/api`, because its package
+  script and CLI live there and `bun run eval:discovery` resolves nowhere else. The
+  `--report` path is absolute (`store.reportPath`), so the working directory does not move
+  the artifact; `store.artifactPathFor` — the eval-relative form — is what the record
+  stores, after the fact.
+- **credentials the run record must not carry.** `HARNESS_CREDENTIALS` in
+  [`ops.server.ts`](./ops.server.ts) states, per harness, what must come from this server's
+  own environment. The four scorecard harnesses have nothing pre-checked, and say so.
+  `discovery` names four keys in two groups. `keys` is what its own gate
+  (`assertAbConfirmation`, services/api/src/cli/discovery.gate.ts) refuses to run
+  without: `NEON_API_KEY` and `DISCOVERY_TARGETS`. `runtimeKeys` is what no gate
+  mentions and the child cannot finish without: `OPENROUTER_API_KEY` (every model and
+  embedding the discovery graph runs on) and `REDIS_URL` (the HyDE cache the graph writes
+  through, uncaught on the write path). The server adds `DISCOVERY_CONFIRM=1` and
+  `TEST_DATABASE_SAFE=1`, which are attestations rather than secrets. Any of the four
+  absent or blank is refused with **503** naming it — and the second group matters most
+  for the same reason it is easiest to miss: it arrives only by inheritance from
+  `--env-file=../../.env.test`, a gitignored file whose absence Bun does not report, and it
+  is read *after* the parent has already reset both Neon branches. Without the pre-check,
+  the destructive step happens and the run then fails. The same entry `unset`s
+  `DATABASE_URL`, which is *removed*
+  from what the child inherits: the parent A/B process composes no database, both children
+  set their own from the attested manifest, and this server's own value — the eval fixture
+  database — must not be what a child tree it is asserting `TEST_DATABASE_SAFE=1` over can
+  reach. `eval:discovery` runs under `--env-file=../../.env.test`, and a parent
+  environment beats `--env-file` in Bun, so without this the server's value silently won a
+  question the script had already answered.
+  `server.spec.ts` pins the table against `assertAbConfirmation`'s own source, so a fifth
+  variable added to the gate fails here instead of resurfacing as a child that dies at it.
+
+### One `discovery` run at a time
+
+`EXCLUSIVE_HARNESSES` ([`ops.queue.ts`](./ops.queue.ts)) names the harnesses whose runs may
+never overlap, and why. `discovery` resets and uses the same designated Neon evaluation
+branches on every run — both when it compares a pair, side a's alone when it measures one
+configuration — so two at once would reset each other's databases mid-run. The slot is per
+harness, not per side: a single-configuration run and a pair still collide, because they
+share side a's branch. A second launch is refused with **409** naming the run that holds
+the slot.
+
+The slot outlives the process holding it. `queue.exclusiveConflict()` asks this process's
+queue **and** the store: a `running` record whose pid is still alive holds the slot even
+though the queue that started it is gone, which is the case a server restart under a
+double-digit-minute run creates (the child keeps running; the queue does not). A record
+whose process *is* gone holds nothing — the other restart, where the container took the
+child with it, must not make the harness unlaunchable. That is the same liveness question
+`reconcile()` asks, answered by the same probe (`isProcessAlive`).
+
+The rule is enforced by the queue rather than only by the route: a run whose slot is taken
+is left pending regardless of `EVAL_OPS_MAX_CONCURRENT_RUNS`, and is passed over rather
+than allowed to block the scorecard runs behind it, which share nothing with it.
+
+Most refusals precede the record: the first check runs before anything is written, so
+nothing is left behind. The re-check immediately before the enqueue cannot — the record
+exists by then, and a launch that loses that race is marked `interrupted`. So run history
+**can** show an `interrupted` record for a run that never started; a double-clicked launch
+button produces one.
+
 ### Exit code → status
 
 `statusFromExitCode` maps the documented harness exit-code contract:
@@ -183,6 +308,12 @@ and a genuinely live process is left alone.
 **202-accepted** rather than awaiting it: a harness that ignores SIGINT would otherwise
 hang the request for as long as it likes. The outcome arrives over the run's own status
 stream.
+
+A run this process never spawned has no live entry to signal — `cancel()` returns the
+stored record and the route still answers accepted — so cancelling an orphan left by an
+earlier server moves nothing. That is why the exclusive-slot refusal above ties the slot to
+the holder's process exiting rather than to a button: an orphan releases it by exiting, and
+the 409 says exactly that.
 
 ## Comparison
 
@@ -314,9 +445,21 @@ handled ahead of the gate because it is the request that establishes one.
 `ops.server.ts` is the trust boundary, and it is narrow by construction:
 
 - **The only thing a client may send is a typed `RunSpec` plus a profile NAME.** Never
-  argv, never environment, never a database URL. `RunSpecSchema` is `.strict()`, so a
+  argv, never a database URL. `RunSpecSchema` is `.strict()`, so a
   request carrying `env`, `argv` or any other unknown key **fails with 400** rather than
   being silently ignored.
+- The one environment a client may name is `sides` (or a single configuration) on a
+  `discovery` spec: values for the 26 `DISCOVERY_ENV_KEYS` flags, which are protocol
+  feature flags and nothing else. Any other key **fails with 400** — as does any value
+  the flag's own read site would not honour, or one longer than 200 characters, or one
+  carrying a line break.
+  - A **pair** reaches the child only as `--a`/`--b` argv. The two sides are argv by
+    construction: one process cannot hold two values for one variable.
+  - A **single configuration** reaches it as `--env` argv *and* in the child's injected
+    environment, because that shape's configuration is `resolved.env` — the same object
+    `renderRun` copies into the record's `env` and the executor spawns with
+    (`ops.argv.ts:306`; `server.spec.ts` asserts the injected value). The 400s above are
+    what makes that safe: the value was validated before it was injected.
 - The `fixture-reset` variant of `RunSpec` is deliberately not parseable by
   `RunSpecSchema`. A reset is not constructible through `/api/runs`; it exists only behind
   the guarded fixture route.
@@ -332,7 +475,9 @@ handled ahead of the gate because it is the request that establishes one.
   header is added anywhere, so a reply still cannot be *read* cross-origin — this is about
   the write.
 - Nothing that leaves here contains a credential. Every error path runs through
-  `scrubCredentials`.
+  `scrubCredentials`, and the credentials a harness's own gate demands are read from this
+  server's environment into the child's — never into a run record, a response or a log.
+  A browser can neither send nor receive them.
 - Artifact ids are decoded and rejected if they normalise outside `eval/`.
 
 ### Who may use this server
