@@ -33,7 +33,7 @@ export type EnrichmentJobPayload = EnsureProfileHydeData | EnrichUserData;
 /**
  * Optional dependencies for testing.
  */
-export interface EnrichmentPrivacyDecision {
+export interface EnrichmentAdmissionDecision {
   allowed: boolean;
   reason: string;
   hasExistingProfile: boolean;
@@ -43,8 +43,8 @@ export interface EnrichmentQueueDeps {
   queue?: ReturnType<typeof QueueFactory.createQueue<EnrichmentJobPayload>>;
   invokeProfileWrite?: (userId: string) => Promise<void>;
   invokeEnrichUser?: (userId: string) => Promise<void>;
-  checkPrivacy?: (input: { jobName: 'ensure_profile_hyde' | 'enrich.user'; userId: string; networkId?: string; reason?: string }) => Promise<EnrichmentPrivacyDecision>;
-  privacyDatabase?: Pick<EnrichmentDatabaseAdapter, 'getEnrichmentPrivacyContext'>;
+  checkAdmission?: (input: { jobName: 'ensure_profile_hyde' | 'enrich.user'; userId: string; networkId?: string; reason?: string }) => Promise<EnrichmentAdmissionDecision>;
+  admissionDatabase?: Pick<EnrichmentDatabaseAdapter, 'getEnrichmentAdmissionContext'>;
 }
 
 /**
@@ -200,13 +200,13 @@ export class EnrichmentQueue {
 
   private async handleEnsureProfileHyde(data: EnsureProfileHydeData): Promise<void> {
     const { userId } = data;
-    const privacy = await this.resolvePrivacyDecision('ensure_profile_hyde', data);
-    if (!privacy.allowed) {
+    const admission = await this.resolveAdmissionDecision('ensure_profile_hyde', data);
+    if (!admission.allowed) {
       this.profileHydeLogger.info('Skipped enrichment', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
-        skipReason: privacy.reason,
+        skipReason: admission.reason,
       });
       return;
     }
@@ -225,13 +225,13 @@ export class EnrichmentQueue {
 
   private async handleEnrichUser(data: EnrichUserData): Promise<void> {
     const { userId } = data;
-    const privacy = await this.resolvePrivacyDecision('enrich.user', data);
-    if (!privacy.allowed) {
+    const admission = await this.resolveAdmissionDecision('enrich.user', data);
+    if (!admission.allowed) {
       this.enrichUserLogger.info('Skipped enrichment', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
-        skipReason: privacy.reason,
+        skipReason: admission.reason,
       });
       return;
     }
@@ -255,32 +255,31 @@ export class EnrichmentQueue {
     }
   }
 
-  private async resolvePrivacyDecision(
+  private async resolveAdmissionDecision(
     jobName: 'ensure_profile_hyde' | 'enrich.user',
     data: EnrichmentJobPayload,
-  ): Promise<EnrichmentPrivacyDecision> {
-    if (this.deps?.checkPrivacy) {
-      return this.deps.checkPrivacy({ jobName, userId: data.userId, networkId: data.networkId, reason: data.reason });
-    }
-
-    if (!data.networkId) {
-      return { allowed: true, reason: 'no_network_scope', hasExistingProfile: false };
+  ): Promise<EnrichmentAdmissionDecision> {
+    if (this.deps?.checkAdmission) {
+      return this.deps.checkAdmission({ jobName, userId: data.userId, networkId: data.networkId, reason: data.reason });
     }
 
     // "Has been enriched?" keys on ACTIVE premises, not a `user_profiles` row
     // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
     // profile.graph). `getProfile` returns a users-sourced row for every user, so it
     // can't signal enrichment; the premise graph is the source of truth.
-    const privacyDatabase = this.deps?.privacyDatabase ?? new EnrichmentDatabaseAdapter();
-    const { userExists, networkExists, hasActivePremise } = await privacyDatabase
-      .getEnrichmentPrivacyContext(data.userId, data.networkId);
+    const admissionDatabase = this.deps?.admissionDatabase ?? new EnrichmentDatabaseAdapter();
+    const { userExists, networkExists, membershipExists, hasActivePremise } = await admissionDatabase
+      .getEnrichmentAdmissionContext(data.userId, data.networkId);
 
     const hasExistingProfile = hasActivePremise;
+    if (!userExists) {
+      return { allowed: false, reason: 'user_not_found', hasExistingProfile };
+    }
     if (!networkExists) {
       return { allowed: false, reason: 'network_not_found', hasExistingProfile };
     }
-    if (!userExists) {
-      return { allowed: false, reason: 'user_not_found', hasExistingProfile };
+    if (!membershipExists) {
+      return { allowed: false, reason: 'network_membership_not_found', hasExistingProfile };
     }
 
     if (jobName === 'ensure_profile_hyde' && hasExistingProfile) {
