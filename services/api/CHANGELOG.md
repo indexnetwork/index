@@ -35,6 +35,7 @@ section before promoting to `main`).
   than per network.
 
 ### Added
+- Register `OPPORTUNITY_OWNER_APPROVAL_SECRET` as an optional env var so the documented owner-approval secret is schema-validated.
 - Wire the MCP authorization-observability seam at the host boundary (IND-581;
   protocol 7.8.0, API 0.64.0). The composition root now injects a concrete
   `McpAuthorizationObserver` into `createMcpServer` that records each capability
