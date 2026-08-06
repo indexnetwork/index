@@ -1,77 +1,8 @@
-import { HISTORICAL_CASES } from "../matching/matching.historical.js";
-import type { MatchingCase } from "../matching/matching.types.js";
+import { HISTORICAL_QUALITY_CASES } from "../matching/matching.historical.js";
+import type { HistoricalQualityCase } from "./historical-quality.corpus.js";
+import type { HistoricalMatrixCase, HistoricalMatrixModelInput, MatrixIntent, MatrixParticipant } from "./historical-matrix.types.js";
 
-import type { HistoricalMatrixCase, HistoricalMatrixModelInput, MatrixParticipant, ReconstructedIntent } from "./historical-matrix.types.js";
-
-interface IntentReconstruction {
-  text: string;
-  basis: string[];
-}
-
-const RECONSTRUCTED_INTENTS: Record<string, IntentReconstruction> = {
-  "h1-b": {
-    text: "Design elegant computer circuit boards and share the schematics with fellow hobbyists.",
-    basis: ["designs elegant computer circuit boards for fun", "shares the schematics at his hobby club"],
-  },
-  "h1-d": {
-    text: "Supply electronic components and chips to the hobby community without co-founding a company.",
-    basis: ["supplying electronic components and chips to the hobby community", "no interest in co-founding anything"],
-  },
-  "h1-e": {
-    text: "Tinker with kit computers on weekends purely for enjoyment, not to start a company or ship a product.",
-    basis: ["tinkering with kit computers on weekends purely for enjoyment", "no desire to start a company or ship a product"],
-  },
-  "h2-b": {
-    text: "Apply physical model-building to a biological problem worth my modeling skill.",
-    basis: ["builds structural models", "Restless for a biological problem worth his modeling skill"],
-  },
-  "h2-d": {
-    text: "Keep the research group operating through funding, equipment, and scheduling support.",
-    basis: ["manages funding, equipment, and scheduling for the research group", "Keeps the lab running"],
-  },
-  "h2-e": {
-    text: "Focus on reaction kinetics of small industrial compounds rather than biological macromolecular structure.",
-    basis: ["focused on the reaction kinetics of small industrial compounds", "not working on biological macromolecular structure"],
-  },
-  "h3-b": {
-    text: "Find a writing partner with lyrical ideas and attitude to complement my melody and harmony skills.",
-    basis: ["Looking for a writing partner with lyrical ideas and attitude", "Melodically gifted young musician"],
-  },
-  "h3-d": {
-    text: "Book bands into local clubs and venues and connect acts to stages and audiences.",
-    basis: ["books bands into the local clubs and venues", "Connects acts to stages and audiences"],
-  },
-  "h3-e": {
-    text: "Devote my work to orchestral repertoire and chamber recitals rather than popular songwriting or club performance.",
-    basis: ["devoted to the orchestral repertoire and chamber recitals", "No interest in popular songwriting or club performance"],
-  },
-  "h4-b": {
-    text: "Write first checks into early technical teams and provide hands-on support to founders.",
-    basis: ["writes first checks into early technical teams", "rolling up his sleeves with founders"],
-  },
-  "h4-d": {
-    text: "Invest in companies with millions in revenue and proven traction, not pre-revenue prototypes.",
-    basis: ["only writes large checks into companies with millions in revenue and proven traction", "Does not do first checks or pre-revenue prototypes"],
-  },
-  "h4-e": {
-    text: "Write first checks only for consumer food and beverage brands.",
-    basis: ["invests exclusively in consumer food and beverage brands", "Writes first checks"],
-  },
-  "h5-b": {
-    text: "Study dendritic cells and vaccine responses with immune-cell assays for innate immune activation.",
-    basis: ["studying dendritic cells and vaccine responses", "assays and domain knowledge for measuring innate immune activation"],
-  },
-  "h5-d": {
-    text: "Pursue observational astronomy and telescope data analysis rather than RNA therapeutics or immune-cell assays.",
-    basis: ["Domain expert in observational astronomy", "no connection to RNA therapeutics or immune-cell assays"],
-  },
-  "h5-e": {
-    text: "Build business dashboards and reports for a general analytics community rather than biomedical research.",
-    basis: ["builds business dashboards and reports", "does no biomedical research"],
-  },
-};
-
-type HistoricalEntity = MatchingCase["input"]["entities"][number];
+type HistoricalEntity = HistoricalQualityCase["input"]["entities"][number];
 
 function profileTextFor(entity: HistoricalEntity): string {
   const { bio = "", location = "", interests = [], skills = [] } = entity.profile;
@@ -83,18 +14,11 @@ function profileTextFor(entity: HistoricalEntity): string {
   ].join("\n");
 }
 
-function intentFor(entity: HistoricalEntity): ReconstructedIntent {
-  const existingIntent = entity.intents?.[0]?.payload.trim();
-  if (existingIntent) return { text: existingIntent, kind: "existing", basis: [] };
-
-  const reconstruction = RECONSTRUCTED_INTENTS[entity.userId];
-  if (!reconstruction) throw new Error(`${entity.userId}: missing historically grounded intent reconstruction`);
-
-  return {
-    text: reconstruction.text,
-    kind: "historically_grounded_reconstruction",
-    basis: [...reconstruction.basis],
-  };
+function intentFor(entity: HistoricalEntity): MatrixIntent {
+  if (entity.intents?.length !== 1) {
+    throw new Error(`${entity.userId}: expected exactly one audited participant intent`);
+  }
+  return { text: entity.intents[0]!.payload };
 }
 
 function participantFor(entity: HistoricalEntity): MatrixParticipant {
@@ -108,15 +32,14 @@ function participantFor(entity: HistoricalEntity): MatrixParticipant {
   };
 }
 
-function adaptHistoricalCase(source: MatchingCase): HistoricalMatrixCase {
+function adaptHistoricalCase(source: HistoricalQualityCase): HistoricalMatrixCase {
   const sourceEntity = source.input.entities.find((entity) => entity.userId === source.input.discovererId);
   if (!sourceEntity) throw new Error(`${source.id}: missing historical source participant`);
 
   const expectedUserId = source.expect.find((expectation) => expectation.match)?.candidateId;
   if (!expectedUserId) throw new Error(`${source.id}: missing historical expected target`);
 
-  const networkContext = source.input.networkContexts?.[sourceEntity.networkId];
-  if (!networkContext) throw new Error(`${source.id}: missing historical source network context`);
+  const networkContext = source.input.networkContexts?.[sourceEntity.networkId] ?? "";
 
   return {
     id: source.id,
@@ -138,7 +61,6 @@ function modelInputContains(value: unknown, text: string): boolean {
 
 function freezeCase(matrixCase: HistoricalMatrixCase): HistoricalMatrixCase {
   for (const participant of matrixCase.participants) {
-    Object.freeze(participant.intent.basis);
     Object.freeze(participant.intent);
     Object.freeze(participant.interests);
     Object.freeze(participant.skills);
@@ -150,15 +72,14 @@ function freezeCase(matrixCase: HistoricalMatrixCase): HistoricalMatrixCase {
   return Object.freeze(matrixCase);
 }
 
-/** Five frozen Tier-3 cases adapted directly from the canonical historical corpus. */
+/** Five frozen Tier-3 cases adapted directly from the canonical audited corpus. */
 export const HISTORICAL_MATRIX_CASES: readonly HistoricalMatrixCase[] = Object.freeze(
-  HISTORICAL_CASES.map(adaptHistoricalCase).map(freezeCase),
+  HISTORICAL_QUALITY_CASES.map(adaptHistoricalCase).map(freezeCase),
 );
 
-/** Removes report-only and reconstruction-audit fields before any model invocation. */
+/** Removes control-plane and report-only fields before any model invocation. */
 export function matrixModelInput(matrixCase: HistoricalMatrixCase): HistoricalMatrixModelInput {
   return {
-    id: matrixCase.id,
     description: matrixCase.description,
     networkContext: matrixCase.networkContext,
     sourceUserId: matrixCase.sourceUserId,
@@ -208,11 +129,6 @@ export function validateHistoricalMatrixCases(cases: readonly HistoricalMatrixCa
     for (const participant of matrixCase.participants) {
       if (!participant.intent.text.trim()) {
         throw new Error(`${matrixCase.id}: ${participant.id} has an empty intent`);
-      }
-      if (participant.intent.kind === "historically_grounded_reconstruction") {
-        if (participant.intent.basis.length === 0 || participant.intent.basis.some((basis) => !participant.profileText.includes(basis))) {
-          throw new Error(`${matrixCase.id}: ${participant.id} reconstruction basis is not present in profileText`);
-        }
       }
     }
 

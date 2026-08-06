@@ -27,11 +27,11 @@ provider-free contract for the Historical Discovery Quality project (IND-636): c
 pre-connection evidence, model-safe projection, user-level retrieval/evaluator attribution,
 and one-attempt/200-invocation one-factor experiment planning.
 
-These modules are deliberately **not wired into the current five cases or live discovery
-runner yet**. IND-637 migrates and independently reviews the historical corpus; IND-638
-builds the shared-pool dual-trigger fixture/runtime; IND-641 applies resolved side
-configuration at child spawn. Until those issues land, `eval:matching`,
-`eval:discovery-env-matrix`, and `eval:discovery` retain their existing behavior.
+These modules are deliberately **not wired into the live discovery runner yet**. IND-637
+has migrated and independently reviewed the five historical cases; IND-638 owns
+shared-pool fixture/runtime integration; IND-641 owns child-spawn side configuration.
+Until those remaining issues land, `eval:discovery-env-matrix` and `eval:discovery` retain
+their existing runtime behavior.
 
 Each harness has its own README with full flag docs:
 [`matching`](./matching/README.md) · [`hyde`](./hyde/README.md) ·

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const BASE_FIXTURE_CORPUS_VERSION = 'historical-matrix-v1';
+export const BASE_FIXTURE_CORPUS_VERSION = 'historical-matrix-v2';
 export const BASE_METADATA_KEY = 'discovery-env-matrix-base';
 export const BASE_DECLARED_BRANCH = 'eval-discovery-base';
 
@@ -79,8 +79,8 @@ function fixtureId(kind: 'user' | 'network' | 'intent', source: string): string 
 
 /**
  * Projects the fixture corpus into the only data the protected base may persist.
- * Audit-only reconstruction basis and report-only names are intentionally not
- * represented in this type or in any serialized seed row.
+ * Audit-only metadata and report-only names are intentionally not represented
+ * in this type or in any serialized seed row.
  */
 export function baseSeedPayload(cases: readonly HistoricalMatrixFixture[]): BaseSeedPayload {
   const users = new Map<string, BaseSeedPayload['users'][number]>();

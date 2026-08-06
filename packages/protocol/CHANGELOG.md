@@ -55,6 +55,10 @@ pin a supported release, use `latest`.
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Fixed
+- Harden the audited five-case historical evaluation corpus (IND-637; 10.0.1):
+  preserve audit metadata outside direct model-safe and matching projections,
+  enforce fixture-v2 participant, citation, and authored-negative provenance
+  invariants, and reuse the same audited cases in the discovery matrix.
 - `architecture:cycles` graphs runtime edges only (8.0.3). It counted `import
   type` / `export type` edges, which TypeScript erases, so it reported a
   7-module negotiation/questions cycle that no runtime can observe — penalizing

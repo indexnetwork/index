@@ -4,7 +4,7 @@ import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/d
 import { evaluateControlCalibratedGate, MATRIX_ROWS } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.policy.js';
 import { buildEvalArtifact, buildScorecard, EVAL_RUN_REPORT_ARTIFACT_TYPE, executeRuns } from '../../../../../packages/protocol/eval/shared/index.js';
 
-import { baseSeedPayload } from '../discovery-env-matrix.shared';
+import { BASE_FIXTURE_CORPUS_VERSION, baseSeedPayload } from '../discovery-env-matrix.shared';
 import { awaitMatrixChildProcess, buildMatrixArtifactEvidence, collectCandidates, collectEvaluatorTraces, finalizeMatrixChildArtifacts, invokeMatrixDiscoveryGraph, parseMatrixChildConcurrency, parseMatrixChildTimeoutMs, runBoundedChildTasks, projectFinalCandidates, resolveFixtureTriggerIntent, resolveMatrixExecutionSelection, runBaselineUpdateAfterPassingAssertions, runMatrixBoundary, runWithChildCleanup, sanitizeMatrixError, type MatrixExecutionEvidence, type MatrixSlotResult } from '../discovery-env-matrix.main';
 import { assertCompleteMatrix, buildCanaryPlan, buildMatrixPlan, parseChildManifest, withMatrixEnvironment } from '../discovery-env-matrix.runtime';
 
@@ -19,6 +19,11 @@ const buildGateSlots = (passesByRow: Record<string, number>): MatrixSlotResult[]
     } as MatrixSlotResult)));
 
 describe('discovery environment matrix runtime seams', () => {
+  it('uses the audited historical-matrix-v2 seed contract', () => {
+    expect(BASE_FIXTURE_CORPUS_VERSION).toBe('historical-matrix-v2');
+    expect(baseSeedPayload(HISTORICAL_MATRIX_CASES).fixtureCorpusVersion).toBe('historical-matrix-v2');
+  });
+
   it('redacts provider, database, and API-key error content', () => {
     expect(sanitizeMatrixError(new Error('postgresql://user:secret@host/protocol_eval NEON_API_KEY=secret provider body'))).toBe('internal_error');
   });
