@@ -127,7 +127,44 @@ describe("onboarding privacy profile tools", () => {
     expect(saveProfile).not.toHaveBeenCalled();
   });
 
-  it("preview uses staged signup data", async () => {
+  it("preview uses the latest signup seed when unscoped", async () => {
+    onboarding = {
+      profileSeeds: [
+        {
+          source: "experiment_signup",
+          networkId: "n0",
+          capturedAt: "2026-05-28T00:00:00.000Z",
+          name: "Older Seed",
+          bio: "Older seed bio",
+          location: "Older City",
+          socials: [{ label: "github", value: "olderseed" }],
+        },
+        {
+          source: "experiment_signup",
+          networkId: "n1",
+          capturedAt: "2026-05-29T00:00:00.000Z",
+          name: "Seed Alice",
+          bio: "Seed bio from signup",
+          location: "Seed City",
+          socials: [{ label: "github", value: "seedalice" }],
+        },
+      ],
+    };
+    const tool = tools.find((t) => t.name === "preview_user_context")!;
+    const result = parseToolResult(await tool.handler({ context: context(), query: {} }));
+
+    expect(result.success).toBe(true);
+    expect(generatedInputs[0]).toContain("Name: Seed Alice");
+    expect(generatedInputs[0]).toContain("Location: Seed City");
+    expect(generatedInputs[0]).toContain("Seed bio from signup");
+    expect(generatedInputs[0]).toContain("github: seedalice");
+    expect(generatedInputs[0]).not.toContain("Older Seed");
+    expect(generatedInputs[0]).not.toContain("olderseed");
+    expect(enricher).not.toHaveBeenCalled();
+    expect(saveProfile).not.toHaveBeenCalled();
+  });
+
+  it("preview does not fall back to another network's signup seed", async () => {
     onboarding = {
       profileSeeds: [{
         source: "experiment_signup",
@@ -140,13 +177,17 @@ describe("onboarding privacy profile tools", () => {
       }],
     };
     const tool = tools.find((t) => t.name === "preview_user_context")!;
-    const result = parseToolResult(await tool.handler({ context: { ...context(), networkId: "n1" }, query: {} }));
+    const result = parseToolResult(await tool.handler({
+      context: { ...context(), scopeType: "network", scopeId: "n2" },
+      query: {},
+    }));
 
     expect(result.success).toBe(true);
-    expect(generatedInputs[0]).toContain("Name: Seed Alice");
-    expect(generatedInputs[0]).toContain("Location: Seed City");
-    expect(generatedInputs[0]).toContain("Seed bio from signup");
-    expect(generatedInputs[0]).toContain("github: seedalice");
+    expect(generatedInputs[0]).toContain("Name: Alice");
+    expect(generatedInputs[0]).toContain("Location: Healdsburg");
+    expect(generatedInputs[0]).not.toContain("Seed Alice");
+    expect(generatedInputs[0]).not.toContain("Seed City");
+    expect(generatedInputs[0]).not.toContain("seedalice");
     expect(enricher).not.toHaveBeenCalled();
     expect(saveProfile).not.toHaveBeenCalled();
   });
@@ -181,6 +222,31 @@ describe("onboarding privacy profile tools", () => {
     expect(enricher).not.toHaveBeenCalled();
     expect(onboarding?.profileConfirmedAt).toBeDefined();
     expect(onboarding?.currentStep).toBe("first_signal");
+  });
+
+  it("confirm does not merge a profile seed from another network", async () => {
+    onboarding = {
+      profileSeeds: [{
+        source: "experiment_signup",
+        networkId: "n1",
+        capturedAt: "2026-05-29T00:00:00.000Z",
+        socials: [{ label: "github", value: "seedalice" }],
+      }],
+    };
+    const tool = tools.find((t) => t.name === "confirm_user_context")!;
+    const draft = {
+      identity: { name: "Alice", bio: "Builder", location: "Healdsburg" },
+      narrative: { context: "Alice builds tools." },
+      attributes: { skills: ["TypeScript"], interests: ["agents"] },
+    };
+
+    const result = parseToolResult(await tool.handler({
+      context: { ...context(), scopeType: "network", scopeId: "n2" },
+      query: { draft },
+    }));
+
+    expect(result.success).toBe(true);
+    expect(setUserSocials).not.toHaveBeenCalled();
   });
 
   it("confirm schedules draft premise decomposition without blocking MCP callers", async () => {

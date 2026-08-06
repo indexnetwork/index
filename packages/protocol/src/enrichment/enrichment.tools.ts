@@ -66,7 +66,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     const seeds = onboarding?.profileSeeds ?? [];
     if (seeds.length === 0) return undefined;
     const scoped = networkId ? seeds.filter((seed) => seed.networkId === networkId) : seeds;
-    return scoped[scoped.length - 1] ?? seeds[seeds.length - 1];
+    return scoped[scoped.length - 1];
   }
 
   function normalizeSocialUpdate(label: string, value: string): { label: string; value: string } | null {
