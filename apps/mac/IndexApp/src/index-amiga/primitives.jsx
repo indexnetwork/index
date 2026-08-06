@@ -820,16 +820,37 @@ function useInterval(cb, delay) {
   }, [delay]);
 }
 
+/* ---------- useNarrow: true while the observed box is under `max` px ---------- */
+// A pane loses most of its width the moment a third window opens next to it, so
+// the layouts living inside one ask their own box how much room they have
+// instead of trusting the window size.
+function useNarrow(ref, max) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0] && entries[0].contentRect.width;
+      if (w) setNarrow(w < max);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, max]);
+  return narrow;
+}
+
 /* ---------- PipelineFunnel: Amiga gadget strip ---------- */
-// Label first, then its count in a badge. The tabs share the row equally so
-// the strip fills the window width; each keeps its text on one line and the
-// content stays centered inside its cell.
+// Label first, then its count in a badge. The tabs share the row equally so the
+// strip fills the window width and always stays one row deep; a tab too narrow
+// for its label truncates it ("negotiati…") rather than letting the text spill
+// over its neighbours. The count never truncates, it is the part you read.
 function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
   const clickable = !!onClickStage;
   const allActive = activeStage === "all";
   return (
     <div style={{
-      display:"flex", alignItems:"stretch", flexWrap:"wrap",
+      display:"grid",
+      gridTemplateColumns:`repeat(${stages.length}, minmax(0, 1fr))`,
       fontFamily:"var(--mac-mono)",
     }}>
       {stages.map((s, i) => {
@@ -847,9 +868,11 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             disabled={!clickable}
             title={`${s.label} · ${s.count}`}
             style={{
-              flex:"1 1 0", minWidth:0,
-              display:"flex", alignItems:"center", justifyContent:"center", gap:5,
-              padding:"7px 9px",
+              minWidth:0, overflow:"hidden",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:4,
+              // tight sides: in a squeezed column every pixel here is a
+              // character of the label that survives the truncation
+              padding:"7px 5px",
               background: isActive ? A.fg : "transparent",
               color: isActive ? A.paper : A.fg,
               opacity: dim ? 0.45 : 1,
@@ -862,10 +885,11 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             }}>
             <span style={{
               fontSize:10, letterSpacing:0.4, textTransform:"uppercase",
+              minWidth:0, overflow:"hidden", textOverflow:"ellipsis",
             }}>{s.label}</span>
             <span style={{
               fontSize:10, fontWeight:700, lineHeight:1,
-              padding:"3px 4px", minWidth:14, textAlign:"center",
+              padding:"3px 3px", minWidth:12, textAlign:"center", flex:"0 0 auto",
               border:`1px solid ${isActive ? A.paper : A.fg}`,
               background: accent ? A.accent : "transparent",
               color: accent ? A.fg : (isActive ? A.paper : A.fg),
@@ -1171,7 +1195,7 @@ Object.assign(window, {
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
   AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
-  ScoreBar, Ticker, Stat, useInterval,
+  ScoreBar, Ticker, Stat, useInterval, useNarrow,
   PipelineFunnel, SourceBadge, ModeBadge,
   MacWindow, MacNotice, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
   AMIGA_PALETTE: A,
