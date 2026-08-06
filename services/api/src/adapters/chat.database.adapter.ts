@@ -14,6 +14,35 @@ import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
 import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questioner.adapter';
 
+export interface NetworkShareResponseRow {
+  id: string;
+  title: string;
+  prompt: string | null;
+  imageUrl: string | null;
+  permissions: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  ownerId: string;
+  userName: string;
+  userAvatar: string | null;
+}
+
+/** Map a share-code lookup row to its public invitation response contract. */
+export function buildNetworkShareResponse(row: NetworkShareResponseRow, memberCount: number) {
+  const permissions = toPublicNetworkPermissions(row.permissions);
+  return {
+    id: row.id,
+    title: row.title,
+    prompt: row.prompt,
+    imageUrl: row.imageUrl,
+    joinPolicy: permissions.joinPolicy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+    _count: { members: memberCount },
+  };
+}
+
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
   private readonly intentAdapter = new IntentDatabaseAdapter();
@@ -2200,20 +2229,7 @@ export class ChatDatabaseAdapter {
     if (!row) return null;
 
     const memberCount = await this.getNetworkMemberCount(row.id);
-
-    const perms = row.permissions as { joinPolicy?: string } | null;
-
-    return {
-      id: row.id,
-      title: row.title,
-      prompt: row.prompt,
-      imageUrl: row.imageUrl,
-      joinPolicy: (perms?.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
-      _count: { members: memberCount },
-    };
+    return buildNetworkShareResponse(row, memberCount);
   }
 
   /**

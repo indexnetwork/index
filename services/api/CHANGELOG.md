@@ -15,7 +15,7 @@ section before promoting to `main`).
   `publicProfileLookup` and `edgeosImport` consent decisions, and the
   `OnboardingPrivacyState` / `PrivacyConsentDecision` / `PrivacyConsentSource`
   types are gone from the API schema/types and the Hermes plugin manifest.
-  `preview_user_context` and staged profile seeds no longer require recorded
+  `preview_user_context` and profile provenance seeds no longer require recorded
   consent; leftover `privacy` values in stored onboarding JSON are ignored.
   Like the network-level flow below, opt-in/opt-out moves to a separate
   enrichment service defined per implementation/application. Public profile
@@ -27,9 +27,10 @@ section before promoting to `main`).
   `forceHeadlessProvisioningPermissions` consent-safe forcing on invites, CSV
   imports, and master-key enablement, and the `auto`/`disabled` setting itself
   are gone; enabling a master key now forces only `joinPolicy: 'invite_only'`.
-  The enrichment queue gate reduces to user/network existence plus the
-  active-premise short-circuit, and leftover `profileEnrichment` values in
-  stored permissions JSON are ignored. Enrichment opt-in/opt-out is planned to
+  Scoped enrichment jobs require current active membership after user/network
+  existence checks and before the active-premise short-circuit. Leftover
+  `profileEnrichment` values in stored permissions JSON are ignored. Enrichment
+  opt-in/opt-out is planned to
   move to a separate service, defined per implementation/application rather
   than per network.
 
