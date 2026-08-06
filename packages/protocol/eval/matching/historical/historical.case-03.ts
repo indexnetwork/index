@@ -391,11 +391,11 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["guinness-songwriter-number-ones"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "not-yet-reviewed",
-      recognizability: "high",
-      decision: "pending",
-      rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
+      reviewer: "pi-reviewer:a091da6e",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale: "The reviewer approved the generalized guitarist-recruitment complement after confirming exact citations, the first-substantive month boundary, complete provenance, distinct negatives, outcome isolation, and removal of regional, event, tuning, recall, and invitation clues from current projections.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

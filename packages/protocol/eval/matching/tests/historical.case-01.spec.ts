@@ -143,10 +143,23 @@ describe("historical case 01", () => {
     expect(sourceIntentClaims.some((claimId) => dependsOnClaim(claimId, "fact-wozniak-design-practice"))).toBeFalse();
   });
 
-  it("remains pending independent review while passing authoring validation", () => {
-    expect(HISTORICAL_CASE_01.historicalQuality.anonymizationReview.decision).toBe("pending");
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_01)).toThrow(/anonymization review must be approved/);
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_01, { requireApprovedReview: false })).not.toThrow();
+  it("records independent approval while preserving explicit authoring-mode mutations", () => {
+    expect(HISTORICAL_CASE_01.historicalQuality.anonymizationReview).toEqual({
+      reviewer: "pi-reviewer:e8085cfa",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale:
+        "The reviewer approved the generalized capability complement after confirming exact citations, first-big-project ordering, participant-only activity intents, outcome isolation, distinct negatives, and current projection safety.",
+    });
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_01)).not.toThrow();
+
+    for (const decision of ["pending", "revise"] as const) {
+      const mutation = structuredClone(HISTORICAL_CASE_01);
+      mutation.historicalQuality.anonymizationReview.decision = decision;
+      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
+      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
+    }
   });
 
   it("keeps post-collaboration and project-trigger terms out of model-facing text", () => {

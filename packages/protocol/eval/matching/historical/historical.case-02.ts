@@ -437,11 +437,11 @@ export const HISTORICAL_CASE_02 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["nobel-1962-summary"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "not-yet-reviewed",
-      recognizability: "high",
-      decision: "pending",
-      rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
+      reviewer: "pi-reviewer:5e071b82",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale: "The reviewer approved the generalized macromolecular and physical-methods complement after confirming exact citation metadata, pre-October provenance, independent activity intents, distinct negatives, and safe current projections.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

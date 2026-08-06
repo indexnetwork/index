@@ -456,11 +456,11 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["pnas-kariko-weissman-profile"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "not-yet-reviewed",
-      recognizability: "high",
-      decision: "pending",
-      rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
+      reviewer: "pi-reviewer:07908e5e",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale: "The reviewer approved the nucleic-acid-methods and immune-system complement after confirming verbatim citations, pre-1997 provenance, independent activity intents, authored negatives, outcome isolation, and removal of the uniquely identifying biomedical cluster from current projections.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

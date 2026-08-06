@@ -449,11 +449,11 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["loc-apple-founding"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "not-yet-reviewed",
-      recognizability: "high",
-      decision: "pending",
-      rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
+      reviewer: "pi-reviewer:e8085cfa",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale: "The reviewer approved the generalized capability complement after confirming exact citations, first-big-project ordering, participant-only activity intents, outcome isolation, distinct negatives, and current projection safety.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

@@ -139,10 +139,23 @@ describe("historical case 04", () => {
     expect(JSON.stringify(HISTORICAL_CASE_04.historicalQuality.claims)).not.toMatch(/sergey|brin|page\s*(?:\/|and|&|,)\s*brin/i);
   });
 
-  it("remains pending independent review while passing authoring validation", () => {
-    expect(HISTORICAL_CASE_04.historicalQuality.anonymizationReview.decision).toBe("pending");
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_04)).toThrow(/anonymization review must be approved/);
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_04, { requireApprovedReview: false })).not.toThrow();
+  it("records independent approval while preserving explicit authoring-mode mutations", () => {
+    expect(HISTORICAL_CASE_04.historicalQuality.anonymizationReview).toEqual({
+      reviewer: "pi-reviewer:ba43fe8c",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale:
+        "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; matrix integration remains pending Task 8.",
+    });
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_04)).not.toThrow();
+
+    for (const decision of ["pending", "revise"] as const) {
+      const mutation = structuredClone(HISTORICAL_CASE_04);
+      mutation.historicalQuality.anonymizationReview.decision = decision;
+      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
+      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
+    }
   });
 
   it("excludes composite identity, unsupported support patterns, and exact identifying transaction details from model text", () => {

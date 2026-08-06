@@ -150,10 +150,23 @@ describe("historical case 05", () => {
     }
   });
 
-  it("remains pending independent review while passing authoring validation and freezing", () => {
-    expect(HISTORICAL_CASE_05.historicalQuality.anonymizationReview.decision).toBe("pending");
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05)).toThrow(/anonymization review must be approved/);
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05, { requireApprovedReview: false })).not.toThrow();
+  it("records independent approval while preserving explicit authoring-mode mutations and freezing", () => {
+    expect(HISTORICAL_CASE_05.historicalQuality.anonymizationReview).toEqual({
+      reviewer: "pi-reviewer:07908e5e",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale:
+        "The reviewer approved the nucleic-acid-methods and immune-system complement after confirming verbatim citations, pre-1997 provenance, independent activity intents, authored negatives, outcome isolation, and removal of the uniquely identifying biomedical cluster from current projections.",
+    });
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05)).not.toThrow();
+
+    for (const decision of ["pending", "revise"] as const) {
+      const mutation = structuredClone(HISTORICAL_CASE_05);
+      mutation.historicalQuality.anonymizationReview.decision = decision;
+      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
+      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
+    }
     expectDeeplyFrozen(HISTORICAL_CASE_05);
   });
 });

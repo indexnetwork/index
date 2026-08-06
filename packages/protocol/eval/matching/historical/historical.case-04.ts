@@ -451,11 +451,11 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["nsf-origins-outcome"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "not-yet-reviewed",
-      recognizability: "high",
-      decision: "pending",
-      rationale: "Awaiting independent confirmation that the generalized pre-connection profiles cannot be identified from model-facing text.",
+      reviewer: "pi-reviewer:ba43fe8c",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale: "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; matrix integration remains pending Task 8.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

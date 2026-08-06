@@ -149,10 +149,23 @@ describe("historical case 03", () => {
     expect(modelCitationIds.has("guinness-songwriter-number-ones")).toBeFalse();
   });
 
-  it("remains pending independent review while passing authoring validation", () => {
-    expect(HISTORICAL_CASE_03.historicalQuality.anonymizationReview.decision).toBe("pending");
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_03)).toThrow(/anonymization review must be approved/);
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_03, { requireApprovedReview: false })).not.toThrow();
+  it("records independent approval while preserving explicit authoring-mode mutations", () => {
+    expect(HISTORICAL_CASE_03.historicalQuality.anonymizationReview).toEqual({
+      reviewer: "pi-reviewer:a091da6e",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale:
+        "The reviewer approved the generalized guitarist-recruitment complement after confirming exact citations, the first-substantive month boundary, complete provenance, distinct negatives, outcome isolation, and removal of regional, event, tuning, recall, and invitation clues from current projections.",
+    });
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_03)).not.toThrow();
+
+    for (const decision of ["pending", "revise"] as const) {
+      const mutation = structuredClone(HISTORICAL_CASE_03);
+      mutation.historicalQuality.anonymizationReview.decision = decision;
+      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
+      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
+    }
   });
 
   it("generalizes unique identities and removes the speculative co-writing frame from model-facing text", () => {

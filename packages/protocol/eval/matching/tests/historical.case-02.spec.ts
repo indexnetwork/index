@@ -110,10 +110,23 @@ describe("historical case 02", () => {
     expect(modelCitationIds.has("nobel-1962-summary")).toBeFalse();
   });
 
-  it("remains pending independent review while passing authoring validation", () => {
-    expect(HISTORICAL_CASE_02.historicalQuality.anonymizationReview.decision).toBe("pending");
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_02)).toThrow(/anonymization review must be approved/);
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_02, { requireApprovedReview: false })).not.toThrow();
+  it("records independent approval while preserving explicit authoring-mode mutations", () => {
+    expect(HISTORICAL_CASE_02.historicalQuality.anonymizationReview).toEqual({
+      reviewer: "pi-reviewer:5e071b82",
+      reviewedAt: "2026-08-06",
+      recognizability: "medium",
+      decision: "approved",
+      rationale:
+        "The reviewer approved the generalized macromolecular and physical-methods complement after confirming exact citation metadata, pre-October provenance, independent activity intents, distinct negatives, and safe current projections.",
+    });
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_02)).not.toThrow();
+
+    for (const decision of ["pending", "revise"] as const) {
+      const mutation = structuredClone(HISTORICAL_CASE_02);
+      mutation.historicalQuality.anonymizationReview.decision = decision;
+      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
+      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
+    }
   });
 
   it("keeps diffraction-data possession, outcome hindsight, and post-meeting work out of model-facing text", () => {
