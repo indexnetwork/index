@@ -10,6 +10,8 @@ hermes plugins install indexnetwork/hermes-plugin
 
 The manifest declares `requires_env: INDEX_API_KEY`, so the installer prompts for the key and saves it to Hermes' `.env`. Get an agent-bound API key at [index.network/agents](https://index.network/agents); an agent-bound key is required for the autonomous negotiation tools.
 
+The package ships the prebuilt Hermes Desktop bundle at `desktop/dist/`, and the plugin self-installs it: when the gateway loads the plugin, `register()` copies the bundle into `~/.hermes/desktop-plugins/index-network` (and refreshes it after upgrades). No separate desktop install step — just reload desktop plugins (⌘K) in the Hermes Desktop app the first time.
+
 ## Configuration
 
 | Variable | Required | Default | Purpose |
