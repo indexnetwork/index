@@ -35,7 +35,6 @@ const INTERACTIVE_TIMEOUT_MS = 300_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
 const FAST_TOOLS = new Set([
-  "record_onboarding_privacy_consent",
   "create_intent_index",
   "delete_intent_index",
   "search_intents",

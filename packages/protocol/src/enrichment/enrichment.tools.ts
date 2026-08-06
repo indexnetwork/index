@@ -7,7 +7,7 @@ import type { EnrichmentToolDeps } from "../capabilities/participant-context.too
 import { success, error, needsClarification, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { EnrichmentResult } from "../shared/interfaces/enrichment.interface.js";
-import type { OnboardingPrivacyState, OnboardingProfileSeed, OnboardingState, PrivacyConsentSource, UserRecord } from "../shared/interfaces/database.interface.js";
+import type { OnboardingProfileSeed, OnboardingState, UserRecord } from "../shared/interfaces/database.interface.js";
 import type { EnrichmentRunInput, EnrichmentRunOperation } from "../shared/interfaces/enrichment-run.interface.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
@@ -68,24 +68,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
       telegram: enrichmentSocials.telegram || undefined,
       websites: enrichmentSocials.websites?.length ? enrichmentSocials.websites : undefined,
     });
-  }
-
-  function hasPublicProfileLookupConsent(onboarding: OnboardingState | null | undefined): boolean {
-    return onboarding?.privacy?.publicProfileLookup?.granted === true;
-  }
-
-  function hasEdgeosImportConsent(onboarding: OnboardingState | null | undefined): boolean {
-    return onboarding?.privacy?.edgeosImport?.granted === true;
-  }
-
-  function normalizeConsentSource(source: unknown): PrivacyConsentSource {
-    return source === 'agentvillage_onboarding' || source === 'hermes_setup' || source === 'web_onboarding' || source === 'api'
-      ? source
-      : 'api';
-  }
-
-  function consentDecision(granted: boolean, source: PrivacyConsentSource) {
-    return { granted, decidedAt: new Date().toISOString(), source };
   }
 
   function selectProfileSeed(onboarding: OnboardingState | null | undefined, networkId?: string): OnboardingProfileSeed | undefined {
@@ -171,7 +153,6 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     });
 
     const onboarding = user?.onboarding ?? undefined;
-    if (!hasEdgeosImportConsent(onboarding)) return;
     const seed = selectProfileSeed(onboarding, networkId);
     if (!seed?.socials?.length) return;
 
@@ -519,67 +500,19 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     },
   });
 
-  const recordOnboardingPrivacyConsent = defineTool({
-    name: "record_onboarding_privacy_consent",
-    description:
-      "Records exactly one authenticated-user onboarding privacy choice. Use this during AgentVillage/Hermes onboarding only after the user explicitly answers the matching consent question in a prior message. " +
-      "Do not call this in the same assistant turn as the consent question, and do not combine EdgeOS import and public lookup decisions in one call. " +
-      "This only records consent; it does not mark onboarding complete and does not create or update a profile.",
-    querySchema: z.object({
-      edgeosImportGranted: z.boolean().optional().describe("Whether the user grants permission to use EdgeOS/event-provided profile data for onboarding."),
-      publicProfileLookupGranted: z.boolean().optional().describe("Whether the user grants permission for public internet/profile lookup during onboarding."),
-      source: z.enum(['agentvillage_onboarding', 'hermes_setup', 'web_onboarding', 'api']).optional().default('api').describe("Where this consent decision was collected."),
-    }),
-    handler: async ({ context, query }) => {
-      const user = await userDb.getUser();
-      if (user?.isGhost) {
-        return error("Ghost users cannot record onboarding consent. The user must authenticate as a real account first.");
-      }
-      const hasEdgeosDecision = query.edgeosImportGranted !== undefined;
-      const hasPublicLookupDecision = query.publicProfileLookupGranted !== undefined;
-      if (!hasEdgeosDecision && !hasPublicLookupDecision) {
-        return error("Provide exactly one consent decision to record.");
-      }
-      if (hasEdgeosDecision && hasPublicLookupDecision) {
-        return error("Record EdgeOS import consent and public-profile lookup consent separately, after each explicit user answer. Do not combine them in one call.");
-      }
-
-      const currentOnboarding = user?.onboarding ?? context.user.onboarding ?? {};
-      const currentPrivacy: OnboardingPrivacyState = currentOnboarding.privacy ?? {};
-      const source = normalizeConsentSource(query.source);
-      const privacy: OnboardingPrivacyState = {
-        ...currentPrivacy,
-        ...(query.edgeosImportGranted !== undefined && { edgeosImport: consentDecision(query.edgeosImportGranted, source) }),
-        ...(query.publicProfileLookupGranted !== undefined && { publicProfileLookup: consentDecision(query.publicProfileLookupGranted, source) }),
-      };
-
-      await userDb.updateUser({
-        onboarding: {
-          ...currentOnboarding,
-          privacy,
-        },
-      });
-
-      return success({
-        message: "Privacy choices recorded.",
-        privacy,
-      });
-    },
-  });
-
   const previewUserContext = defineTool({
     name: "preview_user_context",
     description:
-      "Builds a structured profile draft for onboarding without saving anything. Use this after recording privacy consent and before asking the user to approve the profile. " +
-      "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data the user allowed, and user-provided social URLs. If allowPublicLookup is true, persisted public lookup consent is required. " +
+      "Builds a structured profile draft for onboarding without saving anything. Use this before asking the user to approve the profile. " +
+      "If allowPublicLookup is false, this tool uses only explicit text, EdgeOS/event data, and user-provided social URLs. " +
       "In MCP contexts, starts an async profile run and returns `profileRunId`; poll get_enrichment_run until status is `succeeded`, then present its `result`." +
       " When public lookup runs, the result includes a `publicLookup` block reporting whether a candidate identity was found (`used`, `confidentMatch`) and what it was (`identity` of name/role/location, plus `socials`), so the caller can confirm identity before saving. A candidate can be returned (`used: true`) without being confident enough to enter the draft; when no lookup runs the block is `{ used: false }`.",
     querySchema: z.object({
       name: z.string().optional().describe("Name explicitly provided by the user. For authenticated public lookup, the account identity is used first and this is only a fallback."),
       location: z.string().optional().describe("Location explicitly provided by the user or allowed event data."),
       bioOrDescription: z.string().optional().describe("Explicit self-description provided by the user."),
-      edgeosProfileText: z.string().optional().describe("EdgeOS/event profile text, only if the user granted EdgeOS import consent."),
-      allowPublicLookup: z.boolean().optional().default(false).describe("Whether to include public profile lookup. Requires previously recorded publicProfileLookup consent."),
+      edgeosProfileText: z.string().optional().describe("EdgeOS/event profile text."),
+      allowPublicLookup: z.boolean().optional().default(false).describe("Whether to include public profile lookup."),
       linkedinUrl: z.string().optional().describe("LinkedIn URL explicitly provided by the user."),
       githubUrl: z.string().optional().describe("GitHub URL explicitly provided by the user."),
       twitterUrl: z.string().optional().describe("X/Twitter URL explicitly provided by the user."),
@@ -600,8 +533,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
 
       const scopedNetworkId = focusedNetworkId(context);
       const onboarding = user.onboarding ?? context.user.onboarding;
-      const hasEdgeosConsent = hasEdgeosImportConsent(onboarding);
-      const seed = hasEdgeosConsent ? selectProfileSeed(onboarding, scopedNetworkId) : undefined;
+      const seed = selectProfileSeed(onboarding, scopedNetworkId);
       const authenticatedIdentity = resolveAuthenticatedLookupIdentity(user, context);
       const name = seed?.name || authenticatedIdentity.name || query.name?.trim() || undefined;
       const location = query.location?.trim() || seed?.location || user.location || undefined;
@@ -619,15 +551,8 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
         ...websites.map((value) => ({ label: detectSocialLabel(value), value })),
       ];
 
-      if (edgeosProfileText && !hasEdgeosConsent) {
-        return error("EdgeOS import consent has not been recorded. Ask the user first, then call record_onboarding_privacy_consent(edgeosImportGranted=true) before using event-provided profile data.");
-      }
-
       let enrichment: EnrichmentResult | null = null;
       if (query.allowPublicLookup) {
-        if (!hasPublicProfileLookupConsent(user.onboarding ?? context.user.onboarding)) {
-          return error("Public profile lookup consent has not been recorded. Ask the user first, then call record_onboarding_privacy_consent(publicProfileLookupGranted=true).");
-        }
         const hasAuthenticatedIdentity = authenticatedIdentity.name !== undefined || authenticatedIdentity.email !== undefined;
         enrichment = await enrichFromUserRecord({
           name: authenticatedIdentity.name ?? (hasAuthenticatedIdentity ? undefined : name),
@@ -768,10 +693,10 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     name: "create_user_context",
     description:
       "Legacy/backward-compatible tool that creates or regenerates the authenticated user's profile. AgentVillage/Hermes onboarding must use " +
-      "record_onboarding_privacy_consent → preview_user_context → confirm_user_context instead, so consent is recorded and the draft is shown before saving. " +
+      "preview_user_context → confirm_user_context instead, so the draft is shown before saving. " +
       "Profiles are essential for discovery — they provide the semantic context used to match users with complementary intents.\n\n" +
       "**How it works:** For generic clients, the system can enrich profile data from public web sources (LinkedIn, GitHub, Twitter) and/or explicit user input, " +
-      "then generates a structured profile with bio, skills, interests, location, and narrative context. Do not call with no arguments in consent-required onboarding flows.\n\n" +
+      "then generates a structured profile with bio, skills, interests, location, and narrative context.\n\n" +
       "**Usage patterns:**\n" +
       "- No args: attempts auto-generation from account data. If insufficient info, returns `missingFields` — ask the user for name/social URLs and retry.\n" +
       "- With social URLs (linkedinUrl, githubUrl, etc.): enriches from those specific URLs.\n" +
@@ -1247,7 +1172,7 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     description:
       "Marks the user's onboarding as complete after validating the durable approved-profile marker and a persisted active first signal created at or after that approval. " +
       "Web onboarding should pass the exact intentId returned by /intents/confirm; legacy clients may omit it and use any eligible active intent. " +
-      "This preserves privacy fields, records firstSignalIntentId/currentStep, and is idempotent.",
+      "This records firstSignalIntentId/currentStep and is idempotent.",
     querySchema: z.object({
       intentId: z.string().min(1).optional().describe("Exact first-signal ID returned by the confirmation endpoint."),
     }).strict(),
@@ -1316,5 +1241,5 @@ export function createEnrichmentTools(defineTool: DefineTool, deps: EnrichmentTo
     },
   });
 
-  return [readUserContexts, recordOnboardingPrivacyConsent, previewUserContext, confirmUserContext, createUserContext, updateUserContext, getEnrichmentRun, cancelEnrichmentRun, completeOnboarding] as const;
+  return [readUserContexts, previewUserContext, confirmUserContext, createUserContext, updateUserContext, getEnrichmentRun, cancelEnrichmentRun, completeOnboarding] as const;
 }

@@ -10,6 +10,15 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- Remove the onboarding privacy-consent layer (protocol 10.0.0, API 0.77.0).
+  The `record_onboarding_privacy_consent` MCP/persona tool, the
+  `publicProfileLookup` and `edgeosImport` consent decisions, and the
+  `OnboardingPrivacyState` / `PrivacyConsentDecision` / `PrivacyConsentSource`
+  types are gone from the API schema/types and the Hermes plugin manifest.
+  `preview_user_context` and staged profile seeds no longer require recorded
+  consent; leftover `privacy` values in stored onboarding JSON are ignored.
+  Like the network-level flow below, opt-in/opt-out moves to a separate
+  enrichment service defined per implementation/application.
 - Remove the network-level enrichment consent flow and the `profileEnrichment`
   network permission entirely (API 0.76.0). The `consent_required` policy, the
   `forceHeadlessProvisioningPermissions` consent-safe forcing on invites, CSV

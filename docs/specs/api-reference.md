@@ -484,7 +484,7 @@ When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly re
 
 ### POST /api/chat/onboarding/stream
 
-Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. With `WEB_SIGNAL_AGENT_ENABLED=true`, new sessions are server-selected and persisted as `persona="onboarding"`; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only privacy consent, approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration. With the flag off, the route preserves the legacy `orchestrator` onboarding flow. API-key, Telegram, MCP, CLI, and other non-web consumers are unchanged.
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. With `WEB_SIGNAL_AGENT_ENABLED=true`, new sessions are server-selected and persisted as `persona="onboarding"`; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration. With the flag off, the route preserves the legacy `orchestrator` onboarding flow. API-key, Telegram, MCP, CLI, and other non-web consumers are unchanged.
 
 **Auth**: SessionOnlyGuard
 
@@ -2160,7 +2160,7 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding.
+Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user approves a draft during onboarding.
 
 **Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key (issued once when master-key signup is enabled via `POST /api/networks/:id/master-key`, stored by the caller).
 
@@ -2278,7 +2278,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, any 
 
 ### POST /api/networks/:id/members/import
 
-Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding.
+Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member approves a draft during onboarding.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -3583,7 +3583,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | Tool | Domain | Description |
 |------|--------|-------------|
 | `read_user_profiles` | Profile | Read user profiles (own or by query) |
-| `record_onboarding_privacy_consent` | Profile | Record onboarding EdgeOS import and public lookup consent decisions without completing onboarding |
 | `preview_user_context` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
 | `confirm_user_context` | Profile | Save an approved profile draft or explicit correction text and stamp `profileConfirmedAt` |
 | `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |

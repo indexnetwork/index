@@ -207,7 +207,6 @@ const ORCHESTRATOR_REGISTRY_NAMES = [
   "preview_user_context",
   "confirm_user_context",
   "complete_onboarding",
-  "record_onboarding_privacy_consent",
   // intents
   "read_intents",
   "create_intent",
@@ -344,7 +343,6 @@ describe("filterNegotiatorTools", () => {
       "delete_network",
       // onboarding plumbing
       "complete_onboarding",
-      "record_onboarding_privacy_consent",
       // agent management
       "register_agent",
       "update_agent",

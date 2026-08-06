@@ -44,7 +44,6 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "list_conversations",
         "get_conversation",
         "read_user_contexts",
-        "record_onboarding_privacy_consent",
         "preview_user_context",
         "confirm_user_context",
         "create_user_context",

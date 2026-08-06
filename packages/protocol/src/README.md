@@ -92,7 +92,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 
 | File | Tools |
 |------|-------|
-| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_enrichment_run`, `cancel_enrichment_run` |
+| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premise/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |

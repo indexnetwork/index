@@ -161,9 +161,9 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
 - Identity updates merge new information with the user's existing identity (name/bio/location on `users`)
-- Onboarding-safe profile tools split consent/draft/confirmation: `record_onboarding_privacy_consent` writes `users.onboarding.privacy`, `preview_user_context` generates a non-persisted draft from allowed sources, and `confirm_user_context` saves only approved content and stamps the durable profile-phase marker.
-- Automatic public enrichment runs for network members; the former `networks.permissions.profileEnrichment` gate has been removed, and any leftover value in stored permissions JSON is ignored.
-- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-reads network policy/user onboarding, skips `enrich.user` when disallowed, and lets `ensure_profile_hyde` proceed under consent-required only when the user already has ACTIVE premises.
+- Onboarding-safe profile tools split draft/confirmation: `preview_user_context` generates a non-persisted draft from allowed sources, and `confirm_user_context` saves only approved content and stamps the durable profile-phase marker.
+- Automatic public enrichment runs for network members; the former `networks.permissions.profileEnrichment` gate and the onboarding privacy-consent layer have been removed, and any leftover values in stored JSON are ignored.
+- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-checks user/network existence, and skips jobs whose subject no longer exists.
 - When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer`. Extracted premises are persisted via the premise graph; premise changes then drive regeneration of the user's `user_contexts` representation. This ensures atomic facts are captured as premises and the synthesized representation is derived from them.
 - The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 

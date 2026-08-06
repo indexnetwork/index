@@ -42,7 +42,7 @@ const baseContext = {
   userId: "test-user",
   userName: "Test User",
   userEmail: "test@example.com",
-  user: { onboarding: { privacy: { publicProfileLookup: { granted: true } } } },
+  user: { onboarding: {} },
 } as unknown as ResolvedToolContext;
 
 function makeEnrichment(overrides: Partial<EnrichmentResult>): EnrichmentResult {
@@ -65,7 +65,7 @@ function buildDeps(enrichment: EnrichmentResult | null): ToolDeps {
         name: "Test User",
         email: "test@example.com",
         socials: [],
-        onboarding: { privacy: { publicProfileLookup: { granted: true } } },
+        onboarding: {},
       }),
       updateUser: async () => ({}),
       getUserSocials: async () => [],
