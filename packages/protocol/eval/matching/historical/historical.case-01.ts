@@ -8,15 +8,15 @@ const source = {
   location: "Northern California",
   interests: ["electronics", "build-it-yourself devices", "computers"],
   skills: ["electronics fundamentals", "kit assembly", "hands-on construction"],
-  intent: "Explore an electronics project with a local hobbyist who has deeper circuit-design experience.",
+  intent: "Explore an electronics project with another hobbyist who has deeper circuit-design experience.",
 } as const;
 
 const partner = {
-  bio: "Young Northern California electronics hobbyist with extensive practice designing computer circuits and building computer and radio projects. Had already built a computer project with a school friend.",
-  location: "Northern California",
+  bio: "Young electronics hobbyist with extensive practice designing computer circuits and building computer and radio projects. Had already built a computer project with a school friend.",
+  location: "",
   interests: ["electronics", "computer design", "amateur radio"],
   skills: ["computer-circuit design", "electronics construction", "technical experimentation"],
-  intent: "Apply prior circuit-design experience in an electronics project with another local hobbyist.",
+  intent: "Apply prior circuit-design experience in an electronics project with another hobbyist.",
 } as const;
 
 const semanticNegatives = {
@@ -43,7 +43,7 @@ const claims: HistoricalClaim[] = [
   {
     kind: "historical",
     id: "fact-jobs-northern-california",
-    text: "Jobs's childhood electronics activity took place in Northern California.",
+    text: "Jobs grew up in Silicon Valley after moving to Mountain View at age five.",
     citationIds: ["computerworld-jobs-1995"],
     preConnection: true,
   },
@@ -56,6 +56,13 @@ const claims: HistoricalClaim[] = [
   },
   {
     kind: "historical",
+    id: "fact-wozniak-design-practice",
+    text: "In high school, Wozniak developed extensive computer-design skills through repeated computer designs.",
+    citationIds: ["npr-wozniak-2006"],
+    preConnection: true,
+  },
+  {
+    kind: "historical",
     id: "fact-wozniak-prior-computer",
     text: "Wozniak had already built a computer with a school friend before that friend suggested he meet Jobs.",
     citationIds: ["npr-wozniak-transcript"],
@@ -63,9 +70,9 @@ const claims: HistoricalClaim[] = [
   },
   {
     kind: "historical",
-    id: "fact-wozniak-northern-california",
-    text: "Wozniak's early electronics collaborations were situated in Northern California.",
-    citationIds: ["npr-wozniak-transcript"],
+    id: "fact-pair-introduction",
+    text: "A mutual friend introduced 21-year-old Wozniak to 16-year-old Jobs in 1971.",
+    citationIds: ["computer-history-museum-jobs"],
     preConnection: true,
   },
   {
@@ -78,23 +85,23 @@ const claims: HistoricalClaim[] = [
   {
     kind: "derived",
     id: "model-description",
-    text: "A local electronics hobbyist seeking deeper circuit-design experience should surface the experienced circuit builder over three non-complementary electronics participants.",
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-long-practice", "fact-wozniak-prior-computer"],
-    rationale: "Summarizes the pre-connection complementary capabilities without naming the triggering project or later roles.",
+    text: "Two young electronics hobbyists brought complementary pre-project experience: one had hands-on electronics familiarity, while the other had extensive computer-circuit design practice.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-design-practice", "fact-pair-introduction"],
+    rationale: "Summarizes only the two historical participants' documented ages and complementary pre-project capabilities.",
   },
   {
     kind: "derived",
     id: "model-source-bio",
     text: source.bio,
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-jobs-early-computers", "fact-jobs-northern-california"],
-    rationale: "Conservative paraphrase of the interview's childhood electronics, kit, computer, and location recollections.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-jobs-early-computers", "fact-jobs-northern-california", "fact-pair-introduction"],
+    rationale: "Conservative paraphrase of the interview's childhood electronics, kit, computer, and location recollections plus the independently reported age at introduction.",
   },
   {
     kind: "derived",
-    id: "model-shared-location",
+    id: "model-source-location",
     text: source.location,
-    basisClaimIds: ["fact-jobs-northern-california", "fact-wozniak-northern-california"],
-    rationale: "Generalizes both participants' documented regional setting.",
+    basisClaimIds: ["fact-jobs-northern-california"],
+    rationale: "Generalizes the cited Silicon Valley and Mountain View childhood location to Northern California for the source participant only.",
   },
   {
     kind: "derived",
@@ -142,22 +149,22 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-source-intent",
     text: source.intent,
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-long-practice"],
-    rationale: "Reconstructs a generic pre-project intent from the source's practice and the partner's deeper prior circuit experience.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-design-practice"],
+    rationale: "Reconstructs a generic pre-project intent from the source's practice and the partner's documented deeper circuit-design experience.",
   },
   {
     kind: "derived",
     id: "model-partner-bio",
     text: partner.bio,
-    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-prior-computer", "fact-wozniak-northern-california"],
-    rationale: "Combines documented childhood project practice and the computer built before meeting the source participant.",
+    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-design-practice", "fact-wozniak-prior-computer", "fact-pair-introduction"],
+    rationale: "Combines documented age, high-school design practice, childhood project practice, and the computer built before meeting the source participant.",
   },
   {
     kind: "derived",
     id: "model-partner-computer-design",
     text: "computer design",
-    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-prior-computer"],
-    rationale: "Broad interest inferred from sustained computer-project construction before the connection.",
+    basisClaimIds: ["fact-wozniak-design-practice"],
+    rationale: "Broad interest inferred from documented extensive high-school computer-design practice.",
   },
   {
     kind: "derived",
@@ -170,8 +177,8 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-partner-circuit-design",
     text: "computer-circuit design",
-    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-prior-computer"],
-    rationale: "Conservative capability abstraction from designing and building computer projects before the connection.",
+    basisClaimIds: ["fact-wozniak-design-practice"],
+    rationale: "Conservative capability abstraction from documented extensive high-school computer-design practice.",
   },
   {
     kind: "derived",
@@ -191,15 +198,15 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-partner-intent",
     text: partner.intent,
-    basisClaimIds: ["fact-wozniak-long-practice", "fact-wozniak-prior-computer"],
-    rationale: "Reconstructs a generic pre-project intent from documented prior design practice.",
+    basisClaimIds: ["fact-wozniak-design-practice", "fact-pair-introduction"],
+    rationale: "Reconstructs a generic pre-project intent from documented prior design practice and acquaintance with the other hobbyist.",
   },
   {
     kind: "derived",
     id: "model-network-context",
-    text: "A Northern California community of young electronics hobbyists interested in building devices and experimenting with circuits.",
-    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-jobs-northern-california", "fact-wozniak-long-practice", "fact-wozniak-northern-california"],
-    rationale: "Broad shared context derived solely from location and pre-connection electronics practice.",
+    text: "Two electronics hobbyists introduced by a mutual friend in 1971.",
+    basisClaimIds: ["fact-jobs-childhood-electronics", "fact-wozniak-long-practice", "fact-pair-introduction"],
+    rationale: "States only the narrow documented acquaintance and each participant's electronics practice, without inferring a broader community or shared geography.",
   },
   ...[
     ["h1-c-bio", "Local electronics beginner interested in joining a project but without advanced computer-circuit design experience."],
@@ -253,7 +260,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
   rule: "historical",
   tier: 3,
   domains: ["technology"],
-  description: "A local electronics hobbyist seeking deeper circuit-design experience should surface the experienced circuit builder over three non-complementary electronics participants.",
+  description: "Two young electronics hobbyists brought complementary pre-project experience: one had hands-on electronics familiarity, while the other had extensive computer-circuit design practice.",
   input: {
     discovererId: "h1-a",
     entities: [
@@ -323,7 +330,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
       },
     ],
     networkContexts: {
-      [NETWORK_ID]: "A Northern California community of young electronics hobbyists interested in building devices and experimenting with circuits.",
+      [NETWORK_ID]: "Two electronics hobbyists introduced by a mutual friend in 1971.",
     },
   },
   expect: [
@@ -356,14 +363,14 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
         url: "https://www.npr.org/2006/09/29/6167297/a-chat-with-computing-pioneer-steve-wozniak",
         title: "A Chat with Computing Pioneer Steve Wozniak",
         publisher: "NPR",
-        excerpt: "I first found out about blue boxes in an article in Esquire magazine… Went with Steve Jobs, determined it was possible. I designed a clever little blue box… I had had a lifetime from fifth grade and sixth grade of building computer projects and building ham radios…",
+        excerpt: "I first found out about blue boxes in an article in Esquire magazine… Went with Steve Jobs, determined it was possible. I designed a clever little blue box… I had had a lifetime from fifth grade and sixth grade of building computer projects and building ham radios… I had designed -in high school designed hundreds and hundreds of computers over and over and over, so I developed these skills without ever thinking I’d do it in life as job.",
       },
       {
         id: "computerworld-jobs-1995",
         url: "https://www.computerworld.com/article/1476597/steve-jobs-interview-one-on-one-in-1995.html",
         title: "Steve Jobs interview: One-on-one in 1995",
         publisher: "Computerworld",
-        excerpt: "He showed me the rudiments of electronics and I got very interested in that. The interview also recounts childhood electronics-kit assembly and early exposure to computers.",
+        excerpt: "He showed me the rudiments of electronics and I got very interested in that. I grew up in Silicon Valley. My parents moved from San Francisco to Mountain View when I was five. My dad got transferred and that was right in the heart of Silicon Valley so there were engineers all around. The interview also recounts childhood electronics-kit assembly and early exposure to computers.",
       },
       {
         id: "npr-wozniak-transcript",
@@ -371,6 +378,13 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
         title: "Computer Pioneer Steve Wozniak Tells His Story",
         publisher: "NPR",
         excerpt: "I had built a computer … [and] the guy I was building it with said, you should meet … Steve Jobs",
+      },
+      {
+        id: "computer-history-museum-jobs",
+        url: "https://computerhistory.org/blog/steve-jobs/",
+        title: "Steve Jobs: From Garage to World’s Most Valuable Company",
+        publisher: "Computer History Museum",
+        excerpt: "Jobs and Wozniak had been friends for some time. They met in 1971 when their mutual friend, Bill Fernandez, introduced then 21-year-old Wozniak to 16-year-old Jobs.",
       },
       {
         id: "loc-apple-founding",
@@ -384,7 +398,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
     claimProvenance: {
       "/description": ["model-description"],
       "/input/entities/0/profile/bio": ["model-source-bio"],
-      "/input/entities/0/profile/location": ["model-shared-location"],
+      "/input/entities/0/profile/location": ["model-source-location"],
       "/input/entities/0/profile/interests/0": ["model-shared-electronics"],
       "/input/entities/0/profile/interests/1": ["model-source-build-devices"],
       "/input/entities/0/profile/interests/2": ["model-source-computers"],
@@ -393,7 +407,6 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
       "/input/entities/0/profile/skills/2": ["model-source-hands-on"],
       "/input/entities/0/intents/0/payload": ["model-source-intent"],
       "/input/entities/1/profile/bio": ["model-partner-bio"],
-      "/input/entities/1/profile/location": ["model-shared-location"],
       "/input/entities/1/profile/interests/0": ["model-shared-electronics"],
       "/input/entities/1/profile/interests/1": ["model-partner-computer-design"],
       "/input/entities/1/profile/interests/2": ["model-partner-radio"],

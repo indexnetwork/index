@@ -10,15 +10,15 @@ const source = {
   location: "Northern California",
   interests: ["electronics", "build-it-yourself devices", "computers"],
   skills: ["electronics fundamentals", "kit assembly", "hands-on construction"],
-  intent: "Explore an electronics project with a local hobbyist who has deeper circuit-design experience.",
+  intent: "Explore an electronics project with another hobbyist who has deeper circuit-design experience.",
 };
 
 const partner = {
-  bio: "Young Northern California electronics hobbyist with extensive practice designing computer circuits and building computer and radio projects. Had already built a computer project with a school friend.",
-  location: "Northern California",
+  bio: "Young electronics hobbyist with extensive practice designing computer circuits and building computer and radio projects. Had already built a computer project with a school friend.",
+  location: "",
   interests: ["electronics", "computer design", "amateur radio"],
   skills: ["computer-circuit design", "electronics construction", "technical experimentation"],
-  intent: "Apply prior circuit-design experience in an electronics project with another local hobbyist.",
+  intent: "Apply prior circuit-design experience in an electronics project with another hobbyist.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -72,13 +72,33 @@ describe("historical case 01", () => {
       skills: partner.skills,
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
+    expect(HISTORICAL_CASE_01.description).toBe(
+      "Two young electronics hobbyists brought complementary pre-project experience: one had hands-on electronics familiarity, while the other had extensive computer-circuit design practice.",
+    );
+    expect(HISTORICAL_CASE_01.description).not.toMatch(/three|negative|synthetic|participant/i);
+    expect(HISTORICAL_CASE_01.input.networkContexts?.["h1-electronics"]).toBe(
+      "Two electronics hobbyists introduced by a mutual friend in 1971.",
+    );
+    expect(HISTORICAL_CASE_01.input.networkContexts?.["h1-electronics"]).not.toMatch(/community|Northern California/i);
+    expect(HISTORICAL_CASE_01.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/1/profile/location");
 
     const citations = new Map(HISTORICAL_CASE_01.historicalQuality.citations.map((citation) => [citation.id, citation]));
     expect(citations.get("esquire-1971")?.url).toBe("https://classic.esquire.com/secrets-of-the-blue-box/");
     expect(citations.get("esquire-1971")?.excerpt).toContain("October 1 1971");
     expect(citations.get("npr-wozniak-2006")?.excerpt).toContain("I first found out about blue boxes in an article in Esquire magazine");
+    expect(citations.get("npr-wozniak-2006")?.excerpt).toContain(
+      "I had designed -in high school designed hundreds and hundreds of computers over and over and over, so I developed these skills without ever thinking I’d do it in life as job.",
+    );
     expect(citations.get("computerworld-jobs-1995")?.excerpt).toContain("He showed me the rudiments of electronics and I got very interested in that");
+    expect(citations.get("computerworld-jobs-1995")?.excerpt).toContain(
+      "I grew up in Silicon Valley. My parents moved from San Francisco to Mountain View when I was five. My dad got transferred and that was right in the heart of Silicon Valley so there were engineers all around.",
+    );
     expect(citations.get("npr-wozniak-transcript")?.excerpt).toContain("I had built a computer");
+    expect(citations.get("computer-history-museum-jobs")).toMatchObject({
+      url: "https://computerhistory.org/blog/steve-jobs/",
+      title: "Steve Jobs: From Garage to World’s Most Valuable Company",
+      excerpt: "Jobs and Wozniak had been friends for some time. They met in 1971 when their mutual friend, Bill Fernandez, introduced then 21-year-old Wozniak to 16-year-old Jobs.",
+    });
     expect(HISTORICAL_CASE_01.historicalQuality.outcomeCitationIds).toEqual(["loc-apple-founding"]);
 
     const claims = new Map(HISTORICAL_CASE_01.historicalQuality.claims.map((claim) => [claim.id, claim]));
@@ -95,6 +115,23 @@ describe("historical case 01", () => {
       for (const claimId of claimIds) collectCitations(claimId);
     }
     expect(modelCitationIds.has("esquire-1971")).toBeFalse();
+
+    const dependsOnClaim = (claimId: string, requiredClaimId: string): boolean => {
+      if (claimId === requiredClaimId) return true;
+      const claim = claims.get(claimId)!;
+      return claim.kind === "derived" && claim.basisClaimIds.some((basisClaimId) => dependsOnClaim(basisClaimId, requiredClaimId));
+    };
+    for (const path of [
+      "/description",
+      "/input/entities/0/intents/0/payload",
+      "/input/entities/1/profile/bio",
+      "/input/entities/1/profile/interests/1",
+      "/input/entities/1/profile/skills/0",
+      "/input/entities/1/intents/0/payload",
+    ]) {
+      const claimIds = HISTORICAL_CASE_01.historicalQuality.claimProvenance[path]!;
+      expect(claimIds.some((claimId) => dependsOnClaim(claimId, "fact-wozniak-design-practice")), path).toBeTrue();
+    }
   });
 
   it("remains pending independent review while passing authoring validation", () => {
