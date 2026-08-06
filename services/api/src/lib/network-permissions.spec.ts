@@ -26,4 +26,27 @@ describe('toPublicNetworkPermissions', () => {
       allowGuestVibeCheck: false,
     });
   });
+
+  it('defaults malformed nested permission values', () => {
+    expect(toPublicNetworkPermissions({
+      invitationLink: { code: 42 },
+      contextInjection: { discovery: 'yes' },
+    })).toEqual({
+      joinPolicy: 'invite_only',
+      invitationLink: null,
+      allowGuestVibeCheck: false,
+    });
+  });
+
+  it('reconstructs valid nested permissions without unknown nested keys', () => {
+    expect(toPublicNetworkPermissions({
+      invitationLink: { code: 'invite', internal: 'stored-only' },
+      contextInjection: { discovery: false, internal: 'stored-only' },
+    })).toEqual({
+      joinPolicy: 'invite_only',
+      invitationLink: { code: 'invite' },
+      allowGuestVibeCheck: false,
+      contextInjection: { discovery: false },
+    });
+  });
 });
