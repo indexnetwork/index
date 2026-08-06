@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Preserve the five existing case IDs and participant IDs; they remain control-plane metadata and are never included in an LLM prompt.
+- Preserve the five existing case IDs and participant IDs. Descriptive case IDs remain control-plane metadata and never enter an LLM prompt; anonymous participant IDs remain the evaluator’s stable entity keys.
 - Keep exactly one historical source participant, one documented historical partner, and three synthetic semantic hard negatives per case.
 - Every model-facing statement about a historical participant must resolve to cited pre-connection evidence.
 - Synthetic candidate text must be explicitly authored and tied to its violated requirement; never attach fake historical citations to synthetic people.
@@ -46,6 +46,8 @@
 - `packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.ts` — adapt audited frozen intents directly; delete speculative reconstruction table.
 - `packages/protocol/eval/discovery-env-matrix/historical-matrix.types.ts` — replace reconstruction audit fields with frozen intent text.
 - `packages/protocol/eval/discovery-env-matrix/tests/historical-matrix.cases.spec.ts` — projection/leakage/freeze integration.
+- `services/api/src/cli/discovery-env-matrix.shared.ts` — bump fixture corpus metadata from `historical-matrix-v1` to `historical-matrix-v2` after the corpus changes.
+- `services/api/src/cli/tests/discovery-env-matrix.spec.ts` and `discovery-env-matrix-base.spec.ts` — provider-free fixture-version and projection contracts.
 - `packages/protocol/eval/README.md` — mark IND-637 corpus migration complete while keeping IND-638 runtime integration pending.
 - `packages/protocol/package.json` and `bun.lock` — patch bump `9.2.1` to `9.2.2`.
 
@@ -124,16 +126,29 @@ Add tests that reject:
 
 ```ts
 // authored text on a historical participant
-sourceClaim.kind = "authored";
+input.historicalQuality.claims[sourceIndex] = {
+  kind: "authored",
+  id: sourceClaim.id,
+  text: sourceClaim.text,
+  participantId: "p-source",
+  violatedRequirement: "Historical source text cannot be authored fixture text.",
+};
 
 // historical citations on a synthetic participant
-negativeClaim.kind = "historical";
+input.historicalQuality.claims[negativeIndex] = {
+  kind: "historical",
+  id: negativeClaim.id,
+  text: negativeClaim.text,
+  citationIds: ["citation-pre"],
+  preConnection: true,
+};
 
 // derived claim with an authored or cyclic basis
 sourceDerived.basisClaimIds = [negativeClaim.id];
 sourceDerived.basisClaimIds = [sourceDerived.id];
 
-// participantKinds missing an entity or naming an unknown entity
+// duplicate, missing, or unknown participant classification
+input.input.entities[1]!.userId = input.input.entities[0]!.userId;
 delete input.historicalQuality.participantKinds["p-target"];
 input.historicalQuality.participantKinds.unknown = "synthetic";
 
@@ -189,7 +204,7 @@ export function historicalMatchingCaseProjection(input: HistoricalQualityCase): 
 }
 ```
 
-Use DFS over `basisClaimIds` to reject cycles and require every derived path to terminate only in `historical` claims. Resolve entity JSON-pointer paths back to participant IDs: historical participants may use only historical/derived claims; synthetic participants may use only authored claims whose `participantId` and `violatedRequirement` exactly match `semanticNegatives`.
+Reject duplicate entity IDs before constructing participant sets. Require `participantKinds` to cover the entity IDs exactly, the discoverer and sole positive to be historical, and exactly three rejected synthetic participants to be represented by `semanticNegatives`. Use DFS over `basisClaimIds` to reject cycles and require every derived path to terminate only in `historical` claims. Resolve entity JSON-pointer paths back to participant IDs: historical participants may use only historical/derived claims; synthetic participants may use only authored claims whose `participantId` and `violatedRequirement` exactly match `semanticNegatives`.
 
 Add a recursive `deepFreeze` private helper and export:
 
@@ -219,6 +234,13 @@ git add packages/protocol/eval/discovery-env-matrix/historical-quality.corpus.ts
 git commit -m "test(eval): distinguish historical and authored provenance"
 ```
 
+### Success Criteria
+
+- Automated: duplicate case/participant IDs, non-exclusive cutoffs, unproved ordering, reused-only outcome citations, missing field provenance, invalid participant cardinality, cross-kind provenance, derived cycles, synthetic report names, and unapproved strict review all fail with deterministic case/path context.
+- Automated: mutation coverage removes provenance from `/description`, every historical participant field, source intent, every frozen premise, user context, and network context in turn; each removal fails at that exact path.
+- Automated: the valid fixture has exactly one historical source, one historical positive, three synthetic rejected participants, and an independent outcome citation.
+- Automated: `historicalModelSafeProjection` contains only generalized description, input, and trigger inputs; audit metadata and descriptive case ID are absent.
+
 ---
 
 ### Task 2: Re-source case 01 without post-collaboration operator leakage
@@ -247,7 +269,7 @@ const source = {
   location: "Northern California",
   interests: ["electronics", "build-it-yourself devices", "computers"],
   skills: ["electronics fundamentals", "kit assembly", "hands-on construction"],
-  intent: "Work with a more experienced local electronics hobbyist to test whether a published technical claim about a communications system can be reproduced electronically.",
+  intent: "Explore an electronics project with a local hobbyist who has deeper circuit-design experience.",
 };
 
 const partner = {
@@ -255,11 +277,11 @@ const partner = {
   location: "Northern California",
   interests: ["electronics", "computer design", "amateur radio"],
   skills: ["computer-circuit design", "electronics construction", "technical experimentation"],
-  intent: "Apply prior circuit-design experience with another local hobbyist to test a published communications-system claim.",
+  intent: "Apply prior circuit-design experience in an electronics project with another local hobbyist.",
 };
 ```
 
-Use cutoff `{ date: "1971-10", precision: "month", exclusive: true }`. Rewrite the three synthetic negatives around the generic electronics investigation: same-side beginner without advanced circuit skill; component seller who does not design; radio hobbyist unwilling to reproduce the claim. Do not include personal computers, Homebrew, selling, persuasion, parts sourcing, Apple, Blue Boxes, telephone tones, or later business roles.
+Use conservative cutoff `{ date: "1971", precision: "year", exclusive: true }`; ordering citations establish that the retained childhood/high-school facts predate the first substantive joint project later in 1971. The October magazine article remains cutoff chronology only and is not a basis for model-facing trigger text. Rewrite the three synthetic negatives around a generic electronics project: same-side beginner without advanced circuit skill; component seller who does not design; radio hobbyist unwilling to collaborate on circuit construction. Do not include personal computers, Homebrew, selling, persuasion, parts sourcing, Apple, Blue Boxes, telephone tones, or later business roles.
 
 - [ ] **Step 1: Write the failing case spec**
 
@@ -295,6 +317,13 @@ git add packages/protocol/eval/matching/historical/historical.case-01.ts \
   packages/protocol/eval/matching/tests/historical.case-01.spec.ts
 git commit -m "test(eval): re-source historical electronics case"
 ```
+
+### Success Criteria
+
+- Automated: cutoff is exactly year-precision `1971`, exclusive, with ordering evidence; all retained historical facts predate the joint project.
+- Automated: the October article is cutoff evidence only and model trigger/profiles contain none of its unique project terms.
+- Automated: exactly five stable participants exist; `h1-a` and `h1-b` are historical, while `h1-c/d/e` are authored semantic negatives with distinct violated requirements.
+- Automated: model-safe text excludes every forbidden post-collaboration/operator term listed above and is deeply frozen.
 
 ---
 
@@ -356,6 +385,13 @@ git add packages/protocol/eval/matching/historical/historical.case-02.ts \
 git commit -m "test(eval): re-source historical structure case"
 ```
 
+### Success Criteria
+
+- Automated: cutoff is exactly month-precision `1951-10`, exclusive, and every retained Watson/Crick fact resolves to the listed pre-connection sources.
+- Automated: model-safe text contains no possession/access claim for diffraction data, no outcome certainty, and no post-meeting work.
+- Automated: exactly one historical source, one historical positive, and three distinct synthetic negative requirements validate under pending-review mode.
+- Automated: all source/partner trigger, premise, context, and participant text is deeply frozen.
+
 ---
 
 ### Task 4: Re-source case 03 as evidenced guitarist recruitment
@@ -416,6 +452,13 @@ git add packages/protocol/eval/matching/historical/historical.case-03.ts \
 git commit -m "test(eval): re-source historical music case"
 ```
 
+### Success Criteria
+
+- Automated: cutoff is exactly `1957-07-06`, exclusive, and the recruitment trigger maps to the National Trust evidence.
+- Automated: every listed unique group/song/place term plus `bass`, `half-finished`, `melodically gifted`, and `co-writer` is absent from serialized model input.
+- Automated: historical fields resolve only to the four pre-connection sources; Guinness evidence is outcome-only.
+- Automated: three synthetic negatives each violate a different guitarist-recruitment requirement and all frozen text is immutable.
+
 ---
 
 ### Task 5: Replace the composite Page/Brin source in case 04
@@ -425,7 +468,7 @@ git commit -m "test(eval): re-source historical music case"
 - Create: `packages/protocol/eval/matching/tests/historical.case-04.spec.ts`
 
 **Interfaces:**
-- Produces: `HISTORICAL_CASE_04`, ID `historical/first-check-investor`, report name `h4-a: Larry Page` only.
+- Produces: `HISTORICAL_CASE_04`, ID `historical/first-check-investor`, with Larry Page as the sole source identity while both historical participants retain report names.
 
 **Evidence to encode:**
 
@@ -476,6 +519,13 @@ git add packages/protocol/eval/matching/historical/historical.case-04.ts \
   packages/protocol/eval/matching/tests/historical.case-04.spec.ts
 git commit -m "test(eval): use one founder in historical funding case"
 ```
+
+### Success Criteria
+
+- Automated: cutoff is exactly month-precision `1998-08`, exclusive, and post-demonstration decisions/check/incorporation are absent from model input.
+- Automated: `h4-a` is Larry Page alone; `h4-b` is Andy Bechtolsheim; the collaborator appears only as unnamed citation-derived context.
+- Automated: composite identity, habitual first-check, coaching, exact company/product/university/check terms, and unsupported absolutes are absent.
+- Automated: three synthetic negatives carry distinct stage/technical/capital violations and every frozen field is immutable.
 
 ---
 
@@ -537,6 +587,13 @@ git add packages/protocol/eval/matching/historical/historical.case-05.ts \
 git commit -m "test(eval): re-source historical RNA case"
 ```
 
+### Success Criteria
+
+- Automated: cutoff is exactly year-precision `1997`, exclusive, and ordering evidence proves every retained fact predates first joint work.
+- Automated: model-safe text excludes the meeting setting, shared future institution, template exchange, joint findings, modified-nucleoside terms, companies, pandemic outcomes, and awards.
+- Automated: PNAS evidence is outcome-only; every source/partner field resolves to Nobel/Cell pre-connection evidence.
+- Automated: three synthetic negatives carry distinct methodological/domain-role violations and all frozen fields are immutable.
+
 ---
 
 ### Task 7: Obtain and apply independent case approval
@@ -561,6 +618,7 @@ CUTOFF: PASS|FAIL — exclusive boundary and ordering findings
 PROVENANCE: PASS|FAIL — every historical/derived field supported
 SYNTHETIC NEGATIVES: PASS|FAIL — authored-only and requirement-specific
 LEAKAGE: low|medium|high — combination-based recognizability analysis
+SERIALIZED PROJECTIONS: PASS|FAIL — inspect historicalModelSafeProjection, matrixModelInput, and matching evaluator input
 DECISION: approved|revise
 RATIONALE: evidence-backed explanation
 REQUIRED CHANGES: concrete field paths and replacements, or "none"
@@ -572,15 +630,25 @@ Reviewers are read-only, fresh-context, and independent of the authoring workers
 
 Do not weaken the cutoff or provenance rules to satisfy a review. Remove/generalize unsupported text, update exact provenance text, and keep the review decision pending until corrected.
 
-- [ ] **Step 3: Re-run the same reviewer role on every changed case**
+- [ ] **Step 3: Commit the corrected pending-review checkpoint**
 
-All five final decisions must be `approved`. Preserve reviewer run IDs, review date, recognizability rating, and rationale.
+```bash
+git add packages/protocol/eval/matching/historical \
+  packages/protocol/eval/matching/tests/historical.case-*.spec.ts
+git commit -m "test(eval): address historical corpus review"
+```
 
-- [ ] **Step 4: Write the review receipt**
+Record this exact commit SHA as the tree submitted for re-review.
+
+- [ ] **Step 4: Re-run each original reviewer on every changed case**
+
+Resume the original reviewer session or use the exact same durable reviewer identifier; do not substitute a new reviewer after corrections. All five final decisions must be `approved`. Preserve reviewer run IDs, reviewed checkpoint SHA, review date, recognizability rating, and rationale.
+
+- [ ] **Step 5: Write the review receipt**
 
 `docs/research/2026-08-06-historical-five-case-review.md` must include the checklist result for every case, final citation URLs, exact reviewed Git commit, reviewer run IDs, corrections applied, and a statement that no provider/model/database command ran. Do not copy model secrets or private reasoning.
 
-- [ ] **Step 5: Update case metadata, tests, and strict validation**
+- [ ] **Step 6: Update case metadata, tests, and strict validation**
 
 Set each case’s `anonymizationReview` to its real reviewer receipt. Do not use a generic placeholder such as `independent-reviewer`. In each case spec, replace the pending-review strict-rejection assertion with:
 
@@ -599,7 +667,7 @@ for (const historicalCase of [
 
 Retain a cloned mutation test proving `decision: "pending"` still fails strict validation.
 
-- [ ] **Step 6: Run all case specs**
+- [ ] **Step 7: Run all case specs**
 
 ```bash
 cd packages/protocol
@@ -612,12 +680,21 @@ bun test eval/matching/tests/historical.case-01.spec.ts \
 
 Expected: PASS, including strict default validation.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit final approval metadata and receipt**
 
 ```bash
-git add packages/protocol/eval/matching/historical docs/research/2026-08-06-historical-five-case-review.md
+git add packages/protocol/eval/matching/historical \
+  packages/protocol/eval/matching/tests/historical.case-*.spec.ts \
+  docs/research/2026-08-06-historical-five-case-review.md
 git commit -m "docs(eval): record independent historical corpus review"
 ```
+
+### Success Criteria
+
+- Manual/committed: the receipt has one PASS/FAIL row for every citation listed in Tasks 2–6, verifying URL, title, publisher, exact excerpt, fact ordering, mapped field paths, and outcome-only use where required.
+- Manual/committed: each case records cutoff, provenance, synthetic-negative, serialized-projection, and combination-leakage verdicts plus the original reviewer identifier and exact reviewed checkpoint SHA.
+- Manual/committed: reviewers are read-only and the receipt identifies the sole patch-applying writer.
+- Automated: all five cases pass strict validation only after their independent decisions become approved; cloned pending/revise mutations still fail.
 
 ---
 
@@ -629,6 +706,9 @@ git commit -m "docs(eval): record independent historical corpus review"
 - Modify: `packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.ts`
 - Modify: `packages/protocol/eval/discovery-env-matrix/historical-matrix.types.ts`
 - Modify: `packages/protocol/eval/discovery-env-matrix/tests/historical-matrix.cases.spec.ts`
+- Modify: `services/api/src/cli/discovery-env-matrix.shared.ts`
+- Modify: `services/api/src/cli/tests/discovery-env-matrix.spec.ts`
+- Modify: `services/api/src/cli/tests/discovery-env-matrix-base.spec.ts`
 
 **Interfaces:**
 - Consumes: the five approved `HISTORICAL_CASE_01` through `HISTORICAL_CASE_05` values.
@@ -695,29 +775,47 @@ Delete the old five inline objects.
 
 Remove `RECONSTRUCTED_INTENTS` and `historically_grounded_reconstruction`. Every participant must carry a frozen intent directly in the canonical case. Simplify matrix intent to `{ text: string }`, adapt from `HISTORICAL_QUALITY_CASES`, and keep all audit fields outside `matrixModelInput`. Remove `id` from `HistoricalMatrixModelInput` and from `matrixModelInput`; stable descriptive case IDs remain control-plane metadata only. Keep the provenance-backed generalized `description` because the judge consumes it.
 
-- [ ] **Step 5: Run aggregate, matrix, policy, and type tests**
+- [ ] **Step 5: Version the changed API fixture contract**
+
+Change `BASE_FIXTURE_CORPUS_VERSION` from `historical-matrix-v1` to `historical-matrix-v2`. Update provider-free API tests to expect v2 and to prove old protected-base metadata is rejected before any reset or spend. Document that authorized reseeding is deliberately deferred to IND-638; this issue does not touch Neon.
+
+- [ ] **Step 6: Run aggregate, matrix, policy, API fixture, and type tests**
 
 ```bash
+cd packages/protocol
 bun test eval/matching/tests/matching.historical.spec.ts \
   eval/discovery-env-matrix/tests/historical-quality.corpus.spec.ts \
   eval/discovery-env-matrix/tests/historical-matrix.cases.spec.ts \
   eval/discovery-env-matrix/tests/historical-matrix.policy.spec.ts
 bun x tsc --noEmit -p eval/matching/tsconfig.json
 bun x tsc --noEmit -p eval/discovery-env-matrix/tsconfig.json
+cd ../../services/api
+bun test src/cli/tests/discovery-env-matrix.spec.ts \
+  src/cli/tests/discovery-env-matrix-base.spec.ts
 ```
 
-Expected: PASS.
+Expected: PASS without database credentials or branch mutation.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/protocol/eval/matching/matching.historical.ts \
   packages/protocol/eval/matching/tests/matching.historical.spec.ts \
   packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.ts \
   packages/protocol/eval/discovery-env-matrix/historical-matrix.types.ts \
-  packages/protocol/eval/discovery-env-matrix/tests/historical-matrix.cases.spec.ts
+  packages/protocol/eval/discovery-env-matrix/tests/historical-matrix.cases.spec.ts \
+  services/api/src/cli/discovery-env-matrix.shared.ts \
+  services/api/src/cli/tests/discovery-env-matrix.spec.ts \
+  services/api/src/cli/tests/discovery-env-matrix-base.spec.ts
 git commit -m "test(eval): adopt audited historical corpus"
 ```
+
+### Success Criteria
+
+- Automated: the aggregate contains exactly the five stable case IDs and each case has exactly five stable anonymous participant IDs; descriptive case IDs are absent from the exact matching/matrix LLM payload strings.
+- Automated: serialized `historicalModelSafeProjection`, `matrixModelInput`, and matching evaluator input contain none of the report identities, URLs, excerpts, audit keys, reviewed unique proper nouns, negative labels/reasons, or outcome terms.
+- Automated/static: `RECONSTRUCTED_INTENTS` and `historically_grounded_reconstruction` are absent; each matrix intent equals its canonical frozen participant intent.
+- Automated: fixture metadata is `historical-matrix-v2`; v1 protected-base metadata is refused by provider-free API tests before any reset/spend path.
 
 ---
 
@@ -757,9 +855,12 @@ bun test eval/matching/tests/historical.case-01.spec.ts \
 bun x tsc --noEmit -p eval/matching/tsconfig.json
 bun x tsc --noEmit -p eval/discovery-env-matrix/tsconfig.json
 bun run eval:verify
+cd ../../services/api
+bun test src/cli/tests/discovery-env-matrix.spec.ts \
+  src/cli/tests/discovery-env-matrix-base.spec.ts
 ```
 
-Expected: all focused specs pass; both suite typechecks pass; `eval:verify` reports all 13 suites type-checked and tested without provider credentials.
+Expected: all focused specs and provider-free API fixture specs pass; both suite typechecks pass; `eval:verify` reports all 13 suites type-checked and tested without provider credentials.
 
 - [ ] **Step 4: Run package/repository checks**
 
@@ -768,10 +869,10 @@ cd ../..
 bun run check:subtree-parity
 git diff --check
 git status --short
-git diff --name-only origin/dev...HEAD
+git diff --name-only origin/dev
 ```
 
-Confirm no baseline, run artifact, API runtime, database, environment, or eval-ops file changed.
+Confirm no baseline, run artifact, production API runtime, database, environment, or eval-ops file changed. The only API files allowed are the fixture-version constant and its provider-free specs.
 
 - [ ] **Step 5: Remove temporary superpowers artifacts**
 
@@ -791,11 +892,21 @@ git add packages/protocol/eval/README.md packages/protocol/package.json bun.lock
   docs/research/2026-08-06-historical-five-case-review.md
 git add -u docs/superpowers
 git commit -m "chore(protocol): prepare historical corpus release"
+git diff --name-only origin/dev...HEAD
+git status --short --branch
 ```
 
 - [ ] **Step 7: Attach exact evidence to IND-637**
 
 Move IND-637 to In Review and comment with changed files, focused test counts, both typechecks, `eval:verify`, independent reviewer run IDs, statement that no live provider/database command ran, and residual handoff that shared-pool/runtime work remains IND-638.
+
+### Success Criteria
+
+- Automated: `packages/protocol/package.json` is `9.2.2` and `bun.lock` changes only for the corresponding workspace version.
+- Automated: focused protocol/API tests, both suite typechecks, all 13 provider-free eval suites, subtree parity, and `git diff --check` pass.
+- Automated/path audit: the final `origin/dev...HEAD` inventory contains no baseline, run artifact, environment, database, production runtime, or eval-ops changes; only the approved API fixture-version files are present.
+- Manual/recorded: the exact command transcript attests that no model, embedding, Redis, Neon, database, baseline-update, or run-artifact command ran.
+- Git: temporary superpowers spec/plan files are deleted, the worktree is clean, and the branch contains the durable research review record.
 
 ---
 

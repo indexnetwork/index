@@ -29,9 +29,11 @@ This is a provider-free corpus-hardening change. It does not run a model, databa
 1. `HISTORICAL_QUALITY_CASES` contains the complete five-case audit records and is the authoritative corpus.
 2. `HISTORICAL_CASES` is derived from those records for the existing matching harness. It contains only the matching contract and report fields the harness already understands; no second copy of the case text exists.
 
-The discovery-matrix adapter consumes the authoritative audited cases and derives its fixture-facing shape. Existing case IDs, positive labels, negative labels, and participant IDs remain stable so later fixture identity does not depend on text equality.
+The discovery-matrix adapter consumes the authoritative audited cases and derives its fixture-facing shape. Existing case IDs, positive labels, negative labels, and participant IDs remain stable so later fixture identity does not depend on text equality. Descriptive case IDs remain control-plane metadata and are removed from model payloads; anonymous participant IDs remain stable evaluator entity keys.
 
-No audit object is passed by object spread to a model boundary. Projection functions construct model-safe objects explicitly. Tests inspect the exact projection and fail if citations, excerpts, real identities, reviewer information, or audit notes appear.
+Changing the canonical corpus changes the protected fixture fingerprint. The API eval fixture marker advances from `historical-matrix-v1` to `historical-matrix-v2`, and provider-free tests prove v1 metadata is refused. This issue does not reseed Neon; the authorized shared-pool base refresh remains part of IND-638.
+
+No audit object is passed by object spread to a model boundary. Projection functions construct model-safe objects explicitly. Tests inspect the exact matching and matrix payloads and fail if citations, excerpts, real identities, reviewer information, semantic labels/reasons, descriptive case IDs, or audit notes appear.
 
 ## Participant and Provenance Model
 
@@ -181,6 +183,9 @@ bun test eval/discovery-env-matrix/tests/historical-quality.corpus.spec.ts \
 bun x tsc --noEmit -p eval/discovery-env-matrix/tsconfig.json
 bun x tsc --noEmit -p eval/matching/tsconfig.json
 bun run eval:verify
+cd ../../services/api
+bun test src/cli/tests/discovery-env-matrix.spec.ts \
+  src/cli/tests/discovery-env-matrix-base.spec.ts
 ```
 
 Also run applicable lint/static inventory checks, `git diff --check`, and repository version/lockfile checks required by the Development Reference.
@@ -192,12 +197,13 @@ No live model, embedding, database, Redis, or Neon command is part of this issue
 - `packages/protocol/eval/matching/matching.historical.ts`
 - `packages/protocol/eval/discovery-env-matrix/historical-quality.corpus.ts`
 - `packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.ts`
+- `services/api/src/cli/discovery-env-matrix.shared.ts` and its provider-free fixture specs
 - focused specs under both eval suites
 - a committed case-by-case provenance/anonymization review record
 - `packages/protocol/package.json` and root `bun.lock` for the required package version bump
 - focused eval documentation if the canonical-corpus boundary changes materially
 
-No API runtime, database schema, eval-ops UI, live runner, baseline, or production package source changes are planned.
+No production API runtime, database schema, eval-ops UI, live runner, baseline, or production package source changes are planned. The API change is limited to the eval fixture corpus-version marker and provider-free tests; no branch is reset or reseeded.
 
 ## Preliminary Source Set
 
