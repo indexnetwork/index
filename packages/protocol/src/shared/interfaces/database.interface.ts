@@ -7,19 +7,6 @@ import type { NetworkAssignmentMetadata } from '../schemas/network-assignment.sc
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
 
-export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
-
-export interface PrivacyConsentDecision {
-  granted: boolean;
-  decidedAt: string;
-  source: PrivacyConsentSource;
-}
-
-export interface OnboardingPrivacyState {
-  edgeosImport?: PrivacyConsentDecision;
-  publicProfileLookup?: PrivacyConsentDecision;
-}
-
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
   networkId: string;
@@ -57,7 +44,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  privacy?: OnboardingPrivacyState;
   profileSeeds?: OnboardingProfileSeed[];
 }
 

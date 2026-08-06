@@ -9,7 +9,6 @@ import { SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 const EXPECTED_TOOLS = [
-  "record_onboarding_privacy_consent",
   "read_user_contexts",
   "preview_user_context",
   "confirm_user_context",
@@ -95,16 +94,9 @@ describe("ONBOARDING_PERSONA", () => {
     expect(allowed.has("future_shared_tool")).toBe(false);
   });
 
-  it("narrows consent provenance and requires an exact completion intent ID", async () => {
+  it("requires an exact completion intent ID", async () => {
     const calls: Array<{ name: string; query: unknown }> = [];
     const tools = narrowOnboardingTools([
-      {
-        name: "record_onboarding_privacy_consent",
-        invoke: async (query: unknown) => {
-          calls.push({ name: "consent", query });
-          return "ok";
-        },
-      },
       {
         name: "complete_onboarding",
         invoke: async (query: unknown) => {
@@ -113,19 +105,12 @@ describe("ONBOARDING_PERSONA", () => {
         },
       },
     ] as unknown as ChatTools);
-    const consent = tools.find((candidate) => candidate.name === "record_onboarding_privacy_consent")!;
     const complete = tools.find((candidate) => candidate.name === "complete_onboarding")!;
 
-    await expect(consent.invoke({ edgeosImportGranted: true })).rejects.toThrow();
-    await consent.invoke({ publicProfileLookupGranted: false });
     await expect(complete.invoke({})).rejects.toThrow();
     await complete.invoke({ intentId: "44444444-4444-4444-8444-444444444444" });
 
     expect(calls).toEqual([
-      {
-        name: "consent",
-        query: { publicProfileLookupGranted: false, source: "web_onboarding" },
-      },
       {
         name: "complete",
         query: { intentId: "44444444-4444-4444-8444-444444444444" },
@@ -135,33 +120,15 @@ describe("ONBOARDING_PERSONA", () => {
 });
 
 describe("buildOnboardingSystemContent", () => {
-  it("requires durable explicit lookup consent before profile preview", () => {
+  it("runs the approved profile flow during the profile phase", () => {
     const prompt = buildOnboardingSystemContent(makeContext(), {
       currentMessage: "onboarding-profile-kickoff",
       recentTools: [],
       ctx: makeContext(),
     });
-    expect(prompt).toContain("No public-profile lookup decision is recorded yet");
-    expect(prompt).toContain("Stop after asking");
-    expect(prompt).toContain("Never perform or request public lookup before that write succeeds");
+    expect(prompt).toContain("PROFILE PHASE (ACTIVE)");
     expect(prompt).toContain("explicitly ask the user to approve it or provide corrections");
     expect(prompt).toContain("Do not use ask_user_question during this profile phase");
-  });
-
-  it("honors a durable refusal and never requires public lookup", () => {
-    const ctx = makeContext({
-      privacy: {
-        publicProfileLookup: {
-          granted: false,
-          decidedAt: "2026-07-01T00:00:00.000Z",
-          source: "web_onboarding",
-        },
-      },
-    });
-    const prompt = buildOnboardingSystemContent(ctx);
-    expect(prompt).toContain("durably recorded as declined");
-    expect(prompt).toContain("allowPublicLookup=false");
-    expect(prompt).toContain("only information the user explicitly provides");
   });
 
   it("reuses the shipped live guided intake only after durable profile approval", () => {

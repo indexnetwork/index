@@ -29,8 +29,6 @@ export interface PreviewUserEnrichmentRunInput {
   name?: string;
   location?: string;
   bioOrDescription?: string;
-  edgeosProfileText?: string;
-  allowPublicLookup?: boolean;
   linkedinUrl?: string;
   githubUrl?: string;
   twitterUrl?: string;

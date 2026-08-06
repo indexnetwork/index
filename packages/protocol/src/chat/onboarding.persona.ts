@@ -22,7 +22,6 @@ export const ONBOARDING_PERSONA_ID = "onboarding";
  * unavailable until explicitly reviewed here.
  */
 export const ONBOARDING_TOOL_NAMES = [
-  "record_onboarding_privacy_consent",
   "read_user_contexts",
   "preview_user_context",
   "confirm_user_context",
@@ -40,26 +39,11 @@ export function filterOnboardingTools<T extends { name: string }>(tools: T[]): T
 
 /**
  * Narrows shared onboarding tools whose generic schemas exceed the web flow.
- * Consent is public-lookup-only with server-fixed provenance, and chat-side
- * completion requires an exact intent ID (the direct REST tool remains the
- * browser's normal completion path).
+ * Chat-side completion requires an exact intent ID (the direct REST tool
+ * remains the browser's normal completion path).
  */
 export function narrowOnboardingTools(allowed: ChatTools): ChatTools {
   return allowed.map((sharedTool) => {
-    if (sharedTool.name === "record_onboarding_privacy_consent") {
-      return tool(
-        async (query: { publicProfileLookupGranted: boolean }) => sharedTool.invoke({
-          publicProfileLookupGranted: query.publicProfileLookupGranted,
-          source: "web_onboarding",
-        }) as Promise<string>,
-        {
-          name: "record_onboarding_privacy_consent",
-          description: "Record the authenticated user's explicit public-profile lookup choice for web onboarding. Ask first; this does not perform lookup.",
-          schema: z.object({ publicProfileLookupGranted: z.boolean() }).strict(),
-        },
-      );
-    }
-
     if (sharedTool.name === "complete_onboarding") {
       return tool(
         async (query: { intentId: string }) => sharedTool.invoke({ intentId: query.intentId }) as Promise<string>,

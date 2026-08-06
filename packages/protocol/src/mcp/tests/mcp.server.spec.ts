@@ -299,7 +299,6 @@ describe('getMcpToolMetadataCacheKey', () => {
 describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
-      "record_onboarding_privacy_consent",
       "preview_user_context",
       "get_enrichment_run",
       "cancel_enrichment_run",
@@ -355,7 +354,6 @@ describe("buildMcpOnboardingMessage", () => {
   test("uses name-confirmation step when user has a name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
     expect(msg).toContain("You're Alice, right?");
-    expect(msg).toContain("record_onboarding_privacy_consent");
     expect(msg).toContain("preview_user_context");
     expect(msg).toContain("get_enrichment_run");
   });

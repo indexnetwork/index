@@ -8,7 +8,7 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';
 import { validateKey } from '../lib/keys';
 import * as schema from '../schemas/database.schema';
-import { ContextInjectionSchema, ProfileEnrichmentPolicySchema, validateNetworkMetadata } from '../schemas/network.validation';
+import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
 
@@ -37,16 +37,12 @@ export class NetworkService {
   /**
    * Create a new index with the requesting user as owner.
    */
-  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown> }) {
+  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown> }) {
     const validatedMetadata = validateNetworkMetadata(data.metadata ?? {});
-    const validatedProfileEnrichment = data.profileEnrichment !== undefined
-      ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
-      : undefined;
     logger.verbose('Creating index', { userId, title: data.title });
     const index = await this.adapter.createNetwork({
       ...data,
       metadata: validatedMetadata,
-      profileEnrichment: validatedProfileEnrichment,
     });
     // Add the creating user as the owner
     await this.adapter.addMemberToNetwork(index.id, userId, 'owner');
@@ -60,11 +56,10 @@ export class NetworkService {
 
   /**
    * Enable master-key signup on any network. Owner-only. Generates a master
-   * key, stores only its hash, and forces consent-safe permissions
-   * (joinPolicy: 'invite_only', profileEnrichment: 'consent_required',
-   * allowGuestVibeCheck: false) because key/import-provisioned users never
-   * pass a consenting UI. The forcing is not a lock — owners can change the
-   * permissions afterwards. The plaintext is returned exactly once.
+   * key, stores only its hash, and forces joinPolicy: 'invite_only' so
+   * key-provisioned networks are not openly joinable. The forcing is not a
+   * lock — owners can change the permissions afterwards. The plaintext is
+   * returned exactly once.
    */
   async enableMasterKey(networkId: string, userId: string): Promise<{ masterKey: string }> {
     const isOwner = await this.adapter.isIndexOwner(networkId, userId);
@@ -81,8 +76,6 @@ export class NetworkService {
     const permissions: schema.NetworkPermissionsState = {
       ...(existing.permissions as schema.NetworkPermissionsState),
       joinPolicy: 'invite_only',
-      allowGuestVibeCheck: false,
-      profileEnrichment: 'consent_required',
     };
     await db
       .update(schema.networks)
@@ -116,7 +109,7 @@ export class NetworkService {
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal network.
    */
-  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }) {
     logger.verbose('Updating index', { networkId, userId });
     if (await this.adapter.isPersonalNetwork(networkId)) {
       // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),
@@ -138,28 +131,21 @@ export class NetworkService {
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
       : undefined;
-    const validatedProfileEnrichment = data.profileEnrichment !== undefined
-      ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
-      : undefined;
-    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection, profileEnrichment: validatedProfileEnrichment });
+    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection });
   }
 
   /**
    * Update index permissions. Owner-only.
    */
-  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean }; profileEnrichment?: schema.ProfileEnrichmentPolicy }) {
+  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean } }) {
     await this.assertNotPersonal(networkId);
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
-      : undefined;
-    const validatedProfileEnrichment = data.profileEnrichment !== undefined
-      ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
       : undefined;
     logger.verbose('Updating permissions', { networkId, userId });
     return this.adapter.updateIndexSettings(networkId, userId, {
       ...data,
       contextInjection: validatedContextInjection,
-      profileEnrichment: validatedProfileEnrichment,
     });
   }
 

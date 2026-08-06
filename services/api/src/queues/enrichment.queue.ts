@@ -9,8 +9,6 @@ import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { questionerEnqueueIfEnabled } from './questioner.queue';
-import { canRunPublicEnrichment, getEnrichmentPolicy } from '../lib/privacy/enrichment-policy';
-import type { ProfileEnrichmentPolicy } from '../schemas/database.schema';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -35,9 +33,8 @@ export type EnrichmentJobPayload = EnsureProfileHydeData | EnrichUserData;
 /**
  * Optional dependencies for testing.
  */
-export interface EnrichmentPrivacyDecision {
+export interface EnrichmentAdmissionDecision {
   allowed: boolean;
-  policy: ProfileEnrichmentPolicy;
   reason: string;
   hasExistingProfile: boolean;
 }
@@ -46,8 +43,8 @@ export interface EnrichmentQueueDeps {
   queue?: ReturnType<typeof QueueFactory.createQueue<EnrichmentJobPayload>>;
   invokeProfileWrite?: (userId: string) => Promise<void>;
   invokeEnrichUser?: (userId: string) => Promise<void>;
-  checkPrivacy?: (input: { jobName: 'ensure_profile_hyde' | 'enrich.user'; userId: string; networkId?: string; reason?: string }) => Promise<EnrichmentPrivacyDecision>;
-  privacyDatabase?: Pick<EnrichmentDatabaseAdapter, 'getEnrichmentPrivacyContext'>;
+  checkAdmission?: (input: { jobName: 'ensure_profile_hyde' | 'enrich.user'; userId: string; networkId?: string; reason?: string }) => Promise<EnrichmentAdmissionDecision>;
+  admissionDatabase?: Pick<EnrichmentDatabaseAdapter, 'getEnrichmentAdmissionContext'>;
 }
 
 /**
@@ -203,14 +200,13 @@ export class EnrichmentQueue {
 
   private async handleEnsureProfileHyde(data: EnsureProfileHydeData): Promise<void> {
     const { userId } = data;
-    const privacy = await this.resolvePrivacyDecision('ensure_profile_hyde', data);
-    if (!privacy.allowed) {
-      this.profileHydeLogger.info('Skipped by profile enrichment policy', {
+    const admission = await this.resolveAdmissionDecision('ensure_profile_hyde', data);
+    if (!admission.allowed) {
+      this.profileHydeLogger.info('Skipped enrichment', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
-        policy: privacy.policy,
-        skipReason: privacy.reason,
+        skipReason: admission.reason,
       });
       return;
     }
@@ -229,14 +225,13 @@ export class EnrichmentQueue {
 
   private async handleEnrichUser(data: EnrichUserData): Promise<void> {
     const { userId } = data;
-    const privacy = await this.resolvePrivacyDecision('enrich.user', data);
-    if (!privacy.allowed) {
-      this.enrichUserLogger.info('Skipped by profile enrichment policy', {
+    const admission = await this.resolveAdmissionDecision('enrich.user', data);
+    if (!admission.allowed) {
+      this.enrichUserLogger.info('Skipped enrichment', {
         userId,
         networkId: data.networkId,
         reason: data.reason,
-        policy: privacy.policy,
-        skipReason: privacy.reason,
+        skipReason: admission.reason,
       });
       return;
     }
@@ -260,55 +255,38 @@ export class EnrichmentQueue {
     }
   }
 
-  private async resolvePrivacyDecision(
+  private async resolveAdmissionDecision(
     jobName: 'ensure_profile_hyde' | 'enrich.user',
     data: EnrichmentJobPayload,
-  ): Promise<EnrichmentPrivacyDecision> {
-    if (this.deps?.checkPrivacy) {
-      return this.deps.checkPrivacy({ jobName, userId: data.userId, networkId: data.networkId, reason: data.reason });
-    }
-
-    if (!data.networkId) {
-      return { allowed: true, policy: 'auto', reason: 'no_network_policy', hasExistingProfile: false };
+  ): Promise<EnrichmentAdmissionDecision> {
+    if (this.deps?.checkAdmission) {
+      return this.deps.checkAdmission({ jobName, userId: data.userId, networkId: data.networkId, reason: data.reason });
     }
 
     // "Has been enriched?" keys on ACTIVE premises, not a `user_profiles` row
     // (WS10/IND-367 — same existence-via-user_profiles anti-pattern WS5 removed from
     // profile.graph). `getProfile` returns a users-sourced row for every user, so it
     // can't signal enrichment; the premise graph is the source of truth.
-    const privacyDatabase = this.deps?.privacyDatabase ?? new EnrichmentDatabaseAdapter();
-    const { user, network, hasActivePremise } = await privacyDatabase
-      .getEnrichmentPrivacyContext(data.userId, data.networkId);
+    const admissionDatabase = this.deps?.admissionDatabase ?? new EnrichmentDatabaseAdapter();
+    const { userExists, networkExists, membershipExists, hasActivePremise } = await admissionDatabase
+      .getEnrichmentAdmissionContext(data.userId, data.networkId);
 
     const hasExistingProfile = hasActivePremise;
-    if (!network) {
-      return { allowed: false, policy: 'disabled', reason: 'network_not_found', hasExistingProfile };
+    if (!userExists) {
+      return { allowed: false, reason: 'user_not_found', hasExistingProfile };
     }
-
-    const policy = getEnrichmentPolicy(network.permissions);
-    if (!user) {
-      return { allowed: false, policy, reason: 'user_not_found', hasExistingProfile };
+    if (!networkExists) {
+      return { allowed: false, reason: 'network_not_found', hasExistingProfile };
+    }
+    if (!membershipExists) {
+      return { allowed: false, reason: 'network_membership_not_found', hasExistingProfile };
     }
 
     if (jobName === 'ensure_profile_hyde' && hasExistingProfile) {
-      return { allowed: true, policy, reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile };
+      return { allowed: true, reason: 'existing_profile_no_public_enrichment_needed', hasExistingProfile };
     }
 
-    const allowed = canRunPublicEnrichment({
-      policy,
-      onboarding: user.onboarding,
-      isGhost: user.isGhost,
-    });
-
-    const reason = allowed
-      ? 'policy_allows_public_enrichment'
-      : policy === 'disabled'
-        ? 'profile_enrichment_disabled'
-        : user.isGhost
-          ? 'ghost_user_cannot_consent'
-          : 'public_profile_lookup_consent_missing';
-
-    return { allowed, policy, reason, hasExistingProfile };
+    return { allowed: true, reason: 'enrichment_allowed', hasExistingProfile };
   }
 
   /** Best-effort callback invocation — never fails the enrichment job. */

@@ -65,7 +65,6 @@ export class NetworkController {
       imageUrl?: string | null;
       joinPolicy?: 'anyone' | 'invite_only';
       allowGuestVibeCheck?: boolean;
-      profileEnrichment?: 'auto' | 'consent_required' | 'disabled';
       metadata?: Record<string, unknown>;
     };
 
@@ -92,7 +91,6 @@ export class NetworkController {
         imageUrl: body.imageUrl,
         joinPolicy: body.joinPolicy,
         allowGuestVibeCheck: body.allowGuestVibeCheck,
-        profileEnrichment: body.profileEnrichment,
         metadata: body.metadata,
       });
       logger.verbose('Network created', { networkId: result.id, userId: user.id });
@@ -267,7 +265,6 @@ export class NetworkController {
         imageUrl?: string | null;
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
-        profileEnrichment?: 'auto' | 'consent_required' | 'disabled';
         metadata?: Record<string, unknown>;
         contextInjection?: { discovery: boolean };
         hidden?: boolean;
@@ -296,7 +293,7 @@ export class NetworkController {
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await assertAgentNetworkScope(req, params.id);
-      const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean }; profileEnrichment?: 'auto' | 'consent_required' | 'disabled' };
+      const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean } };
 
       const result = await networkService.updatePermissions(params.id, user.id, body);
       logger.verbose('Permissions updated for network', { networkId: params.id });

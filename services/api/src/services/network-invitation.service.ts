@@ -6,7 +6,6 @@ import * as schema from '../schemas/database.schema';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { ensurePersonalNetwork } from '../adapters/database.adapter';
-import { forceHeadlessProvisioningPermissions } from '../lib/network-permissions';
 import { networkInvitationTemplate } from '../lib/email/templates/network-invitation.template';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildConnectCommand } from '../lib/openclaw/connect-command';
@@ -131,11 +130,6 @@ class NetworkInvitationService {
    */
   async invite(params: InviteParams): Promise<InviteResult> {
     const email = params.email.toLowerCase().trim();
-
-    // Invites are headless provisioning: the invitee never passes a
-    // consenting UI, so force consent-safe permissions on the network
-    // (profileEnrichment: 'consent_required', allowGuestVibeCheck: false).
-    await forceHeadlessProvisioningPermissions(params.networkId);
 
     const result = await this.ensureMembership({
       networkId: params.networkId,

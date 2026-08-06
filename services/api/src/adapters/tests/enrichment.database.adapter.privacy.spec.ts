@@ -1,32 +1,60 @@
 import { describe, expect, it } from 'bun:test';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
+import type { SQL } from 'drizzle-orm';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
-import { networks, premises, users } from '../../schemas/database.schema';
 
-import { EnrichmentDatabaseAdapter } from '../enrichment.database.adapter';
+// The adapter module chain requires DATABASE_URL at import time and probes a
+// disposable test DB when NODE_ENV === 'test'. Present isolated-child readiness
+// markers only for the import so this fake-DB spec remains hermetic.
+const savedEnv = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  API_TEST_ISOLATED_CHILD: process.env.API_TEST_ISOLATED_CHILD,
+  API_TEST_DATABASE_READY: process.env.API_TEST_DATABASE_READY,
+  API_TEST_PARENT_PID: process.env.API_TEST_PARENT_PID,
+};
+process.env.DATABASE_URL ||= 'postgres://stub:stub@localhost:5432/stub';
+process.env.API_TEST_ISOLATED_CHILD = '1';
+process.env.API_TEST_DATABASE_READY = '1';
+process.env.API_TEST_PARENT_PID = String(process.ppid);
 
-// Fake drizzle db: getEnrichmentPrivacyContext issues three parallel reads
-// (users, networks, premises). Branch on the `.from(table)` reference and let
-// each test control the premises result. Recording the tables proves the gate
-// reads `premises`, not the user_profiles table removed in WS8.
+const { networkMembers, networks, premises, users } = await import('../../schemas/database.schema.js');
+const { EnrichmentDatabaseAdapter } = await import('../enrichment.database.adapter.js');
+
+for (const [key, value] of Object.entries(savedEnv)) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
+// Fake drizzle db: getEnrichmentAdmissionContext reads users and premises for
+// every job, plus networks and network_members for scoped jobs. Branch on the
+// `.from(table)` reference and let each test control the returned rows.
 const fromTables: unknown[] = [];
+const whereConditions: Array<{ table: unknown; condition: unknown }> = [];
 let premiseRows: Array<{ id: string }> = [];
-const userRows = [{ onboarding: null, isGhost: false }];
-const networkRows = [{ permissions: [] as unknown }];
+let membershipRows: Array<{ userId: string }> = [{ userId: 'u1' }];
+const userRows = [{ id: 'u1' }];
+const networkRows = [{ id: 'n1' }];
 
 function makeQuery(rows: unknown[]) {
   const builder = {
     from(table: unknown) {
       fromTables.push(table);
+      builder._table = table;
       if (table === premises) builder._rows = premiseRows;
       else if (table === users) builder._rows = userRows;
       else if (table === networks) builder._rows = networkRows;
+      else if (table === networkMembers) builder._rows = membershipRows;
       else builder._rows = rows;
       return builder;
     },
-    where() { return builder; },
+    where(condition: unknown) {
+      whereConditions.push({ table: builder._table, condition });
+      return builder;
+    },
     limit() { return Promise.resolve(builder._rows); },
     _rows: rows as unknown[],
+    _table: undefined as unknown,
   };
   return builder;
 }
@@ -35,28 +63,71 @@ const fakeDb = {
   select: () => makeQuery([]),
 } as unknown as DrizzleDB;
 
-describe('EnrichmentDatabaseAdapter.getEnrichmentPrivacyContext — enrichment signal (WS10)', () => {
-  it('reports hasActivePremise=true and reads `premises`, not user_profiles', async () => {
+describe('EnrichmentDatabaseAdapter.getEnrichmentAdmissionContext — enrichment signal (WS10)', () => {
+  it('reports active premise and scoped membership from their source tables', async () => {
     fromTables.length = 0;
     premiseRows = [{ id: 'premise-1' }];
+    membershipRows = [{ userId: 'u1' }];
 
-    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentPrivacyContext('u1', 'n1');
+    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentAdmissionContext('u1', 'n1');
 
-    expect(ctx.hasActivePremise).toBe(true);
-    expect(ctx.user).toEqual({ onboarding: null, isGhost: false });
-    expect(ctx.network).toEqual({ permissions: [] });
+    expect(ctx).toEqual({
+      userExists: true,
+      networkExists: true,
+      membershipExists: true,
+      hasActivePremise: true,
+    });
     expect(fromTables).toContain(premises);
     expect(fromTables).toContain(users);
     expect(fromTables).toContain(networks);
+    expect(fromTables).toContain(networkMembers);
   });
 
-  it('reports hasActivePremise=false when the user has no ACTIVE premise', async () => {
+  it('reports membershipExists=false when scoped membership was removed', async () => {
     fromTables.length = 0;
     premiseRows = [];
+    membershipRows = [];
 
-    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentPrivacyContext('u2', 'n1');
+    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentAdmissionContext('u1', 'n1');
 
+    expect(ctx.membershipExists).toBe(false);
     expect(ctx.hasActivePremise).toBe(false);
+    expect(fromTables).toContain(networkMembers);
+  });
+
+  it('queries membership by both scope IDs and excludes soft-deleted rows', async () => {
+    fromTables.length = 0;
+    whereConditions.length = 0;
+    premiseRows = [];
+    membershipRows = [{ userId: 'u1' }];
+
+    await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentAdmissionContext('u1', 'n1');
+
+    const membershipWhere = whereConditions.find(({ table }) => table === networkMembers);
+    expect(membershipWhere).toBeDefined();
+    const query = new PgDialect().sqlToQuery(membershipWhere!.condition as SQL);
+    expect(query.sql).toContain('"network_members"."user_id" = $1');
+    expect(query.sql).toContain('"network_members"."network_id" = $2');
+    expect(query.sql).toContain('"network_members"."deleted_at" is null');
+    expect(query.params).toEqual(['u1', 'n1']);
+  });
+
+  it('skips network reads for an unscoped job while still reading user and premises', async () => {
+    fromTables.length = 0;
+    premiseRows = [];
+    membershipRows = [];
+
+    const ctx = await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentAdmissionContext('u1');
+
+    expect(ctx).toEqual({
+      userExists: true,
+      networkExists: true,
+      membershipExists: true,
+      hasActivePremise: false,
+    });
+    expect(fromTables).toContain(users);
     expect(fromTables).toContain(premises);
+    expect(fromTables).not.toContain(networks);
+    expect(fromTables).not.toContain(networkMembers);
   });
 });

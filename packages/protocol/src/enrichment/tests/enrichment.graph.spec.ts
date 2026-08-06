@@ -6,10 +6,10 @@ import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
 
 mock.module("../../shared/agent/model.config", () => ({
   createStructuredModel: (agent: string) => ({
-    invoke: async () => agent === "premiseDecomposer"
+    invoke: async (input: unknown) => agent === "premiseDecomposer"
       ? {
           reasoning: "The enrichment result contains a stable professional identity claim.",
-          premises: [{ text: "I am a software engineer", tier: "assertive", validityDays: null }],
+          premises: [{ text: JSON.stringify(input), tier: "assertive", validityDays: null }],
           retractedPremiseIds: [],
           revisedBio: null,
         }
@@ -692,5 +692,30 @@ describe('ProfileGraph - Enrichment with Premise Decomposition', () => {
     expect(firstCall.userId).toBe(user.id);
     expect(firstCall.operationMode).toBe('create');
     expect(firstCall.assertionText).toBeTruthy();
+  }, 120_000);
+
+  it('omits email from fallback premise decomposition while retaining email lookup', async () => {
+    mockEnrichUserProfile.mockResolvedValue(null);
+
+    const factory = new EnrichmentGraphFactory(
+      mockDatabase,
+      mockScraper,
+      { enrichUserProfile: mockEnrichUserProfile },
+      undefined,
+      mockPremiseGraph as any,
+    );
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: user.id,
+      operationMode: 'generate',
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(mockEnrichUserProfile).toHaveBeenCalledWith(expect.objectContaining({ email: user.email }));
+    const assertionTexts = (mockPremiseGraph.invoke as any).mock.calls
+      .map((call: any[]) => call[0].assertionText as string);
+    expect(assertionTexts.join('\n')).toContain('Jane Doe');
+    expect(assertionTexts.join('\n')).not.toContain('jane@example.com');
   }, 120_000);
 });

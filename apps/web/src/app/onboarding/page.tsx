@@ -94,7 +94,7 @@ function RestrictedProfilePhase() {
           Give your agent the context you approve.
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-500">
-          Public lookup is optional. You will review and approve the profile before anything is saved.
+          You will review and approve the profile before anything is saved.
         </p>
 
         <div className="mt-10 space-y-6">

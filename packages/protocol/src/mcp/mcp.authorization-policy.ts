@@ -106,7 +106,6 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   update_user_context: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
   get_enrichment_run: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
   cancel_enrichment_run: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  record_onboarding_privacy_consent: { access: 'human_only', reach: 'principal' },
   complete_onboarding: { access: 'human_only', reach: 'principal' },
 
   // Premises are meta-network; a network-scoped agent retains principal reach.
@@ -214,7 +213,6 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
 export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'register_agent',
   'read_docs',
-  'record_onboarding_privacy_consent',
   'preview_user_context',
   'get_enrichment_run',
   'cancel_enrichment_run',

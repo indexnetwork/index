@@ -34,8 +34,7 @@ export const NEGOTIATOR_PERSONA_ID = "negotiator";
  *   retired capability; matching happens in the background from signals,
  * - whole-network administration (`create/update/delete_network`) — a
  *   human/UI act for now (joins/leaves are allowed),
- * - onboarding plumbing (`complete_onboarding`,
- *   `record_onboarding_privacy_consent`),
+ * - onboarding plumbing (`complete_onboarding`),
  * - agent management (`register/update/delete_agent`, permission grants),
  * - `confirm_opportunity_delivery` (OpenClaw ledger write, never chat).
  */
