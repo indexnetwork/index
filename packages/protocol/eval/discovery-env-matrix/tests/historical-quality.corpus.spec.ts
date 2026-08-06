@@ -379,6 +379,11 @@ describe("historical quality corpus contract", () => {
       violatedRequirement: semanticNegatives["p-negative-1"],
     };
     expect(() => validateHistoricalQualityCase(authoredDescription)).toThrow(/non-participant path \/description.*authored/);
+
+    const identifyingIntroduction = validCase();
+    identifyingIntroduction.input.introductionMode = true;
+    identifyingIntroduction.input.introducerName = "Real Source";
+    expect(() => validateHistoricalQualityCase(identifyingIntroduction)).toThrow(/missing claim provenance for \/input\/introducerName/);
   });
 
   it("projects audited descriptions without descriptive control IDs or audit metadata", () => {
@@ -417,6 +422,16 @@ describe("historical quality corpus contract", () => {
     expect(defined).toBe(pending);
     expect(Object.isFrozen(defined)).toBeTrue();
     expect(Object.isFrozen(defined.input.entities)).toBeTrue();
+    expect(Object.isFrozen(defined.historicalQuality.triggerInputs.enrichment.premises)).toBeTrue();
+  });
+
+  it("recursively freezes mutable descendants of a shallow-frozen authoring case", () => {
+    const shallowFrozen = validCase();
+    Object.freeze(shallowFrozen);
+    expect(Object.isFrozen(shallowFrozen.historicalQuality.triggerInputs.intent)).toBeFalse();
+    const defined = defineHistoricalQualityCase(shallowFrozen);
+    expect(Object.isFrozen(defined.historicalQuality.triggerInputs)).toBeTrue();
+    expect(Object.isFrozen(defined.historicalQuality.triggerInputs.intent)).toBeTrue();
     expect(Object.isFrozen(defined.historicalQuality.triggerInputs.enrichment.premises)).toBeTrue();
   });
 });

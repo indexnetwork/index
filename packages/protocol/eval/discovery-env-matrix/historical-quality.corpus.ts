@@ -133,6 +133,7 @@ function claimBearingProjectionFields(input: HistoricalQualityCase): Map<string,
   }
 
   add("/input/existingOpportunities", input.input.existingOpportunities);
+  add("/input/introducerName", input.input.introducerName);
   add("/input/introductionHint", input.input.introductionHint);
   add("/input/discoveryQuery", input.input.discoveryQuery);
   for (const [networkId, context] of Object.entries(input.input.networkContexts ?? {})) {
@@ -358,9 +359,9 @@ export function validateHistoricalQualityCase(
 }
 
 function deepFreeze<T>(input: T): T {
-  if (input !== null && typeof input === "object" && !Object.isFrozen(input)) {
+  if (input !== null && typeof input === "object") {
     for (const value of Object.values(input)) deepFreeze(value);
-    Object.freeze(input);
+    if (!Object.isFrozen(input)) Object.freeze(input);
   }
   return input;
 }
