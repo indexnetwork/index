@@ -51,15 +51,132 @@
     } catch (e) { /* no-op */ }
     return "";
   })();
+  // The animated art is line work on transparency, so one rendering can only
+  // read against one kind of surface: every role ships a dark file and a light
+  // file, picked by the host theme (see useColorScheme below). Keys are
+  // "<role>-<scheme>"; keep this map in step with desktop/tail.js and the
+  // allow-list in dashboard/plugin_api.py, which serve the same files.
+  const ASSET_FILES = {
+    "pitch-dark": "loading-white.webp",
+    "pitch-light": "loading-black.webp",
+    "radar-dark": "eye-white.webp",
+    "radar-light": "eye-black.webp",
+    "loading-dark": "loading2-white.webp",
+    "loading-light": "loading2.png",
+  };
   // In the desktop host, assets arrive async as blob URLs (DESKTOP_ENV.assets)
   // — resolve lazily and let callers skip the <img> while empty.
-  function assetSrc(key, file) {
+  function assetSrc(key) {
     if (DESKTOP_ENV) return (DESKTOP_ENV.assets && DESKTOP_ENV.assets[key]) || "";
-    return ASSET_BASE + file;
+    return ASSET_BASE + ASSET_FILES[key];
   }
-  function PITCH_IMAGE() { return assetSrc("pitch", "loading-white.webp"); }
-  function RADAR_IMAGE() { return assetSrc("radar", "eye-white.webp"); }
-  function LOADING_IMAGE() { return assetSrc("loading", "loading2.png"); }
+  // Resolved theme for the current render pass. The root component assigns it
+  // before React descends into the children that read it, which keeps the
+  // asset choice out of every component's props.
+  let SCHEME = "dark";
+  function PITCH_IMAGE() { return assetSrc("pitch-" + SCHEME); }
+  function RADAR_IMAGE() { return assetSrc("radar-" + SCHEME); }
+  function LOADING_IMAGE() { return assetSrc("loading-" + SCHEME); }
+
+  // Theme seam for the animated art. The pitch and radar frames ship as white
+  // line work on transparent, so they vanish on a light surface: style.css
+  // carries a light and a dark treatment and picks between them off the
+  // `data-scheme` attribute this resolves onto the dashboard root. Hosts
+  // signal the scheme differently — the desktop app stamps data-hermes-mode
+  // and .dark on <html>, the web dashboard only swaps palette variables — so
+  // try the explicit signals first and fall back to the measured luminance of
+  // the surface we actually paint on.
+  let COLOR_SWATCH = null;
+  function readColor(color) {
+    if (!color) return null;
+    const plain = /^rgba?\(([^)]+)\)$/i.exec(String(color).trim());
+    if (plain) {
+      const nums = plain[1].split(/[,\s/]+/).filter(Boolean).map(parseFloat);
+      if (nums.length >= 3) return [nums[0], nums[1], nums[2], nums.length > 3 ? nums[3] : 1];
+    }
+    // Both hosts build surfaces out of color-mix(), which computed styles
+    // report back in syntaxes not worth hand-parsing — let a canvas resolve
+    // whatever the browser hands us.
+    try {
+      if (!COLOR_SWATCH) {
+        COLOR_SWATCH = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      }
+      if (!COLOR_SWATCH) return null;
+      COLOR_SWATCH.clearRect(0, 0, 1, 1);
+      COLOR_SWATCH.fillStyle = "rgba(0, 0, 0, 0)";
+      COLOR_SWATCH.fillStyle = color;
+      COLOR_SWATCH.fillRect(0, 0, 1, 1);
+      const px = COLOR_SWATCH.getImageData(0, 0, 1, 1).data;
+      return [px[0], px[1], px[2], px[3] / 255];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function backgroundLuminance(color) {
+    const rgba = readColor(color);
+    if (!rgba || rgba[3] < 0.05) return null; // unpainted — keep walking up
+    return (0.2126 * rgba[0] + 0.7152 * rgba[1] + 0.0722 * rgba[2]) / 255;
+  }
+
+  // Walk up to the first ancestor that actually paints a background.
+  function surfaceScheme(node) {
+    let el = node;
+    while (el && el.nodeType === 1) {
+      const lum = backgroundLuminance(window.getComputedStyle(el).backgroundColor);
+      if (lum !== null) return lum < 0.5 ? "dark" : "light";
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function resolveScheme(node) {
+    const root = document.documentElement;
+    const mode = root.dataset ? root.dataset.hermesMode : null;
+    if (mode === "light" || mode === "dark") return mode;
+    const declared = (window.getComputedStyle(root).colorScheme || "").toLowerCase();
+    const declaresDark = declared.indexOf("dark") >= 0;
+    const declaresLight = declared.indexOf("light") >= 0;
+    if (declaresDark !== declaresLight) return declaresDark ? "dark" : "light";
+    if (root.classList && root.classList.contains("dark")) return "dark";
+    const measured = surfaceScheme(node);
+    if (measured) return measured;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  // Re-resolves whenever the host flips its theme (attribute/variable swap on
+  // <html>) or the OS scheme changes under a `system` theme setting.
+  function useColorScheme(nodeRef) {
+    const schemeState = React.useState("dark");
+    React.useEffect(function () {
+      let alive = true;
+      const setScheme = schemeState[1];
+      const update = function () {
+        if (!alive) return;
+        const next = resolveScheme(nodeRef.current);
+        setScheme(function (prev) { return prev === next ? prev : next; });
+      };
+      update();
+      let observer = null;
+      try {
+        observer = new MutationObserver(update);
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["class", "style", "data-hermes-mode", "data-theme"],
+        });
+      } catch (e) { /* no-op */ }
+      const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+      if (media && media.addEventListener) media.addEventListener("change", update);
+      else if (media && media.addListener) media.addListener(update);
+      return function () {
+        alive = false;
+        if (observer) observer.disconnect();
+        if (media && media.removeEventListener) media.removeEventListener("change", update);
+        else if (media && media.removeListener) media.removeListener(update);
+      };
+    }, []);
+    return schemeState[0];
+  }
   const REFRESH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>';
   const ACCOUNT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
   const MESSAGES_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -1979,6 +2096,10 @@
     const useEffect = React.useEffect;
     const useRef = React.useRef;
     const initial = parseHash();
+    // Root node + host theme; every animated asset resolves against SCHEME.
+    const rootRef = useRef(null);
+    const scheme = useColorScheme(rootRef);
+    SCHEME = scheme;
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
@@ -2545,7 +2666,7 @@
         ),
       );
 
-    return React.createElement("div", { className: "index-dashboard" },
+    return React.createElement("div", { className: "index-dashboard", ref: rootRef, "data-scheme": scheme },
       inlineHdr
         ? React.createElement(InlineHeaderControls, {
           autoRefresh: autoRefresh,

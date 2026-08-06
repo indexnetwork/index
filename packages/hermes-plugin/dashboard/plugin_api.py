@@ -79,7 +79,10 @@ _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 # address the dashboard's static file mount by URL). Allow-list only.
 _DESKTOP_ASSETS = {
     "loading-white.webp": "image/webp",
+    "loading-black.webp": "image/webp",
     "eye-white.webp": "image/webp",
+    "eye-black.webp": "image/webp",
+    "loading2-white.webp": "image/webp",
     "loading2.png": "image/png",
 }
 

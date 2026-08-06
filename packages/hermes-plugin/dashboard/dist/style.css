@@ -393,11 +393,11 @@
   width: 340px;
   max-width: 80%;
   height: auto;
-  /* Source has a transparent background (white keyed out). invert lightens the
-     dark line-art; grayscale + brightness push everything (eye AND the blue
-     swooshes) to white while keeping the pencil texture. */
-  filter: invert(1) grayscale(1) brightness(1.15);
 }
+
+/* The animated art needs no CSS treatment: each role ships a dark file and a
+   light file, and index.js picks between them from the host theme (the root
+   carries the resolved one as `data-scheme` for reference). */
 
 .index-dashboard__body {
   display: flex;
@@ -1022,7 +1022,7 @@
 
 .index-dashboard__radar-eye {
   flex: 0 0 auto;
-  height: 1.5rem;
+  height: 2.1rem;
   width: auto;
   object-fit: contain;
 }

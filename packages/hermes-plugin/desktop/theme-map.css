@@ -29,12 +29,10 @@
   overflow: hidden;
 }
 
-/* Show the animated assets in their original colors on desktop: undo the
-   shared stylesheet's invert/grayscale treatment (tuned for the dark web
-   dashboard). */
-.index-network-desktop-page .index-dashboard__loading-anim {
-  filter: none;
-}
+/* The animated assets need no desktop-specific override: the shared
+   stylesheet now carries a light and a dark treatment, keyed off the
+   `data-scheme` the dashboard resolves from this app's theme (it stamps
+   data-hermes-mode / .dark / color-scheme on <html>). */
 
 /* The desktop host has no Badge component (head.js provides components: {}),
    so BadgeText renders a bare <span> — recreate the web dashboard's badge
