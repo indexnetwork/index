@@ -42,6 +42,12 @@ jobs:
         working-directory: apps/mac
         run: bun test api/
 
+      - name: macOS shell and handoff tests
+        working-directory: apps/mac/IndexApp
+        run: |
+          bun test *.spec.mjs
+          bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh
+
       - name: Assemble web layer
         working-directory: apps/mac/IndexApp
         run: python3 assemble.py

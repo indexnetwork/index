@@ -113,12 +113,15 @@ are a `hosts` argument, not a code change.
 ### Known limitation: universal links need a real signature
 
 The `https://` half only works in a **Developer ID-signed, notarized** build.
-macOS verifies the `com.apple.developer.associated-domains` entitlement in
-`IndexApp/IndexApp.entitlements` (`applinks:index.network`) against the
-`apple-app-site-association` served by `index.network`, which lists
-`<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
-`APPLE_TEAM_ID` set. An ad-hoc dev build has no team, so macOS never hands it a
-universal link and `build.sh` says so.
+`build.sh` generates the `com.apple.developer.associated-domains` entitlement
+for the selected `INDEX_LINK_HOST` and passes that generated plist to
+`codesign`; `IndexApp/IndexApp.entitlements` is not the signed build input.
+macOS verifies the resulting signed-app entitlement (for the default profile,
+`applinks:index.network`) against the host's `apple-app-site-association`,
+which lists `<APPLE_TEAM_ID>.network.index.system6` — so the web host also needs
+`APPLE_TEAM_ID` set. Inspect the built artifact with
+`codesign -d --entitlements :- dist/index.app`. An ad-hoc dev build has no team,
+so macOS never hands it a universal link and `build.sh` says so.
 
 The `index://` scheme (registered via `CFBundleURLTypes` in `Info.plist`) has no
 such requirement and is the way to exercise deep links locally:
@@ -130,6 +133,81 @@ open "index://c/<code>"            # expect the "no longer supported" notice
 # only on a signed, notarized build:
 open "https://index.network/o/<opportunity-id>"
 ```
+
+### Developer ID dev handoff
+
+This is an operator-only handoff for the `dev.index.network` universal-link
+profile. It must run on **macOS** with an operator-owned Developer ID Application
+identity and local notarytool keychain profile. Any existing API or app URL
+overrides must name the dev environment; do not put endpoint credentials in the
+bundle or substitute production URLs.
+
+Before building, confirm the dev host serves
+`/.well-known/apple-app-site-association` directly (HTTP 200, JSON, no redirect)
+for the Developer ID team's `network.index.system6` app ID. Its components must
+exclude `/u/*/?*` before the broader `/u/*` entry so only a non-empty deeper
+profile segment (such as `chat`) remains browser-only while `/u/<id>` opens the app.
+The signed artifact must contain exactly `applinks:dev.index.network` in its
+associated-domains entitlement.
+
+Prepare and run the handoff in this order:
+
+1. In Apple Developer Certificates, Identifiers & Profiles, register or select
+   the explicit App ID `network.index.system6`.
+2. Edit that App ID, enable Associated Domains, confirm **Associated Domains enabled**
+   is shown, and save it.
+3. Create a **Distribution → Developer ID** provisioning profile for that App
+   ID, selecting the matching Developer ID Application certificate.
+4. Download the Developer ID provisioning profile to the operator machine. Do
+   not commit it or record its local name or path in PR evidence.
+5. From the repository root, build with all three required inputs:
+
+   ```bash
+   cd apps/mac/IndexApp
+   INDEX_LINK_HOST=dev.index.network \
+   CODESIGN_IDENTITY='Developer ID Application: <name> (<team-id>)' \
+   PROVISIONING_PROFILE='<path-to-downloaded-profile>' \
+   ./build.sh
+   ```
+
+6. Verify the embedded profile and signed entitlements, then notarize. The
+   notarization script revalidates the signed bundle and profile before
+   submission, waits for notary acceptance, staples and validates the ticket,
+   rechecks the signature, and runs the Gatekeeper assessment. Launch only
+   after every command succeeds:
+
+   ```bash
+   test -f dist/index.app/Contents/embedded.provisionprofile
+   codesign --verify --deep --strict --verbose=2 dist/index.app
+   codesign -d --entitlements :- dist/index.app
+   NOTARYTOOL_PROFILE='<local-keychain-profile>' ./notarize.sh
+   open dist/index.app
+   ```
+
+7. Treat runtime launch as a separate required check. `codesign`, notary
+   acceptance, stapling, and `spctl` can all pass while AMFI still rejects the
+   restricted Associated Domains entitlement with `No matching profile found`.
+   That failure means the embedded profile does not authorize the launched app;
+   do not treat the earlier checks as a successful handoff.
+
+Supply real dev IDs and local values only at execution time. After the runtime
+launch, exercise this seven-row matrix; stop and report a failed row rather than
+falling back to a production host.
+
+| URL / condition | Expected outcome |
+| --- | --- |
+| `https://dev.index.network/o/<id>` with the notarized app installed | opens that opportunity card in the app |
+| `https://dev.index.network/u/<id>` with the notarized app installed | opens that user's profile in the app |
+| `https://dev.index.network/u/<id>/chat` | stays in the browser; it must not open the app |
+| `index://o/<id>` | opens that opportunity card in the app |
+| `index://c/<code>` | opens the retired-connect one-line notice |
+| Quit the app, then open `index://u/<id>` | cold-launches the app to that user's profile |
+| `https://dev.index.network/u/<id>` in a separate browser profile with no app installed | remains on the dev landing page in the browser |
+
+PR evidence must be **redacted**: record only commands and pass/fail statuses,
+never real IDs, API keys, a certificate subject, or a notary profile name.
+Production HTTPS rows are deferred until the web release; this dev handoff does
+not validate or replace them.
 
 ## Running
 
