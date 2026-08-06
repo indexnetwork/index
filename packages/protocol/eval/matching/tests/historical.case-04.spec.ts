@@ -99,16 +99,40 @@ describe("historical case 04", () => {
     expect(citations.get("stanford-engineering-bechtolsheim")?.url).toBe(
       "https://engineering.stanford.edu/about/history/heroes/2012-heroes/andreas-bechtolsheim",
     );
+    expect(citations.get("stanford-engineering-bechtolsheim")?.excerpt).toContain(
+      "Andreas ‘Andy’ Bechtolsheim built the path-breaking SUN workstation while working as a doctoral student at Stanford in computer science and electrical engineering. He later became co-founder and chief system architect at Sun Microsystems.",
+    );
+    expect(citations.get("stanford-engineering-bechtolsheim")?.excerpt).toContain(
+      "He also was CEO and a founder of Granite Systems, a gigabit Ethernet switching company, from 1995 to 1996, when it was acquired by Cisco Systems.",
+    );
     expect(HISTORICAL_CASE_04.historicalQuality.outcomeCitationIds).toEqual(["nsf-origins-outcome"]);
+  });
+
+  it("grounds every repeat-founding abstraction in both pre-1998 founding facts", () => {
+    const claims = new Map(HISTORICAL_CASE_04.historicalQuality.claims.map((claim) => [claim.id, claim]));
+    for (const claimId of ["model-partner-bio", "model-partner-ventures", "model-partner-company-building"]) {
+      const claim = claims.get(claimId)!;
+      expect(claim.kind).toBe("derived");
+      if (claim.kind !== "derived") throw new Error(`${claimId} must be derived`);
+      expect(claim.basisClaimIds).toContain("fact-partner-systems-background");
+      expect(claim.basisClaimIds).toContain("fact-partner-networking-ventures");
+      expect(claim.rationale).toMatch(/both separate documented pre-1998 founding roles/i);
+    }
   });
 
   it("keeps the collaborator unnamed, separate, and citation-derived", () => {
     const claims = new Map(HISTORICAL_CASE_04.historicalQuality.claims.map((claim) => [claim.id, claim]));
     const sourceBioClaims = HISTORICAL_CASE_04.historicalQuality.claimProvenance["/input/entities/0/profile/bio"]!;
     const collaboratorClaim = claims.get("fact-page-link-ranking-collaboration")!;
+    const dependsOnClaim = (claimId: string, requiredClaimId: string): boolean => {
+      if (claimId === requiredClaimId) return true;
+      const claim = claims.get(claimId)!;
+      return claim.kind === "derived" && claim.basisClaimIds.some((basisClaimId) => dependsOnClaim(basisClaimId, requiredClaimId));
+    };
     expect(collaboratorClaim).toMatchObject({ kind: "historical", citationIds: ["nsf-origins-context"] });
     expect(collaboratorClaim.text).toContain("another graduate researcher");
     expect(sourceBioClaims).toContain("model-source-bio");
+    expect(sourceBioClaims.some((claimId) => dependsOnClaim(claimId, "fact-page-link-ranking-collaboration"))).toBeTrue();
     expect(JSON.stringify(HISTORICAL_CASE_04.historicalQuality.claims)).not.toMatch(/sergey|brin|page\s*(?:\/|and|&|,)\s*brin/i);
   });
 
@@ -121,7 +145,9 @@ describe("historical case 04", () => {
   it("excludes composite identity, unsupported support patterns, and exact identifying transaction details from model text", () => {
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_04));
     const forbidden = /larry|\bpage\b|sergey|brin|andy|bechtolsheim|google|backrub|pagerank|stanford|sun microsystems|\$100,?000|check|cheque|first believer|no business network|no money|before anyone else|first-check|writes? first|roll(?:ing|s)? up (?:his |their )?sleeves|hands-on coach|founder coaching|recurring prototype|habitual/i;
+    const postDemonstrationForbidden = /incorporat(?:e|ed|ion)|funding decision|investment decision|post[- ]demonstration|after (?:the )?demonstration|after (?:he|they) saw|decided to (?:fund|invest)|immediate(?:ly)? (?:fund|invest|decision)|funding enabled|(?:funding|investment) sequence|relocat(?:e|ed|ion)|deposit(?:ed)?|payee|\$100\s*k|\b100,?000\b/i;
     expect(modelText).not.toMatch(forbidden);
+    expect(modelText).not.toMatch(postDemonstrationForbidden);
   });
 
   it("authors three distinct negatives for capital direction, stage, and technical relevance", () => {

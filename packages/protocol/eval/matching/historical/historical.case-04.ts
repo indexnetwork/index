@@ -57,14 +57,14 @@ const claims: HistoricalClaim[] = [
   {
     kind: "historical",
     id: "fact-partner-systems-background",
-    text: "Before 1998, Bechtolsheim had designed and commercialized workstations and had extensive computer-systems architecture and engineering experience.",
+    text: "Before 1998, Bechtolsheim built a path-breaking workstation as a doctoral student, then became a co-founder and chief system architect of the workstation company.",
     citationIds: ["stanford-engineering-bechtolsheim"],
     preConnection: true,
   },
   {
     kind: "historical",
     id: "fact-partner-networking-ventures",
-    text: "Before 1998, Bechtolsheim had founded a high-speed networking venture and led a networking business after its acquisition.",
+    text: "From 1995 to 1996, Bechtolsheim was CEO and a founder of a gigabit Ethernet switching company, which was acquired in 1996.",
     citationIds: ["stanford-engineering-bechtolsheim"],
     preConnection: true,
   },
@@ -150,7 +150,7 @@ const claims: HistoricalClaim[] = [
     id: "model-partner-bio",
     text: partner.bio,
     basisClaimIds: ["fact-invited-demonstration", "fact-partner-systems-background", "fact-partner-networking-ventures"],
-    rationale: "Generalizes the documented systems, workstation, networking, founding, and operating background plus the invitation to evaluate the demonstration.",
+    rationale: "Generalizes the documented systems, workstation, networking, and operating background plus the invitation; both separate documented pre-1998 founding roles support the repeat-founder description.",
   },
   {
     kind: "derived",
@@ -171,7 +171,7 @@ const claims: HistoricalClaim[] = [
     id: "model-partner-ventures",
     text: "technical ventures",
     basisClaimIds: ["fact-partner-systems-background", "fact-partner-networking-ventures"],
-    rationale: "Generalizes repeated documented company formation around systems and networking technology.",
+    rationale: "Generalizes technical ventures from both separate documented pre-1998 founding roles, one in workstations and one in networking.",
   },
   {
     kind: "derived",
@@ -192,7 +192,7 @@ const claims: HistoricalClaim[] = [
     id: "model-partner-company-building",
     text: "technical company building",
     basisClaimIds: ["fact-partner-systems-background", "fact-partner-networking-ventures"],
-    rationale: "Generalizes documented founding and operating experience in multiple technical businesses.",
+    rationale: "Generalizes company-building capability from both separate documented pre-1998 founding roles and the associated operating experience.",
   },
   {
     kind: "derived",
@@ -384,7 +384,7 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
         url: "https://engineering.stanford.edu/about/history/heroes/2012-heroes/andreas-bechtolsheim",
         title: "Andreas Bechtolsheim",
         publisher: "Stanford Engineering",
-        excerpt: "Before 1998, Bechtolsheim designed and commercialized workstations, developed computer-systems architecture, founded a high-speed networking venture, and led the networking business after its acquisition.",
+        excerpt: "Andreas ‘Andy’ Bechtolsheim built the path-breaking SUN workstation while working as a doctoral student at Stanford in computer science and electrical engineering. He later became co-founder and chief system architect at Sun Microsystems. He also was CEO and a founder of Granite Systems, a gigabit Ethernet switching company, from 1995 to 1996, when it was acquired by Cisco Systems.",
       },
       {
         id: "nsf-origins-outcome",
