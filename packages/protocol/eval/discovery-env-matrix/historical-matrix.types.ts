@@ -1,8 +1,5 @@
-export interface ReconstructedIntent {
+export interface MatrixIntent {
   text: string;
-  kind: "existing" | "historically_grounded_reconstruction";
-  /** Audit-only exact source excerpts; never included in matrixModelInput. */
-  basis: string[];
 }
 
 export interface MatrixParticipant {
@@ -11,7 +8,7 @@ export interface MatrixParticipant {
   location: string;
   interests: string[];
   skills: string[];
-  intent: ReconstructedIntent;
+  intent: MatrixIntent;
 }
 
 export interface HistoricalMatrixCase {
@@ -27,7 +24,6 @@ export interface HistoricalMatrixCase {
 
 /** The only fixture shape permitted to cross a model boundary. */
 export interface HistoricalMatrixModelInput {
-  id: string;
   description: string;
   networkContext: string;
   sourceUserId: string;
@@ -37,6 +33,6 @@ export interface HistoricalMatrixModelInput {
     location: string;
     interests: string[];
     skills: string[];
-    intent: { text: string };
+    intent: MatrixIntent;
   }>;
 }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import { HISTORICAL_MATRIX_CASES, matrixModelInput, validateHistoricalMatrixCases } from "../historical-matrix.cases.js";
+import { historicalModelSafeProjection } from "../historical-quality.corpus.js";
 import type { HistoricalMatrixCase } from "../historical-matrix.types.js";
-import { HISTORICAL_CASES } from "../../matching/matching.historical.js";
+import { HISTORICAL_CASES, HISTORICAL_QUALITY_CASES } from "../../matching/matching.historical.js";
 
 function mutableCases(): HistoricalMatrixCase[] {
   return structuredClone(HISTORICAL_MATRIX_CASES) as HistoricalMatrixCase[];
@@ -14,23 +15,67 @@ describe("historical discovery environment matrix fixtures", () => {
     expect(HISTORICAL_MATRIX_CASES.map((c) => c.id)).toEqual(HISTORICAL_CASES.map((c) => c.id));
   });
 
-  it("gives every participant an intent with auditable basis when reconstructed", () => {
-    for (const c of HISTORICAL_MATRIX_CASES) {
-      for (const p of c.participants) {
-        expect(p.intent.text.trim()).not.toBe("");
-        if (p.intent.kind === "historically_grounded_reconstruction") {
-          expect(p.intent.basis.length).toBeGreaterThan(0);
-          expect(p.intent.basis.every((quote) => p.profileText.includes(quote))).toBe(true);
-        }
+  it("preserves audited network contexts and leaves Case 05 empty pending IND-638 shared-pool review", () => {
+    expect(HISTORICAL_MATRIX_CASES.slice(0, 4).map(({ networkContext }) => networkContext)).toEqual(
+      HISTORICAL_QUALITY_CASES.slice(0, 4).map((historicalCase) => {
+        const source = historicalCase.input.entities.find(({ userId }) => userId === historicalCase.input.discovererId)!;
+        return historicalCase.input.networkContexts![source.networkId]!;
+      }),
+    );
+    expect(HISTORICAL_MATRIX_CASES[4]!.networkContext).toBe("");
+  });
+
+  it("adapts every matrix intent directly from the audited participant intent", () => {
+    for (const [caseIndex, matrixCase] of HISTORICAL_MATRIX_CASES.entries()) {
+      const auditedCase = HISTORICAL_QUALITY_CASES[caseIndex]!;
+      for (const participant of matrixCase.participants) {
+        const entity = auditedCase.input.entities.find(({ userId }) => userId === participant.id)!;
+        expect(entity.intents).toHaveLength(1);
+        expect(participant.intent).toEqual({ text: entity.intents![0]!.payload });
       }
     }
   });
 
-  it("keeps report-only names and reconstruction provenance out of model input", () => {
-    const input = matrixModelInput(HISTORICAL_MATRIX_CASES[0]!);
-    expect(JSON.stringify(input)).not.toContain("Steve Jobs");
-    expect(JSON.stringify(input)).not.toContain("basis");
-    expect(JSON.stringify(input)).not.toContain("historically_grounded_reconstruction");
+  it("keeps control IDs and all audit-only strings out of every model boundary", () => {
+    const auditKeys = [
+      "historicalQuality",
+      "claimProvenance",
+      "semanticNegatives",
+      "anonymizationReview",
+      "outcomeCitationIds",
+      "citationIds",
+      "basisClaimIds",
+      "violatedRequirement",
+      "basis",
+    ];
+
+    for (const [caseIndex, matrixCase] of HISTORICAL_MATRIX_CASES.entries()) {
+      const auditedCase = HISTORICAL_QUALITY_CASES[caseIndex]!;
+      const input = matrixModelInput(matrixCase);
+      expect(input).not.toHaveProperty("id");
+
+      const serializations = [
+        JSON.stringify(historicalModelSafeProjection(auditedCase)),
+        JSON.stringify(input),
+        JSON.stringify(HISTORICAL_CASES[caseIndex]!.input),
+      ];
+      const outcomeCitations = new Set(auditedCase.historicalQuality.outcomeCitationIds);
+      const forbidden = [
+        auditedCase.id,
+        ...Object.values(auditedCase.reportNames ?? {}),
+        ...auditedCase.historicalQuality.citations.flatMap((citation) => [
+          citation.url,
+          citation.excerpt,
+          ...(outcomeCitations.has(citation.id) ? [citation.title] : []),
+        ]),
+        ...Object.values(auditedCase.historicalQuality.semanticNegatives),
+        ...auditKeys,
+      ];
+
+      for (const serialized of serializations) {
+        for (const value of forbidden) expect(serialized).not.toContain(value);
+      }
+    }
   });
 
   it("freezes the adapted fixture graph", () => {
@@ -41,7 +86,7 @@ describe("historical discovery environment matrix fixtures", () => {
     expect(Object.isFrozen(matrixCase.participants[0]!.intent)).toBe(true);
   });
 
-  it("rejects invalid references, intent provenance, and model-input report names", () => {
+  it("rejects invalid references, empty intents, and model-input report names", () => {
     const duplicateIds = mutableCases();
     duplicateIds[1]!.id = duplicateIds[0]!.id;
     expect(() => validateHistoricalMatrixCases(duplicateIds)).toThrow("Duplicate historical matrix case id");
@@ -53,11 +98,6 @@ describe("historical discovery environment matrix fixtures", () => {
     const emptyIntent = mutableCases();
     emptyIntent[0]!.participants[0]!.intent.text = " ";
     expect(() => validateHistoricalMatrixCases(emptyIntent)).toThrow("has an empty intent");
-
-    const invalidBasis = mutableCases();
-    const reconstruction = invalidBasis[0]!.participants.find((participant) => participant.intent.kind === "historically_grounded_reconstruction")!;
-    reconstruction.intent.basis = ["not present in profile text"];
-    expect(() => validateHistoricalMatrixCases(invalidBasis)).toThrow("reconstruction basis is not present in profileText");
 
     const missingTarget = mutableCases();
     missingTarget[0]!.expectedUserId = "";

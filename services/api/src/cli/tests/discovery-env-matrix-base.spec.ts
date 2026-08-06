@@ -194,10 +194,11 @@ describe('discovery environment matrix base policy', () => {
     expect(JSON.stringify(baseSeedPayload(HISTORICAL_MATRIX_CASES))).not.toContain('basis');
   });
 
-  it('uses deterministic, fixture-scoped IDs and a corpus-versioned fingerprint', () => {
+  it('uses deterministic, fixture-scoped IDs and the audited v2 corpus contract', () => {
     const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
 
-    expect(payload.fixtureCorpusVersion).toBe(BASE_FIXTURE_CORPUS_VERSION);
+    expect(BASE_FIXTURE_CORPUS_VERSION).toBe('historical-matrix-v2');
+    expect(payload.fixtureCorpusVersion).toBe('historical-matrix-v2');
     expect(payload.users.every((user) => user.id.startsWith('eval-discovery-matrix-user-'))).toBe(true);
     expect(payload.networks.every((network) => network.id.startsWith('eval-discovery-matrix-network-'))).toBe(true);
     expect(payload.intents.every((intent) => intent.id.startsWith('eval-discovery-matrix-intent-'))).toBe(true);
@@ -214,7 +215,7 @@ describe('discovery environment matrix base policy', () => {
     expect(() => verifyBaseContract(null, expected)).toThrow('metadata is missing');
     expect(() => verifyBaseContract({ ...expected, schemaMigrationFingerprint: 'stale' }, expected)).toThrow('schema migration fingerprint mismatch');
     expect(() => verifyBaseContract({ ...expected, fixtureFingerprint: 'stale' }, expected)).toThrow('fixture fingerprint mismatch');
-    expect(() => verifyBaseContract({ ...expected, fixtureCorpusVersion: 'old' }, expected)).toThrow('fixture corpus version mismatch');
+    expect(() => verifyBaseContract({ ...expected, fixtureCorpusVersion: 'historical-matrix-v1' }, expected)).toThrow('fixture corpus version mismatch');
     expect(() => verifyBaseContract(expected, expected)).not.toThrow();
   });
 });
@@ -459,6 +460,31 @@ describe('protected base lifecycle', () => {
       refresh,
       log,
     })).resolves.toBe('already-current');
+
+    expect(createIndexer).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('refuses v1 protected-base metadata without refresh or spend; authorized reseeding is deferred to IND-638', async () => {
+    const expected: BaseMetadata = {
+      schemaMigrationFingerprint: 'schema-fingerprint',
+      fixtureFingerprint: computeFixtureFingerprint(HISTORICAL_MATRIX_CASES),
+      fixtureCorpusVersion: BASE_FIXTURE_CORPUS_VERSION,
+    };
+    const v1Metadata = { ...expected, fixtureCorpusVersion: 'historical-matrix-v1' };
+    const createIndexer = mock(async () => {
+      throw new Error('v1 refusal must happen before provider spend');
+    });
+    const refresh = mock(async () => {
+      throw new Error('IND-637 must not reseed the protected base');
+    });
+
+    await expect(runBaseLifecycle({ verifyOnly: true }, {
+      verifyCurrent: async () => verifyBaseContract(v1Metadata, expected),
+      createIndexer,
+      refresh,
+      log: () => {},
+    })).rejects.toThrow('verification failed');
 
     expect(createIndexer).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
