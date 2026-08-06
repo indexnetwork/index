@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
+import type { SQL } from 'drizzle-orm';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 
 // The adapter module chain requires DATABASE_URL at import time and probes a
@@ -28,6 +30,7 @@ for (const [key, value] of Object.entries(savedEnv)) {
 // every job, plus networks and network_members for scoped jobs. Branch on the
 // `.from(table)` reference and let each test control the returned rows.
 const fromTables: unknown[] = [];
+const whereConditions: Array<{ table: unknown; condition: unknown }> = [];
 let premiseRows: Array<{ id: string }> = [];
 let membershipRows: Array<{ userId: string }> = [{ userId: 'u1' }];
 const userRows = [{ id: 'u1' }];
@@ -37,6 +40,7 @@ function makeQuery(rows: unknown[]) {
   const builder = {
     from(table: unknown) {
       fromTables.push(table);
+      builder._table = table;
       if (table === premises) builder._rows = premiseRows;
       else if (table === users) builder._rows = userRows;
       else if (table === networks) builder._rows = networkRows;
@@ -44,9 +48,13 @@ function makeQuery(rows: unknown[]) {
       else builder._rows = rows;
       return builder;
     },
-    where() { return builder; },
+    where(condition: unknown) {
+      whereConditions.push({ table: builder._table, condition });
+      return builder;
+    },
     limit() { return Promise.resolve(builder._rows); },
     _rows: rows as unknown[],
+    _table: undefined as unknown,
   };
   return builder;
 }
@@ -85,6 +93,23 @@ describe('EnrichmentDatabaseAdapter.getEnrichmentAdmissionContext — enrichment
     expect(ctx.membershipExists).toBe(false);
     expect(ctx.hasActivePremise).toBe(false);
     expect(fromTables).toContain(networkMembers);
+  });
+
+  it('queries membership by both scope IDs and excludes soft-deleted rows', async () => {
+    fromTables.length = 0;
+    whereConditions.length = 0;
+    premiseRows = [];
+    membershipRows = [{ userId: 'u1' }];
+
+    await new EnrichmentDatabaseAdapter(fakeDb).getEnrichmentAdmissionContext('u1', 'n1');
+
+    const membershipWhere = whereConditions.find(({ table }) => table === networkMembers);
+    expect(membershipWhere).toBeDefined();
+    const query = new PgDialect().sqlToQuery(membershipWhere!.condition as SQL);
+    expect(query.sql).toContain('"network_members"."user_id" = $1');
+    expect(query.sql).toContain('"network_members"."network_id" = $2');
+    expect(query.sql).toContain('"network_members"."deleted_at" is null');
+    expect(query.params).toEqual(['u1', 'n1']);
   });
 
   it('skips network reads for an unscoped job while still reading user and premises', async () => {

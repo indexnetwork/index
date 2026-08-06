@@ -102,6 +102,38 @@ describe('EnrichmentQueue.resolveAdmissionDecision — enrichment signal (WS10)'
     });
   });
 
+  it('denies a removed membership before applying the existing-profile shortcut', async () => {
+    admissionContextCalls.length = 0;
+    admissionContext = {
+      userExists: true,
+      networkExists: true,
+      membershipExists: false,
+      hasActivePremise: true,
+    };
+
+    expect(await callGate({ userId: 'u1', networkId: 'n1' })).toEqual({
+      allowed: false,
+      reason: 'network_membership_not_found',
+      hasExistingProfile: true,
+    });
+  });
+
+  it('reports a missing user before a missing network', async () => {
+    admissionContextCalls.length = 0;
+    admissionContext = {
+      userExists: false,
+      networkExists: false,
+      membershipExists: false,
+      hasActivePremise: false,
+    };
+
+    expect(await callGate({ userId: 'u1', networkId: 'n1' })).toEqual({
+      allowed: false,
+      reason: 'user_not_found',
+      hasExistingProfile: false,
+    });
+  });
+
   it('checks that an unscoped job still has a live user', async () => {
     admissionContextCalls.length = 0;
     admissionContext = {
