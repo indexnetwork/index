@@ -53,7 +53,7 @@
 - Modify `packages/protocol/package.json` — patch version bump because protocol architecture tooling changes.
 - Modify `packages/protocol/CHANGELOG.md` — record the architecture metadata extraction and atlas.
 - Modify `bun.lock` — regenerate after the package version changes.
-- Delete the related `docs/superpowers/specs/2026-08-07-protocol-atlas-design.md` and `docs/superpowers/plans/2026-08-07-protocol-atlas.md` before branch closeout, as required by repository policy.
+- Keep the related spec and plan through every task review and the whole-branch review. After review is clean, the coordinator deletes both immediately before branch closeout, as required by repository policy.
 
 ---
 
@@ -1166,7 +1166,7 @@ git commit -m "feat(docs): complete protocol atlas exploration"
 - Modify: `packages/protocol/CHANGELOG.md`
 - Modify: `bun.lock`
 - Regenerate: `docs/protocol-atlas/protocol.generated.js`
-- Delete before final branch commit:
+- Keep during Task 8 and final review:
   - `docs/superpowers/specs/2026-08-07-protocol-atlas-design.md`
   - `docs/superpowers/plans/2026-08-07-protocol-atlas.md`
 
@@ -1282,14 +1282,14 @@ rg -n "services/api|apps/web|src/controllers|src/services|src/adapters|src/queue
 
 Expected: the `rg` command returns no matches in atlas content/generator. Package architecture tooling and documentation are the only protocol-adjacent changes.
 
-- [ ] **Step 9: Remove transient superpowers artifacts before branch finishing**
+- [ ] **Step 9: Confirm review artifacts remain available**
 
 ```bash
-git rm -f docs/superpowers/specs/2026-08-07-protocol-atlas-design.md \
-  docs/superpowers/plans/2026-08-07-protocol-atlas.md
+test -f docs/superpowers/specs/2026-08-07-protocol-atlas-design.md
+test -f docs/superpowers/plans/2026-08-07-protocol-atlas.md
 ```
 
-This is required by the repository Development Reference. Preserve the approved decisions in the permanent atlas content, generator tests, changelog, and PR description.
+Expected: both commands succeed so the Task 8 and whole-branch reviewers can read the approved requirements. The coordinator removes these files only after final review is clean.
 
 - [ ] **Step 10: Commit release metadata and final verification state**
 
@@ -1312,6 +1312,18 @@ git diff --check origin/dev...HEAD
 Expected: clean worktree, only intentional commits, and no whitespace errors.
 
 ---
+
+## Post-review cleanup
+
+After the whole-branch review is clean and any reviewed fix wave is complete, the coordinator must remove the transient artifacts before invoking branch-finishing workflow:
+
+```bash
+git rm -f docs/superpowers/specs/2026-08-07-protocol-atlas-design.md \
+  docs/superpowers/plans/2026-08-07-protocol-atlas.md
+git commit -m "chore: remove protocol atlas planning artifacts"
+```
+
+Then rerun `git diff --check origin/dev...HEAD` and `git status --short --branch`. This deletion happens after review by explicit user ruling because the SDD review packages require the plan file.
 
 ## Completion Evidence
 
