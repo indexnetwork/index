@@ -577,6 +577,200 @@ button.atlas-chip {
   text-align: center;
 }
 
+.atlas-lede,
+.atlas-step-summary {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.atlas-eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.atlas-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.atlas-stepper button {
+  width: 100%;
+  min-height: 4rem;
+  border-color: var(--border);
+  color: var(--ink-muted);
+  text-align: left;
+}
+
+.atlas-stepper button[aria-current="step"] {
+  border-color: var(--cyan);
+  background: var(--surface-active);
+  color: var(--ink);
+}
+
+.atlas-step-header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.atlas-step-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.atlas-diagram-canvas {
+  position: relative;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgb(5 11 22 / 0.72);
+}
+
+.atlas-diagram-canvas svg,
+.atlas-diagram-nodes {
+  width: var(--atlas-diagram-width);
+  min-width: var(--atlas-diagram-width);
+}
+
+.atlas-diagram-canvas svg {
+  display: block;
+  height: 10rem;
+}
+
+.atlas-diagram-nodes {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--atlas-node-count), 12.5rem);
+  align-items: center;
+  height: 10rem;
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  list-style: none;
+  pointer-events: none;
+}
+
+.atlas-diagram-nodes > li {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding-inline: var(--space-2);
+}
+
+.atlas-diagram-nodes > li.atlas-empty {
+  min-height: 8rem;
+}
+
+.atlas-diagram-nodes .atlas-node {
+  position: relative;
+  z-index: 2;
+  max-height: 8.5rem;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+.atlas-diagram-canvas line {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.atlas-node--boundary {
+  border-style: dashed;
+  border-color: var(--amber);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 0.45rem,
+    rgb(255 199 107 / 0.07) 0.45rem,
+    rgb(255 199 107 / 0.07) 0.9rem
+  );
+}
+
+.atlas-boundary-callout {
+  display: block;
+  margin-block: var(--space-2);
+  padding: var(--space-2);
+  border-left: 0.2rem solid var(--amber);
+  color: var(--amber);
+  font-size: var(--text-sm);
+}
+
+.atlas-inspector {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.atlas-inspector > * {
+  margin-block: 0;
+}
+
+.atlas-inspector-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.atlas-metadata {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+.atlas-metadata dt {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+}
+
+.atlas-metadata dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.atlas-code-evidence {
+  display: grid;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+
+.atlas-code-evidence p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.atlas-code-evidence code {
+  display: block;
+  padding: var(--space-3);
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.atlas-fatal {
+  justify-items: start;
+  color: var(--ink);
+  text-align: left;
+}
+
 noscript {
   display: block;
   margin: var(--space-4);
@@ -660,8 +854,39 @@ noscript {
   #atlas-diagram,
   .atlas-stepper,
   .atlas-diagram-grid,
-  .atlas-flow {
+  .atlas-flow,
+  .atlas-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .atlas-diagram-canvas {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .atlas-diagram-canvas svg {
+    display: none;
+  }
+
+  .atlas-diagram-nodes {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+    width: auto;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+  }
+
+  .atlas-diagram-nodes > li {
+    display: block;
+    padding: 0;
+  }
+
+  .atlas-diagram-nodes .atlas-node {
+    max-height: none;
   }
 
   #atlas-filters {

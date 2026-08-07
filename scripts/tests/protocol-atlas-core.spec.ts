@@ -200,19 +200,25 @@ describe("ProtocolAtlasCore transitions", () => {
       .toMatchObject({ chapterId: "discovery", stepId: "evaluate-fit" });
   });
 
-  test("moves within a flow and stops at declared boundaries", () => {
-    const middle = fixtureState({ chapterId: "discovery", stepId: "retrieve-candidates" });
-    expect(core().transition(middle, { type: "next-step" }, fixtureContent(), fixtureGenerated()).stepId)
+  test("moves within a flow and crosses to the declared next step only", () => {
+    const start = fixtureState({ chapterId: "discovery", stepId: "retrieve-candidates" });
+    expect(core().transition(start, { type: "next-step" }, fixtureContent(), fixtureGenerated()).stepId)
       .toBe("evaluate-fit");
-    expect(core().transition(middle, { type: "previous-step" }, fixtureContent(), fixtureGenerated()).stepId)
+    expect(core().transition(start, { type: "previous-step" }, fixtureContent(), fixtureGenerated()).stepId)
       .toBe("resolve-effective-scope");
     const last = fixtureState({ chapterId: "discovery", stepId: "evaluate-fit" });
     expect(core().transition(last, { type: "next-step" }, fixtureContent(), fixtureGenerated()).stepId)
       .toBe("evaluate-fit");
   });
 
+  test("moves within guided flows through semantic transition controls", async () => {
+    const renderer = await Bun.file("docs/protocol-atlas/atlas.js").text();
+    expect(renderer).toMatch(/createElement\("button"\)[\s\S]*previous-step/);
+    expect(renderer).toMatch(/createElement\("button"\)[\s\S]*next-step/);
+  });
+
   test("preserves chapter and step while switching layers", () => {
-    const state = fixtureState({ chapterId: "runtime", stepId: "invocation-runtime" });
+    const state = fixtureState({ chapterId: "runtime", stepId: "invocation-runtime", layer: "protocol" });
     expect(core().transition(state, { type: "set-layer", layer: "implementation" }, fixtureContent(), fixtureGenerated()))
       .toMatchObject({ chapterId: "runtime", stepId: "invocation-runtime", layer: "implementation" });
   });
