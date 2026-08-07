@@ -4,20 +4,44 @@ import { historicalModelSafeProjection, validateHistoricalQualityCase } from "..
 import { HISTORICAL_CASE_01 } from "../historical/historical.case-01.js";
 
 const source = {
-  bio: "Engineering-trained manufacturer with metal-fabrication experience seeking modern household products suitable for scaled production and a broad consumer market.",
-  location: "North America",
-  interests: ["modern household products", "industrial production", "consumer design"],
-  skills: ["engineering management", "metal fabrication", "product commercialization"],
-  intent: "Find original household-product designs that can be adapted for reliable industrial production and a broad consumer market.",
+  bio: "Engineering-management graduate who had run a family manufacturing business and was participating with his spouse in their joint search for European home-goods design.",
+  location: "",
+  interests: ["European design in a joint home-goods search", "United States home-goods market in a joint design search"],
+  skills: ["engineering management", "manufacturing operations"],
+  intent: "Participate with a spouse in their joint search for European design for the United States home-goods market.",
 };
 
 const partner = {
-  bio: "European sculptor and product designer trained in metal craft who had created a hand-forged functional household prototype before first contact.",
-  location: "Europe",
-  interests: ["functional household objects", "sculptural product design", "material experimentation"],
-  skills: ["product design", "metal craft", "prototype making", "material combination"],
-  intent: "Develop functional household objects that combine sculptural form, traditional craft, and practical daily use.",
+  bio: "Product designer and son of a sculptor who had apprenticed with his father.",
+  location: "",
+  interests: ["product design"],
+  skills: ["product design", "apprenticeship with a sculptor father"],
+  intent: "Work as a product designer after apprenticing with a sculptor father.",
 };
+
+const syntheticProfiles = [
+  {
+    bio: "Housewares retail buyer who curates contemporary product assortments for national stores.",
+    location: "",
+    interests: ["modern housewares", "consumer preferences"],
+    skills: ["supplier sourcing", "retail merchandising"],
+    intent: "Source a distinctive European-designed household collection for a national retail assortment.",
+  },
+  {
+    bio: "Multidisciplinary visual designer who develops packaging systems and brand identities for household-product companies.",
+    location: "",
+    interests: ["packaging design", "visual identity"],
+    skills: ["graphic design", "print production"],
+    intent: "Develop a visual identity and packaging system for a new household-products collection.",
+  },
+  {
+    bio: "Studio sculptor whose practice includes small functional ceramic objects and commissioned exhibition pieces.",
+    location: "",
+    interests: ["functional ceramics", "sculptural form"],
+    skills: ["ceramic forming", "studio fabrication"],
+    intent: "Develop a cohesive collection of sculptural ceramic table objects for galleries and specialty shops.",
+  },
+];
 
 const expectedCitations = [
   {
@@ -90,12 +114,12 @@ describe("historical case 01", () => {
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
     expect(HISTORICAL_CASE_01.description).toBe(
-      "An engineering-trained manufacturer seeking modern household products is paired with a sculptor-product designer whose existing prototype and craft expertise can anchor scaled production.",
+      "An engineering-management graduate participating in a joint search for European home-goods design is paired with a product designer who apprenticed with a sculptor father.",
     );
     expect(HISTORICAL_CASE_01.historicalQuality.cutoff).toEqual({
       event: {
         id: "h1-nierenberg-quistgaard-first-contact",
-        description: "Immediately before Ted and Martha Nierenberg first contacted and met Jens Quistgaard during their 1954 European design-sourcing trip.",
+        description: "Immediately before Ted and Martha Nierenberg telephoned Jens Quistgaard during their 1954 European design-sourcing trip.",
       },
       calendarProxy: { date: "1954", precision: "year" },
       confidence: "medium",
@@ -110,19 +134,27 @@ describe("historical case 01", () => {
   it("keeps every model-facing field cited and blocks identifying combination leakage", () => {
     expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_01, { requireApprovedReview: false })).not.toThrow();
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_01));
-    expect(modelText).not.toMatch(/nierenberg|quistgaard|martha|dansk|fjord|denmark|danish|copenhagen|long island|great neck|flatware|teak|stainless steel|honeymoon|museum|doorstep|farm|garage|fashion award|food52/i);
+    expect(modelText).not.toMatch(/nierenberg|quistgaard|martha|dansk|fjord|denmark|danish|copenhagen|long island|great neck|flatware|teak|stainless steel|honeymoon|museum|doorstep|farm|garage|fashion award|food52|metal[- ]fabrication|scaled|reliable industrial production|commercialization|hand-forged|mixed[- ]material|prototype/i);
+    expect(HISTORICAL_CASE_01.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/0/profile/location");
+    expect(HISTORICAL_CASE_01.historicalQuality.claimProvenance).not.toHaveProperty("/input/entities/1/profile/location");
   });
 
   it("uses exact semantic negatives whose authored profiles encode each failure", () => {
     expect(HISTORICAL_CASE_01.historicalQuality.semanticNegatives).toEqual({
-      "h1-c": "Same-side retail and market operator lacks original product-design capability.",
-      "h1-d": "Print and graphic designer lacks three-dimensional household-product and material-prototype capability.",
-      "h1-e": "One-off sculptural craft practitioner lacks functional-product and repeatable-production orientation.",
+      "h1-c": "Retail buying and supplier sourcing do not establish original product-design experience.",
+      "h1-d": "Packaging and identity work do not establish three-dimensional product-design experience.",
+      "h1-e": "A gallery-oriented ceramic practice does not establish professional product-design experience.",
     });
     const negatives = historicalModelSafeProjection(HISTORICAL_CASE_01).input.entities.slice(2);
-    expect(negatives[0]?.profile.bio).toContain("Retail assortment manager");
-    expect(negatives[1]?.profile.bio).toContain("Print and graphic designer");
-    expect(negatives[2]?.profile.bio).toContain("one-off decorative objects");
+    expect(negatives.map(({ profile, intents }) => ({
+      bio: profile.bio,
+      location: profile.location,
+      interests: profile.interests,
+      skills: profile.skills,
+      intent: intents?.[0]?.payload,
+    }))).toEqual(syntheticProfiles);
+    expect(JSON.stringify(negatives)).not.toMatch(/unable|without|rather than|\blacks?\b|cannot|can't|does not|do not|\bno\b|instead of|excluding|failure|wrong fit/i);
+    expect(HISTORICAL_CASE_01.input.entities.slice(1).map(({ ragScore }) => ragScore)).toEqual([70, 70, 70, 70]);
     for (const participantId of ["h1-c", "h1-d", "h1-e"] as const) {
       const reason = HISTORICAL_CASE_01.historicalQuality.semanticNegatives[participantId];
       const authored = HISTORICAL_CASE_01.historicalQuality.claims.filter((claim) => claim.kind === "authored" && claim.participantId === participantId);

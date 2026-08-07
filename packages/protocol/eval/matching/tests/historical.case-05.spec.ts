@@ -72,7 +72,7 @@ describe("historical case 05", () => {
       },
       calendarProxy: { date: "1997", precision: "year" },
       confidence: "medium",
-      uncertaintyRationale: "First-person and institutional accounts place the encounter around 1997, one secondary account uses 1998, and no exact date is established.",
+      uncertaintyRationale: "Stored first-person and institutional evidence places the encounter around 1997 but does not establish an exact date.",
       exclusive: true,
       orderingCitationIds: ["cell-persistent-progress", "nobel-kariko-banquet-speech"],
     });
@@ -82,6 +82,8 @@ describe("historical case 05", () => {
     const citations = new Map(HISTORICAL_CASE_05.historicalQuality.citations.map((citation) => [citation.id, citation]));
     const chronologicalCitation = citations.get("pnas-kariko-weissman-q-and-a")!;
     expect(chronologicalCitation.url).toBe("https://www.pnas.org/doi/10.1073/pnas.2119757118");
+    expect(chronologicalCitation.title).toBe("QnAs with Katalin Karikó");
+    expect(chronologicalCitation.publisher).toBe("Proceedings of the National Academy of Sciences");
     expect(chronologicalCitation.excerpt).toBe(
       "I met Drew around 1997, when he had just been hired as an assistant professor at Penn Medicine. I told him I had been working with mRNA for almost 10 years.",
     );
