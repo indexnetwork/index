@@ -22,7 +22,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 try:
     from fastapi import APIRouter, Body
@@ -99,16 +99,17 @@ async def desktop_asset(name: str) -> dict[str, Any]:
     return {"success": True, "mime": mime, "data": base64.b64encode(raw).decode("ascii")}
 
 
-def _load_tools_module():
-    spec = importlib.util.spec_from_file_location("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load Index Network tools module")
+        raise RuntimeError(f"Could not load module {name} from {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-tools = _load_tools_module()
+tools = _load_module("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
 def _parse_tool_json(raw: str) -> dict[str, Any]:
@@ -959,6 +960,95 @@ def _build_dashboard(
         "negotiations": {"items": negotiations, "count": len(negotiations)},
         "totals": totals,
     }
+
+
+@router.get("/auth/status")
+def auth_status() -> dict[str, Any]:
+    """Report whether the plugin holds a working Index credential.
+
+    Missing key or an auth failure (401/403) from `GET /auth/me` means the
+    dashboard should show the browser-login gate; any other error keeps the
+    (present) key and lets the dashboard surface its own section errors.
+    """
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        return {"success": True, "authenticated": False, "needsLogin": True}
+    payload = tools._api_request("GET", "/auth/me")
+    if payload.get("success") is False:
+        if payload.get("status") in (401, 403):
+            return {"success": True, "authenticated": False, "needsLogin": True}
+        return {"success": True, "authenticated": True, "needsLogin": False, "error": payload.get("error")}
+    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    return {
+        "success": True,
+        "authenticated": True,
+        "needsLogin": False,
+        "user": {"id": _text(user.get("id")) or None, "email": _text(user.get("email")) or None},
+    }
+
+
+def _login_app_base_url() -> str:
+    """Web origin that serves `/cli-auth`, paired with the active API environment.
+
+    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
+    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
+    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
+    pointed at dev/staging signs in against the matching web app instead of prod.
+    Without this pairing a dev-configured plugin would mint a prod key that then
+    401s against the dev API.
+    """
+    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
+        return tools._app_base_url()
+    try:
+        parts = urlsplit(tools._api_url())
+    except ValueError:
+        return tools.INDEX_APP_BASE_URL
+    if parts.scheme in ("http", "https") and parts.netloc:
+        host = parts.netloc
+        if host.startswith("protocol."):
+            host = host[len("protocol."):]
+        return f"{parts.scheme}://{host}"
+    return tools.INDEX_APP_BASE_URL
+
+
+@router.post("/auth/login/start")
+def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
+
+    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
+    a headless/remote agent host where opening a browser is not possible.
+    """
+    try:
+        auth_url = auth_login.start_login(_login_app_base_url())
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": f"Could not start login: {exc}"}
+    opener = tools._url_opener_command(auth_url)
+    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
+    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
+
+
+@router.get("/auth/login/status")
+def auth_login_status() -> dict[str, Any]:
+    """Poll the pending login; on success the key is already persisted server-side."""
+    result = auth_login.poll_status()
+    payload: dict[str, Any] = {"success": True, "status": result.get("status")}
+    if result.get("error"):
+        payload["error"] = result.get("error")
+    return payload
+
+
+@router.post("/auth/logout")
+def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
+    if api_key and key_id:
+        try:
+            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
+        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
+            pass
+    auth_login.clear_api_key()
+    return {"success": True, "needsLogin": True}
 
 
 @router.get("/summary")

@@ -52,8 +52,7 @@ provides_tools:
   - index_respond_negotiation
 provides_hooks:
   - pre_llm_call
-requires_env:
-  - name: INDEX_API_KEY
-    description: Index Network agent API key used to authenticate MCP tool calls and personal-agent API requests.
-    url: https://index.network/agents
-    secret: true
+# INDEX_API_KEY is intentionally NOT declared under requires_env: install must
+# not prompt for a key. Sign in from the Index dashboard tab ("Log in with
+# browser"), which mints and persists the key. Setting INDEX_API_KEY in the
+# Hermes environment manually still works as an optional override.

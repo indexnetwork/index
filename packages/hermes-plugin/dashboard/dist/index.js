@@ -1265,6 +1265,100 @@
     );
   }
 
+  // Mac/CLI-parity browser sign-in gate. "Log in with browser" runs the same
+  // /cli-auth handshake (loopback callback) the Index Mac app and CLI use; the
+  // backend mints + persists the key, so we only poll status here.
+  function LoginScreen(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+    const waitingState = useState(false);
+    const waiting = waitingState[0];
+    const setWaiting = waitingState[1];
+    const errorState = useState(null);
+    const loginError = errorState[0];
+    const setLoginError = errorState[1];
+    const linkState = useState(null);
+    const manualLink = linkState[0];
+    const setManualLink = linkState[1];
+    const pollRef = useRef(null);
+
+    function stopPolling() {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+
+    useEffect(function () { return stopPolling; }, []);
+
+    function poll() {
+      fetchPluginJSON(API + "/auth/login/status")
+        .then(function (payload) {
+          const status = payload && payload.status;
+          if (status === "success") {
+            stopPolling();
+            setWaiting(false);
+            if (props.onAuthed) props.onAuthed();
+          } else if (status === "failed") {
+            stopPolling();
+            setWaiting(false);
+            setLoginError((payload && payload.error) || "Login failed. Please try again.");
+          } else if (status === "idle") {
+            stopPolling();
+            setWaiting(false);
+          }
+        })
+        .catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function start() {
+      setLoginError(null);
+      setManualLink(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not start login.");
+          }
+          // Headless/remote agent host: no browser to open, so surface the link.
+          if (!payload.opened && payload.authUrl) setManualLink(payload.authUrl);
+          stopPolling();
+          pollRef.current = setInterval(poll, 1500);
+        })
+        .catch(function (err) {
+          setWaiting(false);
+          setLoginError(err && err.message ? err.message : String(err));
+        });
+    }
+
+    return React.createElement("div", { className: "index-dashboard__login" },
+      React.createElement("div", { className: "index-dashboard__login-card" },
+        React.createElement("h1", { className: "index-dashboard__login-brand" }, "Index"),
+        React.createElement("p", { className: "index-dashboard__login-copy" },
+          "Sign in to connect this agent to your Index signals, opportunities, and networks."),
+        React.createElement(Button, {
+          type: "button",
+          className: "index-dashboard__login-btn",
+          disabled: waiting,
+          onClick: start,
+        }, waiting ? "Waiting for browser…" : "Log in with browser"),
+        manualLink
+          ? React.createElement("p", { className: "index-dashboard__login-manual" },
+            "No browser opened here — ",
+            React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
+            ".")
+          : null,
+        loginError
+          ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
+          : null,
+        React.createElement("p", { className: "index-dashboard__login-foot" },
+          "Opens index.network in your browser to authorize a key. Nothing is shared until you sign in."),
+      ),
+    );
+  }
+
   function usableEnriched(res) {
     const p = res && res.profile;
     return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
@@ -1736,9 +1830,14 @@
     },
       React.createElement("div", { className: "index-dashboard__profile-header" },
         React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
-        gettingStarted
-          ? null
-          : React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        React.createElement("div", { className: "index-dashboard__profile-header-actions" },
+          (!gettingStarted && !readOnly && props.onSignOut)
+            ? React.createElement("button", { type: "button", className: "index-dashboard__profile-signout", onClick: props.onSignOut }, "Sign out")
+            : null,
+          gettingStarted
+            ? null
+            : React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
       ),
       gettingStarted
         ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
@@ -2315,6 +2414,11 @@
     const inlineHdrState = useState(false);
     const inlineHdr = inlineHdrState[0];
     const setInlineHdr = inlineHdrState[1];
+    // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
+    // (browser sign-in) or "authed" (load the dashboard).
+    const authState = useState("checking");
+    const auth = authState[0];
+    const setAuth = authState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
@@ -2361,15 +2465,16 @@
     }
 
     useEffect(function () {
+      if (auth !== "authed") return undefined;
       refreshUnread();
       const id = setInterval(refreshUnread, 30000);
       return function () { clearInterval(id); };
-    }, []);
+    }, [auth]);
 
     // Re-check when the messages panel closes (reading there updates the map).
     useEffect(function () {
-      if (!messagesOpen) refreshUnread();
-    }, [messagesOpen]);
+      if (auth === "authed" && !messagesOpen) refreshUnread();
+    }, [messagesOpen, auth]);
 
     useEffect(function () {
       const ctl = headerCtlRef.current;
@@ -2653,9 +2758,44 @@
 
     loadRef.current = load;
 
-    useEffect(function () {
+    function enterDashboard() {
+      setAuth("authed");
       load();
       loadNetworkRequests();
+    }
+
+    function checkAuth() {
+      fetchPluginJSON(API + "/auth/status")
+        .then(function (payload) {
+          if (payload && payload.needsLogin) {
+            setAuth("needsLogin");
+            setLoading(false);
+          } else {
+            enterDashboard();
+          }
+        })
+        .catch(function () {
+          // Host fetch failed entirely: fall back to trying the dashboard so a
+          // manual INDEX_API_KEY still works even if /auth/status is unreachable.
+          enterDashboard();
+        });
+    }
+
+    function signOut() {
+      setProfileOpen(false);
+      fetchPluginJSON(API + "/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).finally(function () {
+        setSummary(null);
+        setNeedsOnboarding(false);
+        setAuth("needsLogin");
+      });
+    }
+
+    useEffect(function () {
+      checkAuth();
     }, []);
 
     useEffect(function () {
@@ -2747,12 +2887,15 @@
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      if (!autoRefresh) return undefined;
+      // Only poll once signed in: firing /summary while the login gate (or the
+      // initial auth check) is showing produces 401s that can land after the
+      // login transition and clobber the fresh state, forcing a manual reload.
+      if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
         if (loadRef.current) loadRef.current();
       }, 5000);
       return function () { clearInterval(id); };
-    }, [autoRefresh]);
+    }, [autoRefresh, auth]);
 
     useEffect(function () {
       if (DESKTOP_ENV) return undefined;
@@ -2837,7 +2980,7 @@
         : null,
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
-        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
+        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
         : null,
@@ -2848,21 +2991,29 @@
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
 
-      needsOnboarding
-        ? React.createElement(ProfilePanel, {
-          gettingStarted: true,
-          onConfirmed: function () {
-            setNeedsOnboarding(false);
-            load();
-          },
-        })
-        : (loading && !summary
+      auth === "needsLogin"
+        ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
+        : (auth === "checking"
           ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
             LOADING_IMAGE()
               ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
               : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
           )
-          : React.createElement("div", { className: "index-dashboard__body" }, intentsView)),
+          : (needsOnboarding
+            ? React.createElement(ProfilePanel, {
+              gettingStarted: true,
+              onConfirmed: function () {
+                setNeedsOnboarding(false);
+                load();
+              },
+            })
+            : (loading && !summary
+              ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+                LOADING_IMAGE()
+                  ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+                  : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+              )
+              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
     );
   }
 

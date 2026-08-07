@@ -45,6 +45,17 @@
   min-height: calc(100% - 1rem);
 }
 
+/* Browser sign-in gate fills the desktop page; button matches Getting started. */
+.index-network-desktop-page .index-dashboard__login {
+  min-height: calc(100% - 1rem);
+}
+
+.index-network-desktop-page .index-dashboard__login-btn.idx-btn {
+  padding: 0.75rem 1.45rem;
+  font-size: 0.95rem;
+  min-height: 2.75rem;
+}
+
 /* Getting started actions: Mac-ink black, intentionally larger. */
 .index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn {
   padding: 0.75rem 1.45rem;

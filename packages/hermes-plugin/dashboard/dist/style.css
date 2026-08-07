@@ -1413,6 +1413,95 @@
   min-height: 2.6rem;
 }
 
+/* Browser sign-in gate (Mac/CLI parity). */
+.index-dashboard__login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: min(70vh, 36rem);
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.index-dashboard__login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 26rem;
+  padding: 2rem 1.75rem 1.75rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: var(--radius, 0.75rem);
+  background: var(--color-card, #0f172a);
+  text-align: center;
+}
+
+.index-dashboard__login-brand {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__login-copy {
+  margin: 0;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.index-dashboard__login-btn {
+  padding: 0.7rem 1.35rem !important;
+  font-size: 0.95rem !important;
+  letter-spacing: 0.02em;
+  min-height: 2.6rem;
+  align-self: stretch;
+}
+
+.index-dashboard__login-manual {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__login-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-destructive, #f87171);
+}
+
+.index-dashboard__login-foot {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--color-muted-foreground, #94a3b8) 85%, transparent);
+}
+
+.index-dashboard__profile-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.index-dashboard__profile-signout {
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: calc(var(--radius, 0.75rem) * 0.6);
+  background: transparent;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+.index-dashboard__profile-signout:hover {
+  color: var(--color-foreground, #f8fafc);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
 /* Profile / settings overlay panel. */
 .index-dashboard__profile-overlay {
   position: fixed;

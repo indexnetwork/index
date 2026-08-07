@@ -8,7 +8,9 @@ A native [Hermes](https://hermes-agent.nousresearch.com) plugin for [Index Netwo
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-The manifest declares `requires_env: INDEX_API_KEY`, so the installer prompts for the key and saves it to Hermes' `.env`. Get an agent-bound API key at [index.network/agents](https://index.network/agents); an agent-bound key is required for the autonomous negotiation tools.
+No API key is required at install. Open the **Index** dashboard tab and choose **Log in with browser**: the plugin runs the same `/cli-auth` handshake the Index Mac app and CLI use, mints an agent-bound key, and saves it to Hermes' `.env` (`INDEX_API_KEY`). Signing out revokes and removes it.
+
+Setting `INDEX_API_KEY` in the Hermes environment yourself still works as an optional override (for CI or headless setups). Get an agent-bound key at [index.network/agents](https://index.network/agents).
 
 The package ships the prebuilt Hermes Desktop bundle at `desktop/dist/`, and the plugin self-installs it: when the gateway loads the plugin, `register()` copies the bundle into `~/.hermes/desktop-plugins/index-network` (and refreshes it after upgrades). No separate desktop install step — just reload desktop plugins (⌘K) in the Hermes Desktop app the first time.
 
@@ -16,7 +18,7 @@ The package ships the prebuilt Hermes Desktop bundle at `desktop/dist/`, and the
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `INDEX_API_KEY` | yes | — | Authenticates MCP tool calls and personal-agent API requests |
+| `INDEX_API_KEY` | no | — | Authenticates MCP tool calls and personal-agent API requests. Normally set by **Log in with browser** in the Index tab; can be set manually as an override |
 | `INDEX_MCP_URL` | no | `https://protocol.index.network/mcp` | Index MCP server |
 | `INDEX_API_URL` | no | `https://protocol.index.network/api` | Index REST API |
 | `INDEX_MCP_TIMEOUT_SECONDS` | no | `30` | Timeout for both MCP and API requests |
