@@ -41,6 +41,30 @@
   max-width: 42rem;
 }
 
+.index-network-desktop-page .index-dashboard__setting-up {
+  min-height: calc(100% - 1rem);
+}
+
+/* Getting started actions: Hermes accent buttons, intentionally larger. */
+.index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn {
+  padding: 0.75rem 1.45rem;
+  font-size: 0.95rem;
+  min-height: 2.75rem;
+  border-radius: var(--radius);
+}
+
+.index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn--solid {
+  color: var(--ui-accent, #4fd1c5);
+  border-color: color-mix(in srgb, var(--ui-accent, #4fd1c5) 50%, transparent);
+  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 14%, transparent);
+}
+
+.index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn--outlined {
+  border-color: var(--ui-stroke-secondary, #d4d4d8);
+  color: var(--ui-text-primary, inherit);
+  background: transparent;
+}
+
 /* The animated assets need no desktop-specific override: the shared
    stylesheet now carries a light and a dark treatment, keyed off the
    `data-scheme` the dashboard resolves from this app's theme (it stamps

@@ -1236,6 +1236,47 @@
     );
   }
 
+  function SettingUpScreen() {
+    // Mac BuildingProfile parity: brand + indeterminate motion + staggered status lines
+    // while snapshot/enrichment run, before the profile review opens.
+    const lines = [
+      "Getting a sense of you…",
+      "Working out what you're into…",
+      "Almost there.",
+    ];
+    return React.createElement("div", { className: "index-dashboard__setting-up" },
+      React.createElement("div", { className: "index-dashboard__setting-up-card" },
+        React.createElement("div", { className: "index-dashboard__setting-up-brand" },
+          React.createElement("span", { className: "index-dashboard__live-dot", "aria-hidden": "true" }),
+          React.createElement("span", { className: "index-dashboard__setting-up-brand-label" }, "index"),
+        ),
+        LOADING_IMAGE()
+          ? React.createElement("img", {
+            className: "index-dashboard__setting-up-anim",
+            src: LOADING_IMAGE(),
+            alt: "",
+            loading: "eager",
+          })
+          : null,
+        React.createElement("div", { className: "index-dashboard__setting-up-bar", "aria-hidden": "true" },
+          React.createElement("div", { className: "index-dashboard__setting-up-bar-fill" }),
+        ),
+        React.createElement("div", { className: "index-dashboard__setting-up-lines" },
+          lines.map(function (line, i) {
+            return React.createElement("p", {
+              key: line,
+              className: "index-dashboard__setting-up-line" + (i === lines.length - 1 ? " index-dashboard__setting-up-line--final" : ""),
+              style: { animationDelay: (i * 350) + "ms" },
+            },
+              React.createElement("span", { className: "index-dashboard__setting-up-caret" }, "›"),
+              line,
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
   function usableEnriched(res) {
     const p = res && res.profile;
     return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
@@ -1713,9 +1754,7 @@
       ),
       gettingStarted
         ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
-          drafting || loading
-            ? "Pulling together your profile…"
-            : "Here's what I pulled together. Make sure it's right.")
+          "Here's what I pulled together. Make sure it's right.")
         : null,
       (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
         tabButton("profile", "Profile Settings"),
@@ -1723,7 +1762,7 @@
       ),
       panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
       loading || !form
-        ? React.createElement("div", { className: "index-dashboard__loading" }, drafting ? "Pulling together your profile…" : "Loading profile…")
+        ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
         : React.createElement("div", { className: "index-dashboard__profile-body" },
           readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
         ),
@@ -1733,23 +1772,34 @@
             note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
           React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
             gettingStarted
-              ? React.createElement("button", {
+              ? React.createElement(Button, {
                 type: "button",
-                className: "index-dashboard__profile-discard",
+                outlined: true,
+                className: "index-dashboard__getting-started-btn",
                 disabled: saving || !dirty,
                 onClick: resetAssembled,
               }, "Reset")
               : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
             React.createElement(Button, {
               type: "button",
+              className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
               disabled: saving || (gettingStarted ? drafting : !dirty),
               onClick: save,
-            }, saving ? (gettingStarted ? "Confirming…" : "Saving…") : (gettingStarted ? "Confirm" : "Save Changes")),
+            }, saving
+              ? (gettingStarted ? "Confirming…" : "Saving…")
+              : (gettingStarted ? "Looks good" : "Save Changes")),
           ),
         )
         : null,
     );
 
+    // Mac parity: keep the review form hidden until enrichment finishes, and show
+    // the setting-up screen (brand + motion + status lines) in the meantime.
+    if (gettingStarted && (loading || drafting || !form)) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" },
+        React.createElement(SettingUpScreen),
+      );
+    }
     if (gettingStarted) {
       return React.createElement("div", { className: "index-dashboard__getting-started" }, panel);
     }

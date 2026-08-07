@@ -232,6 +232,11 @@ def main() -> None:
     assert "Getting started" in dashboard_js
     assert "gettingStarted" in dashboard_js
     assert "index-dashboard__getting-started" in dashboard_js
+    assert "SettingUpScreen" in dashboard_js
+    assert "index-dashboard__setting-up" in dashboard_js
+    assert "Looks good" in dashboard_js
+    assert "Getting a sense of you" in dashboard_js
+    assert "index-dashboard__getting-started-btn" in dashboard_js
     assert "index-dashboard__opp-id--clickable" in dashboard_js
 
     # Hermes Desktop ships the same Getting started gate via the built bundle.
@@ -244,6 +249,8 @@ def main() -> None:
     assert "Getting started" in desktop_js
     assert "needsProfileConfirm" in desktop_js
     assert "index-dashboard__getting-started" in desktop_js
+    assert "SettingUpScreen" in desktop_js
+    assert "index-dashboard__setting-up" in desktop_js
     assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
@@ -296,6 +303,9 @@ def main() -> None:
     assert "index-dashboard__msg-conv-dot" in dashboard_css
     assert "index-dashboard__msg-search" in dashboard_css
     assert "index-dashboard__getting-started" in dashboard_css
+    assert "index-dashboard__setting-up" in dashboard_css
+    assert "index-dashboard__getting-started-btn" in dashboard_css
+    assert "index-dashboard-setting-stripes" in dashboard_css
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()

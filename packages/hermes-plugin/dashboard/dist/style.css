@@ -1318,6 +1318,121 @@
   line-height: 1.45;
 }
 
+/* Mac BuildingProfile parity — setting-up screen before the review form. */
+.index-dashboard__setting-up {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: min(70vh, 36rem);
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.index-dashboard__setting-up-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  border-radius: var(--radius, 0.75rem);
+  background: var(--color-card, #0f172a);
+  text-align: center;
+}
+
+.index-dashboard__setting-up-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.index-dashboard__setting-up-brand-label {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.82rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__setting-up-anim {
+  width: 220px;
+  max-width: 70%;
+  height: auto;
+}
+
+.index-dashboard__setting-up-bar {
+  width: 100%;
+  height: 0.55rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
+  background: color-mix(in srgb, var(--color-background, #020617) 55%, transparent);
+}
+
+.index-dashboard__setting-up-bar-fill {
+  height: 100%;
+  width: 100%;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--color-primary, #4fd1c5) 70%, transparent) 0,
+    color-mix(in srgb, var(--color-primary, #4fd1c5) 70%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  background-size: 24px 24px;
+  animation: index-dashboard-setting-stripes 0.8s linear infinite;
+}
+
+@keyframes index-dashboard-setting-stripes {
+  to { background-position: 24px 0; }
+}
+
+.index-dashboard__setting-up-lines {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: left;
+}
+
+.index-dashboard__setting-up-line {
+  margin: 0;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: index-dashboard-setting-fade-up 0.45s ease forwards;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.index-dashboard__setting-up-line--final {
+  color: var(--color-card-foreground, inherit);
+  font-weight: 700;
+}
+
+.index-dashboard__setting-up-caret {
+  display: inline-block;
+  margin-right: 0.45rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  opacity: 0.7;
+}
+
+@keyframes index-dashboard-setting-fade-up {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hermes-styled actions on Getting started — same accent language, larger hit targets. */
+.index-dashboard__getting-started-btn {
+  padding: 0.7rem 1.35rem !important;
+  font-size: 0.95rem !important;
+  letter-spacing: 0.02em;
+  min-height: 2.6rem;
+}
+
 /* Profile / settings overlay panel. */
 .index-dashboard__profile-overlay {
   position: fixed;
