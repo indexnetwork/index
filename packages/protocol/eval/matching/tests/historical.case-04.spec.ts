@@ -190,7 +190,7 @@ describe("historical case 04", () => {
       recognizability: "medium",
       decision: "approved",
       rationale:
-        "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; matrix integration remains pending Task 8.",
+        "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; at that review checkpoint, matrix integration was still pending Task 8.",
     });
     expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_04)).not.toThrow();
 

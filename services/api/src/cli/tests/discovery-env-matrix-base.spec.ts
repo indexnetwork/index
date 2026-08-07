@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -18,13 +19,33 @@ const SAFE_ENV: NodeJS.ProcessEnv = {
   DISCOVERY_ENV_MATRIX_BASE_BRANCH: 'eval-discovery-base',
 };
 
-function allStrings(value: unknown): string[] {
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap(allStrings);
+const FORBIDDEN_AUDIT_KEYS = new Set([
+  'reportNames', 'historicalQuality', 'cutoff', 'sourceAudit', 'review',
+  'citations', 'claims', 'claimProvenance', 'modelFieldProvenance', 'participantKinds',
+  'semanticNegatives', 'anonymizationReview', 'outcomeCitationIds', 'triggerInputs',
+  'reviewer', 'reviewedAt', 'recognizability', 'decision', 'rationale',
+  'citationIds', 'orderingCitationIds', 'basisClaimIds', 'violatedRequirement',
+  'preConnection', 'calendarProxy', 'confidence', 'uncertaintyRationale', 'exclusive',
+]);
+
+function allObjectKeys(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(allObjectKeys);
   if (value && typeof value === 'object') {
-    return Object.entries(value).flatMap(([key, child]) => [key, ...allStrings(child)]);
+    return Object.entries(value).flatMap(([key, child]) => [key, ...allObjectKeys(child)]);
   }
   return [];
+}
+
+function allStringValues(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(allStringValues);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(allStringValues);
+  return [];
+}
+
+function assertNoForbiddenAuditKeys(value: unknown): void {
+  const forbiddenKey = allObjectKeys(value).find((key) => FORBIDDEN_AUDIT_KEYS.has(key));
+  if (forbiddenKey) throw new Error(`serialized payload contains forbidden audit key: ${forbiddenKey}`);
 }
 
 interface MockBaseDatabaseState {
@@ -206,6 +227,10 @@ describe('discovery environment matrix base policy', () => {
 
   it('serializes the exact complete all-five-case database row set', () => {
     const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+    // Digest changes require deliberate review of the complete serialized payload, including every field and array order.
+    const expectedCompletePayloadDigest = '816fc4f9e7fa49f0c16ec10bdec0fb85029112eda7cf62bc54a565ab9b278c6d';
+    expect(createHash('sha256').update(JSON.stringify(payload)).digest('hex')).toBe(expectedCompletePayloadDigest);
+
     const expectedCases = [
       {
         id: 'historical/builder-and-operator',
@@ -400,23 +425,45 @@ describe('discovery environment matrix base policy', () => {
   });
 
   it('excludes recursive audit and report data from serialized rows', () => {
-    const auditKeys = [
-      'historicalQuality', 'claimProvenance', 'semanticNegatives',
-      'anonymizationReview', 'outcomeCitationIds', 'citationIds',
-      'basisClaimIds', 'violatedRequirement', 'uncertaintyRationale',
-    ];
-    const forbidden = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => [
-      ...Object.values(historicalCase.reportNames ?? {}),
-      ...historicalCase.historicalQuality.citations.flatMap(({ id, url, title, publisher, excerpt }) =>
-        [id, url, title, publisher, excerpt]),
-      ...Object.values(historicalCase.historicalQuality.semanticNegatives),
-      ...auditKeys,
-    ]).filter(Boolean);
+    const forbiddenUniqueSubstrings = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => {
+      const review = historicalCase.historicalQuality.anonymizationReview;
+      return [
+        ...Object.values(historicalCase.reportNames ?? {}),
+        ...historicalCase.historicalQuality.citations.flatMap(({ id, url, title, excerpt }) =>
+          [id, url, title, excerpt]),
+        ...Object.values(historicalCase.historicalQuality.semanticNegatives),
+        review.reviewer,
+        review.rationale,
+      ];
+    });
+    const forbiddenExactValues = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => [
+      ...historicalCase.historicalQuality.citations.map(({ publisher }) => publisher),
+      historicalCase.historicalQuality.anonymizationReview.reviewedAt,
+    ]);
 
-    const serializedStrings = allStrings(baseSeedPayload(HISTORICAL_MATRIX_CASES));
-    for (const value of forbidden) {
-      expect(serializedStrings.some((entry) => entry.includes(value)), value).toBeFalse();
+    const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+    expect(() => assertNoForbiddenAuditKeys(payload)).not.toThrow();
+
+    const serializedValues = allStringValues(payload);
+    for (const value of new Set(forbiddenUniqueSubstrings.filter(Boolean))) {
+      expect(serializedValues.some((entry) => entry.includes(value)), value).toBeFalse();
     }
+    for (const value of new Set(forbiddenExactValues.filter(Boolean))) {
+      expect(serializedValues.includes(value), value).toBeFalse();
+    }
+  });
+
+  it('matches audit keys exactly without rejecting legitimate model text', () => {
+    const payload = structuredClone(baseSeedPayload(HISTORICAL_MATRIX_CASES));
+    payload.users[0]!.intro += '\nPeer review improves decision confidence.';
+
+    expect(() => assertNoForbiddenAuditKeys(payload)).not.toThrow();
+
+    const payloadWithCutoff = structuredClone(payload) as unknown as { cases: Array<Record<string, unknown>> };
+    payloadWithCutoff.cases[0]!.cutoff = { exclusive: true };
+    expect(() => assertNoForbiddenAuditKeys(payloadWithCutoff)).toThrow(
+      'serialized payload contains forbidden audit key: cutoff',
+    );
   });
 
   it('uses deterministic, fixture-scoped IDs and the audited v2 corpus contract', () => {
