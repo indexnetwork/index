@@ -257,8 +257,8 @@ describe('discovery environment matrix base policy', () => {
     ];
     const forbidden = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => [
       ...Object.values(historicalCase.reportNames ?? {}),
-      ...historicalCase.historicalQuality.citations.flatMap(({ url, title, publisher, excerpt }) =>
-        [url, title, publisher, excerpt]),
+      ...historicalCase.historicalQuality.citations.flatMap(({ id, url, title, publisher, excerpt }) =>
+        [id, url, title, publisher, excerpt]),
       ...Object.values(historicalCase.historicalQuality.semanticNegatives),
       ...auditKeys,
     ]).filter(Boolean);
