@@ -233,12 +233,104 @@ describe('discovery environment matrix base policy', () => {
         networkTitle: 'Discovery evaluation fixture 5',
       },
     ] as const;
+    const expectedNetworkIds = [
+      'eval-discovery-matrix-network-da199123c915c310012ede44',
+      'eval-discovery-matrix-network-258f3e209a1abb21903bc1a9',
+      'eval-discovery-matrix-network-19e1e79cf8828ac898b8c8f3',
+      'eval-discovery-matrix-network-27908d45f8c6b7eb90e6292b',
+      'eval-discovery-matrix-network-54b342488937695bd4cf291f',
+    ] as const;
+    const expectedUserIds = [
+      'eval-discovery-matrix-user-899f03f790681c6a17b0ff89',
+      'eval-discovery-matrix-user-fe7f5c1b5049fb5467759af4',
+      'eval-discovery-matrix-user-932c182c43d90822a5f223fd',
+      'eval-discovery-matrix-user-74a793e5da880a4a73feffb0',
+      'eval-discovery-matrix-user-fa3fc9221e5650e9aac4e74f',
+      'eval-discovery-matrix-user-0bc7658c22db8b7e208a406a',
+      'eval-discovery-matrix-user-c944e4b0683c7168ba2a2074',
+      'eval-discovery-matrix-user-c538c28e349754c03a6f2471',
+      'eval-discovery-matrix-user-a4608e450690e426f8686169',
+      'eval-discovery-matrix-user-f52f16525b20673c810a1b48',
+      'eval-discovery-matrix-user-0a6bcb5d0ea3394c7bd83b2f',
+      'eval-discovery-matrix-user-98af7a4c64c1058c44efc32a',
+      'eval-discovery-matrix-user-a991ae39f012276cf2651678',
+      'eval-discovery-matrix-user-28a9034123fa3c6343b31542',
+      'eval-discovery-matrix-user-bc35b2d20c25c882b6180ab4',
+      'eval-discovery-matrix-user-28664e86288bf2f71b32da90',
+      'eval-discovery-matrix-user-f73a0ebeb7f80ddf4df689ce',
+      'eval-discovery-matrix-user-10120001768d47d553e3eba9',
+      'eval-discovery-matrix-user-61b92b1a03ad09c1a157d6e0',
+      'eval-discovery-matrix-user-96505d83681f7ddd5a377d69',
+      'eval-discovery-matrix-user-aba7263b70935088fe2420ab',
+      'eval-discovery-matrix-user-242c0609ddd63f0f42df9227',
+      'eval-discovery-matrix-user-afac75fd2e09955ea200f489',
+      'eval-discovery-matrix-user-83b1a0b589369a8cec91a62e',
+      'eval-discovery-matrix-user-d2711f817c286af9f530c207',
+    ] as const;
+    const expectedIntentIds = [
+      'eval-discovery-matrix-intent-cb1c4fc76e7e2c394fa4bda1',
+      'eval-discovery-matrix-intent-5e1b82fd93e8affcfcc973ba',
+      'eval-discovery-matrix-intent-183f2f693db616dbd2153708',
+      'eval-discovery-matrix-intent-81d513017aaf2d6f48523b7a',
+      'eval-discovery-matrix-intent-e8b74ff979b3fbf144f9fa86',
+      'eval-discovery-matrix-intent-6d79a35cd616dd0b20b0e7b8',
+      'eval-discovery-matrix-intent-0dba61a0b7b2aebe692e36e3',
+      'eval-discovery-matrix-intent-e6853dba50b6f66bb0122b5d',
+      'eval-discovery-matrix-intent-b1a414172b64edeca46cbe74',
+      'eval-discovery-matrix-intent-9e203b40ba3859d5ae0ce0e0',
+      'eval-discovery-matrix-intent-77ba7a8f1e81b6750f965f71',
+      'eval-discovery-matrix-intent-2fb51f8ee3c5759b51a3051a',
+      'eval-discovery-matrix-intent-6d388c61dbd87cb85a9dd458',
+      'eval-discovery-matrix-intent-1b3270791f7b9e99af42fa38',
+      'eval-discovery-matrix-intent-d8eeb17ebab06f3fe810d256',
+      'eval-discovery-matrix-intent-b2e2958e318575c9eb675e2a',
+      'eval-discovery-matrix-intent-75b9d5c8f8d73149d9d43e7e',
+      'eval-discovery-matrix-intent-067e856bf59902dbaced22b7',
+      'eval-discovery-matrix-intent-f613c08d7f3239453ffa79b6',
+      'eval-discovery-matrix-intent-2c04ba6c25dca7fb229508d1',
+      'eval-discovery-matrix-intent-3707fef85ec602226f6c216c',
+      'eval-discovery-matrix-intent-ffadcd7a293a9be47277a0a4',
+      'eval-discovery-matrix-intent-103a9ef9d8f9ebfffa6e2505',
+      'eval-discovery-matrix-intent-1e001b0ccb042e0637a50c68',
+      'eval-discovery-matrix-intent-1ab7dbcbf9fddab68fadc444',
+    ] as const;
+    const expectedUserNames = [
+      'Evaluation fixture participant 899f03f7',
+      'Evaluation fixture participant fe7f5c1b',
+      'Evaluation fixture participant 932c182c',
+      'Evaluation fixture participant 74a793e5',
+      'Evaluation fixture participant fa3fc922',
+      'Evaluation fixture participant 0bc7658c',
+      'Evaluation fixture participant c944e4b0',
+      'Evaluation fixture participant c538c28e',
+      'Evaluation fixture participant a4608e45',
+      'Evaluation fixture participant f52f1652',
+      'Evaluation fixture participant 0a6bcb5d',
+      'Evaluation fixture participant 98af7a4c',
+      'Evaluation fixture participant a991ae39',
+      'Evaluation fixture participant 28a90341',
+      'Evaluation fixture participant bc35b2d2',
+      'Evaluation fixture participant 28664e86',
+      'Evaluation fixture participant f73a0ebe',
+      'Evaluation fixture participant 10120001',
+      'Evaluation fixture participant 61b92b1a',
+      'Evaluation fixture participant 96505d83',
+      'Evaluation fixture participant aba7263b',
+      'Evaluation fixture participant 242c0609',
+      'Evaluation fixture participant afac75fd',
+      'Evaluation fixture participant 83b1a0b5',
+      'Evaluation fixture participant d2711f81',
+    ] as const;
 
     expect(payload.cases).toHaveLength(5);
     expect(payload.users).toHaveLength(25);
     expect(payload.networks).toHaveLength(5);
     expect(payload.memberships).toHaveLength(25);
     expect(payload.intents).toHaveLength(25);
+    expect(payload.networks.map(({ id }) => id)).toEqual(expectedNetworkIds);
+    expect(payload.users.map(({ id }) => id)).toEqual(expectedUserIds);
+    expect(payload.intents.map(({ id }) => id)).toEqual(expectedIntentIds);
+    expect(payload.users.map(({ name }) => name)).toEqual(expectedUserNames);
     expect(payload.cases.map(({ id, description }) => ({ id, description }))).toEqual(
       expectedCases.map(({ id, description }) => ({ id, description })),
     );
