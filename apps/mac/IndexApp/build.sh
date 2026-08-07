@@ -14,7 +14,7 @@ if [ -n "$IDENTITY" ] && [ -z "$PROFILE" ]; then
     exit 1
 fi
 
-APP_NAME="index"
+APP_NAME="Index"
 APP="dist/${APP_NAME}.app"
 CONTENTS="${APP}/Contents"
 

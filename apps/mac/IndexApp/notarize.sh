@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/link-host.sh"
 source "$SCRIPT_DIR/provisioning-profile.sh"
 
-APP_PATH="${APP_PATH:-dist/index.app}"
+APP_PATH="${APP_PATH:-dist/Index.app}"
 PROFILE="${NOTARYTOOL_PROFILE:?set NOTARYTOOL_PROFILE to a local keychain profile}"
 ARCHIVE="${ARCHIVE_PATH:-dist/index-notarize.zip}"
 

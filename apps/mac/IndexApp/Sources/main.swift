@@ -630,7 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             backing: .buffered,
             defer: false
         )
-        window.title = "index, Workbench 1.3"
+        window.title = "Index, Workbench 1.3"
         // Float the traffic lights directly over the content, no title bar
         // strip. The web content fills the full window height.
         window.titleVisibility = .hidden
@@ -684,7 +684,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func presentError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "index, Workbench 1.3"
+        alert.messageText = "Index, Workbench 1.3"
         alert.informativeText = message
         alert.alertStyle = .critical
         alert.runModal()
@@ -1000,7 +1000,7 @@ func buildMainMenu() -> NSMenu {
     mainMenu.addItem(appMenuItem)
     let appMenu = NSMenu()
     appMenuItem.submenu = appMenu
-    let appName = "index"
+    let appName = "Index"
     appMenu.addItem(withTitle: "About \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
     appMenu.addItem(NSMenuItem.separator())
     appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
