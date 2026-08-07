@@ -23,7 +23,6 @@
     "maintenance:audit-experiment-emails": "bun ./src/cli/audit-experiment-email-collisions.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
-    "maintenance:backfill-premises": "bun ./src/cli/backfill-premises.ts",
     "maintenance:backfill-context-hyde": "bun ./src/cli/backfill-context-hyde.ts",
     "maintenance:backfill-global-user-contexts": "bun ./src/cli/backfill-global-user-contexts.ts",
     "maintenance:backfill-intent-questions": "bun ./src/cli/backfill-intent-questions.ts",

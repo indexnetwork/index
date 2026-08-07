@@ -2,7 +2,6 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { enrichmentQueue } from '../queues/enrichment.queue';
 
 const logger = log.service.from("UserService");
 
@@ -16,8 +15,6 @@ export interface UserServiceDeps {
   getPremisesBySource?: (userId: string, source: string) => Promise<Array<{ id: string }>>;
   /** Retract a single premise (set status RETRACTED + retractedAt). Lifecycle events fire in the DB adapter. */
   retractPremise?: (premiseId: string) => Promise<void>;
-  /** Enqueue an enrichment job to rebuild premises from updated socials. */
-  enqueueEnrichment?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -99,11 +96,10 @@ export class UserService {
     }
 
     /**
-     * Retract all `source='integration'` premises for a user after their social URLs
-     * change, then fire-and-forget a re-enrichment job to rebuild from the new social set.
+     * Retract all `source='integration'` premises for a user after their social
+     * URLs change, so stale integration-derived premises don't linger.
      *
      * Retraction loop is synchronous — errors propagate to the caller.
-     * Re-enrichment failure is logged and swallowed (best-effort).
      */
     private async retractIntegrationPremises(userId: string): Promise<void> {
         const getPremisesBySource =
@@ -116,13 +112,9 @@ export class UserService {
             this.deps?.retractPremise ??
             (async (id: string) => { await chatDatabaseAdapter.updatePremise(id, { status: 'RETRACTED', retractedAt: new Date() }); });
 
-        const enqueueEnrichment =
-            this.deps?.enqueueEnrichment ??
-            (async (uid: string) => { await enrichmentQueue.addEnrichUserJob({ userId: uid, reason: 'socials_updated' }); });
-
         const toRetract = await getPremisesBySource(userId, 'integration');
 
-        logger.verbose('Retracting integration premises before re-enrich', {
+        logger.verbose('Retracting integration premises after social update', {
             userId,
             count: toRetract.length,
         });
@@ -130,14 +122,6 @@ export class UserService {
         for (const { id } of toRetract) {
             await retractPremise(id);
         }
-
-        // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
-        enqueueEnrichment(userId).catch(err =>
-            logger.error('Failed to enqueue re-enrichment after social update', {
-                userId,
-                error: err,
-            }),
-        );
     }
 
     async softDelete(userId: string) {

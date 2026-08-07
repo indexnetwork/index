@@ -88,7 +88,7 @@ export class EnrichmentService {
     this.factory = new EnrichmentGraphFactory(this.db, this.scraper);
     // Separate factory wired with the Parallel enricher for the on-demand
     // public-research path. Kept distinct from `factory` so the light
-    // `syncProfile` (used by the `/me` auto-enrichment hot path) is unchanged.
+    // `syncProfile` (used by POST /enrichment/sync) is unchanged.
     this.enricherFactory = new EnrichmentGraphFactory(this.db, this.scraper, { enrichUserProfile });
   }
 
