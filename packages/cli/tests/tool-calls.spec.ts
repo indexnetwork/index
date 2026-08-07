@@ -172,7 +172,7 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("update calls update_intent with intentId and newDescription", async () => {
+    it("update calls update_intent with intentId and description", async () => {
       mock.setToolResponse("update_intent", { success: true, data: {} });
 
       await handleIntent(client, "update", {
@@ -185,7 +185,7 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls[0].toolName).toBe("update_intent");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
-        newDescription: "Looking for a CTO with AI experience",
+        description: "Looking for a CTO with AI experience",
       });
     });
 
@@ -272,23 +272,23 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("reject calls update_opportunity with status rejected (CLI: opportunity reject)", async () => {
+    it("reject uses REST without calling a tool", async () => {
       mock.onRest("GET", "/api/opportunities/xyz", () =>
         Response.json({ id: "full-uuid-xyz", status: "pending" }),
       );
-      mock.setToolResponse("update_opportunity", { success: true, data: {} });
+      let body: unknown;
+      mock.onRest("PATCH", "/api/opportunities/full-uuid-xyz/status", async (req) => {
+        body = await req.json();
+        return Response.json({ opportunity: { id: "full-uuid-xyz", status: "rejected" } });
+      });
 
       await handleOpportunity(client, "reject", {
         targetId: "xyz",
         json: true,
       });
 
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("update_opportunity");
-      expect(mock.toolCalls[0].query).toEqual({
-        opportunityId: "full-uuid-xyz",
-        status: "rejected",
-      });
+      expect(mock.toolCalls).toHaveLength(0);
+      expect(body).toEqual({ status: "rejected" });
     });
   });
 

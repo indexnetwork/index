@@ -172,13 +172,19 @@ export class ApiClient {
     return (await res.json()) as OpportunityDetail;
   }
 
-  /** Accept an opportunity over REST, optionally acknowledging uptake questions. */
-  async acceptOpportunity(id: string, acknowledgedUptakeQuestionIds?: string[]): Promise<Record<string, unknown>> {
+  /** Update an opportunity status over REST, optionally acknowledging uptake questions on acceptance. */
+  async updateOpportunityStatus(
+    id: string,
+    status: "accepted" | "rejected",
+    acknowledgedUptakeQuestionIds?: string[],
+  ): Promise<Record<string, unknown>> {
     const res = await this.patch(`/api/opportunities/${id}/status`, {
-      status: "accepted",
-      ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}),
+      status,
+      ...(status === "accepted" && acknowledgedUptakeQuestionIds
+        ? { acknowledgedUptakeQuestionIds }
+        : {}),
     });
-    return (await res.json()) as Record<string, unknown>;
+    return await res.json() as Record<string, unknown>;
   }
 
   /**
@@ -262,6 +268,10 @@ export class ApiClient {
     });
     const body = (await res.json()) as { intentId: string };
     return body;
+  }
+
+  async updateIntent(intentId: string, description: string): Promise<ToolResult> {
+    return this.callTool("update_intent", { intentId, description });
   }
 
   // ── Network methods ─────────────────────────────────────────────

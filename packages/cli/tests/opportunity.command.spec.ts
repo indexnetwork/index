@@ -150,6 +150,49 @@ describe("opportunity API client", () => {
 
 });
 
+// ── Mutation command tests ────────────────────────────────────────
+
+describe("opportunity status commands", () => {
+  it("preserves the uptake advisory when acceptance returns 409", async () => {
+    const mock = await createMockServer();
+    const client = new ApiClient(mock.url, "test-token");
+    mock.on("GET", "/api/opportunities/short-id", () =>
+      Response.json({ id: "opportunity-id", status: "pending" }),
+    );
+    mock.on("PATCH", "/api/opportunities/opportunity-id/status", () =>
+      Response.json({
+        error: "Questions require acknowledgement",
+        advisory: {
+          code: "unresolved_uptake_questions",
+          advisoryOnly: true,
+          opportunityId: "opportunity-id",
+          questions: [{
+            id: "q1",
+            title: "Confirm availability",
+            prompt: "Are you available?",
+            options: [{ label: "Yes", description: "Continue" }],
+            multiSelect: false,
+          }],
+          acknowledgedUptakeQuestionIds: [],
+        },
+      }, { status: 409 }),
+    );
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    try {
+      await handleOpportunity(client, "accept", { targetId: "short-id" });
+    } finally {
+      console.log = originalLog;
+      await mock.stop();
+    }
+
+    expect(logs.join("\n")).toContain("Questions before accepting");
+    expect(logs.join("\n")).toContain("--acknowledge-uptake q1");
+  });
+});
+
 // ── Output renderer tests ─────────────────────────────────────────
 
 describe("opportunity output renderers", () => {

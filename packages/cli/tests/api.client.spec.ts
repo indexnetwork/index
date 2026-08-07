@@ -209,6 +209,43 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("updateIntent", () => {
+    it("uses the canonical description field", async () => {
+      let body: { query?: Record<string, unknown> } = {};
+      mock.on("POST", "/api/tools/update_intent", async (req) => {
+        body = await req.json() as { query?: Record<string, unknown> };
+        return Response.json({ success: true, data: { intentId: "i1" } });
+      });
+
+      await client.updateIntent("i1", "Find an AI co-founder");
+      expect(body.query).toEqual({ intentId: "i1", description: "Find an AI co-founder" });
+    });
+  });
+
+  describe("updateOpportunityStatus", () => {
+    it("uses REST for rejection without uptake acknowledgements", async () => {
+      let body: Record<string, unknown> = {};
+      mock.on("PATCH", "/api/opportunities/o1/status", async (req) => {
+        body = await req.json() as Record<string, unknown>;
+        return Response.json({ opportunity: { id: "o1", status: "rejected" } });
+      });
+
+      await client.updateOpportunityStatus("o1", "rejected");
+      expect(body).toEqual({ status: "rejected" });
+    });
+
+    it("includes uptake acknowledgements only for acceptance", async () => {
+      let body: Record<string, unknown> = {};
+      mock.on("PATCH", "/api/opportunities/o1/status", async (req) => {
+        body = await req.json() as Record<string, unknown>;
+        return Response.json({ opportunity: { id: "o1", status: "accepted" } });
+      });
+
+      await client.updateOpportunityStatus("o1", "accepted", ["q1"]);
+      expect(body).toEqual({ status: "accepted", acknowledgedUptakeQuestionIds: ["q1"] });
+    });
+  });
+
   describe("confirmIntent", () => {
     it("posts proposalId and description, returns the created intent ID", async () => {
       let receivedBody: Record<string, unknown> = {};
