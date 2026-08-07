@@ -78,6 +78,13 @@ function fixtureArtifact(options: { duplicateNode?: boolean; missingTarget?: boo
   return artifact;
 }
 
+test("loads dependency-free classic assets in deterministic order", async () => {
+  const html = await Bun.file("docs/protocol-atlas/index.html").text();
+  expect(html).toContain('<link rel="stylesheet" href="./atlas.css">');
+  expect(html).toMatch(/atlas-content\.js[\s\S]*protocol\.generated\.js[\s\S]*atlas-core\.js[\s\S]*atlas\.js/);
+  expect(html).not.toMatch(/https?:\/\/|type="module"|<script[^>]+src="\//);
+});
+
 describe("protocol atlas curated content", () => {
   test("accepts the approved seven chapters and five flows", async () => {
     const content = await loadAtlasContent() as {
