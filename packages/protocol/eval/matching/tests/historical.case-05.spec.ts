@@ -203,16 +203,16 @@ describe("historical case 05", () => {
     }
   });
 
-  it("requires re-review after model-facing changes and remains valid only in authoring mode", () => {
+  it("records independent approval and passes strict aggregate admission", () => {
     expect(HISTORICAL_CASE_05.historicalQuality.anonymizationReview).toEqual({
-      reviewer: "ind637.fixture-author",
+      reviewer: "ind637.source-auditor:4c882160",
       reviewedAt: "2026-08-07",
       recognizability: "medium",
-      decision: "pending",
+      decision: "approved",
       rationale:
-        "Pending independent re-review after all three synthetic profiles and intents were rewritten in neutral affirmative language and all four candidate RAG scores were equalized at 70; Drew→Katalin direction, historical provenance, the around-1997 boundary, and later-fact exclusions remain unchanged.",
+        "Independent review of checkpoint 5402be6fd6092cb9c203e50e52f78cd33c8c64f4 approved the Drew→Katalin chronology and pre-contact provenance, the uncertain around-1997 event boundary, exact citation metadata, neutral distinct negatives, equal candidate scores with feasible positive and negative bands, exclusion of post-contact facts, and isolation of outcome evidence. The historicalModelSafeProjection, exact H5 matching input, matrixModelInput, and baseSeedPayload projection/serialization boundaries keep audit identity or answer-key material outside model input as documented, and combination recognizability remains medium.",
     });
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05)).toThrow(/anonymization review must be approved/);
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05)).not.toThrow();
     expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05, { requireApprovedReview: false })).not.toThrow();
     expectDeeplyFrozen(HISTORICAL_CASE_05);
   });

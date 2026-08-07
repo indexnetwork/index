@@ -1,12 +1,12 @@
 # IND-637 historical five-case independent review receipt
 
-Dates: 2026-08-06 initial review; 2026-08-07 corrective review, with H5 pending re-review
+Dates: 2026-08-06 initial review; 2026-08-07 corrective review and final H5 reapproval
 
 ## Issue, corrective chronology, and durability
 
 IND-637 hardens five historical matching cases before they seed shared-pool retrieval experiments. Every model-facing historical statement must have pre-connection provenance; synthetic negatives must remain explicitly authored; outcomes and real identities must remain report-only; and combination recognizability must receive independent review.
 
-PR #1341 passed its initial independent review and was merged at `5e33ee4cd8625cadd3e3da760698023b0c8d630b`. A post-merge owner audit then found that H1 and H5 violated the intended owner decisions: H1 represented the wrong historical collaboration, H5 reversed the required seeker direction, and the corpus still used a flat date cutoff. The audit also found admission, serializer-coverage, and documentation gaps. The focused corrective work replaced H1, repaired H5, introduced event-relative cutoffs, and added exact all-five-case serializer and no-leak coverage. A final evaluation-validity correction then rewrote H5's model-facing negatives, equalized its candidate RAG scores, and returned H5 to pending re-review, so strict aggregate admission is intentionally unavailable. Therefore, the former statement that the original integration had no required changes is superseded and incorrect.
+PR #1341 passed its initial independent review and was merged at `5e33ee4cd8625cadd3e3da760698023b0c8d630b`. A post-merge owner audit then found that H1 and H5 violated the intended owner decisions: H1 represented the wrong historical collaboration, H5 reversed the required seeker direction, and the corpus still used a flat date cutoff. The audit also found admission, serializer-coverage, and documentation gaps. The focused corrective work replaced H1, repaired H5, introduced event-relative cutoffs, and added exact all-five-case serializer and no-leak coverage. A final evaluation-validity correction rewrote H5's model-facing negatives and equalized its candidate RAG scores. Independent re-review then approved that exact content at checkpoint `5402be6fd6092cb9c203e50e52f78cd33c8c64f4`, restoring strict aggregate admission. Therefore, the former statement that the original integration had no required changes is superseded and incorrect.
 
 Raw `.pi-subagents` paths identify session evidence only. They are gitignored and unavailable in a fresh checkout. This committed receipt is the durable repository record: it preserves reviewer identity, reviewed commit, decision, recognizability, required changes, and the exact citation/projection verdicts needed to audit the corpus.
 
@@ -28,7 +28,7 @@ These raw artifacts document the initial review chronology. They are not durable
 
 ### Current independent review record
 
-H1–H4 retain their approved evidence. H5's prior approval is superseded because its model-facing synthetic profiles, intents, and RAG scores changed after that checkpoint; H5 is pending independent re-review and is unavailable to strict aggregate admission. The current case modules and tests record the operative review state.
+H1–H4 retain their approved evidence. H5's earlier approval remains superseded because its model-facing synthetic profiles, intents, and RAG scores changed after that checkpoint. Reviewer `ind637.source-auditor:4c882160` independently approved the corrected content at checkpoint `5402be6fd6092cb9c203e50e52f78cd33c8c64f4`; H5 is now available to strict aggregate admission. The current case modules and tests record the operative review state.
 
 | Case | Direction | Final reviewer | Reviewed checkpoint | Reviewed date | Decision | Recognizability | Required changes |
 |---|---|---|---|---|---|---|---|
@@ -36,9 +36,9 @@ H1–H4 retain their approved evidence. H5's prior approval is superseded becaus
 | 02 | James Watson → Francis Crick | `pi-reviewer:5e071b82` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | 2026-08-06 | approved | medium | none |
 | 03 | John Lennon → Paul McCartney | `pi-reviewer:a091da6e` | `b6deffd73584e5f5a8f31a5435e0901229a57003` | 2026-08-06 | approved | medium | none |
 | 04 | Larry Page → Andy Bechtolsheim | `pi-reviewer:ba43fe8c` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | 2026-08-06 | approved | medium | none |
-| 05 | Drew Weissman → Katalin Karikó | `ind637.fixture-author` | pending | 2026-08-07 | pending | medium | Independent re-review of neutral affirmative negatives and equalized candidate RAG scores |
+| 05 | Drew Weissman → Katalin Karikó | `ind637.source-auditor:4c882160` | `5402be6fd6092cb9c203e50e52f78cd33c8c64f4` | 2026-08-07 | approved | medium | none |
 
-The current H1 session-local review path is `.pi-subagents/ind-637-repair/final-reviews/h1-final-approval.md`. The former H5 review at `.pi-subagents/ind-637-repair/final-reviews/h5-rereview.md` is a superseded historical checkpoint, not approval of the current model-facing content. These paths are locators for raw session evidence, not checkout-stable links.
+The current H1 session-local review path is `.pi-subagents/ind-637-repair/final-reviews/h1-final-approval.md`. The final H5 session-local review path is `.superpowers/sdd/2026-08-06-ind-637-historical-case-repair/final-h5-reapproval.md`; the former H5 review at `.pi-subagents/ind-637-repair/final-reviews/h5-rereview.md` is a superseded historical checkpoint, not approval of the current model-facing content. These paths are locators for raw session evidence, not checkout-stable links or durable review artifacts.
 
 ## Event-relative cutoff contract
 
@@ -121,9 +121,9 @@ H5 uses Weissman as the seeker: his pre-contact vaccine research had an RNA-inpu
 | 02 | James → Francis | PASS — independent activity and method provenance; outcome isolated | method, scientific role, molecular scale | Original approved evidence preserved; flat cutoff representation migrated to the event-relative contract |
 | 03 | John → Paul | PASS — demonstrated ability and recruitment evidence; outcome isolated | wrong-side recruitment, missing performance ability, missing popular-group interest | Original approved evidence preserved; flat cutoff representation migrated to the event-relative contract |
 | 04 | Larry → Andy | PASS — evaluator activity and technical background are pre-demonstration; outcome isolated | capital direction, stage, technical fluency | Original approved evidence preserved; flat cutoff representation migrated to the event-relative contract |
-| 05 | Drew → Katalin | PASS — Weissman's need and Karikó's pre-contact capability terminate in affirmative historical roots; outcome isolated | Hidden audit reasons remain same-side role, computational method, and plant domain; model-facing profiles and intents use neutral affirmative language | Reversed the superseded direction, grounded capability at the meeting, excluded post-contact science, rewrote all synthetic profiles/intents neutrally, equalized all candidate RAG scores at 70, and returned approval to pending re-review |
+| 05 | Drew → Katalin | PASS — Weissman's need and Karikó's pre-contact capability terminate in affirmative historical roots; no post-contact facts enter model fields; outcome evidence is isolated | Hidden audit reasons remain same-side role, computational method, and plant domain; the three distinct model-facing profiles and intents use neutral affirmative language | Reversed the superseded direction, grounded capability at the meeting, excluded post-contact science, rewrote all synthetic profiles/intents neutrally, equalized all four candidate RAG scores at 70, retained feasible `[60,100]` positive and `[0,29]` negative bands, and received independent approval at `5402be6fd6092cb9c203e50e52f78cd33c8c64f4` |
 
-H1–H4 are **approved** with medium recognizability. H5 has medium author-assessed recognizability and is **pending independent re-review** after model-facing changes; strict aggregate admission remains unavailable until approval.
+All five cases are independently **approved** with medium recognizability. H5's final approval covers the Drew→Katalin chronology and provenance, around-1997 uncertainty, exact citation metadata, neutral distinct negatives, equal scores and feasible bands, exclusion of post-contact facts, outcome isolation, and its projection/serialization boundaries. Strict aggregate admission is restored.
 
 ## Projection and serialization verdicts
 
@@ -135,7 +135,7 @@ The safe boundary is the projection or adapter output, not every containing obje
 | 02 | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | Identity/audit separation confirmed by current serializer contract | none |
 | 03 | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | Identity/audit separation confirmed by current serializer contract | none |
 | 04 | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS — the former legacy aggregate deferral was closed | PASS | Identity/audit separation confirmed by current serializer contract | none |
-| 05 | pending re-review | AUTHORING PASS — report identity, citations, audit fields, negative rationale, and outcome evidence excluded; all candidate RAG scores equal 70 | AUTHORING PASS for `.input`; complete compatibility object is not control-label safe | Unavailable under strict aggregate admission while review is pending | Unavailable under strict aggregate admission while review is pending | Independent re-review pending |
+| 05 | `5402be6fd6092cb9c203e50e52f78cd33c8c64f4` | PASS — report identity, citations, audit fields, negative rationale, and outcome evidence excluded; all candidate RAG scores equal 70 | PASS for exact `.input` — anonymized neutral candidate data; complete compatibility object remains control-only, not model-safe | PASS — expected/excluded IDs and report names are excluded | QUALIFIED PASS — audit data and report identities are excluded; deterministic hashed expected/excluded IDs remain control-plane answer keys, so the complete payload is not model input | none |
 
 The corrective all-five-case serializer tests at `4deb3e1a5` and `c7dfb9c88` invoke the real `baseSeedPayload(HISTORICAL_MATRIX_CASES)`, verify the exact 5-case/25-participant rows and references, and recursively reject report identities, citation IDs/URLs/titles/publishers/excerpts, semantic-negative rationales, and audit/report keys. These are provider-free contract checks, not evidence of a protected-base refresh or a live discovery measurement.
 
@@ -143,7 +143,7 @@ The corrective all-five-case serializer tests at `4deb3e1a5` and `c7dfb9c88` inv
 
 - Every case remains moderately recognizable from its historical capability combination even though identifying and outcome clues are excluded.
 - H1 keeps the positive first in participant order, but equalizes all candidate RAG scores. Its MoMA source is directly unfetchable, and retrospective sources disagree on discovery location.
-- H5 remains unavailable to strict aggregate and matrix consumers until independent re-review approves the neutral affirmative negatives and equalized RAG presentation. Direct PNAS access returned HTTP 403, so verification used PMC and independent metadata indexes.
+- H5 retains medium combination recognizability and the positive remains first in candidate order, although equal scores and neutral distinct negatives remove the material ranking shortcut. Direct PNAS access returned HTTP 403, so verification used PMC and independent metadata indexes.
 - Complete compatibility and seed-control containers retain answer-key material outside model input. Callers must use the explicit model-safe projections/adapters.
 - Session-local raw review artifacts are not reproducible from a fresh checkout; this receipt and the current case review metadata are the committed audit record.
 
