@@ -121,6 +121,9 @@
     }
 
     state = core.parseHash(root.location ? root.location.hash : "", content, generated);
+    if (!generatedAvailable && state.layer !== "protocol") {
+      state = core.transition(state, { type: "set-layer", layer: "protocol" }, content, generated);
+    }
     const chapter = byId(content.chapters, state.chapterId);
     if (chapter && !state.stepId && records(chapter.stepIds).length > 0) {
       state = core.transition(state, { type: "select-step", stepId: chapter.stepIds[0] }, content, generated);
@@ -454,9 +457,7 @@
       panel.append(list);
     }
 
-    const sourcePath = safeProtocolPath(selected.sourcePath)
-      || records(step && step.sourcePaths).map(safeProtocolPath).find(Boolean)
-      || null;
+    const sourcePath = safeProtocolPath(selected.sourcePath);
     appendDefinitionList(panel, [
       ["Kind", selected.kind || (selected.normative ? "normative concept" : "reference concept")],
       ["Capability", selected.capability],

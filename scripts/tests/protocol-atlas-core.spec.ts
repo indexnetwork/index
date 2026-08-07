@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { GlobalWindow } from "happy-dom";
 
 type AtlasCore = {
   defaultState(): Record<string, unknown>;
@@ -26,9 +27,24 @@ const fixtureContent = () => ({
     id: "discover-opportunity",
     chapterId: "discovery",
     steps: [
-      { id: "resolve-effective-scope", title: "Resolve scope", nodeIds: ["component.opportunity-graph-factory"] },
-      { id: "retrieve-candidates", title: "Retrieve candidates" },
-      { id: "evaluate-fit", title: "Evaluate fit", nodeIds: ["component.opportunity-evaluator"] },
+      {
+        id: "resolve-effective-scope", title: "Resolve scope", summary: "Resolve eligible scope.",
+        conceptIds: ["opportunity"], nodeIds: ["component.opportunity-graph-factory"],
+        sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts"],
+        previous: null, next: "retrieve-candidates",
+      },
+      {
+        id: "retrieve-candidates", title: "Retrieve candidates", summary: "Retrieve private candidates.",
+        conceptIds: ["opportunity"], nodeIds: ["component.opportunity-graph-factory"],
+        sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.graph.ts"],
+        previous: "resolve-effective-scope", next: "evaluate-fit",
+      },
+      {
+        id: "evaluate-fit", title: "Evaluate fit", summary: "Evaluate candidate fit.",
+        conceptIds: ["opportunity"], nodeIds: ["component.opportunity-evaluator"],
+        sourcePaths: ["packages/protocol/src/opportunity/application/opportunity.evaluator.ts"],
+        previous: "retrieve-candidates", next: null,
+      },
     ],
   }, {
     id: "external-agent-mcp",
@@ -42,8 +58,16 @@ const fixtureContent = () => ({
 const fixtureGenerated = () => ({
   schemaVersion: 1,
   nodes: [
-    { id: "component.opportunity-graph-factory", label: "OpportunityGraphFactory", symbol: "OpportunityGraphFactory", capability: "opportunities", kind: "graph-factory", summary: "Runs discovery." },
-    { id: "component.opportunity-evaluator", label: "Opportunity Evaluator", symbol: "OpportunityEvaluator", capability: "opportunities", kind: "agent", summary: "Evaluates candidate fit." },
+    {
+      id: "component.opportunity-graph-factory", label: "OpportunityGraphFactory", symbol: "OpportunityGraphFactory",
+      capability: "opportunities", kind: "graph-factory", summary: "Runs discovery.",
+      sourcePath: "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+    },
+    {
+      id: "component.opportunity-evaluator", label: "Opportunity Evaluator", symbol: "OpportunityEvaluator",
+      capability: "opportunities", kind: "agent", summary: "Evaluates candidate fit.",
+      sourcePath: "packages/protocol/src/opportunity/application/opportunity.evaluator.ts",
+    },
   ],
   edges: [{ id: "runtime.evaluate", sourceId: "component.opportunity-graph-factory", targetId: "component.opportunity-evaluator", kind: "runtime" }],
 });
@@ -61,6 +85,61 @@ const expectedOpportunityAgentSubgraph = () => ({
   nodes: [fixtureGenerated().nodes[1]],
   edges: [],
 });
+
+type RendererHarness = {
+  window: GlobalWindow;
+  document: GlobalWindow["document"];
+  cleanup(): void;
+};
+
+async function rendererHarness(options: { hash?: string; generated?: ReturnType<typeof fixtureGenerated> | null } = {}): Promise<RendererHarness> {
+  const window = new GlobalWindow({ url: `file:///protocol-atlas/index.html${options.hash ?? ""}` });
+  window.document.body.innerHTML = `
+    <header><div id="atlas-layer-toggle"></div><button id="atlas-search" type="button">Search</button></header>
+    <nav id="atlas-nav"></nav>
+    <main id="atlas-main"><div id="atlas-notice"></div><section id="atlas-diagram"></section></main>
+    <aside id="atlas-inspector"></aside><section id="atlas-filters"></section><p id="atlas-status"></p>
+  `;
+
+  const globals = ["document", "location", "navigator", "Element", "matchMedia", "requestAnimationFrame", "getSelection", "ProtocolAtlasContent", "ProtocolAtlasGenerated"] as const;
+  const descriptors = new Map(globals.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const install = (name: string, value: unknown) => Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  install("document", window.document);
+  install("location", window.location);
+  install("navigator", window.navigator);
+  install("Element", window.Element);
+  install("matchMedia", window.matchMedia.bind(window));
+  install("requestAnimationFrame", (callback: FrameRequestCallback) => callback(0));
+  install("getSelection", window.getSelection.bind(window));
+  install("ProtocolAtlasContent", fixtureContent());
+  install("ProtocolAtlasGenerated", options.generated === null ? undefined : (options.generated ?? fixtureGenerated()));
+
+  await import(`../../docs/protocol-atlas/atlas.js?test=${crypto.randomUUID()}`);
+  if (window.document.querySelectorAll("#atlas-nav button").length === 0) {
+    window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
+  }
+
+  return {
+    window,
+    document: window.document,
+    cleanup() {
+      window.happyDOM.abort();
+      for (const name of globals) {
+        const descriptor = descriptors.get(name);
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else delete (globalThis as Record<string, unknown>)[name];
+      }
+    },
+  };
+}
+
+function buttonWithText(document: GlobalWindow["document"], selector: string, text: string) {
+  return [...document.querySelectorAll<HTMLButtonElement>(selector)].find((button) => button.textContent?.includes(text));
+}
+
+function activeStep(document: GlobalWindow["document"]) {
+  return document.querySelector('[aria-current="step"]')?.textContent;
+}
 
 describe("ProtocolAtlasCore routing", () => {
   test("returns a fresh state with the stable public shape", () => {
@@ -211,12 +290,6 @@ describe("ProtocolAtlasCore transitions", () => {
       .toBe("evaluate-fit");
   });
 
-  test("moves within guided flows through semantic transition controls", async () => {
-    const renderer = await Bun.file("docs/protocol-atlas/atlas.js").text();
-    expect(renderer).toMatch(/createElement\("button"\)[\s\S]*previous-step/);
-    expect(renderer).toMatch(/createElement\("button"\)[\s\S]*next-step/);
-  });
-
   test("preserves chapter and step while switching layers", () => {
     const state = fixtureState({ chapterId: "runtime", stepId: "invocation-runtime", layer: "protocol" });
     expect(core().transition(state, { type: "set-layer", layer: "implementation" }, fixtureContent(), fixtureGenerated()))
@@ -239,6 +312,87 @@ describe("ProtocolAtlasCore transitions", () => {
     });
     expect(core().transition(withFilters, { type: "reset-filters" }, fixtureContent(), fixtureGenerated()).filters)
       .toEqual({ capabilities: [], kinds: [], edgeKinds: [] });
+  });
+});
+
+describe("Protocol Atlas guided renderer", () => {
+  test("normalizes an implementation-layer bookmark to curated protocol when generated data is unavailable", async () => {
+    const originalError = console.error;
+    let harness: RendererHarness | undefined;
+    console.error = () => {};
+    try {
+      harness = await rendererHarness({
+        hash: "#chapter=discovery&step=retrieve-candidates&layer=implementation",
+        generated: null,
+      });
+      expect(harness.document.querySelector('#atlas-layer-toggle [aria-pressed="true"]')?.textContent).toBe("protocol");
+      expect(harness.document.querySelector<HTMLButtonElement>("#atlas-layer-toggle button:last-child")?.disabled).toBe(true);
+      expect(harness.document.querySelector(".atlas-node strong")?.textContent).toBe("Opportunity");
+      expect(harness.document.querySelector("#atlas-notice")?.textContent).toContain("Curated protocol chapters remain available");
+    } finally {
+      console.error = originalError;
+      harness?.cleanup();
+    }
+  });
+
+  test("does not assign a step source path or code disclosure to an unmapped normative concept", async () => {
+    const harness = await rendererHarness();
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
+      buttonWithText(harness.document, ".atlas-stepper button", "Retrieve candidates")?.click();
+      buttonWithText(harness.document, ".atlas-node", "Opportunity")?.click();
+
+      expect(harness.document.querySelector("#atlas-inspector-heading")?.textContent).toBe("Opportunity");
+      expect([...harness.document.querySelectorAll(".atlas-metadata dt")].map((node) => node.textContent)).not.toContain("Source path");
+      expect(harness.document.querySelector("#atlas-inspector details")).toBeNull();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("dispatches semantic step controls, describes SVGs, and excludes interactive controls from arrow navigation", async () => {
+    const harness = await rendererHarness();
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
+      expect(activeStep(harness.document)).toBe("Resolve scope");
+
+      const svg = harness.document.querySelector(".atlas-diagram-canvas svg");
+      expect(svg?.querySelector("title")?.textContent).toContain("Resolve scope");
+      expect(svg?.querySelector("desc")?.textContent).toContain("ordered nodes");
+
+      const stepActions = harness.document.querySelectorAll<HTMLButtonElement>(".atlas-step-actions button");
+      expect([...stepActions].map((button) => button.tagName)).toEqual(["BUTTON", "BUTTON"]);
+      stepActions[1].click();
+      expect(activeStep(harness.document)).toBe("Retrieve candidates");
+      harness.document.querySelectorAll<HTMLButtonElement>(".atlas-step-actions button")[0].click();
+      expect(activeStep(harness.document)).toBe("Resolve scope");
+
+      harness.document.body.dispatchEvent(new harness.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(activeStep(harness.document)).toBe("Retrieve candidates");
+
+      const input = harness.document.createElement("input");
+      harness.document.body.append(input);
+      input.focus();
+      input.dispatchEvent(new harness.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(activeStep(harness.document)).toBe("Retrieve candidates");
+      const searchButton = harness.document.querySelector<HTMLButtonElement>("#atlas-search");
+      if (searchButton) searchButton.disabled = false;
+      searchButton?.focus();
+      searchButton?.dispatchEvent(new harness.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(activeStep(harness.document)).toBe("Retrieve candidates");
+
+      harness.document.querySelectorAll<HTMLButtonElement>("#atlas-layer-toggle button")[1].click();
+      harness.document.querySelector<HTMLButtonElement>(".atlas-node")?.click();
+      const disclosure = harness.document.querySelector<HTMLDetailsElement>(".atlas-disclosure");
+      if (disclosure) disclosure.open = true;
+      const disclosureButton = disclosure?.querySelector<HTMLButtonElement>("button");
+      expect(disclosureButton).not.toBeNull();
+      disclosureButton?.focus();
+      disclosureButton?.dispatchEvent(new harness.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(activeStep(harness.document)).toBe("Retrieve candidates");
+    } finally {
+      harness.cleanup();
+    }
   });
 });
 
