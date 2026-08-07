@@ -217,15 +217,20 @@ function CreateNetwork({ onCancel, onCreate }) {
             padding:"20px 24px 22px",
           }}>
 
-            {/* live preview, the tile is derived from the name, so it only
-                becomes meaningful once something is typed */}
+            {/* live preview. picture is optional; without one the tile is
+                derived from the name so the network still has a mark */}
             <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
               <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
-              <span style={{
-                fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
-                color: named ? "#000" : "var(--ink-4)",
-                minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-              }}>{named || "network name"}</span>
+              <span style={{ display:"grid", gap:2, minWidth:0 }}>
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
+                  color: named ? "#000" : "var(--ink-4)",
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                }}>{named || "network name"}</span>
+                <span style={{
+                  fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                }}>picture optional</span>
+              </span>
             </div>
 
             {/* one column at this width, like name/location on the profile.
@@ -311,15 +316,23 @@ function CreateNetwork({ onCancel, onCreate }) {
 // the same question reads the same on every surface.
 const NET_SIZE_OPTIONS = ["Under 100", "100 – 1K", "1K – 10K", "10K+"];
 
-// Early-access "request a network" screen. Same frame as CreateNetwork, but it
-// submits to /network-requests (reviewed) instead of creating a live network,
-// and ends on a confirmation panel. Also handles resubmitting a "needs changes"
-// request when `initial` is passed.
+// Early-access "request a network" screen. Same fields as CreateNetwork
+// (picture, name, description, access) plus expected size. Submits to
+// /network-requests instead of creating a live network. Also handles
+// resubmitting a "needs changes" request when `initial` is passed.
 function RequestNetwork({ initial, onCancel, onSubmit }) {
-  const [name, setName]       = useState((initial && initial.title) || "");
-  const [purpose, setPurpose] = useState((initial && initial.purpose) || "");
-  const [size, setSize]       = useState((initial && initial.expectedSize) || "");
-  const [notes, setNotes]     = useState((initial && initial.notes) || "");
+  const initialPhoto = initial && initial.imageUrl
+    ? (window.IndexApp && window.IndexApp.avatarUrl
+      ? window.IndexApp.avatarUrl(initial.imageUrl)
+      : initial.imageUrl)
+    : null;
+  const [name, setName]     = useState((initial && initial.title) || "");
+  const [desc, setDesc]     = useState((initial && initial.purpose) || "");
+  const [photo, setPhoto]   = useState(initialPhoto);
+  const [access, setAccess] = useState(
+    initial && initial.joinPolicy === "anyone" ? "public" : "private",
+  );
+  const [size, setSize]     = useState((initial && initial.expectedSize) || "");
   const [sending, setSending] = useState(false);
   const [done, setDone]       = useState(null);
 
@@ -342,9 +355,10 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
     setSending(true);
     Promise.resolve(onSubmit({
       name: named,
-      purpose: purpose.trim() || undefined,
+      purpose: desc.trim() || undefined,
       expectedSize: size || undefined,
-      notes: notes.trim() || undefined,
+      joinPolicy: access === "public" ? "anyone" : "invite_only",
+      photo,
     }))
       .then((req) => setDone(req || { title: named }))
       .catch(() => {})
@@ -360,7 +374,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
     }}>
       <div style={{
         width:860, maxWidth:"100%",
-        height:"min(660px, calc(100vh - 112px))",
+        height:"min(720px, calc(100vh - 112px))",
       }}>
         <MacWindow
           title="index · request a network"
@@ -407,33 +421,70 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                   border:"1px solid #000", borderLeft:"3px solid #FF8A00",
                   background:"#F2EFE6",
                   fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-                }}>network creation is still early. tell us what you&apos;re hoping to build and we&apos;ll get back to you.</div>
+                }}>network creation is still early. fill this in and we&apos;ll review it before it goes live.</div>
               </div>
 
               <div className="mac-scroll" style={{
                 flex:"1 1 auto", minHeight:0, overflowY:"auto",
                 padding:"20px 24px 22px",
               }}>
+                <div style={{ display:"flex", alignItems:"center", gap:13, marginBottom:20 }}>
+                  <NetworkPhoto name={named} photo={photo} onPick={setPhoto} size={42}/>
+                  <span style={{ display:"grid", gap:2, minWidth:0 }}>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:600,
+                      color: named ? "#000" : "var(--ink-4)",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                    }}>{named || "network name"}</span>
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>picture optional</span>
+                  </span>
+                </div>
+
                 <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"14px 18px" }}>
                   <TextField
-                    label="network name" required
+                    label="name" required
                     value={name}
                     onChange={setName}
-                    placeholder="e.g. Edge City"
+                    placeholder="network name"
                   />
                 </div>
 
                 <div style={{ marginTop:14 }}>
-                  <FieldLabel>what are you hoping to build?</FieldLabel>
+                  <FieldLabel right={
+                    <span style={{
+                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>optional</span>
+                  }>description</FieldLabel>
                   <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
                     <textarea
-                      value={purpose}
-                      onChange={e => setPurpose(e.target.value)}
-                      placeholder="who is it for, who do you expect to join, and what should people or agents be able to discover through it?"
+                      value={desc}
+                      onChange={e => setDesc(e.target.value)}
+                      placeholder="what people can share in this network…"
                       rows={3}
                       style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
                     />
                   </div>
+                </div>
+
+                <SectionRule>access</SectionRule>
+                <div style={{
+                  marginTop:12, display:"grid",
+                  gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:"8px 14px",
+                }}>
+                  <ChoiceCard
+                    title="public"
+                    sub="anyone can discover and join"
+                    selected={access === "public"}
+                    onClick={() => setAccess("public")}
+                  />
+                  <ChoiceCard
+                    title="private"
+                    sub="only people with an invitation link"
+                    selected={access === "private"}
+                    onClick={() => setAccess("private")}
+                  />
                 </div>
 
                 <SectionRule>how many people are you hoping to bring together?</SectionRule>
@@ -449,23 +500,6 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                       onClick={() => setSize(size === opt ? "" : opt)}
                     />
                   ))}
-                </div>
-
-                <div style={{ marginTop:14 }}>
-                  <FieldLabel right={
-                    <span style={{
-                      fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
-                    }}>optional</span>
-                  }>anything else we should know?</FieldLabel>
-                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
-                    <textarea
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                      placeholder="links, timing, context, or what you'd like to experiment with."
-                      rows={2}
-                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
-                    />
-                  </div>
                 </div>
 
                 <div style={{
@@ -497,7 +531,7 @@ function RequestNetwork({ initial, onCancel, onSubmit }) {
                     boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
                     cursor: canSend ? "pointer" : "default",
                     fontWeight:700,
-                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "create network"}</button>
+                  }}>{sending ? "sending…" : isEdit ? "resubmit" : "request network"}</button>
               </div>
             </>
           )}
@@ -516,7 +550,11 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
       display:"flex", alignItems:"flex-start", gap:12,
       padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
     }}>
-      <NetworkTile name={req.title}/>
+      <NetworkTile name={req.title} photo={
+        req.imageUrl && window.IndexApp && window.IndexApp.avatarUrl
+          ? window.IndexApp.avatarUrl(req.imageUrl)
+          : req.imageUrl || undefined
+      }/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{
@@ -792,13 +830,23 @@ function Networks({ onClose }) {
   // loop; a single load (refreshed explicitly after mutations) is enough.
   useEffect(() => { loadRequests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // You made it, so you're in it and you run it.
-  const createNetwork = ({ name, desc, access, photo }) => {
+  // You made it, so you're in it and you run it. Picture is optional: a data
+  // URL from the picker is uploaded first so imageUrl on the server is a real
+  // storage key, not a discarded local preview.
+  const createNetwork = async ({ name, desc, access, photo }) => {
+    let imageUrl = null;
+    let photoOut = photo || undefined;
+    if (client && photo && /^data:/i.test(photo)) {
+      try {
+        imageUrl = await client.storage.uploadIndexImage(photo);
+        photoOut = window.IndexApp.avatarUrl(imageUrl) || imageUrl;
+      } catch (e) { /* keep the local data URL in the mirror */ }
+    }
     NETWORKS.unshift({
       id: `net-${Date.now().toString(36)}`,
       name,
       blurb: desc || undefined,
-      photo: photo || undefined,
+      photo: photoOut,
       members: 1,
       privacy: access,
       role: "admin",
@@ -812,18 +860,33 @@ function Networks({ onClose }) {
       client.networks.create({
         title: name,
         prompt: desc || undefined,
+        imageUrl: imageUrl || undefined,
         joinPolicy: access === "public" ? "anyone" : "invite_only",
       }).catch(() => {});
     }
   };
 
   // Submit (or resubmit) a network request; resolves the request so the form
-  // can show its confirmation panel.
-  const submitRequest = (input) => {
-    if (!client) return Promise.resolve(null);
+  // can show its confirmation panel. Same upload path as create: a picked
+  // picture becomes a storage key before the request is written.
+  const submitRequest = async (input) => {
+    if (!client) return null;
+    let imageUrl = input.imageUrl;
+    if (input.photo && /^data:/i.test(input.photo)) {
+      try {
+        imageUrl = await client.storage.uploadIndexImage(input.photo);
+      } catch (e) { /* request still goes through without a picture */ }
+    }
+    const body = {
+      name: input.name,
+      purpose: input.purpose,
+      expectedSize: input.expectedSize,
+      joinPolicy: input.joinPolicy,
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
+    };
     const p = editingRequest
-      ? client.networkRequests.update(editingRequest.id, input)
-      : client.networkRequests.create(input);
+      ? client.networkRequests.update(editingRequest.id, body)
+      : client.networkRequests.create(body);
     return p.then((res) => {
       loadRequests();
       return (res && res.request) || res;

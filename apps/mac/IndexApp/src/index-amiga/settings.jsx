@@ -656,13 +656,23 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // the ONLY path that commits, and at first run the only one that counts as
   // finishing onboarding.
   const save = async () => {
+    let photo = form.photo || null;
+    let avatarKey = null;
+    if (live && client && photo && /^data:/i.test(photo)) {
+      // PicturePicker only yields a data URL; upload it so the face survives a
+      // relaunch (file:// localStorage does not).
+      try {
+        avatarKey = await client.storage.uploadAvatar(photo);
+        photo = window.IndexApp.avatarUrl(avatarKey);
+      } catch (e) { /* keep the local preview; profile text still saves */ }
+    }
     Object.assign(ME, {
       name: form.name,
       location: form.location,
       intro: form.intro,
       socials: form.socials,
       websites: form.websites,
-      photo: form.photo,
+      photo,
       notify,
     });
     if (live && client) {
@@ -697,6 +707,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         intro: form.intro,
         location: form.location,
         socials: [...socials, ...sites],
+        ...(avatarKey ? { avatar: avatarKey } : {}),
       }).catch(() => {});
     }
     (onDone || onClose)();

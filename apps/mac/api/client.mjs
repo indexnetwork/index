@@ -105,6 +105,53 @@ export function createIndexApiClient(options = {}) {
     return /** @type {T} */ (payload || {});
   }
 
+  /**
+   * Multipart upload. PicturePicker hands us a data URL; turn it into a File
+   * and POST without forcing Content-Type so the runtime sets the boundary.
+   * @param {string} endpoint
+   * @param {string} dataUrl
+   * @param {string} fieldName
+   * @param {string} basename
+   * @param {RequestOptions} [requestOptions]
+   */
+  async function uploadDataUrl(endpoint, dataUrl, fieldName, basename, requestOptions = {}) {
+    const { auth = true, signal } = requestOptions;
+    const blob = await (await fetchImpl(dataUrl)).blob();
+    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const file = new File([blob], `${basename}.${ext}`, { type: blob.type || 'image/jpeg' });
+    const form = new FormData();
+    form.append(fieldName, file);
+
+    /** @type {Record<string, string>} */
+    const headers = {};
+    if (auth && options.getApiKey) {
+      const apiKey = await options.getApiKey();
+      if (apiKey) headers['x-api-key'] = apiKey;
+    }
+    if (auth && options.getToken) {
+      const token = await options.getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetchImpl(`${apiBaseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      signal,
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => '');
+    if (!response.ok) {
+      const message = payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : `HTTP ${response.status}: ${response.statusText}`;
+      throw new IndexApiError(message, response.status, payload);
+    }
+    return /** @type {Record<string, unknown>} */ (payload || {});
+  }
+
   return {
     request,
 
@@ -115,6 +162,19 @@ export function createIndexApiClient(options = {}) {
         '/auth/cli-credential/revoke',
         { ...options, method: 'POST', body: { keyId, targetKey } },
       ),
+    },
+
+    storage: {
+      /** @param {string} dataUrl data:image/... from PicturePicker */
+      uploadAvatar: async (dataUrl, options = {}) => {
+        const r = await uploadDataUrl('/storage/avatars', dataUrl, 'avatar', 'avatar', options);
+        return /** @type {string} */ (r.avatarUrl);
+      },
+      /** @param {string} dataUrl data:image/... from PicturePicker */
+      uploadIndexImage: async (dataUrl, options = {}) => {
+        const r = await uploadDataUrl('/storage/index-images', dataUrl, 'image', 'network', options);
+        return /** @type {string} */ (r.imageUrl);
+      },
     },
 
     networks: {

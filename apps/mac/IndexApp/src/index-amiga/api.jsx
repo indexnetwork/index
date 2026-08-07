@@ -204,6 +204,8 @@ window.IndexApp = (function () {
       joined: true,
       isPersonal: n.isPersonal === true,
       privacy: n.joinPolicy === "anyone" ? "public" : "private",
+      // Same key resolution as user avatars: S3 keys need the storage base.
+      photo: avatarUrl(n.imageUrl || n.photo || null),
       signals: [],
       source: n,
     }));
@@ -389,6 +391,7 @@ window.IndexApp = (function () {
     apiKey,
     isAuthed,
     apiBaseUrl,
+    avatarUrl,
     getClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,

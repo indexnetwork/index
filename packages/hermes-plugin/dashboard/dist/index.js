@@ -927,7 +927,9 @@
     const needsChanges = req.status === "needs_changes";
     return React.createElement("div", { className: "index-dashboard__net-row index-dashboard__net-request-row" },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
-        React.createElement(BoringAvatar, { seed: req.id || req.title }),
+        req.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: req.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: req.id || req.title }),
       ),
       React.createElement("span", { className: "index-dashboard__net-meta" },
         React.createElement("span", { className: "index-dashboard__net-title" }, req.title || "Untitled network"),
@@ -945,21 +947,24 @@
     );
   }
 
-  // Early-access "request a network" form body (no chrome of its own — it lives
-  // inside the Manage modal's Request tab). Submits to /network-requests
-  // (reviewed) rather than creating a live network, and ends on a confirmation.
-  // `initial` (a needs-changes request) switches it into resubmit mode.
+  // Early-access "request a network" form. Same fields as Mac create-network
+  // (picture, name, description, access) plus expected size. Submits to
+  // /network-requests. `initial` (needs_changes) switches into resubmit mode.
   function RequestNetworkForm(props) {
     const useState = React.useState;
+    const useRef = React.useRef;
     const initial = props.initial || null;
     const nameState = useState(initial ? (initial.title || "") : "");
     const name = nameState[0]; const setName = nameState[1];
-    const purposeState = useState(initial ? (initial.purpose || "") : "");
-    const purpose = purposeState[0]; const setPurpose = purposeState[1];
+    const descState = useState(initial ? (initial.purpose || "") : "");
+    const desc = descState[0]; const setDesc = descState[1];
+    const photoState = useState(initial && initial.imageUrl ? initial.imageUrl : null);
+    const photo = photoState[0]; const setPhoto = photoState[1];
+    const photoFileRef = useRef(null);
+    const accessState = useState(initial && initial.joinPolicy === "anyone" ? "public" : "private");
+    const access = accessState[0]; const setAccess = accessState[1];
     const sizeState = useState(initial ? (initial.expectedSize || "") : "");
     const size = sizeState[0]; const setSize = sizeState[1];
-    const notesState = useState(initial ? (initial.notes || "") : "");
-    const notes = notesState[0]; const setNotes = notesState[1];
     const sendingState = useState(false);
     const sending = sendingState[0]; const setSending = sendingState[1];
     const errState = useState(null);
@@ -971,16 +976,54 @@
     const canSend = trimmed.length > 0 && !sending;
     const isEdit = !!initial;
 
+    function onPhotoFile(e) {
+      const file = e.target && e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!String(file.type || "").startsWith("image/")) {
+        setErr("That isn’t an image.");
+        return;
+      }
+      if (file.size > 4 * 1024 * 1024) {
+        setErr("That image is over 4mb. Pick a smaller one.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        setPhoto(ev.target ? ev.target.result : null);
+        setErr(null);
+      };
+      reader.onerror = function () { setErr("Couldn’t read that file."); };
+      reader.readAsDataURL(file);
+    }
+
     function submit() {
       if (!canSend) return;
       setSending(true);
       setErr(null);
-      Promise.resolve(props.onSubmit({
-        name: trimmed,
-        purpose: (purpose || "").trim() || undefined,
-        expectedSize: size || undefined,
-        notes: (notes || "").trim() || undefined,
-      }))
+
+      const uploadStep = photo && String(photo).indexOf("data:") === 0
+        ? fetchPluginJSON(API + "/network-images", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataUrl: photo }),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Network picture could not be uploaded.");
+            }
+            return payload.imageUrl || undefined;
+          })
+        : Promise.resolve(undefined);
+
+      uploadStep
+        .then(function (imageUrl) {
+          return props.onSubmit({
+            name: trimmed,
+            purpose: (desc || "").trim() || undefined,
+            expectedSize: size || undefined,
+            joinPolicy: access === "public" ? "anyone" : "invite_only",
+            ...(imageUrl ? { imageUrl: imageUrl } : {}),
+          });
+        })
         .then(function (req) { setDone(req || { title: trimmed }); })
         .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
         .finally(function () { setSending(false); });
@@ -997,14 +1040,49 @@
       );
     }
 
+    function accessCard(id, title, sub) {
+      const on = access === id;
+      return React.createElement("button", {
+        key: id, type: "button",
+        className: "index-dashboard__net-size index-dashboard__net-access" + (on ? " index-dashboard__net-size--on" : ""),
+        onClick: function () { setAccess(id); },
+      },
+        React.createElement("strong", null, title),
+        React.createElement("span", null, sub),
+      );
+    }
+
     return React.createElement("div", { className: "index-dashboard__profile-section" },
       React.createElement("p", { className: "index-dashboard__net-request-intro" },
-        "Network creation is still early. Tell us what you’re hoping to build and we’ll get back to you."),
-      React.createElement(ProfileField, { label: "Network name" },
-        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "e.g. Edge City", onChange: function (e) { setName(e.target.value); } }),
+        "Network creation is still early. Fill this in and we’ll review it before it goes live."),
+      React.createElement("div", { className: "index-dashboard__net-request-identity" },
+        React.createElement("label", { className: "index-dashboard__net-request-photo", title: "Change network picture" },
+          React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-request-photo-mark", "aria-hidden": "true" },
+            photo
+              ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: photo, alt: "" })
+              : React.createElement(BoringAvatar, { seed: trimmed || "network" }),
+          ),
+          React.createElement("input", {
+            ref: photoFileRef,
+            type: "file",
+            accept: "image/*",
+            className: "index-dashboard__profile-avatar-input",
+            onChange: onPhotoFile,
+          }),
+        ),
+        React.createElement("span", { className: "index-dashboard__net-request-photo-hint" }, "Picture optional"),
       ),
-      React.createElement(ProfileField, { label: "What are you hoping to build?" },
-        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: purpose, placeholder: "Who is it for, who do you expect to join, and what should people or agents be able to discover through it?", onChange: function (e) { setPurpose(e.target.value); } }),
+      React.createElement(ProfileField, { label: "Name" },
+        React.createElement("input", { className: "index-dashboard__profile-input", value: name, placeholder: "Network name", onChange: function (e) { setName(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "Description", hint: "Optional" },
+        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 3, value: desc, placeholder: "What people can share in this network…", onChange: function (e) { setDesc(e.target.value); } }),
+      ),
+      React.createElement(ProfileField, { label: "Access" },
+        React.createElement("div", { className: "index-dashboard__net-size-grid" },
+          accessCard("public", "Public", "Anyone can discover and join"),
+          accessCard("private", "Private", "Only people with an invitation link"),
+        ),
       ),
       React.createElement(ProfileField, { label: "How many people are you hoping to bring together?" },
         React.createElement("div", { className: "index-dashboard__net-size-grid" },
@@ -1018,13 +1096,10 @@
           }),
         ),
       ),
-      React.createElement(ProfileField, { label: "Anything else we should know?", hint: "Optional" },
-        React.createElement("textarea", { className: "index-dashboard__textarea", rows: 2, value: notes, placeholder: "Links, timing, context, or what you’d like to experiment with.", onChange: function (e) { setNotes(e.target.value); } }),
-      ),
       err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
       React.createElement("div", { className: "index-dashboard__net-request-actions" },
         React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Create network")),
+        React.createElement(Button, { type: "button", size: "sm", disabled: !canSend, onClick: submit }, sending ? "Sending…" : (isEdit ? "Resubmit" : "Request network")),
       ),
     );
   }

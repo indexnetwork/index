@@ -15,7 +15,21 @@ function parseInput(body: Record<string, unknown>): NetworkRequestInput | null {
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) return null;
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  return { name, purpose: str(body.purpose), audience: str(body.audience), expectedSize: str(body.expectedSize), notes: str(body.notes) };
+  const joinPolicy = body.joinPolicy === 'anyone' || body.joinPolicy === 'invite_only'
+    ? body.joinPolicy
+    : undefined;
+  const imageUrl = body.imageUrl === null
+    ? null
+    : (typeof body.imageUrl === 'string' ? body.imageUrl.trim() || null : undefined);
+  return {
+    name,
+    purpose: str(body.purpose),
+    audience: str(body.audience),
+    expectedSize: str(body.expectedSize),
+    notes: str(body.notes),
+    ...(imageUrl !== undefined ? { imageUrl } : {}),
+    ...(joinPolicy ? { joinPolicy } : {}),
+  };
 }
 
 @Controller('/network-requests')

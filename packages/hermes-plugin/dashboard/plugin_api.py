@@ -1133,7 +1133,11 @@ def join_network(network_id: str) -> dict[str, Any]:
 
 
 def _sanitize_network_request_input(body: Any) -> tuple[dict[str, Any] | None, str | None]:
-    """Validate/normalize the early-access request form fields before forwarding."""
+    """Validate/normalize the early-access request form fields before forwarding.
+
+    Same create fields as Mac/create-network (name, purpose/description, imageUrl,
+    joinPolicy) plus expectedSize. `notes` remains accepted for older clients.
+    """
     if not isinstance(body, dict):
         return None, "Request body must be an object."
     name = _text(body.get("name"))
@@ -1144,6 +1148,17 @@ def _sanitize_network_request_input(body: Any) -> tuple[dict[str, Any] | None, s
         value = _text(body.get(key))
         if value:
             payload[key] = value[:2000]
+    join_policy = _text(body.get("joinPolicy"))
+    if join_policy in ("anyone", "invite_only"):
+        payload["joinPolicy"] = join_policy
+    if "imageUrl" in body:
+        image_url = body.get("imageUrl")
+        if image_url is None:
+            payload["imageUrl"] = None
+        else:
+            value = _text(image_url)
+            if value:
+                payload["imageUrl"] = value[:2000]
     return payload, None
 
 
@@ -1156,10 +1171,13 @@ def _normalize_network_request(request: Any) -> dict[str, Any]:
         "title": _text(request.get("title") or request.get("name"), "Untitled network"),
         "status": _text(request.get("status"), "pending"),
     }
-    for key in ("purpose", "expectedSize", "notes", "reviewNote", "submittedAt"):
+    for key in ("purpose", "expectedSize", "notes", "reviewNote", "submittedAt", "joinPolicy"):
         value = _text(request.get(key))
         if value:
             item[key] = value
+    image_url = _avatar_url(request.get("imageUrl"))
+    if image_url:
+        item["imageUrl"] = image_url
     return item
 
 
@@ -1437,6 +1455,26 @@ def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str,
     if not avatar_url:
         return {"success": False, "error": "Avatar upload did not return a URL.", "response": payload}
     return {"success": True, "avatarUrl": _avatar_url(avatar_url)}
+
+
+@router.post("/network-images")
+def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Upload a network picture (data URL) to `POST /storage/index-images`.
+
+    Same data-URL → multipart pattern as `/profile/avatar`, field name `image`.
+    """
+    data_url = _text(body.get("dataUrl")) if isinstance(body, dict) else ""
+    content, content_type, decode_error = _decode_data_url(data_url)
+    if decode_error:
+        return {"success": False, "error": decode_error}
+    filename = f"network.{_AVATAR_EXTENSIONS.get(content_type, 'png')}"
+    payload = _api_multipart("/storage/index-images", "image", filename, content, content_type)
+    if payload.get("success") is False:
+        return payload
+    image_url = _text(payload.get("imageUrl"))
+    if not image_url:
+        return {"success": False, "error": "Network image upload did not return a URL.", "response": payload}
+    return {"success": True, "imageUrl": _avatar_url(image_url)}
 
 
 @router.post("/profile/intro")

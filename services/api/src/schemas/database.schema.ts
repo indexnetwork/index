@@ -60,6 +60,9 @@ export interface NetworkRequestDetails {
   audience?: string;
   expectedSize?: string;
   notes?: string;
+  // Optional preferred access, mirrored onto networks.permissions on create/update
+  // so approval does not have to re-ask. Same values as create-network joinPolicy.
+  joinPolicy?: 'anyone' | 'invite_only';
   reviewNote?: string;
   submittedAt: string;
   reviewedAt?: string;

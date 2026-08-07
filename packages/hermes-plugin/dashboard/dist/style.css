@@ -683,6 +683,60 @@
   background: color-mix(in srgb, var(--color-primary, #4fd1c5) 16%, transparent);
 }
 
+.index-dashboard__net-request-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+
+.index-dashboard__net-request-photo {
+  position: relative;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.index-dashboard__net-request-photo-mark {
+  width: 42px;
+  height: 42px;
+  display: block;
+}
+
+.index-dashboard__net-request-identity-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.index-dashboard__net-request-identity-name {
+  font-size: 0.95rem;
+  color: var(--color-card-foreground, inherit);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-dashboard__net-request-photo-hint {
+  font-size: 0.72rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+}
+
+.index-dashboard__net-access {
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.index-dashboard__net-access strong {
+  font-size: 0.85rem;
+}
+
+.index-dashboard__net-access span {
+  font-size: 0.72rem;
+  color: var(--color-muted-foreground, rgba(148, 163, 184, 0.92));
+  font-weight: 400;
+}
+
 .index-dashboard__net-row {
   display: flex;
   align-items: center;
