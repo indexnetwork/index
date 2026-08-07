@@ -189,17 +189,11 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
       <div style={{ marginTop:14 }}>
         <FieldLabel right={
-          <span style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button style={{
-              border:"none", background:"transparent", padding:0, cursor:"pointer",
-              fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
-            }}>✧ regenerate</button>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:11,
-              color: over ? "var(--ink-warn)" : "var(--ink-2)",
-              fontWeight: over ? 700 : 400,
-            }}>{form.intro.length}/{INTRO_MAX}</span>
-          </span>
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            color: over ? "var(--ink-warn)" : "var(--ink-2)",
+            fontWeight: over ? 700 : 400,
+          }}>{form.intro.length}/{INTRO_MAX}</span>
         }>introduction</FieldLabel>
         <div style={{ ...wellStyle(false), alignItems:"stretch", padding:"8px 10px" }}>
           <textarea
@@ -724,7 +718,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
-          title={profileOnly ? "index · getting started" : "index · settings"}
+          title={profileOnly ? "getting started" : "index · settings"}
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
@@ -795,7 +789,11 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             )}
             <button
               onClick={onClose}
-              style={{
+              style={profileOnly ? {
+                fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 10px",
+                border:"none", background:"transparent", color:"var(--ink-2)",
+                textDecoration:"underline", cursor:"pointer", opacity:0.7,
+              } : {
                 fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 17px",
                 border:"1px solid #000", background:"#fff", color:"#000",
                 boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
