@@ -3,8 +3,17 @@ import { EnrichmentGraphFactory } from '@indexnetwork/protocol';
 import type { EnrichmentGraphDatabase, Scraper } from '@indexnetwork/protocol';
 import { EnrichmentDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
+import { enrichUserProfile } from '../lib/parallel/parallel';
 
 const logger = log.service.from("EnrichmentService");
+
+/** The identity + socials a synchronous enrichment resolves and persists. */
+export interface SyncEnrichmentResult {
+  name: string | null;
+  intro: string | null;
+  location: string | null;
+  socials: { label: string; value: string }[];
+}
 
 /**
  * EnrichmentService
@@ -21,11 +30,40 @@ export class EnrichmentService {
   private db: EnrichmentGraphDatabase;
   private scraper: Scraper;
   private factory: EnrichmentGraphFactory;
+  private enricherFactory: EnrichmentGraphFactory;
 
   constructor() {
     this.db = new EnrichmentDatabaseAdapter();
     this.scraper = new ScraperAdapter();
     this.factory = new EnrichmentGraphFactory(this.db, this.scraper);
+    // Separate factory wired with the Parallel enricher for the on-demand
+    // public-research path. Kept distinct from `factory` so the light
+    // `syncProfile` (used by the `/me` auto-enrichment hot path) is unchanged.
+    this.enricherFactory = new EnrichmentGraphFactory(this.db, this.scraper, { enrichUserProfile });
+  }
+
+  /**
+   * Run the full public-research enrichment synchronously and return the
+   * resolved identity + socials. Unlike `syncProfile`, this uses the Parallel
+   * enricher: generate mode routes through `auto_generate`, which looks the
+   * person up from name+email and persists discovered socials/location/bio.
+   * Premise/HyDE work is intentionally left to the async pipeline (no premise
+   * graph injected here), so this stays a bounded, request-time call.
+   */
+  async enrichNow(userId: string): Promise<SyncEnrichmentResult> {
+    logger.verbose('Synchronous enrichment requested', { userId });
+
+    const graph = this.enricherFactory.createGraph();
+    await graph.invoke({ userId, operationMode: 'generate' });
+
+    const user = await this.db.getUser(userId);
+    const socials = await this.db.getUserSocials(userId);
+    return {
+      name: user?.name ?? null,
+      intro: user?.intro ?? null,
+      location: user?.location ?? null,
+      socials: socials.map((s) => ({ label: s.label, value: s.value })),
+    };
   }
 
   /**

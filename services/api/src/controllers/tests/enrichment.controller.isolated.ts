@@ -7,6 +7,44 @@ import { EnrichmentController } from "../enrichment.controller";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { UserDatabaseAdapter, EnrichmentDatabaseAdapter } from "../../adapters/database.adapter";
 
+// Hermetic: inject a stub sync enricher so no DB/Parallel call is required.
+describe("EnrichmentController /enrich (sync public research)", () => {
+  const mockUser: AuthenticatedUser = {
+    id: "user-1",
+    email: "manual-enrich@example.com",
+    name: "Manual Enrich User",
+  };
+
+  test("runs the public-research lookup inline and returns the resolved profile", async () => {
+    const calls: string[] = [];
+    const controller = new EnrichmentController({
+      enrichNow: async (userId) => {
+        calls.push(userId);
+        return {
+          name: "Manual Enrich User",
+          intro: "Engineer building index.",
+          location: "New York",
+          socials: [{ label: "linkedin", value: "serefyarar" }],
+        };
+      },
+    });
+
+    const res = await controller.enrich({} as Request, mockUser);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      enriched: true,
+      profile: {
+        name: "Manual Enrich User",
+        intro: "Engineer building index.",
+        location: "New York",
+        socials: [{ label: "linkedin", value: "serefyarar" }],
+      },
+    });
+    expect(calls).toEqual(["user-1"]);
+  });
+});
+
 const RUN_PAID_INTEGRATION_TESTS = process.env.RUN_PAID_INTEGRATION_TESTS === "1";
 const hasPaidCredentials = Boolean(
   process.env.OPENROUTER_API_KEY && process.env.PARALLELS_API_KEY,
