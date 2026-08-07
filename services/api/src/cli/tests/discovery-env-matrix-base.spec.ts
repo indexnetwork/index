@@ -204,38 +204,96 @@ describe('discovery environment matrix base policy', () => {
     expect(JSON.stringify(baseSeedPayload(HISTORICAL_MATRIX_CASES))).not.toContain('basis');
   });
 
-  it('serializes exact all-five-case database rows', () => {
+  it('serializes the exact complete all-five-case database row set', () => {
     const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+    const expectedCases = [
+      {
+        id: 'historical/builder-and-operator',
+        description: 'An engineering-management graduate participating in a joint search for European home-goods design is paired with a product designer who apprenticed with a sculptor father.',
+        networkTitle: 'Discovery evaluation fixture 1',
+      },
+      {
+        id: 'historical/co-researchers-structure',
+        description: 'A virus-trained biologist studying biological macromolecules is paired with a researcher bringing complementary physical and crystallographic methods.',
+        networkTitle: 'Discovery evaluation fixture 2',
+      },
+      {
+        id: 'historical/songwriting-duo',
+        description: 'A teenage amateur-group leader seeking stronger guitar capability is paired with a teenage popular-music player with demonstrated guitar ability.',
+        networkTitle: 'Discovery evaluation fixture 3',
+      },
+      {
+        id: 'historical/first-check-investor',
+        description: 'A graduate researcher with a working information-retrieval prototype is paired with a technically fluent systems builder willing to evaluate a possible company transition.',
+        networkTitle: 'Discovery evaluation fixture 4',
+      },
+      {
+        id: 'historical/domain-expert-and-ml',
+        description: 'A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with an RNA researcher who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.',
+        networkTitle: 'Discovery evaluation fixture 5',
+      },
+    ] as const;
 
     expect(payload.cases).toHaveLength(5);
+    expect(payload.users).toHaveLength(25);
     expect(payload.networks).toHaveLength(5);
     expect(payload.memberships).toHaveLength(25);
     expect(payload.intents).toHaveLength(25);
+    expect(payload.cases.map(({ id, description }) => ({ id, description }))).toEqual(
+      expectedCases.map(({ id, description }) => ({ id, description })),
+    );
+    expect(new Set(payload.users.map(({ id }) => id)).size).toBe(25);
+    expect(new Set(payload.networks.map(({ id }) => id)).size).toBe(5);
+    expect(new Set(payload.intents.map(({ id }) => id)).size).toBe(25);
+    expect(payload.users.every(({ id }) => id.startsWith('eval-discovery-matrix-user-'))).toBeTrue();
+    expect(payload.networks.every(({ id }) => id.startsWith('eval-discovery-matrix-network-'))).toBeTrue();
+    expect(payload.intents.every(({ id }) => id.startsWith('eval-discovery-matrix-intent-'))).toBeTrue();
 
-    for (const matrixCase of HISTORICAL_MATRIX_CASES) {
-      const fixtureCase = payload.cases.find(({ id }) => id === matrixCase.id);
-      expect(fixtureCase).toBeDefined();
-      const network = payload.networks.find(({ id }) => id === fixtureCase!.networkId);
-      expect(network).toBeDefined();
-      expect(network!.prompt).toBe(matrixCase.networkContext);
+    const userIds = new Set(payload.users.map(({ id }) => id));
+    const networkIds = new Set(payload.networks.map(({ id }) => id));
+    expect(new Set(payload.memberships.map(({ userId }) => userId))).toEqual(userIds);
+    expect(new Set(payload.memberships.map(({ networkId }) => networkId))).toEqual(networkIds);
+    expect(new Set(payload.intents.map(({ userId }) => userId))).toEqual(userIds);
+    expect(new Set(payload.intents.map(({ networkId }) => networkId))).toEqual(networkIds);
+    expect(new Set(payload.memberships.map(({ networkId, userId }) => `${networkId}:${userId}`))).toEqual(
+      new Set(payload.intents.map(({ networkId, userId }) => `${networkId}:${userId}`)),
+    );
 
-      const memberships = payload.memberships.filter(({ networkId }) => networkId === network!.id);
-      expect(memberships).toHaveLength(matrixCase.participants.length);
-      for (const [index, participant] of matrixCase.participants.entries()) {
-        const membership = memberships[index]!;
+    for (const [caseIndex, matrixCase] of HISTORICAL_MATRIX_CASES.entries()) {
+      const expectedCase = expectedCases[caseIndex]!;
+      expect(matrixCase.id).toBe(expectedCase.id);
+      const fixtureCase = payload.cases[caseIndex]!;
+      expect(fixtureCase.id).toBe(expectedCase.id);
+      expect(fixtureCase.description).toBe(expectedCase.description);
+
+      const network = payload.networks[caseIndex]!;
+      expect(network.id).toBe(fixtureCase.networkId);
+      expect(network.title).toBe(expectedCase.networkTitle);
+      expect(network.prompt).toBe(matrixCase.networkContext);
+
+      const memberships = payload.memberships.filter(({ networkId }) => networkId === network.id);
+      const intents = payload.intents.filter(({ networkId }) => networkId === network.id);
+      expect(memberships).toHaveLength(5);
+      expect(intents).toHaveLength(5);
+      for (const [participantIndex, participant] of matrixCase.participants.entries()) {
+        const membership = memberships[participantIndex]!;
         const user = payload.users.find(({ id }) => id === membership.userId);
-        expect(user).toBeDefined();
-        expect(user!.intro).toBe(participant.profileText);
-        expect(user!.location).toBe(participant.location);
-        expect(user!.email).toEndWith('@fixture.invalid');
-        expect(user!.name).toMatch(/^Evaluation fixture participant [a-f0-9]{8}$/);
+        expect(user).toEqual({
+          id: membership.userId,
+          email: `${membership.userId}@fixture.invalid`,
+          name: expect.stringMatching(/^Evaluation fixture participant [a-f0-9]{8}$/),
+          intro: participant.profileText,
+          location: participant.location,
+        });
 
-        const intent = payload.intents.find(({ networkId, userId }) => (
-          networkId === network!.id && userId === membership.userId
-        ));
-        expect(intent).toBeDefined();
-        expect(intent!.payload).toBe(participant.intent.text);
-        expect(intent!.summary).toBe('Discovery evaluation fixture intent');
+        const intent = intents.find(({ userId }) => userId === membership.userId);
+        expect(intent).toEqual({
+          id: expect.stringMatching(/^eval-discovery-matrix-intent-[a-f0-9]{24}$/),
+          userId: membership.userId,
+          networkId: network.id,
+          payload: participant.intent.text,
+          summary: 'Discovery evaluation fixture intent',
+        });
       }
 
       const membershipIdFor = (participantId: string): string => {
@@ -243,9 +301,9 @@ describe('discovery environment matrix base policy', () => {
         expect(index).toBeGreaterThanOrEqual(0);
         return memberships[index]!.userId;
       };
-      expect(fixtureCase!.sourceUserId).toBe(membershipIdFor(matrixCase.sourceUserId));
-      expect(fixtureCase!.expectedUserId).toBe(membershipIdFor(matrixCase.expectedUserId));
-      expect(fixtureCase!.excludedUserIds).toEqual(matrixCase.excludedUserIds.map(membershipIdFor));
+      expect(fixtureCase.sourceUserId).toBe(membershipIdFor(matrixCase.sourceUserId));
+      expect(fixtureCase.expectedUserId).toBe(membershipIdFor(matrixCase.expectedUserId));
+      expect(fixtureCase.excludedUserIds).toEqual(matrixCase.excludedUserIds.map(membershipIdFor));
     }
   });
 

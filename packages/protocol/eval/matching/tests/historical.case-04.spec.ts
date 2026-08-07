@@ -93,11 +93,11 @@ describe("historical case 04", () => {
     expect(HISTORICAL_CASE_04.historicalQuality.cutoff).toEqual({
       event: {
         id: "h4-first-substantive-collaboration",
-        description: "Immediately before Larry Page demonstrated the search prototype to Andreas Bechtolsheim and received his first check.",
+        description: "Immediately before Larry Page demonstrated the search prototype to Andreas Bechtolsheim for its first substantive evaluation.",
       },
       calendarProxy: { date: "1998-08", precision: "month" },
       confidence: "medium",
-      uncertaintyRationale: "Institutional accounts support the August 1998 sequence but do not establish an exact demonstration day.",
+      uncertaintyRationale: "Institutional accounts support the August 1998 demonstration timing; the later check is excluded subsequent ordering evidence, and the exact demonstration day is not established.",
       exclusive: true,
       orderingCitationIds: ["stanford-otl-uniquely-google", "stanford-engineering-hero-talk"],
     });
@@ -139,6 +139,9 @@ describe("historical case 04", () => {
     );
     expect(citations.get("stanford-engineering-hero-talk")?.excerpt).toBe(
       "In 1998, Stanford professor David Cheriton invited Bechtolsheim to meet two students who had an interesting product to demonstrate; the account places the check after the demonstration.",
+    );
+    expect(HISTORICAL_CASE_04.historicalQuality.cutoff.uncertaintyRationale).toContain(
+      "later check is excluded subsequent ordering evidence",
     );
     expect(citations.get("stanford-engineering-bechtolsheim")?.url).toBe(
       "https://engineering.stanford.edu/about/history/heroes/2012-heroes/andreas-bechtolsheim",

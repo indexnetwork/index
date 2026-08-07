@@ -258,6 +258,12 @@ describe("historical quality corpus contract", () => {
     malformedProxy.historicalQuality.cutoff.calendarProxy = { date: "1975-13-40", precision: "day" };
     expect(() => validateHistoricalQualityCase(malformedProxy)).toThrow(/cutoff calendar proxy does not match day precision/);
 
+    const invalidPrecision = validCase();
+    invalidPrecision.historicalQuality.cutoff.calendarProxy.precision = "century" as "day";
+    expect(() => validateHistoricalQualityCase(invalidPrecision)).toThrow(
+      "historical-v2/builder-operator: cutoff calendar proxy precision is invalid",
+    );
+
     const yearWithoutOrdering = validCase();
     yearWithoutOrdering.historicalQuality.cutoff = {
       event: {
@@ -291,6 +297,17 @@ describe("historical quality corpus contract", () => {
     high.historicalQuality.anonymizationReview.recognizability = "high";
     expect(() => validateHistoricalQualityCase(high)).toThrow(/approved historical cases cannot have high recognizability/);
     expect(() => validateHistoricalQualityCase(high, { requireApprovedReview: false })).not.toThrow();
+
+    for (const recognizability of ["extreme", "HIGH"] as const) {
+      const invalid = validCase();
+      invalid.historicalQuality.anonymizationReview.recognizability = recognizability as "high";
+      expect(() => validateHistoricalQualityCase(invalid)).toThrow(
+        "historical-v2/builder-operator: anonymization recognizability is invalid",
+      );
+      expect(() => validateHistoricalQualityCase(invalid, { requireApprovedReview: false })).toThrow(
+        "historical-v2/builder-operator: anonymization recognizability is invalid",
+      );
+    }
   });
 
   it("rejects authored claims for historical participants and historical claims for synthetic participants", () => {

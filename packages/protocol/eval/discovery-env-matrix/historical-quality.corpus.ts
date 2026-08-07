@@ -9,6 +9,7 @@ export interface HistoricalCitation {
   id: string;
   url: string;
   title: string;
+  /** Publication outlet or container label recorded by the fixture; not necessarily the legal corporate publisher. */
   publisher: string;
   excerpt: string;
 }
@@ -260,6 +261,9 @@ export function validateHistoricalQualityCase(
     year: /^\d{4}$/,
   };
   const { date, precision } = cutoff.calendarProxy;
+  if (!new Set<unknown>(["day", "month", "year"]).has(precision)) {
+    fail("cutoff calendar proxy precision is invalid");
+  }
   if (!cutoffPatterns[precision].test(date)) {
     fail(`cutoff calendar proxy does not match ${precision} precision`);
   }
@@ -356,6 +360,9 @@ export function validateHistoricalQualityCase(
   }
 
   const review = input.historicalQuality.anonymizationReview;
+  if (!new Set<unknown>(["low", "medium", "high"]).has(review.recognizability)) {
+    fail("anonymization recognizability is invalid");
+  }
   if ((options.requireApprovedReview ?? true) && review.decision !== "approved") {
     fail("anonymization review must be approved");
   }

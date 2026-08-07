@@ -148,16 +148,53 @@ describe("historical case 05", () => {
     expect(modelText).not.toMatch(/karik[oó]|weissman|katalin|drew|biochem|inflammator|modified nucleoside|pseudouridine|toll-like|covid|pandemic|biontech|moderna|nobel|prize|award|company|companies|joint work|worked together|laboratory transcription|cell-expression|cell-based expression|nucleic-acid production|laboratory-made|laboratory-produced/i);
   });
 
-  it("uses exact negatives encoding same-side, method, and domain failures", () => {
+  it("uses neutral affirmative negatives with hidden same-side, method, and domain reasons", () => {
     expect(HISTORICAL_CASE_05.historicalQuality.semanticNegatives).toEqual({
       "h5-c": "Same-side vaccine immunologist also lacks the required RNA preparation capability.",
       "h5-d": "Computational RNA analyst lacks practical messenger-RNA research experience.",
       "h5-e": "Plant RNA researcher works in the wrong biological domain for human antigen-delivery research.",
     });
     const negatives = historicalModelSafeProjection(HISTORICAL_CASE_05).input.entities.slice(2);
-    expect(negatives[0]?.profile.bio).toContain("Vaccine immunologist");
-    expect(negatives[1]?.profile.bio).toContain("Computational RNA analyst");
-    expect(negatives[2]?.profile.bio).toContain("Plant RNA researcher");
+    expect(negatives.map(({ profile, intents }) => ({ profile, intent: intents?.[0]?.payload }))).toEqual([
+      {
+        profile: {
+          name: "Participant C",
+          bio: "Vaccine immunologist studying antigen-presenting cells and cellular vaccine evaluation.",
+          location: "U.S. East Coast",
+          interests: ["vaccine immunology", "antigen-presenting cells"],
+          skills: ["immunology", "cellular immune assays"],
+        },
+        intent: "Advance antigen-presenting-cell vaccine studies through cell-based immune assays.",
+      },
+      {
+        profile: {
+          name: "Participant D",
+          bio: "Computational RNA analyst building statistical models of sequence datasets.",
+          location: "U.S. East Coast",
+          interests: ["RNA analytics", "computational biology"],
+          skills: ["sequence analysis", "statistical modeling"],
+        },
+        intent: "Develop computational methods for RNA sequence analysis and predictive modeling.",
+      },
+      {
+        profile: {
+          name: "Participant E",
+          bio: "Plant RNA researcher studying RNA regulation in crop cells.",
+          location: "U.S. East Coast",
+          interests: ["plant RNA", "crop biology"],
+          skills: ["plant molecular biology", "plant cell methods"],
+        },
+        intent: "Investigate RNA processes that shape crop-cell development and resilience.",
+      },
+    ]);
+    expect(JSON.stringify(negatives)).not.toMatch(/\blacks?\b|\bunable\b|\bwithout\b|rather than|\bwrong\b|(?:cannot|can't|does not|doesn't|fails? to|missing|required capability)/i);
+
+    const candidateScores = HISTORICAL_CASE_05.input.entities.slice(1).map(({ ragScore }) => ragScore);
+    expect(candidateScores).toEqual([70, 70, 70, 70]);
+    expect(HISTORICAL_CASE_05.expect.filter(({ match }) => !match).every(({ scoreBand }) => (
+      scoreBand?.[0] === 0 && scoreBand[1] === 29
+    ))).toBeTrue();
+
     for (const participantId of ["h5-c", "h5-d", "h5-e"] as const) {
       const reason = HISTORICAL_CASE_05.historicalQuality.semanticNegatives[participantId];
       const authored = HISTORICAL_CASE_05.historicalQuality.claims.filter((claim) => claim.kind === "authored" && claim.participantId === participantId);
@@ -166,23 +203,17 @@ describe("historical case 05", () => {
     }
   });
 
-  it("records independent approval while preserving explicit authoring-mode mutations", () => {
+  it("requires re-review after model-facing changes and remains valid only in authoring mode", () => {
     expect(HISTORICAL_CASE_05.historicalQuality.anonymizationReview).toEqual({
-      reviewer: "ind637.source-auditor:cebb5a22",
+      reviewer: "ind637.fixture-author",
       reviewedAt: "2026-08-07",
       recognizability: "medium",
-      decision: "approved",
+      decision: "pending",
       rationale:
-        "The reviewer approved H5 at checkpoint 0f6147f0e3faa410fff8793d9a5450373dbf1442 after verifying exact citation metadata, Drew→Katalin seeker chronology, around-1997 event uncertainty, exact provenance, no post-contact immune-sensing facts, distinct negatives, outcome isolation, all four serialization boundaries, and medium recognizability.",
+        "Pending independent re-review after all three synthetic profiles and intents were rewritten in neutral affirmative language and all four candidate RAG scores were equalized at 70; Drew→Katalin direction, historical provenance, the around-1997 boundary, and later-fact exclusions remain unchanged.",
     });
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05)).not.toThrow();
-
-    for (const decision of ["pending", "revise"] as const) {
-      const mutation = structuredClone(HISTORICAL_CASE_05);
-      mutation.historicalQuality.anonymizationReview.decision = decision;
-      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
-      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
-    }
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05)).toThrow(/anonymization review must be approved/);
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_05, { requireApprovedReview: false })).not.toThrow();
     expectDeeplyFrozen(HISTORICAL_CASE_05);
   });
 });

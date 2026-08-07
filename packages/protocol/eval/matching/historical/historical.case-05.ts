@@ -30,27 +30,27 @@ const semanticNegatives = {
 const syntheticProfiles = [
   {
     userId: "h5-c",
-    bio: "Vaccine immunologist studying antigen-presenting cells but unable to prepare RNA payloads.",
+    bio: "Vaccine immunologist studying antigen-presenting cells and cellular vaccine evaluation.",
     location: "U.S. East Coast",
     interests: ["vaccine immunology", "antigen-presenting cells"],
     skills: ["immunology", "cellular immune assays"],
-    intent: "Find a collaborator who can prepare antigen-encoding RNA for cell-based evaluation.",
+    intent: "Advance antigen-presenting-cell vaccine studies through cell-based immune assays.",
   },
   {
     userId: "h5-d",
-    bio: "Computational RNA analyst who models sequence data without practical messenger-RNA research experience.",
+    bio: "Computational RNA analyst building statistical models of sequence datasets.",
     location: "U.S. East Coast",
     interests: ["RNA analytics", "computational biology"],
     skills: ["sequence analysis", "statistical modeling"],
-    intent: "Analyze RNA sequences computationally rather than contribute long-term messenger-RNA research experience.",
+    intent: "Develop computational methods for RNA sequence analysis and predictive modeling.",
   },
   {
     userId: "h5-e",
-    bio: "Plant RNA researcher studying crop cells rather than human antigen-delivery systems.",
+    bio: "Plant RNA researcher studying RNA regulation in crop cells.",
     location: "U.S. East Coast",
     interests: ["plant RNA", "crop biology"],
     skills: ["plant molecular biology", "plant cell methods"],
-    intent: "Study RNA processes in plants rather than prepare payloads for human antigen-delivery research.",
+    intent: "Investigate RNA processes that shape crop-cell development and resilience.",
   },
 ] as const;
 
@@ -196,7 +196,7 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
         profile: { name: "Participant B", bio: partner.bio, location: partner.location, interests: [...partner.interests], skills: [...partner.skills] },
         intents: [{ intentId: "h5-b-1", payload: partner.intent }],
         networkId: NETWORK_ID,
-        ragScore: 91,
+        ragScore: 70,
       },
       ...syntheticProfiles.map((profile, index) => ({
         userId: profile.userId,
@@ -209,7 +209,7 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
         },
         intents: [{ intentId: `${profile.userId}-1`, payload: profile.intent }],
         networkId: NETWORK_ID,
-        ragScore: [80, 70, 61][index],
+        ragScore: 70,
       })),
     ],
   },
@@ -324,12 +324,12 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["pnas-kariko-weissman-profile"],
     anonymizationReview: {
-      reviewer: "ind637.source-auditor:cebb5a22",
+      reviewer: "ind637.fixture-author",
       reviewedAt: "2026-08-07",
       recognizability: "medium",
-      decision: "approved",
+      decision: "pending",
       rationale:
-        "The reviewer approved H5 at checkpoint 0f6147f0e3faa410fff8793d9a5450373dbf1442 after verifying exact citation metadata, Drew→Katalin seeker chronology, around-1997 event uncertainty, exact provenance, no post-contact immune-sensing facts, distinct negatives, outcome isolation, all four serialization boundaries, and medium recognizability.",
+        "Pending independent re-review after all three synthetic profiles and intents were rewritten in neutral affirmative language and all four candidate RAG scores were equalized at 70; Drew→Katalin direction, historical provenance, the around-1997 boundary, and later-fact exclusions remain unchanged.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {
