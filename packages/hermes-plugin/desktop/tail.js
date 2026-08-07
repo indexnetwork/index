@@ -90,7 +90,7 @@ export default {
         data: {
           id: 'index-network.open',
           label: 'Open Index Network',
-          keywords: ['index', 'network', 'intents', 'opportunities'],
+          keywords: ['index', 'network', 'intents', 'opportunities', 'onboarding', 'getting started', 'profile'],
           run: function () { host.navigate('/index-network') }
         }
       }

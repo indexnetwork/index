@@ -29,6 +29,18 @@
   overflow: hidden;
 }
 
+/* Getting started fills the desktop page (Mac profileConfirmedAt parity). */
+.index-network-desktop-page .index-dashboard__getting-started {
+  min-height: calc(100% - 1rem);
+  padding: 1.5rem 1.25rem 2rem;
+  box-sizing: border-box;
+}
+
+.index-network-desktop-page .index-dashboard__profile-panel--getting-started {
+  width: 100%;
+  max-width: 42rem;
+}
+
 /* The animated assets need no desktop-specific override: the shared
    stylesheet now carries a light and a dark treatment, keyed off the
    `data-scheme` the dashboard resolves from this app's theme (it stamps

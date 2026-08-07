@@ -233,6 +233,18 @@ def main() -> None:
     assert "gettingStarted" in dashboard_js
     assert "index-dashboard__getting-started" in dashboard_js
     assert "index-dashboard__opp-id--clickable" in dashboard_js
+
+    # Hermes Desktop ships the same Getting started gate via the built bundle.
+    desktop_js_path = ROOT / "desktop" / "dist" / "plugin.js"
+    assert desktop_js_path.exists(), "desktop/dist/plugin.js missing — run bun run build:desktop"
+    subprocess.run(["node", "--check", str(desktop_js_path)], check=True)
+    desktop_js = desktop_js_path.read_text()
+    assert "/onboarding/enrich" in desktop_js
+    assert "/onboarding/confirm" in desktop_js
+    assert "Getting started" in desktop_js
+    assert "needsProfileConfirm" in desktop_js
+    assert "index-dashboard__getting-started" in desktop_js
+    assert "getting started" in desktop_js  # palette keyword from desktop/tail.js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
