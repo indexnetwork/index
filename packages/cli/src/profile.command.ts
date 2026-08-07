@@ -110,7 +110,7 @@ async function profileShow(client: ApiClient, userId: string, json?: boolean): P
 
 /** Trigger synchronous profile enrichment for the authenticated user. */
 async function profileSync(client: ApiClient, json?: boolean): Promise<void> {
-  if (!json) output.info("Regenerating profile...");
+  if (!json) output.info("Enriching profile...");
   const result = await client.enrichProfile();
   if (json) {
     console.log(JSON.stringify(result));

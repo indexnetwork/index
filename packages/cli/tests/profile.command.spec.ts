@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
+import { handleProfile } from "../src/profile.command";
 import { profileCard, stripAnsi } from "../src/output";
 import { createMockServer } from "./helpers/mock-http";
 
@@ -79,6 +80,30 @@ describe("ApiClient — profile methods", () => {
       expect(result.enriched).toBe(true);
       expect(result.profile.avatar).toBe("avatars/alice.png");
       expect(result.profile.socials).toHaveLength(1);
+    });
+
+    it("reports enrichment progress before profile sync", async () => {
+      mock.on("POST", "/api/enrichment/enrich", () => Response.json({
+        enriched: true,
+        profile: {
+          name: "Alice",
+          intro: "Builder",
+          location: "Berlin",
+          avatar: "avatars/alice.png",
+          socials: [{ label: "github", value: "alice" }],
+        },
+      }));
+
+      const logs: string[] = [];
+      const original = console.log;
+      console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+      try {
+        await handleProfile(client, "sync", [], {});
+      } finally {
+        console.log = original;
+      }
+
+      expect(stripAnsi(logs.join("\n"))).toContain("Enriching profile...");
     });
   });
 

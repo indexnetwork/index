@@ -11,8 +11,8 @@ import * as output from "./output";
 const NETWORK_HELP = `
 Network Commands:
   index network list                     List your networks
-  index network create <name>            Create a new network
-  index network create <name> --prompt   Create with a description
+  index network create <name>            Create directly or submit an early-access request
+  index network create <name> --prompt   Create directly or request early access with a description
   index network show <id|key>            Show network details and members
   index network update <id> [--title <t>] [--prompt <p>]
                                          Update a network
