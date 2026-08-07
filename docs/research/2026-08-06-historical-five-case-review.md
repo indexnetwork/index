@@ -1,25 +1,24 @@
 # IND-637 historical five-case independent review receipt
 
-Date: 2026-08-06
+Dates: 2026-08-06 initial review; 2026-08-07 corrective review and approval
 
-## Issue and purpose
+## Issue, corrective chronology, and durability
 
-IND-637 hardens the five historical matching cases before they seed shared-pool retrieval experiments. The work requires every model-facing historical statement to have pre-connection provenance, synthetic negatives to remain explicitly authored, outcomes and real identities to remain report-only, and combination-based recognizability to receive independent review.
+IND-637 hardens five historical matching cases before they seed shared-pool retrieval experiments. Every model-facing historical statement must have pre-connection provenance; synthetic negatives must remain explicitly authored; outcomes and real identities must remain report-only; and combination recognizability must receive independent review.
 
-This receipt records the independent citation, cutoff, provenance, synthetic-negative, leakage, module-serialization, and final integration-serialization reviews. The original reviewers subsequently approved all three final model boundaries at integration commit `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c`; no required changes remained.
+PR #1341 passed its initial independent review and was merged at `5e33ee4cd8625cadd3e3da760698023b0c8d630b`. A post-merge owner audit then found that H1 and H5 violated the intended owner decisions: H1 represented the wrong historical collaboration, H5 reversed the required seeker direction, and the corpus still used a flat date cutoff. The audit also found admission, serializer-coverage, and documentation gaps. The focused corrective work replaced H1, repaired H5, introduced event-relative cutoffs, recorded new independent approvals, enabled strict aggregate admission, and added exact all-five-case serializer and no-leak coverage. Therefore, the former statement that the original integration had no required changes is superseded and incorrect.
 
-## Reviewed checkpoints and participants
+Raw `.pi-subagents` paths identify session evidence only. They are gitignored and unavailable in a fresh checkout. This committed receipt is the durable repository record: it preserves reviewer identity, reviewed commit, decision, recognizability, required changes, and the exact citation/projection verdicts needed to audit the corpus.
 
-- Corrected checkpoint for Cases 01, 02, 04, and 05: `770cf7f754e63e4a7a61362389a0759d4d8632b9`.
-- Case 03 final corrected checkpoint: `b6deffd73584e5f5a8f31a5435e0901229a57003`.
-- Review date recorded in case metadata: `2026-08-06`.
-- The sole patch-applying writer was the Task 7 implementation `worker` in the assigned worktree. All initial and final reviewer sessions were read-only.
+No protected-base refresh and no live model, provider, database, Redis, Neon, paid evaluation, or other live measurement occurred during the corrective work. The work changed corpus contracts, H1/H5 fixtures, approval metadata, provider-free serializer tests, and this receipt; it did not claim a protected base was refreshed or that historical-quality performance was measured.
 
-### Initial independent web audits
+## Review checkpoints and participants
 
-The initial audits supplied the source/title/publisher/excerpt evidence used by the writer and requested revisions; they were not approvals.
+### Initial PR #1341 review sessions
 
-| Case | Initial audit ID | Durable artifact |
+These raw artifacts document the initial review chronology. They are not durable repository artifacts. The H1 and H5 conclusions from this checkpoint are **superseded** by the corrective reviews below; H2, H3, and H4 evidence remains valid.
+
+| Case | Initial audit ID | Session-local raw artifact (not committed) |
 |---|---|---|
 | 01 | `937423ed` | `.pi-subagents/artifacts/outputs/937423ed/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-01-initial.md` |
 | 02 | `7f2f4495` | `.pi-subagents/artifacts/outputs/7f2f4495/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-02-initial.md` |
@@ -27,33 +26,50 @@ The initial audits supplied the source/title/publisher/excerpt evidence used by 
 | 04 | `bc6e2bcd` | `.pi-subagents/artifacts/outputs/bc6e2bcd/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-04-initial.md` |
 | 05 | `3665943a` | `.pi-subagents/artifacts/outputs/3665943a/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-05-initial.md` |
 
-### Final independent approvals
+### Current independent approval record
 
-| Case | Final reviewer | Reviewed checkpoint | Durable artifact | Decision | Recognizability |
+H2/H3/H4 retain their approved 2026-08-06 evidence. H1/H5 use the corrective reviewers, reviewed commits, and dates recorded verbatim in the current case modules and tests. Approval concerned the audited case content at the listed checkpoint; commit `356cc706f` subsequently recorded that approval metadata and enabled strict aggregate admission without changing case content.
+
+| Case | Direction | Final reviewer | Reviewed checkpoint | Reviewed date | Decision | Recognizability | Required changes |
+|---|---|---|---|---|---|---|---|
+| 01 | Ted Nierenberg → Jens Quistgaard; Martha Nierenberg was a material participant in the joint search | `ind637.source-auditor:56c4419b` | `6c20448cc20387953c0bf22b7d17f3249d47e391` | 2026-08-07 | approved | medium | none |
+| 02 | James Watson → Francis Crick | `pi-reviewer:5e071b82` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | 2026-08-06 | approved | medium | none |
+| 03 | John Lennon → Paul McCartney | `pi-reviewer:a091da6e` | `b6deffd73584e5f5a8f31a5435e0901229a57003` | 2026-08-06 | approved | medium | none |
+| 04 | Larry Page → Andy Bechtolsheim | `pi-reviewer:ba43fe8c` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | 2026-08-06 | approved | medium | none |
+| 05 | Drew Weissman → Katalin Karikó | `ind637.source-auditor:cebb5a22` | `0f6147f0e3faa410fff8793d9a5450373dbf1442` | 2026-08-07 | approved | medium | none |
+
+The current H1 and H5 session-local review paths are, respectively, `.pi-subagents/ind-637-repair/final-reviews/h1-final-approval.md` and `.pi-subagents/ind-637-repair/final-reviews/h5-rereview.md`. They are locators for raw session evidence, not checkout-stable links.
+
+## Event-relative cutoff contract
+
+Event identity is primary. Each cutoff identifies the first substantive connection event and excludes that event and later facts. `calendarProxy` is only a confidence-qualified calendar approximation of that event; it is not an independent exact cutoff unless the evidence establishes that precision.
+
+| Case | Event ID | Primary exclusive event boundary | Calendar proxy | Confidence | Ordering evidence |
 |---|---|---|---|---|---|
-| 01 | `pi-reviewer:e8085cfa` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | `.pi-subagents/artifacts/outputs/e8085cfa/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-01-approval.md` | approved | medium |
-| 02 | `pi-reviewer:5e071b82` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | `.pi-subagents/artifacts/outputs/5e071b82/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-02-approval.md` | approved | medium |
-| 03 | `pi-reviewer:a091da6e` | `b6deffd73584e5f5a8f31a5435e0901229a57003` | `.pi-subagents/artifacts/5166b71c_reviewer_output.md` | approved | medium |
-| 04 | `pi-reviewer:ba43fe8c` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | `.pi-subagents/artifacts/outputs/ba43fe8c/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-04-approval.md` | approved | medium |
-| 05 | `pi-reviewer:07908e5e` | `770cf7f754e63e4a7a61362389a0759d4d8632b9` | `.pi-subagents/artifacts/outputs/07908e5e/.superpowers/sdd/2026-08-06-ind-637-historical-five-case-hardening/task-7-case-05-approval.md` | approved | medium |
+| 01 | `h1-nierenberg-quistgaard-first-contact` | Immediately before Ted and Martha Nierenberg telephoned Jens Quistgaard during their 1954 European design-sourcing trip. | `1954` (year) | medium — “Independent accounts agree on first contact and company formation in 1954 but differ on the discovery location and do not establish an exact day.” | `new-yorker-dansk-history`, `latimes-nierenberg-obituary` |
+| 02 | `h2-first-substantive-collaboration` | Immediately before James Watson and Francis Crick began substantive collaboration in October 1951 | `1951-10` (month) | high — independent histories establish the month, not the first working day | `nobel-watson-biographical`, `asu-1953-paper-history` |
+| 03 | `h3-first-substantive-collaboration` | Immediately before John Lennon invited Paul McCartney to join after their July 1957 meeting and demonstration | `1957-07` (month) | high — the 6 July meeting and later invitation are ordered, but the invitation day is unknown | `nml-first-meeting`, `national-trust-history` |
+| 04 | `h4-first-substantive-collaboration` | Immediately before Larry Page demonstrated the search prototype to Andreas Bechtolsheim and received the first check | `1998-08` (month) | medium — institutional accounts support the sequence and month, not the exact day | `stanford-otl-uniquely-google`, `stanford-engineering-hero-talk` |
+| 05 | `h5-weissman-kariko-first-substantive-conversation` | Immediately before Drew Weissman and Katalin Karikó's first substantive conversation and joint work. | `1997` (year) | medium — “Stored first-person and institutional evidence places the encounter around 1997 but does not establish an exact date.” | `cell-persistent-progress`, `nobel-kariko-banquet-speech` |
+
+H5's `1997` value is therefore a calendar proxy for an uncertain event around 1997, not an exact calendar cutoff. The earlier unsupported 1998-disagreement finding was removed and is **superseded**.
 
 ## Citation verification
 
-Every row below records the final URL, exact stored title and publisher, and the independent verdict on the stored excerpt. Outcome-only use is called out where applicable.
+Every row records the current citation ID, exact stored URL, title, and publisher plus the independent verdict on the stored excerpt. Outcome-only use is explicit.
 
-### Case 01 — `historical/builder-and-operator`
+### Case 01 — `historical/builder-and-operator` (corrective evidence)
 
-| Citation | URL | Exact title | Publisher | Excerpt verification |
+| Citation | URL | Exact title | Publisher | Excerpt/source verdict |
 |---|---|---|---|---|
-| `esquire-1971` | https://classic.esquire.com/secrets-of-the-blue-box/ | Secrets of the Little Blue Box | Esquire | PASS — exact publication date; ordering-only. |
-| `npr-wozniak-2006` | https://www.npr.org/2006/09/29/6167297/a-chat-with-computing-pioneer-steve-wozniak | A Chat with Computing Pioneer Steve Wozniak | NPR | PASS — exact article discovery, fifth/sixth-grade project practice, and repeated high-school design passages. |
-| `computerworld-jobs-1995` | https://www.computerworld.com/article/1476597/steve-jobs-interview-one-on-one-in-1995.html | Steve Jobs interview: One-on-one in 1995 | Computerworld | PASS — corrected direct rudiments, completed-Heathkit, and first-computer passages. |
-| `npr-jobs-lost-interview` | https://www.npr.org/sections/alltechconsidered/2011/11/16/142373973/steve-jobs-dishes-on-the-tech-business-in-lost-interview-from-1995 | Steve Jobs Dishes On The Tech Business In 'Lost Interview' From 1995 | NPR | PASS — explicit first-big-project and Esquire-before-project chronology. |
-| `npr-wozniak-transcript` | https://www.npr.org/transcripts/6179983 | Computer Pioneer Steve Wozniak Tells His Story | NPR | PASS — prior-computer and introduction passage supports “another person,” not “school friend.” |
-| `computer-history-museum-jobs` | https://computerhistory.org/blog/steve-jobs/ | Steve Jobs: From Garage to World’s Most Valuable Company | Computer History Museum | PASS — exact 1971 mutual-friend introduction passage; retained as report-side evidence. |
-| `loc-apple-founding` | https://guides.loc.gov/this-month-in-business-history/april/apple-computer-founded | The Founding of Apple Computer, Inc. | Library of Congress | PASS — corrected exact “college dropouts” founding/sales passage; outcome-only. |
+| `new-yorker-dansk-history` | https://www.newyorker.com/culture/cultural-comment/dansk-and-the-promise-of-a-simple-scandinavian-life | Dansk and the Promise of a Simple Scandinavian Life | The New Yorker | **PASS.** Verified the Nierenbergs' joint 1954 European design search, telephone-call-before-doorstep ordering, company-start ordering, and Quistgaard's apprenticeship with his sculptor father. |
+| `latimes-nierenberg-obituary` | https://www.latimes.com/local/obituaries/la-me-theodore-nierenberg5-2009aug05-story.html | Theodore D. Nierenberg dies at 86; founder of Dansk | Los Angeles Times | **PASS.** Verified the 1944 engineering-management degree, family manufacturing-business work, 1954 discovery/contact chronology, direction, and Quistgaard product-design facts. |
+| `moma-quistgaard-1953` | https://www.moma.org/collection/works/1190 | Jens H. Quistgaard. Fjord Flatware. 1953 | The Museum of Modern Art | **QUALIFIED PASS.** Direct fetch returned HTTP 403; indexed results confirmed the exact URL/title and 1953 object date. This citation is not used by historical claim provenance. |
+| `cooper-hewitt-quistgaard` | https://collection.cooperhewitt.org/people/18044007/ | Jens H. Quistgaard | Smithsonian Institution | **PASS; outcome-only.** Verified the current 40-object statement and Dansk relationship. The object count is dynamic and the relationship display has no date. |
 
-### Case 02 — `historical/co-researchers-structure`
+Martha Nierenberg materially participated in the discovery/founding story: the source evidence describes Ted and Martha's joint search, telephone call, doorstep visit, and start of Dansk. The benchmark must remain dyadic for evaluator compatibility, so its report mapping is Ted → Jens, but that projection does not erase Martha. Her role is retained in the cutoff event, historical claims, source biography/intent attribution, review rationale, and this receipt while her identity remains outside model-facing projection.
+
+### Case 02 — `historical/co-researchers-structure` (preserved evidence)
 
 | Citation | URL | Exact title | Publisher | Excerpt verification |
 |---|---|---|---|---|
@@ -63,7 +79,7 @@ Every row below records the final URL, exact stored title and publisher, and the
 | `science-history-biographies` | https://www.sciencehistory.org/education/scientific-biographies/francis-crick-rosalind-franklin-james-watson-and-maurice-wilkins/ | Francis Crick, Rosalind Franklin, James Watson, and Maurice Wilkins | Science History Institute | PASS — image-viewing/redirection passage verified and kept out of serialized profiles. |
 | `nobel-1962-summary` | https://www.nobelprize.org/prizes/medicine/1962/summary/ | The Nobel Prize in Physiology or Medicine 1962 | Nobel Foundation | PASS — prize rationale verified; outcome-only. |
 
-### Case 03 — `historical/songwriting-duo`
+### Case 03 — `historical/songwriting-duo` (preserved evidence)
 
 | Citation | URL | Exact title | Publisher | Excerpt verification |
 |---|---|---|---|---|
@@ -73,7 +89,7 @@ Every row below records the final URL, exact stored title and publisher, and the
 | `national-trust-history` | https://www.nationaltrust.org.uk/visit/liverpool-lancashire/the-beatles-childhood-homes/history-of-the-beatles-childhood-homes | History of the Beatles' Childhood Homes | National Trust | PASS — exact better-guitarist recruitment and joining passage. |
 | `guinness-songwriter-number-ones` | https://www.guinnessworldrecords.com/world-records/69695-most-number-one-singles-by-a-songwriter | Most US No.1 singles by a songwriter | Guinness World Records | PASS — exact songwriter record passage; outcome-only. |
 
-### Case 04 — `historical/first-check-investor`
+### Case 04 — `historical/first-check-investor` (preserved evidence)
 
 | Citation | URL | Exact title | Publisher | Excerpt verification |
 |---|---|---|---|---|
@@ -84,46 +100,53 @@ Every row below records the final URL, exact stored title and publisher, and the
 | `stanford-engineering-bechtolsheim` | https://engineering.stanford.edu/about/history/heroes/2012-heroes/andreas-bechtolsheim | Andreas Bechtolsheim | Stanford Engineering | PASS — exact workstation and separate networking-founder career passages; details remain provenance-side. |
 | `nsf-origins-outcome` | https://www.nsf.gov/news/origins-google | On the Origins of Google | National Science Foundation | PASS — later funding/relocation/incorporation summary; outcome-only. |
 
-### Case 05 — `historical/domain-expert-and-ml`
+### Case 05 — `historical/domain-expert-and-ml` (corrective evidence)
 
-| Citation | URL | Exact title | Publisher | Excerpt verification |
+| Citation | URL | Exact title | Publisher | Excerpt/source verdict |
 |---|---|---|---|---|
-| `nobel-kariko-banquet-speech` | https://www.nobelprize.org/prizes/medicine/2023/kariko/speech/ | Katalin Karikó – Banquet speech | Nobel Foundation | PASS — verbatim 1997 meeting/start-of-work ordering passage. |
-| `cell-persistent-progress` | https://pmc.ncbi.nlm.nih.gov/articles/PMC8462135/ | Persistent progress | Cell | PASS — corrected direct pre-1997 source and partner activity passages; 1997 RNA-gap use removed. |
-| `nobel-medicine-2023-press-release` | https://www.nobelprize.org/prizes/medicine/2023/press-release/ | Press release: The Nobel Prize in Physiology or Medicine 2023 | Nobel Foundation | PASS — corrected exact title and direct appointment/training passages. |
-| `nobel-medicine-2023-advanced-information` | https://www.nobelprize.org/prizes/medicine/2023/advanced-information/ | The Nobel Prize in Physiology or Medicine 2023 – Advanced information | Nobel Foundation | PASS — direct RNA/protein-expression and immunology/microbiology/NIH passages. |
-| `pnas-kariko-weissman-profile` | https://pmc.ncbi.nlm.nih.gov/articles/PMC10907315/ | Profile of Katalin Karikó and Drew Weissman: 2023 Nobel laureates in Physiology or Medicine | Proceedings of the National Academy of Sciences | PASS — corrected exact title and outcome sentence; outcome-only. |
+| `nobel-kariko-banquet-speech` | https://www.nobelprize.org/prizes/medicine/2023/kariko/speech/ | Katalin Karikó – Banquet speech | Nobel Foundation | **PASS.** Verified the 1997 meeting account and that joint work followed. Used for event ordering, not model-facing provenance. |
+| `cell-persistent-progress` | https://pmc.ncbi.nlm.nih.gov/articles/PMC8462135/ | Persistent progress | Cell | **PASS.** Verified Weissman's NIH/Penn dendritic-cell and vaccine work, stated lack of access to or knowledge of making RNA, then meeting Kati; also verified Karikó's 1989 therapeutic-protein mRNA direction. |
+| `nobel-medicine-2023-press-release` | https://www.nobelprize.org/prizes/medicine/2023/press-release/ | Press release: The Nobel Prize in Physiology or Medicine 2023 | Nobel Foundation | **PASS.** Verified Karikó's pre-connection appointments and Weissman's 1987 degrees, clinical training, and NIH research. |
+| `nobel-medicine-2023-advanced-information` | https://www.nobelprize.org/prizes/medicine/2023/advanced-information/ | The Nobel Prize in Physiology or Medicine 2023 – Advanced information | Nobel Foundation | **PASS WITH CAUTION.** Verified Weissman's immunology/microbiology degrees and subsequent training. The page contains later discoveries, but none is projected. |
+| `pnas-kariko-weissman-q-and-a` | https://www.pnas.org/doi/10.1073/pnas.2119757118 | QnAs with Katalin Karikó | Proceedings of the National Academy of Sciences | **PASS.** Direct PNAS fetch returned HTTP 403; PMC, Crossref, Europe PMC, OpenAlex, and indexed PNAS evidence confirmed the exact metadata and the stored first-person excerpt: “I met Drew around 1997 … I had been working with mRNA for almost 10 years.” |
+| `pnas-kariko-weissman-profile` | https://pmc.ncbi.nlm.nih.gov/articles/PMC10907315/ | Profile of Katalin Karikó and Drew Weissman: 2023 Nobel laureates in Physiology or Medicine | Proceedings of the National Academy of Sciences | **PASS; outcome-only.** Verified the exact title and stored later-outcome excerpt; it is disjoint from cutoff ordering and model-facing provenance. |
 
-## Final checklist verdicts and corrections
+H5 uses Weissman as the seeker: his pre-contact vaccine research had an RNA-input gap, and Karikó had the needed long-running mRNA research direction. The boundary excludes the first substantive conversation, joint work, and all post-contact immune-sensing discoveries. Modified nucleosides, inflammatory response, Toll-like receptors, pseudouridine, later joint findings, COVID-19, companies, awards, and Nobel outcomes are absent from model-facing fields.
 
-| Case | Cutoff | Provenance | Synthetic negatives | Leakage | Current historical/canonical serialization | Matrix serialization | Corrections applied |
-|---|---|---|---|---|---|---|---|
-| 01 | PASS — exclusive `1971`, first-big-project ordering | PASS — all nonblank paths mapped; participant-only activities | PASS — three authored, requirement-specific failures | medium | PASS — names, relationship/year/project/outcome/business clues absent | PASS at `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | Exact Computerworld/LOC text; authoritative NPR ordering; “another person”; removed quasi-identifiers; generalized capability complement and intents. |
-| 02 | PASS — exclusive `1951-10`, collaboration begins in October | PASS — age/image/interpretation/modeling desire removed; independent activities | PASS — method, scientific-role, and molecular-scale failures | medium | PASS — names, outcome, image/age/data-possession and identifying subject conjunction absent | PASS at `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | Exact ASU title; biological-macromolecule/physical-method generalization; generalized locations; independently supported activities. |
-| 03 | PASS — exclusive `1957-07`, meeting/demonstration before later invitation/joining | PASS — blank locations unmapped; recruitment and demonstrated ability retained | PASS — wrong-side recruitment, absent performance ability, absent popular-group interest | medium | PASS — region/local/event/tuning/recall/invitation/song/place clues absent | PASS at `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | Exact all-citation fixtures; first-substantive boundary; removed synthetic geography/event clues; further generalized positive pair. |
-| 04 | PASS — exclusive `1998-08`, company decision/invitation before demonstration and check | PASS — evaluator-only intent; no trust/funding willingness; both founding facts support abstractions | PASS — capital direction, stage, and technical-fluency failures | medium | PASS — module and canonical aggregate; names, transaction, trust/funding, distinctive prototype/career sequences absent | PASS at `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c`; legacy aggregate deferral closed | Corrected hero-talk text; evaluator-not-backer framing; generalized prototype and career sequence; retained two founding facts in provenance. |
-| 05 | PASS — exclusive `1997`, encounter/joint work excluded | PASS — RNA-gap removed; participant-only activities and exact path mappings | PASS — same-side role, lab method, and human-domain failures | medium | PASS — names, meeting, outcome, mRNA+dendritic+HIV, antigen/payload, and reciprocal-intent clues absent | PASS at `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c`; empty context approved pending IND-638 | Exact titles/verbatim excerpts; removed RNA gap; independent activities; generalized nucleic-acid/immune complement and negatives. |
+## Current case verdicts and corrections
 
-All five final reviewer decisions are **approved** with no required changes. Residual recognizability is **medium** for each case: the requirement-relevant complement can suggest a famous pairing to a knowledgeable reader, but the unique confirming conjunctions and outcome clues have been removed from current historical and canonical matching inputs.
+| Case | Direction and material participants | Provenance | Negative categories | Current correction status |
+|---|---|---|---|---|
+| 01 | Ted → Jens; Ted and Martha jointly discovered/contacted Jens and founded the relationship represented by the dyadic benchmark | PASS — all nonblank model fields terminate in the three pre-telephone historical roots; outcome isolated | “National retail assortment curation and supplier sourcing represent buyer-side merchandising activity.”; “Packaging and brand identity represent visual-communications design for household-product companies.”; “Commissioned public architectural sculpture represents a site-specific civic-art application domain.” | Replaced the superseded Jobs/Wozniak fixture; repaired joint-spouse attribution, event boundary, neutral feasible `[0,29]` negatives, equal RAG scores, publisher field, and approval metadata |
+| 02 | James → Francis | PASS — independent activity and method provenance; outcome isolated | method, scientific role, molecular scale | Original approved evidence preserved; flat cutoff representation migrated to the event-relative contract |
+| 03 | John → Paul | PASS — demonstrated ability and recruitment evidence; outcome isolated | wrong-side recruitment, missing performance ability, missing popular-group interest | Original approved evidence preserved; flat cutoff representation migrated to the event-relative contract |
+| 04 | Larry → Andy | PASS — evaluator activity and technical background are pre-demonstration; outcome isolated | capital direction, stage, technical fluency | Original approved evidence preserved; flat cutoff representation migrated to the event-relative contract |
+| 05 | Drew → Katalin | PASS — Weissman's need and Karikó's pre-contact capability terminate in affirmative historical roots; outcome isolated | “Same-side vaccine immunologist also lacks the required RNA preparation capability.”; “Computational RNA analyst lacks practical messenger-RNA research experience.”; “Plant RNA researcher works in the wrong biological domain for human antigen-delivery research.” | Reversed the superseded direction, grounded capability at the meeting, removed unsupported method/1998 claims, corrected Q&A title, excluded post-contact science, and recorded approval metadata |
 
-## Final integration-serializer approval
+All five current decisions are **approved** and recognizability is **medium**. H1 and H5 required the corrections above after PR #1341; statements that they required no changes at the original integration checkpoint are **superseded**.
 
-The five original reviewers re-inspected the exact integration commit `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` after the canonical aggregate and matrix adapters were switched. Each reviewer inspected `historicalModelSafeProjection`, the exact matching evaluator `case.input`, and `matrixModelInput`, and confirmed that the matrix intents are direct frozen copies of the canonical audited participant intents.
+## Projection and serialization verdicts
 
-| Case | Original reviewer | Final serializer artifact | Reviewed integration SHA | `historicalModelSafeProjection` | Exact matching input | `matrixModelInput` | Canonical frozen intents | No-leak verdict | Required changes |
-|---|---|---|---|---|---|---|---|---|---|
-| 01 | `pi-reviewer:e8085cfa` | `.pi-subagents/artifacts/652ff362_reviewer_output.md` | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | PASS | PASS — no control ID, identities, citations, audit fields, semantic-negative reasons, unique proper nouns, or outcome terms | none |
-| 02 | `pi-reviewer:5e071b82` | `.pi-subagents/artifacts/b9516302_reviewer_output.md` | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | PASS | PASS — no control ID, identities, citations, audit fields, semantic-negative reasons, removed historical clues, or outcomes | none |
-| 03 | `pi-reviewer:a091da6e` | `.pi-subagents/artifacts/d2c5eb81_reviewer_output.md` | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | PASS | PASS — no control ID, identities, citations, cutoff/event clues, audit fields, semantic-negative reasons, or outcomes | none |
-| 04 | `pi-reviewer:ba43fe8c` | `.pi-subagents/artifacts/46729c47_reviewer_output.md` | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | PASS | PASS — no control ID, report identities, unnamed-cofounder identity, citations, audit fields, transaction/outcome clues, or semantic-negative reasons | none |
-| 05 | `pi-reviewer:07908e5e` | `.pi-subagents/artifacts/52b3718b_reviewer_output.md` | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | PASS | PASS — no control ID, identities, institutions/products, citations, audit fields, semantic-negative reasons, meeting clues, or outcomes | none |
+The safe boundary is the projection or adapter output, not every containing object. A complete compatibility `MatchingCase` retains expectations and report names, and complete base seed payload control rows retain hashed expected/excluded IDs; neither complete container may be supplied wholesale to a model.
 
-The Case 04 legacy aggregate deferral is explicitly closed: `HISTORICAL_CASES[3].input` is now the compatibility projection of the approved audited Case 04 module, and the original Case 04 reviewer approved that exact matching input and its matrix projection at the integration SHA.
+| Case | Reviewed checkpoint | `historicalModelSafeProjection` | Exact matching input | `matrixModelInput` | `baseSeedPayload` | Required changes |
+|---|---|---|---|---|---|---|
+| 01 | `6c20448cc20387953c0bf22b7d17f3249d47e391` | PASS — no identities, citations, provenance, review data, negative rationales, or outcome evidence | PASS — expectations stay control-side; all RAG scores equal 70 | PASS — audit/answer-key fields excluded | QUALIFIED PASS — model-facing separation passes; control case rows retain hashed labels | none |
+| 02 | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | Identity/audit separation confirmed by current serializer contract | none |
+| 03 | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS | PASS | Identity/audit separation confirmed by current serializer contract | none |
+| 04 | `7cb873b4bbd69f1e9fdecb30c35cd778ddb0563c` | PASS | PASS — the former legacy aggregate deferral was closed | PASS | Identity/audit separation confirmed by current serializer contract | none |
+| 05 | `0f6147f0e3faa410fff8793d9a5450373dbf1442` | PASS — report identity, citations, audit fields, negative rationale, and outcome evidence excluded; RAG score remains | PASS for `.input`; complete compatibility object is not control-label safe | PASS — identities, audit data, citations, labels, and RAG scores excluded | PASS for identity/audit separation, not control-label safe as a whole | none |
 
-Case 05 deliberately serializes `networkContext: ""` because its approved module contains no audited per-case network context. The original Case 05 reviewer approved that absence. Supplying the reviewed shared-pool prompt and any authorized protected-base reseed remain deferred to IND-638; no replacement context was invented here.
+The corrective all-five-case serializer tests at `4deb3e1a5` and `c7dfb9c88` invoke the real `baseSeedPayload(HISTORICAL_MATRIX_CASES)`, verify the exact 5-case/25-participant rows and references, and recursively reject report identities, citation IDs/URLs/titles/publishers/excerpts, semantic-negative rationales, and audit/report keys. These are provider-free contract checks, not evidence of a protected-base refresh or a live discovery measurement.
 
-All five final serializer reviews returned `SERIALIZED PROJECTIONS: PASS`, `DECISION: approved`, and `REQUIRED CHANGES: none`. Residual recognizability remains the previously approved **medium** for each case; the final integration introduced no new leakage.
+## Residual risks
+
+- Every case remains moderately recognizable from its historical capability combination even though identifying and outcome clues are excluded.
+- H1 keeps the positive first in participant order, but equalizes all candidate RAG scores. Its MoMA source is directly unfetchable, and retrospective sources disagree on discovery location.
+- H5 retains a target-leading RAG score in the exact historical matching input, and its negative prose makes selection comparatively easy. Direct PNAS access returned HTTP 403, so verification used PMC and independent metadata indexes.
+- Complete compatibility and seed-control containers retain answer-key material outside model input. Callers must use the explicit model-safe projections/adapters.
+- Session-local raw review artifacts are not reproducible from a fresh checkout; this receipt and the approved case metadata are the committed audit record.
 
 ## Execution statement
 
-No live model, provider, database, Redis, Neon, or paid evaluation command ran during authoring, integration, or review. Reviewers inspected source evidence, provenance, and exact static serializations read-only. The implementation writer ran only provider-free focused tests, typechecks, lint, and whitespace checks.
+The corrective review used source inspection, provider-free focused tests, typechecks, static serializer tests, lint, and whitespace checks. No protected-base refresh, shared-pool reseed, live model/provider invocation, database mutation, Redis/Neon operation, paid evaluation, baseline update, or live performance measurement occurred. Runtime integration and any authorized protected-base operation remain separate work; this receipt makes no IND-638 runtime claim.
