@@ -12,11 +12,11 @@ const source = {
 };
 
 const partner = {
-  bio: "Biochemist experienced in producing laboratory-made nucleic acids encoding therapeutic proteins and testing their expression in cells.",
+  bio: "Biochemist with nearly a decade of messenger-RNA research focused on therapeutic-protein goals.",
   location: "U.S. East Coast",
-  interests: ["nucleic-acid biology", "therapeutic protein research", "experimental methods"],
-  skills: ["biochemistry", "nucleic-acid production", "laboratory transcription", "cell-based expression studies"],
-  intent: "Develop laboratory-produced nucleic acids for therapeutic protein expression in cell-based experiments.",
+  interests: ["messenger-RNA research", "therapeutic protein research", "long-term molecular research"],
+  skills: ["biochemistry", "messenger-RNA research", "therapeutic-protein research"],
+  intent: "Continue messenger-RNA research aimed at coding for therapeutic proteins.",
 };
 
 function expectDeeplyFrozen(value: unknown): void {
@@ -59,7 +59,7 @@ describe("historical case 05", () => {
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
     expect(HISTORICAL_CASE_05.description).toBe(
-      "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with a biochemist experienced in producing therapeutic-protein nucleic acids.",
+      "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with a biochemist who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.",
     );
     expect(HISTORICAL_CASE_05.historicalQuality.triggerInputs).toEqual({
       intent: { text: source.intent },
@@ -78,15 +78,44 @@ describe("historical case 05", () => {
     });
   });
 
-  it("records the exact pre-connection RNA need without using later joint facts in model provenance", () => {
+  it("binds partner capabilities to explicitly ordered pre-contact evidence rather than the undated Nobel method summary", () => {
     const citations = new Map(HISTORICAL_CASE_05.historicalQuality.citations.map((citation) => [citation.id, citation]));
+    expect(citations.get("pnas-kariko-weissman-q-and-a")).toMatchObject({
+      url: "https://www.pnas.org/doi/10.1073/pnas.2119757118",
+      excerpt: "I told him I had been working with mRNA for almost 10 years.",
+    });
+
+    const claims = new Map(HISTORICAL_CASE_05.historicalQuality.claims.map((claim) => [claim.id, claim]));
+    const historicalRoots = (claimId: string): string[] => {
+      const claim = claims.get(claimId)!;
+      return claim.kind === "historical" ? [claim.id] : claim.kind === "derived" ? claim.basisClaimIds.flatMap(historicalRoots) : [];
+    };
+    const partnerCapabilityPaths = Object.keys(HISTORICAL_CASE_05.historicalQuality.claimProvenance).filter(
+      (path) => path.startsWith("/input/entities/1/profile/bio") || path.startsWith("/input/entities/1/profile/interests/") || path.startsWith("/input/entities/1/profile/skills/") || path === "/input/entities/1/intents/0/payload",
+    );
+    expect(partnerCapabilityPaths).toHaveLength(8);
+    for (const path of partnerCapabilityPaths) {
+      const rootIds = HISTORICAL_CASE_05.historicalQuality.claimProvenance[path]!.flatMap(historicalRoots);
+      expect(new Set(rootIds), path).toEqual(new Set(["fact-kariko-rna-experience"]));
+      for (const rootId of rootIds) {
+        const root = claims.get(rootId)!;
+        expect(root.kind, path).toBe("historical");
+        if (root.kind === "historical") {
+          expect(root.preConnection, path).toBeTrue();
+          expect(root.citationIds, path).toEqual(["pnas-kariko-weissman-q-and-a", "cell-persistent-progress"]);
+          expect(root.citationIds, path).not.toContain("nobel-medicine-2023-advanced-information");
+        }
+      }
+    }
+    expect(historicalRoots("model-description")).toContain("fact-kariko-rna-experience");
+    expect(historicalRoots("model-description")).not.toContain("fact-kariko-rna-methods");
+
     expect(citations.get("cell-persistent-progress")?.url).toBe("https://pmc.ncbi.nlm.nih.gov/articles/PMC8462135/");
     expect(citations.get("cell-persistent-progress")?.excerpt).toBe(
       "I did my fellowship at NIH in Tony Fauci’s lab. While I was there, I started a new research program studying dendritic cells and their role in HIV pathogenesis. … So when I came to Penn … the first thing I wanted to do was vaccine research. I started to investigate ways of loading dendritic cells with antigen … I didn’t have access to RNA, and I didn’t know how to make it, so I looked at everything else. And that’s when I met Kati … Katalin Karikó: I started at the University of Pennsylvania in ‘89 and started to get interested in making mRNA coding for therapeutic protein.",
     );
     expect(HISTORICAL_CASE_05.historicalQuality.outcomeCitationIds).toEqual(["pnas-kariko-weissman-profile"]);
 
-    const claims = new Map(HISTORICAL_CASE_05.historicalQuality.claims.map((claim) => [claim.id, claim]));
     const modelCitationIds = new Set<string>();
     const collectCitations = (claimId: string): void => {
       const claim = claims.get(claimId)!;
@@ -103,13 +132,13 @@ describe("historical case 05", () => {
     expect(modelCitationIds.has("pnas-kariko-weissman-profile")).toBeFalse();
 
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_05));
-    expect(modelText).not.toMatch(/karik[oó]|weissman|katalin|drew|inflammator|modified nucleoside|pseudouridine|toll-like|covid|pandemic|biontech|moderna|nobel|prize|award|company|companies|joint work|worked together/i);
+    expect(modelText).not.toMatch(/karik[oó]|weissman|katalin|drew|inflammator|modified nucleoside|pseudouridine|toll-like|covid|pandemic|biontech|moderna|nobel|prize|award|company|companies|joint work|worked together|laboratory transcription|cell-expression|cell-based expression|nucleic-acid production|laboratory-made|laboratory-produced/i);
   });
 
   it("uses exact negatives encoding same-side, method, and domain failures", () => {
     expect(HISTORICAL_CASE_05.historicalQuality.semanticNegatives).toEqual({
       "h5-c": "Same-side vaccine immunologist also lacks the required RNA preparation capability.",
-      "h5-d": "Computational RNA analyst lacks wet-lab nucleic-acid production and cell-expression capability.",
+      "h5-d": "Computational RNA analyst lacks practical messenger-RNA research experience.",
       "h5-e": "Plant RNA researcher works in the wrong biological domain for human antigen-delivery research.",
     });
     const negatives = historicalModelSafeProjection(HISTORICAL_CASE_05).input.entities.slice(2);

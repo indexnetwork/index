@@ -12,18 +12,18 @@ const source = {
 } as const;
 
 const partner = {
-  bio: "Biochemist experienced in producing laboratory-made nucleic acids encoding therapeutic proteins and testing their expression in cells.",
+  bio: "Biochemist with nearly a decade of messenger-RNA research focused on therapeutic-protein goals.",
   location: "U.S. East Coast",
-  interests: ["nucleic-acid biology", "therapeutic protein research", "experimental methods"],
-  skills: ["biochemistry", "nucleic-acid production", "laboratory transcription", "cell-based expression studies"],
-  intent: "Develop laboratory-produced nucleic acids for therapeutic protein expression in cell-based experiments.",
+  interests: ["messenger-RNA research", "therapeutic protein research", "long-term molecular research"],
+  skills: ["biochemistry", "messenger-RNA research", "therapeutic-protein research"],
+  intent: "Continue messenger-RNA research aimed at coding for therapeutic proteins.",
 } as const;
 
-const description = "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with a biochemist experienced in producing therapeutic-protein nucleic acids.";
+const description = "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with a biochemist who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.";
 
 const semanticNegatives = {
   "h5-c": "Same-side vaccine immunologist also lacks the required RNA preparation capability.",
-  "h5-d": "Computational RNA analyst lacks wet-lab nucleic-acid production and cell-expression capability.",
+  "h5-d": "Computational RNA analyst lacks practical messenger-RNA research experience.",
   "h5-e": "Plant RNA researcher works in the wrong biological domain for human antigen-delivery research.",
 } as const;
 
@@ -38,11 +38,11 @@ const syntheticProfiles = [
   },
   {
     userId: "h5-d",
-    bio: "Computational RNA analyst who models sequence data without wet-lab nucleic-acid production or cell-expression practice.",
+    bio: "Computational RNA analyst who models sequence data without practical messenger-RNA research experience.",
     location: "U.S. East Coast",
     interests: ["RNA analytics", "computational biology"],
     skills: ["sequence analysis", "statistical modeling"],
-    intent: "Analyze RNA sequences computationally without producing nucleic acids or testing expression in cells.",
+    intent: "Analyze RNA sequences computationally rather than contribute long-term messenger-RNA research experience.",
   },
   {
     userId: "h5-e",
@@ -78,16 +78,9 @@ const claims: HistoricalClaim[] = [
   },
   {
     kind: "historical",
-    id: "fact-kariko-rna-goal",
-    text: "Before meeting Weissman, Katalin Karikó was interested in making messenger RNA encoding therapeutic protein.",
-    citationIds: ["cell-persistent-progress"],
-    preConnection: true,
-  },
-  {
-    kind: "historical",
-    id: "fact-kariko-rna-methods",
-    text: "Before meeting Weissman, Karikó's biochemistry work included laboratory transcription of nucleic acids and cell-based protein-expression studies.",
-    citationIds: ["cell-persistent-progress", "nobel-medicine-2023-advanced-information"],
+    id: "fact-kariko-rna-experience",
+    text: "At her first conversation with Weissman, Katalin Karikó said she had worked with messenger RNA for almost 10 years, pursuing her long-standing goal of making messenger RNA coding for therapeutic protein.",
+    citationIds: ["pnas-kariko-weissman-q-and-a", "cell-persistent-progress"],
     preConnection: true,
   },
   {
@@ -101,8 +94,8 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-description",
     text: description,
-    basisClaimIds: ["fact-weissman-cell-virus-work", "fact-weissman-rna-need", "fact-kariko-rna-goal", "fact-kariko-rna-methods"],
-    rationale: "Generalizes the documented pre-connection seeker need and complementary laboratory capability without later joint findings or outcomes.",
+    basisClaimIds: ["fact-weissman-cell-virus-work", "fact-weissman-rna-need", "fact-kariko-rna-experience"],
+    rationale: "Generalizes the documented pre-connection seeker need and Karikó's explicitly ordered messenger-RNA experience without later joint findings or outcomes.",
   },
   {
     kind: "derived",
@@ -138,8 +131,8 @@ const claims: HistoricalClaim[] = [
     kind: "derived",
     id: "model-partner-bio",
     text: partner.bio,
-    basisClaimIds: ["fact-kariko-rna-goal", "fact-kariko-rna-methods"],
-    rationale: "Generalizes the documented pre-connection biochemistry, nucleic-acid production, and cell-expression work.",
+    basisClaimIds: ["fact-kariko-rna-experience"],
+    rationale: "Generalizes Karikó's first-person account of almost a decade working with messenger RNA and her documented therapeutic-protein goal.",
   },
   {
     kind: "derived",
@@ -149,20 +142,19 @@ const claims: HistoricalClaim[] = [
     rationale: "Generalizes documented pre-connection research positions to a broad region.",
   },
   ...[
-    ["model-partner-interest-nucleic", partner.interests[0]],
+    ["model-partner-interest-rna", partner.interests[0]],
     ["model-partner-interest-protein", partner.interests[1]],
-    ["model-partner-interest-methods", partner.interests[2]],
+    ["model-partner-interest-long-term", partner.interests[2]],
     ["model-partner-skill-biochemistry", partner.skills[0]],
-    ["model-partner-skill-production", partner.skills[1]],
-    ["model-partner-skill-transcription", partner.skills[2]],
-    ["model-partner-skill-expression", partner.skills[3]],
+    ["model-partner-skill-rna", partner.skills[1]],
+    ["model-partner-skill-protein", partner.skills[2]],
     ["model-partner-intent", partner.intent],
   ].map(([id, text]) => ({
     kind: "derived" as const,
     id: id!,
     text: text!,
-    basisClaimIds: ["fact-kariko-rna-goal", "fact-kariko-rna-methods"],
-    rationale: "Conservative abstraction of Karikó's documented pre-connection nucleic-acid production and cell-expression research.",
+    basisClaimIds: ["fact-kariko-rna-experience"],
+    rationale: "Conservative abstraction of Karikó's explicitly ordered messenger-RNA experience and therapeutic-protein goal.",
   })),
   ...syntheticProfiles.flatMap((profile) => {
     const reason = semanticNegatives[profile.userId];
@@ -273,6 +265,13 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
         excerpt: "Karikó had a strong drive to advance the mRNA platform and she systematically investigated different components of in vitro transcribed mRNA to identify requirements for optimal protein expression in cells and tissues. … Weissman had received his MD and PhD degrees from Boston University in immunology and microbiology in 1987. After a residency period at Beth Israel Deaconess Medical Center at Harvard Medical School in Boston, he joined Anthony Fauci’s group at the National Institutes of Health (NIH) for a post-doctoral fellowship to investigate how the human immunodeficiency virus type 1 (HIV-1) interacts with target receptors on different types of immune cells.",
       },
       {
+        id: "pnas-kariko-weissman-q-and-a",
+        url: "https://www.pnas.org/doi/10.1073/pnas.2119757118",
+        title: "QnAs with Katalin Karikó and Drew Weissman",
+        publisher: "Proceedings of the National Academy of Sciences",
+        excerpt: "I told him I had been working with mRNA for almost 10 years.",
+      },
+      {
         id: "pnas-kariko-weissman-profile",
         url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC10907315/",
         title: "Profile of Katalin Karikó and Drew Weissman: 2023 Nobel laureates in Physiology or Medicine",
@@ -295,13 +294,12 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
       "/input/entities/0/intents/0/payload": ["model-source-intent"],
       "/input/entities/1/profile/bio": ["model-partner-bio"],
       "/input/entities/1/profile/location": ["model-partner-location"],
-      "/input/entities/1/profile/interests/0": ["model-partner-interest-nucleic"],
+      "/input/entities/1/profile/interests/0": ["model-partner-interest-rna"],
       "/input/entities/1/profile/interests/1": ["model-partner-interest-protein"],
-      "/input/entities/1/profile/interests/2": ["model-partner-interest-methods"],
+      "/input/entities/1/profile/interests/2": ["model-partner-interest-long-term"],
       "/input/entities/1/profile/skills/0": ["model-partner-skill-biochemistry"],
-      "/input/entities/1/profile/skills/1": ["model-partner-skill-production"],
-      "/input/entities/1/profile/skills/2": ["model-partner-skill-transcription"],
-      "/input/entities/1/profile/skills/3": ["model-partner-skill-expression"],
+      "/input/entities/1/profile/skills/1": ["model-partner-skill-rna"],
+      "/input/entities/1/profile/skills/2": ["model-partner-skill-protein"],
       "/input/entities/1/intents/0/payload": ["model-partner-intent"],
       ...Object.fromEntries(syntheticProfiles.flatMap((profile, index) => [
         [`/input/entities/${index + 2}/profile/bio`, [`${profile.userId}-bio`]],
