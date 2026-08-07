@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
+import { HISTORICAL_QUALITY_CASES } from '../../../../../packages/protocol/eval/matching/matching.historical.js';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
@@ -16,6 +17,15 @@ const SAFE_ENV: NodeJS.ProcessEnv = {
   DATABASE_URL: 'postgres://x@ep-x.neon.tech/protocol_eval',
   DISCOVERY_ENV_MATRIX_BASE_BRANCH: 'eval-discovery-base',
 };
+
+function allStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(allStrings);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, child]) => [key, ...allStrings(child)]);
+  }
+  return [];
+}
 
 interface MockBaseDatabaseState {
   calls: string[];
@@ -192,6 +202,71 @@ describe('discovery environment matrix base policy', () => {
     expect(computeFixtureFingerprint(HISTORICAL_MATRIX_CASES)).toMatch(/^[a-f0-9]{64}$/);
     expect(baseSeedPayload(HISTORICAL_MATRIX_CASES)).not.toHaveProperty('reportNames');
     expect(JSON.stringify(baseSeedPayload(HISTORICAL_MATRIX_CASES))).not.toContain('basis');
+  });
+
+  it('serializes exact all-five-case database rows', () => {
+    const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+
+    expect(payload.cases).toHaveLength(5);
+    expect(payload.networks).toHaveLength(5);
+    expect(payload.memberships).toHaveLength(25);
+    expect(payload.intents).toHaveLength(25);
+
+    for (const matrixCase of HISTORICAL_MATRIX_CASES) {
+      const fixtureCase = payload.cases.find(({ id }) => id === matrixCase.id);
+      expect(fixtureCase).toBeDefined();
+      const network = payload.networks.find(({ id }) => id === fixtureCase!.networkId);
+      expect(network).toBeDefined();
+      expect(network!.prompt).toBe(matrixCase.networkContext);
+
+      const memberships = payload.memberships.filter(({ networkId }) => networkId === network!.id);
+      expect(memberships).toHaveLength(matrixCase.participants.length);
+      for (const [index, participant] of matrixCase.participants.entries()) {
+        const membership = memberships[index]!;
+        const user = payload.users.find(({ id }) => id === membership.userId);
+        expect(user).toBeDefined();
+        expect(user!.intro).toBe(participant.profileText);
+        expect(user!.location).toBe(participant.location);
+        expect(user!.email).toEndWith('@fixture.invalid');
+        expect(user!.name).toMatch(/^Evaluation fixture participant [a-f0-9]{8}$/);
+
+        const intent = payload.intents.find(({ networkId, userId }) => (
+          networkId === network!.id && userId === membership.userId
+        ));
+        expect(intent).toBeDefined();
+        expect(intent!.payload).toBe(participant.intent.text);
+        expect(intent!.summary).toBe('Discovery evaluation fixture intent');
+      }
+
+      const membershipIdFor = (participantId: string): string => {
+        const index = matrixCase.participants.findIndex(({ id }) => id === participantId);
+        expect(index).toBeGreaterThanOrEqual(0);
+        return memberships[index]!.userId;
+      };
+      expect(fixtureCase!.sourceUserId).toBe(membershipIdFor(matrixCase.sourceUserId));
+      expect(fixtureCase!.expectedUserId).toBe(membershipIdFor(matrixCase.expectedUserId));
+      expect(fixtureCase!.excludedUserIds).toEqual(matrixCase.excludedUserIds.map(membershipIdFor));
+    }
+  });
+
+  it('excludes recursive audit and report data from serialized rows', () => {
+    const auditKeys = [
+      'historicalQuality', 'claimProvenance', 'semanticNegatives',
+      'anonymizationReview', 'outcomeCitationIds', 'citationIds',
+      'basisClaimIds', 'violatedRequirement', 'uncertaintyRationale',
+    ];
+    const forbidden = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => [
+      ...Object.values(historicalCase.reportNames ?? {}),
+      ...historicalCase.historicalQuality.citations.flatMap(({ url, title, publisher, excerpt }) =>
+        [url, title, publisher, excerpt]),
+      ...Object.values(historicalCase.historicalQuality.semanticNegatives),
+      ...auditKeys,
+    ]).filter(Boolean);
+
+    const serializedStrings = allStrings(baseSeedPayload(HISTORICAL_MATRIX_CASES));
+    for (const value of forbidden) {
+      expect(serializedStrings.some((entry) => entry.includes(value)), value).toBeFalse();
+    }
   });
 
   it('uses deterministic, fixture-scoped IDs and the audited v2 corpus contract', () => {
