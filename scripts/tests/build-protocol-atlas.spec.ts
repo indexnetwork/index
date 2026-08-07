@@ -78,6 +78,26 @@ function fixtureArtifact(options: { duplicateNode?: boolean; missingTarget?: boo
   return artifact;
 }
 
+test("contains no concrete host implementation references", async () => {
+  const sources = await Promise.all([
+    "docs/protocol-atlas/atlas-content.js",
+    "docs/protocol-atlas/protocol.generated.js",
+  ].map((path) => Bun.file(path).text()));
+  expect(sources.join("\n")).not.toMatch(/services\/api|apps\/web|src\/controllers|src\/services|src\/adapters|src\/queues/);
+});
+
+test("keeps responsive layouts bounded with touch and grayscale-safe interaction cues", async () => {
+  const css = await Bun.file("docs/protocol-atlas/atlas.css").text();
+  expect(css).toMatch(/body\s*\{[\s\S]*?overflow-x:\s*hidden/);
+  expect(css).toContain("@media (max-width: 900px)");
+  expect(css).toContain("@media (max-width: 640px)");
+  expect(css).toMatch(/button,[\s\S]*?min-height:\s*2\.75rem/);
+  expect(css).toContain("--edge-runtime-pattern: 10 5");
+  expect(css).toContain("--edge-injected-pattern: 3 4");
+  expect(css).toContain("--edge-conceptual-pattern: 1 5");
+  expect(css).toMatch(/\.atlas-edge text\s*\{/);
+});
+
 test("loads dependency-free classic assets in deterministic order", async () => {
   const html = await Bun.file("docs/protocol-atlas/index.html").text();
   expect(html).toContain('<link rel="stylesheet" href="./atlas.css">');

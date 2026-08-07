@@ -22,6 +22,7 @@ const fixtureContent = () => ({
     { id: "orientation", title: "Orientation", stepIds: [] },
     { id: "discovery", title: "Discovery", stepIds: ["resolve-effective-scope", "retrieve-candidates", "evaluate-fit"] },
     { id: "runtime", title: "Runtime", stepIds: ["invocation-runtime"] },
+    { id: "explore", title: "Explore", stepIds: [] },
   ],
   flows: [{
     id: "discover-opportunity",
@@ -51,7 +52,7 @@ const fixtureContent = () => ({
     chapterId: "runtime",
     steps: [{ id: "invocation-runtime", title: "Invocation runtime" }],
   }],
-  concepts: [{ id: "opportunity", title: "Opportunity", summary: "A participant-visible evaluated match." }],
+  concepts: [{ id: "opportunity", title: "Opportunity", summary: "A participant-visible evaluated match.", normative: true }],
   invariants: [{ id: "candidate-private", text: "Candidates remain private." }],
   vocabulary: [], relationships: [],
 });
@@ -101,16 +102,19 @@ async function rendererHarness(options: { hash?: string; generated?: ReturnType<
     <aside id="atlas-inspector"></aside><section id="atlas-filters"></section><p id="atlas-status"></p>
   `;
 
-  const globals = ["document", "location", "navigator", "Element", "matchMedia", "requestAnimationFrame", "getSelection", "ProtocolAtlasContent", "ProtocolAtlasGenerated"] as const;
+  const globals = ["document", "location", "history", "navigator", "Element", "matchMedia", "requestAnimationFrame", "getSelection", "addEventListener", "removeEventListener", "ProtocolAtlasContent", "ProtocolAtlasGenerated"] as const;
   const descriptors = new Map(globals.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   const install = (name: string, value: unknown) => Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
   install("document", window.document);
   install("location", window.location);
+  install("history", window.history);
   install("navigator", window.navigator);
   install("Element", window.Element);
   install("matchMedia", window.matchMedia.bind(window));
   install("requestAnimationFrame", (callback: FrameRequestCallback) => callback(0));
   install("getSelection", window.getSelection.bind(window));
+  install("addEventListener", window.addEventListener.bind(window));
+  install("removeEventListener", window.removeEventListener.bind(window));
   install("ProtocolAtlasContent", fixtureContent());
   install("ProtocolAtlasGenerated", options.generated === null ? undefined : (options.generated ?? fixtureGenerated()));
 
@@ -161,10 +165,10 @@ describe("ProtocolAtlasCore routing", () => {
     expect(core().parseHash(core().serializeHash(state), fixtureContent(), fixtureGenerated())).toEqual(state);
   });
 
-  test("serializes fields in fixed order, omits defaults, and sorts filters", () => {
+  test("serializes filters in stable order and restores selected nodes", () => {
     const state = fixtureState({
       selectedNodeId: "component.opportunity-evaluator",
-      filters: { capabilities: ["signals", "opportunities"], kinds: ["agent"], edgeKinds: ["runtime"] },
+      filters: { capabilities: ["signals", "opportunities", "signals"], kinds: ["agent"], edgeKinds: ["runtime"] },
     });
     expect(core().serializeHash(state)).toBe(
       "#node=component.opportunity-evaluator&capabilities=opportunities%2Csignals&kinds=agent&edgeKinds=runtime",
@@ -384,6 +388,9 @@ describe("Protocol Atlas guided renderer", () => {
       harness.document.querySelectorAll<HTMLButtonElement>("#atlas-layer-toggle button")[1].click();
       harness.document.querySelector<HTMLButtonElement>(".atlas-node")?.click();
       const disclosure = harness.document.querySelector<HTMLDetailsElement>(".atlas-disclosure");
+      const disclosureSummary = disclosure?.querySelector("summary");
+      expect(disclosureSummary?.getAttribute("aria-expanded")).toBe("false");
+      expect(disclosureSummary?.getAttribute("aria-controls")).toBe(disclosure?.querySelector(".atlas-code-evidence")?.id);
       if (disclosure) disclosure.open = true;
       const disclosureButton = disclosure?.querySelector<HTMLButtonElement>("button");
       expect(disclosureButton).not.toBeNull();
@@ -396,10 +403,165 @@ describe("Protocol Atlas guided renderer", () => {
   });
 });
 
+describe("Protocol Atlas history, search, filters, and recovery", () => {
+  test("writes user actions to the hash and restores state on hashchange", async () => {
+    const harness = await rendererHarness();
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
+      expect(harness.window.location.hash).toBe("#chapter=discovery&step=resolve-effective-scope");
+
+      harness.window.location.hash = "#chapter=discovery&step=evaluate-fit&layer=implementation&node=component.opportunity-evaluator";
+      harness.window.dispatchEvent(new harness.window.HashChangeEvent("hashchange"));
+      expect(activeStep(harness.document)).toBe("Evaluate fit");
+      expect(harness.document.querySelector('#atlas-layer-toggle [aria-pressed="true"]')?.textContent).toBe("implementation");
+      expect(harness.document.querySelector("#atlas-inspector-heading")?.textContent).toBe("Opportunity Evaluator");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("searches concepts and components, navigates, closes, announces, and returns focus", async () => {
+    const harness = await rendererHarness();
+    try {
+      const searchButton = harness.document.querySelector<HTMLButtonElement>("#atlas-search");
+      searchButton?.click();
+      expect(searchButton?.getAttribute("aria-expanded")).toBe("true");
+      expect(searchButton?.getAttribute("aria-controls")).toBe("atlas-search-dialog");
+      expect(harness.document.querySelector("[data-atlas-search]")?.getAttribute("role")).toBe("dialog");
+      const input = harness.document.querySelector<HTMLInputElement>("[data-atlas-search] input[type='search']");
+      expect(input).not.toBeNull();
+      if (!input) return;
+      input.value = "OpportunityGraphFactory";
+      input.dispatchEvent(new harness.window.Event("input", { bubbles: true }));
+      const result = harness.document.querySelector<HTMLButtonElement>(".atlas-search-results button");
+      expect(result?.textContent).toContain("OpportunityGraphFactory");
+      expect(result?.textContent).toContain("opportunities");
+      result?.click();
+      expect(searchButton?.getAttribute("aria-expanded")).toBe("false");
+      expect(harness.document.activeElement?.id).toBe("atlas-search");
+      expect(harness.document.querySelector('#atlas-layer-toggle [aria-pressed="true"]')?.textContent).toBe("implementation");
+      expect(harness.document.querySelector("#atlas-inspector-heading")?.textContent).toContain("Opportunity");
+      expect(harness.document.querySelector("#atlas-status")?.textContent).toContain("Navigated");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("shows an explicit empty search state with a query reset", async () => {
+    const harness = await rendererHarness();
+    try {
+      harness.document.querySelector<HTMLButtonElement>("#atlas-search")?.click();
+      const input = harness.document.querySelector<HTMLInputElement>("[data-atlas-search] input[type='search']");
+      if (!input) return;
+      input.value = "definitely absent";
+      input.dispatchEvent(new harness.window.Event("input", { bubbles: true }));
+      expect(harness.document.querySelector(".atlas-search-empty")?.textContent).toContain("No atlas concepts or components match");
+      buttonWithText(harness.document, "[data-atlas-search] button", "Reset query")?.click();
+      expect(input.value).toBe("");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("renders composed implementation filters, an empty subgraph, and a reset", async () => {
+    const generated = fixtureGenerated();
+    generated.nodes.push({
+      id: "component.signal-tool", label: "Signal Tool", symbol: "SignalTool", capability: "signals",
+      kind: "tool-family", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+    });
+    const harness = await rendererHarness({ generated });
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Explore")?.click();
+      const opportunities = harness.document.querySelector<HTMLInputElement>('#atlas-filters input[name="capabilities"][value="opportunities"]');
+      const tool = harness.document.querySelector<HTMLInputElement>('#atlas-filters input[name="kinds"][value="tool-family"]');
+      expect(opportunities).not.toBeNull();
+      expect(tool).not.toBeNull();
+      opportunities?.click();
+      harness.document.querySelector<HTMLInputElement>('#atlas-filters input[name="kinds"][value="tool-family"]')?.click();
+      expect(harness.document.querySelector(".atlas-filter-empty")?.textContent).toContain("No components match these filters");
+      buttonWithText(harness.document, ".atlas-filter-empty button", "Reset filters")?.click();
+      expect(harness.document.querySelectorAll(".atlas-node").length).toBe(3);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("recovers invalid hashes and omits malformed generated edges without dropping generated nodes", async () => {
+    const invalid = await rendererHarness({ hash: "#chapter=missing" });
+    try {
+      expect(invalid.document.querySelector("#atlas-title")?.textContent).toBe("Orientation");
+      expect(invalid.document.querySelector("#atlas-notice")?.textContent).toContain("Returned to Orientation");
+    } finally {
+      invalid.cleanup();
+    }
+
+    const malformed = fixtureGenerated();
+    malformed.edges[0].targetId = "component.missing";
+    const originalError = console.error;
+    const errors: unknown[][] = [];
+    console.error = (...args: unknown[]) => errors.push(args);
+    let harness: RendererHarness | undefined;
+    try {
+      harness = await rendererHarness({ generated: malformed });
+      expect(harness.document.querySelector<HTMLButtonElement>("#atlas-layer-toggle button:last-child")?.disabled).toBe(false);
+      expect(harness.document.querySelector("#atlas-notice")?.textContent).toContain("malformed generated edge");
+      expect(errors.flat().join(" ")).toContain("runtime.evaluate");
+    } finally {
+      console.error = originalError;
+      harness?.cleanup();
+    }
+  });
+
+  test("selects visible path text and announces instructions when clipboard access fails", async () => {
+    const harness = await rendererHarness();
+    try {
+      Object.defineProperty(globalThis.navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: async () => { throw new Error("clipboard denied"); } },
+      });
+      Object.defineProperty(harness.document, "execCommand", { configurable: true, value: () => false });
+      buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
+      harness.document.querySelectorAll<HTMLButtonElement>("#atlas-layer-toggle button")[1].click();
+      harness.document.querySelector<HTMLButtonElement>(".atlas-node")?.click();
+      const details = harness.document.querySelector<HTMLDetailsElement>(".atlas-disclosure");
+      if (details) details.open = true;
+      details?.querySelector<HTMLButtonElement>("button")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(harness.window.getSelection()?.toString()).toContain("packages/protocol/");
+      expect(harness.document.querySelector("#atlas-status")?.textContent).toContain("Path selected");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("rejects traversal-shaped protocol source paths", async () => {
+    const generated = fixtureGenerated();
+    generated.nodes[0].sourcePath = "packages/protocol/../services/api/src/main.ts";
+    const harness = await rendererHarness({ generated });
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
+      harness.document.querySelectorAll<HTMLButtonElement>("#atlas-layer-toggle button")[1].click();
+      harness.document.querySelector<HTMLButtonElement>(".atlas-node")?.click();
+      expect([...harness.document.querySelectorAll(".atlas-metadata dt")].map((node) => node.textContent)).not.toContain("Source path");
+      expect(harness.document.querySelector(".atlas-disclosure")).toBeNull();
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("ProtocolAtlasCore search and filters", () => {
-  test("ranks exact symbol matches before summary matches", () => {
-    expect(core().searchItems("OpportunityGraphFactory", fixtureContent(), fixtureGenerated())[0].id)
-      .toBe("component.opportunity-graph-factory");
+  test("ranks exact symbol matches before summary matches without locale-sensitive normalization", () => {
+    const original = String.prototype.toLocaleLowerCase;
+    String.prototype.toLocaleLowerCase = () => {
+      throw new Error("search must not depend on the ambient locale");
+    };
+    try {
+      expect(core().searchItems("OpportunityGraphFactory", fixtureContent(), fixtureGenerated())[0].id)
+        .toBe("component.opportunity-graph-factory");
+    } finally {
+      String.prototype.toLocaleLowerCase = original;
+    }
   });
 
   test("ranks prefix matches before tokenized summary matches", () => {
@@ -418,7 +580,10 @@ describe("ProtocolAtlasCore search and filters", () => {
       "component.opportunity-evaluator",
     ]);
     expect(core().searchItems("   ", fixtureContent(), generated)).toEqual([]);
-    expect(core().searchItems("definitely absent", fixtureContent(), generated)).toEqual([]);
+  });
+
+  test("returns an explicit empty search result contract", () => {
+    expect(core().searchItems("definitely absent", fixtureContent(), fixtureGenerated())).toEqual([]);
   });
 
   test("composes capability, kind, and edge-kind filters", () => {

@@ -11,7 +11,10 @@
   let generated;
   let state;
   let generatedAvailable = false;
+  let generatedWarning = null;
   let explicitSelection = false;
+  let searchSurface = null;
+  let searchReturnFocus = null;
 
   function records(value) {
     return Array.isArray(value) ? value : [];
@@ -46,7 +49,36 @@
   }
 
   function safeProtocolPath(path) {
-    return typeof path === "string" && path.startsWith(PROTOCOL_PREFIX) ? path : null;
+    if (typeof path !== "string" || !path.startsWith(PROTOCOL_PREFIX) || path.includes("\\")) return null;
+    const segments = path.split("/");
+    return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..") ? path : null;
+  }
+
+  function sanitizeGeneratedEdges(value) {
+    if (!value || typeof value !== "object" || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) return value;
+    const nodeIds = new Set(value.nodes.map((node) => node && node.id).filter((id) => typeof id === "string"));
+    const edgeIds = new Set();
+    const omitted = [];
+    const edges = value.edges.filter((edge, index) => {
+      const valid = edge && typeof edge === "object" && !Array.isArray(edge)
+        && typeof edge.id === "string" && edge.id.length > 0 && !edgeIds.has(edge.id)
+        && typeof edge.sourceId === "string" && nodeIds.has(edge.sourceId)
+        && typeof edge.targetId === "string" && nodeIds.has(edge.targetId)
+        && typeof edge.kind === "string" && edge.kind.length > 0;
+      if (!valid) {
+        omitted.push(edge && typeof edge === "object"
+          ? `${edge.id || `edge at index ${index}`} (${String(edge.sourceId)} -> ${String(edge.targetId)})`
+          : `edge at index ${index}`);
+        return false;
+      }
+      edgeIds.add(edge.id);
+      return true;
+    });
+    if (omitted.length > 0) {
+      console.error("Protocol Atlas omitted malformed generated edge records:", omitted);
+      generatedWarning = `${omitted.length} malformed generated edge${omitted.length === 1 ? " was" : "s were"} omitted. Remaining implementation evidence is available.`;
+    }
+    return { ...value, edges };
   }
 
   function syntheticGenerated(atlasContent) {
@@ -99,7 +131,7 @@
   function bootstrapAtlas() {
     core = root.ProtocolAtlasCore;
     content = root.ProtocolAtlasContent;
-    const suppliedGenerated = root.ProtocolAtlasGenerated;
+    const suppliedGenerated = sanitizeGeneratedEdges(root.ProtocolAtlasGenerated);
 
     if (!core || typeof core.validateData !== "function") {
       fatalMessage("The atlas interaction core could not be loaded.", []);
@@ -120,23 +152,47 @@
       console.error("Protocol Atlas generated data validation failed:", fullValidation.errors);
     }
 
-    state = core.parseHash(root.location ? root.location.hash : "", content, generated);
-    if (!generatedAvailable && state.layer !== "protocol") {
-      state = core.transition(state, { type: "set-layer", layer: "protocol" }, content, generated);
-    }
-    const chapter = byId(content.chapters, state.chapterId);
-    if (chapter && !state.stepId && records(chapter.stepIds).length > 0) {
-      state = core.transition(state, { type: "select-step", stepId: chapter.stepIds[0] }, content, generated);
-    }
+    state = restoredState(root.location ? root.location.hash : "");
 
     document.addEventListener("keydown", handleKeyboard);
+    if (typeof root.addEventListener === "function") root.addEventListener("hashchange", restoreFromHash);
+    setupSearch();
     render(state);
+  }
+
+  function restoredState(hash) {
+    let restored = core.parseHash(hash, content, generated);
+    if (!generatedAvailable && restored.layer !== "protocol") {
+      restored = core.transition(restored, { type: "set-layer", layer: "protocol" }, content, generated);
+    }
+    const chapter = byId(content.chapters, restored.chapterId);
+    if (chapter && !restored.stepId && records(chapter.stepIds).length > 0) {
+      restored = core.transition(restored, { type: "select-step", stepId: chapter.stepIds[0] }, content, generated);
+    }
+    return restored;
+  }
+
+  function restoreFromHash() {
+    const restored = restoredState(root.location ? root.location.hash : "");
+    const normalized = core.serializeHash(restored);
+    const current = root.location && root.location.hash || "#";
+    state = restored;
+    render(state);
+    if (root.location && !restored.notice && current !== normalized) root.location.hash = normalized;
+  }
+
+  function syncHash() {
+    if (!root.location) return;
+    const nextHash = core.serializeHash(state);
+    const currentHash = root.location.hash || "#";
+    if (currentHash !== nextHash) root.location.hash = nextHash;
   }
 
   function dispatch(action) {
     const priorState = state;
     explicitSelection = action && action.type === "select-node" && typeof action.nodeId === "string";
     state = core.transition(state, action, content, generated);
+    syncHash();
     render(state);
 
     const status = document.getElementById("atlas-status");
@@ -145,6 +201,9 @@
       status.textContent = state.stepId === priorState.stepId
         ? "End of this guided flow."
         : `Step changed to ${step ? step.title : "the selected step"}.`;
+    } else if (status && action && (action.type === "set-filters" || action.type === "reset-filters")) {
+      const activeCount = Object.values(state.filters).reduce((total, values) => total + values.length, 0);
+      status.textContent = activeCount === 0 ? "Filters reset." : `${activeCount} graph filter${activeCount === 1 ? "" : "s"} active.`;
     }
   }
 
@@ -153,18 +212,15 @@
     renderLayerControls(atlasState);
     renderChapter(atlasState, content, generated);
     renderInspector(atlasState.selectedNodeId, content, generated);
+    renderFilters(atlasState);
 
     const notice = document.getElementById("atlas-notice");
     if (notice) {
-      notice.textContent = !generatedAvailable
-        ? "Implementation evidence is unavailable. Curated protocol chapters remain available; Explore and code disclosures are disabled."
-        : (atlasState.notice || "");
-    }
-
-    const searchButton = document.getElementById("atlas-search");
-    if (searchButton) {
-      searchButton.disabled = true;
-      searchButton.title = "Search is not part of this guided rendering task.";
+      const messages = [];
+      if (!generatedAvailable) messages.push("Implementation evidence is unavailable. Curated protocol chapters remain available; Explore and code disclosures are disabled.");
+      else if (generatedWarning) messages.push(generatedWarning);
+      if (atlasState.notice) messages.push(atlasState.notice);
+      notice.textContent = messages.join(" ");
     }
 
     if (explicitSelection && root.matchMedia && root.matchMedia("(max-width: 900px)").matches) {
@@ -172,6 +228,152 @@
       if (heading) root.requestAnimationFrame(() => heading.focus());
     }
     explicitSelection = false;
+  }
+
+  function setupSearch() {
+    const trigger = document.getElementById("atlas-search");
+    if (!trigger) return;
+    trigger.disabled = false;
+    trigger.removeAttribute("title");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-controls", "atlas-search-dialog");
+    trigger.addEventListener("click", openSearch);
+  }
+
+  function ensureSearchSurface() {
+    if (searchSurface) return searchSurface;
+    const dialogCandidate = document.createElement("dialog");
+    const native = typeof root.HTMLDialogElement === "function" && typeof dialogCandidate.showModal === "function";
+    const surface = native ? dialogCandidate : element("section");
+    surface.className = "atlas-search-dialog";
+    surface.id = "atlas-search-dialog";
+    surface.dataset.atlasSearch = "";
+    if (!native) {
+      surface.hidden = true;
+      surface.setAttribute("role", "dialog");
+    }
+    const heading = element("h2", null, "Search the Protocol Atlas");
+    heading.id = "atlas-search-heading";
+    surface.setAttribute("aria-labelledby", heading.id);
+    const input = document.createElement("input");
+    input.type = "search";
+    input.setAttribute("aria-label", "Search atlas concepts and components");
+    input.autocomplete = "off";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close search";
+    close.addEventListener("click", () => closeSearch(true));
+    const header = element("div", "atlas-search-header");
+    header.append(heading, close);
+    const results = element("div", "atlas-search-results-region");
+    input.addEventListener("input", () => {
+      state = core.transition(state, { type: "set-query", query: input.value }, content, generated);
+      renderSearchResults(input.value, results);
+    });
+    surface.append(header, input, results);
+    if (native) surface.addEventListener("close", () => finishSearchClose(true));
+    document.body.append(surface);
+    searchSurface = { surface, input, results, native };
+    return searchSurface;
+  }
+
+  function openSearch() {
+    const search = ensureSearchSurface();
+    const trigger = document.getElementById("atlas-search");
+    searchReturnFocus = trigger;
+    if (trigger) trigger.setAttribute("aria-expanded", "true");
+    search.input.value = state.query || "";
+    renderSearchResults(search.input.value, search.results);
+    if (search.native && typeof search.surface.showModal === "function") search.surface.showModal();
+    else search.surface.hidden = false;
+    search.input.focus();
+  }
+
+  function finishSearchClose(returnFocus) {
+    const trigger = document.getElementById("atlas-search");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    if (returnFocus && searchReturnFocus && typeof searchReturnFocus.focus === "function") searchReturnFocus.focus();
+    searchReturnFocus = null;
+  }
+
+  function closeSearch(returnFocus) {
+    if (!searchSurface) return false;
+    const { surface, native } = searchSurface;
+    const isOpen = native ? surface.hasAttribute("open") : !surface.hidden;
+    if (!isOpen) return false;
+    if (native && typeof surface.close === "function") surface.close();
+    else {
+      surface.hidden = true;
+      finishSearchClose(returnFocus);
+    }
+    return true;
+  }
+
+  function primaryLocation(item, implementation) {
+    if (implementation) {
+      for (const flow of records(content.flows)) {
+        const step = records(flow.steps).find((candidate) => records(candidate.nodeIds).includes(item.id));
+        if (step) return { chapterId: flow.chapterId, stepId: step.id };
+      }
+      const chapterId = records(item.chapterIds).find((id) => byId(content.chapters, id));
+      return { chapterId: chapterId || "explore", stepId: null };
+    }
+    for (const flow of records(content.flows)) {
+      const step = records(flow.steps).find((candidate) => records(candidate.conceptIds).includes(item.id));
+      if (step) return { chapterId: flow.chapterId, stepId: step.id };
+    }
+    return { chapterId: "orientation", stepId: null };
+  }
+
+  function selectSearchResult(item) {
+    const implementation = Boolean(byId(generated.nodes, item.id));
+    const location = primaryLocation(item, implementation);
+    state = core.transition(state, { type: "select-chapter", chapterId: location.chapterId }, content, generated);
+    if (location.stepId) state = core.transition(state, { type: "select-step", stepId: location.stepId }, content, generated);
+    if (implementation) state = core.transition(state, { type: "set-layer", layer: "implementation" }, content, generated);
+    state = core.transition(state, { type: "select-node", nodeId: item.id }, content, generated);
+    syncHash();
+    render(state);
+    closeSearch(true);
+    const status = document.getElementById("atlas-status");
+    if (status) status.textContent = `Navigated to ${item.label || item.title || item.id}.`;
+  }
+
+  function renderSearchResults(query, target) {
+    target.replaceChildren();
+    const matches = core.searchItems(query, content, generated);
+    if (typeof query === "string" && query.trim() && matches.length === 0) {
+      const empty = element("div", "atlas-search-empty");
+      empty.append(element("p", null, "No atlas concepts or components match this query."));
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.textContent = "Reset query";
+      reset.addEventListener("click", () => {
+        searchSurface.input.value = "";
+        state = core.transition(state, { type: "set-query", query: "" }, content, generated);
+        renderSearchResults("", target);
+        searchSurface.input.focus();
+      });
+      empty.append(reset);
+      target.append(empty);
+      return;
+    }
+    const list = element("ol", "atlas-search-results");
+    for (const item of matches) {
+      const implementation = Boolean(byId(generated.nodes, item.id));
+      const location = primaryLocation(item, implementation);
+      const button = document.createElement("button");
+      button.type = "button";
+      appendText(button, "strong", null, item.label || item.title || item.id);
+      appendText(button, "span", "atlas-search-symbol", item.symbol);
+      const kind = item.kind || (implementation ? "component" : "protocol concept");
+      appendText(button, "span", "atlas-search-meta", [location.chapterId, item.capability, kind].filter(Boolean).join(" · "));
+      button.addEventListener("click", () => selectSearchResult(item));
+      const entry = element("li");
+      entry.append(button);
+      list.append(entry);
+    }
+    target.append(list);
   }
 
   function renderLayerControls(atlasState) {
@@ -212,6 +414,52 @@
       list.append(item);
     }
     target.append(list);
+  }
+
+  function facetValues(key) {
+    const source = key === "edgeKinds" ? generated.edges : generated.nodes;
+    const property = key === "edgeKinds" ? "kind" : (key === "kinds" ? "kind" : "capability");
+    return [...new Set(records(source).map((item) => item && item[property]).filter((value) => typeof value === "string"))].sort();
+  }
+
+  function renderFilters(atlasState) {
+    const target = document.getElementById("atlas-filters");
+    if (!target) return;
+    target.replaceChildren();
+    if (!generatedAvailable || (atlasState.layer !== "implementation" && atlasState.chapterId !== "explore")) return;
+    const labels = { capabilities: "Capability", kinds: "Component kind", edgeKinds: "Edge kind" };
+    for (const key of ["capabilities", "kinds", "edgeKinds"]) {
+      const fieldset = element("fieldset", "atlas-filter-group");
+      fieldset.append(element("legend", null, labels[key]));
+      for (const value of facetValues(key)) {
+        const label = element("label", "atlas-filter-option");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = key;
+        input.value = value;
+        input.checked = records(atlasState.filters[key]).includes(value);
+        input.addEventListener("change", () => {
+          const filters = {
+            capabilities: [...atlasState.filters.capabilities],
+            kinds: [...atlasState.filters.kinds],
+            edgeKinds: [...atlasState.filters.edgeKinds],
+          };
+          filters[key] = input.checked
+            ? [...new Set([...filters[key], value])]
+            : filters[key].filter((candidate) => candidate !== value);
+          dispatch({ type: "set-filters", filters });
+        });
+        label.append(input, document.createTextNode(value));
+        fieldset.append(label);
+      }
+      target.append(fieldset);
+    }
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.textContent = "Reset filters";
+    reset.disabled = !Object.values(atlasState.filters).some((values) => values.length > 0);
+    reset.addEventListener("click", () => dispatch({ type: "reset-filters" }));
+    target.append(reset);
   }
 
   function renderChapter(atlasState, atlasContent, atlasGenerated) {
@@ -273,7 +521,7 @@
       const exploreStep = {
         id: "explore-evidence",
         title: "Package implementation evidence",
-        summary: "A static overview of reviewed protocol package surfaces. Search and filtering are intentionally not included here.",
+        summary: "A static overview of reviewed protocol package surfaces. Use the filters below to focus the generated graph.",
         conceptIds: [],
         nodeIds: records(atlasGenerated.nodes).map((node) => node.id),
         invariantIds: ["host-boundary"],
@@ -291,14 +539,16 @@
 
   function diagramRecords(step, atlasState, atlasContent, atlasGenerated) {
     if (atlasState.layer === "implementation") {
-      return records(step.nodeIds).map((id) => byId(atlasGenerated.nodes, id)).filter(Boolean);
+      const filteredIds = new Set(core.filterGraph(atlasState.filters, atlasGenerated).nodes.map((node) => node.id));
+      return records(step.nodeIds).map((id) => byId(atlasGenerated.nodes, id)).filter((node) => node && filteredIds.has(node.id));
     }
     return records(step.conceptIds).map((id) => byId(atlasContent.concepts, id)).filter(Boolean);
   }
 
   function diagramEdges(step, atlasState, atlasContent, atlasGenerated, visibleIds) {
     if (atlasState.layer === "implementation") {
-      return records(atlasGenerated.edges).filter((edge) => visibleIds.has(edge.sourceId) && visibleIds.has(edge.targetId));
+      return core.filterGraph(atlasState.filters, atlasGenerated).edges
+        .filter((edge) => visibleIds.has(edge.sourceId) && visibleIds.has(edge.targetId));
     }
     return records(atlasContent.relationships)
       .filter((edge) => visibleIds.has(edge.sourceConceptId) && visibleIds.has(edge.targetConceptId))
@@ -343,15 +593,32 @@
       line.setAttribute("y2", String(target.y));
       const edgeTitle = document.createElementNS(SVG_NS, "title");
       edgeTitle.textContent = edge.label || edge.kind || "relationship";
-      group.append(edgeTitle, line);
+      const edgeLabel = document.createElementNS(SVG_NS, "text");
+      edgeLabel.setAttribute("x", String((source.x + target.x) / 2));
+      edgeLabel.setAttribute("y", String((source.y + target.y) / 2 - 6));
+      edgeLabel.setAttribute("text-anchor", "middle");
+      edgeLabel.textContent = edge.kind || "conceptual";
+      group.append(edgeTitle, line, edgeLabel);
       svg.append(group);
     }
 
     const overlay = element("ol", "atlas-diagram-nodes");
     if (nodes.length === 0) {
-      const empty = element("li", "atlas-empty", atlasState.layer === "implementation"
-        ? "No generated implementation nodes are declared for this step."
-        : "No protocol concepts are declared for this step.");
+      const filtersActive = atlasState.layer === "implementation"
+        && Object.values(atlasState.filters).some((values) => values.length > 0);
+      const empty = element("li", `atlas-empty${filtersActive ? " atlas-filter-empty" : ""}`);
+      empty.append(element("p", null, filtersActive
+        ? "No components match these filters. Reset filters or broaden the selection."
+        : (atlasState.layer === "implementation"
+          ? "No generated implementation nodes are declared for this step."
+          : "No protocol concepts are declared for this step.")));
+      if (filtersActive) {
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.textContent = "Reset filters";
+        reset.addEventListener("click", () => dispatch({ type: "reset-filters" }));
+        empty.append(reset);
+      }
       overlay.append(empty);
     }
     for (const node of nodes) {
@@ -475,8 +742,14 @@
 
   function renderCodeDisclosure(path, symbol) {
     const details = element("details", "atlas-disclosure");
-    details.append(element("summary", null, "Show code"));
+    const disclosureId = `atlas-code-${Math.random().toString(36).slice(2)}`;
+    const summary = element("summary", null, "Show code");
+    summary.setAttribute("aria-controls", disclosureId);
+    summary.setAttribute("aria-expanded", "false");
+    details.addEventListener("toggle", () => summary.setAttribute("aria-expanded", String(details.open)));
+    details.append(summary);
     const body = element("div", "atlas-code-evidence");
+    body.id = disclosureId;
     appendText(body, "p", null, "Protocol package evidence");
     const code = element("code", null, symbol ? `${path}#${symbol}` : path);
     code.dataset.copyPath = path;
@@ -532,22 +805,13 @@
     return Boolean(target.closest("input, textarea, select, summary, details, [role='search'], [role='dialog'], #atlas-search"));
   }
 
-  function closeSearch() {
-    const search = document.querySelector("dialog[data-atlas-search][open]");
-    if (search && typeof search.close === "function") {
-      search.close();
-      return true;
-    }
-    return false;
-  }
-
   function handleKeyboard(event) {
     if (event.key === "Escape") {
-      if (state.selectedNodeId) {
+      if (closeSearch(true)) {
+        event.preventDefault();
+      } else if (state.selectedNodeId) {
         event.preventDefault();
         dispatch({ type: "select-node", nodeId: null });
-      } else if (closeSearch()) {
-        event.preventDefault();
       }
       return;
     }

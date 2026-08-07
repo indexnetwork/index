@@ -30,7 +30,7 @@
   }
 
   function stringArray(value) {
-    return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+    return Array.isArray(value) ? [...new Set(value.filter((item) => typeof item === "string"))] : [];
   }
 
   function normalizedFilters(filters) {
@@ -314,11 +314,11 @@
   }
 
   function words(value) {
-    return String(value).toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+    return String(value).toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
   }
 
   function searchRank(item, query) {
-    const primary = searchablePrimary(item).map((value) => value.toLocaleLowerCase());
+    const primary = searchablePrimary(item).map((value) => value.toLowerCase());
     if (primary.some((value) => value === query)) return 0;
     if (primary.some((value) => value.startsWith(query) || words(value).some((word) => word.startsWith(query)))) return 1;
     const queryWords = words(query);
@@ -329,7 +329,7 @@
 
   function searchItems(query, content, generated) {
     if (typeof query !== "string" || query.trim().length === 0) return [];
-    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const normalizedQuery = query.trim().toLowerCase();
     return [...records(content && content.concepts), ...records(generated && generated.nodes)]
       .map((item, index) => ({ item, index, rank: isRecord(item) ? searchRank(item, normalizedQuery) : null }))
       .filter((entry) => entry.rank !== null)
