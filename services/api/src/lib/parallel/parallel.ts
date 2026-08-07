@@ -407,7 +407,7 @@ const profileEnrichmentSchema = {
             bio: {
               type: "string",
               description:
-                "Professional summary (2-3 sentences): role, domain, and trajectory only. Never include email addresses, phone numbers, mailing/physical addresses, government IDs, or other contact identifiers — even if they appear in sources.",
+                "Professional summary (4-6 sentences): current role and domain, notable past roles or companies, and areas of focus or expertise. Never include email addresses, phone numbers, mailing/physical addresses, government IDs, or other contact identifiers — even if they appear in sources.",
             },
             location: { type: "string", description: "City, Country or 'Remote' if unknown" },
           },
@@ -428,7 +428,7 @@ const profileEnrichmentSchema = {
           type: "object",
           properties: {
             skills: { type: "array", items: { type: "string" }, description: "Professional skills" },
-            interests: { type: "array", items: { type: "string" }, description: "Inferred or explicit interests" },
+            interests: { type: "array", items: { type: "string" }, description: "Topics, causes, and activities this person genuinely cares about — what they'd want to talk about, explore, or connect with others over — including personal passions beyond work, not just professional domains." },
           },
           required: ["skills", "interests"],
         },

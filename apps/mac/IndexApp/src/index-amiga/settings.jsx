@@ -2,8 +2,10 @@
 // network sees (profile), how the agent interrupts you (notifications), and
 // the keys other agents authenticate with.
 
-// Longest introduction the profile editor accepts, in characters.
-const INTRO_MAX = 500;
+// Soft length guide for the introduction counter. The API stores intro with no
+// hard cap, and enrichment synthesizes a full narrative paragraph, so this is
+// generous enough that a real enriched profile doesn't render as "over".
+const INTRO_MAX = 2000;
 
 /* ---------- shared field chrome ---------- */
 
@@ -187,17 +189,11 @@ function ProfilePane({ me, form, set, profileOnly = false }) {
 
       <div style={{ marginTop:14 }}>
         <FieldLabel right={
-          <span style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button style={{
-              border:"none", background:"transparent", padding:0, cursor:"pointer",
-              fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
-            }}>✧ regenerate</button>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:11,
-              color: over ? "var(--ink-warn)" : "var(--ink-2)",
-              fontWeight: over ? 700 : 400,
-            }}>{form.intro.length}/{INTRO_MAX}</span>
-          </span>
+          <span style={{
+            fontFamily:"var(--mac-mono)", fontSize:11,
+            color: over ? "var(--ink-warn)" : "var(--ink-2)",
+            fontWeight: over ? 700 : 400,
+          }}>{form.intro.length}/{INTRO_MAX}</span>
         }>introduction</FieldLabel>
         <div style={{ ...wellStyle(false), alignItems:"stretch", padding:"8px 10px" }}>
           <textarea
@@ -496,7 +492,15 @@ function ApiKeysPane() {
 //            it back to sign-in. The titlebar gadget uses this too.
 // onDone  , the single committing path. Defaults to onClose so the ordinary
 //            settings pane behaves exactly as before.
-function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false }) {
+// A public-research enrichment result is "usable" for the review when it filled
+// in a bio or discovered at least one social — otherwise we fall through to the
+// context/preview drafts below.
+function usableEnriched(res) {
+  const p = res && res.profile;
+  return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
+}
+
+function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false, enrich = false, enriched = null }) {
   const env = (typeof useIndexEnv === "function") ? useIndexEnv() : { live: false };
   // The signed-in user, mirrored onto INDEX_DATA.ME once the snapshot loads.
   // Live-only: empty when nothing has loaded yet, never a demo identity.
@@ -519,6 +523,127 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
     alignment: true, question: true, accepted: true, digest: false,
   });
 
+  // Enrichment-backed getting-started. Primary path: trigger the public-research
+  // enrichment synchronously (POST /enrichment/enrich). It looks the
+  // person up from name+email and returns the resolved identity + discovered
+  // socials, so the review shows real, filled-in fields (including socials).
+  // Fallbacks, in order: an already-enriched context (read_user_contexts), then a
+  // fresh preview_user_context draft for a brand-new user with nothing yet.
+  // The chosen draft is retained so confirm_user_context saves the approved one.
+  const draftRef = useRef(null);
+  // No loader when enrichment already ran on the "setting up" screen and filled
+  // the review — the form is shown once, pre-populated, with no second spinner.
+  const [drafting, setDrafting] = useState(enrich && live && !usableEnriched(enriched));
+  useEffect(() => {
+    if (!enrich || !live || !window.IndexApp || !window.IndexApp.invokeTool) { setDrafting(false); return; }
+    let cancelled = false;
+    const adopt = (next) => {
+      assembled.current = { ...assembled.current, ...next };
+      setForm(f => ({ ...f, ...next }));
+    };
+    (async () => {
+      // Public research already ran in parallel on the "setting up" screen; adopt
+      // its result here (no second call) and only fall through to the context/
+      // preview drafts when it came back empty.
+      try {
+        const res = enriched;
+        const p = res && res.profile;
+        if (p && (String(p.intro || "").trim() || (p.socials && p.socials.length))) {
+          const list = p.socials || [];
+          const isSite = (s) => /^(custom|website)$/i.test(String(s.label || ""));
+          const known = list.filter((s) => !isSite(s)).map(normalizeSocial);
+          const sites = list
+            .filter(isSite)
+            .map((s) => String(s.value || "").replace(/^https?:\/\//i, "").replace(/\/+$/, ""))
+            .filter(Boolean);
+          const intro = p.intro || "";
+          const location = p.location || "";
+          draftRef.current = {
+            identity: { name: p.name || "", bio: intro, location },
+            narrative: { context: intro },
+            attributes: { skills: [], interests: [] },
+          };
+          adopt({
+            name: assembled.current.name || p.name || "",
+            location: assembled.current.location || location,
+            intro: assembled.current.intro || intro,
+            socials: known.length ? known : assembled.current.socials,
+            websites: sites.length ? sites : assembled.current.websites,
+          });
+          if (!cancelled) setDrafting(false);
+          return;
+        }
+      } catch (e) { /* fall through to reading any prior enriched context */ }
+
+      try {
+        const ctx = await window.IndexApp.invokeTool("read_user_contexts", {});
+        if (cancelled) return;
+        const c = ctx && ctx.success !== false && ctx.data;
+        if (c && c.hasProfile && String(c.context || "").trim()) {
+          const context = c.context;
+          // Enrichment persists only the narrative, so location/skills live in
+          // prose. Run that narrative back through preview_user_context (which
+          // infers a structured identity from text) to recover a location and
+          // interest tags, without discarding the rich narrative itself.
+          let location = c.location || "";
+          let skills = [], interests = [];
+          try {
+            const pv = await window.IndexApp.invokeTool("preview_user_context", { bioOrDescription: context });
+            const pd = pv && pv.success !== false && pv.data && pv.data.draft;
+            if (pd) {
+              const pid = pd.identity || {}, pat = pd.attributes || {};
+              const loc = String(pid.location || "").trim();
+              if (!location && loc && !/^(unknown|undisclosed|remote|n\/a)$/i.test(loc)) location = loc;
+              skills = pat.skills || []; interests = pat.interests || [];
+            }
+          } catch (e) { /* keep the narrative; just leave location/tags unfilled */ }
+          if (cancelled) return;
+          draftRef.current = {
+            identity: { name: c.name || "", bio: c.bio || context, location },
+            narrative: { context },
+            attributes: { skills, interests },
+          };
+          adopt({
+            name: assembled.current.name || c.name || "",
+            location: assembled.current.location || location,
+            // The enriched narrative is the profile index built — show it here
+            // (the intro is what /auth/me reads; enrichment left it empty).
+            intro: assembled.current.intro || c.bio || context || "",
+          });
+          if (!cancelled) setDrafting(false);
+          return;
+        }
+      } catch (e) { /* no enriched context yet — fall through to a fresh preview */ }
+
+      const q = {};
+      for (const s of (ME.socials || [])) {
+        const v = String(s.value || s.handle || "").trim();
+        if (!v) continue;
+        const lbl = String(s.label || s.id || "").toLowerCase();
+        if (lbl.includes("linkedin")) q.linkedinUrl = v;
+        else if (lbl.includes("github")) q.githubUrl = v;
+        else if (lbl.includes("twitter") || lbl === "x") q.twitterUrl = v;
+      }
+      if (ME.intro) q.bioOrDescription = ME.intro;
+      try {
+        const res = await window.IndexApp.invokeTool("preview_user_context", q);
+        if (cancelled) return;
+        if (res && res.success !== false && res.data && res.data.draft) {
+          const d = res.data.draft;
+          draftRef.current = d;
+          const id = d.identity || {};
+          adopt({
+            name: assembled.current.name || id.name || "",
+            location: assembled.current.location || id.location || "",
+            intro: assembled.current.intro || id.bio || "",
+          });
+        }
+      } catch (e) { /* fall back to the plain /auth/me values already in the form */ }
+      finally { if (!cancelled) setDrafting(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggle = (id) => setNotify(n => ({ ...n, [id]: !n[id] }));
 
@@ -530,7 +655,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
   // any pane reopened later) sees the edit, then get out of the way. This is
   // the ONLY path that commits, and at first run the only one that counts as
   // finishing onboarding.
-  const save = () => {
+  const save = async () => {
     Object.assign(ME, {
       name: form.name,
       location: form.location,
@@ -550,7 +675,24 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
       const sites = (form.websites || [])
         .filter((w) => String(w || "").trim())
         .map((w) => ({ label: "custom", value: socialHrefOf({ id: "website", handle: w }) }));
-      client.auth.updateProfile({
+      // First-run enrichment gate: persist the approved profile through
+      // confirm_user_context, which durably records onboarding.profileConfirmedAt
+      // (so this screen doesn't reappear) and decomposes premises. The
+      // updateProfile call below persists socials and, via setSocials, enqueues
+      // the full enrich.user pipeline (Parallel lookup -> premises -> discovery).
+      if (enrich && window.IndexApp && window.IndexApp.invokeTool) {
+        const d = draftRef.current || {};
+        const approved = {
+          identity: { name: form.name.trim(), bio: form.intro.trim(), location: form.location.trim() },
+          narrative: { context: (d.narrative && d.narrative.context) || "" },
+          attributes: {
+            skills: (d.attributes && d.attributes.skills) || [],
+            interests: (d.attributes && d.attributes.interests) || [],
+          },
+        };
+        await window.IndexApp.invokeTool("confirm_user_context", { draft: approved }).catch(() => {});
+      }
+      await client.auth.updateProfile({
         name: form.name,
         intro: form.intro,
         location: form.location,
@@ -576,7 +718,7 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
         maxHeight: "calc(100vh - 112px)",
       }}>
         <MacWindow
-          title={profileOnly ? "index · getting started" : "index · settings"}
+          title={profileOnly ? "getting started" : "index · settings"}
           onClose={onClose}
           style={{ height: profileOnly ? undefined : "100%", maxHeight:"100%", minHeight:0 }}>
 
@@ -589,7 +731,9 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             <div style={{ padding:"14px 24px", borderBottom:"2px solid #000" }}>
               <div style={{
                 fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
-              }}>here's what i pulled together. make sure it's right.</div>
+              }}>{drafting
+                ? "pulling together your profile…"
+                : "here's what i pulled together. make sure it's right."}</div>
             </div>
           ) : (
             <div style={{
@@ -645,7 +789,11 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
             )}
             <button
               onClick={onClose}
-              style={{
+              style={profileOnly ? {
+                fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 10px",
+                border:"none", background:"transparent", color:"var(--ink-2)",
+                textDecoration:"underline", cursor:"pointer", opacity:0.7,
+              } : {
                 fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 17px",
                 border:"1px solid #000", background:"#fff", color:"#000",
                 boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",

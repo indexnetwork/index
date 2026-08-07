@@ -264,6 +264,14 @@ export function createIndexApiClient(options = {}) {
       ),
     },
 
+    enrichment: {
+      // Run the full public-research enrichment inline for the authenticated
+      // user and resolve { enriched: true, profile: { name, intro, location,
+      // socials } } so the caller can show discovered socials immediately.
+      // Every other enrichment path is automatic (profile save, signup, imports).
+      trigger: (options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: {} }),
+    },
+
     conversations: {
       list: (options = {}) => request('/conversations', options),
       negotiations: (options = {}) => request('/conversations/negotiations', options),
