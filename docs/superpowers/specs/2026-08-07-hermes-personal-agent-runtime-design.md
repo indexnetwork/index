@@ -125,7 +125,7 @@ Selecting Hermes is a reconciled setup operation, not an optimistic dropdown cha
 9. The native shell enables the schedule and starts or restarts the Hermes gateway.
 10. Index macOS waits for a server-observed pickup heartbeat. A heartbeat within the dispatcher's existing 90-second freshness threshold commits the selector to `Hermes · active`.
 
-The activation sequence is a saga across the backend and local Mac, not a cross-process transaction. If steps 8–10 fail, the app immediately clears the external binding and permission, disables the schedule, and restores Index. The built-in runtime covers any turn that arrives during this bounded activation window.
+The activation sequence is a generation-fenced saga across the backend and local Mac, not a cross-process transaction. Prepare persists a unique `setupAttemptId`; activation and rollback compare against it, so an older failed attempt cannot undo a newer successful selection. Prepare atomically replaces prior executor credentials with one generation-bound credential. If steps 8–10 fail, the app rolls back only that generation, revokes its credential, removes local setup, and restores Index. The built-in runtime covers any turn that arrives during this bounded activation window.
 
 Setup must be idempotent. Repeating it must update the same installation binding rather than create duplicate agent records, keys, plugin copies, or schedules. Server-side activation must enforce the single-executor invariant atomically; the current separate field/permission updates are not sufficient for this operation.
 
@@ -165,8 +165,8 @@ Pickup returns a server-computed `canConsultOwner` boolean. When true, Hermes ma
 
 On admission:
 
-1. The backend validates ownership, exact claim identity, protocol eligibility, consultation cardinality, `canConsultOwner`, and structured content.
-2. It moves the exact task into the existing `input_required` lifecycle.
+1. The backend validates ownership, exact claim identity, protocol eligibility, consultation policy/cardinality, `canConsultOwner`, and structured content.
+2. It durably arms expiry, then one database transaction row-locks the exact claim, persists the server-authored `ask_user` turn and binding, and moves the task to `input_required`; consult/respond/timeout races can commit only one transition.
 3. It uses the existing Questioner safety, binding, persistence, timer, and continuation pipeline.
 4. The question appears in the Index macOS Personal Agent surface.
 5. Answer, dismissal, or expiry settles the exact consultation and resumes the exact negotiation.
@@ -246,7 +246,8 @@ Two operations remain distinct:
 - Claims and consultation settlement use exact task/claim identifiers and atomic state transitions.
 - Memory, policy, appearance, and product history are keyed to the owner/stable Personal Agent, not the executor record.
 - User-visible consultation content passes the existing safe Questioner boundary.
-- Setup and teardown are resumable and do not create duplicate principals or schedules.
+- Setup and teardown are resumable, generation-fenced, and do not create duplicate principals, credentials, or schedules.
+- Dev/private testing may use the current native owner credential. Production distribution remains blocked until the existing macOS checklist restores Keychain storage, deletes the plaintext credential file/directory, enables hardened runtime/App Sandbox/notarization, and verifies TTL/revocation.
 
 ## Failure Handling
 
