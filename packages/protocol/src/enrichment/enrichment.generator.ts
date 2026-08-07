@@ -16,12 +16,14 @@ const systemPrompt = `
     When given raw data only: Infer name, bio, location, narrative.context, and extract skills and interests.
 
     PRIVACY: identity.bio and narrative.context are public-facing. Never include email addresses, phone numbers, physical addresses, government IDs, or other contact identifiers — even if they appear in the raw data. Describe the person professionally; do not embed ways to contact them.
+
+    BIO STYLE: identity.bio must never contain the person's name or any pronouns (he, she, they). Write role-led, subjectless sentences that start with the role or a verb, e.g. "Software engineer based in Berlin focused on developer tooling. Previously built payments infrastructure at a fintech startup. Enjoys mentoring early-career engineers."
 `;
 
 const responseFormat = z.object({
   identity: z.object({
     name: z.string().describe("The user's full name"),
-    bio: z.string().describe("Professional summary (2-3 sentences) only; no email, phone, physical address, government ID, or other contact identifiers"),
+    bio: z.string().describe("Professional summary (2-3 sentences), role-led and subjectless (e.g. 'Software engineer based in Berlin focused on...'); never the person's name or pronouns; no email, phone, physical address, government ID, or other contact identifiers"),
     location: z.string().describe("Inferred location (City, Country) or 'Remote'"),
   }),
   narrative: z.object({
