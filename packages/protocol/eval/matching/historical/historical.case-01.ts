@@ -16,15 +16,15 @@ const partner = {
   location: "",
   interests: ["product design"],
   skills: ["product design", "apprenticeship with a sculptor father"],
-  intent: "Work as a product designer after apprenticing with a sculptor father.",
+  intent: "Product-design work on a functional household object and apprenticeship with a sculptor father.",
 } as const;
 
 const description = "An engineering-management graduate participating in a joint search for European home-goods design is paired with a product designer who apprenticed with a sculptor father.";
 
 const semanticNegatives = {
-  "h1-c": "Retail buying and supplier sourcing do not establish original product-design experience.",
-  "h1-d": "Packaging and identity work do not establish three-dimensional product-design experience.",
-  "h1-e": "A gallery-oriented ceramic practice does not establish professional product-design experience.",
+  "h1-c": "National retail assortment curation and supplier sourcing represent buyer-side merchandising activity.",
+  "h1-d": "Packaging and brand identity represent visual-communications design for household-product companies.",
+  "h1-e": "Commissioned public architectural sculpture represents a site-specific civic-art application domain.",
 } as const;
 
 const syntheticProfiles = [
@@ -46,11 +46,11 @@ const syntheticProfiles = [
   },
   {
     userId: "h1-e",
-    bio: "Studio sculptor whose practice includes small functional ceramic objects and commissioned exhibition pieces.",
+    bio: "Site-specific sculptor who develops commissioned installations for public plazas and civic buildings.",
     location: "",
-    interests: ["functional ceramics", "sculptural form"],
-    skills: ["ceramic forming", "studio fabrication"],
-    intent: "Develop a cohesive collection of sculptural ceramic table objects for galleries and specialty shops.",
+    interests: ["public art", "architectural space"],
+    skills: ["large-scale fabrication", "site planning"],
+    intent: "Develop a permanent sculptural installation for a civic courtyard.",
   },
 ] as const;
 
@@ -72,7 +72,7 @@ const claims: HistoricalClaim[] = [
   {
     kind: "historical",
     id: "fact-quistgaard-craft",
-    text: "Before the documented telephone contact, Jens Quistgaard was a sculptor's son, had apprenticed with his father, and worked as a product designer.",
+    text: "Before the documented telephone contact, Jens Quistgaard was a sculptor's son, had apprenticed with his father, worked as a product designer, and had designed a functional household object.",
     citationIds: ["new-yorker-dansk-history", "latimes-nierenberg-obituary"],
     preConnection: true,
   },
@@ -120,7 +120,7 @@ const claims: HistoricalClaim[] = [
     id: id!,
     text: text!,
     basisClaimIds: ["fact-quistgaard-craft"],
-    rationale: "Uses only the documented product-design role and apprenticeship with his sculptor father.",
+    rationale: "Uses only the documented product-design work, functional household object, or apprenticeship with his sculptor father.",
   })),
   {
     kind: "derived",
@@ -190,9 +190,9 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
   },
   expect: [
     { candidateId: "h1-b", match: true, scoreBand: [60, 100] },
-    { candidateId: "h1-c", match: false, scoreBand: [0, 29] },
-    { candidateId: "h1-d", match: false, scoreBand: [0, 29] },
-    { candidateId: "h1-e", match: false, scoreBand: [0, 29] },
+    { candidateId: "h1-c", match: false, scoreBand: [30, 59] },
+    { candidateId: "h1-d", match: false, scoreBand: [30, 59] },
+    { candidateId: "h1-e", match: false, scoreBand: [30, 59] },
   ],
   reportNames: {
     "h1-a": "Ted Nierenberg",
@@ -236,7 +236,7 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
         id: "cooper-hewitt-quistgaard",
         url: "https://collection.cooperhewitt.org/people/18044007/",
         title: "Jens H. Quistgaard",
-        publisher: "Cooper Hewitt, Smithsonian Design Museum",
+        publisher: "Smithsonian Institution",
         excerpt: "We have 40 objects that Jens H. Quistgaard has been involved with. … Jens H. Quistgaard has related object(s) with Dansk International Designs, Ltd.",
       },
     ],

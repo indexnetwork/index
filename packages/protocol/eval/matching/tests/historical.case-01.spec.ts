@@ -16,7 +16,7 @@ const partner = {
   location: "",
   interests: ["product design"],
   skills: ["product design", "apprenticeship with a sculptor father"],
-  intent: "Work as a product designer after apprenticing with a sculptor father.",
+  intent: "Product-design work on a functional household object and apprenticeship with a sculptor father.",
 };
 
 const syntheticProfiles = [
@@ -35,11 +35,11 @@ const syntheticProfiles = [
     intent: "Develop a visual identity and packaging system for a new household-products collection.",
   },
   {
-    bio: "Studio sculptor whose practice includes small functional ceramic objects and commissioned exhibition pieces.",
+    bio: "Site-specific sculptor who develops commissioned installations for public plazas and civic buildings.",
     location: "",
-    interests: ["functional ceramics", "sculptural form"],
-    skills: ["ceramic forming", "studio fabrication"],
-    intent: "Develop a cohesive collection of sculptural ceramic table objects for galleries and specialty shops.",
+    interests: ["public art", "architectural space"],
+    skills: ["large-scale fabrication", "site planning"],
+    intent: "Develop a permanent sculptural installation for a civic courtyard.",
   },
 ];
 
@@ -69,7 +69,7 @@ const expectedCitations = [
     id: "cooper-hewitt-quistgaard",
     url: "https://collection.cooperhewitt.org/people/18044007/",
     title: "Jens H. Quistgaard",
-    publisher: "Cooper Hewitt, Smithsonian Design Museum",
+    publisher: "Smithsonian Institution",
     excerpt: "We have 40 objects that Jens H. Quistgaard has been involved with. … Jens H. Quistgaard has related object(s) with Dansk International Designs, Ltd.",
   },
 ];
@@ -91,9 +91,9 @@ describe("historical case 01", () => {
     });
     expect(HISTORICAL_CASE_01.expect).toEqual([
       { candidateId: "h1-b", match: true, scoreBand: [60, 100] },
-      { candidateId: "h1-c", match: false, scoreBand: [0, 29] },
-      { candidateId: "h1-d", match: false, scoreBand: [0, 29] },
-      { candidateId: "h1-e", match: false, scoreBand: [0, 29] },
+      { candidateId: "h1-c", match: false, scoreBand: [30, 59] },
+      { candidateId: "h1-d", match: false, scoreBand: [30, 59] },
+      { candidateId: "h1-e", match: false, scoreBand: [30, 59] },
     ]);
   });
 
@@ -128,6 +128,14 @@ describe("historical case 01", () => {
       orderingCitationIds: ["new-yorker-dansk-history", "latimes-nierenberg-obituary"],
     });
     expect(HISTORICAL_CASE_01.historicalQuality.citations).toEqual(expectedCitations);
+    expect(HISTORICAL_CASE_01.historicalQuality.claims).toContainEqual({
+      kind: "historical",
+      id: "fact-quistgaard-craft",
+      text: "Before the documented telephone contact, Jens Quistgaard was a sculptor's son, had apprenticed with his father, worked as a product designer, and had designed a functional household object.",
+      citationIds: ["new-yorker-dansk-history", "latimes-nierenberg-obituary"],
+      preConnection: true,
+    });
+    expect(HISTORICAL_CASE_01.historicalQuality.claimProvenance["/input/entities/1/intents/0/payload"]).toEqual(["model-partner-intent"]);
     expect(HISTORICAL_CASE_01.historicalQuality.outcomeCitationIds).toEqual(["cooper-hewitt-quistgaard"]);
   });
 
@@ -141,9 +149,9 @@ describe("historical case 01", () => {
 
   it("uses exact semantic negatives whose authored profiles encode each failure", () => {
     expect(HISTORICAL_CASE_01.historicalQuality.semanticNegatives).toEqual({
-      "h1-c": "Retail buying and supplier sourcing do not establish original product-design experience.",
-      "h1-d": "Packaging and identity work do not establish three-dimensional product-design experience.",
-      "h1-e": "A gallery-oriented ceramic practice does not establish professional product-design experience.",
+      "h1-c": "National retail assortment curation and supplier sourcing represent buyer-side merchandising activity.",
+      "h1-d": "Packaging and brand identity represent visual-communications design for household-product companies.",
+      "h1-e": "Commissioned public architectural sculpture represents a site-specific civic-art application domain.",
     });
     const negatives = historicalModelSafeProjection(HISTORICAL_CASE_01).input.entities.slice(2);
     expect(negatives.map(({ profile, intents }) => ({
@@ -153,7 +161,7 @@ describe("historical case 01", () => {
       skills: profile.skills,
       intent: intents?.[0]?.payload,
     }))).toEqual(syntheticProfiles);
-    expect(JSON.stringify(negatives)).not.toMatch(/unable|without|rather than|\blacks?\b|cannot|can't|does not|do not|\bno\b|instead of|excluding|failure|wrong fit/i);
+    expect(JSON.stringify(negatives)).not.toMatch(/unable|without|rather than|\blacks?\b|cannot|can't|does not|do not|\bno\b|instead of|excluding|failure|wrong fit|functional ceramics?|table objects?/i);
     expect(HISTORICAL_CASE_01.input.entities.slice(1).map(({ ragScore }) => ragScore)).toEqual([70, 70, 70, 70]);
     for (const participantId of ["h1-c", "h1-d", "h1-e"] as const) {
       const reason = HISTORICAL_CASE_01.historicalQuality.semanticNegatives[participantId];
