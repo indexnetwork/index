@@ -20,11 +20,15 @@ function createAgentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     type: 'external',
     status: 'active',
     metadata: {},
+    runtimeKind: null,
+    installationId: null,
+    runtimeSetupAttemptId: null,
     notifyOnOpportunity: true,
     dailySummaryEnabled: true,
     handleNegotiations: false,
     lastDailySummaryAt: null,
     lastSeenAt: null,
+    lastNegotiationPickupAt: null,
     createdAt: new Date('2026-04-08T00:00:00.000Z'),
     updatedAt: new Date('2026-04-08T00:00:00.000Z'),
     ...overrides,
@@ -105,6 +109,10 @@ function createStore(overrides: Partial<AgentServiceStore> = {}): AgentServiceSt
     findAuthorizedAgents: async () => [createAgentWithRelations()],
     getSystemAgentIds: () => SYSTEM_AGENT_IDS,
     touchLastSeen: async () => undefined,
+    touchNegotiationPickup: async () => undefined,
+    setNegotiationExecutorBinding: async (input) => input.targetAgentId
+      ? createAgentWithRelations({ id: input.targetAgentId, ownerId: input.ownerId, handleNegotiations: true })
+      : null,
     ...overrides,
   };
 }
@@ -720,95 +728,43 @@ describe('AgentService', () => {
   });
 
   describe('handle_negotiations toggle', () => {
-    it('upserts owner permission with manage:negotiations added when flipped on', async () => {
-      const upserts: Array<{ agentId: string; userId: string; actions: string[] }> = [];
-      const columnWrites: Array<Record<string, unknown>> = [];
-
+    it('routes generic enable through the atomic single-executor binding', async () => {
+      const bindings: Array<Record<string, unknown>> = [];
       const store = createStore({
-        getAgentWithRelations: async () =>
-          createAgentWithRelations({
-            handleNegotiations: false,
-            permissions: [
-              createPermissionRow({
-                id: 'perm-owner',
-                actions: ['manage:intents', 'manage:opportunities'],
-              }),
-            ],
-          }),
-        updateAgent: async (_agentId, patch) => {
-          columnWrites.push(patch);
-          return createAgentRow({ ...patch });
-        },
-        upsertGlobalPermission: async (input) => {
-          upserts.push({ ...input, actions: [...input.actions] });
-          return createPermissionRow({ actions: input.actions });
+        setNegotiationExecutorBinding: async (input) => {
+          bindings.push(input);
+          return createAgentWithRelations({ id: input.targetAgentId ?? 'agent-1', handleNegotiations: true });
         },
       });
       const service = new AgentService(store, createTokenStore());
 
       await service.update('agent-1', OWNER_ID, { handleNegotiations: true });
 
-      expect(columnWrites).toEqual([expect.objectContaining({ handleNegotiations: true })]);
-      expect(upserts).toHaveLength(1);
-      expect(upserts[0]!.actions).toEqual([
-        'manage:intents',
-        'manage:opportunities',
-        'manage:negotiations',
-      ]);
+      expect(bindings).toEqual([{
+        ownerId: OWNER_ID,
+        targetAgentId: 'agent-1',
+        exactTargetPermissions: false,
+      }]);
     });
 
-    it('upserts owner permission with manage:negotiations removed when flipped off', async () => {
-      const upserts: Array<{ agentId: string; userId: string; actions: string[] }> = [];
-
+    it('makes generic disable conditional on that exact agent being selected', async () => {
+      const bindings: Array<Record<string, unknown>> = [];
       const store = createStore({
-        getAgentWithRelations: async () =>
-          createAgentWithRelations({
-            handleNegotiations: true,
-            permissions: [
-              createPermissionRow({
-                id: 'perm-owner',
-                actions: ['manage:intents', 'manage:negotiations'],
-              }),
-            ],
-          }),
-        upsertGlobalPermission: async (input) => {
-          upserts.push({ ...input, actions: [...input.actions] });
-          return createPermissionRow({ actions: input.actions });
+        setNegotiationExecutorBinding: async (input) => {
+          bindings.push(input);
+          return null;
         },
-        updateAgent: async (_agentId, patch) => createAgentRow({ ...patch }),
       });
       const service = new AgentService(store, createTokenStore());
 
       await service.update('agent-1', OWNER_ID, { handleNegotiations: false });
 
-      expect(upserts).toHaveLength(1);
-      expect(upserts[0]!.actions).toEqual(['manage:intents']);
-    });
-
-    it('deletes the owner permission row when flipping off leaves no actions', async () => {
-      const revocations: Array<{ agentId: string; userId: string }> = [];
-
-      const store = createStore({
-        getAgentWithRelations: async () =>
-          createAgentWithRelations({
-            handleNegotiations: true,
-            permissions: [
-              createPermissionRow({
-                id: 'perm-owner',
-                actions: ['manage:negotiations'],
-              }),
-            ],
-          }),
-        revokeGlobalPermission: async (agentId, userId) => {
-          revocations.push({ agentId, userId });
-        },
-        updateAgent: async (_agentId, patch) => createAgentRow({ ...patch }),
-      });
-      const service = new AgentService(store, createTokenStore());
-
-      await service.update('agent-1', OWNER_ID, { handleNegotiations: false });
-
-      expect(revocations).toEqual([{ agentId: 'agent-1', userId: OWNER_ID }]);
+      expect(bindings).toEqual([{
+        ownerId: OWNER_ID,
+        targetAgentId: null,
+        exactTargetPermissions: false,
+        disableTargetAgentId: 'agent-1',
+      }]);
     });
   });
 });

@@ -1,7 +1,6 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { eq } from 'drizzle-orm/sql';
 
-import db from '../lib/drizzle/drizzle';
 import { hashApiKey } from '../lib/apikey/credential';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { apikeys, users } from '../schemas/database.schema';
@@ -15,6 +14,20 @@ export interface AuthenticatedUser {
   id: string;
   email: string | null;
   name: string;
+}
+
+export interface ApiKeyAuthenticationCredential {
+  referenceId: string | null;
+  userId: string | null;
+  enabled: boolean;
+  expiresAt: Date | null;
+  metadata: string | null;
+}
+
+/** Persistence boundary used by the real API-key authentication algorithm. */
+export interface ApiKeyAuthenticationStore {
+  findCredentialByHash(hash: string): Promise<ApiKeyAuthenticationCredential | null>;
+  findUserById(userId: string): Promise<AuthenticatedUser | null>;
 }
 
 const JWKS = createRemoteJWKSet(
@@ -56,6 +69,14 @@ export class SessionRequiredError extends Error {
   constructor(message = 'This endpoint requires a session token; API keys are not accepted') {
     super(message);
     this.name = 'SessionRequiredError';
+  }
+}
+
+/** Thrown when an agent-bound key reaches an owner-control endpoint. */
+export class OwnerControlRequiredError extends Error {
+  constructor(message = 'This endpoint requires an owner credential; agent-bound API keys are not accepted') {
+    super(message);
+    this.name = 'OwnerControlRequiredError';
   }
 }
 
@@ -133,6 +154,8 @@ export const isSessionAuthenticated = (req: Request): boolean =>
  * binding. Authorization is intentionally NOT re-checked here — callers
  * must run `AuthGuard` first.
  */
+export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
+
 export const resolveApiKeyAgentId = async (req: Request): Promise<string | null> => {
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) return null;
@@ -144,7 +167,8 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
 
   const hashed = await hashApiKey(apiKey);
 
-  const [row] = await db
+  const database = (await import('../lib/drizzle/drizzle')).default;
+  const [row] = await database
     .select({ metadata: apikeys.metadata })
     .from(apikeys)
     .where(eq(apikeys.key, hashed))
@@ -153,26 +177,43 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
   return parseApiKeyAgentId(row?.metadata ?? null);
 };
 
-async function resolveApiKeyCredential(
+async function hasExactAgentPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver,
+): Promise<boolean> {
+  return await resolvePrincipal(request) === agentId;
+}
+
+/** Exact agent-bound principal check used by negotiation pickup. */
+export async function authorizeNegotiationPickupPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
+): Promise<boolean> {
+  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+/** Exact agent-bound principal check used by negotiation respond. */
+export async function authorizeNegotiationRespondPrincipal(
+  request: Request,
+  agentId: string,
+  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
+): Promise<boolean> {
+  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
+}
+
+export async function authenticateApiKey(
   req: Request,
   apiKey: string,
+  store: ApiKeyAuthenticationStore = databaseApiKeyAuthenticationStore,
   options: {
     metadataAllowed?: (metadata: string | null) => boolean;
     forceNullAgentId?: boolean;
   } = {},
 ): Promise<AuthenticatedUser> {
   const hashed = await hashApiKey(apiKey);
-  const [row] = await db
-    .select({
-      referenceId: apikeys.referenceId,
-      userId: apikeys.userId,
-      enabled: apikeys.enabled,
-      expiresAt: apikeys.expiresAt,
-      metadata: apikeys.metadata,
-    })
-    .from(apikeys)
-    .where(eq(apikeys.key, hashed))
-    .limit(1);
+  const row = await store.findCredentialByHash(hashed);
 
   // Log a prefix of the stored SHA-256 hash, never raw credential material.
   const keyHashPrefix = hashed.slice(0, 8);
@@ -203,11 +244,7 @@ async function resolveApiKeyCredential(
     throw new Error('Invalid API key');
   }
 
-  const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  const user = await store.findUserById(userId);
 
   if (!user) {
     logger.warn('API key rejected', { reason: 'user_not_found', keyHashPrefix, ua });
@@ -241,7 +278,7 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
       return await resolveJwtUser(req);
     } catch (jwtError) {
       try {
-        return await resolveApiKeyCredential(req, authHeader.slice(7), {
+        return await authenticateApiKey(req, authHeader.slice(7), databaseApiKeyAuthenticationStore, {
           metadataAllowed: isLegacyCliV1Metadata,
           forceNullAgentId: true,
         });
@@ -259,5 +296,48 @@ export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
     throw new Error('Access token or API key required');
   }
 
-  return resolveApiKeyCredential(req, apiKey);
+  return authenticateApiKey(req, apiKey);
+};
+
+const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
+  async findCredentialByHash(hash) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [row] = await database
+      .select({
+        referenceId: apikeys.referenceId,
+        userId: apikeys.userId,
+        enabled: apikeys.enabled,
+        expiresAt: apikeys.expiresAt,
+        metadata: apikeys.metadata,
+      })
+      .from(apikeys)
+      .where(eq(apikeys.key, hash))
+      .limit(1);
+    return row ?? null;
+  },
+  async findUserById(userId) {
+    const database = (await import('../lib/drizzle/drizzle')).default;
+    const [user] = await database
+      .select({ id: users.id, email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user ? { id: user.id, email: user.email ?? null, name: user.name } : null;
+  },
+};
+
+/**
+ * Authenticate an owner-control request while rejecting every agent-bound key.
+ * Sessions and unbound owner keys remain accepted.
+ */
+export const OwnerControlGuard = async (
+  req: Request,
+  authenticate: (request: Request) => Promise<AuthenticatedUser> = AuthGuard,
+): Promise<AuthenticatedUser> => {
+  const user = await authenticate(req);
+  const context = getRequestAuthContext(req);
+  if (context?.kind === 'api_key' && context.agentId !== null) {
+    throw new OwnerControlRequiredError();
+  }
+  return user;
 };

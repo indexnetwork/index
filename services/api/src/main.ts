@@ -23,6 +23,7 @@ import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { AgentController } from './controllers/agent.controller';
+import { AgentRuntimeController } from './controllers/agent-runtime.controller';
 import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
@@ -34,7 +35,7 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
-import { SessionRequiredError } from './guards/auth.guard';
+import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -605,6 +606,7 @@ controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
 controllerInstances.set(AgentController, new AgentController());
+controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
 controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
@@ -838,7 +840,7 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError) {
+            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

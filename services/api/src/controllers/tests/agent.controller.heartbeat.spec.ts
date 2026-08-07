@@ -8,6 +8,10 @@ const callOrder: string[] = [];
 const touchLastSeenMock = mock(async (_agentId: string): Promise<void> => {
   callOrder.push('touch');
 });
+const touchNegotiationPickupMock = mock(async (_agentId: string): Promise<void> => {
+  callOrder.push('touchNegotiation');
+});
+const resolveAgentPrincipalMock = mock(async (_req: Request): Promise<string | null> => TEST_AGENT_ID);
 const getByIdMock = mock(async (_agentId: string, _userId: string) => {
   callOrder.push('getById');
   return { id: _agentId };
@@ -31,6 +35,7 @@ const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number
 
 const agents = {
   touchLastSeen: touchLastSeenMock,
+  touchNegotiationPickup: touchNegotiationPickupMock,
   getById: getByIdMock,
 };
 const negotiations = {
@@ -59,6 +64,7 @@ function makeController() {
     negotiations as never,
     testMessages as never,
     deliveries as never,
+    resolveAgentPrincipalMock,
   );
 }
 
@@ -77,6 +83,9 @@ describe('AgentController pickup endpoints heartbeat', () => {
     controller = makeController();
     callOrder.length = 0;
     touchLastSeenMock.mockClear();
+    touchNegotiationPickupMock.mockClear();
+    resolveAgentPrincipalMock.mockClear();
+    resolveAgentPrincipalMock.mockResolvedValue(TEST_AGENT_ID);
     negotiationPickupMock.mockClear();
     testMessagePickupMock.mockClear();
     opportunityPickupMock.mockClear();
@@ -84,14 +93,15 @@ describe('AgentController pickup endpoints heartbeat', () => {
     getByIdMock.mockClear();
   });
 
-  it('pickupNegotiation bumps lastSeenAt AFTER pickup authorizes the caller', async () => {
+  it('pickupNegotiation bumps lastNegotiationPickupAt AFTER exact-principal pickup authorization', async () => {
     const req = new Request('http://localhost/agents/agent-123/negotiations/pickup', { method: 'POST' });
 
     await controller.pickupNegotiation(req, mockUser as never, makeParams(TEST_AGENT_ID));
 
-    expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    // Pickup runs first (it enforces ownership); heartbeat fires only after.
-    expect(callOrder).toEqual(['pickupNegotiation', 'touch']);
+    expect(touchNegotiationPickupMock).toHaveBeenCalledWith(TEST_AGENT_ID);
+    expect(touchLastSeenMock).not.toHaveBeenCalled();
+    // Pickup runs first (it enforces selected-executor authority); heartbeat fires only after.
+    expect(callOrder).toEqual(['pickupNegotiation', 'touchNegotiation']);
   });
 
   it('pickupTestMessage bumps lastSeenAt AFTER getById authorizes the caller', async () => {
@@ -124,10 +134,11 @@ describe('AgentController pickup endpoints heartbeat', () => {
     await controller.pickupTestMessage(msgReq, mockUser as never, makeParams(TEST_AGENT_ID));
     await controller.pickupOpportunity(oppReq, mockUser as never, makeParams(TEST_AGENT_ID));
 
-    expect(touchLastSeenMock).toHaveBeenCalledTimes(3);
+    expect(touchNegotiationPickupMock).toHaveBeenCalledTimes(1);
+    expect(touchNegotiationPickupMock).toHaveBeenCalledWith(TEST_AGENT_ID);
+    expect(touchLastSeenMock).toHaveBeenCalledTimes(2);
     expect(touchLastSeenMock).toHaveBeenNthCalledWith(1, TEST_AGENT_ID);
     expect(touchLastSeenMock).toHaveBeenNthCalledWith(2, TEST_AGENT_ID);
-    expect(touchLastSeenMock).toHaveBeenNthCalledWith(3, TEST_AGENT_ID);
   });
 
   it('does NOT bump lastSeenAt when pickup throws (unauthorized probe)', async () => {
@@ -140,8 +151,24 @@ describe('AgentController pickup endpoints heartbeat', () => {
     await controller.pickupNegotiation(req, mockUser as never, makeParams('agent-999'));
 
     expect(negotiationPickupMock).toHaveBeenCalled();
+    expect(touchNegotiationPickupMock).not.toHaveBeenCalled();
     expect(touchLastSeenMock).not.toHaveBeenCalled();
     expect(callOrder).toEqual(['pickupNegotiation']);
+  });
+
+  it.each<[string, string | null]>([
+    ['session', null],
+    ['unbound owner key', null],
+    ['wrong agent key', 'agent-other'],
+  ])('rejects a %s before pickup or negotiation heartbeat', async (_label, principalAgentId) => {
+    resolveAgentPrincipalMock.mockResolvedValueOnce(principalAgentId);
+    const req = new Request('http://localhost/agents/agent-123/negotiations/pickup', { method: 'POST' });
+
+    const response = await controller.pickupNegotiation(req, mockUser as never, makeParams(TEST_AGENT_ID));
+
+    expect((response as Response).status).toBe(403);
+    expect(negotiationPickupMock).not.toHaveBeenCalled();
+    expect(touchNegotiationPickupMock).not.toHaveBeenCalled();
   });
 });
 

@@ -1,4 +1,4 @@
-import { eq, and, sql, asc, isNull } from 'drizzle-orm/sql';
+import { eq, and, sql, asc } from 'drizzle-orm/sql';
 import { notArchivedNegotiationTaskWhere } from '../adapters/negotiation-attempt.atomic';
 
 import db from '../lib/drizzle/drizzle';
@@ -12,6 +12,7 @@ import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, Negotiati
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
 import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
+import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -206,6 +207,10 @@ function hasContinuationIdentity(metadata: unknown): boolean {
  * - Timeout orchestration: cancel/enqueue 24h and 6h timeouts as state transitions
  */
 export class NegotiationPollingService {
+  constructor(
+    private readonly authorization: NegotiationPollingAuthorization = negotiationPollingAuthorization,
+  ) {}
+
   /**
    * Picks up the next pending negotiation turn for an agent.
    *
@@ -218,7 +223,9 @@ export class NegotiationPollingService {
    * @returns The pickup result with opportunity context and turn history, or null if nothing pending
    */
   async pickup(agentId: string, userId: string): Promise<PickupResult | null> {
-    await this.assertAgentOwnership(agentId, userId);
+    if (!await this.authorization.authorizePickup(agentId, userId)) {
+      throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
+    }
 
     // 1. Check if agent already has a claimed turn (idempotency)
     const [existingClaim] = await db
@@ -343,7 +350,9 @@ export class NegotiationPollingService {
     negotiationId: string,
     input: RespondInput,
   ): Promise<{ success: true }> {
-    await this.assertAgentOwnership(agentId, userId);
+    if (!await this.authorization.authorizeRespond(agentId, userId)) {
+      throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
+    }
 
     // 1. Seat + version validation (v2 client-advocate protocol) — BEFORE the
     //    CAS transition, so a rejected action leaves the claim intact and the
@@ -519,29 +528,6 @@ export class NegotiationPollingService {
   // ─────────────────────────────────────────────────────────────────────────
   // Private helpers
   // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Verifies that the given agent is owned by the authenticated user. The
-   * auth guard only resolves the user from the API key; without this check
-   * anyone with a valid key on the system could drive pickup/respond for any
-   * agentId they can guess. Throws {@link UnauthorizedError} on mismatch.
-   */
-  private async assertAgentOwnership(agentId: string, userId: string): Promise<void> {
-    const [agent] = await db
-      .select({ id: dbSchema.agents.id })
-      .from(dbSchema.agents)
-      .where(
-        and(
-          eq(dbSchema.agents.id, agentId),
-          eq(dbSchema.agents.ownerId, userId),
-          isNull(dbSchema.agents.deletedAt),
-        ),
-      )
-      .limit(1);
-    if (!agent) {
-      throw new UnauthorizedError(`Agent ${agentId} is not accessible to the current user`);
-    }
-  }
 
   /**
    * Builds a {@link PickupResult} from a task row.
@@ -740,6 +726,13 @@ export class NegotiationPollingService {
     };
   }
 }
+
+const negotiationPollingAuthorization = new NegotiationPollingAuthorization({
+  async getAgentWithRelations(agentId) {
+    const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');
+    return agentDatabaseAdapter.getAgentWithRelations(agentId);
+  },
+});
 
 /** Singleton negotiation polling service instance. */
 export const negotiationPollingService = new NegotiationPollingService();

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, authorizeNegotiationPickupPrincipal, authorizeNegotiationRespondPrincipal, OwnerControlGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -173,6 +173,7 @@ export class AgentController {
     private readonly negotiations: typeof negotiationPollingService = negotiationPollingService,
     private readonly testMessages: AgentTestMessageService = agentTestMessageService,
     private readonly deliveries: typeof opportunityDeliveryService = opportunityDeliveryService,
+    private readonly resolveAgentPrincipal: (req: Request) => Promise<string | null> = resolveApiKeyAgentId,
   ) {}
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
@@ -251,10 +252,10 @@ export class AgentController {
     }
   }
 
-  // API keys are allowed here (not SessionOnlyGuard) so desktop surfaces can
-  // deregister an agent they registered; deletion also revokes its tokens.
+  // Unbound owner keys may deregister agents, but an agent-bound key may not
+  // delete its executor or mint a successor credential.
   @Delete('/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), OwnerControlGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -373,11 +374,10 @@ export class AgentController {
     }
   }
 
-  // API keys are allowed here (not SessionOnlyGuard) so desktop surfaces can
-  // mint a key for an agent they just registered and hand it to the local
-  // runtime (e.g. the hermes plugin) without a web session.
+  // Desktop owner credentials may mint a key, but agent-bound keys may not
+  // mint successor credentials that survive their own rotation.
   @Post('/:id/tokens')
-  @UseGuards(RateLimit('write'), AuthGuard)
+  @UseGuards(RateLimit('write'), OwnerControlGuard)
   async createToken(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -398,7 +398,7 @@ export class AgentController {
   }
 
   @Delete('/:id/tokens/:tokenId')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(RateLimit('write'), OwnerControlGuard)
   async revokeToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     const tokenId = params?.tokenId;
@@ -416,17 +416,20 @@ export class AgentController {
 
   @Post('/:id/negotiations/pickup')
   @UseGuards(AuthGuard)
-  async pickupNegotiation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async pickupNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
       return jsonError('Agent ID is required', 400);
     }
 
     try {
-      // Run pickup first — it proves the caller is authorized for this agentId.
-      // Only then bump the heartbeat, so unauthorized probes cannot spoof liveness.
+      if (!await authorizeNegotiationPickupPrincipal(req, agentId, this.resolveAgentPrincipal)) {
+        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
+      }
+      // Pickup admission verifies the exact active selected external executor.
+      // Only an authorized poll, including an empty one, stamps this heartbeat.
       const result = await this.negotiations.pickup(agentId, user.id);
-      await this.agents.touchLastSeen(agentId);
+      await this.agents.touchNegotiationPickup(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
       }
@@ -443,6 +446,14 @@ export class AgentController {
     const negotiationId = params?.negotiationId;
     if (!agentId || !negotiationId) {
       return jsonError('Agent ID and negotiation ID are required', 400);
+    }
+
+    try {
+      if (!await authorizeNegotiationRespondPrincipal(req, agentId, this.resolveAgentPrincipal)) {
+        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
+      }
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
     }
 
     const body = await parseBody(req, respondNegotiationSchema);

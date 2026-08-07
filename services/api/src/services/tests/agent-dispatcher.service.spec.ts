@@ -13,6 +13,15 @@ function makeAgent(overrides: Partial<AgentWithRelations> = {}): AgentWithRelati
     type: 'external',
     status: 'active',
     metadata: {},
+    runtimeKind: null,
+    installationId: null,
+    runtimeSetupAttemptId: null,
+    lastSeenAt: null,
+    lastNegotiationPickupAt: null,
+    notifyOnOpportunity: true,
+    dailySummaryEnabled: true,
+    handleNegotiations: true,
+    lastDailySummaryAt: null,
     transports: [],
     permissions: [],
     createdAt: new Date(),
@@ -65,7 +74,7 @@ describe('AgentDispatcherImpl.dispatch', () => {
   });
 
   it('returns waiting and enqueues timeout when external agent exists (long timeout)', async () => {
-    agents = [makeAgent({ lastSeenAt: new Date() })];
+    agents = [makeAgent({ lastNegotiationPickupAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
     expect(timeoutEnqueued).toBe(true);
@@ -79,7 +88,7 @@ describe('AgentDispatcherImpl.dispatch', () => {
   });
 
   it('does not require transports — any fresh external agent triggers waiting', async () => {
-    agents = [makeAgent({ transports: [], lastSeenAt: new Date() })];
+    agents = [makeAgent({ transports: [], lastNegotiationPickupAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
   });
