@@ -272,6 +272,13 @@ def _decode_tool_result(message: dict[str, Any]) -> dict[str, Any]:
             except json.JSONDecodeError:
                 parsed_text = None
             if isinstance(parsed_text, dict):
+                # An MCP capability denial / tool error comes back as a JSON dict
+                # (e.g. {"error": ..., "code": "MCP_CAPABILITY_DENIED"}) with no
+                # "success" key while result.isError is true. Without this, callers
+                # that check `payload.get("success") is False` would read the
+                # denial as success. Derive success from isError when absent.
+                if "success" not in parsed_text:
+                    parsed_text["success"] = not bool(result.get("isError"))
                 return parsed_text
             return {"success": not bool(result.get("isError")), "text": text}
 

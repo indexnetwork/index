@@ -1236,9 +1236,138 @@
     );
   }
 
+  function SettingUpScreen() {
+    // Indeterminate bar + staggered status lines while enrichment runs.
+    // No brand mark, loading gif, or live-dot — keep the Hermes card quiet.
+    const lines = [
+      "Getting a sense of you…",
+      "Working out what you're into…",
+      "Almost there.",
+    ];
+    return React.createElement("div", { className: "index-dashboard__setting-up" },
+      React.createElement("div", { className: "index-dashboard__setting-up-card" },
+        React.createElement("div", { className: "index-dashboard__setting-up-bar", "aria-hidden": "true" },
+          React.createElement("div", { className: "index-dashboard__setting-up-bar-fill" }),
+        ),
+        React.createElement("div", { className: "index-dashboard__setting-up-lines" },
+          lines.map(function (line, i) {
+            return React.createElement("p", {
+              key: line,
+              className: "index-dashboard__setting-up-line" + (i === lines.length - 1 ? " index-dashboard__setting-up-line--final" : ""),
+              style: { animationDelay: (i * 350) + "ms" },
+            },
+              React.createElement("span", { className: "index-dashboard__setting-up-caret" }, "›"),
+              line,
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  // Mac/CLI-parity browser sign-in gate. "Log in with browser" runs the same
+  // /cli-auth handshake (loopback callback) the Index Mac app and CLI use; the
+  // backend mints + persists the key, so we only poll status here.
+  function LoginScreen(props) {
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useRef = React.useRef;
+    const waitingState = useState(false);
+    const waiting = waitingState[0];
+    const setWaiting = waitingState[1];
+    const errorState = useState(null);
+    const loginError = errorState[0];
+    const setLoginError = errorState[1];
+    const linkState = useState(null);
+    const manualLink = linkState[0];
+    const setManualLink = linkState[1];
+    const pollRef = useRef(null);
+
+    function stopPolling() {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+
+    useEffect(function () { return stopPolling; }, []);
+
+    function poll() {
+      fetchPluginJSON(API + "/auth/login/status")
+        .then(function (payload) {
+          const status = payload && payload.status;
+          if (status === "success") {
+            stopPolling();
+            setWaiting(false);
+            if (props.onAuthed) props.onAuthed();
+          } else if (status === "failed") {
+            stopPolling();
+            setWaiting(false);
+            setLoginError((payload && payload.error) || "Login failed. Please try again.");
+          } else if (status === "idle") {
+            stopPolling();
+            setWaiting(false);
+          }
+        })
+        .catch(function () { /* keep polling; transient host hiccup */ });
+    }
+
+    function start() {
+      setLoginError(null);
+      setManualLink(null);
+      setWaiting(true);
+      fetchPluginJSON(API + "/auth/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not start login.");
+          }
+          // Headless/remote agent host: no browser to open, so surface the link.
+          if (!payload.opened && payload.authUrl) setManualLink(payload.authUrl);
+          stopPolling();
+          pollRef.current = setInterval(poll, 1500);
+        })
+        .catch(function (err) {
+          setWaiting(false);
+          setLoginError(err && err.message ? err.message : String(err));
+        });
+    }
+
+    return React.createElement("div", { className: "index-dashboard__login" },
+      React.createElement("div", { className: "index-dashboard__login-card" },
+        React.createElement("h1", { className: "index-dashboard__login-brand" }, "Index"),
+        React.createElement("p", { className: "index-dashboard__login-copy" },
+          "Sign in to connect this agent to your Index signals, opportunities, and networks."),
+        React.createElement(Button, {
+          type: "button",
+          className: "index-dashboard__login-btn",
+          disabled: waiting,
+          onClick: start,
+        }, waiting ? "Waiting for browser…" : "Log in with browser"),
+        manualLink
+          ? React.createElement("p", { className: "index-dashboard__login-manual" },
+            "No browser opened here — ",
+            React.createElement("a", { href: manualLink, target: "_blank", rel: "noopener noreferrer" }, "open this link to continue"),
+            ".")
+          : null,
+        loginError
+          ? React.createElement("p", { className: "index-dashboard__login-error" }, loginError)
+          : null,
+        React.createElement("p", { className: "index-dashboard__login-foot" },
+          "Opens index.network in your browser to authorize a key. Nothing is shared until you sign in."),
+      ),
+    );
+  }
+
+  function usableEnriched(res) {
+    const p = res && res.profile;
+    return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
+  }
+
   function ProfilePanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
+    const useRef = React.useRef;
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -1266,37 +1395,88 @@
     const avatarPreviewState = useState(null);
     const avatarPreview = avatarPreviewState[0];
     const setAvatarPreview = avatarPreviewState[1];
+    const draftingState = useState(!!props.gettingStarted);
+    const drafting = draftingState[0];
+    const setDrafting = draftingState[1];
+    const assembledRef = useRef(null);
 
     const readOnly = !!props.readOnly;
+    const gettingStarted = !!props.gettingStarted;
+
+    function applyProfile(p) {
+      const next = {
+        id: p.id || "",
+        name: p.name || "",
+        intro: p.intro || "",
+        location: p.location || "",
+        email: p.email || "",
+        avatar: p.avatar || "",
+        context: p.context || "",
+        timezone: p.timezone || defaultTimezone(),
+        socials: Array.isArray(p.socials) ? p.socials.slice() : [],
+        notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
+      };
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
+
+    function adoptEnrichment(enriched, base) {
+      const p = (enriched && enriched.profile) || {};
+      const next = Object.assign({}, base || assembledRef.current || {}, {
+        name: (base && base.name) || p.name || "",
+        intro: (base && base.intro) || p.intro || "",
+        location: (base && base.location) || p.location || "",
+        avatar: (base && base.avatar) || p.avatar || "",
+        socials: (p.socials && p.socials.length)
+          ? p.socials.slice()
+          : ((base && base.socials) || []),
+        context: (base && base.context) || p.intro || "",
+      });
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
 
     function load() {
       setLoading(true);
       setPanelError(null);
-      fetchPluginJSON(props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile")
+      const profileUrl = props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile";
+      fetchPluginJSON(profileUrl)
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Profile could not be loaded.");
           }
-          const p = payload.profile || {};
-          setForm({
-            id: p.id || "",
-            name: p.name || "",
-            intro: p.intro || "",
-            location: p.location || "",
-            email: p.email || "",
-            avatar: p.avatar || "",
-            context: p.context || "",
-            timezone: p.timezone || defaultTimezone(),
-            socials: Array.isArray(p.socials) ? p.socials.slice() : [],
-            notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
-          });
-          setDirty(false);
+          applyProfile(payload.profile || {});
+          if (!gettingStarted) return null;
+          setDrafting(true);
+          return fetchPluginJSON(API + "/onboarding/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }).then(function (enriched) {
+            if (enriched && enriched.success !== false && usableEnriched(enriched)) {
+              adoptEnrichment(enriched, {
+                name: assembledRef.current.name,
+                intro: assembledRef.current.intro,
+                location: assembledRef.current.location,
+                avatar: assembledRef.current.avatar,
+                context: assembledRef.current.context,
+                socials: assembledRef.current.socials,
+                email: assembledRef.current.email,
+                id: assembledRef.current.id,
+                timezone: assembledRef.current.timezone,
+                notificationPreferences: assembledRef.current.notificationPreferences,
+              });
+            }
+          }).catch(function () { /* keep the baseline profile */ });
         })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
         })
         .finally(function () {
           setLoading(false);
+          setDrafting(false);
         });
     }
 
@@ -1392,8 +1572,28 @@
           timezone: form.timezone,
           socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
           notificationPreferences: form.notificationPreferences,
+          context: form.context || "",
         };
         if (avatarUrl) body.avatar = avatarUrl;
+        if (gettingStarted) {
+          body.draft = {
+            identity: { name: (form.name || "").trim(), bio: (form.intro || "").trim(), location: (form.location || "").trim() },
+            narrative: { context: (form.context || form.intro || "").trim() },
+            attributes: { skills: [], interests: [] },
+          };
+          return fetchPluginJSON(API + "/onboarding/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Profile could not be confirmed.");
+            }
+            setDirty(false);
+            setNote("Confirmed.");
+            if (typeof props.onConfirmed === "function") props.onConfirmed();
+          });
+        }
         return fetchPluginJSON(API + "/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -1432,6 +1632,14 @@
         .finally(function () {
           setSaving(false);
         });
+    }
+
+    function resetAssembled() {
+      if (!assembledRef.current) return;
+      setForm(Object.assign({}, assembledRef.current));
+      setAvatarPreview(null);
+      setDirty(false);
+      setNote(null);
     }
 
     function generate() {
@@ -1532,11 +1740,13 @@
         ),
         React.createElement(ProfileField, {
           label: "Introduction",
-          hint: form.context ? "Index context: " + form.context : null,
+          hint: (!gettingStarted && form.context) ? "Index context: " + form.context : null,
         },
-          React.createElement("div", { className: "index-dashboard__profile-intro-head" },
-            React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
-          ),
+          gettingStarted
+            ? null
+            : React.createElement("div", { className: "index-dashboard__profile-intro-head" },
+              React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
+            ),
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },
@@ -1610,35 +1820,77 @@
       );
     }
 
-    const title = readOnly ? ((form && form.name) || "Profile") : "Settings";
+    const title = gettingStarted
+      ? "Getting started"
+      : (readOnly ? ((form && form.name) || "Profile") : "Settings");
 
-    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", { className: "index-dashboard__profile-panel", onClick: function (e) { e.stopPropagation(); } },
-        React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
-          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+    const panel = React.createElement("div", {
+      className: "index-dashboard__profile-panel" + (gettingStarted ? " index-dashboard__profile-panel--getting-started" : ""),
+      onClick: gettingStarted ? undefined : function (e) { e.stopPropagation(); },
+    },
+      React.createElement("div", { className: "index-dashboard__profile-header" },
+        React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
+        React.createElement("div", { className: "index-dashboard__profile-header-actions" },
+          (!gettingStarted && !readOnly && props.onSignOut)
+            ? React.createElement("button", { type: "button", className: "index-dashboard__profile-signout", onClick: props.onSignOut }, "Sign out")
+            : null,
+          gettingStarted
+            ? null
+            : React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
-        readOnly ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
-          tabButton("profile", "Profile Settings"),
-          tabButton("notifications", "Notification Settings"),
-        ),
-        panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-        loading || !form
-          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
-          : React.createElement("div", { className: "index-dashboard__profile-body" },
-            readOnly ? readOnlyView() : (tab === "notifications" ? notificationsTab() : profileTab()),
-          ),
-        (!readOnly && form)
-          ? React.createElement("div", { className: "index-dashboard__profile-bar" },
-            React.createElement("span", { className: "index-dashboard__profile-note" }, note || (dirty ? "You have unsaved changes" : "")),
-            React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
-              React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
-              React.createElement(Button, { type: "button", disabled: saving || !dirty, onClick: save }, saving ? "Saving…" : "Save Changes"),
-            ),
-          )
-          : null,
       ),
+      gettingStarted
+        ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
+          "Here's what I pulled together. Make sure it's right.")
+        : null,
+      (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
+        tabButton("profile", "Profile Settings"),
+        tabButton("notifications", "Notification Settings"),
+      ),
+      panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
+      loading || !form
+        ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
+        : React.createElement("div", { className: "index-dashboard__profile-body" },
+          readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
+        ),
+      (!readOnly && form)
+        ? React.createElement("div", { className: "index-dashboard__profile-bar" },
+          React.createElement("span", { className: "index-dashboard__profile-note" },
+            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
+          React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
+            gettingStarted
+              ? React.createElement(Button, {
+                type: "button",
+                outlined: true,
+                className: "index-dashboard__getting-started-btn",
+                disabled: saving || !dirty,
+                onClick: resetAssembled,
+              }, "Reset")
+              : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
+            React.createElement(Button, {
+              type: "button",
+              className: gettingStarted ? "index-dashboard__getting-started-btn" : undefined,
+              disabled: saving || (gettingStarted ? drafting : !dirty),
+              onClick: save,
+            }, saving
+              ? (gettingStarted ? "Confirming…" : "Saving…")
+              : (gettingStarted ? "Looks good" : "Save Changes")),
+          ),
+        )
+        : null,
     );
+
+    // Mac parity: keep the review form hidden until enrichment finishes, and show
+    // the setting-up screen (brand + motion + status lines) in the meantime.
+    if (gettingStarted && (loading || drafting || !form)) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" },
+        React.createElement(SettingUpScreen),
+      );
+    }
+    if (gettingStarted) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" }, panel);
+    }
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose }, panel);
   }
 
   function extractContent(parts) {
@@ -2103,6 +2355,9 @@
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const needsOnboardingState = useState(false);
+    const needsOnboarding = needsOnboardingState[0];
+    const setNeedsOnboarding = needsOnboardingState[1];
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -2159,6 +2414,11 @@
     const inlineHdrState = useState(false);
     const inlineHdr = inlineHdrState[0];
     const setInlineHdr = inlineHdrState[1];
+    // Auth gate: "checking" until /auth/status resolves, then "needsLogin"
+    // (browser sign-in) or "authed" (load the dashboard).
+    const authState = useState("checking");
+    const auth = authState[0];
+    const setAuth = authState[1];
     const loadRef = useRef(null);
     const headerCtlRef = useRef(null);
     const toggleProfileRef = useRef(null);
@@ -2178,6 +2438,7 @@
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
           }
           setSummary(payload);
+          setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
         })
         .catch(function (err) {
           setError(err && err.message ? err.message : String(err));
@@ -2204,15 +2465,16 @@
     }
 
     useEffect(function () {
+      if (auth !== "authed") return undefined;
       refreshUnread();
       const id = setInterval(refreshUnread, 30000);
       return function () { clearInterval(id); };
-    }, []);
+    }, [auth]);
 
     // Re-check when the messages panel closes (reading there updates the map).
     useEffect(function () {
-      if (!messagesOpen) refreshUnread();
-    }, [messagesOpen]);
+      if (auth === "authed" && !messagesOpen) refreshUnread();
+    }, [messagesOpen, auth]);
 
     useEffect(function () {
       const ctl = headerCtlRef.current;
@@ -2496,9 +2758,44 @@
 
     loadRef.current = load;
 
-    useEffect(function () {
+    function enterDashboard() {
+      setAuth("authed");
       load();
       loadNetworkRequests();
+    }
+
+    function checkAuth() {
+      fetchPluginJSON(API + "/auth/status")
+        .then(function (payload) {
+          if (payload && payload.needsLogin) {
+            setAuth("needsLogin");
+            setLoading(false);
+          } else {
+            enterDashboard();
+          }
+        })
+        .catch(function () {
+          // Host fetch failed entirely: fall back to trying the dashboard so a
+          // manual INDEX_API_KEY still works even if /auth/status is unreachable.
+          enterDashboard();
+        });
+    }
+
+    function signOut() {
+      setProfileOpen(false);
+      fetchPluginJSON(API + "/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).finally(function () {
+        setSummary(null);
+        setNeedsOnboarding(false);
+        setAuth("needsLogin");
+      });
+    }
+
+    useEffect(function () {
+      checkAuth();
     }, []);
 
     useEffect(function () {
@@ -2590,12 +2887,15 @@
     }, [autoRefresh, loading]);
 
     useEffect(function () {
-      if (!autoRefresh) return undefined;
+      // Only poll once signed in: firing /summary while the login gate (or the
+      // initial auth check) is showing produces 401s that can land after the
+      // login transition and clobber the fresh state, forcing a manual reload.
+      if (!autoRefresh || auth !== "authed") return undefined;
       const id = setInterval(function () {
         if (loadRef.current) loadRef.current();
       }, 5000);
       return function () { clearInterval(id); };
-    }, [autoRefresh]);
+    }, [autoRefresh, auth]);
 
     useEffect(function () {
       if (DESKTOP_ENV) return undefined;
@@ -2680,7 +2980,7 @@
         : null,
       viewUserId
         ? React.createElement(ProfilePanel, { userId: viewUserId, readOnly: true, onClose: function () { setViewUserId(null); } })
-        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); } }) : null),
+        : (profileOpen ? React.createElement(ProfilePanel, { onClose: function () { setProfileOpen(false); }, onSignOut: signOut }) : null),
       messagesOpen
         ? React.createElement(MessagesPanel, { initialConversationId: messagesTarget, onClose: function () { setMessagesOpen(false); setMessagesTarget(null); } })
         : null,
@@ -2691,13 +2991,29 @@
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
 
-      loading && !summary
-        ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-          LOADING_IMAGE()
-            ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
-            : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
-        )
-        : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
+      auth === "needsLogin"
+        ? React.createElement(LoginScreen, { onAuthed: enterDashboard })
+        : (auth === "checking"
+          ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+            LOADING_IMAGE()
+              ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+              : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+          )
+          : (needsOnboarding
+            ? React.createElement(ProfilePanel, {
+              gettingStarted: true,
+              onConfirmed: function () {
+                setNeedsOnboarding(false);
+                load();
+              },
+            })
+            : (loading && !summary
+              ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+                LOADING_IMAGE()
+                  ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+                  : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+              )
+              : React.createElement("div", { className: "index-dashboard__body" }, intentsView)))),
     );
   }
 

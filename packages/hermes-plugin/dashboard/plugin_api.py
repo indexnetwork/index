@@ -22,7 +22,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 try:
     from fastapi import APIRouter, Body
@@ -99,26 +99,17 @@ async def desktop_asset(name: str) -> dict[str, Any]:
     return {"success": True, "mime": mime, "data": base64.b64encode(raw).decode("ascii")}
 
 
-def _load_tools_module():
-    spec = importlib.util.spec_from_file_location("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load Index Network tools module")
+        raise RuntimeError(f"Could not load module {name} from {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-tools = _load_tools_module()
-
-
-def _parse_tool_json(raw: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return {"success": False, "error": f"Index tool returned invalid JSON: {exc}"}
-    if isinstance(parsed, dict):
-        return parsed
-    return {"success": True, "data": parsed}
+tools = _load_module("index_network_hermes_dashboard_tools", _TOOLS_PATH)
+auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
 def _call_read_intents() -> dict[str, Any]:
@@ -150,8 +141,14 @@ def _call_read_intents() -> dict[str, Any]:
     return {"success": True, "data": {"intents": all_intents, "count": len(all_intents)}}
 
 
-def _call_mcp(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
-    return _parse_tool_json(tools.index_forwarded_mcp_tool(tool_name, args or {}))
+def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Invoke an Index tool through the REST tool surface (`POST /tools/:toolName`).
+
+    This is the Mac app's tool path: it accepts the browser-login CLI credential,
+    whereas the MCP surface resolves that key to the enrollment-only principal and
+    denies identity tools such as confirm_user_context / read_user_contexts.
+    """
+    return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 
 
 def _flatten_rest_question(question: dict[str, Any]) -> dict[str, Any] | None:
@@ -304,6 +301,30 @@ def _fetch_me() -> dict[str, Any]:
         return {}
     user = payload.get("user")
     return user if isinstance(user, dict) else {}
+
+
+def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Mac-parity first-run gate: missing `profileConfirmedAt` means review is required."""
+    row = me if isinstance(me, dict) else _fetch_me()
+    onboarding = row.get("onboarding") if isinstance(row.get("onboarding"), dict) else {}
+    confirmed_at = _text(onboarding.get("profileConfirmedAt"))
+    return {
+        "profileConfirmedAt": confirmed_at or None,
+        "needsProfileConfirm": bool(row.get("id")) and not bool(confirmed_at),
+    }
+
+
+def _approved_draft_from_body(body: dict[str, Any]) -> dict[str, Any]:
+    """Build the structured draft `confirm_user_context` expects from a profile form body."""
+    name = _text(body.get("name"))
+    intro = _text(body.get("intro"))
+    location = _text(body.get("location"))
+    context = _text(body.get("context")) or intro
+    return {
+        "identity": {"name": name, "bio": intro, "location": location},
+        "narrative": {"context": context},
+        "attributes": {"skills": [], "interests": []},
+    }
 
 
 def _notification_preferences(value: Any) -> dict[str, bool]:
@@ -937,10 +958,101 @@ def _build_dashboard(
     }
 
 
+@router.get("/auth/status")
+def auth_status() -> dict[str, Any]:
+    """Report whether the plugin holds a working Index credential.
+
+    Missing key or an auth failure (401/403) from `GET /auth/me` means the
+    dashboard should show the browser-login gate; any other error keeps the
+    (present) key and lets the dashboard surface its own section errors.
+    """
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    if not api_key:
+        return {"success": True, "authenticated": False, "needsLogin": True}
+    payload = tools._api_request("GET", "/auth/me")
+    if payload.get("success") is False:
+        if payload.get("status") in (401, 403):
+            return {"success": True, "authenticated": False, "needsLogin": True}
+        return {"success": True, "authenticated": True, "needsLogin": False, "error": payload.get("error")}
+    user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    return {
+        "success": True,
+        "authenticated": True,
+        "needsLogin": False,
+        "user": {"id": _text(user.get("id")) or None, "email": _text(user.get("email")) or None},
+    }
+
+
+def _login_app_base_url() -> str:
+    """Web origin that serves `/cli-auth`, paired with the active API environment.
+
+    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
+    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
+    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
+    pointed at dev/staging signs in against the matching web app instead of prod.
+    Without this pairing a dev-configured plugin would mint a prod key that then
+    401s against the dev API.
+    """
+    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
+        return tools._app_base_url()
+    try:
+        parts = urlsplit(tools._api_url())
+    except ValueError:
+        return tools.INDEX_APP_BASE_URL
+    if parts.scheme in ("http", "https") and parts.netloc:
+        host = parts.netloc
+        if host.startswith("protocol."):
+            host = host[len("protocol."):]
+        return f"{parts.scheme}://{host}"
+    return tools.INDEX_APP_BASE_URL
+
+
+@router.post("/auth/login/start")
+def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
+
+    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
+    a headless/remote agent host where opening a browser is not possible.
+    """
+    try:
+        auth_url = auth_login.start_login(_login_app_base_url())
+    except Exception as exc:  # noqa: BLE001 - handlers must not raise.
+        return {"success": False, "error": f"Could not start login: {exc}"}
+    opener = tools._url_opener_command(auth_url)
+    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
+    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
+
+
+@router.get("/auth/login/status")
+def auth_login_status() -> dict[str, Any]:
+    """Poll the pending login; on success the key is already persisted server-side."""
+    result = auth_login.poll_status()
+    payload: dict[str, Any] = {"success": True, "status": result.get("status")}
+    if result.get("error"):
+        payload["error"] = result.get("error")
+    return payload
+
+
+@router.post("/auth/logout")
+def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
+    if api_key and key_id:
+        try:
+            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
+        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
+            pass
+    auth_login.clear_api_key()
+    return {"success": True, "needsLogin": True}
+
+
 @router.get("/summary")
 def summary() -> dict[str, Any]:
     """Return a intent-centric, user-scoped dashboard summary."""
-    current_user_id = _resolve_user_id() or ""
+    me = _fetch_me()
+    current_user_id = _text(me.get("id"))
+    onboarding = _onboarding_gate(me)
     intents_payload = _call_read_intents()
     intents_data = _data(intents_payload)
     intent_ids = [
@@ -977,6 +1089,7 @@ def summary() -> dict[str, Any]:
     return {
         "success": True,
         "webUrl": _web_url(),
+        "onboarding": onboarding,
         "intents": dashboard["intents"],
         "general": dashboard["general"],
         "negotiations": negotiations,
@@ -1219,7 +1332,7 @@ def profile() -> dict[str, Any]:
     if not user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
 
-    contexts = _data(_call_mcp("read_user_contexts")) or {}
+    contexts = _data(_call_tool("read_user_contexts")) or {}
     user = _fetch_user(user_id)
 
     name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
@@ -1239,7 +1352,12 @@ def profile() -> dict[str, Any]:
         "timezone": _text(me.get("timezone")),
         "notificationPreferences": _notification_preferences(me.get("notificationPreferences")),
     }
-    return {"success": True, "profile": profile_obj, "mockedFields": _MOCKED_PROFILE_FIELDS}
+    return {
+        "success": True,
+        "profile": profile_obj,
+        "onboarding": _onboarding_gate(me),
+        "mockedFields": _MOCKED_PROFILE_FIELDS,
+    }
 
 
 @router.get("/profile/{user_id}")
@@ -1263,7 +1381,7 @@ def public_profile(user_id: str) -> dict[str, Any]:
     if isinstance(user, dict) and user.get("success") is False:
         return user
 
-    contexts = _data(_call_mcp("read_user_contexts", {"userId": user_id})) or {}
+    contexts = _data(_call_tool("read_user_contexts", {"userId": user_id})) or {}
     context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
 
     profile_obj: dict[str, Any] = {
@@ -1333,6 +1451,73 @@ def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[st
         return payload
     intro = _text(payload.get("intro"))
     return {"success": True, "intro": intro}
+
+
+@router.post("/onboarding/enrich")
+def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Run Mac-parity sync public research (`POST /enrichment/enrich`) for first-run review."""
+    payload = tools._api_request("POST", "/enrichment/enrich")
+    if payload.get("success") is False:
+        return payload
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    socials = [
+        {"label": _text(s.get("label")), "value": _text(s.get("value"))}
+        for s in _list(profile.get("socials"))
+        if isinstance(s, dict) and _text(s.get("label")) and _text(s.get("value"))
+    ]
+    return {
+        "success": True,
+        "enriched": bool(payload.get("enriched", True)),
+        "profile": {
+            "name": _text(profile.get("name")) or None,
+            "intro": _text(profile.get("intro")) or None,
+            "location": _text(profile.get("location")) or None,
+            "avatar": _avatar_url(profile.get("avatar")) or None,
+            "socials": socials,
+        },
+    }
+
+
+@router.post("/onboarding/confirm")
+def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Confirm the first-run profile review (Mac settings `enrich` path).
+
+    Persists the approved draft through MCP `confirm_user_context` (sets
+    `onboarding.profileConfirmedAt`) and writes socials/name/intro/location via
+    `PATCH /auth/profile/update`.
+    """
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Confirm body must be an object."}
+    update, validation_error = _sanitize_profile_update(body)
+    if validation_error:
+        return {"success": False, "error": validation_error}
+    if not update:
+        return {"success": False, "error": "Name, intro, location, or socials are required."}
+
+    draft = body.get("draft") if isinstance(body.get("draft"), dict) else _approved_draft_from_body(body)
+    identity = draft.get("identity") if isinstance(draft.get("identity"), dict) else {}
+    narrative = draft.get("narrative") if isinstance(draft.get("narrative"), dict) else {}
+    attributes = draft.get("attributes") if isinstance(draft.get("attributes"), dict) else {}
+    approved = {
+        "identity": {
+            "name": _text(identity.get("name")) or _text(body.get("name")),
+            "bio": _text(identity.get("bio")) or _text(body.get("intro")),
+            "location": _text(identity.get("location")) or _text(body.get("location")),
+        },
+        "narrative": {"context": _text(narrative.get("context")) or _text(body.get("context")) or _text(body.get("intro"))},
+        "attributes": {
+            "skills": [s for s in _list(attributes.get("skills")) if isinstance(s, str) and s.strip()],
+            "interests": [s for s in _list(attributes.get("interests")) if isinstance(s, str) and s.strip()],
+        },
+    }
+    confirm = _call_tool("confirm_user_context", {"draft": approved})
+    if confirm.get("success") is False:
+        return confirm
+
+    payload = tools._api_request("PATCH", "/auth/profile/update", update)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 
 @router.patch("/intents/{intent_id}/archive")
