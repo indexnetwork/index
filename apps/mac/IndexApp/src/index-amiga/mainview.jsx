@@ -1626,11 +1626,17 @@ function opportunityBucket(p) {
 }
 
 /* =================== RIGHT, MATCH FEED =================== */
+// Below this the radar column no longer fits a name, a blurb and the gadgets on
+// one line, so the cards stack their actions instead.
+const MATCH_CARD_ROW_MIN = 340;
+
 function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
   const shownPeople = people.filter(p => opportunityBucket(p) !== null);
   const peopleForTab = tab === "all"
     ? shownPeople
     : shownPeople.filter(p => opportunityBucket(p) === tab);
+  const listRef = useRef(null);
+  const compact = useNarrow(listRef, MATCH_CARD_ROW_MIN);
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)",
@@ -1651,13 +1657,13 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
         </div>
       </div>
 
-      <div className="mac-scroll" style={{
+      <div ref={listRef} className="mac-scroll" style={{
         overflowY:"auto", padding:"14px 22px 24px",
         display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start",
       }}>
         {peopleForTab.map(p => (
           <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile}
-            hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0}/>
+            hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0} compact={compact}/>
         ))}
         {peopleForTab.length === 0 && (
           <div style={{
@@ -1718,7 +1724,7 @@ function AnswerChip({ label, onClick }) {
   );
 }
 
-function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, hasChat = false, unreadCount = 0 }) {
+function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, hasChat = false, unreadCount = 0, compact = false }) {
   const openProfile = (e) => { e.stopPropagation(); onProfile && onProfile(person.id); };
   const [hover, setHover] = useState(false);
   const accepted = person.status === "accepted";
@@ -1740,8 +1746,12 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
       className="fade-up"
       style={{
         textAlign:"left",
-        display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
-        gap:14, padding:"14px 14px", minWidth:0,
+        // Narrow column: the gadgets drop to their own row under the avatar and
+        // the blurb, rather than eating the width the name needs.
+        display:"grid",
+        gridTemplateColumns: compact ? "auto minmax(0, 1fr)" : "auto minmax(0, 1fr) auto",
+        gap: compact ? "10px 12px" : 14,
+        padding:"14px 14px", minWidth:0,
         background:"#fff", color:"#000",
         border:"1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
@@ -1770,7 +1780,11 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           {person.blurb}
         </div>
       </div>
-      <div style={{ display:"grid", justifyItems:"end", gap:6, alignContent:"start" }}>
+      <div style={{
+        display:"grid", gap:6, alignContent:"start",
+        justifyItems: compact ? "start" : "end",
+        ...(compact ? { gridColumn:"2 / -1" } : null),
+      }}>
         {accepted ? (
           <React.Fragment>
             {unreadCount > 0 && (
@@ -1786,7 +1800,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
             >{hasChat ? "open chat ›" : "send message"}</button>
           </React.Fragment>
         ) : readyStage ? (
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             <button
               className="amiga-gadget primary"
               onClick={(e) => { e.stopPropagation(); onAccept && onAccept(person.id); }}
