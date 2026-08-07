@@ -1237,8 +1237,8 @@
   }
 
   function SettingUpScreen() {
-    // Mac BuildingProfile parity: brand + indeterminate motion + staggered status lines
-    // while snapshot/enrichment run, before the profile review opens.
+    // Indeterminate bar + staggered status lines while enrichment runs.
+    // No brand mark, loading gif, or live-dot — keep the Hermes card quiet.
     const lines = [
       "Getting a sense of you…",
       "Working out what you're into…",
@@ -1246,18 +1246,6 @@
     ];
     return React.createElement("div", { className: "index-dashboard__setting-up" },
       React.createElement("div", { className: "index-dashboard__setting-up-card" },
-        React.createElement("div", { className: "index-dashboard__setting-up-brand" },
-          React.createElement("span", { className: "index-dashboard__live-dot", "aria-hidden": "true" }),
-          React.createElement("span", { className: "index-dashboard__setting-up-brand-label" }, "index"),
-        ),
-        LOADING_IMAGE()
-          ? React.createElement("img", {
-            className: "index-dashboard__setting-up-anim",
-            src: LOADING_IMAGE(),
-            alt: "",
-            loading: "eager",
-          })
-          : null,
         React.createElement("div", { className: "index-dashboard__setting-up-bar", "aria-hidden": "true" },
           React.createElement("div", { className: "index-dashboard__setting-up-bar-fill" }),
         ),

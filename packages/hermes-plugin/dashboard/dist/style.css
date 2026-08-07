@@ -1343,26 +1343,6 @@
   text-align: center;
 }
 
-.index-dashboard__setting-up-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.index-dashboard__setting-up-brand-label {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 0.82rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--color-card-foreground, inherit);
-}
-
-.index-dashboard__setting-up-anim {
-  width: 220px;
-  max-width: 70%;
-  height: auto;
-}
-
 .index-dashboard__setting-up-bar {
   width: 100%;
   height: 0.55rem;
