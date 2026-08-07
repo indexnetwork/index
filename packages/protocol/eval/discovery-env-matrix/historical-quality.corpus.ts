@@ -1,6 +1,7 @@
 import type { MatchingCase } from "../matching/matching.types.js";
 
 export type HistoricalDatePrecision = "day" | "month" | "year";
+export type HistoricalBoundaryConfidence = "low" | "medium" | "high";
 export type HistoricalRecognizability = "low" | "medium" | "high";
 export type HistoricalParticipantKind = "historical" | "synthetic";
 
@@ -38,13 +39,20 @@ export interface HistoricalAuthoredClaim {
 
 export type HistoricalClaim = HistoricalFactClaim | HistoricalDerivedClaim | HistoricalAuthoredClaim;
 
-export interface HistoricalQualityMetadata {
-  cutoff: {
+export interface HistoricalCutoff {
+  event: { id: string; description: string };
+  calendarProxy: {
     date: string;
     precision: HistoricalDatePrecision;
-    exclusive: true;
-    orderingCitationIds: string[];
   };
+  confidence: HistoricalBoundaryConfidence;
+  uncertaintyRationale: string;
+  exclusive: true;
+  orderingCitationIds: string[];
+}
+
+export interface HistoricalQualityMetadata {
+  cutoff: HistoricalCutoff;
   citations: HistoricalCitation[];
   claims: HistoricalClaim[];
   /** JSON-pointer field paths in the model-safe projection mapped to supporting claim IDs. */
@@ -237,24 +245,33 @@ export function validateHistoricalQualityCase(
     for (const id of values) if (!citations.has(id)) fail(`${field} references unknown citation ${id}`);
   };
 
-  if (input.historicalQuality.cutoff.exclusive !== true) fail("cutoff must be exclusive");
+  const cutoff = input.historicalQuality.cutoff;
+  nonblank(cutoff.event.id, "cutoff event id");
+  nonblank(cutoff.event.description, "cutoff event description");
+  if (!new Set<unknown>(["low", "medium", "high"]).has(cutoff.confidence)) {
+    fail("cutoff confidence is invalid");
+  }
+  nonblank(cutoff.uncertaintyRationale, "cutoff uncertainty rationale");
+  if (cutoff.exclusive !== true) fail("cutoff must be exclusive");
+
   const cutoffPatterns: Record<HistoricalDatePrecision, RegExp> = {
     day: /^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/,
     month: /^\d{4}-(0[1-9]|1[0-2])$/,
     year: /^\d{4}$/,
   };
-  if (!cutoffPatterns[input.historicalQuality.cutoff.precision].test(input.historicalQuality.cutoff.date)) {
-    fail(`cutoff date does not match ${input.historicalQuality.cutoff.precision} precision`);
+  const { date, precision } = cutoff.calendarProxy;
+  if (!cutoffPatterns[precision].test(date)) {
+    fail(`cutoff calendar proxy does not match ${precision} precision`);
   }
-  if (input.historicalQuality.cutoff.precision === "day") {
-    const [year, month, day] = input.historicalQuality.cutoff.date.split("-").map(Number);
+  if (precision === "day") {
+    const [year, month, day] = date.split("-").map(Number);
     const normalized = new Date(Date.UTC(year!, month! - 1, day!)).toISOString().slice(0, 10);
-    if (normalized !== input.historicalQuality.cutoff.date) fail("cutoff day is not a valid calendar date");
+    if (normalized !== date) fail("cutoff day is not a valid calendar date");
   }
-  if (input.historicalQuality.cutoff.precision === "year" && input.historicalQuality.cutoff.orderingCitationIds.length === 0) {
+  if (precision === "year" && cutoff.orderingCitationIds.length === 0) {
     fail("year precision requires ordering evidence");
   }
-  assertCitationIds(input.historicalQuality.cutoff.orderingCitationIds, "cutoff ordering");
+  assertCitationIds(cutoff.orderingCitationIds, "cutoff ordering");
   assertCitationIds(input.historicalQuality.outcomeCitationIds, "outcome");
 
   const claims = new Map<string, HistoricalClaim>();
@@ -341,6 +358,9 @@ export function validateHistoricalQualityCase(
   const review = input.historicalQuality.anonymizationReview;
   if ((options.requireApprovedReview ?? true) && review.decision !== "approved") {
     fail("anonymization review must be approved");
+  }
+  if ((options.requireApprovedReview ?? true) && review.recognizability === "high") {
+    fail("approved historical cases cannot have high recognizability");
   }
   nonblank(review.reviewer, "anonymization reviewer");
   nonblank(review.reviewedAt, "anonymization reviewedAt");

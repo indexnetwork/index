@@ -91,8 +91,13 @@ describe("historical case 04", () => {
 
   it("uses the approved profiles and exclusive August 1998 cutoff", () => {
     expect(HISTORICAL_CASE_04.historicalQuality.cutoff).toEqual({
-      date: "1998-08",
-      precision: "month",
+      event: {
+        id: "h4-first-substantive-collaboration",
+        description: "Immediately before Larry Page demonstrated the search prototype to Andreas Bechtolsheim and received his first check.",
+      },
+      calendarProxy: { date: "1998-08", precision: "month" },
+      confidence: "medium",
+      uncertaintyRationale: "Institutional accounts support the August 1998 sequence but do not establish an exact demonstration day.",
       exclusive: true,
       orderingCitationIds: ["stanford-otl-uniquely-google", "stanford-engineering-hero-talk"],
     });

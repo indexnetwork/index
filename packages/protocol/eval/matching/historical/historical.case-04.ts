@@ -345,8 +345,13 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
   },
   historicalQuality: {
     cutoff: {
-      date: "1998-08",
-      precision: "month",
+      event: {
+        id: "h4-first-substantive-collaboration",
+        description: "Immediately before Larry Page demonstrated the search prototype to Andreas Bechtolsheim and received his first check.",
+      },
+      calendarProxy: { date: "1998-08", precision: "month" },
+      confidence: "medium",
+      uncertaintyRationale: "Institutional accounts support the August 1998 sequence but do not establish an exact demonstration day.",
       exclusive: true,
       orderingCitationIds: ["stanford-otl-uniquely-google", "stanford-engineering-hero-talk"],
     },
