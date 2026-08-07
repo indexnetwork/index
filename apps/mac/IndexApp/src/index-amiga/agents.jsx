@@ -173,17 +173,9 @@ function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onToggle
 // Your negotiator's identity, the one agent that speaks for you, and the only
 // thing on this page with a face. Laid out like the profile block in settings
 // (picture on the left, name beside it) because it is the same kind of thing:
-// who you are to the network, and who your agent is.
-//
-// Shuffle is the whole control surface: a generated avatar's point is that a
-// new one is one click away, and the kit has 3,600 draws behind it.
-function NegotiatorProfile({ agent, onShuffle,
-                            runtimeOptions, runtime, onChangeRuntime }) {
-  const btn = {
-    fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
-    border:"1px solid #000", background:"#fff", color:"#000",
-    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-  };
+// who you are to the network, and who your agent is. The face is derived from
+// your account id, so it is persistent and needs no control surface.
+function NegotiatorProfile({ agent, runtimeOptions, runtime, onChangeRuntime }) {
   return (
     <div style={{ display:"grid", gap:16 }}>
       {/* Pick the runtime first, then dress it. Which one carries your
@@ -201,12 +193,8 @@ function NegotiatorProfile({ agent, onShuffle,
         }}>index takes over if it's unavailable.</span>
       </div>
 
-      {/* No edit badge over the picture. The upload affordance sat in the
-          bottom-right corner, which is exactly where the agent's mark now
-          sits, so the pencil covered the thing it was there to change.
-          Shuffle is the control. */}
       <div style={{ display:"grid", gap:2 }}>
-        <RuleLabel size={13}>customize your agent</RuleLabel>
+        <RuleLabel size={13}>your agent</RuleLabel>
         <p style={{
           margin:"0 0 8px", maxWidth:560,
           fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
@@ -217,14 +205,9 @@ function NegotiatorProfile({ agent, onShuffle,
         <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
           <MyAgentAvatar size={54}/>
 
-          <div style={{ display:"grid", gap:6, minWidth:0 }}>
-            <div style={{
-              fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
-            }}>{agent.name}</div>
-            <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
-              <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
-            </div>
-          </div>
+          <div style={{
+            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
+          }}>{agent.name}</div>
         </div>
       </div>
     </div>
@@ -520,23 +503,9 @@ function Agents({ onClose }) {
     [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
   }));
 
-  // Your negotiator's picture. setMyAgentFace writes the shared record so every
-  // other surface (the feed, a question card, onboarding) picks it up on its
-  // next render, and persists it so the draw survives a relaunch. `bump` only
-  // exists to re-render this pane, since the record is a plain object.
-  const [, bump] = useState(0);
+  // Your negotiator's picture is derived from your account id (see myAgent in
+  // primitives), so it is the same everywhere with nothing to configure here.
   const myNegotiator = myAgent();
-  // any distinct string moves the hash; the counter stops two shuffles in the
-  // same millisecond from landing on the same draw
-  const shuffleCount = useRef(0);
-  const shuffleFace = () => {
-    shuffleCount.current += 1;
-    setMyAgentFace({
-      seed: `${currentMe().name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
-      photo: null,
-    });
-    bump(n => n + 1);
-  };
 
   // Rows are the builtin Index runtime plus the detected local runtimes.
   // Index leads the list: always on, not switchable — it is the system
@@ -662,12 +631,11 @@ function Agents({ onClose }) {
               margin:"8px 0 12px",
               fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              one agent speaks for you in the network. pick which runtime carries it, then set how it looks when it does.
+              one agent speaks for you in the network. pick which runtime carries it.
             </p>
 
             <NegotiatorProfile
               agent={myNegotiator}
-              onShuffle={shuffleFace}
               runtimeOptions={negotiatorOptions}
               runtime={negotiator}
               onChangeRuntime={setNegotiator}

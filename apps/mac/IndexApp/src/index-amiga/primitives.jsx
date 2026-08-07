@@ -321,57 +321,16 @@ function currentMe() {
   return (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || {};
 }
 
-/* Where a shuffled face is kept.
-
-   The page is loaded from a file:// URL, so WebKit hands the document an
-   opaque origin and localStorage is not persisted between launches. The native
-   shell stores it in UserDefaults instead and injects it at document start, so
-   the saved face is already correct on the first paint. localStorage is still
-   written as the fallback for running this bundle in a browser, where there is
-   no shell to ask. */
-const AGENT_FACE_KEY = "index.agentFace";
-let agentFaceCache;
-
-function storedAgentFace() {
-  if (agentFaceCache !== undefined) return agentFaceCache;
-  const native = (typeof window !== "undefined" && window.INDEX_NATIVE && window.INDEX_NATIVE.agentFace) || null;
-  if (native) { agentFaceCache = native; return agentFaceCache; }
-  try {
-    const raw = window.localStorage.getItem(AGENT_FACE_KEY);
-    agentFaceCache = raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    agentFaceCache = null;   // storage disabled; the face falls back to your name
-  }
-  return agentFaceCache;
-}
-
-/** Save the negotiator's avatar so it survives a relaunch. */
-function setMyAgentFace(patch) {
-  const next = { ...(storedAgentFace() || {}), ...patch };
-  agentFaceCache = next;
-  Object.assign(currentMe(), {
-    agentFaceSeed: next.seed || null,
-    agentPhoto: next.photo || null,
-  });
-  try { window.localStorage.setItem(AGENT_FACE_KEY, JSON.stringify(next)); } catch (e) {}
-  const bridge = (typeof window !== "undefined" && window.webkit
-    && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth) || null;
-  if (bridge) {
-    try { bridge.postMessage({ action: "setAgentFace", value: next }); } catch (e) {}
-  }
-  return next;
-}
-
 function myAgent() {
   const me = currentMe();
-  const saved = storedAgentFace() || {};
   const first = String(me.name || "").trim().split(/\s+/)[0] || "your";
   return {
     name: `${first}'s agent`,
-    // a shuffle wins, then whatever was saved on a previous run, and failing
-    // both the face hangs off your name so it is yours from the first launch
-    seed: me.agentFaceSeed || saved.seed || me.name || "index",
-    photo: me.agentPhoto || saved.photo || null,
+    // The face hangs off your account id, so it is the same on every device
+    // and every launch, with nothing stored anywhere. Name is the fallback
+    // until the snapshot loads.
+    seed: me.id || me.name || "index",
+    photo: null,
   };
 }
 
@@ -1193,7 +1152,7 @@ Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
-  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
+  AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
   ScoreBar, Ticker, Stat, useInterval, useNarrow,
   PipelineFunnel, SourceBadge, ModeBadge,
