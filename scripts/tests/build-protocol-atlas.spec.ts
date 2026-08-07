@@ -1,9 +1,21 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-import { buildAtlasArtifact, serializeAtlasArtifact, validateAtlasArtifact, type AtlasArtifact, type GeneratorInput } from "../build-protocol-atlas.ts";
+import { buildAtlasArtifact, loadProtocolGeneratorInput, serializeAtlasArtifact, validateAtlasArtifact, validateCuratedReferences, type AtlasArtifact, type GeneratorInput } from "../build-protocol-atlas.ts";
+
+const repoRoot = resolve(import.meta.dir, "../..");
+
+async function loadAtlasContent() {
+  delete (globalThis as { ProtocolAtlasContent?: unknown }).ProtocolAtlasContent;
+  await import(`../../docs/protocol-atlas/atlas-content.js?test=${crypto.randomUUID()}`);
+  const content = structuredClone(
+    (globalThis as { ProtocolAtlasContent: Record<string, unknown> }).ProtocolAtlasContent,
+  );
+  delete (globalThis as { ProtocolAtlasContent?: unknown }).ProtocolAtlasContent;
+  return content;
+}
 
 const fixtureRoot = mkdtempSync(join(tmpdir(), "protocol-atlas-"));
 const protocolSource = "packages/protocol/src/opportunity/application/opportunity.evaluator.ts";
@@ -65,6 +77,99 @@ function fixtureArtifact(options: { duplicateNode?: boolean; missingTarget?: boo
   if (options.missingTarget) artifact.edges[0].targetId = "missing.target";
   return artifact;
 }
+
+describe("protocol atlas curated content", () => {
+  test("accepts the approved seven chapters and five flows", async () => {
+    const content = await loadAtlasContent() as {
+      chapters: Array<{ id: string }>;
+      flows: Array<{ id: string }>;
+    };
+    expect(content.chapters.map(({ id }) => id)).toEqual([
+      "orientation", "primitives", "trust-scope", "discovery", "consent", "runtime", "explore",
+    ]);
+    expect(content.flows.map(({ id }) => id)).toEqual([
+      "trusted-context", "express-signal", "discover-opportunity", "consent-connect", "external-agent-mcp",
+    ]);
+    const artifact = buildAtlasArtifact(await loadProtocolGeneratorInput(repoRoot));
+    expect(validateCuratedReferences(content, artifact)).toEqual([]);
+  });
+
+  test("preserves approved concept, invariant, flow-step, and vocabulary contracts", async () => {
+    const content = await loadAtlasContent() as {
+      concepts: Array<{ id: string }>;
+      invariants: Array<{ id: string; text: string }>;
+      flows: Array<{ id: string; steps: Array<{
+        id: string;
+        title: string;
+        summary: string;
+        conceptIds: string[];
+        nodeIds: string[];
+        invariantIds: string[];
+        sourcePaths: string[];
+        previous: string | null;
+        next: string | null;
+        notes: { protocol: string; implementation: string };
+      }> }>;
+      vocabulary: Array<{ id: string; protocolTerm: string; productTerm: string; implementationTerm: string }>;
+      relationships: Array<{ id: string; kind: string; title?: string; summary: string }>;
+    };
+    expect(content.concepts.map(({ id }) => id)).toEqual([
+      "participant", "software-agent", "signal", "premise", "context", "community", "membership",
+      "agent-permission", "effective-scope", "candidate", "opportunity", "negotiation", "connection",
+      "provider-helper-role", "radar",
+    ]);
+    expect(content.invariants.map(({ id }) => id)).toEqual([
+      "scope-intersection", "participant-consent", "action-attribution", "candidate-private", "no-fabrication",
+      "context-freshness", "opportunity-legibility", "terminality", "host-boundary", "negotiation-not-consent",
+    ]);
+    expect(content.invariants.find(({ id }) => id === "host-boundary")?.text).toBe(
+      "The protocol declares required ports and callbacks; how a host fulfills them is outside this atlas.",
+    );
+    expect(Object.fromEntries(content.flows.map(({ id, steps }) => [id, steps.map((step) => step.id)]))).toEqual({
+      "trusted-context": ["approved-material", "atomic-premises", "assign-and-embed", "synthesize-context", "refresh-representations"],
+      "express-signal": ["participant-input", "infer-speech-act", "verify-or-clarify", "reconcile", "assign-communities", "persist-and-enqueue"],
+      "discover-opportunity": ["load-trigger", "resolve-effective-scope", "retrieve-candidates", "evaluate-fit", "recheck-admission", "negotiate-optional", "surface"],
+      "consent-connect": ["actionable-opportunity", "first-participant-sends", "counterparty-reviews", "accept-or-decline", "open-human-conversation"],
+      "external-agent-mcp": ["caller-credential", "auth-resolver-requirement", "protocol-capability-policy", "authorized-tool-registry", "invocation-runtime", "scoped-capability"],
+    });
+    expect(content.vocabulary.map(({ protocolTerm, productTerm, implementationTerm }) => ({ protocolTerm, productTerm, implementationTerm }))).toEqual([
+      { protocolTerm: "Signal", productTerm: "Signal", implementationTerm: "intent" },
+      { protocolTerm: "Community", productTerm: "Network", implementationTerm: "network/index" },
+      { protocolTerm: "Participant", productTerm: "Person", implementationTerm: "user" },
+      { protocolTerm: "Draft/Sent/Connected/Declined/Expired", productTerm: "Draft/Sent/Connected/Declined/Expired", implementationTerm: "internal lifecycle states" },
+      { protocolTerm: "Software Agent", productTerm: "Software Agent", implementationTerm: "agent registry actor" },
+      { protocolTerm: "provider/helper role", productTerm: "provider/helper role", implementationTerm: "internal valency role \"agent\"" },
+    ]);
+    for (const flow of content.flows) {
+      flow.steps.forEach((step, index) => {
+        expect(step.title).not.toBeEmpty();
+        expect(step.summary).not.toBeEmpty();
+        expect(step.conceptIds.length).toBeGreaterThan(0);
+        expect(step.nodeIds.length).toBeGreaterThan(0);
+        expect(step.invariantIds.length).toBeGreaterThan(0);
+        expect(step.sourcePaths.length).toBeGreaterThan(0);
+        expect(step.sourcePaths.every((path) => path.startsWith("packages/protocol/"))).toBe(true);
+        expect(step.previous).toBe(index === 0 ? null : flow.steps[index - 1].id);
+        expect(step.next).toBe(index === flow.steps.length - 1 ? null : flow.steps[index + 1].id);
+        expect(step.notes.protocol).not.toBeEmpty();
+        expect(step.notes.implementation).not.toBeEmpty();
+      });
+    }
+    expect(content.relationships.filter(({ kind }) => kind === "discrepancy")).toHaveLength(5);
+    expect(content.relationships.filter(({ kind }) => kind === "reference-concept").map(({ title }) => title)).toEqual([
+      "Radar", "Semantic entropy", "Felicity conditions", "Referential anchors", "HyDE", "Valency", "Gricean presentation",
+    ]);
+  });
+
+  test("forbids concrete host implementation paths in curated content", async () => {
+    const content = await loadAtlasContent() as { flows: Array<{ steps: Array<{ sourcePaths?: string[] }> }> };
+    content.flows[0].steps[0].sourcePaths = ["services/api/src/main.ts"];
+    const artifact = buildAtlasArtifact(await loadProtocolGeneratorInput(repoRoot));
+    expect(validateCuratedReferences(content, artifact)).toContain(
+      "curated source paths must begin with packages/protocol/",
+    );
+  });
+});
 
 describe("protocol atlas generator", () => {
   test("sorts records and emits a classic-script global deterministically", () => {

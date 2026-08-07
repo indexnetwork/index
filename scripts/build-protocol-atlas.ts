@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 import { facadeCapabilityForSourcePath, type Capability } from "../packages/protocol/scripts/architecture/capability-model.ts";
@@ -513,10 +514,70 @@ export function validateAtlasArtifact(artifact: AtlasArtifact, repoRoot: string)
   return issues;
 }
 
+type CuratedRecord = Record<string, unknown>;
+
+function curatedRecords(value: unknown): CuratedRecord[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is CuratedRecord => !!entry && typeof entry === "object" && !Array.isArray(entry))
+    : [];
+}
+
+export async function loadProtocolAtlasContent(repoRoot: string): Promise<CuratedRecord> {
+  const target = globalThis as typeof globalThis & { ProtocolAtlasContent?: unknown };
+  delete target.ProtocolAtlasContent;
+  try {
+    const contentUrl = pathToFileURL(resolve(repoRoot, "docs/protocol-atlas/atlas-content.js"));
+    contentUrl.searchParams.set("build", crypto.randomUUID());
+    await import(contentUrl.href);
+    const content = target.ProtocolAtlasContent;
+    if (!content || typeof content !== "object" || Array.isArray(content)) {
+      throw new Error("Protocol atlas curated content did not install globalThis.ProtocolAtlasContent.");
+    }
+    return structuredClone(content) as CuratedRecord;
+  } finally {
+    delete target.ProtocolAtlasContent;
+  }
+}
+
 export function validateCuratedReferences(content: unknown, artifact: AtlasArtifact): string[] {
-  const issues: string[] = [];
-  const nodeIds = new Set(artifact.nodes.map(({ id }) => id));
-  const edgeIds = new Set(artifact.edges.map(({ id }) => id));
+  if (!content || typeof content !== "object" || Array.isArray(content)) return ["curated content must be an object"];
+
+  const issues = new Set<string>();
+  const root = content as CuratedRecord;
+  const chapters = curatedRecords(root.chapters);
+  const flows = curatedRecords(root.flows);
+  const concepts = curatedRecords(root.concepts);
+  const invariants = curatedRecords(root.invariants);
+  const relationships = curatedRecords(root.relationships);
+  const steps = flows.flatMap((flow) => curatedRecords(flow.steps));
+  const idsFor = (records: CuratedRecord[]) => new Set(records.map(({ id }) => id).filter((id): id is string => typeof id === "string"));
+  const knownIds = {
+    node: new Set(artifact.nodes.map(({ id }) => id)),
+    edge: new Set(artifact.edges.map(({ id }) => id)),
+    chapter: idsFor(chapters),
+    flow: idsFor(flows),
+    concept: idsFor(concepts),
+    invariant: idsFor(invariants),
+    step: idsFor(steps),
+  };
+
+  for (const [name, records] of Object.entries({ chapter: chapters, flow: flows, concept: concepts, invariant: invariants, relationship: relationships, step: steps })) {
+    for (const id of duplicateIds(records.filter((record): record is CuratedRecord & { id: string } => typeof record.id === "string") as Array<{ id: string }>)) {
+      issues.add(`duplicate curated ${name} id: ${id}`);
+    }
+  }
+
+  const referenceKinds: Readonly<Record<string, keyof typeof knownIds>> = {
+    nodeId: "node", nodeIds: "node",
+    edgeId: "edge", edgeIds: "edge",
+    chapterId: "chapter", chapterIds: "chapter",
+    flowId: "flow", flowIds: "flow",
+    conceptId: "concept", conceptIds: "concept",
+    sourceConceptId: "concept", targetConceptId: "concept",
+    invariantId: "invariant", invariantIds: "invariant",
+    previous: "step", next: "step", stepId: "step", stepIds: "step",
+  };
+
   const visit = (value: unknown, location: string): void => {
     if (Array.isArray(value)) {
       value.forEach((entry, index) => visit(entry, `${location}[${index}]`));
@@ -524,22 +585,32 @@ export function validateCuratedReferences(content: unknown, artifact: AtlasArtif
     }
     if (!value || typeof value !== "object") return;
     for (const [key, entry] of Object.entries(value)) {
-      const entries = Array.isArray(entry) ? entry : [entry];
-      if (key === "nodeId" || key === "nodeIds") {
-        entries.forEach((id) => {
-          if (typeof id !== "string" || !nodeIds.has(id)) issues.push(`${location}.${key} references missing node ${String(id)}`);
-        });
-      } else if (key === "edgeId" || key === "edgeIds") {
-        entries.forEach((id) => {
-          if (typeof id !== "string" || !edgeIds.has(id)) issues.push(`${location}.${key} references missing edge ${String(id)}`);
-        });
-      } else {
-        visit(entry, `${location}.${key}`);
+      if (key === "sourcePath" || key === "sourcePaths") {
+        const paths = Array.isArray(entry) ? entry : [entry];
+        for (const path of paths) {
+          if (typeof path !== "string" || !path.startsWith("packages/protocol/")) {
+            issues.add("curated source paths must begin with packages/protocol/");
+          } else if (path.includes("\\") || path.split("/").includes("..")) {
+            issues.add("curated source paths must be normalized under packages/protocol/");
+          }
+        }
+        continue;
       }
+      const kind = referenceKinds[key];
+      if (kind) {
+        const references = Array.isArray(entry) ? entry : [entry];
+        for (const id of references) {
+          if (id !== null && (typeof id !== "string" || !knownIds[kind].has(id))) {
+            issues.add(`${location}.${key} references missing ${kind} ${String(id)}`);
+          }
+        }
+        continue;
+      }
+      visit(entry, `${location}.${key}`);
     }
   };
   visit(content, "content");
-  return issues;
+  return [...issues];
 }
 
 export function serializeAtlasArtifact(artifact: AtlasArtifact): string {
@@ -549,9 +620,15 @@ export function serializeAtlasArtifact(artifact: AtlasArtifact): string {
 async function runCli(): Promise<void> {
   const repoRoot = resolve(import.meta.dir, "..");
   const outputPath = resolve(repoRoot, "docs/protocol-atlas/protocol.generated.js");
-  const input = await loadProtocolGeneratorInput(repoRoot);
+  const [input, content] = await Promise.all([
+    loadProtocolGeneratorInput(repoRoot),
+    loadProtocolAtlasContent(repoRoot),
+  ]);
   const artifact = buildAtlasArtifact(input);
-  const issues = validateAtlasArtifact(artifact, repoRoot);
+  const issues = [
+    ...validateAtlasArtifact(artifact, repoRoot),
+    ...validateCuratedReferences(content, artifact),
+  ];
   if (issues.length > 0) throw new Error(`Protocol atlas validation failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`);
   const serialized = serializeAtlasArtifact(artifact);
 
