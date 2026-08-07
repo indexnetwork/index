@@ -12,14 +12,14 @@ const source = {
 } as const;
 
 const partner = {
-  bio: "Biochemist with nearly a decade of messenger-RNA research focused on therapeutic-protein goals.",
+  bio: "RNA researcher with nearly a decade of messenger-RNA research focused on therapeutic-protein goals.",
   location: "U.S. East Coast",
   interests: ["messenger-RNA research", "therapeutic protein research", "long-term molecular research"],
-  skills: ["biochemistry", "messenger-RNA research", "therapeutic-protein research"],
+  skills: ["RNA research", "messenger-RNA research", "therapeutic-protein research"],
   intent: "Continue messenger-RNA research aimed at coding for therapeutic proteins.",
 } as const;
 
-const description = "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with a biochemist who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.";
+const description = "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with an RNA researcher who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.";
 
 const semanticNegatives = {
   "h5-c": "Same-side vaccine immunologist also lacks the required RNA preparation capability.",
@@ -145,7 +145,7 @@ const claims: HistoricalClaim[] = [
     ["model-partner-interest-rna", partner.interests[0]],
     ["model-partner-interest-protein", partner.interests[1]],
     ["model-partner-interest-long-term", partner.interests[2]],
-    ["model-partner-skill-biochemistry", partner.skills[0]],
+    ["model-partner-skill-rna-research", partner.skills[0]],
     ["model-partner-skill-rna", partner.skills[1]],
     ["model-partner-skill-protein", partner.skills[2]],
     ["model-partner-intent", partner.intent],
@@ -269,7 +269,7 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
         url: "https://www.pnas.org/doi/10.1073/pnas.2119757118",
         title: "QnAs with Katalin Karikó and Drew Weissman",
         publisher: "Proceedings of the National Academy of Sciences",
-        excerpt: "I told him I had been working with mRNA for almost 10 years.",
+        excerpt: "I met Drew around 1997, when he had just been hired as an assistant professor at Penn Medicine. I told him I had been working with mRNA for almost 10 years.",
       },
       {
         id: "pnas-kariko-weissman-profile",
@@ -297,7 +297,7 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
       "/input/entities/1/profile/interests/0": ["model-partner-interest-rna"],
       "/input/entities/1/profile/interests/1": ["model-partner-interest-protein"],
       "/input/entities/1/profile/interests/2": ["model-partner-interest-long-term"],
-      "/input/entities/1/profile/skills/0": ["model-partner-skill-biochemistry"],
+      "/input/entities/1/profile/skills/0": ["model-partner-skill-rna-research"],
       "/input/entities/1/profile/skills/1": ["model-partner-skill-rna"],
       "/input/entities/1/profile/skills/2": ["model-partner-skill-protein"],
       "/input/entities/1/intents/0/payload": ["model-partner-intent"],

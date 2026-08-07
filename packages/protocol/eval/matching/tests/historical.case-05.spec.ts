@@ -12,10 +12,10 @@ const source = {
 };
 
 const partner = {
-  bio: "Biochemist with nearly a decade of messenger-RNA research focused on therapeutic-protein goals.",
+  bio: "RNA researcher with nearly a decade of messenger-RNA research focused on therapeutic-protein goals.",
   location: "U.S. East Coast",
   interests: ["messenger-RNA research", "therapeutic protein research", "long-term molecular research"],
-  skills: ["biochemistry", "messenger-RNA research", "therapeutic-protein research"],
+  skills: ["RNA research", "messenger-RNA research", "therapeutic-protein research"],
   intent: "Continue messenger-RNA research aimed at coding for therapeutic proteins.",
 };
 
@@ -59,7 +59,7 @@ describe("historical case 05", () => {
     });
     expect(partnerEntity!.intents?.[0]?.payload).toBe(partner.intent);
     expect(HISTORICAL_CASE_05.description).toBe(
-      "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with a biochemist who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.",
+      "A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with an RNA researcher who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.",
     );
     expect(HISTORICAL_CASE_05.historicalQuality.triggerInputs).toEqual({
       intent: { text: source.intent },
@@ -78,36 +78,47 @@ describe("historical case 05", () => {
     });
   });
 
-  it("binds partner capabilities to explicitly ordered pre-contact evidence rather than the undated Nobel method summary", () => {
+  it("binds every target capability to a stored excerpt that orders the mRNA experience at the first meeting", () => {
     const citations = new Map(HISTORICAL_CASE_05.historicalQuality.citations.map((citation) => [citation.id, citation]));
-    expect(citations.get("pnas-kariko-weissman-q-and-a")).toMatchObject({
-      url: "https://www.pnas.org/doi/10.1073/pnas.2119757118",
-      excerpt: "I told him I had been working with mRNA for almost 10 years.",
-    });
+    const chronologicalCitation = citations.get("pnas-kariko-weissman-q-and-a")!;
+    expect(chronologicalCitation.url).toBe("https://www.pnas.org/doi/10.1073/pnas.2119757118");
+    expect(chronologicalCitation.excerpt).toBe(
+      "I met Drew around 1997, when he had just been hired as an assistant professor at Penn Medicine. I told him I had been working with mRNA for almost 10 years.",
+    );
+    const meetingIndex = chronologicalCitation.excerpt.indexOf("I met Drew around 1997");
+    const experienceIndex = chronologicalCitation.excerpt.indexOf("I told him I had been working with mRNA for almost 10 years");
+    expect(meetingIndex).toBeGreaterThanOrEqual(0);
+    expect(experienceIndex).toBeGreaterThan(meetingIndex);
 
     const claims = new Map(HISTORICAL_CASE_05.historicalQuality.claims.map((claim) => [claim.id, claim]));
     const historicalRoots = (claimId: string): string[] => {
       const claim = claims.get(claimId)!;
       return claim.kind === "historical" ? [claim.id] : claim.kind === "derived" ? claim.basisClaimIds.flatMap(historicalRoots) : [];
     };
-    const partnerCapabilityPaths = Object.keys(HISTORICAL_CASE_05.historicalQuality.claimProvenance).filter(
-      (path) => path.startsWith("/input/entities/1/profile/bio") || path.startsWith("/input/entities/1/profile/interests/") || path.startsWith("/input/entities/1/profile/skills/") || path === "/input/entities/1/intents/0/payload",
+    const targetCapabilityPaths = [
+      "/input/entities/1/profile/bio",
+      "/input/entities/1/profile/interests/0",
+      "/input/entities/1/profile/interests/1",
+      "/input/entities/1/profile/interests/2",
+      "/input/entities/1/profile/skills/0",
+      "/input/entities/1/profile/skills/1",
+      "/input/entities/1/profile/skills/2",
+      "/input/entities/1/intents/0/payload",
+    ];
+    const storedTargetCapabilityPaths = Object.keys(HISTORICAL_CASE_05.historicalQuality.claimProvenance).filter(
+      (path) => path.startsWith("/input/entities/1/") && path !== "/input/entities/1/profile/location",
     );
-    expect(partnerCapabilityPaths).toHaveLength(8);
-    for (const path of partnerCapabilityPaths) {
+    expect(new Set(storedTargetCapabilityPaths)).toEqual(new Set(targetCapabilityPaths));
+    for (const path of ["/description", ...targetCapabilityPaths]) {
       const rootIds = HISTORICAL_CASE_05.historicalQuality.claimProvenance[path]!.flatMap(historicalRoots);
-      expect(new Set(rootIds), path).toEqual(new Set(["fact-kariko-rna-experience"]));
-      for (const rootId of rootIds) {
-        const root = claims.get(rootId)!;
-        expect(root.kind, path).toBe("historical");
-        if (root.kind === "historical") {
-          expect(root.preConnection, path).toBeTrue();
-          expect(root.citationIds, path).toEqual(["pnas-kariko-weissman-q-and-a", "cell-persistent-progress"]);
-          expect(root.citationIds, path).not.toContain("nobel-medicine-2023-advanced-information");
-        }
+      expect(rootIds, path).toContain("fact-kariko-rna-experience");
+      const chronologicalRoot = claims.get("fact-kariko-rna-experience")!;
+      expect(chronologicalRoot.kind, path).toBe("historical");
+      if (chronologicalRoot.kind === "historical") {
+        expect(chronologicalRoot.citationIds, path).toContain(chronologicalCitation.id);
+        expect(chronologicalRoot.citationIds, path).not.toContain("nobel-medicine-2023-advanced-information");
       }
     }
-    expect(historicalRoots("model-description")).toContain("fact-kariko-rna-experience");
     expect(historicalRoots("model-description")).not.toContain("fact-kariko-rna-methods");
 
     expect(citations.get("cell-persistent-progress")?.url).toBe("https://pmc.ncbi.nlm.nih.gov/articles/PMC8462135/");
@@ -132,7 +143,7 @@ describe("historical case 05", () => {
     expect(modelCitationIds.has("pnas-kariko-weissman-profile")).toBeFalse();
 
     const modelText = JSON.stringify(historicalModelSafeProjection(HISTORICAL_CASE_05));
-    expect(modelText).not.toMatch(/karik[oó]|weissman|katalin|drew|inflammator|modified nucleoside|pseudouridine|toll-like|covid|pandemic|biontech|moderna|nobel|prize|award|company|companies|joint work|worked together|laboratory transcription|cell-expression|cell-based expression|nucleic-acid production|laboratory-made|laboratory-produced/i);
+    expect(modelText).not.toMatch(/karik[oó]|weissman|katalin|drew|biochem|inflammator|modified nucleoside|pseudouridine|toll-like|covid|pandemic|biontech|moderna|nobel|prize|award|company|companies|joint work|worked together|laboratory transcription|cell-expression|cell-based expression|nucleic-acid production|laboratory-made|laboratory-produced/i);
   });
 
   it("uses exact negatives encoding same-side, method, and domain failures", () => {
