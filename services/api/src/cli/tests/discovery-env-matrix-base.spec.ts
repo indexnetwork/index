@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -206,6 +207,10 @@ describe('discovery environment matrix base policy', () => {
 
   it('serializes the exact complete all-five-case database row set', () => {
     const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+    // Digest changes require deliberate review of the complete serialized payload, including every field and array order.
+    const expectedCompletePayloadDigest = '816fc4f9e7fa49f0c16ec10bdec0fb85029112eda7cf62bc54a565ab9b278c6d';
+    expect(createHash('sha256').update(JSON.stringify(payload)).digest('hex')).toBe(expectedCompletePayloadDigest);
+
     const expectedCases = [
       {
         id: 'historical/builder-and-operator',
@@ -400,21 +405,30 @@ describe('discovery environment matrix base policy', () => {
   });
 
   it('excludes recursive audit and report data from serialized rows', () => {
-    const auditKeys = [
-      'historicalQuality', 'claimProvenance', 'semanticNegatives',
-      'anonymizationReview', 'outcomeCitationIds', 'citationIds',
-      'basisClaimIds', 'violatedRequirement', 'uncertaintyRationale',
+    const forbiddenAuditKeys = [
+      'reportNames', 'historicalQuality', 'historicalCutoff', 'sourceAudit', 'review',
+      'citations', 'claims', 'claimProvenance', 'modelFieldProvenance', 'participantKinds',
+      'semanticNegatives', 'anonymizationReview', 'outcomeCitationIds', 'triggerInputs',
+      'reviewer', 'reviewedAt', 'recognizability', 'decision', 'rationale',
+      'citationIds', 'orderingCitationIds', 'basisClaimIds', 'violatedRequirement',
+      'preConnection', 'calendarProxy', 'confidence', 'uncertaintyRationale', 'exclusive',
     ];
-    const forbidden = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => [
-      ...Object.values(historicalCase.reportNames ?? {}),
-      ...historicalCase.historicalQuality.citations.flatMap(({ id, url, title, publisher, excerpt }) =>
-        [id, url, title, publisher, excerpt]),
-      ...Object.values(historicalCase.historicalQuality.semanticNegatives),
-      ...auditKeys,
-    ]).filter(Boolean);
+    const forbidden = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => {
+      const review = historicalCase.historicalQuality.anonymizationReview;
+      return [
+        ...Object.values(historicalCase.reportNames ?? {}),
+        ...historicalCase.historicalQuality.citations.flatMap(({ id, url, title, publisher, excerpt }) =>
+          [id, url, title, publisher, excerpt]),
+        ...Object.values(historicalCase.historicalQuality.semanticNegatives),
+        review.reviewer,
+        review.reviewedAt,
+        review.rationale,
+      ];
+    });
+    const forbiddenKeysAndUniqueValues = [...forbiddenAuditKeys, ...new Set(forbidden.filter(Boolean))];
 
     const serializedStrings = allStrings(baseSeedPayload(HISTORICAL_MATRIX_CASES));
-    for (const value of forbidden) {
+    for (const value of forbiddenKeysAndUniqueValues) {
       expect(serializedStrings.some((entry) => entry.includes(value)), value).toBeFalse();
     }
   });

@@ -460,7 +460,7 @@ export const HISTORICAL_CASE_04 = defineHistoricalQualityCase({
       reviewedAt: "2026-08-06",
       recognizability: "medium",
       decision: "approved",
-      rationale: "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; matrix integration remains pending Task 8.",
+      rationale: "The reviewer approved the evaluator-focused prototype and repeat-founder abstractions after confirming corrected citations, pre-demonstration provenance, authored negatives, outcome isolation, and safe module-level projections; at that review checkpoint, matrix integration was still pending Task 8.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

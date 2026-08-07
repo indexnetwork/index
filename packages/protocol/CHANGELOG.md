@@ -55,6 +55,9 @@ pin a supported release, use `latest`.
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Fixed
+- Add an independent complete-payload golden digest and stronger audit/report leak
+  sentinels for the historical discovery seed serializer, and clarify the H4 review
+  checkpoint chronology (IND-637; 10.0.3).
 - Repair the audited five-case historical evaluation corpus (IND-637; 10.0.2):
   replace H1 with the approved Ted Nierenberg → Jens Quistgaard collaboration,
   reverse H5 to the required Drew Weissman → Katalin Karikó direction, migrate
