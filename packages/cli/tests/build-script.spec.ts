@@ -40,4 +40,10 @@ describe("build script", () => {
     // Should reference the npm/ platform dirs
     expect(content).toContain("npm/");
   });
+
+  it("validates package versions without rewriting manifests", async () => {
+    const source = await readFile(join(CLI_ROOT, "scripts", "build.ts"), "utf-8");
+    expect(source).toContain("assertVersionsAligned");
+    expect(source).not.toContain("writeFile(");
+  });
 });
