@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { historicalModelSafeProjection, validateHistoricalQualityCase } from "../../discovery-env-matrix/historical-quality.corpus.js";
+import { MATCHING_MIN_SCORE } from "../matching.constants.js";
 import { HISTORICAL_CASE_01 } from "../historical/historical.case-01.js";
 
 const source = {
@@ -91,10 +92,23 @@ describe("historical case 01", () => {
     });
     expect(HISTORICAL_CASE_01.expect).toEqual([
       { candidateId: "h1-b", match: true, scoreBand: [60, 100] },
-      { candidateId: "h1-c", match: false, scoreBand: [30, 59] },
-      { candidateId: "h1-d", match: false, scoreBand: [30, 59] },
-      { candidateId: "h1-e", match: false, scoreBand: [30, 59] },
+      { candidateId: "h1-c", match: false, scoreBand: [0, 29] },
+      { candidateId: "h1-d", match: false, scoreBand: [0, 29] },
+      { candidateId: "h1-e", match: false, scoreBand: [0, 29] },
     ]);
+  });
+
+  it("keeps every negative score band feasible under the matching scorer contract", () => {
+    const effectiveAbsentScore = 0;
+    const negativeExpectations = HISTORICAL_CASE_01.expect.filter(({ match }) => !match);
+    expect(negativeExpectations.map(({ candidateId }) => candidateId)).toEqual(["h1-c", "h1-d", "h1-e"]);
+    for (const expectation of negativeExpectations) {
+      expect(expectation.scoreBand).toBeDefined();
+      const [minimum, maximum] = expectation.scoreBand!;
+      expect(maximum).toBeLessThan(MATCHING_MIN_SCORE);
+      expect(minimum).toBeLessThanOrEqual(effectiveAbsentScore);
+      expect(maximum).toBeGreaterThanOrEqual(effectiveAbsentScore);
+    }
   });
 
   it("pins the repaired historical profiles and event-relative cutoff", () => {

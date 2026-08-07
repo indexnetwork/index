@@ -190,9 +190,9 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
   },
   expect: [
     { candidateId: "h1-b", match: true, scoreBand: [60, 100] },
-    { candidateId: "h1-c", match: false, scoreBand: [30, 59] },
-    { candidateId: "h1-d", match: false, scoreBand: [30, 59] },
-    { candidateId: "h1-e", match: false, scoreBand: [30, 59] },
+    { candidateId: "h1-c", match: false, scoreBand: [0, 29] },
+    { candidateId: "h1-d", match: false, scoreBand: [0, 29] },
+    { candidateId: "h1-e", match: false, scoreBand: [0, 29] },
   ],
   reportNames: {
     "h1-a": "Ted Nierenberg",
