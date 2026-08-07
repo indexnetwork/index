@@ -1389,9 +1389,6 @@
     const noteState = useState(null);
     const note = noteState[0];
     const setNote = noteState[1];
-    const generatingState = useState(false);
-    const generating = generatingState[0];
-    const setGenerating = generatingState[1];
     const avatarPreviewState = useState(null);
     const avatarPreview = avatarPreviewState[0];
     const setAvatarPreview = avatarPreviewState[1];
@@ -1642,34 +1639,6 @@
       setNote(null);
     }
 
-    function generate() {
-      setGenerating(true);
-      setNote(null);
-      setPanelError(null);
-      fetchPluginJSON(API + "/profile/intro", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Intro could not be generated.");
-          }
-          if (typeof payload.intro === "string" && payload.intro) {
-            patchForm({ intro: payload.intro });
-            setNote("Intro regenerated from your Index profile.");
-          } else {
-            setNote("No intro was generated — add more about yourself first.");
-          }
-        })
-        .catch(function (err) {
-          setPanelError(err && err.message ? err.message : String(err));
-        })
-        .finally(function () {
-          setGenerating(false);
-        });
-    }
-
     function tabButton(id, label) {
       const active = tab === id;
       return React.createElement("button", {
@@ -1738,15 +1707,7 @@
             React.createElement("input", { className: "index-dashboard__profile-input", value: form.location, placeholder: "Brooklyn, NY", onChange: function (e) { patchForm({ location: e.target.value }); } }),
           ),
         ),
-        React.createElement(ProfileField, {
-          label: "Introduction",
-          hint: (!gettingStarted && form.context) ? "Index context: " + form.context : null,
-        },
-          gettingStarted
-            ? null
-            : React.createElement("div", { className: "index-dashboard__profile-intro-head" },
-              React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
-            ),
+        React.createElement(ProfileField, { label: "Introduction" },
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },

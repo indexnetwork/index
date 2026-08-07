@@ -1682,26 +1682,6 @@
   cursor: pointer;
 }
 
-.index-dashboard__profile-intro-head {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.index-dashboard__profile-generate {
-  border: none;
-  background: transparent;
-  padding: 0.1rem 0.25rem;
-  font: inherit;
-  font-size: 0.78rem;
-  color: var(--color-primary, #4fd1c5);
-  cursor: pointer;
-}
-
-.index-dashboard__profile-generate:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .index-dashboard__profile-socials {
   display: grid;
   gap: 0.4rem;
