@@ -1236,9 +1236,15 @@
     );
   }
 
+  function usableEnriched(res) {
+    const p = res && res.profile;
+    return !!(p && (String(p.intro || "").trim() || (p.socials && p.socials.length)));
+  }
+
   function ProfilePanel(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
+    const useRef = React.useRef;
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -1266,37 +1272,88 @@
     const avatarPreviewState = useState(null);
     const avatarPreview = avatarPreviewState[0];
     const setAvatarPreview = avatarPreviewState[1];
+    const draftingState = useState(!!props.gettingStarted);
+    const drafting = draftingState[0];
+    const setDrafting = draftingState[1];
+    const assembledRef = useRef(null);
 
     const readOnly = !!props.readOnly;
+    const gettingStarted = !!props.gettingStarted;
+
+    function applyProfile(p) {
+      const next = {
+        id: p.id || "",
+        name: p.name || "",
+        intro: p.intro || "",
+        location: p.location || "",
+        email: p.email || "",
+        avatar: p.avatar || "",
+        context: p.context || "",
+        timezone: p.timezone || defaultTimezone(),
+        socials: Array.isArray(p.socials) ? p.socials.slice() : [],
+        notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
+      };
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
+
+    function adoptEnrichment(enriched, base) {
+      const p = (enriched && enriched.profile) || {};
+      const next = Object.assign({}, base || assembledRef.current || {}, {
+        name: (base && base.name) || p.name || "",
+        intro: (base && base.intro) || p.intro || "",
+        location: (base && base.location) || p.location || "",
+        avatar: (base && base.avatar) || p.avatar || "",
+        socials: (p.socials && p.socials.length)
+          ? p.socials.slice()
+          : ((base && base.socials) || []),
+        context: (base && base.context) || p.intro || "",
+      });
+      assembledRef.current = next;
+      setForm(next);
+      setDirty(false);
+    }
 
     function load() {
       setLoading(true);
       setPanelError(null);
-      fetchPluginJSON(props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile")
+      const profileUrl = props.userId ? API + "/profile/" + encodeURIComponent(props.userId) : API + "/profile";
+      fetchPluginJSON(profileUrl)
         .then(function (payload) {
           if (!payload || payload.success === false) {
             throw new Error((payload && payload.error) || "Profile could not be loaded.");
           }
-          const p = payload.profile || {};
-          setForm({
-            id: p.id || "",
-            name: p.name || "",
-            intro: p.intro || "",
-            location: p.location || "",
-            email: p.email || "",
-            avatar: p.avatar || "",
-            context: p.context || "",
-            timezone: p.timezone || defaultTimezone(),
-            socials: Array.isArray(p.socials) ? p.socials.slice() : [],
-            notificationPreferences: p.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true },
-          });
-          setDirty(false);
+          applyProfile(payload.profile || {});
+          if (!gettingStarted) return null;
+          setDrafting(true);
+          return fetchPluginJSON(API + "/onboarding/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }).then(function (enriched) {
+            if (enriched && enriched.success !== false && usableEnriched(enriched)) {
+              adoptEnrichment(enriched, {
+                name: assembledRef.current.name,
+                intro: assembledRef.current.intro,
+                location: assembledRef.current.location,
+                avatar: assembledRef.current.avatar,
+                context: assembledRef.current.context,
+                socials: assembledRef.current.socials,
+                email: assembledRef.current.email,
+                id: assembledRef.current.id,
+                timezone: assembledRef.current.timezone,
+                notificationPreferences: assembledRef.current.notificationPreferences,
+              });
+            }
+          }).catch(function () { /* keep the baseline profile */ });
         })
         .catch(function (err) {
           setPanelError(err && err.message ? err.message : String(err));
         })
         .finally(function () {
           setLoading(false);
+          setDrafting(false);
         });
     }
 
@@ -1392,8 +1449,28 @@
           timezone: form.timezone,
           socials: (form.socials || []).filter(function (s) { return s.value && s.value.trim(); }),
           notificationPreferences: form.notificationPreferences,
+          context: form.context || "",
         };
         if (avatarUrl) body.avatar = avatarUrl;
+        if (gettingStarted) {
+          body.draft = {
+            identity: { name: (form.name || "").trim(), bio: (form.intro || "").trim(), location: (form.location || "").trim() },
+            narrative: { context: (form.context || form.intro || "").trim() },
+            attributes: { skills: [], interests: [] },
+          };
+          return fetchPluginJSON(API + "/onboarding/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }).then(function (payload) {
+            if (!payload || payload.success === false) {
+              throw new Error((payload && payload.error) || "Profile could not be confirmed.");
+            }
+            setDirty(false);
+            setNote("Confirmed.");
+            if (typeof props.onConfirmed === "function") props.onConfirmed();
+          });
+        }
         return fetchPluginJSON(API + "/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -1432,6 +1509,14 @@
         .finally(function () {
           setSaving(false);
         });
+    }
+
+    function resetAssembled() {
+      if (!assembledRef.current) return;
+      setForm(Object.assign({}, assembledRef.current));
+      setAvatarPreview(null);
+      setDirty(false);
+      setNote(null);
     }
 
     function generate() {
@@ -1532,11 +1617,13 @@
         ),
         React.createElement(ProfileField, {
           label: "Introduction",
-          hint: form.context ? "Index context: " + form.context : null,
+          hint: (!gettingStarted && form.context) ? "Index context: " + form.context : null,
         },
-          React.createElement("div", { className: "index-dashboard__profile-intro-head" },
-            React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
-          ),
+          gettingStarted
+            ? null
+            : React.createElement("div", { className: "index-dashboard__profile-intro-head" },
+              React.createElement("button", { type: "button", className: "index-dashboard__profile-generate", disabled: generating, onClick: generate }, generating ? "Generating…" : (form.intro ? "Regenerate" : "Generate")),
+            ),
           React.createElement("textarea", { className: "index-dashboard__textarea", rows: 4, value: form.intro, placeholder: "Tell others about yourself…", onChange: function (e) { patchForm({ intro: e.target.value }); } }),
         ),
         React.createElement(ProfileField, { label: "Socials" },
@@ -1610,35 +1697,63 @@
       );
     }
 
-    const title = readOnly ? ((form && form.name) || "Profile") : "Settings";
+    const title = gettingStarted
+      ? "Getting started"
+      : (readOnly ? ((form && form.name) || "Profile") : "Settings");
 
-    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", { className: "index-dashboard__profile-panel", onClick: function (e) { e.stopPropagation(); } },
-        React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
-          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
-        ),
-        readOnly ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
-          tabButton("profile", "Profile Settings"),
-          tabButton("notifications", "Notification Settings"),
-        ),
-        panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
-        loading || !form
-          ? React.createElement("div", { className: "index-dashboard__loading" }, "Loading profile…")
-          : React.createElement("div", { className: "index-dashboard__profile-body" },
-            readOnly ? readOnlyView() : (tab === "notifications" ? notificationsTab() : profileTab()),
-          ),
-        (!readOnly && form)
-          ? React.createElement("div", { className: "index-dashboard__profile-bar" },
-            React.createElement("span", { className: "index-dashboard__profile-note" }, note || (dirty ? "You have unsaved changes" : "")),
-            React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
-              React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
-              React.createElement(Button, { type: "button", disabled: saving || !dirty, onClick: save }, saving ? "Saving…" : "Save Changes"),
-            ),
-          )
-          : null,
+    const panel = React.createElement("div", {
+      className: "index-dashboard__profile-panel" + (gettingStarted ? " index-dashboard__profile-panel--getting-started" : ""),
+      onClick: gettingStarted ? undefined : function (e) { e.stopPropagation(); },
+    },
+      React.createElement("div", { className: "index-dashboard__profile-header" },
+        React.createElement("h2", { className: "index-dashboard__profile-title" }, title),
+        gettingStarted
+          ? null
+          : React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
       ),
+      gettingStarted
+        ? React.createElement("p", { className: "index-dashboard__getting-started-copy" },
+          drafting || loading
+            ? "Pulling together your profile…"
+            : "Here's what I pulled together. Make sure it's right.")
+        : null,
+      (readOnly || gettingStarted) ? null : React.createElement("div", { className: "index-dashboard__profile-tabs" },
+        tabButton("profile", "Profile Settings"),
+        tabButton("notifications", "Notification Settings"),
+      ),
+      panelError ? React.createElement("div", { className: "index-dashboard__error" }, panelError) : null,
+      loading || !form
+        ? React.createElement("div", { className: "index-dashboard__loading" }, drafting ? "Pulling together your profile…" : "Loading profile…")
+        : React.createElement("div", { className: "index-dashboard__profile-body" },
+          readOnly ? readOnlyView() : (tab === "notifications" && !gettingStarted ? notificationsTab() : profileTab()),
+        ),
+      (!readOnly && form)
+        ? React.createElement("div", { className: "index-dashboard__profile-bar" },
+          React.createElement("span", { className: "index-dashboard__profile-note" },
+            note || (gettingStarted ? (dirty ? "Edit anything that looks off" : "") : (dirty ? "You have unsaved changes" : ""))),
+          React.createElement("div", { className: "index-dashboard__profile-bar-actions" },
+            gettingStarted
+              ? React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__profile-discard",
+                disabled: saving || !dirty,
+                onClick: resetAssembled,
+              }, "Reset")
+              : React.createElement("button", { type: "button", className: "index-dashboard__profile-discard", disabled: saving || !dirty, onClick: load }, "Discard"),
+            React.createElement(Button, {
+              type: "button",
+              disabled: saving || (gettingStarted ? drafting : !dirty),
+              onClick: save,
+            }, saving ? (gettingStarted ? "Confirming…" : "Saving…") : (gettingStarted ? "Confirm" : "Save Changes")),
+          ),
+        )
+        : null,
     );
+
+    if (gettingStarted) {
+      return React.createElement("div", { className: "index-dashboard__getting-started" }, panel);
+    }
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose }, panel);
   }
 
   function extractContent(parts) {
@@ -2103,6 +2218,9 @@
     const summaryState = useState(null);
     const summary = summaryState[0];
     const setSummary = summaryState[1];
+    const needsOnboardingState = useState(false);
+    const needsOnboarding = needsOnboardingState[0];
+    const setNeedsOnboarding = needsOnboardingState[1];
     const loadingState = useState(true);
     const loading = loadingState[0];
     const setLoading = loadingState[1];
@@ -2178,6 +2296,7 @@
             throw new Error((payload && payload.error) || "Index dashboard data could not be loaded.");
           }
           setSummary(payload);
+          setNeedsOnboarding(!!(payload.onboarding && payload.onboarding.needsProfileConfirm));
         })
         .catch(function (err) {
           setError(err && err.message ? err.message : String(err));
@@ -2691,13 +2810,21 @@
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
 
-      loading && !summary
-        ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
-          LOADING_IMAGE()
-            ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
-            : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
-        )
-        : React.createElement("div", { className: "index-dashboard__body" }, intentsView),
+      needsOnboarding
+        ? React.createElement(ProfilePanel, {
+          gettingStarted: true,
+          onConfirmed: function () {
+            setNeedsOnboarding(false);
+            load();
+          },
+        })
+        : (loading && !summary
+          ? React.createElement("div", { className: "index-dashboard__loading index-dashboard__loading--hero" },
+            LOADING_IMAGE()
+              ? React.createElement("img", { className: "index-dashboard__loading-anim", src: LOADING_IMAGE(), alt: "Loading", loading: "eager" })
+              : React.createElement("span", { className: "index-dashboard__loading-text" }, "Loading…"),
+          )
+          : React.createElement("div", { className: "index-dashboard__body" }, intentsView)),
     );
   }
 

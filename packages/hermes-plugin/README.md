@@ -159,7 +159,7 @@ Plugin skills are namespaced and read-only — do not copy them into `~/.hermes/
 
 ## Dashboard
 
-The plugin ships an **Index Network** dashboard tab under `dashboard/`: an intent-centric master-detail view for answering pending Index questions (answered questions stay visible as settled records, Mac-app parity), opportunity accept/skip, community self-join, intent pause/archive, profile editing, and realtime direct messages. The dashboard backend (`dashboard/plugin_api.py`) reuses `tools.py` for authentication, MCP forwarding, and timeouts, and it never claims or responds to negotiation turns — those remain explicit tool/skill flows.
+The plugin ships an **Index Network** dashboard tab under `dashboard/`: an intent-centric master-detail view for answering pending Index questions (answered questions stay visible as settled records, Mac-app parity), opportunity accept/skip, community self-join, intent pause/archive, profile editing, a first-run **Getting started** profile gate (Mac `profileConfirmedAt` parity), and realtime direct messages. The dashboard backend (`dashboard/plugin_api.py`) reuses `tools.py` for authentication, MCP forwarding, and timeouts, and it never claims or responds to negotiation turns — those remain explicit tool/skill flows.
 
 See [`dashboard/README.md`](./dashboard/README.md) for the full scope and runtime behavior.
 

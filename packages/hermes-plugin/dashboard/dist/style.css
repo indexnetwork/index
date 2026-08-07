@@ -1295,6 +1295,29 @@
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
+/* First-run getting-started gate (Mac profileConfirmedAt parity). */
+.index-dashboard__getting-started {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 2rem 1rem 1.5rem;
+  box-sizing: border-box;
+}
+
+.index-dashboard__profile-panel--getting-started {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+.index-dashboard__getting-started-copy {
+  margin: 0;
+  color: var(--color-card-foreground, inherit);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
 /* Profile / settings overlay panel. */
 .index-dashboard__profile-overlay {
   position: fixed;

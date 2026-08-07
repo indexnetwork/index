@@ -226,6 +226,12 @@ def main() -> None:
     assert "ProfilePanel" in dashboard_js
     assert "Notification Settings" in dashboard_js
     assert "/profile" in dashboard_js
+    assert "/onboarding/enrich" in dashboard_js
+    assert "/onboarding/confirm" in dashboard_js
+    assert "needsProfileConfirm" in dashboard_js
+    assert "Getting started" in dashboard_js
+    assert "gettingStarted" in dashboard_js
+    assert "index-dashboard__getting-started" in dashboard_js
     assert "index-dashboard__opp-id--clickable" in dashboard_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
@@ -277,6 +283,7 @@ def main() -> None:
     assert "index-dashboard__msg-conv-badge" in dashboard_css
     assert "index-dashboard__msg-conv-dot" in dashboard_css
     assert "index-dashboard__msg-search" in dashboard_css
+    assert "index-dashboard__getting-started" in dashboard_css
 
     dashboard_readme = (ROOT / "dashboard" / "README.md").read_text()
     package_readme = (ROOT / "README.md").read_text()
@@ -664,8 +671,13 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                # _resolve_user_id → GET /auth/me (identity, replaces read_network_memberships).
-                FakeResponse({"user": {"id": "user-1"}}),
+                # summary → GET /auth/me (identity + onboarding gate).
+                FakeResponse({
+                    "user": {
+                        "id": "user-1",
+                        "onboarding": {"profileConfirmedAt": "2026-01-01T00:00:00.000Z"},
+                    }
+                }),
                 # _call_read_intents → POST /intents/list (carries lifecycle status; includes PAUSED).
                 FakeResponse(
                     {
@@ -820,6 +832,10 @@ def main() -> None:
         )
         summary = dashboard_api.summary()
         assert summary["success"] is True
+        assert summary["onboarding"] == {
+            "profileConfirmedAt": "2026-01-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
         intents = summary["intents"]
         assert len(intents) == 1
         intent = intents[0]
@@ -1072,6 +1088,7 @@ def main() -> None:
         assert profile_obj["timezone"] == "Europe/London"
         assert profile_obj["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
         assert prof["mockedFields"] == ["email"]
+        assert prof["onboarding"] == {"profileConfirmedAt": None, "needsProfileConfirm": True}
         profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
         assert profile_mcp_calls == ["read_user_contexts"]
         profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
@@ -1079,6 +1096,75 @@ def main() -> None:
             ("GET", "https://api.example.test/api/auth/me"),
             ("GET", "https://api.example.test/api/users/user-1"),
         ]
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "enriched": True,
+                        "profile": {
+                            "name": "Ada Lovelace",
+                            "intro": "Builds robots.",
+                            "location": "London",
+                            "avatar": None,
+                            "socials": [{"label": "twitter", "value": "ada"}],
+                        },
+                    }
+                )
+            ],
+            captured,
+        )
+        enrich_result = dashboard_api.onboarding_enrich({})
+        assert enrich_result["success"] is True
+        assert enrich_result["enriched"] is True
+        assert enrich_result["profile"]["name"] == "Ada Lovelace"
+        assert enrich_result["profile"]["socials"] == [{"label": "twitter", "value": "ada"}]
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/enrichment/enrich"
+
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {"success": True, "created": True, "message": "Profile saved from approved draft."},
+                    response_id=31,
+                ),
+                FakeResponse({"success": True, "user": {"id": "user-1"}}),
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "user-1",
+                            "onboarding": {"profileConfirmedAt": "2026-06-01T00:00:00.000Z"},
+                        }
+                    }
+                ),
+            ],
+            captured,
+        )
+        confirm_result = dashboard_api.onboarding_confirm(
+            {
+                "name": "Ada L.",
+                "intro": "Builds robots.",
+                "location": "London",
+                "socials": [{"label": "twitter", "value": "ada"}],
+            }
+        )
+        assert confirm_result["success"] is True
+        assert confirm_result["onboarding"] == {
+            "profileConfirmedAt": "2026-06-01T00:00:00.000Z",
+            "needsProfileConfirm": False,
+        }
+        assert confirm_result["applied"]["name"] == "Ada L."
+        confirm_mcp = [entry for entry in captured if entry["body"] and entry["body"].get("method") == "tools/call"]
+        assert confirm_mcp[0]["body"]["params"]["name"] == "confirm_user_context"
+        assert confirm_mcp[0]["body"]["params"]["arguments"]["draft"]["identity"]["name"] == "Ada L."
+        assert captured[-2]["method"] == "PATCH"
+        assert captured[-2]["url"] == "https://api.example.test/api/auth/profile/update"
+        assert dashboard_api.onboarding_confirm("nope") == {
+            "success": False,
+            "error": "Confirm body must be an object.",
+        }
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True, "user": {"id": "user-1"}})], captured)

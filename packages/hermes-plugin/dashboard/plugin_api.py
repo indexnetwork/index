@@ -306,6 +306,30 @@ def _fetch_me() -> dict[str, Any]:
     return user if isinstance(user, dict) else {}
 
 
+def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Mac-parity first-run gate: missing `profileConfirmedAt` means review is required."""
+    row = me if isinstance(me, dict) else _fetch_me()
+    onboarding = row.get("onboarding") if isinstance(row.get("onboarding"), dict) else {}
+    confirmed_at = _text(onboarding.get("profileConfirmedAt"))
+    return {
+        "profileConfirmedAt": confirmed_at or None,
+        "needsProfileConfirm": bool(row.get("id")) and not bool(confirmed_at),
+    }
+
+
+def _approved_draft_from_body(body: dict[str, Any]) -> dict[str, Any]:
+    """Build the structured draft `confirm_user_context` expects from a profile form body."""
+    name = _text(body.get("name"))
+    intro = _text(body.get("intro"))
+    location = _text(body.get("location"))
+    context = _text(body.get("context")) or intro
+    return {
+        "identity": {"name": name, "bio": intro, "location": location},
+        "narrative": {"context": context},
+        "attributes": {"skills": [], "interests": []},
+    }
+
+
 def _notification_preferences(value: Any) -> dict[str, bool]:
     prefs = value if isinstance(value, dict) else {}
     return {
@@ -940,7 +964,9 @@ def _build_dashboard(
 @router.get("/summary")
 def summary() -> dict[str, Any]:
     """Return a intent-centric, user-scoped dashboard summary."""
-    current_user_id = _resolve_user_id() or ""
+    me = _fetch_me()
+    current_user_id = _text(me.get("id"))
+    onboarding = _onboarding_gate(me)
     intents_payload = _call_read_intents()
     intents_data = _data(intents_payload)
     intent_ids = [
@@ -977,6 +1003,7 @@ def summary() -> dict[str, Any]:
     return {
         "success": True,
         "webUrl": _web_url(),
+        "onboarding": onboarding,
         "intents": dashboard["intents"],
         "general": dashboard["general"],
         "negotiations": negotiations,
@@ -1239,7 +1266,12 @@ def profile() -> dict[str, Any]:
         "timezone": _text(me.get("timezone")),
         "notificationPreferences": _notification_preferences(me.get("notificationPreferences")),
     }
-    return {"success": True, "profile": profile_obj, "mockedFields": _MOCKED_PROFILE_FIELDS}
+    return {
+        "success": True,
+        "profile": profile_obj,
+        "onboarding": _onboarding_gate(me),
+        "mockedFields": _MOCKED_PROFILE_FIELDS,
+    }
 
 
 @router.get("/profile/{user_id}")
@@ -1333,6 +1365,73 @@ def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[st
         return payload
     intro = _text(payload.get("intro"))
     return {"success": True, "intro": intro}
+
+
+@router.post("/onboarding/enrich")
+def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Run Mac-parity sync public research (`POST /enrichment/enrich`) for first-run review."""
+    payload = tools._api_request("POST", "/enrichment/enrich")
+    if payload.get("success") is False:
+        return payload
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    socials = [
+        {"label": _text(s.get("label")), "value": _text(s.get("value"))}
+        for s in _list(profile.get("socials"))
+        if isinstance(s, dict) and _text(s.get("label")) and _text(s.get("value"))
+    ]
+    return {
+        "success": True,
+        "enriched": bool(payload.get("enriched", True)),
+        "profile": {
+            "name": _text(profile.get("name")) or None,
+            "intro": _text(profile.get("intro")) or None,
+            "location": _text(profile.get("location")) or None,
+            "avatar": _avatar_url(profile.get("avatar")) or None,
+            "socials": socials,
+        },
+    }
+
+
+@router.post("/onboarding/confirm")
+def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Confirm the first-run profile review (Mac settings `enrich` path).
+
+    Persists the approved draft through MCP `confirm_user_context` (sets
+    `onboarding.profileConfirmedAt`) and writes socials/name/intro/location via
+    `PATCH /auth/profile/update`.
+    """
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Confirm body must be an object."}
+    update, validation_error = _sanitize_profile_update(body)
+    if validation_error:
+        return {"success": False, "error": validation_error}
+    if not update:
+        return {"success": False, "error": "Name, intro, location, or socials are required."}
+
+    draft = body.get("draft") if isinstance(body.get("draft"), dict) else _approved_draft_from_body(body)
+    identity = draft.get("identity") if isinstance(draft.get("identity"), dict) else {}
+    narrative = draft.get("narrative") if isinstance(draft.get("narrative"), dict) else {}
+    attributes = draft.get("attributes") if isinstance(draft.get("attributes"), dict) else {}
+    approved = {
+        "identity": {
+            "name": _text(identity.get("name")) or _text(body.get("name")),
+            "bio": _text(identity.get("bio")) or _text(body.get("intro")),
+            "location": _text(identity.get("location")) or _text(body.get("location")),
+        },
+        "narrative": {"context": _text(narrative.get("context")) or _text(body.get("context")) or _text(body.get("intro"))},
+        "attributes": {
+            "skills": [s for s in _list(attributes.get("skills")) if isinstance(s, str) and s.strip()],
+            "interests": [s for s in _list(attributes.get("interests")) if isinstance(s, str) and s.strip()],
+        },
+    }
+    confirm = _call_mcp("confirm_user_context", {"draft": approved})
+    if confirm.get("success") is False:
+        return confirm
+
+    payload = tools._api_request("PATCH", "/auth/profile/update", update)
+    if payload.get("success") is False:
+        return payload
+    return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 
 @router.patch("/intents/{intent_id}/archive")
