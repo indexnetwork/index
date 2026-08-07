@@ -62,6 +62,26 @@ describe("ApiClient — profile methods", () => {
     await mock.stop();
   });
 
+  describe("enrichProfile", () => {
+    it("runs synchronous enrichment and returns avatar and socials", async () => {
+      mock.on("POST", "/api/enrichment/enrich", () => Response.json({
+        enriched: true,
+        profile: {
+          name: "Alice",
+          intro: "Builder",
+          location: "Berlin",
+          avatar: "avatars/alice.png",
+          socials: [{ label: "github", value: "alice" }],
+        },
+      }));
+
+      const result = await client.enrichProfile();
+      expect(result.enriched).toBe(true);
+      expect(result.profile.avatar).toBe("avatars/alice.png");
+      expect(result.profile.socials).toHaveLength(1);
+    });
+  });
+
   describe("getUser", () => {
     it("returns user profile data", async () => {
       mock.on("GET", "/api/users/user-abc-123", () =>

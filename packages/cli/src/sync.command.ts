@@ -25,7 +25,7 @@ export async function handleSync(
   if (!options.json) output.info("Syncing context...");
 
   const [profile, networks, intents, contacts] = await Promise.all([
-    client.callTool("read_user_profiles", {}),
+    client.readUserContexts(),
     client.callTool("read_networks", {}),
     client.callTool("read_intents", {}),
     client.callTool("list_contacts", {}),

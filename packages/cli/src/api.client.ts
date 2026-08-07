@@ -5,10 +5,10 @@
  * common error patterns (401, network errors).
  */
 
-import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, ToolResult } from "./types";
+import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, ToolResult } from "./types";
+export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
 export interface UptakeQuestion {
   id: string;
@@ -494,7 +494,31 @@ export class ApiClient {
     return body.negotiations;
   }
 
-  // ── Tool methods ────────────────────────────────────────────────
+  // ── Profile and tool methods ────────────────────────────────────
+
+  async enrichProfile(): Promise<EnrichmentResult> {
+    const res = await this.post("/api/enrichment/enrich", {});
+    return await res.json() as EnrichmentResult;
+  }
+
+  async readUserContexts(
+    query: { userId?: string; networkId?: string; query?: string } = {},
+  ): Promise<ToolResult> {
+    return this.callTool("read_user_contexts", query);
+  }
+
+  async createUserContext(query: {
+    confirm?: boolean;
+    linkedinUrl?: string;
+    githubUrl?: string;
+    twitterUrl?: string;
+  }): Promise<ToolResult> {
+    return this.callTool("create_user_context", query);
+  }
+
+  async updateUserContext(query: { action: string; details?: string }): Promise<ToolResult> {
+    return this.callTool("update_user_context", query);
+  }
 
   /**
    * Invoke a tool by name via the HTTP tool API.

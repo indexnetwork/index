@@ -305,6 +305,21 @@ export interface NegotiationListOptions {
   since?: string;
 }
 
+// ── Profile enrichment types ─────────────────────────────────────────
+
+export interface EnrichedProfile {
+  name: string | null;
+  intro: string | null;
+  location: string | null;
+  avatar: string | null;
+  socials: Array<{ label: string; value: string }>;
+}
+
+export interface EnrichmentResult {
+  enriched: true;
+  profile: EnrichedProfile;
+}
+
 // ── Tool types ───────────────────────────────────────────────────────
 
 /** Generic result from POST /api/tools/:toolName. */
