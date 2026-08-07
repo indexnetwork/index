@@ -112,16 +112,6 @@ tools = _load_module("index_network_hermes_dashboard_tools", _TOOLS_PATH)
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
 
 
-def _parse_tool_json(raw: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return {"success": False, "error": f"Index tool returned invalid JSON: {exc}"}
-    if isinstance(parsed, dict):
-        return parsed
-    return {"success": True, "data": parsed}
-
-
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
@@ -151,8 +141,14 @@ def _call_read_intents() -> dict[str, Any]:
     return {"success": True, "data": {"intents": all_intents, "count": len(all_intents)}}
 
 
-def _call_mcp(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
-    return _parse_tool_json(tools.index_forwarded_mcp_tool(tool_name, args or {}))
+def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Invoke an Index tool through the REST tool surface (`POST /tools/:toolName`).
+
+    This is the Mac app's tool path: it accepts the browser-login CLI credential,
+    whereas the MCP surface resolves that key to the enrollment-only principal and
+    denies identity tools such as confirm_user_context / read_user_contexts.
+    """
+    return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 
 
 def _flatten_rest_question(question: dict[str, Any]) -> dict[str, Any] | None:
@@ -1336,7 +1332,7 @@ def profile() -> dict[str, Any]:
     if not user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
 
-    contexts = _data(_call_mcp("read_user_contexts")) or {}
+    contexts = _data(_call_tool("read_user_contexts")) or {}
     user = _fetch_user(user_id)
 
     name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
@@ -1385,7 +1381,7 @@ def public_profile(user_id: str) -> dict[str, Any]:
     if isinstance(user, dict) and user.get("success") is False:
         return user
 
-    contexts = _data(_call_mcp("read_user_contexts", {"userId": user_id})) or {}
+    contexts = _data(_call_tool("read_user_contexts", {"userId": user_id})) or {}
     context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
 
     profile_obj: dict[str, Any] = {
@@ -1514,7 +1510,7 @@ def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict
             "interests": [s for s in _list(attributes.get("interests")) if isinstance(s, str) and s.strip()],
         },
     }
-    confirm = _call_mcp("confirm_user_context", {"draft": approved})
+    confirm = _call_tool("confirm_user_context", {"draft": approved})
     if confirm.get("success") is False:
         return confirm
 

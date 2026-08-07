@@ -1100,16 +1100,21 @@ def main() -> None:
                         }
                     }
                 ),
-                mcp_text_response(
+                # read_user_contexts now goes through the REST tool surface
+                # (POST /tools/read_user_contexts), which the browser-login CLI
+                # key can call, unlike the MCP surface. Response is the REST
+                # {success, data} envelope.
+                FakeResponse(
                     {
                         "success": True,
-                        "hasProfile": True,
-                        "name": "Ada Lovelace",
-                        "bio": "Builds robots.",
-                        "location": "London",
-                        "context": "Ada is a robotics engineer.",
-                    },
-                    response_id=21,
+                        "data": {
+                            "hasProfile": True,
+                            "name": "Ada Lovelace",
+                            "bio": "Builds robots.",
+                            "location": "London",
+                            "context": "Ada is a robotics engineer.",
+                        },
+                    }
                 ),
                 FakeResponse(
                     {
@@ -1141,8 +1146,8 @@ def main() -> None:
         assert profile_obj["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
         assert prof["mockedFields"] == ["email"]
         assert prof["onboarding"] == {"profileConfirmedAt": None, "needsProfileConfirm": True}
-        profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
-        assert profile_mcp_calls == ["read_user_contexts"]
+        profile_tool_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is not None]
+        assert profile_tool_calls == [("POST", "https://api.example.test/api/tools/read_user_contexts")]
         profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
         assert profile_rest_calls == [
             ("GET", "https://api.example.test/api/auth/me"),
@@ -1178,9 +1183,11 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                mcp_text_response(
-                    {"success": True, "created": True, "message": "Profile saved from approved draft."},
-                    response_id=31,
+                # confirm_user_context now goes through the REST tool surface
+                # (POST /tools/confirm_user_context) so the browser-login CLI key
+                # is accepted; the MCP surface denies it as an enrollment key.
+                FakeResponse(
+                    {"success": True, "data": {"created": True, "message": "Profile saved from approved draft."}}
                 ),
                 FakeResponse({"success": True, "user": {"id": "user-1"}}),
                 FakeResponse(
@@ -1208,9 +1215,9 @@ def main() -> None:
             "needsProfileConfirm": False,
         }
         assert confirm_result["applied"]["name"] == "Ada L."
-        confirm_mcp = [entry for entry in captured if entry["body"] and entry["body"].get("method") == "tools/call"]
-        assert confirm_mcp[0]["body"]["params"]["name"] == "confirm_user_context"
-        assert confirm_mcp[0]["body"]["params"]["arguments"]["draft"]["identity"]["name"] == "Ada L."
+        confirm_tool = [entry for entry in captured if entry["body"] and "/tools/confirm_user_context" in entry["url"]]
+        assert confirm_tool[0]["method"] == "POST"
+        assert confirm_tool[0]["body"]["query"]["draft"]["identity"]["name"] == "Ada L."
         assert captured[-2]["method"] == "PATCH"
         assert captured[-2]["url"] == "https://api.example.test/api/auth/profile/update"
         assert dashboard_api.onboarding_confirm("nope") == {
@@ -1477,9 +1484,12 @@ def main() -> None:
                         }
                     }
                 ),
-                mcp_text_response(
-                    {"success": True, "hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
-                    response_id=31,
+                # read_user_contexts(userId) via the REST tool surface.
+                FakeResponse(
+                    {
+                        "success": True,
+                        "data": {"hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
+                    }
                 ),
             ],
             captured,
@@ -1502,9 +1512,9 @@ def main() -> None:
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
             ("GET", "https://api.example.test/api/users/other"),
         ]
-        public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]
-        assert public_mcp == [
-            {"name": "read_user_contexts", "arguments": {"userId": "other"}},
+        public_tool = [(entry["method"], entry["url"], entry["body"]) for entry in captured if entry["body"]]
+        assert public_tool == [
+            ("POST", "https://api.example.test/api/tools/read_user_contexts", {"query": {"userId": "other"}}),
         ]
 
         assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}
