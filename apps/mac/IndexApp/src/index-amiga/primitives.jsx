@@ -95,15 +95,19 @@ function Tag({ children, inverted = false, style }) {
   );
 }
 
-/* ---------- Avatar: Workbench raised square with initials ---------- */
-function photoUrl(seed, px = 150) {
-  return `https://i.pravatar.cc/${px}?u=${encodeURIComponent(seed || "x")}`;
-}
-
-function Avatar({ name, size = 28, ring = false, seed }) {
+/* ---------- Avatar: Workbench raised square, the person's photo or their
+   initials. No stand-in faces: a person without a picture shows their
+   initials rather than someone else's photo. ---------- */
+function Avatar({ name, photo, size = 28, ring = false }) {
   const initials = (name || "")
     .split(/\s+/).slice(0,2).map(p => p[0]).join("").toUpperCase();
-  const [broken, setBroken] = useState(false);
+  // `photo` may be an S3 key rather than a URL; the live bridge resolves it
+  // against the API storage base. `broken` remembers which src failed, so a
+  // rerender with a new photo gets a fresh try.
+  const src = photo
+    ? (window.IndexApp && window.IndexApp.avatarUrl ? window.IndexApp.avatarUrl(photo) : photo)
+    : null;
+  const [broken, setBroken] = useState(null);
   return (
     <div style={{
       width:size, height:size, display:"grid", placeItems:"center",
@@ -119,11 +123,11 @@ function Avatar({ name, size = 28, ring = false, seed }) {
       fontWeight: 700,
       flex:"0 0 auto",
     }}>
-      {broken ? initials : (
+      {(!src || broken === src) ? initials : (
         <img
-          src={photoUrl(seed || name)}
+          src={src}
           alt={name}
-          onError={() => setBroken(true)}
+          onError={() => setBroken(src)}
           style={{
             width:"100%", height:"100%", objectFit:"cover", display:"block",
             // grayscale keeps the monochrome Workbench look
@@ -1149,7 +1153,7 @@ function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
 }
 
 Object.assign(window, {
-  LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
+  LiveDot, StreamText, KV, Tag, Avatar,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
   AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,

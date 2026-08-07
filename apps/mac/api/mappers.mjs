@@ -142,12 +142,16 @@ export function mapPersonFromRadarCard(card) {
  * profile window fetches it, so this also accepts that payload's shape, where
  * the intro is `intro` and socials are `{label, value}`.
  * @param {Object} source
- * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
+ * @returns {{bio: string, photo: string | null, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
 export function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
   return {
     bio: profile.bio || profile.intro || '',
+    // The person's real picture. Radar cards carry `avatar`, list opportunities
+    // `counterpartAvatar`, GET /users/:id `avatar`. Kept raw (full URL or S3
+    // key); the app absolutizes keys against the API storage base.
+    photo: profile.avatar || source.counterpartAvatar || null,
     socials: mapSocials(profile.socials),
   };
 }

@@ -54,6 +54,7 @@ async function resolveDeepLinkPerson(route, people) {
       if (person && other) {
         person.userId = person.userId || other.id || null;
         person.name = other.name || person.name;
+        person.photo = person.photo || other.avatar || null;
       }
       return person;
     }

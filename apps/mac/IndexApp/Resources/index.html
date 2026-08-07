@@ -34271,12 +34271,16 @@ function mapPersonFromRadarCard(card) {
  * profile window fetches it, so this also accepts that payload's shape, where
  * the intro is `intro` and socials are `{label, value}`.
  * @param {Object} source
- * @returns {{bio: string, socials: Array<{id: string, prefix: string, handle: string}>}}
+ * @returns {{bio: string, photo: string | null, socials: Array<{id: string, prefix: string, handle: string}>}}
  */
 function mapCounterpartProfile(source = {}) {
   const profile = source.profile || source.counterpart || source;
   return {
     bio: profile.bio || profile.intro || '',
+    // The person's real picture. Radar cards carry `avatar`, list opportunities
+    // `counterpartAvatar`, GET /users/:id `avatar`. Kept raw (full URL or S3
+    // key); the app absolutizes keys against the API storage base.
+    photo: profile.avatar || source.counterpartAvatar || null,
     socials: mapSocials(profile.socials),
   };
 }
@@ -34710,15 +34714,19 @@ function Tag({ children, inverted = false, style }) {
   );
 }
 
-/* ---------- Avatar: Workbench raised square with initials ---------- */
-function photoUrl(seed, px = 150) {
-  return `https://i.pravatar.cc/${px}?u=${encodeURIComponent(seed || "x")}`;
-}
-
-function Avatar({ name, size = 28, ring = false, seed }) {
+/* ---------- Avatar: Workbench raised square, the person's photo or their
+   initials. No stand-in faces: a person without a picture shows their
+   initials rather than someone else's photo. ---------- */
+function Avatar({ name, photo, size = 28, ring = false }) {
   const initials = (name || "")
     .split(/\s+/).slice(0,2).map(p => p[0]).join("").toUpperCase();
-  const [broken, setBroken] = useState(false);
+  // `photo` may be an S3 key rather than a URL; the live bridge resolves it
+  // against the API storage base. `broken` remembers which src failed, so a
+  // rerender with a new photo gets a fresh try.
+  const src = photo
+    ? (window.IndexApp && window.IndexApp.avatarUrl ? window.IndexApp.avatarUrl(photo) : photo)
+    : null;
+  const [broken, setBroken] = useState(null);
   return (
     <div style={{
       width:size, height:size, display:"grid", placeItems:"center",
@@ -34734,11 +34742,11 @@ function Avatar({ name, size = 28, ring = false, seed }) {
       fontWeight: 700,
       flex:"0 0 auto",
     }}>
-      {broken ? initials : (
+      {(!src || broken === src) ? initials : (
         <img
-          src={photoUrl(seed || name)}
+          src={src}
           alt={name}
-          onError={() => setBroken(true)}
+          onError={() => setBroken(src)}
           style={{
             width:"100%", height:"100%", objectFit:"cover", display:"block",
             // grayscale keeps the monochrome Workbench look
@@ -35764,7 +35772,7 @@ function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
 }
 
 Object.assign(window, {
-  LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
+  LiveDot, StreamText, KV, Tag, Avatar,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
   AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,
@@ -42410,7 +42418,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         transition:"all .12s ease",
       }}>
       <span onClick={openProfile} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
-        <Avatar name={person.name} size={36} ring={accepted}/>
+        <Avatar name={person.name} photo={person.photo} size={36} ring={accepted}/>
       </span>
       <div style={{ display:"grid", gap:3, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", minWidth:0 }}>
@@ -42582,7 +42590,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
                 ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 rgba(0,0,0,0.2)"
                 : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
             }}>
-              <Avatar name={c.name} size={32}/>
+              <Avatar name={c.name} photo={c.person ? c.person.photo : null} size={32}/>
               <div style={{ display:"grid", gap:3, minWidth:0 }}>
                 <div style={{ fontFamily:"var(--amiga-title)", fontSize:14, fontWeight:600, color:"#000" }}>
                   {c.name}
@@ -42656,7 +42664,7 @@ function SummaryWindow({ person, onClose }) {
           padding:"12px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} size={34}/>
+          <Avatar name={person.name} photo={person.photo} size={34}/>
           <div style={{ display:"grid", gap:2, minWidth:0 }}>
             <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
               {person.name}
@@ -42845,6 +42853,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
     ? {
         ...person,
         bio: person.bio || fetched.bio,
+        photo: person.photo || fetched.photo,
         socials: (person.socials && person.socials.length) ? person.socials : fetched.socials,
       }
     : person;
@@ -42859,7 +42868,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
           padding:"14px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} size={42} ring={isAccepted}/>
+          <Avatar name={person.name} photo={merged.photo} size={42} ring={isAccepted}/>
           <div style={{
             fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
             minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
@@ -42959,7 +42968,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             padding:"12px 16px", borderBottom:"1px solid #000",
             display:"flex", gap:12, alignItems:"center", background:"#fff",
           }}>
-            <Avatar name={person.name} size={34}/>
+            <Avatar name={person.name} photo={person.photo} size={34}/>
             <div style={{ display:"grid", gap:2, minWidth:0 }}>
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}
@@ -43195,6 +43204,7 @@ async function resolveDeepLinkPerson(route, people) {
       if (person && other) {
         person.userId = person.userId || other.id || null;
         person.name = other.name || person.name;
+        person.photo = person.photo || other.avatar || null;
       }
       return person;
     }
