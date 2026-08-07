@@ -76,7 +76,7 @@ describe('NegotiationClaimTimeoutQueue.handleClaimTimeout', () => {
 
     await makeQueue(database).processJob('negotiation_claim_timeout', data(2));
 
-    expect(database.transitionClaimedTaskToWorking).toHaveBeenCalledWith('task-1');
+    expect(database.transitionClaimedTaskToWorking).toHaveBeenCalledWith('task-1', 'agent-9');
     expect(database.createMessage).not.toHaveBeenCalled();
   });
 

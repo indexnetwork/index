@@ -971,19 +971,52 @@ The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'
   },
   "seat": "initiator",
   "protocolVersion": "v2",
-  "allowedActions": ["outreach", "counter", "question", "withdraw"]
+  "allowedActions": ["outreach", "counter", "question", "withdraw"],
+  "canConsultOwner": true
 }
 ```
 
 - `turn.deadline` — ISO-8601 timestamp; park start + the park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 minutes). The claim shares this same budget — it is not extended by picking up.
 - `turn.counterpartyAction` — action from the preceding turn, or `"none"` if this is the first turn.
-- `seat` / `protocolVersion` / `allowedActions` — the claiming user's seat under the task's protocol version and the exact actions that seat may submit this turn (`propose | accept | reject | counter | question` on v1 tasks; seat-scoped `outreach | counter | question | withdraw` vs `accept | decline | counter | question` on v2).
+- `seat` / `protocolVersion` / `allowedActions` — the claiming user's seat under the task's protocol version and the exact actions that seat may submit this turn (`propose | accept | reject | counter | question` on v1 tasks; seat-scoped `outreach | counter | question | withdraw` vs `accept | decline | counter | question` on v2). Final turns expose only their final-turn vocabulary.
+- `canConsultOwner` — `true` only when this exact v2, non-opening, non-final claim can enter the server's Questioner-backed owner-consultation continuation. The server derives policy eligibility from persisted action, role, claim, and lifecycle data; clients cannot request or advertise consultation on a final turn.
 - `context.ownUser` / `context.otherUser` — the persisted absolute source/candidate context projected into the claiming user's perspective. May be `null` only for legacy tasks created before turn-context persistence landed.
 - `negotiatorMemory` — optional array of the claiming user's own negotiator-memory entries (present only when `NEGOTIATOR_MEMORY_INJECT` is on and the user's agent has relevant memories — never contains the counterparty's).
 - `opportunity` — `null` when the task has no linked opportunity.
 
 **Errors**:
 - `403` if the agent is not owned by the authenticated user.
+
+### POST /api/agents/:id/negotiations/:negotiationId/consult
+
+Pause an exact externally claimed v2 turn to consult the represented owner through the existing private Questioner lifecycle. The endpoint requires the exact agent-bound polling principal. It accepts only a disclosure subject and optional draft question; unknown fields are rejected and no counterparty profile, transcript, assessment reasoning, or internal identifier is accepted into Questioner context.
+
+**Request body** (strict):
+```json
+{
+  "disclosureSubject": "availability",
+  "draftQuestion": "May I share your availability?"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "status": "input_required",
+  "settlementId": "negotiation-question-settlement-v1-<task-id>"
+}
+```
+
+The server arms an attempt-specific expiry for the configured answer window (24 hours by default) before atomically writing one server-authored `ask_user` turn, its exact material binding, and `input_required`. Answer, dismissal, or expiry uses the existing exact-task continuation pipeline and resumes at most one successor. A failed Questioner enqueue remains recoverable through the durable expiry.
+
+**Errors**:
+- `400` for empty/unsafe fields, v1/opening/final turns, prior same-seat consultation, missing lifecycle wiring, or policy-ineligible admission when consultation policy mode is `on`.
+- `403` unless the request uses the exact selected agent-bound polling principal.
+- `404` for a missing, non-negotiation, or wrong-owner task.
+- `409` when the exact claim, claimant, continuation fence, or material binding lost a race.
+
+Every rejected consultation preserves the original `claimed` state and claim deadline. Duplicate losers cancel only their own server-only attempt expiry; they cannot cancel or settle the winning consultation.
 
 ### POST /api/agents/:id/negotiations/:negotiationId/respond
 
@@ -1004,7 +1037,7 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 }
 ```
 
-- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`).
+- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`). `ask_user` is never accepted here; use the dedicated consultation endpoint when `canConsultOwner` is true.
 - `message` — optional string or `null`.
 - `assessment.suggestedRoles.ownUser` / `.otherUser` — each one of `agent`, `patient`, `peer`.
 

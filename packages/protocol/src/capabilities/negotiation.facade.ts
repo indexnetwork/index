@@ -17,7 +17,7 @@ export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionI
 export type { NegotiatorMemoryEntry } from "../negotiation/public/index.js";
 export type { NegotiationGraphLike } from "../negotiation/public/index.js";
 export { AMBIENT_PARK_WINDOW_MS } from "../negotiation/public/index.js";
-export { allowedActionsFor, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "../negotiation/public/index.js";
+export { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "../negotiation/public/index.js";
 export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "../negotiation/public/index.js";
 export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode, NegotiationConsultationReason } from "../negotiation/public/index.js";
 export {

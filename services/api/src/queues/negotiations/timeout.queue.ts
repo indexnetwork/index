@@ -17,9 +17,18 @@ export interface NegotiationTimeoutJobData {
   turnNumber: number;
 }
 
+/** Server-only coordinates for an external consultation expiry. */
+export interface ExternalAskUserExpiryPayload extends AskUserExpiryPayload {
+  claimedByAgentId: string;
+}
+
 /** Payload for an ask_user answer-window expiry job (P3.2). */
 export interface AskUserExpiryJobData extends AskUserExpiryPayload {
   negotiationId: string;
+  /** Server-only external consultation generation. */
+  consultationAttemptId?: string;
+  /** Exact external claim that armed this attempt. */
+  claimedByAgentId?: string;
 }
 
 /** Union of job payloads carried on the negotiation-timeout queue. */
@@ -32,7 +41,11 @@ export interface NegotiationTimeoutQueueDeps {
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   parkWindowMs?: number;
   /** Authoritatively settle the exact stamped question/task cohort. */
-  settleInflightExpiry?: (input: AskUserExpiryPayload & { taskId: string }) => Promise<{
+  settleInflightExpiry?: (input: AskUserExpiryPayload & {
+    taskId: string;
+    consultationAttemptId?: string;
+    claimedByAgentId?: string;
+  }) => Promise<{
     taskId: string;
     settlementId: string;
     opportunityId: string;
@@ -146,8 +159,20 @@ export class NegotiationTimeoutQueue {
    * on this same queue under its own jobId namespace — it never collides with
    * the park-window timer for the same negotiation.
    */
-  async enqueueAskUserExpiry(negotiationId: string, payload: AskUserExpiryPayload, delayMs: number): Promise<string> {
-    const jobId = `neg-askuser-${negotiationId}`;
+  async enqueueAskUserExpiry(negotiationId: string, payload: AskUserExpiryPayload, delayMs: number): Promise<string>;
+  async enqueueAskUserExpiry(negotiationId: string, consultationAttemptId: string, payload: ExternalAskUserExpiryPayload, delayMs: number): Promise<string>;
+  async enqueueAskUserExpiry(
+    negotiationId: string,
+    attemptOrPayload: string | AskUserExpiryPayload,
+    payloadOrDelay: AskUserExpiryPayload | ExternalAskUserExpiryPayload | number,
+    maybeDelay?: number,
+  ): Promise<string> {
+    const consultationAttemptId = typeof attemptOrPayload === 'string' ? attemptOrPayload : undefined;
+    const payload = (typeof attemptOrPayload === 'string' ? payloadOrDelay : attemptOrPayload) as AskUserExpiryPayload;
+    const delayMs = (typeof attemptOrPayload === 'string' ? maybeDelay : payloadOrDelay) as number;
+    const jobId = consultationAttemptId
+      ? `neg-askuser-${negotiationId}-${consultationAttemptId}`
+      : `neg-askuser-${negotiationId}`;
 
     try {
       const existing = await this.queue.getJob(jobId);
@@ -158,7 +183,11 @@ export class NegotiationTimeoutQueue {
       // Job may not exist, ignore
     }
 
-    const job = await this.queue.add('ask_user_expiry', { negotiationId, ...payload }, {
+    const job = await this.queue.add('ask_user_expiry', {
+      negotiationId,
+      ...(consultationAttemptId ? { consultationAttemptId } : {}),
+      ...payload,
+    }, {
       jobId,
       delay: delayMs,
       attempts: 3,
@@ -174,8 +203,10 @@ export class NegotiationTimeoutQueue {
   /**
    * Cancel a pending ask_user answer-window timer (client answered in time).
    */
-  async cancelAskUserExpiry(negotiationId: string): Promise<void> {
-    const jobId = `neg-askuser-${negotiationId}`;
+  async cancelAskUserExpiry(negotiationId: string, consultationAttemptId?: string): Promise<void> {
+    const jobId = consultationAttemptId
+      ? `neg-askuser-${negotiationId}-${consultationAttemptId}`
+      : `neg-askuser-${negotiationId}`;
     try {
       const job = await this.queue.getJob(jobId);
       if (job) {
@@ -280,7 +311,11 @@ export class NegotiationTimeoutQueue {
       : null;
     if (parked && !claimedContinuation) return;
     const effectiveTask = claimedContinuation
-      ? await database.transitionClaimedTaskToWorking(task.id, claimedContinuation.execution)
+      ? await database.transitionClaimedTaskToWorking(
+          task.id,
+          'system:negotiation-timeout',
+          claimedContinuation.execution,
+        )
       : task;
     if (!effectiveTask) return;
     const execution = claimedContinuation?.execution;
@@ -342,7 +377,11 @@ export class NegotiationTimeoutQueue {
     const { negotiationId, ...coordinates } = data;
     const { opportunityId } = coordinates;
     const settle = this.deps?.settleInflightExpiry
-      ?? (async (input: AskUserExpiryPayload & { taskId: string }) =>
+      ?? (async (input: AskUserExpiryPayload & {
+        taskId: string;
+        consultationAttemptId?: string;
+        claimedByAgentId?: string;
+      }) =>
         (await import('../../adapters/questioner.adapter.instance')).questionerAdapter.expireInflightQuestion(input));
     const claim = await settle({ taskId: negotiationId, ...coordinates });
     if (!claim) {

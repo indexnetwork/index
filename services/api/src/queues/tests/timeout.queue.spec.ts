@@ -1,6 +1,7 @@
 /** Characterization tests for NegotiationTimeoutQueue timeout behavior. */
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
+import { consultationExpiryReadiness } from '../../lib/negotiation/consultation-expiry';
 import { NegotiationTimeoutQueue, type NegotiationTimeoutQueueDeps } from '../negotiations/timeout.queue';
 
 const mockAdd = mock(async () => ({ id: 'job-1' }));
@@ -133,11 +134,18 @@ describe('NegotiationTimeoutQueue.handleTimeout', () => {
 
 const expiryData = {
   negotiationId: 'task-1',
+  consultationAttemptId: 'attempt-1',
+  claimedByAgentId: 'agent-external',
   settlementId: 'negotiation-question-settlement-v1-task-1',
   opportunityId: 'opp-1',
   userId: 'u-src',
   recipientIntentId: 'intent-src',
   networkId: 'network-1',
+  intentFingerprint: 'fingerprint-1',
+  opportunityStatus: 'negotiating',
+  opportunityUpdatedAt: '2026-08-07T00:00:00.000Z',
+  counterpartyUserId: 'u-counterparty',
+  counterpartyIntentId: 'intent-counterparty',
 };
 
 describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
@@ -185,19 +193,70 @@ describe('NegotiationTimeoutQueue.handleAskUserExpiry', () => {
     expect(enqueueResume).not.toHaveBeenCalled();
   });
 
-  it('enqueueAskUserExpiry adds a delayed job under its own jobId namespace', async () => {
+  it('retries an expiry processed before pause commit, then reconciles after commit', async () => {
+    let taskState: 'claimed' | 'input_required' = 'claimed';
+    const taskMetadata = {
+      type: 'negotiation',
+      opportunityId: 'opp-1',
+      networkId: 'network-1',
+      participantBindings: [
+        { userId: 'u-src', intentId: 'intent-src', networkId: 'network-1' },
+        { userId: 'u-counterparty', intentId: 'intent-counterparty', networkId: 'network-1' },
+      ],
+    };
+    const resumed: string[] = [];
+    const q = createQueue({
+      settleInflightExpiry: async (input) => {
+        if (consultationExpiryReadiness({
+          taskState,
+          taskClaimedByAgentId: 'agent-external',
+          taskMetadata,
+          coordinates: input,
+        }) === 'pending_pause') throw new Error('consultation pause not committed');
+        return taskState === 'input_required' ? input : null;
+      },
+      enqueueResume: async (input) => { resumed.push(input.taskId); },
+    });
+
+    await expect(q.processJob('ask_user_expiry', expiryData)).rejects.toThrow('consultation pause not committed');
+    taskState = 'input_required';
+    await expect(q.processJob('ask_user_expiry', expiryData)).resolves.toBeUndefined();
+    expect(resumed).toEqual(['task-1']);
+  });
+
+  it('enqueueAskUserExpiry configures BullMQ retries and backoff for pre-commit races', async () => {
     const q = createQueue();
-    await q.enqueueAskUserExpiry('task-1', {
+    await q.enqueueAskUserExpiry('task-1', 'attempt-1', {
+      claimedByAgentId: 'agent-external',
       settlementId: 'negotiation-question-settlement-v1-task-1',
       opportunityId: 'opp-1',
       userId: 'u-src',
       recipientIntentId: 'intent-src',
       networkId: 'network-1',
+      intentFingerprint: 'fingerprint-1',
+      opportunityStatus: 'negotiating',
+      opportunityUpdatedAt: '2026-08-07T00:00:00.000Z',
+      counterpartyUserId: 'u-counterparty',
+      counterpartyIntentId: 'intent-counterparty',
     }, 86_400_000);
     expect(mockAdd).toHaveBeenCalledWith(
       'ask_user_expiry',
       expiryData,
-      expect.objectContaining({ jobId: 'neg-askuser-task-1', delay: 86_400_000 }),
+      expect.objectContaining({
+        jobId: 'neg-askuser-task-1-attempt-1',
+        delay: 86_400_000,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      }),
     );
+  });
+
+  it('cancels only the exact consultation attempt expiry', async () => {
+    const remove = mock(async () => undefined);
+    mockGetJob.mockResolvedValueOnce({ getState: async () => 'delayed', remove });
+    const q = createQueue();
+    await q.cancelAskUserExpiry('task-1', 'attempt-loser');
+    expect(mockGetJob).toHaveBeenCalledWith('neg-askuser-task-1-attempt-loser');
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 });

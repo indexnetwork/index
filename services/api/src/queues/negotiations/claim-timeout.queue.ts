@@ -243,8 +243,8 @@ export class NegotiationClaimTimeoutQueue {
       return;
     }
     const task = continuationExecution
-      ? await database.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
-      : await database.transitionClaimedTaskToWorking(negotiationId);
+      ? await database.transitionClaimedTaskToWorking(negotiationId, agentId, continuationExecution)
+      : await database.transitionClaimedTaskToWorking(negotiationId, agentId);
 
     if (!task) {
       this.logger.info('Task no longer claimed, skipping (stale job)', {

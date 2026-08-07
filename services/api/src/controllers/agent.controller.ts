@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuthGuard, authorizeNegotiationPickupPrincipal, authorizeNegotiationRespondPrincipal, OwnerControlGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
+import { captureAppException } from '../lib/sentry';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
@@ -64,7 +65,7 @@ const confirmOpportunityDeliveredSchema = z.object({
 // Accepts the union of v1 + v2 action vocabularies; the polling service
 // enforces the per-task version + seat subset (wrong-seat action → 400).
 const respondNegotiationSchema = z.object({
-  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline', 'ask_user']),
+  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline']),
   message: z.string().nullable().optional(),
   assessment: z.object({
     reasoning: z.string(),
@@ -74,6 +75,11 @@ const respondNegotiationSchema = z.object({
     }),
   }),
 });
+
+const consultNegotiationSchema = z.object({
+  disclosureSubject: z.string().trim().min(1),
+  draftQuestion: z.string().trim().min(1).optional(),
+}).strict();
 
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
@@ -106,6 +112,33 @@ function errorStatus(err: unknown, fallback = 400): number {
   }
 
   return fallback;
+}
+
+function consultationErrorResponse(
+  err: unknown,
+  context: { agentId: string; negotiationId: string; stage: 'authorization' | 'consultation' },
+): Response {
+  if (err instanceof SeatViolationError) return jsonError(err.message, 400);
+  if (err instanceof UnauthorizedError) return jsonError(err.message, 403);
+  if (err instanceof NotFoundError) return jsonError(err.message, 404);
+  if (err instanceof ConflictError) return jsonError(err.message, 409);
+
+  const error = err instanceof Error ? err.message : String(err);
+  const directCode = err && typeof err === 'object' && 'code' in err
+    ? (err as { code?: unknown }).code
+    : undefined;
+  logger.error('Negotiation consultation failed', {
+    ...context,
+    error,
+    ...(typeof directCode === 'string' ? { code: directCode } : {}),
+  });
+  captureAppException(err, {
+    subsystem: 'protocol',
+    operation: 'agent.negotiation.consult',
+    tags: { stage: context.stage },
+    context: { agentId: context.agentId, negotiationId: context.negotiationId },
+  });
+  return jsonError('Internal server error', 500);
 }
 
 async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | Response> {
@@ -467,6 +500,32 @@ export class AgentController {
     } catch (err) {
       // UnauthorizedError/NotFoundError/ConflictError map to 403/404/409 via errorStatus.
       return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/negotiations/:negotiationId/consult')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async consultNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    const negotiationId = params?.negotiationId;
+    if (!agentId || !negotiationId) {
+      return jsonError('Agent ID and negotiation ID are required', 400);
+    }
+
+    try {
+      if (!await authorizeNegotiationRespondPrincipal(req, agentId, this.resolveAgentPrincipal)) {
+        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
+      }
+    } catch (err) {
+      return consultationErrorResponse(err, { agentId, negotiationId, stage: 'authorization' });
+    }
+
+    const body = await parseBody(req, consultNegotiationSchema);
+    if (body instanceof Response) return body;
+    try {
+      return Response.json(await this.negotiations.consult(agentId, user.id, negotiationId, body));
+    } catch (err) {
+      return consultationErrorResponse(err, { agentId, negotiationId, stage: 'consultation' });
     }
   }
 

@@ -2367,6 +2367,18 @@
       "source": "./capabilities/negotiation.facade.js"
     },
     {
+      "name": "askUserAnswerWindowMs",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
+      "name": "configuredAskUserEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/negotiation.facade.js"
+    },
+    {
       "name": "isTerminalAction",
       "kind": "value",
       "stability": "stable",

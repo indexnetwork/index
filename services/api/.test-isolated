@@ -64,7 +64,9 @@ src/services/tests/integration.service.telegram.isolated.ts
 tests/negotiation.agents.isolated.ts
 tests/frame-drift.database.adapter.isolated.ts
 tests/negotiation.ask-user.e2e.isolated.ts
+tests/negotiation-polling-consultation.e2e.isolated.ts
 src/services/tests/negotiation-polling.memory.isolated.ts
+src/services/tests/negotiation-polling.consult.isolated.ts
 src/services/tests/negotiation-polling.seat.isolated.ts
 src/services/tests/uptake-question.service.isolated.ts
 src/services/tests/negotiator-memory.service.isolated.ts
@@ -88,6 +90,7 @@ src/queues/tests/frame-drift.hermetic.isolated.ts
 src/queues/pool/tests/newborn.shared.isolated.ts
 src/queues/tests/checkpoint-retention.queue.isolated.ts
 src/controllers/tests/tool.controller.isolated.ts
+src/controllers/tests/agent.controller.consult.isolated.ts
 src/queues/tests/pool-question.queue.isolated.ts
 src/lib/tests/protocol-url.isolated.ts
 src/lib/bullmq/bullmq.redis-contract.isolated.ts

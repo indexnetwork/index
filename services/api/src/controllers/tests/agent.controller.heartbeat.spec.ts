@@ -20,6 +20,8 @@ const negotiationPickupMock = mock(async (_agentId: string, _userId: string) => 
   callOrder.push('pickupNegotiation');
   return null;
 });
+const negotiationConsultMock = mock(async () => ({ success: true as const, status: 'input_required' as const, settlementId: 'settlement-1' }));
+const negotiationRespondMock = mock(async () => ({ success: true as const }));
 const testMessagePickupMock = mock(async (_agentId: string) => {
   callOrder.push('pickupTestMessage');
   return null;
@@ -40,6 +42,8 @@ const agents = {
 };
 const negotiations = {
   pickup: negotiationPickupMock,
+  consult: negotiationConsultMock,
+  respond: negotiationRespondMock,
 };
 const testMessages = {
   pickup: testMessagePickupMock,
@@ -87,6 +91,8 @@ describe('AgentController pickup endpoints heartbeat', () => {
     resolveAgentPrincipalMock.mockClear();
     resolveAgentPrincipalMock.mockResolvedValue(TEST_AGENT_ID);
     negotiationPickupMock.mockClear();
+    negotiationConsultMock.mockClear();
+    negotiationRespondMock.mockClear();
     testMessagePickupMock.mockClear();
     opportunityPickupMock.mockClear();
     fetchPendingCandidatesMock.mockClear();
@@ -169,6 +175,43 @@ describe('AgentController pickup endpoints heartbeat', () => {
     expect((response as Response).status).toBe(403);
     expect(negotiationPickupMock).not.toHaveBeenCalled();
     expect(touchNegotiationPickupMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentController negotiation consultation admission', () => {
+  beforeEach(() => {
+    resolveAgentPrincipalMock.mockResolvedValue(TEST_AGENT_ID);
+    negotiationConsultMock.mockClear();
+    negotiationRespondMock.mockClear();
+  });
+
+  it('accepts only the strict two-field consultation body under exact-principal authorization', async () => {
+    const controller = makeController();
+    const response = await controller.consultNegotiation(new Request(
+      `http://localhost/agents/${TEST_AGENT_ID}/negotiations/task-1/consult`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disclosureSubject: 'availability', draftQuestion: 'May I share it?' }) },
+    ), mockUser as never, { id: TEST_AGENT_ID, negotiationId: 'task-1' });
+    expect((response as Response).status).toBe(200);
+    expect(negotiationConsultMock).toHaveBeenCalledWith(TEST_AGENT_ID, TEST_USER_ID, 'task-1', {
+      disclosureSubject: 'availability', draftQuestion: 'May I share it?',
+    });
+  });
+
+  it('rejects unknown consultation fields and ask_user through ordinary respond', async () => {
+    const controller = makeController();
+    const consult = await controller.consultNegotiation(new Request(
+      `http://localhost/agents/${TEST_AGENT_ID}/negotiations/task-1/consult`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disclosureSubject: 'availability', counterparty: 'private' }) },
+    ), mockUser as never, { id: TEST_AGENT_ID, negotiationId: 'task-1' });
+    expect((consult as Response).status).toBe(400);
+    expect(negotiationConsultMock).not.toHaveBeenCalled();
+
+    const respond = await controller.respondNegotiation(new Request(
+      `http://localhost/agents/${TEST_AGENT_ID}/negotiations/task-1/respond`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'ask_user', assessment: { reasoning: 'x', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } }) },
+    ), mockUser as never, { id: TEST_AGENT_ID, negotiationId: 'task-1' });
+    expect((respond as Response).status).toBe(400);
+    expect(negotiationRespondMock).not.toHaveBeenCalled();
   });
 });
 

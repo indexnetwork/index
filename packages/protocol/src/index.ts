@@ -376,7 +376,7 @@ export type { NegotiationGraphLike } from "./capabilities/negotiation.facade.js"
 
 // ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
 
-export { allowedActionsFor, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./capabilities/negotiation.facade.js";
+export { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./capabilities/negotiation.facade.js";
 export { assessConsultationEligibility, consultationPromptFor, negotiationConsultationPolicyMode } from "./capabilities/negotiation.facade.js";
 export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode, NegotiationConsultationReason } from "./capabilities/negotiation.facade.js";
 export {

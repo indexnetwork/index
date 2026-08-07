@@ -8,6 +8,7 @@ import { projectNegotiationActivity } from '../lib/negotiation-activity';
 import { assertContinuationExecutionEffect } from './negotiation-continuation.atomic';
 import type { ContinuationExecutionFence } from './negotiation-continuation.atomic';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { consultationActorSetMatchesBinding, externalConsultationCoordinatesFor } from '../lib/negotiation/consultation';
 
 /** Persona literals mirrored locally so the data layer stays protocol-agnostic. */
 const ORCHESTRATOR_PERSONA = 'orchestrator';
@@ -1752,6 +1753,7 @@ export class ConversationDatabaseAdapter {
    */
   async transitionClaimedTaskToWorking(
     taskId: string,
+    claimedByAgentId: string,
     continuationExecution?: ContinuationExecutionFence,
   ): Promise<Task | null> {
     return db.transaction(async (tx) => {
@@ -1761,9 +1763,356 @@ export class ConversationDatabaseAdapter {
       const [task] = await tx
         .update(schema.tasks)
         .set({ state: 'working', updatedAt: new Date() })
-        .where(and(eq(schema.tasks.id, taskId), eq(schema.tasks.state, 'claimed')))
+        .where(and(
+          eq(schema.tasks.id, taskId),
+          eq(schema.tasks.state, 'claimed'),
+          eq(schema.tasks.claimedByAgentId, claimedByAgentId),
+        ))
         .returning();
       return task ?? null;
+    });
+  }
+
+  /** Read the expiry coordinates that the pause transaction must revalidate. */
+  async getClaimedNegotiationConsultationMaterial(input: {
+    taskId: string;
+    claimedByAgentId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    counterpartyUserId: string;
+    counterpartyIntentId: string;
+  }): Promise<{
+    intentFingerprint: string;
+    opportunityStatus: string;
+    opportunityUpdatedAt: string;
+    counterpartyUserId: string;
+    counterpartyIntentId: string;
+  } | null> {
+    const [row] = await db.select({
+      taskState: schema.tasks.state,
+      claimedByAgentId: schema.tasks.claimedByAgentId,
+      taskMetadata: schema.tasks.metadata,
+      intentPayload: schema.intents.payload,
+      intentSummary: schema.intents.summary,
+      intentStatus: schema.intents.status,
+      intentArchivedAt: schema.intents.archivedAt,
+      opportunityStatus: opportunities.status,
+      opportunityUpdatedAt: opportunities.updatedAt,
+      actors: opportunities.actors,
+    }).from(schema.tasks)
+      .innerJoin(schema.intents, eq(schema.intents.id, input.recipientIntentId))
+      .innerJoin(schema.intentNetworks, and(
+        eq(schema.intentNetworks.intentId, schema.intents.id),
+        eq(schema.intentNetworks.networkId, input.networkId),
+      ))
+      .innerJoin(opportunities, eq(opportunities.id, input.opportunityId))
+      .where(and(
+        eq(schema.tasks.id, input.taskId),
+        eq(schema.tasks.state, 'claimed'),
+        eq(schema.tasks.claimedByAgentId, input.claimedByAgentId),
+        eq(schema.intents.userId, input.recipientUserId),
+        isNull(schema.intents.archivedAt),
+        or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+      ))
+      .limit(1);
+    const metadata = row?.taskMetadata as Record<string, unknown> | null;
+    if (
+      !row
+      || metadata?.type !== 'negotiation'
+      || metadata.opportunityId !== input.opportunityId
+      || metadata.networkId !== input.networkId
+      || row.opportunityStatus !== 'negotiating'
+    ) return null;
+    const boundCoordinates = externalConsultationCoordinatesFor(metadata, input.recipientUserId);
+    if (
+      !boundCoordinates
+      || boundCoordinates.recipientIntentId !== input.recipientIntentId
+      || boundCoordinates.counterpartyUserId !== input.counterpartyUserId
+      || boundCoordinates.counterpartyIntentId !== input.counterpartyIntentId
+      || !consultationActorSetMatchesBinding({
+        actors: row.actors,
+        recipientUserId: input.recipientUserId,
+        recipientIntentId: input.recipientIntentId,
+        networkId: input.networkId,
+        counterpartyUserId: boundCoordinates.counterpartyUserId,
+        counterpartyIntentId: boundCoordinates.counterpartyIntentId,
+      })
+    ) return null;
+    const members = await db.select({ userId: schema.networkMembers.userId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, and(
+        eq(schema.networks.id, schema.networkMembers.networkId),
+        eq(schema.networks.isPersonal, false),
+        isNull(schema.networks.deletedAt),
+      ))
+      .where(and(
+        eq(schema.networkMembers.networkId, input.networkId),
+        inArray(schema.networkMembers.userId, [input.recipientUserId, boundCoordinates.counterpartyUserId]),
+        isNull(schema.networkMembers.deletedAt),
+      ));
+    if (new Set(members.map((member) => member.userId)).size !== 2) return null;
+    return {
+      intentFingerprint: computeIntentFingerprint(row.intentPayload, row.intentSummary),
+      opportunityStatus: row.opportunityStatus,
+      opportunityUpdatedAt: row.opportunityUpdatedAt.toISOString(),
+      counterpartyUserId: boundCoordinates.counterpartyUserId,
+      counterpartyIntentId: boundCoordinates.counterpartyIntentId,
+    };
+  }
+
+  /**
+   * Atomically pause one exact external claim for owner consultation. The task
+   * row lock serializes consult/respond/timeout contenders; every lifecycle,
+   * claimant, continuation, message-cardinality, and material-binding check is
+   * repeated inside the winning transaction before the sole ask_user turn is
+   * inserted and the task enters input_required.
+   */
+  async pauseClaimedNegotiationForConsultation(input: {
+    taskId: string;
+    claimedByAgentId: string;
+    recipientUserId: string;
+    recipientIntentId: string;
+    opportunityId: string;
+    networkId: string;
+    settlementId: string;
+    consultationAttemptId: string;
+    expectedTurnCount: number;
+    expectedMaterial: {
+      intentFingerprint: string;
+      opportunityStatus: string;
+      opportunityUpdatedAt: string;
+      counterpartyUserId: string;
+      counterpartyIntentId: string;
+    };
+    safeAskUser: { disclosureSubject: string; draftQuestion?: string };
+    consultationPolicyReason?: string;
+    continuationExecution?: ContinuationExecutionFence;
+  }): Promise<{
+    task: Task;
+    binding: {
+      version: 2;
+      settlementId: string;
+      consultationAttemptId: string;
+      recipientUserId: string;
+      recipientIntentId: string;
+      opportunityId: string;
+      networkId: string;
+      intentFingerprint: string;
+      opportunityStatus: string;
+      opportunityUpdatedAt: string;
+      counterpartyUserId: string;
+      counterpartyIntentId: string;
+    };
+  } | null> {
+    return db.transaction(async (tx) => {
+      if (input.continuationExecution) {
+        await assertContinuationExecutionEffect(tx as unknown as typeof db, input.continuationExecution);
+      }
+      const [task] = await tx.select().from(schema.tasks)
+        .where(eq(schema.tasks.id, input.taskId))
+        .limit(1)
+        .for('update');
+      if (
+        !task
+        || task.state !== 'claimed'
+        || task.claimedByAgentId !== input.claimedByAgentId
+      ) return null;
+      const metadata = task.metadata as Record<string, unknown> | null;
+      if (
+        metadata?.type !== 'negotiation'
+        || metadata.opportunityId !== input.opportunityId
+        || metadata.networkId !== input.networkId
+      ) return null;
+      const boundCoordinates = externalConsultationCoordinatesFor(metadata, input.recipientUserId);
+      if (
+        !boundCoordinates
+        || boundCoordinates.recipientIntentId !== input.recipientIntentId
+        || boundCoordinates.counterpartyUserId !== input.expectedMaterial.counterpartyUserId
+        || boundCoordinates.counterpartyIntentId !== input.expectedMaterial.counterpartyIntentId
+      ) return null;
+
+      const [{ value: turnCount }] = await tx.select({ value: count() })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, task.conversationId));
+      if (Number(turnCount) !== input.expectedTurnCount || input.expectedTurnCount < 1) return null;
+      const [intent] = await tx.select({
+        userId: schema.intents.userId,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        status: schema.intents.status,
+        archivedAt: schema.intents.archivedAt,
+      }).from(schema.intents)
+        .innerJoin(schema.intentNetworks, and(
+          eq(schema.intentNetworks.intentId, schema.intents.id),
+          eq(schema.intentNetworks.networkId, input.networkId),
+        ))
+        .where(eq(schema.intents.id, input.recipientIntentId))
+        .limit(1)
+        .for('update');
+      const [opportunity] = await tx.select({
+        status: opportunities.status,
+        updatedAt: opportunities.updatedAt,
+        actors: opportunities.actors,
+      }).from(opportunities)
+        .where(eq(opportunities.id, input.opportunityId))
+        .limit(1)
+        .for('update');
+      if (
+        !intent
+        || intent.userId !== input.recipientUserId
+        || intent.archivedAt !== null
+        || (intent.status !== null && intent.status !== 'ACTIVE')
+        || !opportunity
+        || opportunity.status !== 'negotiating'
+      ) return null;
+
+      if (!consultationActorSetMatchesBinding({
+        actors: opportunity.actors,
+        recipientUserId: input.recipientUserId,
+        recipientIntentId: input.recipientIntentId,
+        networkId: input.networkId,
+        counterpartyUserId: boundCoordinates.counterpartyUserId,
+        counterpartyIntentId: boundCoordinates.counterpartyIntentId,
+      })) return null;
+      const { counterpartyUserId, counterpartyIntentId } = boundCoordinates;
+      const members = await tx.select({ userId: schema.networkMembers.userId })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, and(
+          eq(schema.networks.id, schema.networkMembers.networkId),
+          eq(schema.networks.isPersonal, false),
+          isNull(schema.networks.deletedAt),
+        ))
+        .where(and(
+          eq(schema.networkMembers.networkId, input.networkId),
+          inArray(schema.networkMembers.userId, [input.recipientUserId, counterpartyUserId]),
+          isNull(schema.networkMembers.deletedAt),
+        ));
+      if (new Set(members.map((member) => member.userId)).size !== 2) return null;
+
+      const [precedingMessage] = await tx.select({ senderId: schema.messages.senderId, parts: schema.messages.parts })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, task.conversationId))
+        .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
+        .limit(1);
+      const precedingData = Array.isArray(precedingMessage?.parts)
+        ? (precedingMessage.parts as Array<{ kind?: unknown; data?: unknown }>).find((part) => part.kind === 'data')?.data
+        : null;
+      const precedingTurn = precedingData && typeof precedingData === 'object' && !Array.isArray(precedingData)
+        ? precedingData as Record<string, unknown>
+        : null;
+      const precedingAssessment = precedingTurn?.assessment && typeof precedingTurn.assessment === 'object' && !Array.isArray(precedingTurn.assessment)
+        ? precedingTurn.assessment as Record<string, unknown>
+        : null;
+      const precedingRoles = precedingAssessment?.suggestedRoles && typeof precedingAssessment.suggestedRoles === 'object' && !Array.isArray(precedingAssessment.suggestedRoles)
+        ? precedingAssessment.suggestedRoles as Record<string, unknown>
+        : null;
+      const validRole = (value: unknown): value is 'agent' | 'patient' | 'peer' =>
+        value === 'agent' || value === 'patient' || value === 'peer';
+      if (
+        precedingMessage?.senderId !== `agent:${counterpartyUserId}`
+        || (precedingTurn?.action !== 'counter' && precedingTurn?.action !== 'question')
+        || !validRole(precedingRoles?.ownUser)
+        || !validRole(precedingRoles?.otherUser)
+      ) return null;
+
+      const material = {
+        intentFingerprint: computeIntentFingerprint(intent.payload, intent.summary),
+        opportunityStatus: opportunity.status,
+        opportunityUpdatedAt: opportunity.updatedAt.toISOString(),
+        counterpartyUserId,
+        counterpartyIntentId,
+      };
+      if (
+        material.intentFingerprint !== input.expectedMaterial.intentFingerprint
+        || material.opportunityStatus !== input.expectedMaterial.opportunityStatus
+        || material.opportunityUpdatedAt !== input.expectedMaterial.opportunityUpdatedAt
+        || material.counterpartyUserId !== input.expectedMaterial.counterpartyUserId
+        || material.counterpartyIntentId !== input.expectedMaterial.counterpartyIntentId
+      ) return null;
+      const binding = {
+        version: 2 as const,
+        settlementId: input.settlementId,
+        consultationAttemptId: input.consultationAttemptId,
+        recipientUserId: input.recipientUserId,
+        recipientIntentId: input.recipientIntentId,
+        opportunityId: input.opportunityId,
+        networkId: input.networkId,
+        ...material,
+      };
+      const now = new Date();
+      const turnContext = metadata.turnContext && typeof metadata.turnContext === 'object' && !Array.isArray(metadata.turnContext)
+        ? metadata.turnContext as Record<string, unknown>
+        : {};
+      const [pausedTask] = await tx.update(schema.tasks).set({
+        state: 'input_required',
+        metadata: { ...metadata, turnContext: {
+          ...turnContext,
+          askUserBinding: binding,
+          ...(input.consultationPolicyReason ? { consultationPolicyReason: input.consultationPolicyReason } : {}),
+        } },
+        statusTimestamp: now,
+        updatedAt: now,
+      }).where(and(
+        eq(schema.tasks.id, input.taskId),
+        eq(schema.tasks.state, 'claimed'),
+        eq(schema.tasks.claimedByAgentId, input.claimedByAgentId),
+      )).returning();
+      if (!pausedTask) return null;
+
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`conversation-session:${task.conversationId}`}, 0)
+        )
+      `);
+      const [existingSession] = await tx.select({ id: schema.conversationSessions.id })
+        .from(schema.conversationSessions)
+        .where(eq(schema.conversationSessions.taskId, task.id))
+        .limit(1);
+      const sessionId = existingSession?.id ?? crypto.randomUUID();
+      if (existingSession) {
+        await tx.update(schema.conversationSessions).set({ lastMessageAt: now })
+          .where(eq(schema.conversationSessions.id, sessionId));
+      } else {
+        await tx.insert(schema.conversationSessions).values({
+          id: sessionId,
+          conversationId: task.conversationId,
+          taskId: task.id,
+          startedAt: now,
+          lastMessageAt: now,
+        });
+      }
+      await tx.insert(schema.messages).values({
+        conversationId: task.conversationId,
+        taskId: task.id,
+        sessionId,
+        senderId: `agent:${input.recipientUserId}`,
+        role: 'agent',
+        parts: [{ kind: 'data', data: {
+          action: 'ask_user',
+          message: null,
+          assessment: {
+            reasoning: 'Owner consultation requested by the external negotiation executor.',
+            suggestedRoles: {
+              ownUser: precedingRoles.otherUser,
+              otherUser: precedingRoles.ownUser,
+            },
+          },
+          askUser: input.safeAskUser,
+        } }],
+        createdAt: now,
+      });
+      await tx.update(schema.conversations)
+        .set({ lastMessageAt: now, updatedAt: now })
+        .where(eq(schema.conversations.id, task.conversationId));
+      await tx.update(schema.conversationParticipants)
+        .set({ hiddenAt: null })
+        .where(and(
+          eq(schema.conversationParticipants.conversationId, task.conversationId),
+          eq(schema.conversationParticipants.participantId, `agent:${input.recipientUserId}`),
+        ));
+      return { task: pausedTask, binding };
     });
   }
 

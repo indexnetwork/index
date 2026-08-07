@@ -176,6 +176,9 @@ describe('pickup — seat announcement', () => {
     expect(result!.protocolVersion).toBe('v2');
     expect(result!.allowedActions).toEqual(['outreach', 'counter', 'question', 'withdraw']);
     expect(result!.allowedActions).not.toContain('accept');
+    // This legacy fixture intentionally lacks exact intent/network coordinates,
+    // so pickup must fail closed rather than advertise consultation.
+    expect(result!.canConsultOwner).toBe(false);
 
     // Idempotent repick returns the same announcement
     const again = await negotiationPollingService.pickup(agentA, userA);

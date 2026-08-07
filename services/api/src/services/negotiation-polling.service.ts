@@ -11,8 +11,10 @@ import { log } from '../lib/log';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationAction, NegotiationSeat, NegotiationProtocolVersion, NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
-import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isRejectLikeAction, isTerminalAction, negotiationConsultationPolicyMode, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage, validateInflightAskUserFields } from '@indexnetwork/protocol';
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
+import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
+import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -105,6 +107,8 @@ export interface PickupResult {
   protocolVersion: NegotiationProtocolVersion;
   /** Actions the claiming seat may submit on this turn. */
   allowedActions: NegotiationAction[];
+  /** Whether this exact claim may enter the owner-consultation continuation. */
+  canConsultOwner: boolean;
   /**
    * Full negotiation context, mirroring what the in-process system agent
    * receives as its `NegotiationAgentInput`. `ownUser`/`otherUser` are
@@ -131,6 +135,17 @@ export interface PickupResult {
   /** Recipient-private consultation; present only for that recipient's agent. */
   privateConsultation?: { kind: 'answer' | 'dismiss' | 'timeout'; selectedOptions: string[]; freeText?: string };
 }
+
+export type ConsultNegotiationInput = {
+  disclosureSubject: string;
+  draftQuestion?: string;
+};
+
+export type ConsultNegotiationResult = {
+  success: true;
+  status: 'input_required';
+  settlementId: string;
+};
 
 export interface RespondInput {
   action: NegotiationAction;
@@ -169,6 +184,10 @@ interface NegotiationTaskMetadata {
   protocolVersion?: string;
   maxTurns?: number;
   opportunityId?: string;
+  networkId?: string;
+  sourceIntentId?: string;
+  candidateIntentId?: string;
+  participantBindings?: Array<{ userId: string; intentId: string; networkId: string }>;
   /** ISO timestamp set by the archive backfill on pre-v2 legacy negotiations. */
   archivedAt?: string;
   turnContext?: PersistedTurnContext & {
@@ -330,6 +349,193 @@ export class NegotiationPollingService {
   }
 
   /**
+   * Pause an exact external claim and route a privacy-minimal owner question
+   * through the existing Questioner/expiry/continuation lifecycle.
+   */
+  async consult(
+    agentId: string,
+    userId: string,
+    negotiationId: string,
+    input: ConsultNegotiationInput,
+  ): Promise<ConsultNegotiationResult> {
+    if (!await this.authorization.authorizeRespond(agentId, userId)) {
+      throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
+    }
+    const task = await conversationDatabaseAdapter.getTask(negotiationId);
+    if (!task) throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+    const metadata = task.metadata as NegotiationTaskMetadata | null;
+    if (metadata?.type !== 'negotiation') {
+      throw new NotFoundError(`Task ${negotiationId} is not a negotiation`);
+    }
+    if (metadata.sourceUserId !== userId && metadata.candidateUserId !== userId) {
+      throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+    }
+
+    const messages = await conversationDatabaseAdapter.getMessagesForConversation(task.conversationId);
+    const persistedTurns = this.persistedTurns(messages);
+    const questionerEnqueue = questionerEnqueueIfEnabled();
+    const policyMode = negotiationConsultationPolicyMode();
+    const eligibility = assessExternalConsultationEligibility({
+      task: {
+        id: task.id,
+        state: task.state,
+        claimedByAgentId: task.claimedByAgentId,
+        metadata: metadata as unknown as Record<string, unknown>,
+      },
+      messages: persistedTurns,
+      userId,
+      agentId,
+      policyMode,
+      wiring: {
+        askUserEnabled: configuredAskUserEnabled(),
+        questionerEnabled: Boolean(questionerEnqueue),
+        expiryEnabled: typeof negotiationTimeoutQueue.enqueueAskUserExpiry === 'function',
+      },
+    });
+    if (policyMode === 'shadow') {
+      logger.info('negotiation_consultation_policy', {
+        stage: 'assessed', mode: policyMode, eligible: eligibility.policy.eligible,
+        ...(eligibility.policy.reason ? { reason: eligibility.policy.reason } : {}),
+      });
+    }
+    if (!eligibility.structuralEligible || !eligibility.eligible || !eligibility.coordinates) {
+      if (task.state === 'claimed' && task.claimedByAgentId !== agentId) {
+        throw new ConflictError(`Negotiation ${negotiationId} is claimed by a different agent`);
+      }
+      throw new SeatViolationError('Owner consultation is not available for this negotiation turn');
+    }
+    if (eligibility.policy.eligible && eligibility.policy.reason && policyMode !== 'off') {
+      logger.info('negotiation_consultation_policy', {
+        stage: 'eligible', mode: policyMode, reason: eligibility.policy.reason,
+      });
+    }
+
+    const counterparty = metadata.sourceUserId === userId
+      ? metadata.turnContext?.candidateUser
+      : metadata.turnContext?.sourceUser;
+    const turnContext = metadata.turnContext;
+    const safeAskUser = validateInflightAskUserFields({
+      disclosureSubject: input.disclosureSubject,
+      draftQuestion: input.draftQuestion,
+      forbiddenIdentifiers: [
+        counterparty?.id ?? '',
+        counterparty?.profile?.name ?? '',
+        negotiationId,
+        eligibility.coordinates.opportunityId,
+        eligibility.coordinates.recipientIntentId,
+        eligibility.coordinates.networkId,
+      ],
+      forbiddenSourceText: [
+        counterparty?.profile?.bio ?? '',
+        counterparty?.profile?.location ?? '',
+        ...(counterparty?.intents ?? []).flatMap((intent) => [intent.title, intent.description]),
+        turnContext?.seedAssessment?.reasoning ?? '',
+        turnContext?.indexContext?.prompt ?? '',
+        turnContext?.discoveryQuery ?? '',
+      ],
+    });
+    if (!safeAskUser) {
+      throw new SeatViolationError('Consultation fields contain unsafe or private negotiation material');
+    }
+
+    const hasContinuation = hasContinuationIdentity(task.metadata);
+    const continuationExecution = hasContinuation
+      ? await readClaimedContinuationExecution(db, negotiationId)
+      : null;
+    if (hasContinuation && !continuationExecution) {
+      throw new ConflictError(`Negotiation ${negotiationId} continuation fence is no longer current`);
+    }
+
+    const material = await conversationDatabaseAdapter.getClaimedNegotiationConsultationMaterial({
+      taskId: negotiationId,
+      claimedByAgentId: agentId,
+      recipientUserId: userId,
+      recipientIntentId: eligibility.coordinates.recipientIntentId,
+      opportunityId: eligibility.coordinates.opportunityId,
+      networkId: eligibility.coordinates.networkId,
+      counterpartyUserId: eligibility.coordinates.counterpartyUserId,
+      counterpartyIntentId: eligibility.coordinates.counterpartyIntentId,
+    });
+    if (
+      !material
+      || material.counterpartyUserId !== eligibility.coordinates.counterpartyUserId
+      || material.counterpartyIntentId !== eligibility.coordinates.counterpartyIntentId
+    ) {
+      throw new ConflictError(`Negotiation ${negotiationId} consultation binding is no longer current`);
+    }
+
+    const settlementId = negotiationQuestionSettlementId(negotiationId);
+    const consultationAttemptId = crypto.randomUUID();
+    const expiryPayload = {
+      claimedByAgentId: agentId,
+      settlementId,
+      opportunityId: eligibility.coordinates.opportunityId,
+      userId,
+      recipientIntentId: eligibility.coordinates.recipientIntentId,
+      networkId: eligibility.coordinates.networkId,
+      ...material,
+    };
+    await negotiationTimeoutQueue.enqueueAskUserExpiry(
+      negotiationId,
+      consultationAttemptId,
+      expiryPayload,
+      askUserAnswerWindowMs(),
+    );
+
+    let paused;
+    try {
+      paused = await conversationDatabaseAdapter.pauseClaimedNegotiationForConsultation({
+        taskId: negotiationId,
+        claimedByAgentId: agentId,
+        recipientUserId: userId,
+        recipientIntentId: eligibility.coordinates.recipientIntentId,
+        opportunityId: eligibility.coordinates.opportunityId,
+        networkId: eligibility.coordinates.networkId,
+        settlementId,
+        consultationAttemptId,
+        expectedTurnCount: messages.length,
+        expectedMaterial: material,
+        safeAskUser,
+        ...(eligibility.policy.reason && policyMode !== 'off'
+          ? { consultationPolicyReason: eligibility.policy.reason }
+          : {}),
+        ...(continuationExecution ? { continuationExecution } : {}),
+      });
+    } catch (error) {
+      await negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId, consultationAttemptId);
+      throw error;
+    }
+    if (!paused) {
+      await negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId, consultationAttemptId);
+      throw new ConflictError(`Negotiation ${negotiationId} is no longer held by this claim`);
+    }
+
+    await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId);
+    const payload = buildExternalConsultationQuestionerPayload({
+      negotiationId,
+      userId,
+      coordinates: eligibility.coordinates,
+      safeInput: safeAskUser,
+      ...(eligibility.policy.reason && policyMode !== 'off'
+        ? { consultationPolicyReason: eligibility.policy.reason }
+        : {}),
+    });
+    await questionerEnqueue!(payload).catch((error) => {
+      logger.error('Failed to enqueue external owner consultation; expiry recovery remains armed', {
+        negotiationId,
+        consultationAttemptId,
+        error,
+      });
+    });
+    logger.info('External owner consultation paused', {
+      negotiationId,
+      consultationAttemptId,
+      settlementId,
+    });
+    return { success: true, status: 'input_required', settlementId };
+  }
+
+  /**
    * Submits a response for a claimed negotiation turn.
    *
    * Validates that the task is in `claimed` state and owned by the given agent,
@@ -371,7 +577,9 @@ export class NegotiationPollingService {
     }
     const protocolVersion = (readProtocolVersion(preflightMeta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, preflightMeta);
-    if (!allowedActionsFor(protocolVersion, seat).includes(input.action)) {
+    const preflightMessages = await conversationDatabaseAdapter.getMessagesForConversation(preflight.conversationId);
+    const isFinalTurn = preflightMessages.length + 1 >= (preflightMeta.maxTurns ?? DEFAULT_MAX_TURNS);
+    if (!allowedActionsFor(protocolVersion, seat, isFinalTurn).includes(input.action)) {
       throw new SeatViolationError(seatViolationMessage(input.action, seat, protocolVersion));
     }
 
@@ -388,13 +596,8 @@ export class NegotiationPollingService {
       throw new ConflictError(`Negotiation ${negotiationId} continuation fence is no longer current`);
     }
     const task = continuationExecution
-      ? await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId, continuationExecution)
-      : await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId);
-    // The generic CAS must still bind the claiming agent; continuation rows
-    // additionally require their current token/fence before any write.
-    if (task && task.claimedByAgentId !== agentId) {
-      throw new ConflictError(`Negotiation ${negotiationId} is claimed by a different agent`);
-    }
+      ? await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId, agentId, continuationExecution)
+      : await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId, agentId);
 
     if (!task) {
       // Either the task does not exist, is no longer claimed, or is claimed by
@@ -618,9 +821,29 @@ export class NegotiationPollingService {
     }
 
     // Announce the claiming user's seat + allowed actions (v2 client-advocate
-    // protocol) so agents don't have to guess the valid vocabulary.
+    // protocol) so agents don't have to guess the valid vocabulary. Final turns
+    // use the terminal-cap vocabulary and never advertise consultation.
     const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, meta);
+    const isFinalTurn = turnNumber + 1 >= (meta.maxTurns ?? DEFAULT_MAX_TURNS);
+    const questionerEnqueue = questionerEnqueueIfEnabled();
+    const consultation = assessExternalConsultationEligibility({
+      task: {
+        id: task.id,
+        state: task.state,
+        claimedByAgentId: task.claimedByAgentId,
+        metadata: meta as unknown as Record<string, unknown>,
+      },
+      messages: this.persistedTurns(messages),
+      userId,
+      agentId: task.claimedByAgentId ?? '',
+      policyMode: negotiationConsultationPolicyMode(),
+      wiring: {
+        askUserEnabled: configuredAskUserEnabled(),
+        questionerEnabled: Boolean(questionerEnqueue),
+        expiryEnabled: typeof negotiationTimeoutQueue.enqueueAskUserExpiry === 'function',
+      },
+    });
 
     // P5.3: the claiming user's OWN negotiator memories. Keyed on the claiming
     // userId — the counterparty's memory is unreachable by construction. The
@@ -651,7 +874,8 @@ export class NegotiationPollingService {
       },
       seat,
       protocolVersion,
-      allowedActions: [...allowedActionsFor(protocolVersion, seat)],
+      allowedActions: [...allowedActionsFor(protocolVersion, seat, isFinalTurn)],
+      canConsultOwner: consultation.eligible,
       context,
       ...(negotiatorMemory.length > 0 && { negotiatorMemory }),
       ...(meta.turnContext?.privateConsultation?.recipientUserId === userId ? {
@@ -662,6 +886,32 @@ export class NegotiationPollingService {
         },
       } : {}),
     };
+  }
+
+  /** Project persisted data turns into the pure consultation policy input. */
+  private persistedTurns(messages: Array<{ senderId: string; parts: unknown[] }>): ExternalConsultationPersistedTurn[] {
+    return messages.flatMap((message) => {
+      const part = (message.parts as Array<{ kind?: unknown; data?: unknown }> | undefined)
+        ?.find((candidate) => candidate.kind === 'data');
+      if (!part?.data || typeof part.data !== 'object' || Array.isArray(part.data)) return [];
+      const turn = part.data as Record<string, unknown>;
+      const assessment = turn.assessment && typeof turn.assessment === 'object' && !Array.isArray(turn.assessment)
+        ? turn.assessment as Record<string, unknown>
+        : undefined;
+      const roles = assessment?.suggestedRoles && typeof assessment.suggestedRoles === 'object' && !Array.isArray(assessment.suggestedRoles)
+        ? assessment.suggestedRoles as Record<string, unknown>
+        : undefined;
+      return [{
+        senderId: message.senderId,
+        turn: {
+          action: typeof turn.action === 'string' ? turn.action : '',
+          ...(roles ? { assessment: { suggestedRoles: {
+            ...(typeof roles.ownUser === 'string' ? { ownUser: roles.ownUser } : {}),
+            ...(typeof roles.otherUser === 'string' ? { otherUser: roles.otherUser } : {}),
+          } } } : {}),
+        },
+      }];
+    });
   }
 
   /**
