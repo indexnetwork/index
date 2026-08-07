@@ -29,6 +29,7 @@ echo "==> Compiling Swift (host arch)"
 swiftc -Onone \
     -framework Cocoa -framework WebKit \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
+    Sources/HermesRuntime.swift \
     Sources/main.swift
 
 echo "==> Copying resources"

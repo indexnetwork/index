@@ -1,0 +1,816 @@
+import { expect, test } from 'bun:test';
+
+const runtimeFile = new URL('./Sources/HermesRuntime.swift', import.meta.url);
+const runtime = await Bun.file(runtimeFile).exists()
+  ? await Bun.file(runtimeFile).text()
+  : '';
+const main = await Bun.file(new URL('./Sources/main.swift', import.meta.url)).text();
+const build = await Bun.file(new URL('./build.sh', import.meta.url)).text();
+
+const OWNED_NAME = 'Index Personal Agent Negotiator';
+const OWNED_SCHEDULE = 'every 1m';
+const OWNED_PROMPT = 'Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.';
+
+const ABSENT = Symbol('absent');
+
+function injectedEnvFile({ readExisting, writeReplacement }) {
+  const decodeExisting = () => {
+    let data;
+    try {
+      data = readExisting();
+    } catch {
+      throw new Error('env_write_failed');
+    }
+    if (data === ABSENT) return [];
+    let contents;
+    try {
+      contents = new TextDecoder('utf-8', { fatal: true }).decode(data);
+    } catch {
+      throw new Error('env_write_failed');
+    }
+    return contents.split('\n');
+  };
+
+  const replace = (keys, updates = []) => {
+    const lines = decodeExisting().filter((line) => {
+      const separator = line.indexOf('=');
+      return separator < 0 || !keys.has(line.slice(0, separator));
+    });
+    while (lines.at(-1) === '') lines.pop();
+    lines.push(...updates.map(([key, value]) => `${key}=${value}`));
+    const contents = lines.length === 0 ? '' : `${lines.join('\n')}\n`;
+    writeReplacement(new TextEncoder().encode(contents));
+  };
+
+  return {
+    upsert(updates) {
+      replace(new Set(updates.map(([key]) => key)), updates);
+    },
+    removeOwned() {
+      replace(new Set([
+        'INDEX_API_KEY', 'INDEX_API_URL', 'INDEX_MCP_URL',
+        'INDEX_AGENT_ID', 'INDEX_INSTALLATION_ID', 'INDEX_PLUGIN_MODE',
+      ]));
+    },
+  };
+}
+
+async function injectedActivation({ journal, runner, readOwnedJob }) {
+  const job = readOwnedJob();
+  const resume = await runner('resume', job.id);
+  if (resume !== 0 || readOwnedJob()?.enabled !== true) return 'cron_resume_failed';
+  try {
+    const gateway = await runner('gateway', job.id);
+    if (gateway !== 0) throw new Error('gateway');
+    journal.stage = 'awaitingHeartbeat';
+    return 'ok';
+  } catch {
+    try {
+      const pause = await runner('pause', job.id);
+      if (pause !== 0) throw new Error('pause');
+      const verified = readOwnedJob();
+      if (!verified || verified.id !== job.id || verified.enabled !== false) throw new Error('verify');
+    } catch {
+      return 'activation_rollback_failed';
+    }
+    return 'gateway_failed';
+  }
+}
+
+function injectedDisable({ suppliedAttemptId, currentAttemptId, pause }) {
+  if (!suppliedAttemptId || suppliedAttemptId !== currentAttemptId) return 'disable_noop';
+  pause();
+  return 'disabled';
+}
+
+function injectedSuccess(readLocalState) {
+  try {
+    return { ok: true, state: readLocalState() };
+  } catch (failure) {
+    return { ok: false, errorCode: failure.message };
+  }
+}
+
+function admitHermesMessage({ isMainFrame, frameURL, bundledURL, decode, execute }) {
+  if (!isMainFrame || frameURL !== bundledURL) return 'rejected';
+  execute(decode());
+  return 'accepted';
+}
+
+function injectedTrustedDocumentGate(bundledURL) {
+  let generation = 0;
+  let ready = false;
+  let currentURL = null;
+  return {
+    startProvisional(visibleURL = currentURL) {
+      generation += 1;
+      ready = false;
+      currentURL = visibleURL;
+    },
+    finish(url = bundledURL) {
+      currentURL = url;
+      ready = true;
+    },
+    admit({ isMainFrame = true, frameURL = bundledURL } = {}) {
+      if (!ready || !isMainFrame || frameURL !== bundledURL || currentURL !== bundledURL) return null;
+      return generation;
+    },
+    canEmit(admittedGeneration) {
+      return ready && admittedGeneration === generation && currentURL === bundledURL;
+    },
+  };
+}
+
+async function injectedBoundedRunner({ chunks, deadlineMs, terminate, kill, completesAfterMs }) {
+  const limit = 16_384;
+  let output = new Uint8Array();
+  const completion = new Promise((resolve) => setTimeout(resolve, completesAfterMs, 'completed'));
+  const streaming = (async () => {
+    for (const chunk of chunks) {
+      output = Uint8Array.from([...output, ...chunk]);
+      if (output.byteLength > limit) output = output.slice(output.byteLength - limit);
+      await Promise.resolve();
+    }
+  })();
+  await streaming;
+  const outcome = await Promise.race([
+    completion,
+    new Promise((resolve) => setTimeout(resolve, deadlineMs, 'timeout')),
+  ]);
+  if (outcome === 'timeout') {
+    terminate();
+    kill();
+    throw new Error('command_timed_out');
+  }
+  return output;
+}
+
+function injectedEnable({ currentAttempt, suppliedAttempt, journal, job, calls }) {
+  if (currentAttempt !== suppliedAttempt) return 'enable_noop';
+  const exact = job && job.name === OWNED_NAME && job.schedule === OWNED_SCHEDULE
+    && job.prompt === OWNED_PROMPT;
+  if (!exact) throw new Error('cron_store_invalid');
+  if (job.enabled && journal?.stage === 'awaitingHeartbeat') return 'awaitingHeartbeat';
+  if (job.enabled && journal == null) return 'confirmed_healthy';
+  journal.stage = 'enabling';
+  if (!job.enabled) {
+    calls.push('resume');
+    job.enabled = true;
+  }
+  calls.push('gateway');
+  journal.stage = 'awaitingHeartbeat';
+  return journal.stage;
+}
+
+function injectedGatewayState(status, output) {
+  if (status !== 0) return 'failure';
+  const running = output.match(/^\s*(?:PID\s*[:=]\s*|"pid"\s*:\s*)([0-9]+)\s*[,;]?\s*$/im);
+  if (running && Number(running[1]) > 0) return 'running';
+  if (/^\s*(?:(?:Status\s*:|state\s*=)\s*|Gateway\s+is\s+)?(?:stopped|not running|exited)\.?\s*$/im.test(output)) return 'stopped';
+  return 'failure';
+}
+
+function injectedFilesystemPolicy({ components, leaf, destructive = false }) {
+  for (const component of components) {
+    if (component.kind !== 'directory' || component.symlink) throw new Error('unsafe_path');
+  }
+  if (leaf?.symlink || (destructive && leaf && leaf.kind !== 'directory')) {
+    throw new Error('unsafe_path');
+  }
+  return 'safe';
+}
+
+function isOwnedTemporary(name, destination = '.env') {
+  const escaped = destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^\\.${escaped}\\.[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.tmp$`, 'i').test(name);
+}
+
+function injectedLockedMutation({ withLock, read, identity, publish, mutate, beforeRecheck, attempts = 3 }) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const result = withLock(() => {
+      const before = read();
+      const next = mutate(before.contents);
+      beforeRecheck?.();
+      if (before.identity !== identity()) return { retry: true };
+      publish(next);
+      return { next };
+    });
+    if (!result.retry) return result.next;
+  }
+  throw new Error('env_write_failed');
+}
+
+function injectedRetainedParentMutation({ openParent, swapPath, mutateRelative }) {
+  const retainedParent = openParent();
+  swapPath();
+  mutateRelative(retainedParent);
+}
+
+function injectedDisconnect({ binary, state, operations }) {
+  state.journal = 'disconnecting';
+  let failure = null;
+  if (binary && state.cronPresent) {
+    if (operations.removeCron()) state.cronPresent = false;
+    else failure = 'cron_remove_failed';
+  } else if (!binary && state.cronPresent) {
+    failure = 'hermes_not_found';
+  }
+  if (binary && state.pluginPresent) {
+    if (operations.removePlugin()) state.pluginPresent = false;
+    else failure ??= 'plugin_remove_failed';
+  } else if (!binary && state.pluginPresent) {
+    operations.removePluginLocal();
+    state.pluginPresent = false;
+    failure ??= 'hermes_not_found';
+  }
+  operations.removeDashboard(); state.dashboardPresent = false;
+  operations.removeEnv(); state.ownedEnvKeys = [];
+  if (!binary) failure ??= 'hermes_not_found';
+  const postconditions = !state.cronPresent && !state.pluginPresent
+    && !state.dashboardPresent && state.ownedEnvKeys.length === 0;
+  if (failure || !postconditions) return { ok: false, errorCode: failure ?? 'local_cleanup_failed' };
+  state.journal = { stage: 'disconnectCleanupComplete', setupAttemptId: state.currentAttempt };
+  state.currentAttempt = null;
+  if (operations.removeJournal?.() === false) {
+    return { ok: false, errorCode: 'journal_write_failed' };
+  }
+  state.journal = null;
+  return { ok: true };
+}
+
+function injectedFinishTerminalDisconnect({ state, verifyPostconditions, removeJournal }) {
+  if (state.currentAttempt !== null || state.journal?.stage !== 'disconnectCleanupComplete') {
+    return 'disconnect_noop';
+  }
+  if (!verifyPostconditions()) throw new Error('local_cleanup_failed');
+  if (!removeJournal()) throw new Error('journal_write_failed');
+  state.journal = null;
+  return 'disconnected';
+}
+
+function injectedRetryDisconnect({ state, suppliedAttemptId, verifyPostconditions, removeJournal }) {
+  if (state.journal?.setupAttemptId !== suppliedAttemptId) return 'disconnect_noop';
+  return injectedFinishTerminalDisconnect({ state, verifyPostconditions, removeJournal });
+}
+
+function injectedRelaunchInspect({ state, verifyPostconditions, removeJournal }) {
+  if (state.currentAttempt === null && state.journal?.stage === 'disconnectCleanupComplete') {
+    injectedFinishTerminalDisconnect({ state, verifyPostconditions, removeJournal });
+  }
+  return state.journal?.stage ?? 'inspected';
+}
+
+test('defines the request-correlated runtime bridge contract', () => {
+  expect(runtime).toContain('enum HermesRuntimeCommand: String');
+  for (const command of ['inspect', 'configureDisabled', 'enable', 'confirmHealthy', 'disable', 'disconnect']) {
+    expect(runtime).toMatch(new RegExp(`case [^\\n]*\\b${command}\\b`));
+  }
+  expect(runtime).toContain('struct HermesRuntimeRequest: Decodable');
+  expect(runtime).toContain('let requestId: String');
+  expect(runtime).toContain('let setupAttemptId: String?');
+  expect(runtime).toContain('struct HermesRuntimeResult: Encodable');
+  expect(runtime).toContain('requestId: request.requestId');
+  expect(main).toContain('name: "hermesRuntime"');
+  expect(main).toContain('window.__indexHermesRuntimeResult');
+  expect(main).not.toContain('window.__indexHermesSetup');
+  expect(main).not.toContain('setupHermes(apiKey:');
+});
+
+test('returns the complete non-secret local state and never callback-encodes credentials', () => {
+  expect(runtime).toContain('struct HermesLocalState: Codable');
+  for (const field of [
+    'installationId', 'executorId', 'pluginInstalled', 'negotiatorMode',
+    'schedulePresent', 'scheduleEnabled', 'setupAttemptId',
+  ]) {
+    expect(runtime).toMatch(new RegExp(`let ${field}:`));
+  }
+  const stateBlock = runtime.match(/struct HermesLocalState: Codable \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const resultBlock = runtime.match(/struct HermesRuntimeResult: Encodable \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const journalBlock = runtime.match(/struct HermesSetupJournal: Codable \{[\s\S]*?\n\}/)?.[0] ?? '';
+  expect(stateBlock).not.toContain('credential');
+  expect(resultBlock).not.toContain('credential');
+  expect(journalBlock).not.toContain('credential');
+  expect(main).not.toContain('args.joined(separator: " ")');
+});
+
+test('persists stable installation identity and a generation-fenced setup journal', () => {
+  expect(runtime).toContain('struct HermesInstallationRecord: Codable');
+  expect(runtime).toContain('hermes-installation.json');
+  expect(runtime).toContain('UUID().uuidString.lowercased()');
+  expect(runtime).toContain('hermes-setup-journal.json');
+  expect(runtime).toContain('struct HermesSetupJournal: Codable');
+  expect(runtime).toContain('let setupAttemptId: String');
+  expect(runtime).toContain('let executorId: String?');
+  for (const stage of [
+    'preparing', 'environmentWritten', 'pluginInstalled', 'scheduleDisabled',
+    'enabling', 'awaitingHeartbeat', 'disconnecting', 'disconnectCleanupComplete',
+  ]) {
+    expect(runtime).toContain(`case ${stage}`);
+  }
+  expect(runtime).toContain('currentSetupAttemptId == expectedSetupAttemptId');
+  expect(runtime).toContain('disconnect_noop');
+  expect(runtime).toContain('confirm_healthy_noop');
+  expect(runtime).toContain('store.deleteJournal()');
+  expect(runtime).not.toContain('removeItem(at: store.installationURL');
+});
+
+test('preserves existing Hermes env unless a readable UTF-8 file or ENOENT is established', () => {
+  expect(runtime).toContain('private let readSnapshot: (HermesDirectoryDescriptor, String) throws -> HermesFileSnapshot?');
+  expect(runtime).toContain('HermesDirectoryDescriptor,\n        String,\n        HermesExpectedFileState');
+  expect(runtime).toContain('private func existingLines() throws -> [String]');
+  expect(runtime).toContain('if Self.isNoSuchFileError(error) { return ([], .absent) }');
+  expect(runtime).toContain('NSFileReadNoSuchFileError');
+  expect(runtime).toContain('POSIXErrorCode.ENOENT.rawValue');
+  expect(runtime).toContain('NSPOSIXErrorDomain');
+  expect(runtime).toContain('HermesRuntimeFailure.envWriteFailed');
+  expect(runtime).not.toContain('guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return [] }');
+  expect(runtime).toContain('private func mutate(_ transform: (inout [String]) -> Void) throws');
+
+  const unrelated = 'OTHER_HERMES_SETTING=keep\nINDEX_API_KEY=old\n';
+  let replacement;
+  injectedEnvFile({
+    readExisting: () => new TextEncoder().encode(unrelated),
+    writeReplacement: (data) => { replacement = new TextDecoder().decode(data); },
+  }).upsert([['INDEX_API_KEY', 'new']]);
+  expect(replacement).toBe('OTHER_HERMES_SETTING=keep\nINDEX_API_KEY=new\n');
+
+  replacement = undefined;
+  injectedEnvFile({
+    readExisting: () => new TextEncoder().encode(unrelated),
+    writeReplacement: (data) => { replacement = new TextDecoder().decode(data); },
+  }).removeOwned();
+  expect(replacement).toBe('OTHER_HERMES_SETTING=keep\n');
+
+  replacement = undefined;
+  injectedEnvFile({
+    readExisting: () => ABSENT,
+    writeReplacement: (data) => { replacement = new TextDecoder().decode(data); },
+  }).upsert([['INDEX_API_KEY', 'new']]);
+  expect(replacement).toBe('INDEX_API_KEY=new\n');
+
+  for (const readFailure of [
+    () => { throw new Error('EACCES'); },
+    () => Uint8Array.from([0xff, 0xfe, 0x41]),
+  ]) {
+    let writes = 0;
+    for (const operation of [
+      (env) => env.upsert([['INDEX_API_KEY', 'new']]),
+      (env) => env.removeOwned(),
+    ]) {
+      const env = injectedEnvFile({
+        readExisting: readFailure,
+        writeReplacement: () => { writes += 1; },
+      });
+      expect(() => operation(env)).toThrow('env_write_failed');
+      expect(writes).toBe(0);
+    }
+  }
+});
+
+test('writes only the owned Index env keys with negotiator mode and secure file permissions', () => {
+  for (const key of [
+    'INDEX_API_KEY', 'INDEX_API_URL', 'INDEX_MCP_URL', 'INDEX_AGENT_ID',
+    'INDEX_INSTALLATION_ID', 'INDEX_PLUGIN_MODE',
+  ]) {
+    expect(runtime).toContain(`"${key}"`);
+  }
+  expect(runtime).toContain('("INDEX_PLUGIN_MODE", "negotiator")');
+  expect(runtime).toContain('mode_t(0o600)');
+  expect(runtime).toContain('O_CREAT | O_EXCL | O_NOFOLLOW');
+  expect(runtime).toContain('forbiddenEnvValueCharacters');
+  expect(runtime).not.toContain('/bin/sh');
+  expect(runtime).not.toContain('/bin/zsh');
+  expect(runtime).toContain('process.executableURL = URL(fileURLWithPath: executable)');
+  expect(runtime).toContain('process.arguments = arguments');
+});
+
+test('reconciles exactly one paused owned cron without touching unrelated jobs', () => {
+  expect(runtime).toContain(`static let ownedCronName = "${OWNED_NAME}"`);
+  expect(runtime).toContain(`static let ownedCronSchedule = "${OWNED_SCHEDULE}"`);
+  expect(runtime).toContain(`static let ownedCronPrompt = #"${OWNED_PROMPT}"#`);
+  expect(runtime).toContain('caseInsensitiveCompare(HermesRuntimeManager.ownedCronName) == .orderedSame');
+  expect(runtime).toContain('throw HermesRuntimeFailure.cronAmbiguous');
+  for (const command of ['"create"', '"edit"', '"pause"', '"resume"', '"remove"']) {
+    expect(runtime).toContain(command);
+  }
+  expect(runtime).toContain('["cron", "pause", job.id]');
+  expect(runtime).toContain('["cron", "resume", job.id]');
+  expect(runtime).toContain('["cron", "remove", job.id]');
+  expect(runtime).not.toContain('removeAllCron');
+  expect(runtime).not.toContain('cron", "remove"].map');
+});
+
+test('inspection fail-closes partial setup locally and native code never calls server APIs', () => {
+  expect(runtime).toContain('if journal != nil, cron?.enabled == true');
+  expect(runtime).toContain('pauseOwnedCron');
+  expect(runtime).toContain('stage: journal?.stage.rawValue ?? "inspected"');
+  expect(runtime).not.toContain('URLSession');
+  expect(runtime).not.toContain('/api/agents');
+  expect(runtime).not.toContain('x-api-key');
+});
+
+test('gateway failure performs checked exact-job rollback and retains recovery journal', async () => {
+  expect(runtime).toContain('protocol HermesCommandRunning');
+  expect(runtime).toContain('private func rollbackActivation');
+  expect(runtime).toContain('throw HermesRuntimeFailure.activationRollbackFailed');
+  expect(runtime).toContain('verified.id == job.id');
+  expect(runtime).toContain('verified.enabled == false');
+  const enableBlock = runtime.match(/private func enable\([\s\S]*?private func confirmHealthy/)?.[0] ?? '';
+  expect(enableBlock).not.toContain('deleteJournal');
+
+  for (const failure of ['throw', 'nonzero', 'still-enabled']) {
+    const journal = { stage: 'enabling' };
+    const job = { id: 'owned-current', enabled: false };
+    const calls = [];
+    const result = await injectedActivation({
+      journal,
+      runner: async (command, id) => {
+        calls.push([command, id]);
+        if (command === 'resume') { job.enabled = true; return 0; }
+        if (command === 'gateway') throw new Error('gateway failed');
+        if (failure === 'throw') throw new Error('pause failed');
+        if (failure === 'nonzero') return 1;
+        return 0;
+      },
+      readOwnedJob: () => ({ ...job }),
+    });
+    expect(result).toBe('activation_rollback_failed');
+    expect(journal.stage).toBe('enabling');
+    expect(calls).toContainEqual(['pause', 'owned-current']);
+  }
+
+  const journal = { stage: 'enabling' };
+  const job = { id: 'owned-current', enabled: false };
+  const result = await injectedActivation({
+    journal,
+    runner: async (command, id) => {
+      expect(id).toBe('owned-current');
+      if (command === 'resume') { job.enabled = true; return 0; }
+      if (command === 'gateway') throw new Error('gateway failed');
+      if (command === 'pause') { job.enabled = false; return 0; }
+      return 1;
+    },
+    readOwnedJob: () => ({ ...job }),
+  });
+  expect(result).toBe('gateway_failed');
+  expect(job.enabled).toBe(false);
+  expect(journal.stage).toBe('enabling');
+});
+
+test('disable requires a non-empty matching generation before pausing', () => {
+  expect(runtime).toMatch(/guard let expectedSetupAttemptId = validValue\(request\.setupAttemptId\),\s*installation\.currentSetupAttemptId == expectedSetupAttemptId else \{\s*return try success\(request, stage: "disable_noop"\)/s);
+  for (const suppliedAttemptId of [undefined, null, '', 'stale']) {
+    let pauses = 0;
+    const result = injectedDisable({
+      suppliedAttemptId,
+      currentAttemptId: 'current',
+      pause: () => { pauses += 1; },
+    });
+    expect(result).toBe('disable_noop');
+    expect(pauses).toBe(0);
+  }
+  let pauses = 0;
+  expect(injectedDisable({
+    suppliedAttemptId: 'current',
+    currentAttemptId: 'current',
+    pause: () => { pauses += 1; },
+  })).toBe('disabled');
+  expect(pauses).toBe(1);
+});
+
+test('successful results require complete readable local state', () => {
+  expect(runtime).toMatch(/private func success\([\s\S]{0,120}\) throws -> HermesRuntimeResult/);
+  const successBlock = runtime.match(/private func success\([\s\S]*?\n    \}/)?.[0] ?? '';
+  expect(successBlock).toContain('state: try localState()');
+  expect(successBlock).not.toContain('state: try? localState()');
+  expect(runtime).toContain('let env = try environment.values()');
+
+  expect(injectedSuccess(() => ({ scheduleEnabled: false }))).toEqual({
+    ok: true,
+    state: { scheduleEnabled: false },
+  });
+  expect(injectedSuccess(() => { throw new Error('journal_invalid'); })).toEqual({
+    ok: false,
+    errorCode: 'journal_invalid',
+  });
+  expect(injectedSuccess(() => { throw new Error('env_write_failed'); })).toEqual({
+    ok: false,
+    errorCode: 'env_write_failed',
+  });
+  expect(injectedSuccess(() => { throw new Error('cron_store_invalid'); })).toEqual({
+    ok: false,
+    errorCode: 'cron_store_invalid',
+  });
+});
+
+test('uses stable sanitized failures and keeps command execution off the main thread', () => {
+  for (const code of [
+    'invalid_arguments', 'hermes_not_found', 'cron_store_invalid', 'cron_ambiguous',
+    'cron_create_failed', 'cron_edit_failed', 'cron_pause_failed',
+    'cron_resume_failed', 'cron_remove_failed', 'gateway_failed',
+    'gateway_status_failed', 'command_timed_out', 'activation_rollback_failed',
+  ]) {
+    expect(runtime).toContain(`"${code}"`);
+  }
+  expect(runtime).not.toContain('localizedDescription');
+  expect(main).toContain('DispatchQueue(label: "network.index.hermes-runtime"');
+  expect(main).toContain('hermesRuntimeQueue.async');
+  expect(main).toContain('DispatchQueue.main.async');
+});
+
+test('admits Hermes messages only from the exact bundled main frame before decode', () => {
+  expect(main).toContain('message.frameInfo.isMainFrame');
+  expect(main).toContain('trustedBundledDocumentURL');
+  const handler = main.match(/private func handleHermesRuntimeMessage[\s\S]*?\n    \}/)?.[0] ?? '';
+  expect(handler.indexOf('isTrustedHermesRuntimeMessage')).toBeGreaterThan(-1);
+  expect(handler.indexOf('isTrustedHermesRuntimeMessage')).toBeLessThan(handler.indexOf('message.body'));
+  const emitter = main.match(/private func emitHermesRuntimeResult[\s\S]*?\n    \}/)?.[0] ?? '';
+  expect(emitter).toContain('webView.url?.standardizedFileURL == trustedBundledDocumentURL');
+
+  for (const candidate of [
+    { isMainFrame: false, frameURL: 'file:///bundle/index.html' },
+    { isMainFrame: true, frameURL: 'file:///bundle/other.html' },
+    { isMainFrame: true, frameURL: 'https://index.network/' },
+  ]) {
+    let decodes = 0; let executions = 0;
+    expect(admitHermesMessage({
+      ...candidate,
+      bundledURL: 'file:///bundle/index.html',
+      decode: () => { decodes += 1; return {}; },
+      execute: () => { executions += 1; },
+    })).toBe('rejected');
+    expect(decodes).toBe(0);
+    expect(executions).toBe(0);
+  }
+  let executions = 0;
+  expect(admitHermesMessage({
+    isMainFrame: true,
+    frameURL: 'file:///bundle/index.html',
+    bundledURL: 'file:///bundle/index.html',
+    decode: () => ({ requestId: 'r1' }),
+    execute: () => { executions += 1; },
+  })).toBe('accepted');
+  expect(executions).toBe(1);
+});
+
+test('suppresses async Hermes results across provisional and same-URL document generations', () => {
+  expect(main).toContain('trustedDocumentGeneration');
+  expect(main).toMatch(/didStartProvisionalNavigation[\s\S]*trustedDocumentGeneration \+= 1/);
+  expect(main).toContain('let admittedGeneration = trustedDocumentGeneration');
+  expect(main).toContain('admittedGeneration: admittedGeneration');
+  const emitter = main.match(/private func emitHermesRuntimeResult[\s\S]*?\n    \}/)?.[0] ?? '';
+  expect(emitter).toContain('webViewReady');
+  expect(emitter).toContain('admittedGeneration == trustedDocumentGeneration');
+
+  const bundledURL = 'file:///bundle/index.html';
+  const gate = injectedTrustedDocumentGate(bundledURL);
+  gate.startProvisional(null);
+  gate.finish();
+  const firstDocument = gate.admit();
+  expect(firstDocument).not.toBeNull();
+  expect(gate.canEmit(firstDocument)).toBe(true);
+
+  // During a provisional reload WebKit may still expose the old committed URL.
+  gate.startProvisional(bundledURL);
+  expect(gate.admit()).toBeNull();
+  expect(gate.canEmit(firstDocument)).toBe(false);
+
+  // Finishing a reload of exactly the same URL must not revive old requests.
+  gate.finish(bundledURL);
+  expect(gate.canEmit(firstDocument)).toBe(false);
+  const secondDocument = gate.admit();
+  expect(secondDocument).not.toBe(firstDocument);
+  expect(gate.canEmit(secondDocument)).toBe(true);
+});
+
+test('duplicate enable converges without regressing healthy current generation', () => {
+  expect(runtime).toContain('alreadyEnabledCurrentGeneration');
+  for (const journal of [{ stage: 'awaitingHeartbeat' }, null]) {
+    const job = { name: OWNED_NAME, schedule: OWNED_SCHEDULE, prompt: OWNED_PROMPT, enabled: true };
+    const before = journal == null ? null : { ...journal };
+    const calls = [];
+    const result = injectedEnable({
+      currentAttempt: 'current', suppliedAttempt: 'current', journal, job, calls,
+    });
+    expect(result).toBe(journal == null ? 'confirmed_healthy' : 'awaitingHeartbeat');
+    expect(journal).toEqual(before);
+    expect(job.enabled).toBe(true);
+    expect(calls).toEqual([]);
+  }
+});
+
+test('command runner streams bounded output and enforces terminate/kill deadline', async () => {
+  expect(runtime).not.toContain('readDataToEndOfFile');
+  expect(runtime).toContain('readabilityHandler');
+  expect(runtime).toContain('commandTimedOut');
+  expect(runtime).toContain('process.terminate()');
+  expect(runtime).toContain('SIGKILL');
+  expect(runtime).toContain('16_384');
+
+  const huge = Array.from({ length: 40 }, () => new Uint8Array(1024).fill(0x61));
+  const bounded = await injectedBoundedRunner({
+    chunks: huge, deadlineMs: 50, completesAfterMs: 0, terminate: () => {}, kill: () => {},
+  });
+  expect(bounded.byteLength).toBe(16_384);
+  let terminated = 0; let killed = 0;
+  await expect(injectedBoundedRunner({
+    chunks: [], deadlineMs: 0, completesAfterMs: 100,
+    terminate: () => { terminated += 1; }, kill: () => { killed += 1; },
+  })).rejects.toThrow('command_timed_out');
+  expect(terminated).toBe(1);
+  expect(killed).toBe(1);
+});
+
+test('binary-less disconnect scrubs safe local wiring but remains retryable', () => {
+  expect(runtime).toContain('binaryProvider()');
+  expect(runtime).toContain('removePluginDirectory');
+  expect(runtime).toContain('verifyDisconnectPostconditions');
+  const state = {
+    currentAttempt: 'current', journal: null, cronPresent: true, unrelatedCrons: ['backup'],
+    pluginPresent: true, dashboardPresent: true,
+    ownedEnvKeys: ['INDEX_API_KEY'], unrelatedEnv: ['OTHER=keep'],
+  };
+  const calls = [];
+  const result = injectedDisconnect({
+    binary: null,
+    state,
+    operations: {
+      removeCron: () => false,
+      removePlugin: () => false,
+      removePluginLocal: () => calls.push('plugin-local'),
+      removeDashboard: () => calls.push('dashboard'),
+      removeEnv: () => calls.push('env'),
+    },
+  });
+  expect(result).toEqual({ ok: false, errorCode: 'hermes_not_found' });
+  expect(calls).toEqual(['plugin-local', 'dashboard', 'env']);
+  expect(state.ownedEnvKeys).toEqual([]);
+  expect(state.dashboardPresent).toBe(false);
+  expect(state.pluginPresent).toBe(false);
+  expect(state.unrelatedCrons).toEqual(['backup']);
+  expect(state.unrelatedEnv).toEqual(['OTHER=keep']);
+  expect(state.currentAttempt).toBe('current');
+  expect(state.journal).toBe('disconnecting');
+});
+
+test('filesystem policy retains no-follow parents and env writers coordinate under an advisory lock', () => {
+  for (const contract of [
+    'O_DIRECTORY', 'O_NOFOLLOW', 'openat', 'renameat', 'unlinkat', 'fdopendir',
+    'removeOwnedDirectory', 'verifyRegularFile', 'fsyncDirectory', 'removeOrphanTemporaryFiles',
+  ]) expect(runtime).toContain(contract);
+  expect(runtime).toContain('0o600');
+  expect(runtime).toContain('environmentChanged');
+  expect(runtime).toContain('flock');
+  expect(runtime).toContain('.index-network.env.lock');
+  expect(runtime).toContain('Unmanaged external writers');
+  expect(runtime).not.toContain('usingNewMetadataOnly');
+
+  expect(injectedFilesystemPolicy({
+    components: [{ kind: 'directory', symlink: false }],
+    leaf: { kind: 'directory', symlink: false }, destructive: true,
+  })).toBe('safe');
+  for (const candidate of [
+    { components: [{ kind: 'directory', symlink: true }], leaf: null },
+    { components: [{ kind: 'file', symlink: false }], leaf: null },
+    { components: [{ kind: 'directory', symlink: false }], leaf: { kind: 'directory', symlink: true } },
+    { components: [{ kind: 'directory', symlink: false }], leaf: { kind: 'file', symlink: false } },
+  ]) expect(() => injectedFilesystemPolicy({ ...candidate, destructive: true })).toThrow('unsafe_path');
+
+  expect(isOwnedTemporary('..env.3D6F0A1E-82C2-4CB1-AE9D-65E99CFFB2C4.tmp')).toBe(true);
+  expect(isOwnedTemporary('..env.not-a-uuid.tmp')).toBe(false);
+  expect(isOwnedTemporary('.unrelated.3D6F0A1E-82C2-4CB1-AE9D-65E99CFFB2C4.tmp')).toBe(false);
+
+  const originalParent = { name: 'checked-parent', entries: ['owned.tmp'] };
+  let pathBinding = originalParent;
+  const attackerParent = { name: 'attacker-parent', entries: ['unrelated'] };
+  injectedRetainedParentMutation({
+    openParent: () => pathBinding,
+    swapPath: () => { pathBinding = attackerParent; },
+    mutateRelative: (retained) => { retained.entries = []; },
+  });
+  expect(originalParent.entries).toEqual([]);
+  expect(attackerParent.entries).toEqual(['unrelated']);
+
+  let lockHeld = false;
+  let managedWriterBlocked = false;
+  const withLock = (body) => {
+    if (lockHeld) { managedWriterBlocked = true; throw new Error('would-block'); }
+    lockHeld = true;
+    try { return body(); } finally { lockHeld = false; }
+  };
+  let version = 1;
+  let unrelated = 'OTHER=one\n';
+  let injectUnmanagedBeforeRecheck = true;
+  const result = injectedLockedMutation({
+    withLock,
+    read: () => {
+      expect(lockHeld).toBe(true);
+      return { identity: version, contents: unrelated };
+    },
+    identity: () => {
+      expect(lockHeld).toBe(true);
+      return version;
+    },
+    beforeRecheck: () => {
+      if (!injectUnmanagedBeforeRecheck) return;
+      injectUnmanagedBeforeRecheck = false;
+      try { withLock(() => {}); } catch { /* managed writer waits on the same lock */ }
+      version += 1;
+      unrelated = 'OTHER=unmanaged\n';
+    },
+    publish: (next) => {
+      expect(lockHeld).toBe(true);
+      unrelated = next;
+      version += 1;
+    },
+    mutate: (contents) => `${contents}INDEX_API_KEY=new\n`,
+  });
+  expect(managedWriterBlocked).toBe(true);
+  expect(result).toBe('OTHER=unmanaged\nINDEX_API_KEY=new\n');
+});
+
+test('gateway status requires a confirmed positive PID or explicit stopped signal', () => {
+  expect(runtime).toContain('enum HermesGatewayState');
+  expect(runtime).toContain('gatewayStatusFailed');
+  expect(runtime).not.toContain('output.contains("PID")');
+  expect(injectedGatewayState(0, 'PID: 1234')).toBe('running');
+  expect(injectedGatewayState(0, 'pid = 1234;')).toBe('running');
+  expect(injectedGatewayState(0, 'PID: 0')).toBe('failure');
+  expect(injectedGatewayState(0, 'Last PID: 1234 stale')).toBe('failure');
+  expect(injectedGatewayState(0, 'Status: stopped')).toBe('stopped');
+  expect(injectedGatewayState(0, 'state = exited')).toBe('stopped');
+  expect(injectedGatewayState(1, 'Status: stopped')).toBe('failure');
+  expect(injectedGatewayState(1, 'PID: 1234')).toBe('failure');
+});
+
+test('disconnect verifies exact owned postconditions before clearing generation and journal', () => {
+  expect(runtime).toContain('verifyDisconnectPostconditions');
+  const disconnectBlock = runtime.match(/private func disconnect\([\s\S]*?private func reconcilePlugin/)?.[0] ?? '';
+  expect(disconnectBlock.indexOf('verifyDisconnectPostconditions')).toBeGreaterThan(-1);
+  expect(disconnectBlock.indexOf('verifyDisconnectPostconditions')).toBeLessThan(disconnectBlock.indexOf('currentSetupAttemptId = nil'));
+
+  const state = {
+    currentAttempt: 'current', journal: null, cronPresent: true, unrelatedCrons: ['backup'],
+    pluginPresent: true, dashboardPresent: true,
+    ownedEnvKeys: ['INDEX_API_KEY'], unrelatedEnv: ['OTHER=keep'],
+  };
+  const failed = injectedDisconnect({
+    binary: '/hermes', state,
+    operations: {
+      removeCron: () => false,
+      removePlugin: () => true,
+      removePluginLocal: () => {}, removeDashboard: () => {}, removeEnv: () => {},
+    },
+  });
+  expect(failed.ok).toBe(false);
+  expect(state.currentAttempt).toBe('current');
+  expect(state.journal).toBe('disconnecting');
+});
+
+test('disconnect terminal journal recovers deletion failure on retry and relaunch inspection', () => {
+  expect(runtime).toContain('case disconnectCleanupComplete');
+  expect(runtime).toContain('finishTerminalDisconnect');
+  const disconnectBlock = runtime.match(/private func disconnect\([\s\S]*?private func reconcilePlugin/)?.[0] ?? '';
+  expect(disconnectBlock.indexOf('disconnectCleanupComplete')).toBeGreaterThan(-1);
+  expect(disconnectBlock.indexOf('disconnectCleanupComplete')).toBeLessThan(disconnectBlock.indexOf('currentSetupAttemptId = nil'));
+  const inspectBlock = runtime.match(/private func inspect\([\s\S]*?private func configureDisabled/)?.[0] ?? '';
+  expect(inspectBlock).toContain('finishTerminalDisconnect');
+
+  const makeCleanState = () => ({
+    currentAttempt: 'current', journal: null, cronPresent: false,
+    pluginPresent: false, dashboardPresent: false, ownedEnvKeys: [],
+  });
+  for (const recovery of ['retry', 'relaunch']) {
+    const state = makeCleanState();
+    let removals = 0;
+    const first = injectedDisconnect({
+      binary: '/hermes', state,
+      operations: {
+        removeDashboard: () => {}, removeEnv: () => {},
+        removeJournal: () => { removals += 1; return false; },
+      },
+    });
+    expect(first).toEqual({ ok: false, errorCode: 'journal_write_failed' });
+    expect(state.currentAttempt).toBeNull();
+    expect(state.journal).toEqual({
+      stage: 'disconnectCleanupComplete', setupAttemptId: 'current',
+    });
+
+    const recoveryArguments = {
+      state,
+      verifyPostconditions: () => true,
+      removeJournal: () => { removals += 1; return true; },
+    };
+    const finished = recovery === 'retry'
+      ? injectedRetryDisconnect({ ...recoveryArguments, suppliedAttemptId: 'current' })
+      : injectedRelaunchInspect(recoveryArguments);
+    expect(finished).toBe(recovery === 'retry' ? 'disconnected' : 'inspected');
+    expect(state.journal).toBeNull();
+    expect(removals).toBe(2);
+  }
+});
+
+test('includes the runtime source in the Swift build', () => {
+  expect(build).toContain('Sources/HermesRuntime.swift');
+  expect(build).toContain('Sources/main.swift');
+});
