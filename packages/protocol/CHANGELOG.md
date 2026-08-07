@@ -55,6 +55,12 @@ pin a supported release, use `latest`.
   `SynthesisResult` types. Minor bump: additive surface only.
 
 ### Fixed
+- Repair the audited five-case historical evaluation corpus (IND-637; 10.0.2):
+  replace H1 with the approved Ted Nierenberg → Jens Quistgaard collaboration,
+  reverse H5 to the required Drew Weissman → Katalin Karikó direction, migrate
+  all cases to event-relative admission boundaries, reject approved cases with
+  high recognizability, and cover the exact model-safe matching and discovery
+  seed serializers with provider-free tests.
 - Harden the audited five-case historical evaluation corpus (IND-637; 10.0.1):
   preserve audit metadata outside direct model-safe and matching projections,
   enforce fixture-v2 participant, citation, and authored-negative provenance

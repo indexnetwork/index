@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { HISTORICAL_MATRIX_CASES } from '../../../../../packages/protocol/eval/discovery-env-matrix/historical-matrix.cases.js';
+import { HISTORICAL_QUALITY_CASES } from '../../../../../packages/protocol/eval/matching/matching.historical.js';
 import type { DrizzleDB } from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 
@@ -16,6 +17,15 @@ const SAFE_ENV: NodeJS.ProcessEnv = {
   DATABASE_URL: 'postgres://x@ep-x.neon.tech/protocol_eval',
   DISCOVERY_ENV_MATRIX_BASE_BRANCH: 'eval-discovery-base',
 };
+
+function allStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(allStrings);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, child]) => [key, ...allStrings(child)]);
+  }
+  return [];
+}
 
 interface MockBaseDatabaseState {
   calls: string[];
@@ -192,6 +202,221 @@ describe('discovery environment matrix base policy', () => {
     expect(computeFixtureFingerprint(HISTORICAL_MATRIX_CASES)).toMatch(/^[a-f0-9]{64}$/);
     expect(baseSeedPayload(HISTORICAL_MATRIX_CASES)).not.toHaveProperty('reportNames');
     expect(JSON.stringify(baseSeedPayload(HISTORICAL_MATRIX_CASES))).not.toContain('basis');
+  });
+
+  it('serializes the exact complete all-five-case database row set', () => {
+    const payload = baseSeedPayload(HISTORICAL_MATRIX_CASES);
+    const expectedCases = [
+      {
+        id: 'historical/builder-and-operator',
+        description: 'An engineering-management graduate participating in a joint search for European home-goods design is paired with a product designer who apprenticed with a sculptor father.',
+        networkTitle: 'Discovery evaluation fixture 1',
+      },
+      {
+        id: 'historical/co-researchers-structure',
+        description: 'A virus-trained biologist studying biological macromolecules is paired with a researcher bringing complementary physical and crystallographic methods.',
+        networkTitle: 'Discovery evaluation fixture 2',
+      },
+      {
+        id: 'historical/songwriting-duo',
+        description: 'A teenage amateur-group leader seeking stronger guitar capability is paired with a teenage popular-music player with demonstrated guitar ability.',
+        networkTitle: 'Discovery evaluation fixture 3',
+      },
+      {
+        id: 'historical/first-check-investor',
+        description: 'A graduate researcher with a working information-retrieval prototype is paired with a technically fluent systems builder willing to evaluate a possible company transition.',
+        networkTitle: 'Discovery evaluation fixture 4',
+      },
+      {
+        id: 'historical/domain-expert-and-ml',
+        description: 'A vaccine-focused immunologist who needs an antigen-encoding RNA payload is paired with an RNA researcher who had worked with messenger RNA for nearly a decade toward therapeutic-protein goals.',
+        networkTitle: 'Discovery evaluation fixture 5',
+      },
+    ] as const;
+    const expectedNetworkIds = [
+      'eval-discovery-matrix-network-da199123c915c310012ede44',
+      'eval-discovery-matrix-network-258f3e209a1abb21903bc1a9',
+      'eval-discovery-matrix-network-19e1e79cf8828ac898b8c8f3',
+      'eval-discovery-matrix-network-27908d45f8c6b7eb90e6292b',
+      'eval-discovery-matrix-network-54b342488937695bd4cf291f',
+    ] as const;
+    const expectedUserIds = [
+      'eval-discovery-matrix-user-899f03f790681c6a17b0ff89',
+      'eval-discovery-matrix-user-fe7f5c1b5049fb5467759af4',
+      'eval-discovery-matrix-user-932c182c43d90822a5f223fd',
+      'eval-discovery-matrix-user-74a793e5da880a4a73feffb0',
+      'eval-discovery-matrix-user-fa3fc9221e5650e9aac4e74f',
+      'eval-discovery-matrix-user-0bc7658c22db8b7e208a406a',
+      'eval-discovery-matrix-user-c944e4b0683c7168ba2a2074',
+      'eval-discovery-matrix-user-c538c28e349754c03a6f2471',
+      'eval-discovery-matrix-user-a4608e450690e426f8686169',
+      'eval-discovery-matrix-user-f52f16525b20673c810a1b48',
+      'eval-discovery-matrix-user-0a6bcb5d0ea3394c7bd83b2f',
+      'eval-discovery-matrix-user-98af7a4c64c1058c44efc32a',
+      'eval-discovery-matrix-user-a991ae39f012276cf2651678',
+      'eval-discovery-matrix-user-28a9034123fa3c6343b31542',
+      'eval-discovery-matrix-user-bc35b2d20c25c882b6180ab4',
+      'eval-discovery-matrix-user-28664e86288bf2f71b32da90',
+      'eval-discovery-matrix-user-f73a0ebeb7f80ddf4df689ce',
+      'eval-discovery-matrix-user-10120001768d47d553e3eba9',
+      'eval-discovery-matrix-user-61b92b1a03ad09c1a157d6e0',
+      'eval-discovery-matrix-user-96505d83681f7ddd5a377d69',
+      'eval-discovery-matrix-user-aba7263b70935088fe2420ab',
+      'eval-discovery-matrix-user-242c0609ddd63f0f42df9227',
+      'eval-discovery-matrix-user-afac75fd2e09955ea200f489',
+      'eval-discovery-matrix-user-83b1a0b589369a8cec91a62e',
+      'eval-discovery-matrix-user-d2711f817c286af9f530c207',
+    ] as const;
+    const expectedIntentIds = [
+      'eval-discovery-matrix-intent-cb1c4fc76e7e2c394fa4bda1',
+      'eval-discovery-matrix-intent-5e1b82fd93e8affcfcc973ba',
+      'eval-discovery-matrix-intent-183f2f693db616dbd2153708',
+      'eval-discovery-matrix-intent-81d513017aaf2d6f48523b7a',
+      'eval-discovery-matrix-intent-e8b74ff979b3fbf144f9fa86',
+      'eval-discovery-matrix-intent-6d79a35cd616dd0b20b0e7b8',
+      'eval-discovery-matrix-intent-0dba61a0b7b2aebe692e36e3',
+      'eval-discovery-matrix-intent-e6853dba50b6f66bb0122b5d',
+      'eval-discovery-matrix-intent-b1a414172b64edeca46cbe74',
+      'eval-discovery-matrix-intent-9e203b40ba3859d5ae0ce0e0',
+      'eval-discovery-matrix-intent-77ba7a8f1e81b6750f965f71',
+      'eval-discovery-matrix-intent-2fb51f8ee3c5759b51a3051a',
+      'eval-discovery-matrix-intent-6d388c61dbd87cb85a9dd458',
+      'eval-discovery-matrix-intent-1b3270791f7b9e99af42fa38',
+      'eval-discovery-matrix-intent-d8eeb17ebab06f3fe810d256',
+      'eval-discovery-matrix-intent-b2e2958e318575c9eb675e2a',
+      'eval-discovery-matrix-intent-75b9d5c8f8d73149d9d43e7e',
+      'eval-discovery-matrix-intent-067e856bf59902dbaced22b7',
+      'eval-discovery-matrix-intent-f613c08d7f3239453ffa79b6',
+      'eval-discovery-matrix-intent-2c04ba6c25dca7fb229508d1',
+      'eval-discovery-matrix-intent-3707fef85ec602226f6c216c',
+      'eval-discovery-matrix-intent-ffadcd7a293a9be47277a0a4',
+      'eval-discovery-matrix-intent-103a9ef9d8f9ebfffa6e2505',
+      'eval-discovery-matrix-intent-1e001b0ccb042e0637a50c68',
+      'eval-discovery-matrix-intent-1ab7dbcbf9fddab68fadc444',
+    ] as const;
+    const expectedUserNames = [
+      'Evaluation fixture participant 899f03f7',
+      'Evaluation fixture participant fe7f5c1b',
+      'Evaluation fixture participant 932c182c',
+      'Evaluation fixture participant 74a793e5',
+      'Evaluation fixture participant fa3fc922',
+      'Evaluation fixture participant 0bc7658c',
+      'Evaluation fixture participant c944e4b0',
+      'Evaluation fixture participant c538c28e',
+      'Evaluation fixture participant a4608e45',
+      'Evaluation fixture participant f52f1652',
+      'Evaluation fixture participant 0a6bcb5d',
+      'Evaluation fixture participant 98af7a4c',
+      'Evaluation fixture participant a991ae39',
+      'Evaluation fixture participant 28a90341',
+      'Evaluation fixture participant bc35b2d2',
+      'Evaluation fixture participant 28664e86',
+      'Evaluation fixture participant f73a0ebe',
+      'Evaluation fixture participant 10120001',
+      'Evaluation fixture participant 61b92b1a',
+      'Evaluation fixture participant 96505d83',
+      'Evaluation fixture participant aba7263b',
+      'Evaluation fixture participant 242c0609',
+      'Evaluation fixture participant afac75fd',
+      'Evaluation fixture participant 83b1a0b5',
+      'Evaluation fixture participant d2711f81',
+    ] as const;
+
+    expect(payload.cases).toHaveLength(5);
+    expect(payload.users).toHaveLength(25);
+    expect(payload.networks).toHaveLength(5);
+    expect(payload.memberships).toHaveLength(25);
+    expect(payload.intents).toHaveLength(25);
+    expect(payload.networks.map(({ id }) => id)).toEqual(expectedNetworkIds);
+    expect(payload.users.map(({ id }) => id)).toEqual(expectedUserIds);
+    expect(payload.intents.map(({ id }) => id)).toEqual(expectedIntentIds);
+    expect(payload.users.map(({ name }) => name)).toEqual(expectedUserNames);
+    expect(payload.cases.map(({ id, description }) => ({ id, description }))).toEqual(
+      expectedCases.map(({ id, description }) => ({ id, description })),
+    );
+    expect(new Set(payload.users.map(({ id }) => id)).size).toBe(25);
+    expect(new Set(payload.networks.map(({ id }) => id)).size).toBe(5);
+    expect(new Set(payload.intents.map(({ id }) => id)).size).toBe(25);
+    expect(payload.users.every(({ id }) => id.startsWith('eval-discovery-matrix-user-'))).toBeTrue();
+    expect(payload.networks.every(({ id }) => id.startsWith('eval-discovery-matrix-network-'))).toBeTrue();
+    expect(payload.intents.every(({ id }) => id.startsWith('eval-discovery-matrix-intent-'))).toBeTrue();
+
+    const userIds = new Set(payload.users.map(({ id }) => id));
+    const networkIds = new Set(payload.networks.map(({ id }) => id));
+    expect(new Set(payload.memberships.map(({ userId }) => userId))).toEqual(userIds);
+    expect(new Set(payload.memberships.map(({ networkId }) => networkId))).toEqual(networkIds);
+    expect(new Set(payload.intents.map(({ userId }) => userId))).toEqual(userIds);
+    expect(new Set(payload.intents.map(({ networkId }) => networkId))).toEqual(networkIds);
+    expect(new Set(payload.memberships.map(({ networkId, userId }) => `${networkId}:${userId}`))).toEqual(
+      new Set(payload.intents.map(({ networkId, userId }) => `${networkId}:${userId}`)),
+    );
+
+    for (const [caseIndex, matrixCase] of HISTORICAL_MATRIX_CASES.entries()) {
+      const expectedCase = expectedCases[caseIndex]!;
+      expect(matrixCase.id).toBe(expectedCase.id);
+      const fixtureCase = payload.cases[caseIndex]!;
+      expect(fixtureCase.id).toBe(expectedCase.id);
+      expect(fixtureCase.description).toBe(expectedCase.description);
+
+      const network = payload.networks[caseIndex]!;
+      expect(network.id).toBe(fixtureCase.networkId);
+      expect(network.title).toBe(expectedCase.networkTitle);
+      expect(network.prompt).toBe(matrixCase.networkContext);
+
+      const memberships = payload.memberships.filter(({ networkId }) => networkId === network.id);
+      const intents = payload.intents.filter(({ networkId }) => networkId === network.id);
+      expect(memberships).toHaveLength(5);
+      expect(intents).toHaveLength(5);
+      for (const [participantIndex, participant] of matrixCase.participants.entries()) {
+        const membership = memberships[participantIndex]!;
+        const user = payload.users.find(({ id }) => id === membership.userId);
+        expect(user).toEqual({
+          id: membership.userId,
+          email: `${membership.userId}@fixture.invalid`,
+          name: expect.stringMatching(/^Evaluation fixture participant [a-f0-9]{8}$/),
+          intro: participant.profileText,
+          location: participant.location,
+        });
+
+        const intent = intents.find(({ userId }) => userId === membership.userId);
+        expect(intent).toEqual({
+          id: expect.stringMatching(/^eval-discovery-matrix-intent-[a-f0-9]{24}$/),
+          userId: membership.userId,
+          networkId: network.id,
+          payload: participant.intent.text,
+          summary: 'Discovery evaluation fixture intent',
+        });
+      }
+
+      const membershipIdFor = (participantId: string): string => {
+        const index = matrixCase.participants.findIndex(({ id }) => id === participantId);
+        expect(index).toBeGreaterThanOrEqual(0);
+        return memberships[index]!.userId;
+      };
+      expect(fixtureCase.sourceUserId).toBe(membershipIdFor(matrixCase.sourceUserId));
+      expect(fixtureCase.expectedUserId).toBe(membershipIdFor(matrixCase.expectedUserId));
+      expect(fixtureCase.excludedUserIds).toEqual(matrixCase.excludedUserIds.map(membershipIdFor));
+    }
+  });
+
+  it('excludes recursive audit and report data from serialized rows', () => {
+    const auditKeys = [
+      'historicalQuality', 'claimProvenance', 'semanticNegatives',
+      'anonymizationReview', 'outcomeCitationIds', 'citationIds',
+      'basisClaimIds', 'violatedRequirement', 'uncertaintyRationale',
+    ];
+    const forbidden = HISTORICAL_QUALITY_CASES.flatMap((historicalCase) => [
+      ...Object.values(historicalCase.reportNames ?? {}),
+      ...historicalCase.historicalQuality.citations.flatMap(({ id, url, title, publisher, excerpt }) =>
+        [id, url, title, publisher, excerpt]),
+      ...Object.values(historicalCase.historicalQuality.semanticNegatives),
+      ...auditKeys,
+    ]).filter(Boolean);
+
+    const serializedStrings = allStrings(baseSeedPayload(HISTORICAL_MATRIX_CASES));
+    for (const value of forbidden) {
+      expect(serializedStrings.some((entry) => entry.includes(value)), value).toBeFalse();
+    }
   });
 
   it('uses deterministic, fixture-scoped IDs and the audited v2 corpus contract', () => {

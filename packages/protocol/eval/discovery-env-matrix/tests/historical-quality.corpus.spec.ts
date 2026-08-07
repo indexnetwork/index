@@ -164,8 +164,13 @@ const validCase = (): HistoricalQualityCase => {
     reportNames: { "p-source": "Real Source", "p-target": "Real Target" },
     historicalQuality: {
       cutoff: {
-        date: "1975-12-31",
-        precision: "day",
+        event: {
+          id: "p-source-p-target-first-substantive-collaboration",
+          description: "Immediately before the two historical participants began substantive collaboration.",
+        },
+        calendarProxy: { date: "1975-12-31", precision: "day" },
+        confidence: "high",
+        uncertaintyRationale: "The reviewed chronology supplies an exact day for the ordering boundary.",
         exclusive: true,
         orderingCitationIds: ["citation-pre"],
       },
@@ -233,14 +238,41 @@ describe("historical quality corpus contract", () => {
     inclusive.historicalQuality.cutoff.exclusive = false as true;
     expect(() => validateHistoricalQualityCase(inclusive)).toThrow(/cutoff must be exclusive/);
 
-    const invalidDate = validCase();
-    invalidDate.historicalQuality.cutoff.date = "1975-13-40";
-    expect(() => validateHistoricalQualityCase(invalidDate)).toThrow(/cutoff date does not match day precision/);
+    const blankEventId = validCase();
+    blankEventId.historicalQuality.cutoff.event.id = " ";
+    expect(() => validateHistoricalQualityCase(blankEventId)).toThrow(/cutoff event id must be non-empty/);
+
+    const blankDescription = validCase();
+    blankDescription.historicalQuality.cutoff.event.description = " ";
+    expect(() => validateHistoricalQualityCase(blankDescription)).toThrow(/cutoff event description must be non-empty/);
+
+    const invalidConfidence = validCase();
+    invalidConfidence.historicalQuality.cutoff.confidence = "certain" as "high";
+    expect(() => validateHistoricalQualityCase(invalidConfidence)).toThrow(/cutoff confidence is invalid/);
+
+    const blankUncertainty = validCase();
+    blankUncertainty.historicalQuality.cutoff.uncertaintyRationale = " ";
+    expect(() => validateHistoricalQualityCase(blankUncertainty)).toThrow(/cutoff uncertainty rationale must be non-empty/);
+
+    const malformedProxy = validCase();
+    malformedProxy.historicalQuality.cutoff.calendarProxy = { date: "1975-13-40", precision: "day" };
+    expect(() => validateHistoricalQualityCase(malformedProxy)).toThrow(/cutoff calendar proxy does not match day precision/);
+
+    const invalidPrecision = validCase();
+    invalidPrecision.historicalQuality.cutoff.calendarProxy.precision = "century" as "day";
+    expect(() => validateHistoricalQualityCase(invalidPrecision)).toThrow(
+      "historical-v2/builder-operator: cutoff calendar proxy precision is invalid",
+    );
 
     const yearWithoutOrdering = validCase();
     yearWithoutOrdering.historicalQuality.cutoff = {
-      date: "1975",
-      precision: "year",
+      event: {
+        id: "p-source-p-target-first-substantive-collaboration",
+        description: "Immediately before the two historical participants began substantive collaboration.",
+      },
+      calendarProxy: { date: "1975", precision: "year" },
+      confidence: "high",
+      uncertaintyRationale: "The reviewed chronology establishes the year but not an exact date.",
       exclusive: true,
       orderingCitationIds: [],
     };
@@ -260,6 +292,22 @@ describe("historical quality corpus contract", () => {
     pending.historicalQuality.anonymizationReview.decision = "pending";
     expect(() => validateHistoricalQualityCase(pending)).toThrow(/anonymization review must be approved/);
     expect(() => validateHistoricalQualityCase(pending, { requireApprovedReview: false })).not.toThrow();
+
+    const high = validCase();
+    high.historicalQuality.anonymizationReview.recognizability = "high";
+    expect(() => validateHistoricalQualityCase(high)).toThrow(/approved historical cases cannot have high recognizability/);
+    expect(() => validateHistoricalQualityCase(high, { requireApprovedReview: false })).not.toThrow();
+
+    for (const recognizability of ["extreme", "HIGH"] as const) {
+      const invalid = validCase();
+      invalid.historicalQuality.anonymizationReview.recognizability = recognizability as "high";
+      expect(() => validateHistoricalQualityCase(invalid)).toThrow(
+        "historical-v2/builder-operator: anonymization recognizability is invalid",
+      );
+      expect(() => validateHistoricalQualityCase(invalid, { requireApprovedReview: false })).toThrow(
+        "historical-v2/builder-operator: anonymization recognizability is invalid",
+      );
+    }
   });
 
   it("rejects authored claims for historical participants and historical claims for synthetic participants", () => {

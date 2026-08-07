@@ -300,8 +300,13 @@ export const HISTORICAL_CASE_03 = defineHistoricalQualityCase({
   },
   historicalQuality: {
     cutoff: {
-      date: "1957-07",
-      precision: "month",
+      event: {
+        id: "h3-first-substantive-collaboration",
+        description: "Immediately before John Lennon invited Paul McCartney to join after their July 1957 meeting and musical demonstration.",
+      },
+      calendarProxy: { date: "1957-07", precision: "month" },
+      confidence: "high",
+      uncertaintyRationale: "The first meeting is dated 6 July 1957 and the invitation followed weeks later; the exact invitation day is not established.",
       exclusive: true,
       orderingCitationIds: ["nml-first-meeting", "national-trust-history"],
     },
