@@ -121,7 +121,7 @@ Selecting Hermes is a reconciled setup operation, not an optimistic dropdown cha
 5. It installs/enables the Index plugin in negotiator mode.
 6. It creates or reconciles a disabled one-minute scheduled negotiation pass.
 7. It verifies the bound executor through `GET /api/agents/me`; this check does not require negotiation authority or claim work.
-8. One owner-authenticated backend operation atomically disables any previous external executor, grants this executor exactly `manage:negotiations`, and sets `handleNegotiations=true`.
+8. One owner-control backend operation atomically disables any previous external executor, grants this executor exactly `manage:negotiations`, and sets `handleNegotiations=true`. It accepts a Better Auth session or the Mac app's unbound owner credential, and rejects every agent-bound key.
 9. The native shell enables the schedule and starts or restarts the Hermes gateway.
 10. Index macOS waits for a server-observed pickup heartbeat. A heartbeat within the dispatcher's existing 90-second freshness threshold commits the selector to `Hermes · active`.
 
@@ -237,7 +237,7 @@ Two operations remain distinct:
 ## Security and Invariants
 
 - An owner has at most one preferred external negotiation executor.
-- Runtime-binding changes require the owner's authenticated Index session.
+- Runtime-binding changes require a Better Auth session or the Mac app's unbound owner credential; every agent-bound key is rejected.
 - An agent-bound key cannot select itself, grant permissions, mint successor keys, or manage another executor.
 - The Hermes executor has exactly `manage:negotiations` in this mode.
 - Credentials may cross the WKWebView-to-native bridge only transiently during bootstrap; they are never rendered, logged, or persisted in web storage.
