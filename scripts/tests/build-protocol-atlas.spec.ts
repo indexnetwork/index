@@ -91,7 +91,8 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   expect(css).toMatch(/body\s*\{[\s\S]*?overflow-x:\s*hidden/);
   expect(css).toContain("@media (max-width: 900px)");
   expect(css).toContain("@media (max-width: 640px)");
-  expect(css).toMatch(/button,[\s\S]*?min-height:\s*2\.75rem/);
+  const layerToggleRule = css.match(/#atlas-layer-toggle button\s*\{([^}]*)\}/)?.[1];
+  expect(layerToggleRule).toMatch(/min-height:\s*(?:2\.75rem|44px)/);
   expect(css).toContain("--edge-runtime-pattern: 10 5");
   expect(css).toContain("--edge-injected-pattern: 3 4");
   expect(css).toContain("--edge-conceptual-pattern: 1 5");

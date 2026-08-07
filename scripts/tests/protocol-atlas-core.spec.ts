@@ -420,6 +420,34 @@ describe("Protocol Atlas history, search, filters, and recovery", () => {
     }
   });
 
+  test("canonicalizes reordered duplicate filters without adding a history entry or trapping Back/Forward", async () => {
+    const harness = await rendererHarness();
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Discovery")?.click();
+      const previousHash = harness.window.location.hash;
+      const noncanonical = "#edgeKinds=runtime&kinds=agent&capabilities=opportunities,opportunities&node=component.opportunity-evaluator&layer=implementation&step=evaluate-fit&chapter=discovery";
+      harness.window.location.hash = noncanonical;
+      const lengthBeforeCanonicalization = harness.window.history.length;
+      harness.window.dispatchEvent(new harness.window.HashChangeEvent("hashchange"));
+
+      const canonical = "#chapter=discovery&step=evaluate-fit&layer=implementation&node=component.opportunity-evaluator&capabilities=opportunities&kinds=agent&edgeKinds=runtime";
+      expect(harness.window.location.hash).toBe(canonical);
+      expect(harness.window.history.length).toBe(lengthBeforeCanonicalization);
+
+      harness.window.history.back();
+      await harness.window.happyDOM.waitUntilComplete();
+      expect(harness.window.location.hash).toBe(previousHash);
+      expect(activeStep(harness.document)).toBe("Resolve scope");
+
+      harness.window.history.forward();
+      await harness.window.happyDOM.waitUntilComplete();
+      expect(harness.window.location.hash).toBe(canonical);
+      expect(activeStep(harness.document)).toBe("Evaluate fit");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   test("searches concepts and components, navigates, closes, announces, and returns focus", async () => {
     const harness = await rendererHarness();
     try {
@@ -481,6 +509,36 @@ describe("Protocol Atlas history, search, filters, and recovery", () => {
       expect(harness.document.querySelector(".atlas-filter-empty")?.textContent).toContain("No components match these filters");
       buttonWithText(harness.document, ".atlas-filter-empty button", "Reset filters")?.click();
       expect(harness.document.querySelectorAll(".atlas-node").length).toBe(3);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("preserves keyboard focus on each filter checkbox across composed rerenders", async () => {
+    const generated = fixtureGenerated();
+    generated.nodes.push({
+      id: "component.signal-tool", label: "Signal Tool", symbol: "SignalTool", capability: "signals",
+      kind: "tool-family", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+    });
+    const harness = await rendererHarness({ generated });
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Explore")?.click();
+      const opportunitiesSelector = '#atlas-filters input[name="capabilities"][value="opportunities"]';
+      const toolSelector = '#atlas-filters input[name="kinds"][value="tool-family"]';
+      const opportunities = harness.document.querySelector<HTMLInputElement>(opportunitiesSelector);
+      opportunities?.focus();
+      opportunities?.dispatchEvent(new harness.window.KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      opportunities?.click();
+      await harness.window.happyDOM.waitUntilComplete();
+      expect(harness.document.activeElement?.matches(opportunitiesSelector)).toBe(true);
+
+      const tool = harness.document.querySelector<HTMLInputElement>(toolSelector);
+      tool?.focus();
+      tool?.dispatchEvent(new harness.window.KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      tool?.click();
+      await harness.window.happyDOM.waitUntilComplete();
+      expect(harness.document.activeElement?.matches(toolSelector)).toBe(true);
+      expect(harness.document.querySelector(".atlas-filter-empty")?.textContent).toContain("No components match these filters");
     } finally {
       harness.cleanup();
     }

@@ -176,9 +176,17 @@
     const restored = restoredState(root.location ? root.location.hash : "");
     const normalized = core.serializeHash(restored);
     const current = root.location && root.location.hash || "#";
+    const priorNormalized = state && core.serializeHash(state);
+    if (!restored.notice && current === normalized && priorNormalized === normalized) return;
     state = restored;
     render(state);
-    if (root.location && !restored.notice && current !== normalized) root.location.hash = normalized;
+    if (root.location && !restored.notice && current !== normalized) {
+      if (root.history && typeof root.history.replaceState === "function") {
+        root.history.replaceState(root.history.state, "", normalized);
+      } else if (typeof root.location.replace === "function") {
+        root.location.replace(normalized);
+      }
+    }
   }
 
   function syncHash() {
@@ -439,6 +447,7 @@
         input.value = value;
         input.checked = records(atlasState.filters[key]).includes(value);
         input.addEventListener("change", () => {
+          const restoreFocus = document.activeElement === input;
           const filters = {
             capabilities: [...atlasState.filters.capabilities],
             kinds: [...atlasState.filters.kinds],
@@ -448,6 +457,11 @@
             ? [...new Set([...filters[key], value])]
             : filters[key].filter((candidate) => candidate !== value);
           dispatch({ type: "set-filters", filters });
+          if (restoreFocus) {
+            const replacement = [...target.querySelectorAll("input")]
+              .find((candidate) => candidate.name === key && candidate.value === value);
+            if (replacement) replacement.focus();
+          }
         });
         label.append(input, document.createTextNode(value));
         fieldset.append(label);
