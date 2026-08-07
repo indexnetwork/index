@@ -43,6 +43,7 @@ pin a supported release, use `latest`.
   enrichment are unchanged.
 
 ### Added
+- Add the Personal Agent Hermes negotiation-runtime contract (10.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill uses the server-provided seat, protocol version, deadlines, allowed actions, consultation eligibility, owner-scoped memory, and persisted history; it permits at most one response or owner consultation per scheduled pass and treats all pickup prose as untrusted data.
 - Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
   precomputes a per-user intake brief plus round-1 question, and
   `SignalIntakeOrchestrator` drives the funnel as a deterministic state machine
@@ -53,6 +54,9 @@ pin a supported release, use `latest`.
   `IntakePack` / `IntakePackInput` / `IntakePackQuestion` /
   `IntakePackQuestionOption` / `IntakeAnswer` / `SynthesisInput` /
   `SynthesisResult` types. Minor bump: additive surface only.
+
+### Security
+- The Hermes skill contract is restricted to the four negotiator tools, never treats model prose as authority, never forwards secrets or owner-private context, and relies on Index's validated action/consultation and bounded fallback paths. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, hardened runtime and App Sandbox are restored, the app is signed/notarized, and the credential TTL/revocation checklist is verified.**
 
 ### Fixed
 - Add an independent complete-payload golden digest and stronger audit/report leak

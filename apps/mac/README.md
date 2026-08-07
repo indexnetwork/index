@@ -354,6 +354,12 @@ with a proven disposable `DATABASE_URL` and `TEST_DATABASE_SAFE=1`.
 
 ## Credential storage, known dev-only compromise
 
+> **Release scope:** This branch targets dev/private testing only. Production
+> distribution remains blocked until the owner credential is migrated to
+> Keychain and the plaintext credential file **and directory** are removed,
+> hardened runtime and App Sandbox are restored, the bundle is signed and
+> notarized, and the credential TTL/revocation checklist below is verified.
+
 The API key minted by `index login` is written as **plain JSON** to
 `~/Library/Application Support/network.index.system6/credential.json`
 (`0600`, in a `0700` directory). It is **not** in the Keychain.

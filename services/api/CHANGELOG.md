@@ -35,6 +35,8 @@ section before promoting to `main`).
   than per network.
 
 ### Added
+- Add the Personal Agent Hermes runtime binding (API 0.78.0): owner-control routes prepare, select, roll back, inspect, and disconnect one generation-fenced local Hermes installation without changing the owner's Personal Agent identity, memory, policy, consultations, or history. The macOS selector can now durably choose Index or Hermes; a selected Hermes executor receives only negotiation authority, reports health through a negotiation-specific pickup heartbeat, and falls back to Index through the existing bounded park/claim path when stale or stopped.
+- Let an exact selected external negotiator consult its owner through the existing `input_required` Questioner lifecycle. The server independently checks the exact owner, principal, claim, attempt, material binding, deadline, and one-consultation policy, accepts only a minimal disclosure subject and optional draft question, and resumes only the settlement-bound successor after answer, dismissal, or expiry.
 - Register `OPPORTUNITY_OWNER_APPROVAL_SECRET` as an optional env var so the documented owner-approval secret is schema-validated.
 - Wire the MCP authorization-observability seam at the host boundary (IND-581;
   protocol 7.8.0, API 0.64.0). The composition root now injects a concrete
@@ -99,6 +101,9 @@ section before promoting to `main`).
 - Add per-viewer conversation read cursors, server-side unread counts, and `POST /conversations/:id/read` (IND-475; migration `0098`).
 - Record viewer-safe match provenance on start-chat DMs and expose intent-scoped `via` summaries for chat signal provenance (IND-475).
 - Expose a read-side `warming` state for fresh owned intents until a succeeded discovery run is recorded (IND-473). The state uses the 24-hour creation window and discovery-run JSON intent linkage without schema or pipeline changes.
+
+### Security
+- Hermes setup is generation-fenced and fail-closed: agent-bound credentials cannot call owner-control routes, stale generations cannot activate or roll back newer setup, only the exact selected principal can pick up/respond/consult, and disconnect revokes installation credentials before local cleanup. **This branch targets dev/private testing only. Production distribution remains blocked until the Mac owner credential is migrated to Keychain and the plaintext file/directory is removed, hardened runtime and App Sandbox are restored, the app is signed/notarized, and the credential TTL/revocation checklist is verified.**
 
 ### Fixed
 - Route creation-time and post-discovery intent refinements through one material-fingerprint-deduplicated service, and stop suppressing ordinary intent-page Personal Agent questions merely because discovery already produced an actionable opportunity. Pool and Questioner-generated intent questions now receive symmetric surfacing opportunities while retaining ownership, active-lifecycle, stale-answer, privacy-copy, and one-question-per-material-version gates.
