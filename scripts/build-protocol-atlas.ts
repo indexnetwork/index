@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
+import ts from "typescript";
 
 import { facadeCapabilityForSourcePath, type Capability } from "../packages/protocol/scripts/architecture/capability-model.ts";
 import { parseSourceFile, runtimeModuleSpecifiers } from "../packages/protocol/scripts/architecture/module-graph.ts";
@@ -378,6 +379,49 @@ function importedSourcePath(sourcePath: string, specifier: string): string | und
   return resolved.endsWith(".js") ? `${resolved.slice(0, -3)}.ts` : resolved;
 }
 
+type RuntimeImportSelection = { all: boolean; symbols: Set<string> };
+
+function runtimeImportSelections(sourceFile: ts.SourceFile): Map<string, RuntimeImportSelection> {
+  const runtimeSpecifiers = new Set(runtimeModuleSpecifiers(sourceFile));
+  const selections = new Map<string, RuntimeImportSelection>();
+  for (const statement of sourceFile.statements) {
+    if (
+      (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement))
+      || !statement.moduleSpecifier
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || !runtimeSpecifiers.has(statement.moduleSpecifier.text)
+    ) continue;
+    const specifier = statement.moduleSpecifier.text;
+    const selection = selections.get(specifier) ?? { all: false, symbols: new Set<string>() };
+    if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause;
+      if (!clause) {
+        selection.all = true;
+      } else if (!clause.isTypeOnly) {
+        if (clause.name) selection.symbols.add("default");
+        const bindings = clause.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) selection.all = true;
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            if (!element.isTypeOnly) selection.symbols.add((element.propertyName ?? element.name).text);
+          }
+        }
+      }
+    } else if (!statement.isTypeOnly) {
+      const clause = statement.exportClause;
+      if (!clause || ts.isNamespaceExport(clause)) {
+        selection.all = true;
+      } else {
+        for (const element of clause.elements) {
+          if (!element.isTypeOnly) selection.symbols.add((element.propertyName ?? element.name).text);
+        }
+      }
+    }
+    selections.set(specifier, selection);
+  }
+  return selections;
+}
+
 function staticEdges(components: AtlasNode[], sourceFiles: Record<string, string>): AtlasEdge[] {
   const nodesByPath = new Map<string, AtlasNode[]>();
   for (const node of components) {
@@ -390,11 +434,12 @@ function staticEdges(components: AtlasNode[], sourceFiles: Record<string, string
     const sourceText = sourceFiles[sourceNode.sourcePath];
     if (sourceText === undefined) continue;
     const sourceFile = parseSourceFile(sourceNode.sourcePath, sourceText);
-    for (const specifier of runtimeModuleSpecifiers(sourceFile)) {
+    for (const [specifier, selection] of runtimeImportSelections(sourceFile)) {
       const targetPath = importedSourcePath(sourceNode.sourcePath, specifier);
       if (!targetPath) continue;
       for (const targetNode of nodesByPath.get(targetPath) ?? []) {
         if (targetNode.id === sourceNode.id) continue;
+        if (targetNode.symbol && !selection.all && !selection.symbols.has(targetNode.symbol)) continue;
         const id = `static.${sourceNode.id}.${targetNode.id}`;
         edges.set(id, {
           id,

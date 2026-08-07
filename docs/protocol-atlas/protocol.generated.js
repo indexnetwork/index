@@ -941,89 +941,9 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "evidenceSymbol": "createToolRegistry"
     },
     {
-      "id": "static.component.enrichment-graph-factory.host-requirement.chat-graph-composite-database",
-      "sourceId": "component.enrichment-graph-factory",
-      "targetId": "host-requirement.chat-graph-composite-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/enrichment/enrichment.graph.ts"
-    },
-    {
-      "id": "static.component.enrichment-graph-factory.host-requirement.negotiation-graph-database",
-      "sourceId": "component.enrichment-graph-factory",
-      "targetId": "host-requirement.negotiation-graph-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/enrichment/enrichment.graph.ts"
-    },
-    {
-      "id": "static.component.enrichment-graph-factory.host-requirement.opportunity-graph-database",
-      "sourceId": "component.enrichment-graph-factory",
-      "targetId": "host-requirement.opportunity-graph-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/enrichment/enrichment.graph.ts"
-    },
-    {
-      "id": "static.component.enrichment-graph-factory.host-requirement.system-database",
-      "sourceId": "component.enrichment-graph-factory",
-      "targetId": "host-requirement.system-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/enrichment/enrichment.graph.ts"
-    },
-    {
-      "id": "static.component.enrichment-graph-factory.host-requirement.user-database",
-      "sourceId": "component.enrichment-graph-factory",
-      "targetId": "host-requirement.user-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/enrichment/enrichment.graph.ts"
-    },
-    {
       "id": "static.component.intent-graph-factory.component.semantic-verifier",
       "sourceId": "component.intent-graph-factory",
       "targetId": "component.semantic-verifier",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"
-    },
-    {
-      "id": "static.component.intent-graph-factory.host-requirement.chat-graph-composite-database",
-      "sourceId": "component.intent-graph-factory",
-      "targetId": "host-requirement.chat-graph-composite-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"
-    },
-    {
-      "id": "static.component.intent-graph-factory.host-requirement.negotiation-graph-database",
-      "sourceId": "component.intent-graph-factory",
-      "targetId": "host-requirement.negotiation-graph-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"
-    },
-    {
-      "id": "static.component.intent-graph-factory.host-requirement.opportunity-graph-database",
-      "sourceId": "component.intent-graph-factory",
-      "targetId": "host-requirement.opportunity-graph-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"
-    },
-    {
-      "id": "static.component.intent-graph-factory.host-requirement.system-database",
-      "sourceId": "component.intent-graph-factory",
-      "targetId": "host-requirement.system-database",
-      "kind": "static",
-      "label": "imports at runtime",
-      "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"
-    },
-    {
-      "id": "static.component.intent-graph-factory.host-requirement.user-database",
-      "sourceId": "component.intent-graph-factory",
-      "targetId": "host-requirement.user-database",
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/signals/application/intent.graph.ts"

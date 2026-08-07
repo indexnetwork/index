@@ -145,6 +145,61 @@ describe("protocol atlas generator", () => {
     expect(staticTargets).not.toContain("component.type-target");
   });
 
+  test("targets only runtime-imported symbols when a module also exports a type-only port", () => {
+    const input = fixtureInput();
+    const sourcePath = "packages/protocol/src/runtime/foreground/composition.ts";
+    const mixedTargetPath = "packages/protocol/src/shared/interfaces/mixed-target.ts";
+    input.components.push(
+      {
+        id: "component.runtime-target",
+        label: "Runtime target",
+        kind: "public-symbol",
+        capability: "interaction-composition",
+        sourcePath: mixedTargetPath,
+        symbol: "runtimeTarget",
+        chapterIds: [],
+        flowIds: [],
+        summary: "A runtime dependency.",
+      },
+      {
+        id: "host-requirement.type-target",
+        label: "Type target",
+        kind: "host-requirement",
+        capability: "interaction-composition",
+        sourcePath: mixedTargetPath,
+        symbol: "TypeTarget",
+        chapterIds: [],
+        flowIds: [],
+        summary: "A type-only dependency from the same module.",
+      },
+    );
+    input.sourceFiles = {
+      ...input.sourceFiles,
+      [sourcePath]: 'import { runtimeTarget, type TypeTarget } from "../../shared/interfaces/mixed-target.js";\n',
+      [mixedTargetPath]: [
+        "export const runtimeTarget = true;",
+        "export interface TypeTarget {}",
+      ].join("\n"),
+    };
+    input.components.push({
+      id: "component.composition",
+      label: "Composition",
+      kind: "runtime-shell",
+      capability: "interaction-composition",
+      sourcePath,
+      chapterIds: [],
+      flowIds: [],
+      summary: "Composes runtime behavior.",
+    });
+
+    const staticTargets = buildAtlasArtifact(input).edges
+      .filter(({ sourceId, kind }) => sourceId === "component.composition" && kind === "static")
+      .map(({ targetId }) => targetId);
+
+    expect(staticTargets).toContain("component.runtime-target");
+    expect(staticTargets).not.toContain("host-requirement.type-target");
+  });
+
   test("rejects missing node and edge evidence paths", () => {
     const artifact = fixtureArtifact();
     artifact.nodes[0].sourcePath = "packages/protocol/src/missing.ts";
