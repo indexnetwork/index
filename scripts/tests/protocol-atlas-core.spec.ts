@@ -119,6 +119,26 @@ describe("ProtocolAtlasCore data validation", () => {
     expect(core().validateData(fixtureContent(), fixtureGenerated())).toEqual({ ok: true, errors: [] });
   });
 
+  test("reports malformed non-array curated nodeIds", () => {
+    const content = fixtureContent();
+    const discoveryFlow = content.flows[0];
+    const malformed = {
+      ...content,
+      flows: [{
+        ...discoveryFlow,
+        steps: [
+          { ...discoveryFlow.steps[0], nodeIds: "component.missing" },
+          ...discoveryFlow.steps.slice(1),
+        ],
+      }, ...content.flows.slice(1)],
+    };
+
+    expect(core().validateData(malformed, fixtureGenerated())).toEqual({
+      ok: false,
+      errors: ["curated nodeIds must be an array"],
+    });
+  });
+
   test("reports schema, duplicate, membership, endpoint, and curated node failures", () => {
     const validContent = fixtureContent();
     const validGenerated = fixtureGenerated();

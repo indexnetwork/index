@@ -144,18 +144,22 @@
     return errors;
   }
 
-  function collectCuratedNodeIds(value, found, visited) {
+  function collectCuratedNodeIds(value, found, errors, visited) {
     if (value === null || typeof value !== "object" || visited.has(value)) return;
     visited.add(value);
     if (Array.isArray(value)) {
-      for (const item of value) collectCuratedNodeIds(item, found, visited);
+      for (const item of value) collectCuratedNodeIds(item, found, errors, visited);
       return;
     }
     for (const [key, child] of Object.entries(value)) {
-      if (key === "nodeIds" && Array.isArray(child)) {
-        for (const nodeId of child) found.push(nodeId);
+      if (key === "nodeIds") {
+        if (!Array.isArray(child)) {
+          errors.push("curated nodeIds must be an array");
+        } else {
+          for (const nodeId of child) found.push(nodeId);
+        }
       } else {
-        collectCuratedNodeIds(child, found, visited);
+        collectCuratedNodeIds(child, found, errors, visited);
       }
     }
   }
@@ -232,7 +236,7 @@
       }
 
       const curatedNodeIds = [];
-      collectCuratedNodeIds(content, curatedNodeIds, new WeakSet());
+      collectCuratedNodeIds(content, curatedNodeIds, errors, new WeakSet());
       for (const nodeId of curatedNodeIds) {
         if (typeof nodeId !== "string" || !nodeIds.has(nodeId)) {
           errors.push(`curated nodeIds references missing generated node ${String(nodeId)}`);
