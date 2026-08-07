@@ -24,6 +24,7 @@ describe("EnrichmentController /enrich (sync public research)", () => {
           name: "Manual Enrich User",
           intro: "Engineer building index.",
           location: "New York",
+          avatar: null,
           socials: [{ label: "linkedin", value: "serefyarar" }],
         };
       },
@@ -38,6 +39,7 @@ describe("EnrichmentController /enrich (sync public research)", () => {
         name: "Manual Enrich User",
         intro: "Engineer building index.",
         location: "New York",
+        avatar: null,
         socials: [{ label: "linkedin", value: "serefyarar" }],
       },
     });

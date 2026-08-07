@@ -1,8 +1,9 @@
 import { log } from '../lib/log';
 import { EnrichmentGraphFactory } from '@indexnetwork/protocol';
 import type { EnrichmentGraphDatabase, Scraper } from '@indexnetwork/protocol';
-import { EnrichmentDatabaseAdapter } from '../adapters/database.adapter';
+import { EnrichmentDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
+import { S3StorageAdapter } from '../adapters/storage.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 
 const logger = log.service.from("EnrichmentService");
@@ -12,7 +13,47 @@ export interface SyncEnrichmentResult {
   name: string | null;
   intro: string | null;
   location: string | null;
+  avatar: string | null;
   socials: { label: string; value: string }[];
+}
+
+/** content-type → file extension for avatar images we accept. */
+const AVATAR_CONTENT_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+const MIN_AVATAR_BYTES = 1024;
+const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
+const UNAVATAR_BASE = process.env.UNAVATAR_BASE || 'https://unavatar.io';
+const UNAVATAR_TOKEN = process.env.UNAVATAR_TOKEN || '';
+
+/** Reduce a handle or profile URL to its bare username (no `@`, no URL parts). */
+function bareHandle(value: string): string {
+  return (value.trim().replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop() ?? '')
+    .replace(/^@/, '')
+    .trim();
+}
+
+/**
+ * Download a URL and return its bytes only if it is a supported avatar image
+ * between MIN and MAX bytes. Never throws — a bad/missing/oversized/favicon-sized
+ * response just yields null so the source is skipped.
+ */
+async function downloadAvatar(url: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) return null;
+    const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!(contentType in AVATAR_CONTENT_TYPES)) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length < MIN_AVATAR_BYTES || buffer.length > MAX_AVATAR_BYTES) return null;
+    return { buffer, contentType };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -31,6 +72,15 @@ export class EnrichmentService {
   private scraper: Scraper;
   private factory: EnrichmentGraphFactory;
   private enricherFactory: EnrichmentGraphFactory;
+  private storage = new S3StorageAdapter({
+    endpoint: process.env.S3_ENDPOINT,
+    region: process.env.S3_REGION,
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? '',
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? '',
+    },
+    bucket: process.env.S3_BUCKET ?? '',
+  });
 
   constructor() {
     this.db = new EnrichmentDatabaseAdapter();
@@ -58,12 +108,73 @@ export class EnrichmentService {
 
     const user = await this.db.getUser(userId);
     const socials = await this.db.getUserSocials(userId);
+    const flatSocials = socials.map((s) => ({ label: s.label, value: s.value }));
+    const avatar = await this.resolveAndStoreAvatar(
+      userId,
+      user?.email ?? '',
+      user?.avatar ?? null,
+      flatSocials,
+    );
     return {
       name: user?.name ?? null,
       intro: user?.intro ?? null,
       location: user?.location ?? null,
-      socials: socials.map((s) => ({ label: s.label, value: s.value })),
+      avatar,
+      socials: flatSocials,
     };
+  }
+
+  /**
+   * Best-effort avatar for a freshly enriched user, using the discovered socials
+   * + email. Sources mirror the backfill learning: the GitHub avatar first, then
+   * unavatar.io (twitter → telegram handle → email, always `fallback=false`).
+   * Telegram bot photo fetching is intentionally excluded. Users who already have
+   * an avatar are left untouched. Never throws — a miss or error just leaves the
+   * avatar unset so enrichment always returns.
+   */
+  private async resolveAndStoreAvatar(
+    userId: string,
+    email: string,
+    avatar: string | null,
+    socials: { label: string; value: string }[],
+  ): Promise<string | null> {
+    if (avatar) return avatar;
+
+    const social = (label: string) => socials.find((s) => s.label === label)?.value;
+    const github = social('github');
+    const twitter = social('twitter');
+    const telegram = social('telegram');
+
+    // Candidate sources, most identity-bound first. unavatar always uses
+    // `fallback=false` so a miss is a clean 404, not a stored placeholder.
+    const q = UNAVATAR_TOKEN ? `fallback=false&token=${encodeURIComponent(UNAVATAR_TOKEN)}` : 'fallback=false';
+    const urls: string[] = [];
+    if (github) urls.push(`https://github.com/${encodeURIComponent(bareHandle(github))}.png?size=460`);
+    if (twitter) urls.push(`${UNAVATAR_BASE}/twitter/${encodeURIComponent(bareHandle(twitter))}?${q}`);
+    if (telegram) urls.push(`${UNAVATAR_BASE}/telegram/${encodeURIComponent(bareHandle(telegram))}?${q}`);
+    if (email) urls.push(`${UNAVATAR_BASE}/${encodeURIComponent(email.trim())}?${q}`);
+
+    try {
+      for (const url of urls) {
+        const img = await downloadAvatar(url);
+        if (!img) continue;
+        const key = await this.storage.uploadAvatar(
+          img.buffer,
+          userId,
+          AVATAR_CONTENT_TYPES[img.contentType],
+          img.contentType,
+        );
+        await userDatabaseAdapter.update(userId, { avatar: key });
+        logger.verbose('Avatar resolved from enrichment', { userId, key });
+        return key;
+      }
+    } catch (err) {
+      logger.warn('Avatar resolution failed', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return null;
   }
 
   /**
