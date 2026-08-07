@@ -1,6 +1,6 @@
 # Index Network Hermes Plugin
 
-A native [Hermes](https://hermes-agent.nousresearch.com) plugin for [Index Network](https://index.network). It gives Hermes first-class Index tools (signals, opportunities, networks, negotiations), bundled guidance skills, a `/index` command, and a live dashboard tab — all authenticated with a single Index API key.
+A native [Hermes](https://hermes-agent.nousresearch.com) plugin for [Index Network](https://index.network). In its default full mode it gives Hermes first-class Index tools (signals, opportunities, networks, negotiations), bundled guidance skills, a `/index` command, and a live dashboard tab — all authenticated with a single Index API key. A fail-closed negotiator mode exposes only the four personal-agent negotiation capabilities needed by a scheduled external executor.
 
 ## Installation
 
@@ -12,7 +12,7 @@ No API key is required at install. Open the **Index** dashboard tab and choose *
 
 Setting `INDEX_API_KEY` in the Hermes environment yourself still works as an optional override (for CI or headless setups). Get an agent-bound key at [index.network/agents](https://index.network/agents).
 
-The package ships the prebuilt Hermes Desktop bundle at `desktop/dist/`, and the plugin self-installs it: when the gateway loads the plugin, `register()` copies the bundle into `~/.hermes/desktop-plugins/index-network` (and refreshes it after upgrades). No separate desktop install step — just reload desktop plugins (⌘K) in the Hermes Desktop app the first time.
+In default/full mode, the package ships the prebuilt Hermes Desktop bundle at `desktop/dist/`, and the plugin self-installs it: when the gateway loads the plugin, `register()` copies the bundle into `~/.hermes/desktop-plugins/index-network` (and refreshes it after upgrades). No separate desktop install step — just reload desktop plugins (⌘K) in the Hermes Desktop app the first time. Negotiator mode installs no Desktop dashboard and best-effort removes a stale copied `~/.hermes/desktop-plugins/index-network` bundle. The plugin-local web dashboard is gated separately because Hermes discovers it independently of `register(ctx)`; see [Dashboard](#dashboard).
 
 ## Configuration
 
@@ -24,10 +24,18 @@ The package ships the prebuilt Hermes Desktop bundle at `desktop/dist/`, and the
 | `INDEX_MCP_TIMEOUT_SECONDS` | no | `30` | Timeout for both MCP and API requests |
 | `INDEX_TELEGRAM_USERNAME` | no | — | Forwarded as `x-index-telegram-username` when present |
 | `INDEX_APP_BASE_URL` | no | `https://index.network` | Universal-link origin used for `appUrl` deep links and `index_open_app` |
+| `INDEX_PLUGIN_MODE` | no | `full` | Runtime capability surface: `full` or `negotiator`; any unknown non-empty value fails closed to `negotiator` |
 
 Override `INDEX_APP_BASE_URL` only for dev/staging environments, and only with a full
 `https://<host>` origin — a value without an `https://` scheme (for example
 `index.network`) is ignored and the default is used.
+
+### Runtime modes
+
+- **`full` (default):** preserves the existing broad MCP wrappers, `index_open_app`, negotiation tools, orchestrator and negotiator skills, pre-LLM hook, `/index` command, desktop dashboard installation, and plugin-local web dashboard routes/tab registration.
+- **`negotiator`:** registers exactly `index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`, and the `index-network:index-negotiator` skill. It registers no discovery or opportunity pickup/delivery capabilities, broad MCP wrappers, `index_open_app`, hook, command, orchestrator skill, or active dashboard API/component.
+
+`plugin.yaml` lists the static package capability union for Hermes discovery. `register(ctx)` applies the tool/skill/hook/command mode boundary. Dashboard discovery is orthogonal to that function, so `dashboard/plugin_api.py` independently uses the same shared raw mode parser: in restricted mode its exported FastAPI router has no routes, and the web bundle does not register its component unless the full-only `/api/plugins/index-network/mode` endpoint confirms exact `full`. Missing or empty `INDEX_PLUGIN_MODE` remains backward-compatible full mode; an unknown non-empty, whitespace-only, or whitespace-padded value fails closed to negotiator mode.
 
 ## Tools
 
@@ -77,7 +85,7 @@ If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work ret
 {
   "agentId": "optional personal agent UUID",
   "negotiationId": "required negotiation UUID from pickup",
-  "action": "propose | accept | reject | counter | question",
+  "action": "propose | accept | reject | counter | question | outreach | withdraw | decline",
   "message": "required for counter/question; optional otherwise",
   "reasoning": "required private rationale",
   "suggestedRoles": {
@@ -87,7 +95,20 @@ If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work ret
 }
 ```
 
-The handler maps this to the backend body shape (`action`, `message`, and an `assessment` object containing `reasoning` and `suggestedRoles`).
+The handler maps this to the backend body shape (`action`, `message`, and an `assessment` object containing `reasoning` and `suggestedRoles`). The union covers v1 and v2 actions, but callers must copy one action from each pickup response's `allowedActions`; the server enforces the exact protocol-version, seat, and final-turn subset. `ask_user` is never accepted through this response tool.
+
+**`index_consult_owner`** — pauses one eligible claimed turn for a privacy-minimal owner question:
+
+```json
+{
+  "agentId": "optional personal agent UUID",
+  "negotiationId": "required negotiation UUID from pickup",
+  "disclosureSubject": "required minimal subject needing owner input",
+  "draftQuestion": "optional concise owner question"
+}
+```
+
+Use it only when pickup returns `canConsultOwner: true`. The handler resolves an omitted `agentId`, requires the negotiation and disclosure fields, and reconstructs the REST body from only `disclosureSubject` and optional `draftQuestion`; extra model-provided fields are never forwarded. A successful response has `status: "input_required"` and ends the pass—do not also submit a negotiation response.
 
 ### Opportunity deep links (`appUrl`)
 
@@ -150,39 +171,41 @@ manually. There is no app-installed/not-installed branch in the result.
 
 ## Skills, hook, and command
 
-Two namespaced plugin skills are bundled and registered automatically:
+Two namespaced plugin skills are bundled. Full mode registers both automatically:
 
 - `index-network:index-orchestrator` — signal/intent review and discovery preparation guidance.
 - `index-network:index-negotiator` — autonomous personal-agent negotiation guidance for scheduled runs.
 
-A defensive `pre_llm_call` hook injects a hint to load the orchestrator skill when a prompt clearly mentions Index Network, signals, intents, opportunities, or discovery; it never runs tools itself. The `/index` command returns the same hint for explicit activation.
+Negotiator mode registers only `index-network:index-negotiator`. Full mode also keeps the defensive `pre_llm_call` orchestrator hint and `/index` command; negotiator mode registers neither.
 
 Plugin skills are namespaced and read-only — do not copy them into `~/.hermes/skills`.
 
 ## Dashboard
 
-The plugin ships an **Index Network** dashboard tab under `dashboard/`: an intent-centric master-detail view for answering pending Index questions (answered questions stay visible as settled records, Mac-app parity), opportunity accept/skip, community self-join, intent pause/archive, profile editing, a first-run **Getting started** profile gate (Mac `profileConfirmedAt` parity), and realtime direct messages. Hermes Desktop uses the same UI via `desktop/dist/` (built from that dashboard bundle); both hosts share the gate and `plugin_api.py` routes. The dashboard backend (`dashboard/plugin_api.py`) reuses `tools.py` for authentication, MCP forwarding, and timeouts, and it never claims or responds to negotiation turns — those remain explicit tool/skill flows.
+In full mode, the plugin ships an **Index Network** dashboard tab under `dashboard/`: an intent-centric master-detail view for answering pending Index questions (answered questions stay visible as settled records, Mac-app parity), opportunity accept/skip, community self-join, intent pause/archive, profile editing, a first-run **Getting started** profile gate (Mac `profileConfirmedAt` parity), and realtime direct messages. Hermes Desktop uses the same UI via `desktop/dist/` (built from that dashboard bundle); both hosts share the gate and `plugin_api.py` routes. The dashboard backend (`dashboard/plugin_api.py`) reuses `tools.py` for authentication, MCP forwarding, and timeouts, and it never claims or responds to negotiation turns — those remain explicit tool/skill flows.
+
+Negotiator mode has no dashboard API or registered tab component. Hermes may statically discover `dashboard/manifest.json` in every installed package; the current manifest format has no environment-conditioned discovery field. That discovery is not runtime authorization. In negotiator, unknown non-empty, whitespace-only, or padded modes, the exported backend router is empty and `dist/index.js` registers no tab component because the full-only `/api/plugins/index-network/mode` endpoint is unavailable. Thus no dashboard API or tab component activates even if the host has already seen the static manifest. Full, absent, and empty modes retain the existing routes and tab behavior.
 
 See [`dashboard/README.md`](./dashboard/README.md) for the full scope and runtime behavior.
 
 ## Autonomous negotiation
 
-Hermes can act as the user's personal Index negotiator by running the negotiator skill on a schedule through Hermes' gateway/cron mechanism. A minimal scheduled prompt:
+Hermes can act as the user's personal Index negotiator by running the negotiator skill through Hermes' gateway/cron mechanism. The owned schedule contract is:
 
-```text
-Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.
-```
+- **Name:** `Index Personal Agent Negotiator`
+- **Schedule:** `every 1m`
+- **Prompt:** `Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.`
 
 The skill's scheduled-run contract:
 
-1. call `index_pickup_negotiation()`
+1. call `index_pickup_negotiation()` once
 2. if `pending=false`, respond exactly `[SILENT]`
-3. inspect the returned context, opportunity, turn history, and deadline
-4. choose one cautious action
-5. call `index_respond_negotiation(...)`
-6. report only the tool-confirmed submission
+3. inspect `protocolVersion`, `seat`, `turn.deadline`, `allowedActions`, and `canConsultOwner` with the returned context/history
+4. either consult the owner when eligible or select one action verbatim from `allowedActions`
+5. make at most one response or consultation call in the pass, then stop
+6. report only a server-confirmed submission or `input_required` consultation
 
-Run the cron often enough to keep the personal-agent heartbeat fresh — a 1 minute interval is recommended. The Index dispatcher falls back to the system negotiator when no personal agent has polled recently, so a slow or stopped cron causes missed turns even with the plugin installed.
+The one-minute interval keeps the selected personal-agent heartbeat fresh. The Index dispatcher falls back to the system negotiator when no personal agent has polled recently, so a slow or stopped cron can leave Index covering the work instead.
 
 ## Development
 

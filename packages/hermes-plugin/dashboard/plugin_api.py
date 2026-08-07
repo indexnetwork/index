@@ -1,6 +1,6 @@
 """Index Network Hermes dashboard plugin backend.
 
-Mounted at /api/plugins/index-network/ by Hermes dashboard. The routes reuse
+Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
 question-answer writes stay scoped to the configured INDEX_API_KEY principal.
 
@@ -24,6 +24,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
 
+_DASHBOARD_DIR = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _DASHBOARD_DIR.parent
+_MODE_PATH = _PLUGIN_ROOT / "_mode.py"
+_TOOLS_PATH = _PLUGIN_ROOT / "tools.py"
+
 try:
     from fastapi import APIRouter, Body
     from fastapi.responses import StreamingResponse
@@ -33,24 +38,42 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
     def Body(default=None, **_kwargs):  # type: ignore
         return default
 
+    class _FallbackRoute:
+        def __init__(self, path: str, method: str):
+            self.path = path
+            self.methods = {method}
+
     class APIRouter:  # type: ignore
-        def get(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def __init__(self):
+            self.routes = []
 
-        def post(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def _route(self, method, path):
+            def decorate(fn):
+                self.routes.append(_FallbackRoute(path, method))
+                return fn
 
-        def patch(self, *_args, **_kwargs):
-            return lambda fn: fn
+            return decorate
 
-        def delete(self, *_args, **_kwargs):
-            return lambda fn: fn
+        def get(self, path, **_kwargs):
+            return self._route("GET", path)
 
+        def post(self, path, **_kwargs):
+            return self._route("POST", path)
+
+        def patch(self, path, **_kwargs):
+            return self._route("PATCH", path)
+
+        def delete(self, path, **_kwargs):
+            return self._route("DELETE", path)
+
+        def include_router(self, included):
+            self.routes.extend(included.routes)
+
+
+# All broad decorators attach to an internal router. The exported router stays
+# empty unless the independently discovered dashboard process authorizes full.
+full_router = APIRouter()
 router = APIRouter()
-
-_DASHBOARD_DIR = Path(__file__).resolve().parent
-_PLUGIN_ROOT = _DASHBOARD_DIR.parent
-_TOOLS_PATH = _PLUGIN_ROOT / "tools.py"
 _INTENT_PAGE_SIZE = 100
 _MAX_INTENT_PAGES = 10
 _QUESTION_LIMIT = 10
@@ -87,7 +110,22 @@ _DESKTOP_ASSETS = {
 }
 
 
-@router.get("/assets/{name}")
+def _load_mode_module():
+    spec = importlib.util.spec_from_file_location("index_network_hermes_dashboard_mode", _MODE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load Index Network mode parser")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@full_router.get("/mode")
+def dashboard_mode() -> dict[str, Any]:
+    """Confirm that the independently mounted dashboard runtime is full-only."""
+    return {"success": True, "mode": "full"}
+
+
+@full_router.get("/assets/{name}")
 async def desktop_asset(name: str) -> dict[str, Any]:
     mime = _DESKTOP_ASSETS.get(name)
     if mime is None:
@@ -958,7 +996,7 @@ def _build_dashboard(
     }
 
 
-@router.get("/auth/status")
+@full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
     """Report whether the plugin holds a working Index credential.
 
@@ -1007,7 +1045,7 @@ def _login_app_base_url() -> str:
     return tools.INDEX_APP_BASE_URL
 
 
-@router.post("/auth/login/start")
+@full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
 
@@ -1023,7 +1061,7 @@ def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[
     return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
 
 
-@router.get("/auth/login/status")
+@full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
     """Poll the pending login; on success the key is already persisted server-side."""
     result = auth_login.poll_status()
@@ -1033,7 +1071,7 @@ def auth_login_status() -> dict[str, Any]:
     return payload
 
 
-@router.post("/auth/logout")
+@full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
     api_key = os.environ.get("INDEX_API_KEY", "").strip()
@@ -1047,7 +1085,7 @@ def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, 
     return {"success": True, "needsLogin": True}
 
 
-@router.get("/summary")
+@full_router.get("/summary")
 def summary() -> dict[str, Any]:
     """Return a intent-centric, user-scoped dashboard summary."""
     me = _fetch_me()
@@ -1099,7 +1137,7 @@ def summary() -> dict[str, Any]:
     }
 
 
-@router.post("/questions/{question_id}/answer")
+@full_router.post("/questions/{question_id}/answer")
 def answer_question(question_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Submit an answer for a pending Index question owned by this API-key principal."""
     answer, validation_error = _sanitize_answer_payload(body)
@@ -1111,7 +1149,7 @@ def answer_question(question_id: str, body: dict[str, Any] | None = Body(default
     return {"success": True}
 
 
-@router.post("/questions/{question_id}/dismiss")
+@full_router.post("/questions/{question_id}/dismiss")
 def dismiss_question(question_id: str) -> dict[str, Any]:
     """Skip (dismiss) a pending Index question owned by this API-key principal."""
     payload = _call_dismiss_question(question_id)
@@ -1120,7 +1158,7 @@ def dismiss_question(question_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.post("/networks/{network_id}/join")
+@full_router.post("/networks/{network_id}/join")
 def join_network(network_id: str) -> dict[str, Any]:
     """Self-join an open (joinPolicy 'anyone') community via REST `POST /networks/:id/join`."""
     network_id = _text(network_id)
@@ -1181,7 +1219,7 @@ def _normalize_network_request(request: Any) -> dict[str, Any]:
     return item
 
 
-@router.get("/network-requests")
+@full_router.get("/network-requests")
 def list_network_requests() -> dict[str, Any]:
     """The caller's own early-access network requests, plus the staff `canReview` flag."""
     payload = tools._api_request("GET", "/network-requests")
@@ -1196,7 +1234,7 @@ def list_network_requests() -> dict[str, Any]:
     }
 
 
-@router.post("/network-requests")
+@full_router.post("/network-requests")
 def create_network_request(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Submit a reviewed "create a network" request via REST `POST /network-requests`."""
     request_body, validation_error = _sanitize_network_request_input(body)
@@ -1208,7 +1246,7 @@ def create_network_request(body: dict[str, Any] | None = Body(default=None)) -> 
     return {"success": True, "request": _normalize_network_request(payload.get("request"))}
 
 
-@router.patch("/network-requests/{request_id}")
+@full_router.patch("/network-requests/{request_id}")
 def update_network_request(
     request_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1226,7 +1264,7 @@ def update_network_request(
     return {"success": True, "request": _normalize_network_request(payload.get("request"))}
 
 
-@router.delete("/network-requests/{request_id}")
+@full_router.delete("/network-requests/{request_id}")
 def dismiss_network_request(request_id: str) -> dict[str, Any]:
     """Dismiss (withdraw) the caller's own request via REST `DELETE /network-requests/:id`."""
     request_id = _text(request_id)
@@ -1238,7 +1276,7 @@ def dismiss_network_request(request_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
-@router.post("/opportunities/{opportunity_id}/accept")
+@full_router.post("/opportunities/{opportunity_id}/accept")
 def accept_opportunity(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1272,7 +1310,7 @@ def accept_opportunity(
     return {"success": True, "status": "accepted"}
 
 
-@router.post("/opportunities/{opportunity_id}/skip")
+@full_router.post("/opportunities/{opportunity_id}/skip")
 def skip_opportunity(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1288,7 +1326,7 @@ def skip_opportunity(
     return {"success": True, "status": "rejected"}
 
 
-@router.post("/opportunities/{opportunity_id}/start-chat")
+@full_router.post("/opportunities/{opportunity_id}/start-chat")
 def start_chat(
     opportunity_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1318,7 +1356,7 @@ def start_chat(
 _INTENT_STATUSES = {"ACTIVE", "PAUSED"}
 
 
-@router.post("/intents/{intent_id}/status")
+@full_router.post("/intents/{intent_id}/status")
 def set_intent_status(
     intent_id: str,
     body: dict[str, Any] | None = Body(default=None),
@@ -1336,7 +1374,7 @@ def set_intent_status(
     return {"success": True, "status": status}
 
 
-@router.get("/profile")
+@full_router.get("/profile")
 def profile() -> dict[str, Any]:
     """Return the current user's profile.
 
@@ -1378,7 +1416,7 @@ def profile() -> dict[str, Any]:
     }
 
 
-@router.get("/profile/{user_id}")
+@full_router.get("/profile/{user_id}")
 def public_profile(user_id: str) -> dict[str, Any]:
     """Return another user's public, read-only profile (web `/u/:id` equivalent).
 
@@ -1414,7 +1452,7 @@ def public_profile(user_id: str) -> dict[str, Any]:
     return {"success": True, "profile": profile_obj, "readOnly": True}
 
 
-@router.patch("/profile")
+@full_router.patch("/profile")
 def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Persist a profile update via the API-key-capable `PATCH /auth/profile/update`.
 
@@ -1436,7 +1474,7 @@ def update_profile(body: dict[str, Any] | None = Body(default=None)) -> dict[str
     return {"success": True, "applied": update}
 
 
-@router.post("/profile/avatar")
+@full_router.post("/profile/avatar")
 def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Upload an avatar image (data URL) to `POST /storage/avatars`, returning its public URL.
 
@@ -1457,7 +1495,7 @@ def upload_avatar(body: dict[str, Any] | None = Body(default=None)) -> dict[str,
     return {"success": True, "avatarUrl": _avatar_url(avatar_url)}
 
 
-@router.post("/network-images")
+@full_router.post("/network-images")
 def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Upload a network picture (data URL) to `POST /storage/index-images`.
 
@@ -1477,7 +1515,7 @@ def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> di
     return {"success": True, "imageUrl": _avatar_url(image_url)}
 
 
-@router.post("/profile/intro")
+@full_router.post("/profile/intro")
 def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Generate an AI intro via the API-key-capable `POST /enrichment/sync`.
 
@@ -1491,7 +1529,7 @@ def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[st
     return {"success": True, "intro": intro}
 
 
-@router.post("/onboarding/enrich")
+@full_router.post("/onboarding/enrich")
 def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Run Mac-parity sync public research (`POST /enrichment/enrich`) for first-run review."""
     payload = tools._api_request("POST", "/enrichment/enrich")
@@ -1516,7 +1554,7 @@ def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict
     }
 
 
-@router.post("/onboarding/confirm")
+@full_router.post("/onboarding/confirm")
 def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Confirm the first-run profile review (Mac settings `enrich` path).
 
@@ -1558,7 +1596,7 @@ def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict
     return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 
-@router.patch("/intents/{intent_id}/archive")
+@full_router.patch("/intents/{intent_id}/archive")
 def archive_intent(intent_id: str) -> dict[str, Any]:
     """Archive one of the caller's intents via `PATCH /intents/:id/archive`."""
     intent_id = _text(intent_id)
@@ -1655,7 +1693,7 @@ def _normalize_conversation(conversation: dict[str, Any], current_user_id: str) 
     }
 
 
-@router.get("/conversations")
+@full_router.get("/conversations")
 def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
     current_user_id = _resolve_user_id()
@@ -1672,7 +1710,7 @@ def list_conversations() -> dict[str, Any]:
     return {"success": True, "conversations": conversations, "currentUserId": current_user_id}
 
 
-@router.post("/conversations/dm")
+@full_router.post("/conversations/dm")
 def create_dm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Get or create a direct-message conversation with a peer user."""
     peer_user_id = _text(body.get("peerUserId")) if isinstance(body, dict) else ""
@@ -1686,7 +1724,7 @@ def create_dm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any
     return {"success": True, "conversation": _normalize_conversation(conversation, current_user_id)}
 
 
-@router.get("/conversations/{conversation_id}/messages")
+@full_router.get("/conversations/{conversation_id}/messages")
 def list_messages(conversation_id: str) -> dict[str, Any]:
     """Return a conversation's messages (raw parts) plus the caller's userId for normalization."""
     conversation_id = _text(conversation_id)
@@ -1700,7 +1738,7 @@ def list_messages(conversation_id: str) -> dict[str, Any]:
     return {"success": True, "messages": messages, "currentUserId": current_user_id}
 
 
-@router.post("/conversations/{conversation_id}/messages")
+@full_router.post("/conversations/{conversation_id}/messages")
 def send_message(conversation_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Send a text message into a conversation."""
     conversation_id = _text(conversation_id)
@@ -1749,7 +1787,7 @@ def _conversation_stream():
             pass
 
 
-@router.get("/conversations/stream")
+@full_router.get("/conversations/stream")
 def conversations_stream():
     """SSE proxy for realtime conversation events (new messages)."""
     if StreamingResponse is None:
@@ -1759,3 +1797,12 @@ def conversations_stream():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+
+try:
+    _dashboard_runtime_mode = _load_mode_module().resolve_plugin_mode()
+except Exception:  # noqa: BLE001 - parser/load failures must not mount broad routes.
+    _dashboard_runtime_mode = "negotiator"
+
+if _dashboard_runtime_mode == "full":
+    router.include_router(full_router)

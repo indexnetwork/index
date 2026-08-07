@@ -50,6 +50,7 @@ provides_tools:
   - index_open_app
   - index_pickup_negotiation
   - index_respond_negotiation
+  - index_consult_owner
 provides_hooks:
   - pre_llm_call
 # INDEX_API_KEY is intentionally NOT declared under requires_env: install must

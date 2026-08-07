@@ -17,7 +17,14 @@ import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PYTHON_FILES = ["__init__.py", "schemas.py", "tools.py", "dashboard/plugin_api.py", "dashboard/auth_login.py"]
+PYTHON_FILES = [
+    "__init__.py",
+    "_mode.py",
+    "schemas.py",
+    "tools.py",
+    "dashboard/plugin_api.py",
+    "dashboard/auth_login.py",
+]
 DASHBOARD_FILES = [
     "dashboard/manifest.json",
     "dashboard/dist/index.js",
@@ -60,9 +67,9 @@ def load_plugin():
     return module
 
 
-def load_dashboard_api():
+def load_dashboard_api(module_name="index_network_dashboard_api"):
     spec = importlib.util.spec_from_file_location(
-        "index_network_dashboard_api",
+        module_name,
         ROOT / "dashboard" / "plugin_api.py",
     )
     if spec is None or spec.loader is None:
@@ -140,6 +147,7 @@ def main() -> None:
         ast.parse(source, filename=relative_path)
 
     plugin = load_plugin()
+    old_plugin_mode = os.environ.pop("INDEX_PLUGIN_MODE", None)
     ctx = FakeContext()
     plugin.register(ctx)
     assert set(plugin.schemas.FORWARDED_MCP_TOOLS) == plugin.tools._FORWARDED_MCP_TOOLS
@@ -148,7 +156,13 @@ def main() -> None:
     expected_tool_names = (
         ["index_read_intents"]
         + [f"index_{name}" for name in plugin.schemas.FORWARDED_MCP_TOOLS]
-        + ["index_agent_me", "index_open_app", "index_pickup_negotiation", "index_respond_negotiation"]
+        + [
+            "index_agent_me",
+            "index_open_app",
+            "index_pickup_negotiation",
+            "index_respond_negotiation",
+            "index_consult_owner",
+        ]
     )
     assert tool_names == expected_tool_names, tool_names
     assert len(tool_names) == len(set(tool_names))
@@ -166,7 +180,108 @@ def main() -> None:
     assert handlers_by_name["index_open_app"] == plugin.tools.index_open_app
     assert handlers_by_name["index_pickup_negotiation"] == plugin.tools.index_pickup_negotiation
     assert handlers_by_name["index_respond_negotiation"] == plugin.tools.index_respond_negotiation
+    assert handlers_by_name["index_consult_owner"] == plugin.tools.index_consult_owner
     assert handlers_by_name["index_create_intent"].__name__ == "index_create_intent"
+
+    # Negotiator mode is the runtime authorization boundary: it exposes exactly
+    # four personal-agent tools and one skill, with no broad MCP wrappers,
+    # discovery/opportunity tools, desktop dashboard copy, hook, or command.
+    old_home = os.environ.get("HOME")
+    with tempfile.TemporaryDirectory() as home:
+        os.environ["HOME"] = home
+        stale_dashboard = pathlib.Path(home) / ".hermes" / "desktop-plugins" / "index-network"
+        stale_dashboard.mkdir(parents=True)
+        (stale_dashboard / "plugin.js").write_text("stale")
+        os.environ["INDEX_PLUGIN_MODE"] = "negotiator"
+        negotiator_ctx = FakeContext()
+        plugin.register(negotiator_ctx)
+        assert [entry["name"] for entry in negotiator_ctx.tools] == [
+            "index_agent_me",
+            "index_pickup_negotiation",
+            "index_respond_negotiation",
+            "index_consult_owner",
+        ]
+        assert [name for name, _path in negotiator_ctx.skills] == ["index-negotiator"]
+        assert negotiator_ctx.hooks == []
+        assert negotiator_ctx.commands == []
+        assert not stale_dashboard.exists()
+
+        for configured_mode in ("unexpected-non-empty-mode", "   ", " full "):
+            stale_dashboard.mkdir(parents=True)
+            (stale_dashboard / "plugin.js").write_text("stale")
+            os.environ["INDEX_PLUGIN_MODE"] = configured_mode
+            restricted_ctx = FakeContext()
+            plugin.register(restricted_ctx)
+            assert [entry["name"] for entry in restricted_ctx.tools] == [
+                "index_agent_me",
+                "index_pickup_negotiation",
+                "index_respond_negotiation",
+                "index_consult_owner",
+            ]
+            assert [name for name, _path in restricted_ctx.skills] == ["index-negotiator"]
+            assert restricted_ctx.hooks == []
+            assert restricted_ctx.commands == []
+            assert not stale_dashboard.exists()
+
+        installed = []
+        original_install_desktop = plugin._install_desktop_plugin
+        plugin._install_desktop_plugin = lambda: installed.append(True)
+        try:
+            full_contexts = []
+            for configured_mode in ("full", ""):
+                os.environ["INDEX_PLUGIN_MODE"] = configured_mode
+                explicit_full_ctx = FakeContext()
+                plugin.register(explicit_full_ctx)
+                full_contexts.append(explicit_full_ctx)
+        finally:
+            plugin._install_desktop_plugin = original_install_desktop
+        assert installed == [True, True]
+        for explicit_full_ctx in full_contexts:
+            assert [entry["name"] for entry in explicit_full_ctx.tools] == tool_names
+            assert [name for name, _path in explicit_full_ctx.skills] == ["index-negotiator", "index-orchestrator"]
+            assert len(explicit_full_ctx.hooks) == 1
+            assert len(explicit_full_ctx.commands) == 1
+
+    if old_home is None:
+        os.environ.pop("HOME", None)
+    else:
+        os.environ["HOME"] = old_home
+    os.environ.pop("INDEX_PLUGIN_MODE", None)
+
+    # Dashboard discovery/mounting is independent of register(ctx), so its
+    # exported router must apply the same exact raw mode authorization by itself.
+    dashboard_mode_cases = [
+        ("absent", None, True),
+        ("empty", "", True),
+        ("full", "full", True),
+        ("negotiator", "negotiator", False),
+        ("unknown", "unexpected-non-empty-mode", False),
+        ("whitespace-only", "   ", False),
+        ("whitespace-padded", " full ", False),
+    ]
+    for label, configured_mode, expected_full in dashboard_mode_cases:
+        if configured_mode is None:
+            os.environ.pop("INDEX_PLUGIN_MODE", None)
+        else:
+            os.environ["INDEX_PLUGIN_MODE"] = configured_mode
+        dashboard_for_mode = load_dashboard_api(f"index_network_dashboard_api_{label.replace('-', '_')}")
+        paths = {route.path for route in dashboard_for_mode.router.routes}
+        if expected_full:
+            assert "/mode" in paths, (label, paths)
+            assert "/summary" in paths, (label, paths)
+            assert "/questions/{question_id}/answer" in paths, (label, paths)
+            assert len(paths) > 10, (label, paths)
+        else:
+            assert paths == set(), (label, paths)
+            for broad_path in (
+                "/summary",
+                "/questions/{question_id}/answer",
+                "/opportunities/{opportunity_id}/accept",
+                "/profile",
+                "/conversations/{conversation_id}/messages",
+            ):
+                assert broad_path not in paths, (label, broad_path, paths)
+    os.environ.pop("INDEX_PLUGIN_MODE", None)
 
     manifest_tools = []
     in_tools = False
@@ -209,6 +324,7 @@ def main() -> None:
 
     dashboard_js_path = ROOT / "dashboard" / "dist" / "index.js"
     subprocess.run(["node", "--check", str(dashboard_js_path)], check=True)
+    subprocess.run(["node", str(ROOT / "tests" / "dashboard-registration.test.cjs")], check=True)
     dashboard_js = dashboard_js_path.read_text()
     assert 'register("index-network"' in dashboard_js
     assert "Intents" in dashboard_js
@@ -349,6 +465,16 @@ def main() -> None:
     assert "### `index_open_app`" in package_readme
     assert "INDEX_APP_BASE_URL" in package_readme
     assert "no app-installation detection" in package_readme
+    assert "INDEX_PLUGIN_MODE" in package_readme
+    assert "unknown non-empty value fails closed" in package_readme
+    assert "Negotiator mode has no dashboard" in package_readme
+    assert "index_consult_owner" in package_readme
+    assert "Index Personal Agent Negotiator" in package_readme
+    assert "every 1m" in package_readme
+    assert (
+        'Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.'
+        in package_readme
+    )
     for stale in ("/c/<code>", "connect link", "x-index-surface"):
         assert stale not in package_readme, stale
         assert stale not in dashboard_readme, stale
@@ -368,6 +494,28 @@ def main() -> None:
     assert [name for name, _handler, _description, _args_hint in ctx.commands] == ["index"]
     assert ctx.commands[0][2] == "Load Index Network orchestrator guidance"
     assert 'skill_view("index-network:index-orchestrator")' in ctx.commands[0][1]()
+
+    response_actions = plugin.schemas.INDEX_RESPOND_NEGOTIATION["parameters"]["properties"]["action"]["enum"]
+    assert response_actions == [
+        "propose",
+        "accept",
+        "reject",
+        "counter",
+        "question",
+        "outreach",
+        "withdraw",
+        "decline",
+    ]
+    assert "ask_user" not in response_actions
+    assert plugin.tools._NEGOTIATION_ACTIONS == set(response_actions)
+    assert plugin.schemas.INDEX_CONSULT_OWNER["parameters"]["additionalProperties"] is False
+
+    negotiator_skill = (ROOT / "skills" / "index-negotiator" / "SKILL.md").read_text()
+    for field in ("protocolVersion", "allowedActions", "seat", "deadline", "canConsultOwner"):
+        assert field in negotiator_skill
+    assert "at most one response or consultation call per pass" in negotiator_skill
+    assert "stop after a successful consultation" in negotiator_skill
+    assert "[SILENT]" in negotiator_skill
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
@@ -692,6 +840,93 @@ def main() -> None:
             },
         }
 
+        # A claimed turn can be reported only after server confirmation. A
+        # duplicate response remains a 409 error rather than being rewritten as
+        # success or treated as another reportable submission.
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"success": True, "status": "recorded"}),
+                http_error(409, {"error": "Negotiation turn is no longer claimed."}),
+            ],
+            captured,
+        )
+        duplicate_args = {
+            "agentId": "agent-1",
+            "negotiationId": "neg-duplicate",
+            "action": "accept",
+            "reasoning": "The fit is sufficiently supported.",
+            "suggestedRoles": {"ownUser": "agent", "otherUser": "patient"},
+        }
+        first_submission = json.loads(plugin.tools.index_respond_negotiation(duplicate_args))
+        second_submission = json.loads(plugin.tools.index_respond_negotiation(duplicate_args))
+        assert first_submission == {"success": True, "status": "recorded"}
+        assert second_submission["success"] is False
+        assert second_submission["status"] == 409
+        assert second_submission["details"]["error"] == "Negotiation turn is no longer claimed."
+
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True, "status": "input_required", "settlementId": "set-1"})], captured)
+        consulted = json.loads(
+            plugin.tools.index_consult_owner(
+                {
+                    "agentId": "agent-1",
+                    "negotiationId": "neg-1",
+                    "disclosureSubject": "Whether the timing works for the owner",
+                    "draftQuestion": "Are you available next month?",
+                    "action": "ask_user",
+                    "message": "must not be forwarded",
+                    "assessment": {"private": "must not be forwarded"},
+                }
+            )
+        )
+        assert consulted == {"success": True, "status": "input_required", "settlementId": "set-1"}
+        assert captured[-1]["url"] == "https://api.example.test/api/agents/agent-1/negotiations/neg-1/consult"
+        assert captured[-1]["body"] == {
+            "disclosureSubject": "Whether the timing works for the owner",
+            "draftQuestion": "Are you available next month?",
+        }
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse({"agent": {"id": "agent-2"}}),
+                FakeResponse({"success": True, "status": "input_required", "settlementId": "set-2"}),
+            ],
+            captured,
+        )
+        consulted_with_resolved_agent = json.loads(
+            plugin.tools.index_consult_owner(
+                {"negotiationId": "neg-2", "disclosureSubject": "Whether the owner approves the timing"}
+            )
+        )
+        assert consulted_with_resolved_agent["settlementId"] == "set-2"
+        assert [entry["url"] for entry in captured] == [
+            "https://api.example.test/api/agents/me",
+            "https://api.example.test/api/agents/agent-2/negotiations/neg-2/consult",
+        ]
+        assert captured[-1]["body"] == {"disclosureSubject": "Whether the owner approves the timing"}
+
+        assert json.loads(plugin.tools.index_consult_owner({"agentId": "agent-1"})) == {
+            "success": False,
+            "error": "negotiationId is required.",
+        }
+        assert json.loads(
+            plugin.tools.index_consult_owner(
+                {"agentId": "agent-1", "negotiationId": "neg-1", "disclosureSubject": "  "}
+            )
+        ) == {"success": False, "error": "disclosureSubject is required."}
+        assert json.loads(
+            plugin.tools.index_consult_owner(
+                {
+                    "agentId": "agent-1",
+                    "negotiationId": "neg-1",
+                    "disclosureSubject": "Owner timing",
+                    "draftQuestion": "  ",
+                }
+            )
+        ) == {"success": False, "error": "draftQuestion must be a non-empty string when provided."}
+
         assert json.loads(plugin.tools.index_respond_negotiation({"agentId": "agent-1"})) == {
             "success": False,
             "error": "negotiationId is required.",
@@ -701,12 +936,18 @@ def main() -> None:
                 {
                     "agentId": "agent-1",
                     "negotiationId": "neg-1",
-                    "action": "pause",
-                    "reasoning": "No valid action.",
+                    "action": "ask_user",
+                    "reasoning": "Consultation must use the dedicated endpoint.",
                     "suggestedRoles": {"ownUser": "agent", "otherUser": "peer"},
                 }
             )
-        ) == {"success": False, "error": "action must be one of: propose, accept, reject, counter, question."}
+        ) == {
+            "success": False,
+            "error": (
+                "action must be one of: propose, accept, reject, counter, question, "
+                "outreach, withdraw, decline."
+            ),
+        }
         assert json.loads(
             plugin.tools.index_respond_negotiation(
                 {
@@ -1640,6 +1881,10 @@ def main() -> None:
             os.environ["INDEX_API_URL"] = old_api_url
         else:
             os.environ.pop("INDEX_API_URL", None)
+        if old_plugin_mode is not None:
+            os.environ["INDEX_PLUGIN_MODE"] = old_plugin_mode
+        else:
+            os.environ.pop("INDEX_PLUGIN_MODE", None)
 
 
 if __name__ == "__main__":

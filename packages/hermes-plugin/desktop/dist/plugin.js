@@ -3134,8 +3134,22 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  if (DESKTOP_ENV) DESKTOP_ENV.onComponent(IndexNetworkDashboard);
-  else window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
+  if (DESKTOP_ENV) {
+    // The separately installed Desktop copy is gated by register(ctx), which
+    // removes it in restricted mode. Preserve its synchronous component seam.
+    DESKTOP_ENV.onComponent(IndexNetworkDashboard);
+  } else {
+    // Web dashboard discovery is independent of Python register(ctx). Confirm
+    // the separately mounted, full-only backend before activating this host
+    // component. Restricted/unknown modes export no routes, so /mode is
+    // unavailable and the web bundle deliberately registers nothing.
+    fetchPluginJSON(API + "/mode")
+      .then(function (payload) {
+        if (!payload || payload.success !== true || payload.mode !== "full") return;
+        window.__HERMES_PLUGINS__.register("index-network", IndexNetworkDashboard);
+      })
+      .catch(function () { /* Restricted mode or unavailable backend: stay inert. */ });
+  }
 })();
 
 ;

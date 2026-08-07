@@ -12,6 +12,7 @@
   "files": [
     "plugin.yaml",
     "__init__.py",
+    "_mode.py",
     "schemas.py",
     "tools.py",
     "skills/",

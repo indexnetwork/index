@@ -198,11 +198,20 @@ INDEX_RESPOND_NEGOTIATION = {
             },
             "action": {
                 "type": "string",
-                "enum": ["propose", "accept", "reject", "counter", "question"],
+                "enum": [
+                    "propose",
+                    "accept",
+                    "reject",
+                    "counter",
+                    "question",
+                    "outreach",
+                    "withdraw",
+                    "decline",
+                ],
                 "description": (
-                    "One negotiation response action. Use counter to propose a "
-                    "modified introduction, question to ask for missing context, "
-                    "accept/reject for final decisions, or propose for an initial proposal."
+                    "One action copied verbatim from the pickup response's allowedActions. "
+                    "The union covers v1 and v2; the server enforces the exact protocol, "
+                    "seat, and final-turn subset. Owner consultation is a separate tool."
                 ),
             },
             "message": {
@@ -235,5 +244,45 @@ INDEX_RESPOND_NEGOTIATION = {
             },
         },
         "required": ["negotiationId", "action", "reasoning", "suggestedRoles"],
+    },
+}
+
+INDEX_CONSULT_OWNER = {
+    "name": "index_consult_owner",
+    "description": (
+        "Pause one eligible claimed negotiation turn and ask the owning user a "
+        "privacy-minimal question. Use only when pickup returns canConsultOwner=true. "
+        "A successful consultation ends this autonomous pass; do not also respond."
+    ),
+    "parameters": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "agentId": {
+                "type": "string",
+                "description": (
+                    "Optional personal agent UUID. Omit to resolve it from "
+                    "/agents/me using the configured agent-bound API key."
+                ),
+            },
+            "negotiationId": {
+                "type": "string",
+                "description": "Required negotiation UUID returned by index_pickup_negotiation.",
+            },
+            "disclosureSubject": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "Required privacy-minimal description of the fact or decision "
+                    "that must be disclosed to the owner."
+                ),
+            },
+            "draftQuestion": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional concise question draft for the owner.",
+            },
+        },
+        "required": ["negotiationId", "disclosureSubject"],
     },
 }

@@ -31,7 +31,17 @@ INDEX_APP_BASE_URL = "https://index.network"
 _MAX_ERROR_BODY_CHARS = 2_000
 _MAX_APP_URL_WALK_DEPTH = 16
 _OPEN_URL_TIMEOUT_SECONDS = 15
-_NEGOTIATION_ACTIONS = {"propose", "accept", "reject", "counter", "question"}
+_NEGOTIATION_ACTIONS = {
+    "propose",
+    "accept",
+    "reject",
+    "counter",
+    "question",
+    "outreach",
+    "withdraw",
+    "decline",
+}
+_NEGOTIATION_ACTIONS_MESSAGE = "propose, accept, reject, counter, question, outreach, withdraw, decline"
 _NEGOTIATION_ROLES = {"agent", "patient", "peer"}
 _FORWARDED_MCP_TOOLS = frozenset(
     {
@@ -594,7 +604,7 @@ def index_respond_negotiation(args: dict, **kwargs) -> str:
 
     action = _clean_string(args.get("action"))
     if action not in _NEGOTIATION_ACTIONS:
-        return _error("action must be one of: propose, accept, reject, counter, question.")
+        return _error(f"action must be one of: {_NEGOTIATION_ACTIONS_MESSAGE}.")
 
     message = _clean_string(args.get("message"))
     if action in {"counter", "question"} and not message:
@@ -623,3 +633,43 @@ def index_respond_negotiation(args: dict, **kwargs) -> str:
         },
     }
     return _json(_api_request("POST", f"/agents/{agent_id}/negotiations/{negotiation_id}/respond", request_body))
+
+
+def index_consult_owner(args: dict, **kwargs) -> str:
+    """Pause an eligible claim and ask the owner a privacy-minimal question."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+
+    negotiation_id = _clean_string(args.get("negotiationId"))
+    if not negotiation_id:
+        return _error("negotiationId is required.")
+
+    disclosure_subject = _clean_string(args.get("disclosureSubject"))
+    if not disclosure_subject:
+        return _error("disclosureSubject is required.")
+
+    draft_question = None
+    if "draftQuestion" in args:
+        draft_question = _clean_string(args.get("draftQuestion"))
+        if not draft_question:
+            return _error("draftQuestion must be a non-empty string when provided.")
+
+    agent_id, agent_error = _resolve_agent_id(args)
+    if agent_error is not None:
+        return _json(agent_error)
+    if not agent_id:
+        return _error("agentId is required.")
+
+    # Reconstruct the body explicitly. Never forward agentId, negotiationId,
+    # response actions, assessments, or arbitrary model-provided fields.
+    request_body = {"disclosureSubject": disclosure_subject}
+    if draft_question is not None:
+        request_body["draftQuestion"] = draft_question
+    return _json(
+        _api_request(
+            "POST",
+            f"/agents/{agent_id}/negotiations/{negotiation_id}/consult",
+            request_body,
+        )
+    )
