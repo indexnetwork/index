@@ -24,6 +24,17 @@ window.IndexApp = (function () {
       : raw.replace(/\/+$/, "");
   }
 
+  // users.avatar is either a full URL (legacy Google/OAuth photos) or an S3
+  // object key like "avatars/<userId>/<uuid>.jpg". Keys are served by the API at
+  // {base}/storage/<key>; in the WebView a bare key would resolve against the app
+  // origin and 404, so absolutize it. Absolute (http/https/data) values pass
+  // through untouched.
+  function avatarUrl(avatar) {
+    if (!avatar) return null;
+    if (/^(https?:|data:)/i.test(avatar)) return avatar;
+    return `${apiBaseUrl()}/storage/${String(avatar).replace(/^\/+/, "")}`;
+  }
+
   function getClient() {
     if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
     return window.IndexApi.createIndexApiClient({
@@ -177,7 +188,7 @@ window.IndexApp = (function () {
       email: user.email || "",
       location: user.location || "",
       intro: user.intro || user.bio || "",
-      photo: user.avatar || null,
+      photo: avatarUrl(user.avatar),
       socials,
       websites: [],
       source: user,
@@ -196,6 +207,26 @@ window.IndexApp = (function () {
       signals: [],
       source: n,
     }));
+  }
+
+  // ---- tools + enrichment -------------------------------------------------
+
+  // Invoke a protocol tool over REST (POST /tools/:name). Onboarding-allowed
+  // tools (preview_user_context, confirm_user_context) work with the x-api-key.
+  // Resolves the parsed tool result envelope ({ success, data } | { success:false, ... }).
+  function invokeTool(toolName, query) {
+    const c = getClient();
+    if (!c) return Promise.reject(new Error("no api client"));
+    return c.tools.invoke(toolName, query || {});
+  }
+
+  // Run the full public-research enrichment inline (POST /enrichment/enrich) and
+  // resolve { enriched, profile:{ name, intro, location, socials } } so callers
+  // can display discovered socials immediately. Other enrichment is automatic.
+  function triggerEnrichment() {
+    const c = getClient();
+    if (!c) return Promise.reject(new Error("no api client"));
+    return c.enrichment.trigger();
   }
 
   // ---- fetch-based SSE ----------------------------------------------------
@@ -375,6 +406,8 @@ window.IndexApp = (function () {
     streamChat,
     streamInbox,
     mcpCall,
+    invokeTool,
+    triggerEnrichment,
   };
 })();
 
