@@ -11,8 +11,8 @@ import * as output from "./output";
 const NETWORK_HELP = `
 Network Commands:
   index network list                     List your networks
-  index network create <name>            Create a new network
-  index network create <name> --prompt   Create with a description
+  index network create <name>            Create directly or submit an early-access request
+  index network create <name> --prompt   Create directly or request early access with a description
   index network show <id|key>            Show network details and members
   index network update <id> [--title <t>] [--prompt <p>]
                                          Update a network
@@ -96,11 +96,19 @@ async function networkCreate(client: ApiClient, name: string | undefined, prompt
     return;
   }
 
-  const network = await client.createNetwork(name, prompt);
+  const result = await client.createNetworkOrRequest(name, prompt);
   if (json) {
-    console.log(JSON.stringify(network));
+    console.log(JSON.stringify(result));
     return;
   }
+  if (result.kind === "requested") {
+    output.success(`Network request submitted: ${result.request.title}`);
+    output.dim(`  Status: ${result.request.status}`);
+    output.dim(`  Request ID: ${result.request.id}`);
+    return;
+  }
+
+  const { network } = result;
   output.success(`Network created: ${network.title}`);
   if (network.key) {
     output.dim(`  Key: ${network.key}`);
@@ -228,21 +236,16 @@ async function networkInvite(
     return;
   }
 
-  const users = await client.searchUsers(email, id);
-  if (users.length === 0) {
-    output.error("User not found.");
-    return;
-  }
-
-  const user = users[0];
-  const result = await client.addNetworkMember(id, user.id);
+  const result = await client.inviteNetworkMember(id, email);
   if (json) {
-    console.log(JSON.stringify({ user, ...result }));
+    console.log(JSON.stringify(result));
     return;
   }
-  output.success(`Invited ${user.name} (${user.email}) to the network.`);
-  if (result.message) {
-    output.dim(`  ${result.message}`);
+  if (result.alreadyMember) {
+    output.info(`${result.user.email} is already a network member.`);
+    return;
   }
+  output.success(`Invitation sent to ${result.user.email}.`);
+  if (result.created) output.dim("  Created a pending account for this invitee.");
 }
 

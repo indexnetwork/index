@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -106,13 +107,17 @@ describe("main package.json", () => {
     expect(files).toContain("dist/");
   });
 
-  it("keeps the CLI runtime version in sync with package.json", async () => {
+  it("reports the main package version at runtime", async () => {
     const pkgPath = join(CLI_ROOT, "package.json");
-    const mainTsPath = join(CLI_ROOT, "src", "main.ts");
     const raw = await readFile(pkgPath, "utf-8");
-    const mainTs = await readFile(mainTsPath, "utf-8");
     const pkg = JSON.parse(raw) as { version: string };
+    const result = spawnSync("bun", ["src/main.ts", "--version"], {
+      cwd: CLI_ROOT,
+      encoding: "utf-8",
+    });
 
-    expect(mainTs).toContain(`const VERSION = "${pkg.version}"`);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout.trim()).toBe(pkg.version);
   });
 });

@@ -109,6 +109,9 @@ describe("heading", () => {
 
 describe("humanizeToolName", () => {
   it("returns known tool descriptions", () => {
+    expect(humanizeToolName("read_user_contexts")).toBe("Reading your profile...");
+    expect(humanizeToolName("create_user_context")).toBe("Creating your profile...");
+    expect(humanizeToolName("update_user_context")).toBe("Updating your profile...");
     expect(humanizeToolName("read_intents")).toBe("Fetching your active signals...");
     expect(humanizeToolName("create_intent")).toBe("Creating a new signal...");
   });

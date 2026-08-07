@@ -201,18 +201,27 @@ export interface NetworkMember {
   user?: { id?: string; name: string; email: string; image?: string | null };
 }
 
-/** A user returned from the search endpoint. */
-export interface SearchedUser {
+export interface NetworkRequest {
   id: string;
-  name: string;
-  email: string;
-  image?: string | null;
+  title: string;
+  status: string;
+  purpose?: string;
+  audience?: string;
+  expectedSize?: string;
+  notes?: string;
+  reviewNote?: string;
+  submittedAt: string;
 }
 
-/** Result of adding a member to a network. */
-export interface AddMemberResult {
-  member: { userId: string };
-  message: string;
+export type NetworkCreateResult =
+  | { kind: "created"; network: Network }
+  | { kind: "requested"; request: NetworkRequest };
+
+export interface NetworkInvitationResult {
+  user: { id: string; email: string };
+  created: boolean;
+  alreadyMember: boolean;
+  agentProvisioned: boolean;
 }
 
 // ── Conversation types ──────────────────────────────────────────────
@@ -294,6 +303,21 @@ export interface NegotiationListOptions {
   limit?: number;
   offset?: number;
   since?: string;
+}
+
+// ── Profile enrichment types ─────────────────────────────────────────
+
+export interface EnrichedProfile {
+  name: string | null;
+  intro: string | null;
+  location: string | null;
+  avatar: string | null;
+  socials: Array<{ label: string; value: string }>;
+}
+
+export interface EnrichmentResult {
+  enriched: true;
+  profile: EnrichedProfile;
 }
 
 // ── Tool types ───────────────────────────────────────────────────────

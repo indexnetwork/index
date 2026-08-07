@@ -127,26 +127,25 @@ The `index profile` command lets users view, create, update, and search profiles
 ### `index profile sync`
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls the `read_user_profiles` MCP tool via the Tool HTTP API to check whether a profile exists.
-3. If one exists, calls `update_user_profile` with `{ action: "regenerate" }`; otherwise calls `create_user_profile` with `{ confirm: true }`.
-4. Print a success confirmation message.
+2. Call `POST /api/enrichment/enrich` exactly once to synchronously enrich the authenticated user's public profile.
+3. Return `{ enriched, profile }`, where `profile` contains the current resolved identity, social links, and avatar data. Formatted output prints the resolved name, location, and social-link count.
 
 ### `index profile create [--linkedin <url>] [--github <url>] [--twitter <url>]`
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls `create_user_profile` tool via Tool HTTP API with the provided social links.
+2. Calls `create_user_context` tool via Tool HTTP API with the provided social links.
 3. Prints confirmation message on success.
 
 ### `index profile update <action> [--details <text>]`
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls `update_user_profile` tool via Tool HTTP API with `{ action, details }`.
+2. Calls `update_user_context` tool via Tool HTTP API with `{ action, details }`.
 3. Prints confirmation message on success.
 
 ### `index profile search <query>`
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls `read_user_profiles` tool via Tool HTTP API with the search query.
+2. Calls `read_user_contexts` tool via Tool HTTP API with the search query.
 3. Renders a heading followed by each match as `name (userId)` with a short bio snippet — the output is a list rather than a formatted table.
 
 ---
@@ -175,7 +174,7 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 
 ### `index intent update <id> <content>`
 
-1. Calls `update_intent` tool via Tool HTTP API with `{ intentId, newDescription }`.
+1. Calls `update_intent` tool via Tool HTTP API with `{ intentId, description }`.
 2. Prints confirmation message on success, error on failure.
 3. Content is the remaining positional arguments joined with spaces.
 
@@ -254,7 +253,7 @@ With `--json`, structured advisory responses are printed unchanged.
 ### `index opportunity reject <id>`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls the `update_opportunity` MCP tool via the Tool HTTP API with `{ opportunityId, status: "rejected" }`.
+2. Calls `PATCH /api/opportunities/:id/status` with `{ status: "rejected" }`.
 3. Prints confirmation message.
 
 
@@ -270,7 +269,7 @@ Lists networks the authenticated user is a member of. Calls `GET /api/networks`.
 
 ### `index network create <name>`
 
-Creates a new network. Calls `POST /api/networks` with `{ title }`. Supports optional `--prompt <text>` flag for the network description/prompt. Prints the created network summary (title, ID, join policy).
+Creates a network directly for eligible staff or submits an early-access request for other users. The command first calls `POST /api/networks` with `{ title, prompt? }`; a successful direct creation returns `{ kind: "created", network }` and prints the network summary. The fallback is restricted to a `403` response whose structured `error` string starts with `Network creation is in early access.`. Only for that exact early-access denial, the command calls `POST /api/network-requests` with `{ name: title, purpose?: prompt }`, returns `{ kind: "requested", request }`, and prints the request status and ID. Every unrelated `403` and all other errors are surfaced without submitting a request.
 
 ### `index network show <id>`
 
@@ -294,10 +293,7 @@ Deletes a network. Calls the `delete_network` MCP tool via the Tool HTTP API. Pr
 
 ### `index network invite <id> <email>`
 
-Invites a user to a network by email. Two-step process:
-1. Search for the user: `GET /api/networks/search-users?q=<email>&networkId=<id>`
-2. If found, add them: `POST /api/networks/:id/members` with `{ userId }`
-Prints confirmation or "User not found" if the search returns no results.
+Invites directly by any valid email through the server invitation flow. Calls `POST /api/networks/:id/members/invite` with `{ email }`; the server resolves existing users or provisions the pending invitee as needed. Prints whether the invitation was sent or the user was already a member.
 
 ---
 
@@ -384,7 +380,7 @@ Marks the user's onboarding as complete.
 ### Profile
 13. `index profile` displays the current user's profile card.
 14. `index profile show <user-id>` displays another user's profile card.
-15. `index profile sync` triggers regeneration and prints confirmation.
+15. `index profile sync` synchronously enriches the public profile and returns the resolved identity, social, and avatar data.
 16. `index profile create` generates a profile from social links and prints confirmation.
 17. `index profile update <action>` updates the profile and prints confirmation.
 18. `index profile search <query>` displays matching profiles.
@@ -413,13 +409,13 @@ Marks the user's onboarding as complete.
 
 ### Network
 36. `index network list` displays non-personal networks.
-37. `index network create <name>` creates a network and prints summary.
+37. `index network create <name>` creates directly when eligible; otherwise it submits an early-access request only after the exact early-access denial.
 38. `index network show <id>` displays network details and member table.
 39. `index network join <id>` joins a public network.
 40. `index network leave <id>` leaves a network.
 41. `index network update <id> --title <t>` updates network settings.
 42. `index network delete <id>` deletes a network.
-43. `index network invite <id> <email>` invites a user.
+43. `index network invite <id> <email>` invites directly by any valid email through the server invitation flow.
 
 ### General
 44. All commands exit with code 1 and a helpful message when not authenticated.

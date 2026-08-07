@@ -103,9 +103,9 @@ export function toolActivity(description: string): void {
 
 /** Human-friendly descriptions for protocol tools (mirrors frontend). */
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  read_user_profiles: "Reading your profile...",
-  create_user_profile: "Creating your profile...",
-  update_user_profile: "Updating your profile...",
+  read_user_contexts: "Reading your profile...",
+  create_user_context: "Creating your profile...",
+  update_user_context: "Updating your profile...",
   read_intents: "Fetching your active signals...",
   create_intent: "Creating a new signal...",
   update_intent: "Updating signal...",

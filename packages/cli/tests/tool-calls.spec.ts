@@ -97,8 +97,8 @@ describe("CLI tool call contracts", () => {
   // ── Profile ──────────────────────────────────────────────────────
 
   describe("profile", () => {
-    it("search calls read_user_profiles with query", async () => {
-      mock.setToolResponse("read_user_profiles", {
+    it("search calls read_user_contexts with query", async () => {
+      mock.setToolResponse("read_user_contexts", {
         success: true,
         data: { profiles: [], matchCount: 0 },
       });
@@ -106,12 +106,12 @@ describe("CLI tool call contracts", () => {
       await handleProfile(client, "search", ["Jane Smith"], { json: true });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("read_user_profiles");
+      expect(mock.toolCalls[0].toolName).toBe("read_user_contexts");
       expect(mock.toolCalls[0].query).toEqual({ query: "Jane Smith" });
     });
 
-    it("create calls create_user_profile with confirm and social URLs", async () => {
-      mock.setToolResponse("create_user_profile", { success: true, data: {} });
+    it("create calls create_user_context with confirm and social URLs", async () => {
+      mock.setToolResponse("create_user_context", { success: true, data: {} });
 
       await handleProfile(client, "create", [], {
         linkedin: "https://linkedin.com/in/jane",
@@ -119,7 +119,7 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("create_user_profile");
+      expect(mock.toolCalls[0].toolName).toBe("create_user_context");
       expect(mock.toolCalls[0].query).toEqual({
         confirm: true,
         linkedinUrl: "https://linkedin.com/in/jane",
@@ -127,46 +127,30 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("update calls update_user_profile with action", async () => {
-      mock.setToolResponse("update_user_profile", { success: true, data: {} });
+    it("update calls update_user_context with action", async () => {
+      mock.setToolResponse("update_user_context", { success: true, data: {} });
 
       await handleProfile(client, "update", ["add Python to skills"], { details: "expert level" });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("update_user_profile");
+      expect(mock.toolCalls[0].toolName).toBe("update_user_context");
       expect(mock.toolCalls[0].query).toEqual({ action: "add Python to skills", details: "expert level" });
     });
 
-    it("sync calls create_user_profile when no profile exists (CLI: profile sync)", async () => {
-      mock.setToolResponse("read_user_profiles", {
-        success: true,
-        data: { hasProfile: false },
+    it("sync uses the synchronous enrichment endpoint", async () => {
+      let enrichCalls = 0;
+      mock.onRest("POST", "/api/enrichment/enrich", () => {
+        enrichCalls += 1;
+        return Response.json({
+          enriched: true,
+          profile: { name: "Test", intro: "Engineer", location: null, avatar: null, socials: [] },
+        });
       });
-      mock.setToolResponse("create_user_profile", { success: true, data: {} });
 
       await handleProfile(client, "sync", [], { json: true });
 
-      const toolNames = mock.toolCalls.map((c) => c.toolName);
-      expect(toolNames).toContain("read_user_profiles");
-      expect(toolNames).toContain("create_user_profile");
-      const createCall = mock.toolCalls.find((c) => c.toolName === "create_user_profile")!;
-      expect(createCall.query).toEqual({ confirm: true });
-    });
-
-    it("sync calls update_user_profile when profile exists (CLI: profile sync)", async () => {
-      mock.setToolResponse("read_user_profiles", {
-        success: true,
-        data: { hasProfile: true, profile: { name: "Test", bio: "Engineer" } },
-      });
-      mock.setToolResponse("update_user_profile", { success: true, data: {} });
-
-      await handleProfile(client, "sync", [], { json: true });
-
-      const toolNames = mock.toolCalls.map((c) => c.toolName);
-      expect(toolNames).toContain("read_user_profiles");
-      expect(toolNames).toContain("update_user_profile");
-      const updateCall = mock.toolCalls.find((c) => c.toolName === "update_user_profile")!;
-      expect(updateCall.query).toEqual({ action: "regenerate" });
+      expect(enrichCalls).toBe(1);
+      expect(mock.toolCalls).toHaveLength(0);
     });
   });
 
@@ -188,7 +172,7 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("update calls update_intent with intentId and newDescription", async () => {
+    it("update calls update_intent with intentId and description", async () => {
       mock.setToolResponse("update_intent", { success: true, data: {} });
 
       await handleIntent(client, "update", {
@@ -201,7 +185,7 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls[0].toolName).toBe("update_intent");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
-        newDescription: "Looking for a CTO with AI experience",
+        description: "Looking for a CTO with AI experience",
       });
     });
 
@@ -288,23 +272,23 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("reject calls update_opportunity with status rejected (CLI: opportunity reject)", async () => {
+    it("reject uses REST without calling a tool", async () => {
       mock.onRest("GET", "/api/opportunities/xyz", () =>
         Response.json({ id: "full-uuid-xyz", status: "pending" }),
       );
-      mock.setToolResponse("update_opportunity", { success: true, data: {} });
+      let body: unknown;
+      mock.onRest("PATCH", "/api/opportunities/full-uuid-xyz/status", async (req) => {
+        body = await req.json();
+        return Response.json({ opportunity: { id: "full-uuid-xyz", status: "rejected" } });
+      });
 
       await handleOpportunity(client, "reject", {
         targetId: "xyz",
         json: true,
       });
 
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("update_opportunity");
-      expect(mock.toolCalls[0].query).toEqual({
-        opportunityId: "full-uuid-xyz",
-        status: "rejected",
-      });
+      expect(mock.toolCalls).toHaveLength(0);
+      expect(body).toEqual({ status: "rejected" });
     });
   });
 
@@ -437,8 +421,8 @@ describe("CLI tool call contracts", () => {
   // ── Sync ─────────────────────────────────────────────────────────
 
   describe("sync", () => {
-    it("calls 4 tools in parallel: read_user_profiles, read_networks, read_intents, list_contacts", async () => {
-      mock.setToolResponse("read_user_profiles", { success: true, data: { profile: {} } });
+    it("calls 4 tools in parallel: read_user_contexts, read_networks, read_intents, list_contacts", async () => {
+      mock.setToolResponse("read_user_contexts", { success: true, data: { profile: {} } });
       mock.setToolResponse("read_networks", { success: true, data: { networks: [] } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
       mock.setToolResponse("list_contacts", { success: true, data: { contacts: [] } });
@@ -446,7 +430,7 @@ describe("CLI tool call contracts", () => {
       await handleSync(client, { json: true });
 
       const toolNames = mock.toolCalls.map((c) => c.toolName).sort();
-      expect(toolNames).toEqual(["list_contacts", "read_intents", "read_networks", "read_user_profiles"]);
+      expect(toolNames).toEqual(["list_contacts", "read_intents", "read_networks", "read_user_contexts"]);
 
       // All should send empty queries
       for (const call of mock.toolCalls) {

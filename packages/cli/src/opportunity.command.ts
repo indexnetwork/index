@@ -125,7 +125,7 @@ async function opportunityStatusUpdate(
   const opportunity = await client.getOpportunity(id);
   if (status === "accepted") {
     try {
-      const result = await client.acceptOpportunity(opportunity.id, acknowledgedUptakeQuestionIds);
+      const result = await client.updateOpportunityStatus(opportunity.id, "accepted", acknowledgedUptakeQuestionIds);
       if (json) { console.log(JSON.stringify(result)); return; }
       output.success("Opportunity accepted.");
     } catch (error) {
@@ -150,12 +150,11 @@ async function opportunityStatusUpdate(
     return;
   }
 
-  const result = await client.callTool("update_opportunity", {
-    opportunityId: opportunity.id,
-    status,
-  });
-  if (json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) { output.error(result.error ?? "Failed to reject opportunity", 1); return; }
+  const result = await client.updateOpportunityStatus(opportunity.id, "rejected");
+  if (json) {
+    console.log(JSON.stringify(result));
+    return;
+  }
   output.success("Opportunity rejected.");
 }
 

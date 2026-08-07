@@ -8,6 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
+import packageJson from "../package.json" with { type: "json" };
 
 import { parseArgs } from "./args.parser";
 import { storeReplacementCredentials } from "./auth.lifecycle";
@@ -29,7 +30,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.13.0";
+const VERSION = packageJson.version;
 
 /** Unicode box-drawing (rounded), same style as Honcho CLI. */
 const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;

@@ -102,18 +102,18 @@ Status values: `pending`, `accepted`, `rejected`, `expired`.
 
 ### `index network`
 
-Manage networks (communities). List, create, join, leave, and invite members.
+Manage networks (communities). Network creation is direct for eligible staff; otherwise the command submits an early-access request. Invitations accept any valid email and use the server invitation flow.
 
 ```bash
 index network list                     # List your networks
-index network create "My Network"      # Create a network
-index network create "AI" --prompt "AI researchers"  # Create with description
+index network create "My Network"  # Create directly when eligible; otherwise submit an early-access request
+index network create "AI" --prompt "AI researchers"  # Create or request with a description
 index network show <id>                # Show details and members
 index network update <id> --title "New Name"  # Update a network
 index network delete <id>              # Delete a network
 index network join <id>                # Join a public network
 index network leave <id>               # Leave a network
-index network invite <id> user@email   # Invite a user by email
+index network invite <id> user@email # Invite directly by email
 ```
 
 ### `index conversation`
@@ -134,12 +134,12 @@ index conversation stream                  # Real-time SSE stream
 
 ### `index profile`
 
-View user profiles and trigger profile regeneration.
+View user profiles and synchronously enrich your public identity, social, and avatar data.
 
 ```bash
 index profile                       # Show your own profile
 index profile show <user-id>        # Show another user's profile
-index profile sync                  # Regenerate your profile
+index profile sync                  # Enrich your profile now and return the resolved identity
 index profile search <query>        # Search profiles by name or keyword
 index profile create                # Generate profile from social links
 index profile update <action> [--details <text>]  # Update profile (action is the verb-phrase, e.g. "add interests")
