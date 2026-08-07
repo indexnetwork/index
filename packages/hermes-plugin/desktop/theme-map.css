@@ -45,23 +45,22 @@
   min-height: calc(100% - 1rem);
 }
 
-/* Getting started actions: Hermes accent buttons, intentionally larger. */
+/* Getting started actions: Mac-ink black, intentionally larger. */
 .index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn {
   padding: 0.75rem 1.45rem;
   font-size: 0.95rem;
   min-height: 2.75rem;
-  border-radius: var(--radius);
 }
 
 .index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn--solid {
-  color: var(--ui-accent, #4fd1c5);
-  border-color: color-mix(in srgb, var(--ui-accent, #4fd1c5) 50%, transparent);
-  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 14%, transparent);
+  color: #fff;
+  border-color: #000;
+  background: #000;
 }
 
 .index-network-desktop-page .index-dashboard__getting-started-btn.idx-btn--outlined {
-  border-color: var(--ui-stroke-secondary, #d4d4d8);
-  color: var(--ui-text-primary, inherit);
+  border-color: #000;
+  color: #000;
   background: transparent;
 }
 
@@ -119,21 +118,22 @@
   color: var(--color-foreground, inherit);
 }
 
-/* SDK Button adapter (see DesktopButton in head.js): recreate the dashboard's
-   button variants from the desktop theme variables, in the same accent-tinted
-   language as the badges above so they read correctly on every theme. */
+/* SDK Button adapter (see DesktopButton in head.js): Mac-ink black buttons,
+   kept a step larger than the web dashboard. */
 .index-network-desktop-page .idx-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  padding: 0.4rem 0.9rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  font: inherit;
-  font-size: 0.8rem;
+  padding: 0.55rem 1.15rem;
+  min-height: 2.35rem;
+  border: 1px solid #000;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
   line-height: 1.2;
-  color: var(--ui-text-primary, inherit);
+  letter-spacing: 0.04em;
+  color: #000;
   background: transparent;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
@@ -145,40 +145,49 @@
 }
 
 .index-network-desktop-page .idx-btn--solid {
-  color: var(--ui-accent, #4fd1c5);
-  border-color: color-mix(in srgb, var(--ui-accent, #4fd1c5) 50%, transparent);
-  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 14%, transparent);
+  color: #fff;
+  border-color: #000;
+  background: #000;
 }
 
 .index-network-desktop-page .idx-btn--solid:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-accent, #4fd1c5) 26%, transparent);
+  background: #222;
+  border-color: #000;
+  color: #fff;
 }
 
 .index-network-desktop-page .idx-btn--outlined {
-  border-color: var(--ui-stroke-secondary, #d4d4d8);
+  color: #000;
+  border-color: #000;
+  background: transparent;
 }
 
 .index-network-desktop-page .idx-btn--outlined:hover:not(:disabled) {
-  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
+  background: rgba(0, 0, 0, 0.06);
+  color: #000;
 }
 
 .index-network-desktop-page .idx-btn--ghost {
-  color: var(--ui-text-secondary, inherit);
+  border-color: transparent;
+  color: #000;
 }
 
 .index-network-desktop-page .idx-btn--ghost:hover:not(:disabled) {
-  background: var(--ui-bg-tertiary, rgba(127, 127, 127, 0.12));
-  color: var(--ui-text-primary, inherit);
+  background: rgba(0, 0, 0, 0.06);
+  color: #000;
 }
 
 .index-network-desktop-page .idx-btn--icon {
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  min-height: 2.35rem;
   padding: 0;
 }
 
 .index-network-desktop-page .idx-btn--destructive {
-  color: var(--ui-red, #ef4444);
+  color: #fff;
+  border-color: #000;
+  background: #000;
 }
 
 /* The desktop app keeps the header pause/archive pill a step larger than the
