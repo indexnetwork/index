@@ -1,3 +1,4 @@
+/* global useIndexEnv */
 // Intents, Workbench shelf of saved searches. This is the app's hub:
 // brand promise ("find your others"), active signals, and the entry point for
 // a new signal.
@@ -261,7 +262,13 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Networks onClose={() => setShowNetworks(false)}/>;
   }
   if (showAgents) {
-    return <Agents onClose={() => setShowAgents(false)}/>;
+    return (
+      <Agents
+        onClose={() => setShowAgents(false)}
+        onOpenMemory={() => { setShowAgents(false); setSettingsTab("profile"); }}
+        onOpenHistory={() => { setShowAgents(false); setShowHistory(true); }}
+      />
+    );
   }
   if (showHistory) {
     return <NegotiationHistory onClose={() => setShowHistory(false)}/>;

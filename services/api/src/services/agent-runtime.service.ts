@@ -12,6 +12,13 @@ export type NegotiationRuntimeView = {
     status: 'active' | 'inactive';
     lastNegotiationPickupAt: string | null;
   };
+  /** Non-secret authoritative state for the installation named by the read. */
+  installation: null | {
+    executorId: string;
+    installationId: string;
+    setupAttemptId: string | null;
+    status: 'active' | 'inactive';
+  };
   health: 'active' | 'stale' | 'never-seen';
   indexCovering: boolean;
   freshnessThresholdMs: number;
@@ -70,9 +77,10 @@ export class AgentRuntimeService {
   ) {}
 
   /** Return the server-authoritative runtime selection and heartbeat health. */
-  async getRuntime(ownerId: string, _installationId: string): Promise<NegotiationRuntimeView> {
+  async getRuntime(ownerId: string, installationId: string): Promise<NegotiationRuntimeView> {
     const selected = await this.store.getNegotiationExecutorBinding(ownerId);
-    return this.toView(selected);
+    const installation = await this.store.getHermesInstallation(ownerId, installationId);
+    return this.toView(selected, installation);
   }
 
   /** Prepare or rotate one setup generation without granting polling authority. */
@@ -139,7 +147,10 @@ export class AgentRuntimeService {
     return this.getRuntime(ownerId, installationId);
   }
 
-  private toView(selected: AgentWithRelations | null): NegotiationRuntimeView {
+  private toView(
+    selected: AgentWithRelations | null,
+    installation: AgentWithRelations | null = null,
+  ): NegotiationRuntimeView {
     const lastPickup = selected?.lastNegotiationPickupAt ?? null;
     const health: NegotiationRuntimeView['health'] = lastPickup === null
       ? 'never-seen'
@@ -160,6 +171,14 @@ export class AgentRuntimeService {
             installationId: selected.installationId,
             status: selected.status,
             lastNegotiationPickupAt: lastPickup?.toISOString() ?? null,
+          }
+        : null,
+      installation: installation?.installationId
+        ? {
+            executorId: installation.id,
+            installationId: installation.installationId,
+            setupAttemptId: installation.runtimeSetupAttemptId,
+            status: installation.status,
           }
         : null,
       health,

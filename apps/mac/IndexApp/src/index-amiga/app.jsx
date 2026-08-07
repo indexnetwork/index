@@ -366,6 +366,7 @@ function App() {
 
   return (
     <IndexDataContext.Provider value={{ data, me, networks, features, live }}>
+      <AgentRuntimeProvider ownerCredential={window.IndexApp && window.IndexApp.apiKey()}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
@@ -419,6 +420,7 @@ function App() {
           />
         )}
       </div>
+      </AgentRuntimeProvider>
     </IndexDataContext.Provider>
   );
 }

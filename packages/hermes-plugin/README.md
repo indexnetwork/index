@@ -207,6 +207,37 @@ The skill's scheduled-run contract:
 
 The one-minute interval keeps the selected personal-agent heartbeat fresh. The Index dispatcher falls back to the system negotiator when no personal agent has polled recently, so a slow or stopped cron can leave Index covering the work instead.
 
+### Index macOS-managed lifecycle
+
+The Index macOS selector provisions this schedule and plugin in negotiator mode
+as one executor for the owner's existing Personal Agent. The executor does not
+own a separate name, memory, policy, consultation store, or negotiation history;
+those remain server-authoritative and owner-scoped across Hermes execution and
+Index fallback.
+
+Mac setup is generation-fenced. It writes `INDEX_API_KEY`, `INDEX_API_URL`,
+`INDEX_MCP_URL`, `INDEX_AGENT_ID`, `INDEX_INSTALLATION_ID`, and exact
+`INDEX_PLUGIN_MODE=negotiator`, installs the plugin without its dashboard, and
+creates exactly one initially paused owned schedule with the contract above.
+Only after the owner-control server binding activates the matching generation
+does macOS resume the schedule and start/restart the gateway. Server-observed
+pickup health, not gateway detection, commits the selector to active. Native
+configure, enable, and healthy-confirmation replies must each carry the expected
+stage and the complete matching local generation; a successful no-op from an
+older generation is not selection success. On app relaunch, the always-mounted
+owner runtime inspects and pauses partial scheduling before exact server rollback
+and generation-matched cleanup, without waiting for the user to open the agent
+view.
+
+Selecting Index removes Hermes' active polling authority and pauses the owned
+schedule, but intentionally leaves the key/env/plugin connection in place for
+quick reselection. Disconnect first selects Index and revokes the installation's
+keys on the server, then removes the exact owned schedule, only the six Index env
+keys, the Index plugin/dashboard wiring, and restarts a previously running
+gateway. Unrelated Hermes env lines, plugins, schedules, and installation data
+are not owned and must remain untouched. Partial local operations retain a
+matching setup journal and retry rather than widening cleanup.
+
 ## Development
 
 ### Layout

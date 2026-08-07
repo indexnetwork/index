@@ -260,6 +260,34 @@ function injectedRelaunchInspect({ state, verifyPostconditions, removeJournal })
   return state.journal?.stage ?? 'inspected';
 }
 
+function injectedPreOwnerInspect({ installation, cron, events }) {
+  const decoded = {
+    installationId: installation.installationId,
+    currentOwnerId: installation.currentOwnerId ?? null,
+    currentExecutorId: installation.currentExecutorId ?? null,
+    currentSetupAttemptId: installation.currentSetupAttemptId ?? null,
+  };
+  if (decoded.currentSetupAttemptId
+      && (!decoded.currentOwnerId || !decoded.currentExecutorId)) {
+    if (cron?.enabled) {
+      events.push(['pause', cron.id]);
+      cron.enabled = false;
+    }
+    events.push(['surface', 'owner_unattributed']);
+    const error = new Error('owner_unattributed');
+    error.state = {
+      installationId: decoded.installationId,
+      ownerId: decoded.currentOwnerId,
+      executorId: decoded.currentExecutorId,
+      setupAttemptId: decoded.currentSetupAttemptId,
+      schedulePresent: !!cron,
+      scheduleEnabled: cron?.enabled ?? false,
+    };
+    throw error;
+  }
+  return decoded;
+}
+
 test('defines the request-correlated runtime bridge contract', () => {
   expect(runtime).toContain('enum HermesRuntimeCommand: String');
   for (const command of ['inspect', 'configureDisabled', 'enable', 'confirmHealthy', 'disable', 'disconnect']) {
@@ -271,6 +299,7 @@ test('defines the request-correlated runtime bridge contract', () => {
   expect(runtime).toContain('struct HermesRuntimeResult: Encodable');
   expect(runtime).toContain('requestId: request.requestId');
   expect(main).toContain('name: "hermesRuntime"');
+  expect(main).toContain('window.__indexHermesRuntimeProgress');
   expect(main).toContain('window.__indexHermesRuntimeResult');
   expect(main).not.toContain('window.__indexHermesSetup');
   expect(main).not.toContain('setupHermes(apiKey:');
@@ -279,7 +308,7 @@ test('defines the request-correlated runtime bridge contract', () => {
 test('returns the complete non-secret local state and never callback-encodes credentials', () => {
   expect(runtime).toContain('struct HermesLocalState: Codable');
   for (const field of [
-    'installationId', 'executorId', 'pluginInstalled', 'negotiatorMode',
+    'installationId', 'ownerId', 'executorId', 'pluginInstalled', 'negotiatorMode',
     'schedulePresent', 'scheduleEnabled', 'setupAttemptId',
   ]) {
     expect(runtime).toMatch(new RegExp(`let ${field}:`));
@@ -300,7 +329,9 @@ test('persists stable installation identity and a generation-fenced setup journa
   expect(runtime).toContain('hermes-setup-journal.json');
   expect(runtime).toContain('struct HermesSetupJournal: Codable');
   expect(runtime).toContain('let setupAttemptId: String');
+  expect(runtime).toContain('let ownerId: String');
   expect(runtime).toContain('let executorId: String?');
+  expect(runtime).toContain('var currentOwnerId: String?');
   for (const stage of [
     'preparing', 'environmentWritten', 'pluginInstalled', 'scheduleDisabled',
     'enabling', 'awaitingHeartbeat', 'disconnecting', 'disconnectCleanupComplete',
@@ -402,11 +433,62 @@ test('reconciles exactly one paused owned cron without touching unrelated jobs',
 
 test('inspection fail-closes partial setup locally and native code never calls server APIs', () => {
   expect(runtime).toContain('if journal != nil, cron?.enabled == true');
+  expect(runtime).toContain('if case .journalInvalid = failure');
+  expect(runtime).toContain('installation.currentSetupAttemptId != nil');
   expect(runtime).toContain('pauseOwnedCron');
   expect(runtime).toContain('stage: journal?.stage.rawValue ?? "inspected"');
   expect(runtime).not.toContain('URLSession');
   expect(runtime).not.toContain('/api/agents');
   expect(runtime).not.toContain('x-api-key');
+});
+
+test('migrates a pre-owner confirmed generation by pausing before surfacing preserved unattributed evidence', () => {
+  expect(runtime).not.toContain('let completeGeneration = record.currentSetupAttemptId == nil');
+  expect(runtime).toContain('case ownerUnattributed');
+  expect(runtime).toContain('return "owner_unattributed"');
+  const inspectBlock = runtime.match(/private func inspect\([\s\S]*?private func configureDisabled/)?.[0] ?? '';
+  const unattributedCheck = inspectBlock.indexOf('generationOwnerIsUnattributed');
+  const pause = inspectBlock.indexOf('pauseOwnedCron', unattributedCheck);
+  const surface = inspectBlock.indexOf('throw HermesRuntimeFailure.ownerUnattributed', unattributedCheck);
+  expect(unattributedCheck).toBeGreaterThan(-1);
+  expect(pause).toBeGreaterThan(unattributedCheck);
+  expect(surface).toBeGreaterThan(pause);
+  expect(inspectBlock).not.toContain('currentOwnerId = request.ownerId');
+  expect(inspectBlock.slice(unattributedCheck, surface)).not.toContain('saveInstallation');
+
+  // Historical confirmed schema predates owner/executor publication but keeps
+  // the exact installation and generation evidence beside an enabled owned job.
+  const oldJSON = JSON.stringify({
+    installationId: 'installation-old',
+    currentSetupAttemptId: 'attempt-old',
+  });
+  const installation = JSON.parse(oldJSON);
+  const before = structuredClone(installation);
+  const cron = { id: 'owned-cron-old', enabled: true };
+  const events = [];
+  let surfaced;
+  try {
+    injectedPreOwnerInspect({ installation, cron, events });
+  } catch (error) {
+    surfaced = error;
+  }
+  expect(events).toEqual([
+    ['pause', 'owned-cron-old'],
+    ['surface', 'owner_unattributed'],
+  ]);
+  expect(surfaced).toMatchObject({
+    message: 'owner_unattributed',
+    state: {
+      installationId: 'installation-old', ownerId: null, executorId: null,
+      setupAttemptId: 'attempt-old', schedulePresent: true, scheduleEnabled: false,
+    },
+  });
+  expect(installation).toEqual(before);
+  expect(cron.enabled).toBe(false);
+
+  // The error fallback is evaluated only after inspect performed the pause.
+  const handleBlock = runtime.match(/func handle\([\s\S]*?private func inspect/)?.[0] ?? '';
+  expect(handleBlock).toContain('state: try? localState()');
 });
 
 test('gateway failure performs checked exact-job rollback and retains recovery journal', async () => {
@@ -458,7 +540,7 @@ test('gateway failure performs checked exact-job rollback and retains recovery j
 });
 
 test('disable requires a non-empty matching generation before pausing', () => {
-  expect(runtime).toMatch(/guard let expectedSetupAttemptId = validValue\(request\.setupAttemptId\),\s*installation\.currentSetupAttemptId == expectedSetupAttemptId else \{\s*return try success\(request, stage: "disable_noop"\)/s);
+  expect(runtime).toMatch(/guard let ownerId = validValue\(request\.ownerId\),\s*installation\.currentOwnerId == ownerId,\s*let expectedSetupAttemptId = validValue\(request\.setupAttemptId\),\s*installation\.currentSetupAttemptId == expectedSetupAttemptId else \{\s*return try success\(request, stage: "disable_noop"\)/s);
   for (const suppliedAttemptId of [undefined, null, '', 'stale']) {
     let pauses = 0;
     const result = injectedDisable({
@@ -501,6 +583,20 @@ test('successful results require complete readable local state', () => {
     ok: false,
     errorCode: 'cron_store_invalid',
   });
+});
+
+test('emits credential-free dequeue progress from inside the serial queue before native handling', () => {
+  expect(main).toContain('struct HermesRuntimeProgress: Encodable');
+  expect(main).toContain('event: "started"');
+  expect(main).toContain('emitHermesRuntimeProgress');
+  const queueBlock = main.match(/hermesRuntimeQueue\.async[\s\S]*?DispatchQueue\.main\.async/)?.[0] ?? '';
+  expect(queueBlock.indexOf('emitHermesRuntimeProgress')).toBeGreaterThan(-1);
+  expect(queueBlock.indexOf('emitHermesRuntimeProgress')).toBeLessThan(queueBlock.indexOf('hermesRuntime.handle(request)'));
+  const progressBlock = main.match(/struct HermesRuntimeProgress: Encodable \{[\s\S]*?\n\}/)?.[0] ?? '';
+  expect(progressBlock).toContain('requestId');
+  expect(progressBlock).toContain('event');
+  expect(progressBlock).not.toContain('credential');
+  expect(progressBlock).not.toContain('state');
 });
 
 test('uses stable sanitized failures and keeps command execution off the main thread', () => {

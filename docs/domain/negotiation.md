@@ -112,7 +112,37 @@ The graph exits at the turn boundary, so a user-facing request does not wait on 
 - **Rationing**: at most **one client consultation per negotiation per side**, checked against the full turn history (continuations count prior sessions). Opening turns and final-cap turns never offer the action.
 - The 5-min park/claim timeout machinery ignores paused tasks: those workers only act on `waiting_for_agent`/`claimed` states.
 
-The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against); it is not accepted from the external polling `respond` surface — polling agents have their own channel to their user.
+The action is only offered when the full pause loop is wired (questioner enabled, answer-window timer available, an opportunity to resume against). It is not accepted from the external polling `respond` surface. An exact selected polling executor instead uses `POST /api/agents/:agentId/negotiations/:negotiationId/consult` with only `disclosureSubject` and optional `draftQuestion`. The server independently rechecks exact claim identity, policy/cardinality, actor binding, safe content, and deadline before persisting the same server-authored `ask_user` turn and exact continuation settlement described above.
+
+### Personal Agent executor selection and fallback
+
+The Personal Agent is one owner-scoped identity even when its negotiation work
+runs in different places. Index and a selected Hermes installation share the
+same persisted turns, owner memory, server policy envelope, consultation cards,
+and product history. Hermes' executor row and key are runtime attribution and an
+authorization principal only; changing runtime does not create, rename, or reset
+the Personal Agent. The Mac renders the same identity, profile/memory navigation,
+negotiation-history navigation, and negotiations-only policy subtree in every
+runtime state; executor status is a separate view.
+
+A selected Hermes executor is preferred only while its server-observed
+negotiation pickup heartbeat is fresh. If it is stale before dispatch, Index
+handles the turn inline and the task is never parked. If it was fresh when the
+turn was parked but then stops, the existing pickup/claim response window expires
+into one bounded Index fallback. Atomic task and claim transitions prevent the
+former executor and Index from both completing the turn. The UI may display
+`unavailable — Index is covering` from the server health classification, but it
+must not calculate timestamp freshness itself or claim which runtime handled a
+turn without backend attribution.
+
+Selecting Index atomically removes external negotiation pickup authority and the
+Mac disables Hermes' owned schedule, while retaining the installation and its
+wiring for reselection. The former key may still authenticate its executor
+identity, but exact selected-poller authorization rejects new pickup. Disconnect
+is stronger: the server selects Index and revokes all keys for the installation,
+then the Mac removes the exact owned schedule, Index env keys, negotiator plugin
+wiring, and dashboard copy. Neither operation changes the Personal Agent's
+identity, memory, policy, consultations, or negotiation history.
 
 ### Deadlock detection & bargaining shift (flag-gated)
 

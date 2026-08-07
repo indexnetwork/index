@@ -14,6 +14,7 @@ const EXECUTOR_ID = '33333333-3333-4333-8333-333333333333';
 const binding = {
   selectedRuntime: 'index' as const,
   executor: null,
+  installation: null,
   health: 'never-seen' as const,
   indexCovering: true,
   freshnessThresholdMs: 90_000,

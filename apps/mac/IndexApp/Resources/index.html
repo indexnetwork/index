@@ -33810,6 +33810,11 @@ function normalizeApiBaseUrl(value) {
  * Create a resource-oriented client for services/api.
  * @param {IndexApiClientOptions} [options]
  */
+function createPinnedIndexApiClient(options = {}, apiKey) {
+  if (!apiKey) throw new Error('Pinned owner API key is required');
+  return createIndexApiClient({ ...options, getApiKey: () => apiKey });
+}
+
 function createIndexApiClient(options = {}) {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
@@ -33907,6 +33912,30 @@ function createIndexApiClient(options = {}) {
 
   return {
     request,
+
+    // Owner-control runtime binding. These methods deliberately use the Mac's
+    // unbound owner credential; agent-bound Hermes credentials are rejected by
+    // the server guard and never flow back through this client after prepare.
+    getRuntimeBinding: (installationId, options = {}) => request(
+      `/agent-runtime${toQueryString({ installationId })}`,
+      options,
+    ),
+    prepareHermesRuntime: (installationId, setupAttemptId, options = {}) => request(
+      '/agent-runtime/hermes/prepare',
+      { ...options, method: 'POST', body: { installationId, setupAttemptId } },
+    ),
+    setRuntimeBinding: (body, options = {}) => request(
+      '/agent-runtime',
+      { ...options, method: 'PUT', body },
+    ),
+    rollbackHermesRuntime: (setupAttemptId, options = {}) => request(
+      '/agent-runtime/rollback',
+      { ...options, method: 'POST', body: { setupAttemptId } },
+    ),
+    disconnectHermesRuntime: (installationId, options = {}) => request(
+      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
+      { ...options, method: 'DELETE' },
+    ),
 
     auth: {
       me: (options = {}) => request('/auth/me', options),
@@ -34612,7 +34641,1269 @@ function safeDecode(segment) {
   }
 }
 
-window.IndexApi = { createIndexApiClient: createIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromRadarItems: mapPeopleFromRadarItems, mapPersonFromRadarCard: mapPersonFromRadarCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink, isIndexDeepLink: isIndexDeepLink };
+const HERMES_RUNTIME_TIMEOUTS_MS = Object.freeze({
+  inspect: 130_000,
+  configureDisabled: 330_000,
+  enable: 210_000,
+  confirmHealthy: 15_000,
+  disable: 75_000,
+  disconnect: 330_000,
+});
+
+// Native commands execute on one serial queue. Queue wait is bounded separately
+// so a valid command ahead of this request does not consume its execution
+// budget, while a wedged/dead native bridge still releases every waiter.
+const HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS = 11 * 60_000;
+
+function bridgeAbortError() {
+  const error = new Error('Hermes runtime request was aborted');
+  error.name = 'AbortError';
+  error.code = 'ABORT_ERR';
+  return error;
+}
+
+/** Request-correlated bridge with native-dequeue acknowledgement and hard bounds. */
+function createHermesRuntimeBridge({
+  postMessage,
+  createRequestId,
+  setTimeoutImpl = setTimeout,
+  clearTimeoutImpl = clearTimeout,
+}) {
+  const waiters = new Map();
+
+  function finish(requestId) {
+    const waiter = waiters.get(requestId);
+    if (!waiter) return null;
+    waiters.delete(requestId);
+    if (waiter.queueTimeout) clearTimeoutImpl(waiter.queueTimeout);
+    if (waiter.executionTimeout) clearTimeoutImpl(waiter.executionTimeout);
+    if (waiter.signal && waiter.abort) {
+      waiter.signal.removeEventListener('abort', waiter.abort);
+    }
+    return waiter;
+  }
+
+  function receiveProgress(progress) {
+    if (!progress || typeof progress.requestId !== 'string' || progress.event !== 'started') {
+      return false;
+    }
+    const waiter = waiters.get(progress.requestId);
+    if (!waiter || waiter.phase !== 'queued') return false;
+    waiter.phase = 'admitted';
+    if (waiter.queueTimeout) {
+      clearTimeoutImpl(waiter.queueTimeout);
+      waiter.queueTimeout = null;
+    }
+    waiter.executionTimeout = setTimeoutImpl(() => {
+      const expired = finish(progress.requestId);
+      if (!expired) return;
+      const error = new Error('Hermes runtime request timed out after native dequeue');
+      error.name = 'HermesRuntimeBridgeTimeoutError';
+      error.code = 'bridge_timeout';
+      expired.reject(error);
+    }, waiter.executionTimeoutMs);
+    return true;
+  }
+
+  function receive(result) {
+    if (!result || typeof result.requestId !== 'string') return false;
+    const current = waiters.get(result.requestId);
+    // A final callback is itself proof that a successfully posted request was
+    // admitted, even if WebKit delivered it before the separate started event.
+    // This is especially important after abort: compensation must wait for the
+    // native final rather than racing work whose progress callback was delayed.
+    if (!current || (current.phase !== 'queued' && current.phase !== 'admitted')) return false;
+    const waiter = finish(result.requestId);
+    if (!waiter) return false;
+    if (waiter.stale) {
+      waiter.reject(bridgeAbortError());
+    } else if (result.ok) {
+      waiter.resolve(result);
+    } else {
+      const error = new Error(`Hermes runtime ${result.stage || 'request'} failed`);
+      error.name = 'HermesRuntimeBridgeError';
+      error.code = result.errorCode || 'native_runtime_failed';
+      error.stage = result.stage || null;
+      error.retryable = result.retryable !== false;
+      error.state = result.state || null;
+      waiter.reject(error);
+    }
+    return true;
+  }
+
+  function request(command, payload = {}, { signal } = {}) {
+    const executionTimeoutMs = HERMES_RUNTIME_TIMEOUTS_MS[command];
+    if (!executionTimeoutMs) return Promise.reject(new Error('unsupported Hermes runtime command'));
+    if (command !== 'inspect' && !payload.setupAttemptId) {
+      return Promise.reject(new Error('Hermes runtime generation is required'));
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'credential') && command !== 'configureDisabled') {
+      return Promise.reject(new Error('credential is allowed only for Hermes configuration'));
+    }
+    if (signal?.aborted) return Promise.reject(bridgeAbortError());
+
+    const requestId = createRequestId();
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        resolve,
+        reject,
+        signal,
+        phase: 'posting',
+        stale: false,
+        executionTimeoutMs,
+        queueTimeout: null,
+        executionTimeout: null,
+        abort: null,
+      };
+      waiter.queueTimeout = setTimeoutImpl(() => {
+        const expired = finish(requestId);
+        if (!expired) return;
+        const error = new Error('Hermes runtime request timed out waiting for native dequeue');
+        error.name = 'HermesRuntimeBridgeQueueTimeoutError';
+        error.code = 'bridge_queue_timeout';
+        reject(error);
+      }, HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS);
+      waiter.abort = signal ? () => {
+        const current = waiters.get(requestId);
+        if (!current) return;
+        // The only definitely unposted abort was handled before allocating the
+        // request. Once dispatch begins, WebKit may already have admitted the
+        // message even when its started callback has not reached JavaScript.
+        // Retain every timer/listener until native final or the applicable hard
+        // bound; only then may the saga observe AbortError and compensate.
+        current.stale = true;
+      } : null;
+      waiters.set(requestId, waiter);
+      if (signal && waiter.abort) signal.addEventListener('abort', waiter.abort, { once: true });
+      try {
+        postMessage({ ...payload, requestId, command });
+        const posted = waiters.get(requestId);
+        if (posted && posted.phase === 'posting') posted.phase = 'queued';
+      } catch {
+        finish(requestId);
+        reject(new Error('Hermes runtime bridge dispatch failed'));
+      }
+    });
+  }
+
+  return { request, receive, receiveProgress, pendingCount: () => waiters.size };
+}
+
+const CONNECTED_LOCAL_FIELDS = [
+  'executorId', 'pluginInstalled', 'negotiatorMode', 'schedulePresent', 'setupAttemptId',
+];
+
+const FAILURE_STAGE_LABELS = Object.freeze({
+  prepare: 'server preparation',
+  configureDisabled: 'local configuration',
+  configure: 'local configuration',
+  activate: 'server activation',
+  enable: 'local activation',
+  heartbeat: 'health confirmation',
+  confirmHealthy: 'healthy-state confirmation',
+  rollback: 'server rollback',
+  disconnect: 'local cleanup',
+  inspect: 'local inspection',
+  reconcile: 'relaunch reconciliation',
+  'select-index': 'Index selection',
+  'select-hermes': 'Hermes selection',
+});
+
+function sanitizedFailureStage(operation) {
+  const raw = typeof operation?.stage === 'string' ? operation.stage : operation?.kind;
+  return FAILURE_STAGE_LABELS[raw] || 'runtime reconciliation';
+}
+
+/** Stable, UI-ready projection of the server binding plus native local state. */
+function mapAgentRuntimeState({ binding, localState, operation }) {
+  const localConnected = !!localState && CONNECTED_LOCAL_FIELDS.some((field) => !!localState[field]);
+  const serverHermes = binding?.selectedRuntime === 'hermes';
+  const canDisconnect = localConnected || serverHermes;
+
+  if (operation?.status === 'running') {
+    if (operation.kind === 'select-hermes') {
+      return {
+        selectorValue: 'hermes', visualState: 'connecting',
+        statusLine: 'Hermes is connecting. Index is covering until a heartbeat is observed.',
+        canRetry: false, canDisconnect: false, retryAction: null,
+      };
+    }
+    if (operation.kind === 'select-index' || operation.kind === 'disconnect') {
+      return {
+        selectorValue: 'index', visualState: 'connecting',
+        statusLine: 'Index is taking over. Hermes scheduling is being disabled.',
+        canRetry: false, canDisconnect: false, retryAction: null,
+      };
+    }
+    return {
+      selectorValue: serverHermes ? 'hermes' : 'index',
+      visualState: serverHermes ? 'connecting' : 'index',
+      statusLine: serverHermes
+        ? 'Checking the selected Hermes runtime. Index is covering during reconciliation.'
+        : 'Checking the negotiation runtime. Index remains the system default.',
+      canRetry: false, canDisconnect: false, retryAction: null,
+    };
+  }
+
+  if (operation?.status === 'failed') {
+    if (operation.errorCode === 'owner_mismatch') {
+      return {
+        selectorValue: 'index',
+        visualState: 'needs-attention',
+        statusLine: 'Hermes recovery belongs to another signed-in owner. Its schedule is paused for that owner to recover later.',
+        canRetry: false,
+        canDisconnect: false,
+        retryAction: null,
+      };
+    }
+    if (operation.errorCode === 'owner_unattributed') {
+      return {
+        selectorValue: 'index',
+        visualState: 'needs-attention',
+        statusLine: 'An older Hermes installation has no owner identity. Its schedule is paused; retry to reprovision it for this signed-in owner.',
+        canRetry: true,
+        canDisconnect: false,
+        retryAction: 'select-hermes',
+      };
+    }
+    return {
+      selectorValue: binding?.selectedRuntime === 'hermes' ? 'hermes' : 'index',
+      visualState: 'needs-attention',
+      statusLine: `Hermes needs attention after ${sanitizedFailureStage(operation)} failed. Retry reconciliation or disconnect it.`,
+      canRetry: true,
+      canDisconnect,
+      retryAction: 'reconcile',
+    };
+  }
+
+  if (binding?.selectedRuntime === 'external') {
+    return {
+      selectorValue: 'index',
+      visualState: 'needs-attention',
+      statusLine: 'A legacy external runtime is selected. Select Index before connecting Hermes.',
+      canRetry: true,
+      canDisconnect,
+      retryAction: 'reconcile',
+    };
+  }
+
+  if (serverHermes) {
+    const executor = binding.executor;
+    const completeMatchingWiring = !!(
+      executor?.installationId
+      && localState?.installationId
+      && executor.installationId === localState.installationId
+      && executor.id
+      && executor.status === 'active'
+      && localState.executorId === executor.id
+      && localState.setupAttemptId
+      && localState.pluginInstalled === true
+      && localState.negotiatorMode === true
+      && localState.schedulePresent === true
+      && localState.scheduleEnabled === true
+    );
+    if (!completeMatchingWiring) {
+      return {
+        selectorValue: 'index',
+        visualState: 'needs-attention',
+        statusLine: 'The selected Hermes runtime does not match complete local wiring on this Mac. Index is covering.',
+        canRetry: true,
+        canDisconnect,
+        retryAction: 'reconcile',
+      };
+    }
+
+    if (binding.health === 'active' && binding.indexCovering === false) {
+      return {
+        selectorValue: 'hermes',
+        visualState: 'active',
+        statusLine: 'Hermes is active. Index takes over when Hermes is unavailable.',
+        canRetry: false,
+        canDisconnect,
+        retryAction: null,
+      };
+    }
+
+    if (
+      (binding.health === 'stale' || binding.health === 'never-seen')
+      && binding.indexCovering === true
+    ) {
+      return {
+        selectorValue: 'hermes',
+        visualState: 'unavailable',
+        statusLine: 'Hermes is unavailable — Index is covering.',
+        canRetry: true,
+        canDisconnect,
+        retryAction: 'select-hermes',
+      };
+    }
+
+    return {
+      selectorValue: 'index',
+      visualState: 'needs-attention',
+      statusLine: 'Hermes health and Index coverage do not match. Index is covering.',
+      canRetry: true,
+      canDisconnect,
+      retryAction: 'reconcile',
+    };
+  }
+
+  return {
+    selectorValue: 'index',
+    visualState: 'index',
+    statusLine: localConnected
+      ? 'Index is handling negotiations. Hermes remains connected and can be selected again.'
+      : 'Index is handling negotiations.',
+    canRetry: false,
+    canDisconnect,
+    retryAction: null,
+  };
+}
+
+class HermesHealthTimeoutError extends Error {
+  constructor() {
+    super('Hermes did not become healthy within the bounded activation window');
+    this.name = 'HermesHealthTimeoutError';
+    this.code = 'health_timeout';
+  }
+}
+
+function remainingBudget(startedAt, timeoutMs, now) {
+  return Math.max(0, timeoutMs - (now() - startedAt));
+}
+
+async function raceDeadline(startedAt, timeoutMs, now, begin, parentSignal) {
+  const remainingMs = remainingBudget(startedAt, timeoutMs, now);
+  if (remainingMs <= 0) throw new HermesHealthTimeoutError();
+  if (parentSignal?.aborted) {
+    const error = new Error('Hermes health wait was aborted');
+    error.name = 'AbortError';
+    error.code = 'ABORT_ERR';
+    throw error;
+  }
+  const controller = new AbortController();
+  let timer;
+  let rejectParent;
+  const abortParent = () => {
+    controller.abort();
+    const error = new Error('Hermes health wait was aborted');
+    error.name = 'AbortError';
+    error.code = 'ABORT_ERR';
+    rejectParent?.(error);
+  };
+  parentSignal?.addEventListener('abort', abortParent, { once: true });
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => begin(controller.signal, remainingMs)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new HermesHealthTimeoutError());
+        }, Math.max(1, remainingMs));
+      }),
+      new Promise((_, reject) => { rejectParent = reject; }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    parentSignal?.removeEventListener('abort', abortParent);
+  }
+}
+
+function defaultSleep(duration, { signal } = {}) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, duration);
+    if (!signal) return;
+    const abort = () => {
+      clearTimeout(timer);
+      reject(new HermesHealthTimeoutError());
+    };
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
+/**
+ * Wait only on the server's authoritative health classification. The UI does
+ * not parse timestamps or reproduce the dispatcher's freshness threshold.
+ * Every read and sleep is raced against the same hard wall-clock deadline.
+ */
+async function waitForHermesHealth({
+  api,
+  installationId,
+  executorId,
+  timeoutMs = 90_000,
+  pollIntervalMs = 2_000,
+  now = () => Date.now(),
+  sleep = defaultSleep,
+  signal,
+}) {
+  const startedAt = now();
+  while (true) {
+    if (remainingBudget(startedAt, timeoutMs, now) <= 0) throw new HermesHealthTimeoutError();
+    try {
+      const binding = await raceDeadline(startedAt, timeoutMs, now, (requestSignal) => (
+        api.getRuntimeBinding(installationId, { signal: requestSignal })
+      ), signal);
+      if (
+        binding?.selectedRuntime === 'hermes'
+        && binding.health === 'active'
+        && binding.executor?.id === executorId
+        && binding.executor?.installationId === installationId
+      ) {
+        return binding;
+      }
+    } catch (error) {
+      if (error instanceof HermesHealthTimeoutError || error?.name === 'AbortError') throw error;
+    }
+
+    const remainingMs = remainingBudget(startedAt, timeoutMs, now);
+    if (remainingMs <= 0) throw new HermesHealthTimeoutError();
+    const duration = Math.min(pollIntervalMs, remainingMs);
+    await raceDeadline(startedAt, timeoutMs, now, (sleepSignal, wallClockRemaining) => (
+      sleep(Math.min(duration, wallClockRemaining), { signal: sleepSignal })
+    ), signal);
+  }
+}
+
+
+const SETUP_JOURNAL_STAGES = new Set([
+  'preparing',
+  'environmentWritten',
+  'pluginInstalled',
+  'scheduleDisabled',
+  'enabling',
+  'awaitingHeartbeat',
+]);
+const DISCONNECT_JOURNAL_STAGES = new Set([
+  'disconnecting',
+  'disconnectCleanupComplete',
+]);
+
+const SAGA_JOURNAL_STAGES = Object.freeze({
+  'select-hermes': new Set([
+    'prepare-pending', 'prepared', 'configured', 'activated', 'native-recovery',
+  ]),
+  'select-index': new Set(['server-pending', 'server-complete']),
+  disconnect: new Set(['server-pending', 'server-complete']),
+});
+const SAGA_JOURNAL_KEY = 'index.agent-runtime.saga.v1';
+
+function aborted(error) {
+  return error?.name === 'AbortError' || error?.code === 'ABORT_ERR';
+}
+
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  const error = new Error('Hermes runtime operation was aborted');
+  error.name = 'AbortError';
+  error.code = 'ABORT_ERR';
+  throw error;
+}
+
+function requireSuccessfulNativeResult(result, command) {
+  if (result?.ok) return result;
+  const error = new Error(`Hermes native ${command} failed`);
+  error.name = 'HermesNativeRuntimeError';
+  error.code = result?.errorCode || `${command}_failed`;
+  error.stage = result?.stage || command;
+  error.retryable = result?.retryable !== false;
+  error.state = result?.state || null;
+  throw error;
+}
+
+function generationMismatch(command, result) {
+  const error = new Error(`Hermes native ${command} did not apply the requested generation`);
+  error.name = 'HermesNativeGenerationMismatchError';
+  error.code = 'native_generation_mismatch';
+  error.stage = command;
+  error.retryable = true;
+  error.state = result?.state || null;
+  return error;
+}
+
+function requireSelectionNativeResult(result, {
+  command,
+  expectedStage,
+  ownerId,
+  installationId,
+  executorId,
+  setupAttemptId,
+  scheduleEnabled,
+}) {
+  const successful = requireSuccessfulNativeResult(result, command);
+  const state = successful.state;
+  const matches = successful.stage === expectedStage
+    && state?.ownerId === ownerId
+    && state?.installationId === installationId
+    && state?.executorId === executorId
+    && state?.setupAttemptId === setupAttemptId
+    && state?.pluginInstalled === true
+    && state?.negotiatorMode === true
+    && state?.schedulePresent === true
+    && state?.scheduleEnabled === scheduleEnabled;
+  if (!matches) throw generationMismatch(command, successful);
+  return successful;
+}
+
+function requireGenerationCleanupResult(result, command, setupAttemptId) {
+  const successful = requireSuccessfulNativeResult(result, command);
+  const terminal = successful.stage === 'disconnected';
+  const protectedNewer = successful.stage === 'disconnect_noop'
+    && typeof successful.state?.setupAttemptId === 'string'
+    && successful.state.setupAttemptId !== setupAttemptId;
+  if ((!terminal && !protectedNewer) || successful.state?.setupAttemptId === setupAttemptId) {
+    throw generationMismatch(command, successful);
+  }
+  return successful;
+}
+
+function requireActivatedBinding(binding, { installationId, executorId }) {
+  if (
+    binding?.selectedRuntime === 'hermes'
+    && binding.executor?.id === executorId
+    && binding.executor?.installationId === installationId
+  ) return binding;
+  const error = new Error('Activated Hermes binding did not match the requested executor');
+  error.code = 'activation_binding_mismatch';
+  error.stage = 'activate';
+  throw error;
+}
+
+function nonemptyString(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function nullableNonemptyString(value) {
+  return value === null || nonemptyString(value);
+}
+
+function sanitizeJournal(value) {
+  if (!value || Array.isArray(value) || typeof value !== 'object' || value.version !== 1) return null;
+  const allowedStages = SAGA_JOURNAL_STAGES[value.operation];
+  if (!allowedStages || !allowedStages.has(value.stage)) return null;
+  if (!nonemptyString(value.ownerId) || !nonemptyString(value.installationId)) return null;
+  if (!nullableNonemptyString(value.setupAttemptId) || !nullableNonemptyString(value.executorId)) return null;
+
+  if (value.operation === 'select-hermes') {
+    if (!nonemptyString(value.setupAttemptId)) return null;
+    if (value.stage === 'prepare-pending') {
+      if (value.executorId !== null) return null;
+    } else if (!nonemptyString(value.executorId)) return null;
+  } else {
+    // Index selection and server disconnect can be server-only (both null), or
+    // generation-matched locally (both nonempty). Half-wired evidence is not
+    // executable and must remain preserved for manual recovery.
+    const bothNull = value.setupAttemptId === null && value.executorId === null;
+    const bothPresent = nonemptyString(value.setupAttemptId) && nonemptyString(value.executorId);
+    if (!bothNull && !bothPresent) return null;
+  }
+
+  return {
+    version: 1,
+    operation: value.operation,
+    stage: value.stage,
+    ownerId: value.ownerId,
+    installationId: value.installationId,
+    setupAttemptId: value.setupAttemptId,
+    executorId: value.executorId,
+  };
+}
+
+/** Non-secret persistent journal adapter. The injected storage may be app-owned
+ * WKWebView storage; production uses localStorage in the bundled document. */
+function createLocalStorageSagaJournal(storage = globalThis.localStorage, key = SAGA_JOURNAL_KEY) {
+  if (!storage || typeof storage.getItem !== 'function') {
+    throw new Error('Persistent Hermes saga storage is unavailable');
+  }
+  return {
+    async load() {
+      const raw = storage.getItem(key);
+      if (!raw) return null;
+      try {
+        const parsed = sanitizeJournal(JSON.parse(raw));
+        if (!parsed) throw new Error('Invalid Hermes saga journal');
+        return parsed;
+      } catch (error) {
+        // Preserve corrupt recovery evidence and fail closed rather than
+        // silently treating an unfinished server-first mutation as absent.
+        if (error?.message === 'Invalid Hermes saga journal') throw error;
+        throw new Error('Invalid Hermes saga journal', { cause: error });
+      }
+    },
+    async save(value) {
+      const sanitized = sanitizeJournal(value);
+      if (!sanitized) throw new Error('Invalid Hermes saga journal');
+      storage.setItem(key, JSON.stringify(sanitized));
+      return sanitized;
+    },
+    async clear(expected) {
+      const current = await this.load();
+      if (!current) return;
+      if (expected && (
+        current.operation !== expected.operation
+        || current.ownerId !== expected.ownerId
+        || current.setupAttemptId !== expected.setupAttemptId
+        || current.installationId !== expected.installationId
+      )) return;
+      storage.removeItem(key);
+    },
+  };
+}
+
+function operationJournal(operation, stage, {
+  ownerId, installationId, setupAttemptId = null, executorId = null,
+}) {
+  const journal = sanitizeJournal({
+    version: 1, operation, stage, ownerId, installationId, setupAttemptId, executorId,
+  });
+  if (!journal) throw new Error('Invalid Hermes saga journal');
+  return journal;
+}
+
+function generationAbsentFromServer(binding, journal) {
+  if (!binding || !Object.prototype.hasOwnProperty.call(binding, 'installation')) return false;
+  const installation = binding.installation;
+  // installation:null is authoritative only because every caller reaches this
+  // read after proving that journal.ownerId is the pinned authenticated owner.
+  if (!installation) return true;
+  return installation.installationId !== journal.installationId
+    || (journal.executorId !== null && installation.executorId !== journal.executorId)
+    || installation.setupAttemptId !== journal.setupAttemptId;
+}
+
+function ownerMismatchError(state = null) {
+  const error = new Error('Hermes recovery belongs to a different signed-in owner');
+  error.name = 'HermesRuntimeOwnerMismatchError';
+  error.code = 'owner_mismatch';
+  error.stage = 'inspect';
+  error.retryable = false;
+  error.state = state;
+  return error;
+}
+
+function journalOwnerMismatch(ownerId, journal) {
+  return !!journal && journal.ownerId !== ownerId;
+}
+
+async function disableGenerationSafely({ nativeRuntime, ownerId, setupAttemptId }) {
+  const result = requireSuccessfulNativeResult(await nativeRuntime('disable', {
+    ownerId, setupAttemptId,
+  }), 'disable');
+  const exactPaused = result.stage === 'disabled'
+    && result.state?.setupAttemptId === setupAttemptId
+    && result.state?.scheduleEnabled === false;
+  const protectedNewer = result.stage === 'disable_noop'
+    && typeof result.state?.setupAttemptId === 'string'
+    && result.state.setupAttemptId !== setupAttemptId;
+  if (!exactPaused && !protectedNewer) throw generationMismatch('disable', result);
+  return result.state || null;
+}
+
+async function pauseOwnerMismatchedGeneration({ nativeRuntime, localState }) {
+  // The JS journal may describe a newer prepare that has not reached native yet.
+  // Cross-owner safety must therefore fence the generation actually observed by
+  // inspect and use that generation's persisted owner, never the current login
+  // or the pending journal identity.
+  const setupAttemptId = localState?.setupAttemptId;
+  const inspectedOwnerId = localState?.ownerId;
+  if (!nonemptyString(setupAttemptId) || !nonemptyString(inspectedOwnerId)) {
+    throw ownerMismatchError(localState);
+  }
+  const pausedState = await disableGenerationSafely({
+    nativeRuntime, ownerId: inspectedOwnerId, setupAttemptId,
+  });
+  throw ownerMismatchError(pausedState || localState);
+}
+
+async function authoritativeGenerationAbsence({ api, journal }) {
+  const binding = await api.getRuntimeBinding(journal.installationId);
+  return { binding, absent: generationAbsentFromServer(binding, journal) };
+}
+
+async function cleanupPreparedGeneration({ api, nativeRuntime, operationStore, journal }) {
+  let binding = null;
+  let rolledBack = false;
+  let rollbackError = null;
+  try {
+    const rollback = await api.rollbackHermesRuntime(journal.setupAttemptId);
+    rolledBack = rollback?.rolledBack === true;
+  } catch (error) {
+    rollbackError = error;
+  }
+
+  if (!rolledBack) {
+    // A false repeat or a lost response is not proof that local cleanup should
+    // be skipped. Read the authoritative installation generation instead.
+    const observed = await authoritativeGenerationAbsence({ api, journal });
+    binding = observed.binding;
+    if (!observed.absent) {
+      if (rollbackError) throw rollbackError;
+      const error = new Error('Hermes rollback did not clear the requested server generation');
+      error.code = 'rollback_generation_still_present';
+      error.stage = 'rollback';
+      throw error;
+    }
+  }
+
+  const cleanup = requireGenerationCleanupResult(
+    await nativeRuntime('disconnect', {
+      ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
+    }),
+    'disconnect',
+    journal.setupAttemptId,
+  );
+  await operationStore?.clear(journal);
+  return {
+    binding: binding || await api.getRuntimeBinding(journal.installationId),
+    localState: cleanup.state || null,
+  };
+}
+
+async function compensatePreparedGeneration({
+  api, nativeRuntime, operationStore, journal, originalError,
+}) {
+  try {
+    await cleanupPreparedGeneration({ api, nativeRuntime, operationStore, journal });
+  } catch (compensationError) {
+    originalError.compensationError = compensationError;
+  }
+}
+
+/** Generation-fenced prepare/configure/activate/enable/health saga. */
+async function runHermesSelectionSaga({
+  api,
+  nativeRuntime,
+  operationStore,
+  ownerId,
+  installationId,
+  setupAttemptId,
+  waitForHealth,
+  signal,
+}) {
+  let journal = operationJournal('select-hermes', 'prepare-pending', {
+    ownerId, installationId, setupAttemptId, executorId: null,
+  });
+  await operationStore?.save(journal); // crash boundary before server prepare
+
+  try {
+    throwIfAborted(signal);
+    const prepareResult = await api.prepareHermesRuntime(
+      installationId, setupAttemptId, { signal },
+    );
+    if (prepareResult?.setupAttemptId !== setupAttemptId) {
+      const mismatch = new Error('Prepared Hermes generation did not match the request');
+      mismatch.code = 'prepare_generation_mismatch';
+      mismatch.stage = 'prepare';
+      throw mismatch;
+    }
+
+    const executorId = prepareResult.executorId;
+    const transientCredential = prepareResult.credential?.key;
+    if (!executorId || !transientCredential) {
+      const invalid = new Error('Hermes prepare response was incomplete');
+      invalid.code = 'prepare_response_invalid';
+      invalid.stage = 'prepare';
+      throw invalid;
+    }
+    journal = operationJournal('select-hermes', 'prepared', {
+      ownerId, installationId, setupAttemptId, executorId,
+    });
+    await operationStore?.save(journal);
+    throwIfAborted(signal);
+
+    // This is the sole credential-bearing native call. The credential is never
+    // returned by this saga or passed to health, state, storage, or callbacks.
+    requireSelectionNativeResult(await nativeRuntime('configureDisabled', {
+      ownerId,
+      installationId,
+      executorId,
+      setupAttemptId,
+      credential: transientCredential,
+    }, { signal }), {
+      command: 'configureDisabled', expectedStage: 'scheduleDisabled',
+      ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: false,
+    });
+
+    journal = operationJournal('select-hermes', 'configured', {
+      ownerId, installationId, setupAttemptId, executorId,
+    });
+    await operationStore?.save(journal);
+    throwIfAborted(signal);
+    requireActivatedBinding(await api.setRuntimeBinding({
+      runtime: 'hermes',
+      installationId,
+      executorId,
+      setupAttemptId,
+    }, { signal }), { installationId, executorId });
+
+    journal = operationJournal('select-hermes', 'activated', {
+      ownerId, installationId, setupAttemptId, executorId,
+    });
+    await operationStore?.save(journal);
+    throwIfAborted(signal);
+    requireSelectionNativeResult(
+      await nativeRuntime('enable', { ownerId, setupAttemptId }, { signal }),
+      {
+        command: 'enable', expectedStage: 'awaitingHeartbeat',
+        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: true,
+      },
+    );
+    const binding = requireActivatedBinding(
+      await waitForHealth({ installationId, executorId, setupAttemptId, signal }),
+      { installationId, executorId },
+    );
+    throwIfAborted(signal);
+    const confirmed = requireSelectionNativeResult(
+      await nativeRuntime('confirmHealthy', { ownerId, setupAttemptId }, { signal }),
+      {
+        command: 'confirmHealthy', expectedStage: 'confirmed_healthy',
+        ownerId, installationId, executorId, setupAttemptId, scheduleEnabled: true,
+      },
+    );
+
+    await operationStore?.clear(journal); // exact native completion is durable
+    return { binding, localState: confirmed.state };
+  } catch (caught) {
+    const error = caught instanceof Error
+      ? caught
+      : Object.assign(new Error('Hermes selection failed'), { code: 'selection_failed' });
+    // Even when prepare's response was lost, the pre-mutation JS journal makes
+    // an idempotent rollback/read/cleanup possible with the pinned owner client.
+    await compensatePreparedGeneration({
+      api, nativeRuntime, operationStore, journal, originalError: error,
+    });
+    throw error;
+  }
+}
+
+async function performSelectIndex({ api, nativeRuntime, operationStore, journal, signal }) {
+  throwIfAborted(signal);
+  const binding = await api.setRuntimeBinding({ runtime: 'index' }, { signal });
+  const serverComplete = { ...journal, stage: 'server-complete' };
+  await operationStore?.save(serverComplete);
+  if (!journal.setupAttemptId) {
+    await operationStore?.clear(serverComplete);
+    return { binding, localState: null };
+  }
+  throwIfAborted(signal);
+  const disabled = requireSuccessfulNativeResult(await nativeRuntime('disable', {
+    ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
+  }, { signal }), 'disable');
+  // disable legitimately retains the generation, but must either prove that
+  // exact schedule paused or explicitly no-op for a visible newer generation.
+  const exactDisabled = disabled.stage === 'disabled'
+    && disabled.state?.setupAttemptId === journal.setupAttemptId
+    && disabled.state?.scheduleEnabled === false;
+  const protectedNewer = disabled.stage === 'disable_noop'
+    && typeof disabled.state?.setupAttemptId === 'string'
+    && disabled.state.setupAttemptId !== journal.setupAttemptId;
+  if (!exactDisabled && !protectedNewer) throw generationMismatch('disable', disabled);
+  await operationStore?.clear(serverComplete);
+  return { binding, localState: disabled.state || null };
+}
+
+/** Select built-in Index first, then pause only the matching local generation. */
+async function selectIndexRuntime({
+  api, nativeRuntime, operationStore, ownerId, installationId, localState, signal,
+}) {
+  const journal = operationJournal('select-index', 'server-pending', {
+    ownerId,
+    installationId: installationId || localState?.installationId,
+    setupAttemptId: localState?.setupAttemptId || null,
+    executorId: localState?.executorId || null,
+  });
+  await operationStore?.save(journal); // durable before server-first mutation
+  try {
+    return await performSelectIndex({ api, nativeRuntime, operationStore, journal, signal });
+  } catch (error) {
+    if (aborted(error)) {
+      // Auth epoch changed: finish with the already-pinned owner client before
+      // the coordinator releases its global operation mutex.
+      return performSelectIndex({ api, nativeRuntime, operationStore, journal });
+    }
+    throw error; // network uncertainty deliberately preserves the journal
+  }
+}
+
+async function performDisconnect({ api, nativeRuntime, operationStore, journal, signal }) {
+  throwIfAborted(signal);
+  const binding = await api.disconnectHermesRuntime(journal.installationId, { signal });
+  const serverComplete = { ...journal, stage: 'server-complete' };
+  await operationStore?.save(serverComplete);
+  if (!journal.setupAttemptId) {
+    await operationStore?.clear(serverComplete);
+    return { binding, localState: null };
+  }
+  throwIfAborted(signal);
+  const disconnected = requireGenerationCleanupResult(await nativeRuntime('disconnect', {
+    ownerId: journal.ownerId, setupAttemptId: journal.setupAttemptId,
+  }, { signal }), 'disconnect', journal.setupAttemptId);
+  await operationStore?.clear(serverComplete);
+  return { binding, localState: disconnected.state || null };
+}
+
+/** Revoke/select Index on the server before exact local key/plugin/schedule cleanup. */
+async function disconnectHermesSaga({
+  api,
+  nativeRuntime,
+  operationStore,
+  ownerId,
+  installationId,
+  setupAttemptId,
+  executorId = null,
+  signal,
+}) {
+  const journal = operationJournal('disconnect', 'server-pending', {
+    ownerId, installationId, setupAttemptId: setupAttemptId || null, executorId,
+  });
+  await operationStore?.save(journal); // durable before server-first mutation
+  try {
+    return await performDisconnect({ api, nativeRuntime, operationStore, journal, signal });
+  } catch (error) {
+    if (aborted(error)) {
+      return performDisconnect({ api, nativeRuntime, operationStore, journal });
+    }
+    throw error; // network uncertainty deliberately preserves the journal
+  }
+}
+
+async function resumeSagaOperation({ api, nativeRuntime, operationStore, journal }) {
+  if (journal.operation === 'select-index') {
+    return performSelectIndex({ api, nativeRuntime, operationStore, journal });
+  }
+  if (journal.operation === 'disconnect') {
+    return performDisconnect({ api, nativeRuntime, operationStore, journal });
+  }
+  return cleanupPreparedGeneration({ api, nativeRuntime, operationStore, journal });
+}
+
+/**
+ * Reconcile the persistent JS operation journal first, then a journal returned
+ * by native inspect. Repeat server mutations are idempotent and native cleanup
+ * is generation matched, so crashes at every boundary converge safely.
+ */
+async function reconcileHermesSaga({
+  api,
+  nativeRuntime,
+  operationStore,
+  operationJournal: pendingOperation,
+  journal,
+  ownerId,
+  installationId,
+  localState = null,
+}) {
+  const recoveryRecord = pendingOperation || journal;
+  if (
+    journalOwnerMismatch(ownerId, recoveryRecord)
+    || (nonemptyString(localState?.ownerId) && localState.ownerId !== ownerId)
+  ) {
+    return pauseOwnerMismatchedGeneration({ nativeRuntime, localState });
+  }
+
+  if (pendingOperation) {
+    return resumeSagaOperation({
+      api, nativeRuntime, operationStore, journal: pendingOperation,
+    });
+  }
+
+  if (!journal) {
+    return {
+      binding: await api.getRuntimeBinding(installationId),
+      localState,
+    };
+  }
+
+  const setupAttemptId = journal.setupAttemptId;
+  if (!setupAttemptId) {
+    const error = new Error('Hermes recovery journal has no setup generation');
+    error.code = 'journal_generation_missing';
+    error.stage = 'inspect';
+    throw error;
+  }
+
+  if (SETUP_JOURNAL_STAGES.has(journal.stage)) {
+    const recovery = operationJournal('select-hermes', 'native-recovery', {
+      ownerId, installationId, setupAttemptId, executorId: journal.executorId || null,
+    });
+    await operationStore?.save(recovery);
+    return cleanupPreparedGeneration({
+      api, nativeRuntime, operationStore, journal: recovery,
+    });
+  }
+
+  if (DISCONNECT_JOURNAL_STAGES.has(journal.stage)) {
+    const recovery = operationJournal('disconnect', 'server-pending', {
+      ownerId, installationId, setupAttemptId, executorId: journal.executorId || null,
+    });
+    await operationStore?.save(recovery);
+    return performDisconnect({ api, nativeRuntime, operationStore, journal: recovery });
+  }
+
+  const invalid = new Error(`Unknown Hermes recovery journal stage: ${journal.stage}`);
+  invalid.code = 'journal_stage_invalid';
+  invalid.stage = 'inspect';
+  throw invalid;
+}
+
+/** Always-mounted owner bootstrap: native inspect/pause, then exact JS recovery. */
+async function bootstrapHermesRuntime({
+  api, nativeRuntime, operationStore, ownerId, signal,
+}) {
+  if (!nonemptyString(ownerId)) throw ownerMismatchError();
+  throwIfAborted(signal);
+  const inspection = requireSuccessfulNativeResult(
+    await nativeRuntime('inspect', { ownerId }, { signal }), 'inspect',
+  );
+  throwIfAborted(signal);
+  const localState = inspection.state || null;
+  let pendingOperation;
+  try {
+    pendingOperation = await operationStore?.load() || null;
+  } catch (error) {
+    // A malformed JS journal remains byte-for-byte in storage. Pause the exact
+    // published native generation when possible, but never guess owner-scoped
+    // server work or clear the evidence.
+    if (localState?.setupAttemptId) {
+      try {
+        error.state = await disableGenerationSafely({
+          nativeRuntime, ownerId, setupAttemptId: localState.setupAttemptId,
+        });
+      } catch (pauseError) {
+        error.pauseError = pauseError;
+      }
+    }
+    error.code = 'journal_invalid';
+    error.stage = 'inspect';
+    throw error;
+  }
+  const installationId = pendingOperation?.installationId || localState?.installationId;
+  if (!installationId) {
+    const error = new Error('Hermes inspection did not return an installation identity');
+    error.code = 'installation_missing';
+    error.stage = 'inspect';
+    throw error;
+  }
+  const journal = localState?.setupAttemptId && HERMES_SETUP_JOURNAL_STAGES.includes(inspection.stage)
+    ? {
+        stage: inspection.stage,
+        setupAttemptId: localState.setupAttemptId,
+        executorId: localState.executorId || null,
+        ownerId: localState.ownerId || null,
+      }
+    : null;
+  const result = await reconcileHermesSaga({
+    api, nativeRuntime, operationStore, operationJournal: pendingOperation,
+    journal, ownerId, installationId, localState,
+  });
+  return { installationId, ...result };
+}
+
+const HERMES_SETUP_JOURNAL_STAGES = Object.freeze([
+  ...SETUP_JOURNAL_STAGES,
+  ...DISCONNECT_JOURNAL_STAGES,
+]);
+
+/**
+ * Provider-free auth/operation coordinator used by the React owner provider.
+ * One global tail serializes owner operations. Each credential change advances
+ * the auth epoch, aborts old work, and lets that work compensate with its pinned
+ * client before a new owner's bootstrap starts.
+ */
+function createAgentRuntimeCoordinator({
+  nativeRuntime,
+  operationStore,
+  waitForHealth,
+  onState = () => {},
+}) {
+  let authEpoch = 0;
+  let operationRevision = 0;
+  let owner = null;
+  let disposed = false;
+  let tail = Promise.resolve();
+  let activeController = null;
+  let refreshController = null;
+  let state = {
+    binding: null, localState: null, operation: null, installationId: null,
+  };
+
+  const publish = (patch, epoch, revision) => {
+    if (disposed || epoch !== authEpoch || revision !== operationRevision) return false;
+    state = { ...state, ...patch };
+    onState({ ...state, authEpoch, operationRevision });
+    return true;
+  };
+
+  const abortCurrent = () => {
+    activeController?.abort();
+    refreshController?.abort();
+    refreshController = null;
+  };
+
+  const enqueue = (kind, execute) => {
+    const capturedOwner = owner;
+    const epoch = authEpoch;
+    const revision = ++operationRevision;
+    abortCurrent();
+    publish({ operation: { kind, status: 'running' } }, epoch, revision);
+    const scheduled = tail.catch(() => undefined).then(async () => {
+      if (!capturedOwner || capturedOwner !== owner || disposed) return null;
+      const controller = new AbortController();
+      activeController = controller;
+      try {
+        if (
+          kind !== 'reconcile'
+          && nonemptyString(state.localState?.ownerId)
+          && state.localState.ownerId !== capturedOwner.ownerId
+        ) throw ownerMismatchError(state.localState);
+        const result = await execute(capturedOwner.api, controller.signal, capturedOwner);
+        publish({
+          ...result,
+          installationId: result?.installationId || state.installationId,
+          operation: null,
+        }, epoch, revision);
+        return result;
+      } catch (error) {
+        publish({
+          operation: {
+            kind, status: 'failed', stage: error?.stage || kind,
+            errorCode: error?.code || 'runtime_operation_failed',
+          },
+          ...(error?.state ? {
+            localState: error.state,
+            installationId: error.state.installationId || state.installationId,
+          } : {}),
+        }, epoch, revision);
+        throw error;
+      } finally {
+        if (activeController === controller) activeController = null;
+      }
+    });
+    tail = scheduled.then(() => undefined, () => undefined);
+    return scheduled;
+  };
+
+  const bootstrap = () => enqueue('reconcile', async (api, signal, capturedOwner) => {
+    try {
+      throwIfAborted(signal);
+      return await bootstrapHermesRuntime({
+        api, nativeRuntime, operationStore, ownerId: capturedOwner.ownerId, signal,
+      });
+    } catch (error) {
+      if (!aborted(error)) throw error;
+      // If auth changes during recovery, finish any persisted owner operation
+      // with this pinned client before releasing the serialized tail.
+      return bootstrapHermesRuntime({
+        api, nativeRuntime, operationStore, ownerId: capturedOwner.ownerId,
+      });
+    }
+  });
+
+  const changeOwner = (nextOwner) => {
+    authEpoch += 1;
+    operationRevision += 1;
+    abortCurrent();
+    owner = nextOwner
+      && nonemptyString(nextOwner.ownerId)
+      && nonemptyString(nextOwner.ownerCredential)
+      && nextOwner.api
+      ? {
+          ownerId: nextOwner.ownerId,
+          ownerCredential: nextOwner.ownerCredential,
+          api: nextOwner.api,
+        }
+      : null;
+    state = { binding: null, localState: null, operation: null, installationId: null };
+    if (!disposed) onState({ ...state, authEpoch, operationRevision });
+    return owner ? bootstrap() : tail;
+  };
+
+  const selectHermes = (setupAttemptId) => enqueue('select-hermes', (api, signal, capturedOwner) => (
+    runHermesSelectionSaga({
+      api, nativeRuntime, operationStore,
+      ownerId: capturedOwner.ownerId,
+      installationId: state.installationId,
+      setupAttemptId,
+      signal,
+      waitForHealth:(input) => waitForHealth({ ...input, api, signal }),
+    })
+  ));
+
+  const selectIndex = () => enqueue('select-index', (api, signal, capturedOwner) => (
+    selectIndexRuntime({
+      api, nativeRuntime, operationStore,
+      ownerId: capturedOwner.ownerId,
+      installationId: state.installationId,
+      localState: state.localState, signal,
+    })
+  ));
+
+  const disconnect = () => enqueue('disconnect', (api, signal, capturedOwner) => (
+    disconnectHermesSaga({
+      api, nativeRuntime, operationStore,
+      ownerId: capturedOwner.ownerId,
+      installationId: state.installationId,
+      setupAttemptId: state.localState?.setupAttemptId,
+      executorId: state.localState?.executorId,
+      signal,
+    })
+  ));
+
+  const retry = () => {
+    const view = mapAgentRuntimeState(state);
+    if (view.retryAction === 'select-hermes') return selectHermes(
+      globalThis.crypto?.randomUUID?.() || `runtime-${Math.random().toString(36).slice(2)}`,
+    );
+    if (view.retryAction === 'reconcile') return bootstrap();
+    return Promise.resolve(null);
+  };
+
+  const refresh = async () => {
+    if (!owner || !state.installationId || state.operation) return null;
+    const capturedOwner = owner;
+    const epoch = authEpoch;
+    const revision = operationRevision;
+    refreshController?.abort();
+    const controller = new AbortController();
+    refreshController = controller;
+    try {
+      const binding = await capturedOwner.api.getRuntimeBinding(
+        state.installationId, { signal: controller.signal },
+      );
+      publish({ binding }, epoch, revision);
+      return binding;
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        // Interval refresh failures are observational only; they never replace
+        // a newer success/retry/auth state with a needs-attention result.
+      }
+      return null;
+    } finally {
+      if (refreshController === controller) refreshController = null;
+    }
+  };
+
+  const dispose = () => {
+    disposed = true;
+    authEpoch += 1;
+    operationRevision += 1;
+    owner = null;
+    abortCurrent();
+  };
+
+  return {
+    changeOwner, bootstrap, selectHermes, selectIndex, disconnect, retry, refresh, dispose,
+    snapshot: () => ({ ...state, authEpoch, operationRevision }),
+    idle: () => tail,
+  };
+}
+
+/** React event boundary: coordinator methods still reject for programmatic use,
+ * while view callbacks intentionally consume the already-published failure. */
+function runViewRuntimeAction(action) {
+  Promise.resolve().then(action).catch(() => undefined);
+}
+
+window.IndexApi = { createIndexApiClient: createIndexApiClient, createPinnedIndexApiClient: createPinnedIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromRadarItems: mapPeopleFromRadarItems, mapPersonFromRadarCard: mapPersonFromRadarCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink, isIndexDeepLink: isIndexDeepLink, mapAgentRuntimeState: mapAgentRuntimeState, waitForHermesHealth: waitForHermesHealth, createHermesRuntimeBridge: createHermesRuntimeBridge, HERMES_RUNTIME_TIMEOUTS_MS: HERMES_RUNTIME_TIMEOUTS_MS, HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS: HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS, runHermesSelectionSaga: runHermesSelectionSaga, bootstrapHermesRuntime: bootstrapHermesRuntime, reconcileHermesSaga: reconcileHermesSaga, selectIndexRuntime: selectIndexRuntime, disconnectHermesSaga: disconnectHermesSaga, createLocalStorageSagaJournal: createLocalStorageSagaJournal, createAgentRuntimeCoordinator: createAgentRuntimeCoordinator, runViewRuntimeAction: runViewRuntimeAction, HERMES_SETUP_JOURNAL_STAGES: HERMES_SETUP_JOURNAL_STAGES };
 
 })();
 </script>
@@ -35826,10 +37117,21 @@ window.IndexApp = (function () {
     if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
     return window.IndexApi.createIndexApiClient({
       apiBaseUrl: native().apiBaseUrl,
-      // Read the key lazily so a mid-session login/logout is picked up without
-      // rebuilding the client.
       getApiKey: () => native().apiKey,
     });
+  }
+
+  // Runtime sagas pin one owner credential for their entire lifetime. Logout
+  // or owner replacement may update INDEX_NATIVE while compensation is still
+  // running; this client deliberately never rereads that mutable global.
+  function getOwnerClient(ownerCredential) {
+    if (!window.IndexApi || !window.IndexApi.createIndexApiClient) return null;
+    if (!ownerCredential) return null;
+    // The API base is public configuration; the credential is the exact value
+    // captured by AgentRuntimeProvider and is never reread from INDEX_NATIVE.
+    return window.IndexApi.createPinnedIndexApiClient({
+      apiBaseUrl: native().apiBaseUrl,
+    }, ownerCredential);
   }
 
   // ---- native auth bridge --------------------------------------------------
@@ -35860,26 +37162,45 @@ window.IndexApp = (function () {
     });
   }
 
-  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
-  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
-  const hermesWaiters = [];
-  window.__indexHermesSetup = function (result) {
-    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
-  };
-  function setupHermes(apiKey) {
-    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
-    return new Promise((resolve) => {
-      hermesWaiters.push(resolve);
-      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
-    });
+  // ---- generation-fenced Hermes runtime bridge ----------------------------
+
+  function hasHermesRuntimeBridge() {
+    return !!(window.webkit && window.webkit.messageHandlers
+      && window.webkit.messageHandlers.hermesRuntime);
   }
-  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
-  function teardownHermes() {
-    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
-    return new Promise((resolve) => {
-      hermesWaiters.push(resolve);
-      post("teardownHermes");
-    });
+
+  function runtimeRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `runtime-${Math.random().toString(36).slice(2)}-${performance.now()}`;
+  }
+
+  const hermesRuntimeBridge = window.IndexApi.createHermesRuntimeBridge({
+    createRequestId: runtimeRequestId,
+    postMessage:(message) => {
+      if (!hasHermesRuntimeBridge()) throw new Error("no native Hermes runtime bridge");
+      window.webkit.messageHandlers.hermesRuntime.postMessage(message);
+    },
+  });
+
+  // Swift emits this credential-free callback only after dequeueing the request
+  // on its trusted serial queue. Only then does JS start the execution timeout.
+  window.__indexHermesRuntimeProgress = function (progress) {
+    hermesRuntimeBridge.receiveProgress(progress);
+  };
+
+  // Late replies after timeout/abort are consumed as unknown and cannot settle
+  // a later request because the production bridge already removed the waiter.
+  window.__indexHermesRuntimeResult = function (result) {
+    hermesRuntimeBridge.receive(result);
+  };
+
+  function hermesRuntime(command, payload, options) {
+    if (!hasHermesRuntimeBridge()) {
+      return Promise.reject(new Error("no native Hermes runtime bridge"));
+    }
+    return hermesRuntimeBridge.request(command, payload || {}, options || {});
   }
 
   // Swift calls window.__indexAuthChanged(apiKeyOrNull) after it updates
@@ -36180,6 +37501,7 @@ window.IndexApp = (function () {
     apiBaseUrl,
     avatarUrl,
     getClient,
+    getOwnerClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,
     normalizeList,
@@ -36187,8 +37509,7 @@ window.IndexApp = (function () {
     login,
     logout,
     detectHarnesses,
-    setupHermes,
-    teardownHermes,
+    hermesRuntime,
     onAuthChanged,
     onDeepLink,
     createIntent,
@@ -38207,240 +39528,138 @@ function Networks({ onClose }) {
 
 </script>
 <script type="text/babel">
-// Agents: the runtimes on this Mac, and which one speaks for you.
-// Reached from the agents row on the hub's sidebar footer, same as networks.
+/* global myAgent, setMyAgentFace, currentMe */
+// One Personal Agent, with a durable Index-versus-Hermes execution binding.
+// Server state decides who may pick up negotiations; the native bridge owns
+// generation-fenced local Hermes wiring. Identity and policy never branch on
+// the selected runtime.
 
-// Per-agent permissions, shown when a connected runtime is expanded.
-const AGENT_PERMISSIONS = [
-  { id:"updates", title:"connection updates",
-    blurb:"tells this agent when an opportunity is accepted or someone reaches out." },
-  { id:"indexing", title:"nightly indexing",
-    blurb:"turns what this agent learned today into signals, overnight. off means "
-        + "discovery only knows what you've told it." },
-  { id:"brief", title:"daily brief",
-    blurb:"one message at 08:00 with new overlaps and anything waiting on you." },
+const NEGOTIATOR_RUNTIME_OPTIONS = [
+  { id:"index", label:"Index · system default" },
+  { id:"hermes", label:"Hermes · on this Mac" },
 ];
+const RUNTIME_STATE_LABELS = {
+  index:"Index · system default",
+  connecting:"Hermes · connecting",
+  active:"Hermes · active",
+  unavailable:"Hermes · unavailable — Index is covering",
+  "needs-attention":"Hermes · needs attention",
+};
 
-// On/off switch. A sliding knob rather than a checkmark: these rows are states
-// a runtime is in, not items you tick, and the knob's position reads at a
-// glance down a column. Squared off, since a rounded pill would be the only
-// round thing in the app.
-function MiniSwitch({ on, onClick, label, fixed }) {
+function freshSetupAttemptId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, value => value.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
+
+// The face, name, memory/history navigation, and policy statement are one
+// stable Personal Agent surface. Runtime state is intentionally not a prop.
+function NegotiatorProfile({ agent, onShuffle, onOpenMemory, onOpenHistory }) {
+  const btn = {
+    fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
+    border:"1px solid #000", background:"#fff", color:"#000",
+    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
+  };
   return (
-    <button
-      onClick={fixed ? undefined : onClick}
-      role="switch"
-      aria-checked={on}
-      aria-disabled={fixed || undefined}
-      aria-label={label}
-      style={{
-        flex:"0 0 auto", width:34, height:18, padding:0,
-        cursor: fixed ? "default" : "pointer",
-        border:"1px solid #000",
-        background: on ? "#FF8A00" : "#EDEAE1",
-        boxShadow: on
-          ? "inset 1px 1px 0 #8A4500"
-          : "inset 1px 1px 0 var(--ink-3)",
-        display:"flex", alignItems:"center",
-        justifyContent: on ? "flex-end" : "flex-start",
+    <div style={{ display:"grid", gap:12 }}>
+      <RuleLabel size={13}>your Personal Agent</RuleLabel>
+      <p style={{
+        margin:0, maxWidth:620,
+        fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
       }}>
-      <span style={{
-        width:14, height:14, margin:1,
-        background:"#fff", border:"1px solid #000",
-        boxShadow:"inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3)",
-      }}/>
-    </button>
-  );
-}
-
-// Status dot + word. Connected is live (accent); detected is present but idle.
-function AgentState({ state }) {
-  // "detected" is the only idle state; "connected" and "system default" are live
-  const live = state !== "detected";
-  return (
-    <span style={{
-      display:"flex", alignItems:"center", gap:6, minWidth:0,
-      fontFamily:"var(--mac-mono)", fontSize:11,
-      color: live ? "#000" : "var(--ink-3)",
-    }}>
-      <span style={{
-        flex:"0 0 auto", width:6, height:6,
-        background: live ? "#1FA95B" : "var(--ink-4)",
-      }}/>
-      {state}
-    </span>
-  );
-}
-
-function AgentRow({ agent, expanded, onToggleExpand, onToggleOn, perms, onTogglePerm, last }) {
-  const connected = agent.state === "connected";
-  const [hover, setHover] = useState(false);
-
-  // The whole row opens the row. A div rather than a button, because the switch
-  // inside is itself a button and buttons can't nest; the switch stops the
-  // click from bubbling so toggling an agent never also expands it.
-  const open = () => { if (connected) onToggleExpand(agent.id); };
-
-  return (
-    // the container draws the outer frame, so the last row skips its divider
-    <div style={{ borderBottom: last ? "none" : "1px solid #000" }}>
-      <div
-        onClick={open}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        role={connected ? "button" : undefined}
-        tabIndex={connected ? 0 : undefined}
-        aria-expanded={connected ? expanded : undefined}
-        onKeyDown={e => {
-          if (!connected) return;
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
-        }}
-        title={agent.builtin ? "index is built in and always on"
-          : connected ? "permissions" : "connect this agent to configure it"}
-        style={{
-          display:"flex", alignItems:"center", gap:11,
-          padding:"9px 12px",
-          background: (connected && (hover || expanded)) ? "#F2EFE6" : "#fff",
-        }}>
-        {/* no picture here. a runtime is a process on this mac, not somebody.
-            the only thing in the app with a face is your negotiator, above */}
-        <span style={{
-          flex:"0 0 auto", minWidth:146,
-          fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:600, color:"#000",
-          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-        }}>{agent.name}</span>
-        <span style={{ flex:1, minWidth:0 }}>
-          <AgentState state={agent.state}/>
-        </span>
-        {/* the one thing in the row that isn't "open the row" */}
-        <span
-          onClick={e => e.stopPropagation()}
-          style={{ flex:"0 0 auto", display:"flex" }}>
-          <MiniSwitch on={agent.on} onClick={() => onToggleOn(agent.id)}
-            fixed={agent.builtin} label={`${agent.name} on`}/>
-        </span>
-        {/* indicator now, not a control, the row carries the click.
-            the builtin row never opens, so it carries no chevron */}
-        <span aria-hidden="true" style={{
-          flex:"0 0 auto", width:18, textAlign:"center",
-          fontFamily:"var(--mac-mono)", fontSize:12,
-          color: connected ? "#000" : "var(--ink-4)",
-        }}>{agent.builtin ? "" : expanded ? "▾" : "›"}</span>
-      </div>
-
-      {expanded && connected && (
-        <div style={{
-          background:"#F2F0EC", borderTop:"1px solid #000",
-          padding:"11px 12px 12px",
-        }}>
+        memory and history stay with this Personal Agent when its runtime changes.
+      </p>
+      <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+        <MyAgentAvatar size={54}/>
+        <div style={{ display:"grid", gap:6, minWidth:0 }}>
           <div style={{
-            display:"flex", alignItems:"center", justifyContent:"space-between",
-            gap:12, flexWrap:"wrap", marginBottom:11,
-          }}>
-            <span style={{
-              fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
-            }}>
-              connected as {agent.connectedAs}
-              {agent.heartbeat ? ` · last heartbeat ${agent.heartbeat}` : " · no heartbeat yet"}
-            </span>
-            <span style={{ display:"flex", gap:8, flex:"0 0 auto" }}>
-              <button style={{
-                fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
-                border:"1px solid #000", background:"#fff", color:"#000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-              }}>test</button>
-              <button style={{
-                fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
-                border:"1px solid #000", background:"#fff", color:"var(--ink-warn)",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:"pointer",
-              }}>disconnect</button>
+            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
+          }}>{agent.name}</div>
+          <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
+            <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
+            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
+              authority: negotiations only
             </span>
           </div>
+        </div>
+      </div>
+      <nav aria-label="Personal Agent memory and history" style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        <button style={btn} onClick={onOpenMemory}>profile & memory</button>
+        <button style={btn} onClick={onOpenHistory}>negotiation history</button>
+      </nav>
+      <p style={{
+        margin:0, maxWidth:620,
+        fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
+      }}>
+        policy: negotiate within your active signals and ask before owner-only decisions;
+        runtime changes never expand this authority.
+      </p>
+    </div>
+  );
+}
 
-          {/* Permissions are checkboxes, not switches. Two different kinds of
-              thing: the runtime switch turns an agent on, these tick what it's
-              allowed to do. Reuses the same Toggle as the notifications pane,
-              so a checkbox looks the same everywhere in the app, and the
-              switch stays the only right-hand control. */}
-          <div style={{ display:"grid", gap:8 }}>
-            {AGENT_PERMISSIONS.map(p => (
-              <Toggle
-                key={p.id}
-                on={!!perms[p.id]}
-                onClick={() => onTogglePerm(agent.id, p.id)}
-                title={p.title}
-                blurb={p.blurb}
-              />
-            ))}
-          </div>
+function RuntimeStatus({ runtimeView, busy, onRetry, onDisconnect }) {
+  const dotColor = runtimeView.visualState === "active"
+    ? "#1FA95B"
+    : runtimeView.visualState === "needs-attention"
+      ? "var(--ink-warn)"
+      : runtimeView.visualState === "unavailable"
+        ? "#D17B00"
+        : "var(--ink-3)";
+  const button = {
+    fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
+    border:"1px solid #000", background:"#fff",
+    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", cursor:busy ? "default" : "pointer",
+    opacity:busy ? 0.55 : 1,
+  };
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      style={{
+        display:"grid", gap:9, padding:"11px 12px", marginTop:9,
+        border:"1px solid #000", background:"#F2F0EC",
+      }}>
+      <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+        <span aria-hidden="true" style={{ width:7, height:7, background:dotColor }}/>
+        <strong style={{ fontFamily:"var(--mac-mono)", fontSize:12 }}>
+          {RUNTIME_STATE_LABELS[runtimeView.visualState]}
+        </strong>
+      </div>
+      <span style={{ fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)" }}>
+        {runtimeView.statusLine}
+      </span>
+      {(runtimeView.canRetry || runtimeView.canDisconnect) && (
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {runtimeView.canRetry && (
+            <button disabled={busy} style={{ ...button, color:"#000" }} onClick={onRetry}>retry</button>
+          )}
+          {runtimeView.canDisconnect && (
+            <button disabled={busy} style={{ ...button, color:"var(--ink-warn)" }} onClick={onDisconnect}>
+              disconnect Hermes
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// Your negotiator's identity, the one agent that speaks for you, and the only
-// thing on this page with a face. Laid out like the profile block in settings
-// (picture on the left, name beside it) because it is the same kind of thing:
-// who you are to the network, and who your agent is. The face is derived from
-// your account id, so it is persistent and needs no control surface.
-function NegotiatorProfile({ agent, runtimeOptions, runtime, onChangeRuntime }) {
-  return (
-    <div style={{ display:"grid", gap:16 }}>
-      {/* Pick the runtime first, then dress it. Which one carries your
-          negotiator is the decision on this page; the face and the name are
-          how it shows up once that's settled, so they follow it rather than
-          lead it. */}
-      <div style={{ display:"grid", gap:7 }}>
-        <NegotiatorSelect
-          options={runtimeOptions}
-          value={runtime}
-          onChange={onChangeRuntime}
-        />
-        <span style={{
-          fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-        }}>index takes over if it's unavailable.</span>
-      </div>
-
-      <div style={{ display:"grid", gap:2 }}>
-        <RuleLabel size={13}>your agent</RuleLabel>
-        <p style={{
-          margin:"0 0 8px", maxWidth:560,
-          fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-        }}>
-          this is how your agent appears wherever it speaks for you, asking you
-          a question, sending an update, negotiating with someone else's.
-        </p>
-        <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-          <MyAgentAvatar size={54}/>
-
-          <div style={{
-            fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
-          }}>{agent.name}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Negotiator picker. A dropdown rather than a card per runtime: the list is
-// short, only one can be chosen, and the cards repeated the same three lines
-// four times over. Only runtimes that are switched on appear, so there's no
-// disabled state to explain.
-function NegotiatorSelect({ options, value, onChange }) {
+function NegotiatorSelect({ value, onChange, disabled }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
-
   useEffect(() => {
     if (!open) return;
-    const onDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    const onDown = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
     };
-    // capture + preventDefault so the open dropdown takes the Escape before the
-    // window-closing handler in primitives sees it
-    const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
       setOpen(false);
     };
     document.addEventListener("mousedown", onDown, true);
@@ -38451,58 +39670,46 @@ function NegotiatorSelect({ options, value, onChange }) {
     };
   }, [open]);
 
-  const current = options.find(o => o.id === value) || options[0];
-  const rowHover = (on) => (e) => {
-    e.currentTarget.style.background = on ? "#000" : "transparent";
-    e.currentTarget.style.color = on ? "#FF8A00" : "#000";
-  };
-
+  const current = NEGOTIATOR_RUNTIME_OPTIONS.find(option => option.id === value)
+    || NEGOTIATOR_RUNTIME_OPTIONS[0];
   return (
-    <div ref={wrapRef} style={{ position:"relative", maxWidth:360 }}>
+    <div ref={wrapRef} style={{ position:"relative", maxWidth:380 }}>
       <button
-        onClick={() => setOpen(o => !o)}
+        disabled={disabled}
+        onClick={() => setOpen(value => !value)}
         aria-haspopup="listbox"
         aria-expanded={open}
         style={{
           display:"flex", alignItems:"center", gap:10, width:"100%",
-          padding:"8px 11px", textAlign:"left", cursor:"pointer",
-          border:"1px solid #000", background: open ? "#F2EFE6" : "#fff",
-          boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+          padding:"8px 11px", textAlign:"left", cursor:disabled ? "default" : "pointer",
+          border:"1px solid #000", background:open ? "#F2EFE6" : "#fff",
+          boxShadow:"1px 1px 0 rgba(0,0,0,0.2)", opacity:disabled ? 0.55 : 1,
         }}>
         <span style={{
           flex:1, minWidth:0,
           fontFamily:"var(--mac-mono)", fontSize:13, fontWeight:700, color:"#000",
         }}>{current.label}</span>
-        <span style={{
-          flex:"0 0 auto",
-          fontFamily:"var(--mac-mono)", fontSize:12, color:"#000",
-          transform: open ? "rotate(180deg)" : "none",
-        }}>▾</span>
+        <span aria-hidden="true" style={{ fontFamily:"var(--mac-mono)", fontSize:12 }}>▾</span>
       </button>
-
-      {open && (
+      {open && !disabled && (
         <div role="listbox" className="fade-up" style={{
           position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:40,
-          width:"100%", background:"#fff",
+          width:"100%", padding:"4px 0", background:"#fff",
           border:"1px solid #000", boxShadow:"3px 3px 0 rgba(0,0,0,0.22)",
-          padding:"4px 0",
         }}>
-          {options.map(o => (
+          {NEGOTIATOR_RUNTIME_OPTIONS.map(option => (
             <button
-              key={o.id}
+              key={option.id}
               role="option"
-              aria-selected={o.id === value}
-              onClick={() => { onChange(o.id); setOpen(false); }}
-              onMouseEnter={rowHover(true)}
-              onMouseLeave={rowHover(false)}
+              aria-selected={option.id === value}
+              onClick={() => { setOpen(false); onChange(option.id); }}
               style={{
-                display:"flex", alignItems:"center", gap:8,
-                width:"100%", textAlign:"left",
-                padding:"6px 11px", border:"none", background:"transparent",
-                fontFamily:"var(--mac-mono)", fontSize:12, cursor:"pointer", color:"#000",
+                display:"flex", gap:8, width:"100%", padding:"6px 11px",
+                border:"none", background:"transparent", color:"#000", textAlign:"left",
+                fontFamily:"var(--mac-mono)", fontSize:12, cursor:"pointer",
               }}>
-              <span style={{ flex:"0 0 auto", width:8 }}>{o.id === value ? "•" : ""}</span>
-              {o.label}
+              <span style={{ width:8 }}>{option.id === value ? "•" : ""}</span>
+              {option.label}
             </button>
           ))}
         </div>
@@ -38511,343 +39718,140 @@ function NegotiatorSelect({ options, value, onChange }) {
   );
 }
 
-// Screen shell mirrors Networks: same 860 x min(660px) frame, same header band
-// with a title and a right-hand action, so moving between the two shelf
-// destinations doesn't resize or restyle the window.
-// Map one GET /agents entity into the row shape used here. Read-only: agent
-// management writes are session-only and unreachable with an API key.
-function mapLiveAgent(a) {
-  const TINTS = ["#4C6FD4", "#B4553F", "#3E8E7E", "#C64B8C", "#7B5EA7", "#E8A317"];
-  const name = a.name || "agent";
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  const rel = (iso) => {
-    const t = Date.parse(iso);
-    if (Number.isNaN(t)) return "";
-    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (s < 60) return `${s}s ago`;
-    const m = Math.floor(s / 60);
-    return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
+const AgentRuntimeContext = React.createContext(null);
+
+// Mounted by App for the full document lifetime. Authenticated relaunch
+// recovery therefore runs without requiring navigation to the Agents screen.
+function AgentRuntimeProvider({ ownerCredential, children }) {
+  const [runtimeState, setRuntimeState] = useState({
+    binding:null, localState:null, operation:null, installationId:null,
+  });
+  const coordinatorRef = useRef(null);
+  if (!coordinatorRef.current) {
+    const operationStore = window.IndexApi.createLocalStorageSagaJournal(window.localStorage);
+    coordinatorRef.current = window.IndexApi.createAgentRuntimeCoordinator({
+      operationStore,
+      nativeRuntime:(command, payload, options) => (
+        window.IndexApp.hermesRuntime(command, payload, options)
+      ),
+      waitForHealth:window.IndexApi.waitForHermesHealth,
+      onState:setRuntimeState,
+    });
+  }
+  const coordinator = coordinatorRef.current;
+
+  useEffect(() => {
+    let current = true;
+    // Pin the exact credential supplied to this render, then ask the server for
+    // that credential's authenticated app-user principal. ownerId is stable and
+    // non-secret; it is never derived from or hashed from the credential.
+    const api = ownerCredential && window.IndexApp
+      ? window.IndexApp.getOwnerClient(ownerCredential)
+      : null;
+    if (!api) {
+      coordinator.changeOwner(null).catch(() => {});
+      return () => {};
+    }
+    api.auth.me().then(response => {
+      const user = response && (response.user || response);
+      if (!current || !user || !user.id) return null;
+      return coordinator.changeOwner({
+        ownerId:user.id,
+        ownerCredential, api,
+      });
+    }).catch(() => {});
+    return () => {
+      current = false;
+      coordinator.changeOwner(null).catch(() => {});
+    };
+  }, [coordinator, ownerCredential]);
+
+  useEffect(() => {
+    const timer = setInterval(() => { coordinator.refresh(); }, 15_000);
+    return () => clearInterval(timer);
+  }, [coordinator]);
+
+  useEffect(() => () => coordinator.dispose(), [coordinator]);
+
+  const runtimeView = window.IndexApi.mapAgentRuntimeState(runtimeState);
+  const viewAction = action => () => window.IndexApi.runViewRuntimeAction(action);
+  const value = {
+    ...runtimeState,
+    runtimeView,
+    busy:runtimeState.operation && runtimeState.operation.status === "running",
+    selectHermes:viewAction(() => coordinator.selectHermes(freshSetupAttemptId())),
+    selectIndex:viewAction(() => coordinator.selectIndex()),
+    disconnect:viewAction(() => coordinator.disconnect()),
+    retry:viewAction(() => coordinator.retry()),
   };
-  // An agent registered against your account is connected, whether or not it
-  // has checked in lately. `lastSeenAt` is null on every agent the API has
-  // handed back so far, and reading that as "detected" left every row shut:
-  // only a connected row opens, so the permissions behind it were unreachable.
-  // The heartbeat is a separate fact and says for itself when there isn't one.
-  const active = a.status ? a.status === "active" : true;
-  const owner = String((currentMe() || {}).name || "").trim().split(/\s+/)[0];
-  return {
-    id: a.id,
-    name,
-    live: true,
-    initial: (name[0] || "a").toLowerCase(),
-    tint: TINTS[h % TINTS.length],
-    state: active ? "connected" : "detected",
-    on: active,
-    // the one agent the API says carries negotiations
-    negotiates: !!a.handleNegotiations,
-    connectedAs: a.description || (owner ? `${owner}'s ${name.toLowerCase()}` : name.toLowerCase()),
-    heartbeat: a.lastSeenAt ? rel(a.lastSeenAt) : "",
-    // What this agent is actually allowed to do, off the record rather than
-    // off a demo id. Nightly indexing has no field behind it yet, so it starts
-    // off rather than claiming something the API never said.
-    perms: {
-      updates: !!a.notifyOnOpportunity,
-      brief: !!a.dailySummaryEnabled,
-      indexing: false,
-    },
-  };
+  return <AgentRuntimeContext.Provider value={value}>{children}</AgentRuntimeContext.Provider>;
 }
 
-function Agents({ onClose }) {
-  // Live-only: no demo runtimes. The list is populated by fetchRegistered (the
-  // account's registered agents) and the local harness scan below.
-  const [agents, setAgents] = useState([]);
-  const [expanded, setExpanded] = useState(null);
-  // Filled from the live agent list; "index" is the builtin negotiator fallback.
-  const [perms, setPerms] = useState({});
-  const [negotiator, setNegotiator] = useState("index");
+function useAgentRuntimeOwner() {
+  const owner = React.useContext(AgentRuntimeContext);
+  if (!owner) throw new Error("Agents must be mounted inside AgentRuntimeProvider");
+  return owner;
+}
 
-  // Which local runtimes are already registered on the account: personal
-  // agents matched by name (lowercased). Server-side system agents never map
-  // to runtime rows — the Index row in the list is the local builtin, pinned
-  // on, and it doubles as the negotiator fallback in the picker below.
-  const [registered, setRegistered] = useState({});
-  const noteRegistered = (a) => {
-    const row = mapLiveAgent(a);
-    setRegistered(r => ({ ...r, [row.name.toLowerCase()]: row }));
-    setPerms(p => ({ ...p, [row.id]: p[row.id] || row.perms }));
-  };
-  const fetchRegistered = () => {
-    if (!window.IndexApp || !window.IndexApp.isAuthed()) return Promise.resolve();
-    const client = window.IndexApp.getClient();
-    if (!client) return Promise.resolve();
-    return client.agents.list()
-      .then((res) => {
-        const list = window.IndexApp.normalizeList(res, "agents")
-          .filter(a => a.type !== "system");
-        // Rebuild from scratch so agents deactivated or deleted elsewhere
-        // (e.g. on the web) drop their stale state here.
-        const next = {};
-        const nextPerms = {};
-        list.forEach((a) => {
-          const row = mapLiveAgent(a);
-          next[row.name.toLowerCase()] = row;
-          nextPerms[row.id] = row.perms;
-        });
-        setRegistered(next);
-        setPerms(p => ({ ...nextPerms, ...p }));
-        const carries = list.find(a => a.handleNegotiations && a.status !== "inactive");
-        setNegotiator(carries ? carries.id : "index");
-      })
-      .catch(() => {});
-  };
-  useEffect(() => { fetchRegistered(); }, []);
+// Agents is only the view and action surface; App owns runtime recovery.
+function Agents({ onClose, onOpenMemory, onOpenHistory }) {
+  const {
+    runtimeView, busy, selectHermes, selectIndex, disconnect, retry,
+  } = useAgentRuntimeOwner();
 
-  // Real inventory: the Swift shell scans the login-shell PATH for known
-  // agent CLIs (claude, codex, goose, …). Until the first scan answers, or
-  // when there is no bridge (browser preview), the demo list stands in.
-  const [detected, setDetected] = useState(null);
-  const scan = () => (window.IndexApp && window.IndexApp.detectHarnesses)
-    ? window.IndexApp.detectHarnesses().then((list) => {
-        if (list) setDetected(list.map(h => ({
-          id: `local-${h.id}`, name: h.label, path: h.path,
-        })));
-      })
-    : Promise.resolve();
-  useEffect(() => { scan(); }, []);
-
-  // "check again" re-scans local binaries AND re-fetches registration status
-  // from the API; the spin holds long enough to read.
-  const [checking, setChecking] = useState(false);
-  const checkTimer = useRef(null);
-  useEffect(() => () => clearTimeout(checkTimer.current), []);
-  const check = () => {
-    if (checking) return;
-    setChecking(true);
-    Promise.all([scan(), fetchRegistered()]).then(() => {
-      checkTimer.current = setTimeout(() => setChecking(false), 700);
-    });
-  };
-
-  // Activating a detected runtime registers it as a personal agent (MCP
-  // register_agent) and mints it an api key; deactivating deletes the agent
-  // (revoking its keys) and tears down any local plugin wiring.
-  const busy = useRef(new Set());
-  const toggleOn = (id) => {
-    // browser preview: the demo rows keep their local flip
-    if (detected === null) {
-      setAgents(list => list.map(a => {
-        if (a.id !== id) return a;
-        const on = !a.on;
-        if (!on && negotiator === id) setNegotiator("index");
-        return { ...a, on };
-      }));
-      return;
-    }
-    if (!window.IndexApp || !window.IndexApp.isAuthed()) {
-      alert("sign in first — registering an agent needs your account.");
-      return;
-    }
-    const row = rows.find(a => a.id === id);
-    if (!row) return;
-    if (busy.current.has(id)) return;
-    busy.current.add(id);
-    const done = () => busy.current.delete(id);
-    if (row.live) {
-      // Toggling off deregisters: delete the agent server-side (which also
-      // revokes its api keys) and, for hermes, uninstall the local plugin.
-      window.IndexApp.getClient().agents.remove(row.id)
-        .then(() => {
-          setRegistered(r => {
-            const next = { ...r };
-            delete next[row.name.toLowerCase()];
-            return next;
-          });
-          if (negotiator === row.id) setNegotiator("index");
-          if (row.name.toLowerCase() === "hermes") {
-            return window.IndexApp.teardownHermes().then((r) => {
-              if (!(r && r.ok)) alert(`deregistered, but plugin removal failed: ${(r && r.error) || "unknown error"}`);
-            });
-          }
-        })
-        .catch((err) => alert(`could not deregister ${row.name}: ${err && err.message || err}`))
-        .then(done, done);
-      return;
-    }
-    window.IndexApp.mcpCall("register_agent", {
-        name: row.name,
-        description: `${row.name} on this mac (${row.path})`,
-      })
-      .then((res) => {
-        // tool results arrive wrapped: { success, data: { message, agent } }
-        const payload = (res && res.data) || res || {};
-        if (res && res.success === false) throw new Error(res.error || "registration failed");
-        if (!payload.agent) throw new Error("no agent in response");
-        noteRegistered(payload.agent);
-        return payload.agent;
-      })
-      .then((agent) =>
-        // Mint an api key for the agent so the local runtime can act as it.
-        window.IndexApp.getClient().agents.createToken(agent.id).then((res) => {
-          const key = res && res.token && res.token.key;
-          if (!key) throw new Error("no key in bootstrap response");
-          if (row.id === "local-hermes") {
-            // Hand the key to the Swift shell: it writes ~/.hermes/.env and
-            // installs/enables the indexnetwork/hermes-plugin.
-            return window.IndexApp.setupHermes(key).then((r) => {
-              if (r && r.ok) alert("Hermes agent registered and its Index plugin is configured.");
-              else alert(`Hermes agent registered, but plugin setup failed: ${(r && r.error) || "unknown error"}`);
-            });
-          }
-          alert(`${row.name} registered. its api key (shown once):\n\n${key}`);
-        })
-      )
-      .catch((err) => alert(`could not activate ${row.name}: ${err && err.message || err}`))
-      .then(done, done);
-  };
-
-  const togglePerm = (agentId, permId) => setPerms(p => ({
-    ...p,
-    [agentId]: { ...p[agentId], [permId]: !(p[agentId] || {})[permId] },
-  }));
-
-  // Your negotiator's picture is derived from your account id (see myAgent in
-  // primitives), so it is the same everywhere with nothing to configure here.
+  const [, bump] = useState(0);
   const myNegotiator = myAgent();
-
-  // Rows are the builtin Index runtime plus the detected local runtimes.
-  // Index leads the list: always on, not switchable — it is the system
-  // default that carries negotiations when nothing else does. A local
-  // runtime already registered on the account (matched by name) wears its
-  // live record: connected state, real id, on = active. Everything else is
-  // detected and off until the switch registers it.
-  const indexRow = {
-    id:"index", name:"Index", state:"system default", on:true, builtin:true,
+  const shuffleCount = useRef(0);
+  const shuffleFace = () => {
+    shuffleCount.current += 1;
+    setMyAgentFace({
+      seed:`${currentMe().name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
+      photo:null,
+    });
+    bump(value => value + 1);
   };
-  const rows = [indexRow, ...(detected === null ? agents : detected.map(d => {
-    const live = registered[d.name.toLowerCase()];
-    return live
-      ? { ...live, path: d.path }
-      : { id: d.id, name: d.name, state: "detected", on: false,
-          connectedAs: "", heartbeat: "", path: d.path };
-  }))];
-
-  // Only runtimes you've switched on can speak for you, so only those are
-  // offered. Index is always available as the fallback.
-  const negotiatorOptions = [
-    { id:"index", label:"Index · system default" },
-    ...rows.filter(a => a.on && !a.builtin)
-      .map(a => ({ id:a.id, label:`${a.name} · on this mac` })),
-  ];
 
   return (
     <div style={{
-      position:"absolute", inset:0,
-      display:"grid", placeItems:"center",
-      gridTemplateColumns:"minmax(0, 1fr)",
-      padding:"56px 40px", overflow:"auto",
+      position:"absolute", inset:0, display:"grid", placeItems:"center",
+      gridTemplateColumns:"minmax(0, 1fr)", padding:"56px 40px", overflow:"auto",
     }}>
-      {/* Takes the screen it is given: tall enough that the runtimes and the
-          negotiator both sit above the fold on a laptop, and it still gives way
-          to the desktop margin on a short one. */}
-      <div style={{
-        width:860, maxWidth:"100%",
-        height:"min(880px, calc(100vh - 96px))",
-      }}>
-        <MacWindow
-          title="index · agents"
-          onClose={onClose}
-          style={{ height:"100%", minHeight:0 }}>
-
+      <div style={{ width:860, maxWidth:"100%", height:"min(780px, calc(100vh - 96px))" }}>
+        <MacWindow title="index · Personal Agent" onClose={onClose} style={{ height:"100%", minHeight:0 }}>
           <div style={{ padding:"18px 24px 14px", borderBottom:"2px solid #000" }}>
-            <div style={{
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-            }}>
-              <h2 style={{
-                margin:0,
-                fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700, color:"#000",
-              }}>agents</h2>
-              <ActionButton
-                title="look for agent runtimes again"
-                onClick={check}>
-                <span style={{ display:"inline-flex", alignItems:"center", gap:7 }}>
-                  <span style={{
-                    display:"inline-block",
-                    animation: checking ? "mac-orbit 0.7s linear infinite" : "none",
-                  }}>↻</span>
-                  {checking ? "checking" : "check again"}
-                </span>
-              </ActionButton>
-            </div>
+            <h2 style={{ margin:0, fontFamily:"var(--mac-mono)", fontSize:22, fontWeight:700 }}>
+              Personal Agent
+            </h2>
             <p style={{
-              margin:"10px 0 0", maxWidth:560,
+              margin:"10px 0 0", maxWidth:620,
               fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"var(--ink-2)",
             }}>
-              agents on this mac can act for you. what each one is allowed to
-              do is set here.
+              one agent speaks for you in the network. choose which runtime carries it.
             </p>
           </div>
-
           <div className="mac-scroll" style={{
-            flex:"1 1 auto", minHeight:0, overflowY:"auto",
-            padding:"18px 24px 22px",
+            flex:"1 1 auto", minHeight:0, overflowY:"auto", padding:"18px 24px 22px",
           }}>
-            {/* What's on the machine first, then who speaks for you out of it.
-                the inventory is the concrete thing, the negotiator is the choice
-                you make from it. */}
-            <RuleLabel size={13}>runtimes</RuleLabel>
-            <p style={{
-              margin:"8px 0 10px", maxWidth:560,
-              fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-            }}>
-              connected agents can create signals and negotiate for you.
-            </p>
-
-            {/* one framed block; rows divide it, so it reads as a single
-                inventory of this machine rather than four loose cards */}
-            <div style={{
-              border:"1px solid #000", background:"#fff",
-              boxShadow:"2px 2px 0 rgba(0,0,0,0.22)",
-              opacity: checking ? 0.5 : 1,
-              transition:"opacity 140ms linear",
-            }}>
-              {rows.map((a, i) => (
-                <AgentRow
-                  key={a.id}
-                  last={i === rows.length - 1}
-                  agent={a}
-                  expanded={expanded === a.id}
-                  onToggleExpand={(id) => setExpanded(e => e === id ? null : id)}
-                  onToggleOn={toggleOn}
-                  perms={perms[a.id] || {}}
-                  onTogglePerm={togglePerm}
-                />
-              ))}
-              {/* index is always here, so "empty" means no local runtimes */}
-              {rows.length === 1 && (
-                <div style={{
-                  padding:"12px", borderTop:"1px solid #000",
-                  fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-3)",
-                }}>no other agent runtimes found on this mac</div>
-              )}
+            <RuleLabel size={13}>negotiation runtime</RuleLabel>
+            <div style={{ marginTop:9 }}>
+              <NegotiatorSelect
+                value={runtimeView.selectorValue}
+                disabled={busy}
+                onChange={value => value === "hermes" ? selectHermes() : selectIndex()}
+              />
+              <RuntimeStatus
+                runtimeView={runtimeView}
+                busy={busy}
+                onRetry={retry}
+                onDisconnect={disconnect}
+              />
             </div>
-
-            <SectionRule size={13}>negotiator agent</SectionRule>
-            {/* no measure cap on this one: it is one sentence and it should
-                stay one line, so it gets the full width of the pane */}
-            <p style={{
-              margin:"8px 0 12px",
-              fontFamily:"var(--mac-sans)", fontSize:12, lineHeight:1.5, color:"var(--ink-2)",
-            }}>
-              one agent speaks for you in the network. pick which runtime carries it.
-            </p>
-
+            <SectionRule size={13}>identity, history, and policy</SectionRule>
             <NegotiatorProfile
               agent={myNegotiator}
-              runtimeOptions={negotiatorOptions}
-              runtime={negotiator}
-              onChangeRuntime={setNegotiator}
+              onShuffle={shuffleFace}
+              onOpenMemory={onOpenMemory}
+              onOpenHistory={onOpenHistory}
             />
           </div>
         </MacWindow>
@@ -39193,6 +40197,7 @@ window.NegotiationHistory = NegotiationHistory;
 
 </script>
 <script type="text/babel">
+/* global useIndexEnv */
 // Intents, Workbench shelf of saved searches. This is the app's hub:
 // brand promise ("find your others"), active signals, and the entry point for
 // a new signal.
@@ -39456,7 +40461,13 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Networks onClose={() => setShowNetworks(false)}/>;
   }
   if (showAgents) {
-    return <Agents onClose={() => setShowAgents(false)}/>;
+    return (
+      <Agents
+        onClose={() => setShowAgents(false)}
+        onOpenMemory={() => { setShowAgents(false); setSettingsTab("profile"); }}
+        onOpenHistory={() => { setShowAgents(false); setShowHistory(true); }}
+      />
+    );
   }
   if (showHistory) {
     return <NegotiationHistory onClose={() => setShowHistory(false)}/>;
@@ -43530,6 +44541,7 @@ function App() {
 
   return (
     <IndexDataContext.Provider value={{ data, me, networks, features, live }}>
+      <AgentRuntimeProvider ownerCredential={window.IndexApp && window.IndexApp.apiKey()}>
       <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
@@ -43583,6 +44595,7 @@ function App() {
           />
         )}
       </div>
+      </AgentRuntimeProvider>
     </IndexDataContext.Provider>
   );
 }

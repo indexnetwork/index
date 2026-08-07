@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createIndexApiClient, normalizeApiBaseUrl, toQueryString } from './client.mjs';
+import {
+  createIndexApiClient, createPinnedIndexApiClient, normalizeApiBaseUrl, toQueryString,
+} from './client.mjs';
 
 const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
 
@@ -42,6 +44,43 @@ describe('mac Index API client endpoint contract', () => {
   it('normalizes base URLs and query strings', () => {
     expect(normalizeApiBaseUrl('https://protocol.example/api///')).toBe('https://protocol.example/api');
     expect(toQueryString({ status: 'pending', empty: '', nil: null, missing: undefined, limit: 20 })).toBe('?status=pending&limit=20');
+  });
+
+  it('pins one owner credential instead of rereading a mutable native source', async () => {
+    const { calls, fetchImpl } = createRecordingFetch();
+    let nativeCredential = 'owner-A';
+    const client = createPinnedIndexApiClient({
+      apiBaseUrl: 'https://protocol.example/api', fetchImpl,
+    }, nativeCredential);
+    nativeCredential = 'owner-B';
+    expect(nativeCredential).toBe('owner-B');
+    await client.getRuntimeBinding('installation-1');
+    await client.rollbackHermesRuntime('setup-1');
+    expect(calls.map((call) => call.init.headers['x-api-key'])).toEqual(['owner-A', 'owner-A']);
+  });
+
+  it('uses generation-fenced owner-control runtime endpoints', async () => {
+    const installationId = '00000000-0000-4000-8000-000000000001';
+    const executorId = '00000000-0000-4000-8000-000000000002';
+    const setupAttemptId = '00000000-0000-4000-8000-000000000003';
+    await expectCall('getRuntimeBinding', (client) => client.getRuntimeBinding(installationId), {
+      path: `/agent-runtime?installationId=${installationId}`,
+    });
+    await expectCall('prepareHermesRuntime', (client) => client.prepareHermesRuntime(installationId, setupAttemptId), {
+      path: '/agent-runtime/hermes/prepare', method: 'POST', body: { installationId, setupAttemptId },
+    });
+    await expectCall('setRuntimeBinding index', (client) => client.setRuntimeBinding({ runtime: 'index' }), {
+      path: '/agent-runtime', method: 'PUT', body: { runtime: 'index' },
+    });
+    await expectCall('setRuntimeBinding hermes', (client) => client.setRuntimeBinding({ runtime: 'hermes', installationId, executorId, setupAttemptId }), {
+      path: '/agent-runtime', method: 'PUT', body: { runtime: 'hermes', installationId, executorId, setupAttemptId },
+    });
+    await expectCall('rollbackHermesRuntime', (client) => client.rollbackHermesRuntime(setupAttemptId), {
+      path: '/agent-runtime/rollback', method: 'POST', body: { setupAttemptId },
+    });
+    await expectCall('disconnectHermesRuntime', (client) => client.disconnectHermesRuntime(installationId), {
+      path: `/agent-runtime/hermes/${installationId}`, method: 'DELETE',
+    });
   });
 
   it('uses controller-backed auth/network/intent endpoints', async () => {

@@ -18,12 +18,15 @@ OUT = ROOT / "Resources" / "index.html"
 API_DIR = ROOT.parent / "api"
 # Symbols the app bundle consumes off window.IndexApi.
 API_EXPORTS = [
-    "createIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
+    "createIndexApiClient", "createPinnedIndexApiClient", "IndexApiError", "normalizeApiBaseUrl", "toQueryString",
     "mapIndexSnapshot", "mapIntents", "mapIntent",
     "mapPeopleFromRadarItems", "mapPersonFromRadarCard", "mapPeopleFromOpportunities",
     "mapCounterpartProfile", "mapSocials",
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
     "parseDeepLink", "isIndexDeepLink",
+    "mapAgentRuntimeState", "waitForHermesHealth", "createHermesRuntimeBridge", "HERMES_RUNTIME_TIMEOUTS_MS", "HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS",
+    "runHermesSelectionSaga", "bootstrapHermesRuntime", "reconcileHermesSaga", "selectIndexRuntime", "disconnectHermesSaga",
+    "createLocalStorageSagaJournal", "createAgentRuntimeCoordinator", "runViewRuntimeAction", "HERMES_SETUP_JOURNAL_STAGES",
 ]
 
 # Pinned CDN URLs -> local vendored files (downloaded once into src/vendor/).
@@ -56,11 +59,15 @@ for url, fname in VENDOR.items():
 #      injected before the babel scripts so api.jsx can build a client from it.
 def build_index_api() -> str:
     parts = []
-    for fname in ("client.mjs", "mappers.mjs", "deeplink.mjs"):
+    for fname in (
+        "client.mjs", "mappers.mjs", "deeplink.mjs",
+        "agent-runtime.mjs", "agent-runtime-saga.mjs",
+    ):
         code = (API_DIR / fname).read_text()
         if "</script" in code:
             raise SystemExit(f"refusing to inline {fname}: contains </script")
         # Strip ES module syntax, the IIFE keeps everything in one closure scope.
+        code = re.sub(r'^import\s+[^\n]+\n', '', code, flags=re.MULTILINE)
         code = re.sub(r'^export\s+', '', code, flags=re.MULTILINE)
         parts.append(code)
     assigns = ", ".join(f"{name}: {name}" for name in API_EXPORTS)

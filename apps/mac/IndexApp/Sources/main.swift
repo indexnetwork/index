@@ -429,6 +429,11 @@ document.addEventListener('mousedown', function (e) {
 }, true);
 """
 
+struct HermesRuntimeProgress: Encodable {
+    let requestId: String
+    let event: String
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     var webView: WKWebView!
@@ -805,6 +810,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
         hermesRuntimeQueue.async { [weak self] in
             guard let self else { return }
+            // Credential-free dequeue acknowledgement. It is emitted from
+            // inside the serial queue immediately before handle so JavaScript
+            // can distinguish bounded queue wait from bounded execution.
+            self.emitHermesRuntimeProgress(
+                HermesRuntimeProgress(requestId: request.requestId, event: "started"),
+                admittedGeneration: admittedGeneration
+            )
             let result = self.hermesRuntime.handle(request)
             DispatchQueue.main.async { [weak self] in
                 self?.emitHermesRuntimeResult(
@@ -825,6 +837,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             return false
         }
         return true
+    }
+
+    private func emitHermesRuntimeProgress(
+        _ progress: HermesRuntimeProgress,
+        admittedGeneration: UInt64
+    ) {
+        let json = (try? JSONEncoder().encode(progress))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? "{\"requestId\":\"\",\"event\":\"invalid\"}"
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.webViewReady,
+                  admittedGeneration == self.trustedDocumentGeneration,
+                  let trustedBundledDocumentURL = self.trustedBundledDocumentURL,
+                  self.webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
+            self.webView.evaluateJavaScript(
+                "if (typeof window.__indexHermesRuntimeProgress === 'function') { window.__indexHermesRuntimeProgress(\(json)); }",
+                completionHandler: nil
+            )
+        }
     }
 
     private func emitHermesRuntimeResult(

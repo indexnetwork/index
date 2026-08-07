@@ -11,6 +11,7 @@ enum HermesRuntimeCommand: String, Decodable {
 struct HermesRuntimeRequest: Decodable {
     let requestId: String
     let command: HermesRuntimeCommand
+    let ownerId: String?
     let installationId: String?
     let executorId: String?
     let setupAttemptId: String?
@@ -19,6 +20,7 @@ struct HermesRuntimeRequest: Decodable {
 
 struct HermesLocalState: Codable {
     let installationId: String
+    let ownerId: String?
     let executorId: String?
     let pluginInstalled: Bool
     let negotiatorMode: Bool
@@ -52,7 +54,8 @@ enum HermesSetupStage: String, Codable {
 struct HermesSetupJournal: Codable {
     let setupAttemptId: String
     let stage: HermesSetupStage
-    let executorId: String?
+    let ownerId: String
+    let executorId: String
 }
 
 /// The completed generation is retained separately from the in-progress
@@ -60,6 +63,8 @@ struct HermesSetupJournal: Codable {
 /// later stale disconnect is still fenced from the current local wiring.
 struct HermesInstallationRecord: Codable {
     let installationId: String
+    var currentOwnerId: String?
+    var currentExecutorId: String?
     var currentSetupAttemptId: String?
 }
 
@@ -86,6 +91,8 @@ private enum HermesRuntimeFailure: Error {
     case gatewayStatusFailed
     case commandTimedOut
     case activationRollbackFailed
+    case ownerMismatch
+    case ownerUnattributed
     case localCleanupFailed
     case internalFailure
 
@@ -113,6 +120,8 @@ private enum HermesRuntimeFailure: Error {
         case .gatewayStatusFailed: return "gateway_status_failed"
         case .commandTimedOut: return "command_timed_out"
         case .activationRollbackFailed: return "activation_rollback_failed"
+        case .ownerMismatch: return "owner_mismatch"
+        case .ownerUnattributed: return "owner_unattributed"
         case .localCleanupFailed: return "local_cleanup_failed"
         case .internalFailure: return "internal_failure"
         }
@@ -121,7 +130,7 @@ private enum HermesRuntimeFailure: Error {
     var retryable: Bool {
         switch self {
         case .invalidArguments, .installationStoreInvalid, .journalInvalid,
-             .cronStoreInvalid, .cronAmbiguous:
+             .cronStoreInvalid, .cronAmbiguous, .ownerMismatch:
             return false
         default:
             return true
@@ -690,6 +699,11 @@ private final class HermesLocalStore {
                 ), !record.installationId.isEmpty else {
                     throw HermesRuntimeFailure.installationStoreInvalid
                 }
+                // Records written before owner fencing contain a confirmed
+                // generation but no owner/executor fields. Preserve and return
+                // that evidence so inspect can pause the owned schedule before
+                // surfacing an unattributed state; rejecting here would skip
+                // the safety action and make the error-state fallback fail too.
                 return record
             }
         } catch let failure as HermesRuntimeFailure {
@@ -698,6 +712,8 @@ private final class HermesLocalStore {
         }
         let record = HermesInstallationRecord(
             installationId: UUID().uuidString.lowercased(),
+            currentOwnerId: nil,
+            currentExecutorId: nil,
             currentSetupAttemptId: nil
         )
         try saveInstallation(record)
@@ -718,7 +734,9 @@ private final class HermesLocalStore {
         catch { throw HermesRuntimeFailure.journalInvalid }
         guard let snapshot else { return nil }
         guard let journal = try? JSONDecoder().decode(HermesSetupJournal.self, from: snapshot.data),
-              !journal.setupAttemptId.isEmpty else {
+              !journal.setupAttemptId.isEmpty,
+              !journal.ownerId.isEmpty,
+              !journal.executorId.isEmpty else {
             throw HermesRuntimeFailure.journalInvalid
         }
         return journal
@@ -1104,14 +1122,45 @@ final class HermesRuntimeManager {
 
     private func inspect(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try HermesLocalStore()
-        let installation = try store.loadOrCreateInstallation()
-        var journal = try store.loadJournal()
+        var installation = try store.loadOrCreateInstallation()
+        var journal: HermesSetupJournal?
+        do {
+            journal = try store.loadJournal()
+        } catch let failure as HermesRuntimeFailure {
+            // Preserve malformed native recovery evidence. The installation
+            // record still supplies a generation fence, so pause only the exact
+            // owned schedule before surfacing journal_invalid.
+            if case .journalInvalid = failure,
+               installation.currentSetupAttemptId != nil,
+               let cron = try cronStore.ownedJob(), cron.enabled {
+                let hermes = try requireHermesBinary()
+                try pauseOwnedCron(hermes, knownJob: cron)
+            }
+            throw failure
+        }
         if installation.currentSetupAttemptId == nil,
            journal?.stage == .disconnectCleanupComplete {
             try finishTerminalDisconnect(store: store)
+            installation.currentOwnerId = nil
+            installation.currentExecutorId = nil
+            try store.saveInstallation(installation)
             journal = nil
         }
         let cron = try cronStore.ownedJob()
+        let generationOwnerIsUnattributed = installation.currentSetupAttemptId != nil
+            && (installation.currentOwnerId?.isEmpty != false
+                || installation.currentExecutorId?.isEmpty != false)
+        if generationOwnerIsUnattributed {
+            // Pre-owner schema migration is observation-only: retain the exact
+            // installation/generation and never assign the inspecting login.
+            // Pause the one exact owned job before the error is surfaced; the
+            // handler's local-state fallback consequently observes it disabled.
+            if cron?.enabled == true {
+                let hermes = try requireHermesBinary()
+                try pauseOwnedCron(hermes, knownJob: cron)
+            }
+            throw HermesRuntimeFailure.ownerUnattributed
+        }
         if journal != nil, cron?.enabled == true {
             let hermes = try requireHermesBinary()
             try pauseOwnedCron(hermes, knownJob: cron)
@@ -1129,7 +1178,8 @@ final class HermesRuntimeManager {
     private func configureDisabled(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try HermesLocalStore()
         var installation = try store.loadOrCreateInstallation()
-        guard let requestedInstallationId = request.installationId,
+        guard let ownerId = validValue(request.ownerId),
+              let requestedInstallationId = request.installationId,
               requestedInstallationId == installation.installationId,
               let executorId = validValue(request.executorId),
               let setupAttemptId = validValue(request.setupAttemptId),
@@ -1139,7 +1189,12 @@ final class HermesRuntimeManager {
 
         // Journal first: a crash after this point makes relaunch inspection
         // pause any owned schedule before JavaScript performs server rollback.
-        try saveStage(.preparing, attempt: setupAttemptId, executor: executorId, store: store)
+        try saveStage(
+            .preparing, owner: ownerId, attempt: setupAttemptId,
+            executor: executorId, store: store
+        )
+        installation.currentOwnerId = ownerId
+        installation.currentExecutorId = executorId
         installation.currentSetupAttemptId = setupAttemptId
         try store.saveInstallation(installation)
 
@@ -1162,14 +1217,23 @@ final class HermesRuntimeManager {
         } catch {
             throw HermesRuntimeFailure.envWriteFailed
         }
-        try saveStage(.environmentWritten, attempt: setupAttemptId, executor: executorId, store: store)
+        try saveStage(
+            .environmentWritten, owner: ownerId, attempt: setupAttemptId,
+            executor: executorId, store: store
+        )
 
         try removeDesktopDashboard()
         try reconcilePlugin(hermes)
-        try saveStage(.pluginInstalled, attempt: setupAttemptId, executor: executorId, store: store)
+        try saveStage(
+            .pluginInstalled, owner: ownerId, attempt: setupAttemptId,
+            executor: executorId, store: store
+        )
 
         try reconcileDisabledCron(hermes)
-        try saveStage(.scheduleDisabled, attempt: setupAttemptId, executor: executorId, store: store)
+        try saveStage(
+            .scheduleDisabled, owner: ownerId, attempt: setupAttemptId,
+            executor: executorId, store: store
+        )
 
         return try success(request, stage: HermesSetupStage.scheduleDisabled.rawValue)
     }
@@ -1177,19 +1241,28 @@ final class HermesRuntimeManager {
     private func enable(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try HermesLocalStore()
         let installation = try store.loadOrCreateInstallation()
-        guard let expectedSetupAttemptId = validValue(request.setupAttemptId) else {
+        guard let ownerId = validValue(request.ownerId),
+              let expectedSetupAttemptId = validValue(request.setupAttemptId) else {
             throw HermesRuntimeFailure.invalidArguments
+        }
+        guard installation.currentOwnerId == ownerId else {
+            throw HermesRuntimeFailure.ownerMismatch
         }
         guard installation.currentSetupAttemptId == expectedSetupAttemptId else {
             return try success(request, stage: "enable_noop")
         }
 
         let journal = try store.loadJournal()
-        let executor: String?
+        let executor: String
         if journal?.setupAttemptId == expectedSetupAttemptId {
-            executor = journal?.executorId
+            guard journal?.ownerId == ownerId, let journalExecutor = journal?.executorId else {
+                throw HermesRuntimeFailure.journalInvalid
+            }
+            executor = journalExecutor
+        } else if let currentExecutor = installation.currentExecutorId {
+            executor = currentExecutor
         } else {
-            executor = try environment.values()["INDEX_AGENT_ID"]
+            throw HermesRuntimeFailure.installationStoreInvalid
         }
 
         guard let job = try cronStore.ownedJob(),
@@ -1206,7 +1279,10 @@ final class HermesRuntimeManager {
             return try success(request, stage: stage)
         }
 
-        try saveStage(.enabling, attempt: expectedSetupAttemptId, executor: executor, store: store)
+        try saveStage(
+            .enabling, owner: ownerId, attempt: expectedSetupAttemptId,
+            executor: executor, store: store
+        )
         let hermes = try requireHermesBinary()
         if !job.enabled {
             let resume = try runner.run(executable: hermes, arguments: ["cron", "resume", job.id])
@@ -1235,7 +1311,10 @@ final class HermesRuntimeManager {
             try rollbackActivation(hermes, job: job)
             throw HermesRuntimeFailure.gatewayFailed
         }
-        try saveStage(.awaitingHeartbeat, attempt: expectedSetupAttemptId, executor: executor, store: store)
+        try saveStage(
+            .awaitingHeartbeat, owner: ownerId, attempt: expectedSetupAttemptId,
+            executor: executor, store: store
+        )
         return try success(request, stage: HermesSetupStage.awaitingHeartbeat.rawValue)
     }
 
@@ -1254,8 +1333,12 @@ final class HermesRuntimeManager {
     private func confirmHealthy(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try HermesLocalStore()
         let installation = try store.loadOrCreateInstallation()
-        guard let expectedSetupAttemptId = validValue(request.setupAttemptId) else {
+        guard let ownerId = validValue(request.ownerId),
+              let expectedSetupAttemptId = validValue(request.setupAttemptId) else {
             throw HermesRuntimeFailure.invalidArguments
+        }
+        guard installation.currentOwnerId == ownerId else {
+            throw HermesRuntimeFailure.ownerMismatch
         }
         guard installation.currentSetupAttemptId == expectedSetupAttemptId else {
             return try success(request, stage: "confirm_healthy_noop")
@@ -1265,6 +1348,9 @@ final class HermesRuntimeManager {
         }
         guard journal.setupAttemptId == expectedSetupAttemptId else {
             return try success(request, stage: "confirm_healthy_noop")
+        }
+        guard journal.ownerId == ownerId else {
+            throw HermesRuntimeFailure.ownerMismatch
         }
         guard journal.stage == .awaitingHeartbeat else {
             throw HermesRuntimeFailure.invalidArguments
@@ -1279,7 +1365,9 @@ final class HermesRuntimeManager {
     private func disable(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try HermesLocalStore()
         let installation = try store.loadOrCreateInstallation()
-        guard let expectedSetupAttemptId = validValue(request.setupAttemptId),
+        guard let ownerId = validValue(request.ownerId),
+              installation.currentOwnerId == ownerId,
+              let expectedSetupAttemptId = validValue(request.setupAttemptId),
               installation.currentSetupAttemptId == expectedSetupAttemptId else {
             return try success(request, stage: "disable_noop")
         }
@@ -1296,16 +1384,24 @@ final class HermesRuntimeManager {
     private func disconnect(_ request: HermesRuntimeRequest) throws -> HermesRuntimeResult {
         let store = try HermesLocalStore()
         var installation = try store.loadOrCreateInstallation()
-        guard let expectedSetupAttemptId = validValue(request.setupAttemptId) else {
+        guard let ownerId = validValue(request.ownerId),
+              let expectedSetupAttemptId = validValue(request.setupAttemptId) else {
             throw HermesRuntimeFailure.invalidArguments
+        }
+        guard installation.currentOwnerId == ownerId else {
+            throw HermesRuntimeFailure.ownerMismatch
         }
         let journal = try store.loadJournal()
         if installation.currentSetupAttemptId == nil {
-            guard journal?.setupAttemptId == expectedSetupAttemptId,
+            guard journal?.ownerId == ownerId,
+                  journal?.setupAttemptId == expectedSetupAttemptId,
                   journal?.stage == .disconnectCleanupComplete else {
                 return try success(request, stage: "disconnect_noop")
             }
             try finishTerminalDisconnect(store: store)
+            installation.currentOwnerId = nil
+            installation.currentExecutorId = nil
+            try store.saveInstallation(installation)
             return try success(request, stage: "disconnected")
         }
         guard installation.currentSetupAttemptId == expectedSetupAttemptId else {
@@ -1315,8 +1411,13 @@ final class HermesRuntimeManager {
         // Disconnect does not need to reread the credential-bearing env merely
         // to annotate recovery state; cleanup must still run if that file is
         // unreadable, with env removal itself reporting the stable failure.
-        let executor = journal?.executorId
-        try saveStage(.disconnecting, attempt: expectedSetupAttemptId, executor: executor, store: store)
+        guard let executor = installation.currentExecutorId else {
+            throw HermesRuntimeFailure.installationStoreInvalid
+        }
+        try saveStage(
+            .disconnecting, owner: ownerId, attempt: expectedSetupAttemptId,
+            executor: executor, store: store
+        )
 
         // Safe app-owned filesystem cleanup continues even when CLI work fails
         // or the executable disappeared. The generation/journal remain until
@@ -1431,6 +1532,7 @@ final class HermesRuntimeManager {
         // this exact state, reproves postconditions, and completes the unlink.
         try saveStage(
             .disconnectCleanupComplete,
+            owner: ownerId,
             attempt: expectedSetupAttemptId,
             executor: executor,
             store: store
@@ -1438,6 +1540,9 @@ final class HermesRuntimeManager {
         installation.currentSetupAttemptId = nil
         try store.saveInstallation(installation)
         try finishTerminalDisconnect(store: store)
+        installation.currentOwnerId = nil
+        installation.currentExecutorId = nil
+        try store.saveInstallation(installation)
         return try success(request, stage: "disconnected")
     }
 
@@ -1612,13 +1717,15 @@ final class HermesRuntimeManager {
 
     private func saveStage(
         _ stage: HermesSetupStage,
+        owner: String,
         attempt: String,
-        executor: String?,
+        executor: String,
         store: HermesLocalStore
     ) throws {
         try store.saveJournal(HermesSetupJournal(
             setupAttemptId: attempt,
             stage: stage,
+            ownerId: owner,
             executorId: executor
         ))
     }
@@ -1631,7 +1738,8 @@ final class HermesRuntimeManager {
         let cron = try cronStore.ownedJob()
         return HermesLocalState(
             installationId: installation.installationId,
-            executorId: journal?.executorId ?? env["INDEX_AGENT_ID"],
+            ownerId: journal?.ownerId ?? installation.currentOwnerId,
+            executorId: journal?.executorId ?? installation.currentExecutorId ?? env["INDEX_AGENT_ID"],
             pluginInstalled: try isPluginInstalled(),
             negotiatorMode: env["INDEX_PLUGIN_MODE"] == "negotiator",
             schedulePresent: cron != nil,

@@ -157,6 +157,7 @@ class RuntimeMemoryStore implements AgentRuntimeStore {
         && item.runtimeSetupAttemptId === input.expectedSetupAttemptId);
       if (!current) return false;
       current.handleNegotiations = false;
+      current.status = 'inactive';
       current.permissions = [];
       current.runtimeSetupAttemptId = null;
       this.credentials.delete(current.id);
@@ -221,6 +222,26 @@ describe('AgentRuntimeService', () => {
 
     expect((await service.setRuntime(OWNER_ID, { runtime: 'index' })).selectedRuntime).toBe('index');
     expect(store.enabledNegotiators(OWNER_ID)).toEqual([]);
+  });
+
+  it('exposes non-secret authoritative installation generation state for lost-response recovery', async () => {
+    const store = new RuntimeMemoryStore();
+    const service = new AgentRuntimeService(store);
+    const prepared = await service.prepareHermes(OWNER_ID, INSTALLATION_ID, 'setup-proof');
+
+    expect((await service.getRuntime(OWNER_ID, INSTALLATION_ID)).installation).toEqual({
+      executorId: prepared.executorId,
+      installationId: INSTALLATION_ID,
+      setupAttemptId: 'setup-proof',
+      status: 'active',
+    });
+    expect(await service.rollbackHermes(OWNER_ID, 'setup-proof')).toBe(true);
+    expect((await service.getRuntime(OWNER_ID, INSTALLATION_ID)).installation).toEqual({
+      executorId: prepared.executorId,
+      installationId: INSTALLATION_ID,
+      setupAttemptId: null,
+      status: 'inactive',
+    });
   });
 
   it('serializes concurrent prepares to one executor and one current generation credential', async () => {
@@ -353,6 +374,7 @@ describe('AgentRuntimeService', () => {
     expect(await service.getRuntime(OWNER_ID, INSTALLATION_ID)).toEqual({
       selectedRuntime: 'index',
       executor: null,
+      installation: null,
       health: 'never-seen',
       indexCovering: true,
       freshnessThresholdMs: NEGOTIATION_EXECUTOR_FRESHNESS_MS,

@@ -955,3 +955,68 @@ const MODEL_CONFIG = {
 - **Chat agent** uses the more capable `gemini-3-pro-preview` because it orchestrates complex multi-tool interactions and needs strong reasoning
 - **All other agents** use `gemini-2.5-flash` for speed and cost efficiency -- they perform focused, single-purpose tasks with structured output
 - **Creative agents** (suggestion generator, invite generator, chat title generator) have lower temperatures (0.3-0.4) and capped token limits for concise, deterministic output
+
+
+---
+
+## Hermes Personal Agent Negotiation Runtime
+
+`AgentRuntimeController` exposes the owner-control binding at
+`/api/agent-runtime`: read by installation, prepare one generation, select Index
+or exact Hermes generation, compare-and-rollback a generation, and disconnect an
+installation. `AgentRuntimeService` projects `selectedRuntime`, the admitted
+executor, negotiation-specific heartbeat health, and `indexCovering` from one
+server-authoritative binding. `external` is preserved for selected legacy
+pollers without a Hermes installation identity; clients must not infer Hermes
+from an agent name.
+
+Preparation creates or reuses one Hermes executor keyed by the stable local
+`installationId`, rotates to one generation-bound key, and leaves polling
+authority disabled. Activation is owner-locked and accepts the exact executor,
+installation, and `setupAttemptId`; it removes authority from any former
+external executor and grants the target exactly `manage:negotiations`. Rollback
+is compare-and-clear. Selecting Index removes preferred external pickup
+authority but does not revoke the connected installation. Disconnect selects
+Index, revokes every key for that installation, and marks its executor inactive.
+
+Dispatch uses `lastNegotiationPickupAt` and the shared 90-second server threshold,
+not local process detection. A stale or never-seen preferred executor is covered
+inline by Index before parking. A fresh executor may park a turn, but the
+existing response-window/claim timers bound pickup and completion; stopped or
+invalid external execution falls back once through the same atomic task state.
+Both executors receive the same owner-scoped context, memory, policy envelope,
+seat rules, and persisted history.
+
+An exact selected active poller with its exact agent-bound key can call
+`POST /api/agents/:agentId/negotiations/:negotiationId/consult`. Admission binds
+the exact owner, agent, claim, attempt, actor intent, opportunity, task, and
+policy eligibility. Only `disclosureSubject` and optional `draftQuestion` cross
+the endpoint. The server authors and persists the `ask_user` turn, arms expiry,
+and transitions the exact task to `input_required`; answering, dismissal, or
+expiry resumes only the settlement-bound successor through the existing
+Questioner continuation pipeline.
+
+The Index macOS JavaScript saga is dependency-injected and has no filesystem or
+server shortcuts. A request-correlated native bridge owns local env/plugin/cron
+work and returns credential-free state. Swift acknowledges dequeue from inside
+its serial queue before native handling; JavaScript applies separate bounded
+queue-wait and per-command execution timers. Its journal stages are `preparing`,
+`environmentWritten`, `pluginInstalled`, `scheduleDisabled`, `enabling`,
+`awaitingHeartbeat`, `disconnecting`, and `disconnectCleanupComplete`. The
+always-mounted authenticated app runtime provider performs relaunch inspection;
+it is not coupled to opening the Personal Agent view. Inspection pauses any
+owned enabled schedule with a nonterminal journal; JavaScript then performs
+exact server rollback/revocation before matching native cleanup. Journals carry
+the authenticated app-user `ownerId`; on mismatch the new owner performs no
+owner-scoped server read/rollback and cannot clear the old record, while local
+inspection or generation-matched disable leaves the schedule paused for the
+original owner's recovery. After a lost rollback response, cleanup is permitted
+only when a read through that exact pinned owner proves the recorded generation
+authoritatively absent; network uncertainty and malformed journals remain
+preserved. Generation no-ops remain safe for reconciliation, but setup selection rejects them:
+configure, enable, and confirm must each return its expected stage and complete
+matching local generation. The health wait races both reads and clamped sleeps
+against one hard wall-clock deadline. The active UI projection additionally
+requires matching installation/executor plus a completed generation, installed
+negotiator-mode plugin, and present enabled schedule; partial wiring is reported
+as needs-attention with Index covering.
