@@ -29,8 +29,6 @@ export interface PreviewUserEnrichmentRunInput {
   name?: string;
   location?: string;
   bioOrDescription?: string;
-  edgeosProfileText?: string;
-  allowPublicLookup?: boolean;
   linkedinUrl?: string;
   githubUrl?: string;
   twitterUrl?: string;
@@ -61,8 +59,7 @@ export interface EnrichmentRunRecord {
     "scopeId" |
     "indexName" |
     "sessionId" |
-    "agentId" |
-    "clientSurface"
+    "agentId"
   >;
   progress?: Record<string, unknown> | null;
   result?: unknown;

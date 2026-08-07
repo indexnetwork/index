@@ -68,6 +68,9 @@ describe('UserContextQueue', () => {
       generateGlobalContext,
       upsertUserContext,
       generateContextHyde,
+      // Fast-intake pack is out of scope for this suite — report already-fresh so the
+      // production default (real generator/DB) is never reached.
+      getExistingIntakePack: async () => ({ premiseHash: currentHash }),
     };
 
     const queue = new UserContextQueue(deps);
@@ -107,6 +110,9 @@ describe('UserContextQueue', () => {
       generateGlobalContext: async () => ({ text: 'global-ctx', embedding: [0.2] }),
       upsertUserContext,
       generateContextHyde,
+      // Fast-intake pack is out of scope for this suite — report already-fresh so the
+      // production default (real generator/DB) is never reached.
+      getExistingIntakePack: async () => ({ premiseHash: currentHash }),
     };
 
     const queue = new UserContextQueue(deps);
@@ -147,6 +153,9 @@ describe('UserContextQueue', () => {
       generateGlobalContext,
       upsertUserContext,
       generateContextHyde,
+      // Fast-intake pack is out of scope for this suite — report already-fresh so the
+      // production default (real generator/DB) is never reached.
+      getExistingIntakePack: async () => ({ premiseHash: currentHash }),
     });
     await queue.processJob('regenerate_contexts', { userId: 'u1', reason: 'enrichment_complete' });
 

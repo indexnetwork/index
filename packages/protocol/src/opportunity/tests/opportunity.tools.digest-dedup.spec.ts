@@ -11,7 +11,7 @@ import type { PresenterDatabase } from '../opportunity.presenter.js';
 
 // ─── Presenter test doubles injected via ToolDeps (no cross-file module mocks) ───
 
-const presentHomeCardMock = mock(async (_input: unknown) => ({
+const presentCardMock = mock(async (_input: unknown) => ({
   headline: 'Test Headline',
   personalizedSummary: 'Test personalized summary.',
   digestSummary: 'A relevant person for your current signals.',
@@ -150,7 +150,7 @@ function makeDeps(opts: {
     } as unknown as ToolDeps['negotiationDatabase'],
     deliveryLedger: deliveryLedger as unknown as ToolDeps['deliveryLedger'],
     opportunityPresentation: {
-      createPresenter: () => ({ presentHomeCard: (input: unknown) => presentHomeCardMock(input) }),
+      createPresenter: () => ({ presentCard: (input: unknown) => presentCardMock(input) }),
       gatherPresenterContext: (database: PresenterDatabase, opportunity: Opportunity, viewerId: string) =>
         gatherPresenterContextMock(database, opportunity, viewerId),
     },

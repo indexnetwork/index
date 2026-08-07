@@ -53,14 +53,16 @@ export interface CandidateMatch {
   candidatePremiseId?: Id<'premises'>;
   /** Source context that produced this candidate (set when discoverySource is 'context-to-intent'). */
   sourceContextId?: string;
+  /** Candidate context that matched this candidate (set for user_context-based matches). */
+  candidateContextId?: string;
   networkId: Id<'networks'>;
   similarity: number;
   /** Free-text lens label that produced this match. */
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text), 'premise-similarity', or 'context-to-intent'. */
-  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent';
+  /** How this candidate was found: 'query' (HyDE from search text), 'premise-similarity', 'context-to-intent', or 'context-similarity'. */
+  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent' | 'context-similarity';
   /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
   matchedStrategies?: string[];
   /** Typed evidence that explains why this candidate entered evaluation. */

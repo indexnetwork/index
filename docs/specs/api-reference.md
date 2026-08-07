@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-04-08
+updated: 2026-08-02
 ---
 
 # Protocol API Reference
@@ -23,6 +23,7 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Integration](#integration)
 - [Intent](#intent)
 - [Link](#link)
+- [Fast Signal Intake](#fast-signal-intake)
 - [Opportunity](#opportunity)
 - [Network Opportunity](#network-opportunity)
 - [Enrichment](#enrichment)
@@ -166,18 +167,63 @@ Refer to the [Better Auth documentation](https://www.better-auth.com/) for detai
 
 API keys created for personal agents include `metadata.agentId`. MCP auth resolves API keys into `{ userId, agentId? }` identities, so the same user can authorize multiple agents with separate keys.
 
-### MCP request header: `x-index-surface`
+### MCP request headers: Telegram identity binding
 
-MCP clients SHOULD declare the rendering surface for their user on every request via the `x-index-surface` header. Accepted values: `telegram | web` (case-insensitive, whitespace-trimmed). Absent or unknown values are coerced to `web` (the default).
+MCP clients acting for a Telegram user MAY send that user's handle as `x-index-telegram-username` (or the alias `x-index-telegram-handle`; the username header wins when both are present). The value is normalized before use — a leading `@` and a `t.me` / `telegram.me` URL prefix are stripped, and the remainder must match `[A-Za-z0-9_]{5,32}`. A missing or unparseable value is treated as no handle at all.
 
-The value drives the click-time redirect on opportunity connect links (`/c/{code}/go`):
+When a usable handle is present, the MCP auth resolver tries to bind it to the authenticated identity. Binding is additive and optional — a handle the server cannot attribute to the caller is skipped, never rejected, because the caller is already authenticated as themselves and any client (not just Telegram ones) may send the header:
 
-- `telegram` — when the target user has a Telegram handle, redirects to `https://t.me/{handle}?text=...`; falls back to the web chat URL if the target has no handle.
-- `web` (or absent) — always redirects to `${FRONTEND_URL}/u/{counterpartUserId}/chat?msg=...`.
+- If the authenticated user already has a stored `telegram` social and none of the stored values match the header, the binding is skipped and a warning is logged (`authenticated_user_handle_mismatch`).
+- If the handle is already stored for a different user, the binding is skipped and a warning is logged (`handle_belongs_to_other_user`).
+- Otherwise the handle is upserted into `user_socials` under `label = 'telegram'`, preserving the user's other socials. A persistence failure is logged and does not fail the request.
 
-The surface is snapshotted onto each minted `connect_links` row at MCP-call time (the auth resolver reads the header, the protocol threads it through `ResolvedToolContext.clientSurface`, and `mintConnectLink` writes it). First mint wins for the link's lifetime; rotation of an expired row re-stamps the surface.
+The verification reads are the one fatal step: if the socials lookup or the handle-owner lookup throws, the request is rejected with a Telegram identity error rather than binding unverified. Both the mismatch decision and the final write leave the request intact.
 
-Today only the Telegram-bot MCP surface sends `telegram`. Every other caller — Claude Desktop, the web app, Claude Code, the CLI — omits the header and gets the web fallback. Telegram MCP clients may also send `x-index-telegram-username` (or `x-index-telegram-handle`); when present with `x-index-surface: telegram`, the MCP auth resolver upserts that handle into `user_socials` while preserving other socials.
+This is **identity binding only**: it records where the user is reachable on Telegram (which Telegram opportunity delivery consumes) and never influences a redirect, rendering, or routing decision. The former routing header `x-index-surface`, the `clientSurface` value it threaded through the protocol, and the connect links it steered no longer exist — the MCP API has no surface header.
+
+### Universal links and deep-link landing pages
+
+Opportunity and profile links are plain `https://index.network/...` URLs that open in the Index macOS app when it is installed, and fall back to a web page when it is not. The web app (`apps/web`), not this protocol server, owns that origin.
+
+**Association file.** The web server answers `GET`/`HEAD /.well-known/apple-app-site-association` directly — no redirect, `Content-Type: application/json`, `Cache-Control: no-store`:
+
+```json
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["<APPLE_TEAM_ID>.network.index.system6"],
+        "components": [
+          { "/": "/c/*" },
+          { "/": "/o/*" },
+          { "/": "/u/*/?*", "exclude": true },
+          { "/": "/u/*" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The ordered `/u/*/?*` exclusion requires a non-empty deeper profile segment, so
+base `/u/<id>` profiles are claimed by the following `/u/*` component while routes
+such as `/u/<id>/chat` remain browser-only.
+
+`APPLE_TEAM_ID` comes from the web host's environment. It is **not set in deploys yet**: the server logs a startup warning and serves the literal placeholder `TEAMIDPLACEHOLDER`, so universal links do not resolve to the app until the real team ID is configured and a signed, notarized app ships. Until then the links behave as ordinary web URLs.
+
+**Paths.** These pages are only reached when the app did not intercept the URL:
+
+| Path | Behavior without the app |
+|---|---|
+| `/o/:id` | Static landing page: "Open in the Index app", a macOS download CTA (UA sniff, presentation only) or an "open this link on your Mac" note elsewhere, plus a copyable link. No auth and no API call. |
+| `/c/:code` | Same landing page (retired connect links). |
+| `/u/:id` | The existing public profile page, unchanged. |
+
+The macOS CTA on that landing page links to `/download`, the app's install page. `/download` reads its artifact URL from `VITE_MAC_APP_DOWNLOAD_URL`: while that is unset it states that the app is not yet publicly available and offers no download button, and once a Developer ID-signed, notarized build is published it renders a real download with no code change. The CTA therefore never dead-ends, in either state.
+
+**Legacy short links.** `GET /c/:code` on this protocol server is a tombstone for links already delivered in chats. `main.ts` rewrites the unprefixed path onto `ConnectLinkController`, which performs no database lookup and no opportunity side effects: a code matching `^[A-Za-z0-9]{10}$` gets a `302` to `${WEB_APP_URL}/c/<code>` (default `https://index.network`) with the request's query string preserved — already-delivered links carry `?link_preview=false`, and dropping it would resurrect preview cards in chat clients — and anything else gets a `404` HTML page. The resolution stack behind it — `/c/:code/go`, connect-link minting, connect tokens, surface routing — is deleted.
+
+**Client-side links.** The macOS app parses the same three path shapes from `index://o|u|c/<value>` as well, as an in-app alias; `o` opens the opportunity card, `u` a profile, and `c` only a "no longer supported" notice. Opportunity cards returned to MCP callers carry `appUrl` = `${WEB_APP_URL}/o/<opportunityId>` (default `https://index.network`), minted by the protocol next to `profileUrl` and rendered into the card prose, so every MCP client gets the link. The Hermes plugin attaches the same link to any other opportunity-shaped payload it forwards from an MCP call (origin overridable with `INDEX_APP_BASE_URL`) and never overwrites one the protocol already set. `appUrl` is navigation only: it opens a card, it stores nothing, and this protocol API mints no acceptance URL. Acceptance stays an authenticated call (`POST /api/opportunities/:id/start-chat`, `PATCH /api/opportunities/:id/status`, or the `update_opportunity` MCP tool) — no link carries authority to accept.
 
 ### MCP runtime limits and error envelopes
 
@@ -447,7 +493,7 @@ When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly re
 
 ### POST /api/chat/onboarding/stream
 
-Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. With `WEB_SIGNAL_AGENT_ENABLED=true`, new sessions are server-selected and persisted as `persona="onboarding"`; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only privacy consent, approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration. With the flag off, the route preserves the legacy `orchestrator` onboarding flow. API-key, Telegram, MCP, CLI, and other non-web consumers are unchanged.
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. With `WEB_SIGNAL_AGENT_ENABLED=true`, new sessions are server-selected and persisted as `persona="onboarding"`; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration. With the flag off, the route preserves the legacy `orchestrator` onboarding flow. API-key, Telegram, MCP, CLI, and other non-web consumers are unchanged.
 
 **Auth**: SessionOnlyGuard
 
@@ -1586,9 +1632,9 @@ promptless automatic assignment therefore reports `promptPresence: "none"`,
 The three `missing*` diagnosis fields independently identify absent verification,
 assignment, and HyDE artifacts.
 
-### GET /api/debug/home
+### GET /api/debug/radar
 
-Returns a home-level diagnostic snapshot for the authenticated user, including intent stats, network memberships, opportunity aggregates, simulated home-view filtering, and a pipeline-health diagnosis.
+Returns a radar-level diagnostic snapshot for the authenticated user, including intent stats, network memberships, opportunity aggregates, simulated radar-view filtering, and a pipeline-health diagnosis.
 
 **Auth**: DebugGuard + AuthGuard
 
@@ -1613,7 +1659,7 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
     "byStatus": { "pending": 5, "accepted": 10 },
     "actionable": 4
   },
-  "homeView": {
+  "radarView": {
     "cardsReturned": 4,
     "filteredOut": {
       "notActionable": 3,
@@ -1627,7 +1673,7 @@ Returns a home-level diagnostic snapshot for the authenticated user, including i
     "intentsHaveHydeDocuments": true,
     "intentsAreIndexed": true,
     "hasOpportunities": true,
-    "opportunitiesReachHome": true,
+    "opportunitiesReachRadar": true,
     "bottleneck": null
   }
 }
@@ -1681,6 +1727,8 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 ## Network
 
 **Controller prefix**: `/networks`
+
+**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hidden`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hidden: true` excludes the network from the public directory; `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
 
 ### GET /api/networks
 
@@ -1873,7 +1921,8 @@ Update an index (title, prompt, image, join policy). Owner only.
   "prompt": "string | null (optional)",
   "imageUrl": "string | null (optional)",
   "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "allowGuestVibeCheck": "boolean (optional)",
+  "hidden": "boolean (optional — exclude from the public directory)"
 }
 ```
 
@@ -1898,9 +1947,30 @@ Soft-delete a network. Owner only.
 { "success": true }
 ```
 
+### POST /api/networks/:id/master-key
+
+Enable master-key signup on a network. Owner only, any network. Generates a master key, stores only its hash, and returns the plaintext exactly once — the caller must store it. Enabling forces `joinPolicy: 'invite_only'` on the network so key-provisioned networks are not openly joinable; owners can change the permissions afterwards.
+
+**Auth**: `AuthGuard` (session or API key)
+
+**Path params**:
+- `id` — Network ID
+
+**Request body**: none
+
+**Response 201**:
+```json
+{
+  "masterKey": "<plaintext-64-chars>"
+}
+```
+
+**Errors**:
+- `403`/`404` — Caller is not an owner of the network, or the network does not exist.
+
 ### POST /api/networks/:id/rotate-master-key
 
-Rotate the master key on an experiment network. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
+Rotate the master key on any network with a master key enabled. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
 
 **Auth**: `AuthGuard` (session or API key)
 
@@ -1917,7 +1987,7 @@ Rotate the master key on an experiment network. Owner only. The plaintext is ret
 ```
 
 **Errors**:
-- `403` — Caller is not an owner of an experiment network (covers both "not an experiment" and "not an owner" — the controller's pre-check returns 403 for both).
+- `403`/`404` — Caller is not an owner of the network, or the network does not exist.
 
 ### GET /api/networks/:id/members
 
@@ -2099,12 +2169,12 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless experiment-network signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are staged under onboarding seed data and are not activated on the user profile until the user grants event/import consent and approves a draft during onboarding. Experiment networks use `profileEnrichment: 'consent_required'` by default, so automatic public enrichment jobs carry `networkId`/reason context and self-skip until the user records public profile lookup consent during onboarding.
+Headless master-key signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email. Optional rich profile fields (`name`, `bio`, `location`, `socials`) are applied to the account immediately, and automatic enrichment may run while the user remains a current network member. The same imported fields are retained as provenance seeds so onboarding preview and confirmation can explain and refine the active profile; network-scoped seed reads never fall back across networks.
 
-**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key (issued once at network creation, stored by the caller).
+**Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key (issued once when master-key signup is enabled via `POST /api/networks/:id/master-key`, stored by the caller).
 
 **Path params**:
-- `id` — Network ID (must be an experiment network with a master key set).
+- `id` — Network ID (must have a master key enabled).
 
 **Request body** (`email` required; all other fields optional):
 ```json
@@ -2134,25 +2204,25 @@ Validation caps: `name` 200 chars, `bio` 2000 chars, `location` 200 chars, `soci
 }
 ```
 
-**Response 200** (existing user): Same shape. A fresh API key is always returned; the previous key for this user+network is revoked on each call.
+**Response 200** (existing user): Same shape. A fresh API key is always returned; previously issued keys keep working — prior keys are deliberately not revoked, because signup may be retried by portals/installers and invalidating a just-installed key creates a setup race.
 
-**Idempotency**: Same email = same user. Key is rotated on every call — store the latest returned `apiKey`. No orphan agent records: repeated calls reuse the same scoped agent and rotate its token.
+**Idempotency**: Same email = same user. Each call mints an additional key on the same network-scoped agent — store the latest returned `apiKey`. No orphan agent records: repeated calls reuse the same scoped agent.
 
 **Errors**:
 - `400` — Missing/invalid email; oversized field; malformed `socials` array.
 - `401` — Missing `x-api-key` header.
-- `403` — Master key invalid; network not experiment type; network deleted.
+- `403` — Master key invalid; network has no master key enabled; network deleted.
 
 ---
 
 ### POST /api/networks/:id/signup/lookup
 
-Read-only sibling of `/signup`. Verifies, without side effects, that a given email is fully provisioned for this experiment network — user is live, member of the network, and has a network-scoped personal agent. Use this to check provisioning state without rotating the user's API key (which is what `/signup` does on every call).
+Read-only sibling of `/signup`. Verifies, without side effects, that a given email is fully provisioned for this network — user is live, member of the network, and has a network-scoped personal agent. Use this to check provisioning state without minting an additional API key (which is what `/signup` does on every call).
 
-**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key.
+**Auth**: `MasterKeyGuard` — `x-api-key` header containing the network's master key.
 
 **Path params**:
-- `id` — Network ID (must be an experiment network with a master key set).
+- `id` — Network ID (must have a master key enabled).
 
 **Request body**:
 ```json
@@ -2166,7 +2236,7 @@ Only `email` is read; any other fields in the body are ignored. Email is normali
 { "user": { "id": "uuid", "email": "attendee@example.com" } }
 ```
 
-The response does **not** include an API key or an MCP server config — the integrator is presumed to hold the key from its original `/signup` call. If the key has been lost, call `/signup` to mint a fresh one (this will rotate any deployed key, so prefer not to).
+The response does **not** include an API key or an MCP server config — the integrator is presumed to hold the key from its original `/signup` call. If the key has been lost, call `/signup` to mint a fresh one (previously issued keys remain valid).
 
 **Response 409** — User is not in a fully-provisioned state. A single canned message is returned for every "no" path (email unknown, user soft-deleted, no membership, membership soft-deleted, no scoped agent, scoped agent soft-deleted). The integrator's recovery is the same in all cases: call `/signup` proper.
 ```json
@@ -2178,7 +2248,7 @@ The response does **not** include an API key or an MCP server config — the int
 **Errors**:
 - `400` — Missing or malformed email; unparseable body.
 - `401` — Missing `x-api-key` header.
-- `403` — Master key invalid; network not experiment type; network deleted.
+- `403` — Master key invalid; network has no master key enabled; network deleted.
 
 **Example (curl)**:
 ```bash
@@ -2192,7 +2262,7 @@ curl -X POST https://protocol.index.network/api/networks/<NETWORK_ID>/signup/loo
 
 ### POST /api/networks/:id/members/import/parse
 
-Parse a CSV file and validate rows before committing an import. Owner-only, experiment networks only. Intended for large files (> 500 rows) where client-side parsing is skipped.
+Parse a CSV file and validate rows before committing an import. Owner-only, any network. Intended for large files (> 500 rows) where client-side parsing is skipped.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2217,7 +2287,7 @@ Parse a CSV file and validate rows before committing an import. Owner-only, expe
 
 ### POST /api/networks/:id/members/import
 
-Import validated rows (from `/import/parse`) into the network. Owner-only, experiment networks only. CSV rows provision users, scoped agents, and memberships immediately, but optional profile columns (`name`, `bio`, `location`, socials) are staged under onboarding seed data and are not activated on the user profile until the member grants event/import consent and approves a draft during onboarding. For consent-required experiment networks, public profile enrichment is skipped until consent is recorded.
+Import validated rows (from `/import/parse`) into the network. Owner-only, any network. CSV rows provision users, scoped agents, and memberships immediately and apply optional profile columns (`name`, `bio`, `location`, socials) to the active account. Automatic enrichment may run while each user remains a current network member. The same imported fields are retained as provenance seeds so onboarding preview and confirmation can explain and refine the active profile; network-scoped seed reads never fall back across networks.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2234,7 +2304,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 { "imported": 42, "skipped": 3, "ownersNotified": 1 }
 ```
 
-- `imported` — Number of accounts provisioned and added as members. Rich profile fields are staged, not activated.
+- `imported` — Number of accounts provisioned and added as members. Rich profile fields are applied immediately and retained as provenance seeds.
 - `skipped` — Number of rows that were skipped (errors).
 - `ownersNotified` — Number of network owners who received a credentials summary email. The email contains an inline CSV with every minted API key (`email,name,api_key`). Per-user invitation emails are not sent for bulk imports — the owner distributes keys out-of-band.
 
@@ -2246,12 +2316,12 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 
 ### POST /api/networks/:id/members/invite
 
-Invite a single member to an experiment network by email. Owner-only, experiment networks only. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
+Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
-- `id` — Network ID (must be an experiment network).
+- `id` — Network ID.
 
 **Request body**:
 ```json
@@ -2293,7 +2363,7 @@ The raw API key is delivered only via the invitation email and is never returned
 
 **Errors**:
 - `400` — Missing or malformed email.
-- `403` — Not the network owner, not an experiment network, or scope violation.
+- `403` — Not the network owner or scope violation.
 - `409` — Email belongs to a soft-deleted account and cannot be invited.
 - `500` — Provisioning failed.
 
@@ -2301,12 +2371,12 @@ The raw API key is delivered only via the invitation email and is never returned
 
 ### POST /api/networks/:id/members/:memberId/resend-invite
 
-Resend the invitation email to an existing network member, optionally rotating their API key. Owner-only, experiment networks only. Used when a member did not receive their initial invitation email or requests a refreshed API key.
+Resend the invitation email to an existing network member. Owner-only, any network. Used when a member did not receive their initial invitation email or requests a refreshed API key. If the member already has a network-scoped agent, its API key is rotated (previous keys revoked, a fresh one minted); if the member has no scoped agent yet (e.g. they joined via another path), a fresh agent and key are provisioned instead.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
 **Path params**:
-- `id` — Network ID (must be an experiment network).
+- `id` — Network ID.
 - `memberId` — User ID of the network member to resend the invite to.
 
 **Request body**:
@@ -2314,7 +2384,7 @@ Resend the invitation email to an existing network member, optionally rotating t
 {}
 ```
 
-**Response 200**: Invitation email resent with the current or newly minted API key.
+**Response 200**: Invitation email resent with a newly minted API key. `rotated` is `false` when the member had no network-scoped agent yet — a fresh agent and key were provisioned, and no prior key existed.
 ```json
 {
   "rotated": false,
@@ -2322,7 +2392,7 @@ Resend the invitation email to an existing network member, optionally rotating t
 }
 ```
 
-**Response 200 with key rotation**: An existing API key for the member's network-scoped agent was revoked and a new one was minted before sending the email.
+**Response 200 with key rotation**: The member's existing network-scoped agent keys were revoked and a new one was minted before sending the email.
 ```json
 {
   "rotated": true,
@@ -2330,10 +2400,10 @@ Resend the invitation email to an existing network member, optionally rotating t
 }
 ```
 
-When `rotated: true`, the member's previous API key is no longer valid and the new key is delivered only via the resent invitation email. When `rotated: false`, the member's existing API key remains valid and the email contains the same key that was previously issued.
+When `rotated: true`, the member's previous API keys are no longer valid and the new key is delivered only via the resent invitation email.
 
 **Errors**:
-- `403` — Not the network owner, not an experiment network, or scope violation.
+- `403` — Not the network owner or scope violation.
 - `404` — Member not found or not a member of this network.
 - `500` — Provisioning or email delivery failed.
 
@@ -2432,25 +2502,6 @@ Import contacts from a connected toolkit into an index.
 
 **Response**: Import result with counts.
 
-### PATCH /api/integrations/:toolkit/sync
-
-Configure sync settings for an integration linked to a network. Currently only `google_calendar` is supported.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `toolkit` — Must be `google_calendar`.
-
-**Body**:
-- `networkId` (string, required) — Target network.
-- `calendarId` (string, optional) — Google Calendar ID (default: `primary`).
-- `intervalMs` (number, optional) — Sync interval in milliseconds (min 60000, default: 900000).
-- `status` (`active` | `paused`, optional) — Enable or pause sync.
-
-**Behavior**: Reads the existing syncConfig, merges the provided fields, validates via `SyncConfigSchema`, and writes back. The caller must be a network owner with the toolkit already linked.
-
-**Response**: `{ success: true }`
-
 ---
 
 ### DELETE /api/integrations/:id
@@ -2463,7 +2514,7 @@ Disconnect (delete) a connected account.
 - `id` — Connection ID (or `telegram:<userId>` for Telegram)
 
 **Behavior**:
-- Composio connections (`gmail`/`slack`/`google_calendar`): disconnects the OAuth account and removes all index integration links.
+- Composio connections (`gmail`/`slack`): disconnects the OAuth account and removes all index integration links.
 - Telegram (`telegram:<userId>`): clears the stored chatId and notification prefs. The deep-link token is unchanged; reconnect via `POST /connect/telegram`.
 
 **Response**: Disconnect result.
@@ -2483,6 +2534,8 @@ Inbound endpoint for Telegram Bot API updates. Called by Telegram when the bot r
 **Body**: Telegram `Update` object (JSON). The handler inspects `message.chat.id`, `message.text`, and optional `message.from.username`. When a valid username is present, it is stored as the user's public Telegram social handle without clearing other socials.
 
 **Response**: Always `200 OK`. Inbound handling is fire-and-forget so the endpoint never blocks Telegram's delivery pipeline.
+
+**Half-configured gateway**: inbound is gated by `TELEGRAM_WEBHOOK_SECRET` and outbound by `TELEGRAM_BOT_TOKEN`, so a deployment with only the secret set authenticates updates it can never answer. When the bot token is missing the update is acknowledged and **dropped without running the inbound path** — the chat agent does not run, no chat session or message rows are written, and one warning is logged per process. The response stays `200` deliberately: a non-2xx makes Telegram retry the same update indefinitely. To disable the gateway cleanly, unset both variables.
 
 > Registered automatically at backend startup via `setWebhook` when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are configured.
 
@@ -2704,6 +2757,128 @@ Archive an intent.
 
 ---
 
+## Fast Signal Intake
+
+**Controller prefix**: `/intents/intake`
+
+Deterministic fast-intake funnel for `/i/new` (dark-shipped behind `FAST_SIGNAL_INTAKE=true`). Round 1 is served from a per-user pack generated offline (no model call); follow-up questions are planned in one structured `gemini-2.5-flash` call whose total interview length (`total`, round 1 included) is then locked; synthesis is one more structured call. Two server-side knobs shape the interview: `SIGNAL_INTAKE_MAX_QUESTIONS` (total budget including round 1, integer 1–10, default 2) and `SIGNAL_INTAKE_QUESTION_MODE` (`singular` = one follow-up per `/question` turn, default; `plural` = the whole remaining batch in one turn). The where/community round is resolved entirely client-side and only travels as `whereText`/`networkId` on `/proposal`. Every route below is gated by `FastSignalIntakeEnabledGuard`, which runs **before** `AuthGuard` and throws when the flag is off, so a flag-off deployment returns `404 { "error": "Not found" }` even to unauthenticated callers (mirrors `ContactsEnabledGuard`). `/prepare` and `/revise` use the `intake_synthesis` rate-limit class (see **Rate Limiting** in the development reference) instead of `write`, since each call launches a background LLM synthesis plus a full intent-graph run and persists a durable proposal row.
+
+A shared `IntakePackQuestion` shape (`{ title, prompt, options: [{ label, description }], multiSelect }`) is returned for every generated question. An answer is `{ selectedOptions: string[], freeText?: string }` with at least one of `selectedOptions`/`freeText` required, and an answered round is `IntakeRound = { prompt: string (1–400 chars), answer }`. The server holds no funnel state: every route below takes the ordered `rounds` list (round 1 first, 1–10 entries), and `/question` continuation calls echo the locked `plannedTotal` (integer 1–10), which the server re-clamps to the configured budget.
+
+**Shared error responses** (in addition to per-route errors below):
+- `404` — `{ "error": "run_not_found", "code": "run_not_found" }` when `runId` does not resolve to a run owned by the caller.
+- `422` — `{ "error": "verification_rejected", "code": "verification_rejected", "clarification": IntakePackQuestion }` when synthesis produced nothing specific enough to verify; the client renders `clarification` as a recovery round and retries.
+- `403` — `{ "error": "forbidden", "code": "network_membership_required", "networkId": "..." }` when the caller is not a member of the supplied `networkId`.
+- `400` — `{ "error": "Validation failed", "details": { ... } }` (flattened Zod error) for malformed bodies.
+- `500` — `{ "error": "Failed to process intake request" }` for unexpected failures.
+
+### POST /api/intents/intake/start
+
+Round 1: read the user's precomputed intake pack, or generate one synchronously on a cold miss (no request body).
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Response**:
+```json
+{ "question": { "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true } }
+```
+
+### POST /api/intents/intake/question
+
+Follow-ups: one structured planning call grounded by the pack brief and every answered round. In `singular` mode the response carries one question per call; in `plural` mode it carries the whole remaining planned batch. Either way `total` is the locked interview length (round 1 included); the client stops asking and advances to `/prepare` once `rounds.length` reaches `total`, or when `questions` is empty.
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }],
+  "plannedTotal": "integer (optional, 1-10; echo of the locked total on continuation calls)"
+}
+```
+
+**Response**:
+```json
+{
+  "questions": [{ "title": "...", "prompt": "...", "options": [{ "label": "...", "description": "..." }], "multiSelect": true }],
+  "total": 2
+}
+```
+
+### POST /api/intents/intake/prepare
+
+Claim a run and start speculative synthesis (signal synthesis plus the intent graph) without awaiting it, so it can overlap the client's where/community picker.
+
+**Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }]
+}
+```
+
+**Response 202**:
+```json
+{ "runId": "<uuid>" }
+```
+
+### POST /api/intents/intake/proposal
+
+Resolve the proposal for a run: awaits the speculative synthesis started by `/prepare` when it is still in flight, reuses it when ready and unconstrained, or re-synthesizes when a `whereText` constraint is supplied or the prior speculation failed.
+
+**Auth**: `RateLimit('write')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "runId": "UUID (required)",
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }],
+  "networkId": "UUID (optional)",
+  "whereText": "string (optional, max 280)"
+}
+```
+
+`networkId` is the community the user picked in the where round; it is re-verified server-side against the caller's actual membership (see `network_membership_required` above) and attached to the proposal row so `POST /api/intents/confirm` later rejects any mismatched `networkId`.
+
+**Response**:
+```json
+{
+  "proposalId": "...",
+  "description": "...",
+  "lookingFor": "...",
+  "youBring": "..."
+}
+```
+
+### POST /api/intents/intake/revise
+
+Replace the visible draft from user feedback: writes a brand-new proposal row (the prior one is left untouched) and re-attaches the run's already-picked `networkId`, if any.
+
+**Auth**: `RateLimit('intake_synthesis')`, `FastSignalIntakeEnabledGuard`, `AuthGuard`
+
+**Request body** (Zod-validated):
+```json
+{
+  "runId": "UUID (required)",
+  "feedback": "string (required, 1-600 chars)",
+  "rounds": [{ "prompt": "...", "answer": { "selectedOptions": ["..."], "freeText": "string (optional)" } }],
+  "networkId": "UUID (optional)"
+}
+```
+
+**Response**:
+```json
+{
+  "proposalId": "...",
+  "description": "...",
+  "lookingFor": "...",
+  "youBring": "..."
+}
+```
+
+---
+
 ## Opportunity
 
 **Controller prefix**: `/opportunities`
@@ -2743,21 +2918,21 @@ Get shared accepted opportunities between the authenticated user and a peer, use
 
 **Response**: JSON with opportunity cards for chat context.
 
-### GET /api/opportunities/home
+### GET /api/opportunities/radar
 
-Home view with dynamic sections including LLM-categorized opportunities, presenter text, and Lucide icons.
+Radar view: a flat list of opportunity cards with presenter text, optionally scoped to one intent. Clients bucket by lifecycle status themselves.
 
 **Auth**: AuthGuard
 
 **Query params**:
 - `networkId` — Scope to a specific network (optional)
 - `scopeType` — Optional selected scope type. Use `intent` for selected-intent scope.
-- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Applied before home visibility filtering, sorting, and counterpart dedupe. Pool-answer factors and deprioritization reasons apply only when their `recipientUserId + intentId` provenance exactly matches this viewer and selected intent; global Home and legacy unscoped adjustments ignore them.
+- `scopeId` — Required when `scopeType=intent`; viewer-owned selected intent UUID. Applied before radar visibility filtering, sorting, and counterpart dedupe. Pool-answer factors and deprioritization reasons apply only when their `recipientUserId + intentId` provenance exactly matches this viewer and selected intent; global Radar and legacy unscoped adjustments ignore them.
 - `intentId` — Deprecated/convenience alias for `scopeType=intent&scopeId=<intentId>`.
 - `limit` — Max results (optional)
-- `noCache` — Bypass home cache when `true` or `1` (optional)
+- `noCache` — Bypass radar cache when `true` or `1` (optional)
 
-**Response**: JSON with categorized home sections. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
+**Response**: JSON with a flat `items` array of presenter cards plus `meta`. Presenter output and deterministic fallbacks reject unsupported attendance/membership/residence/shared-presence claims. Presentation caches are versioned and fallback output is not persisted.
 
 ### GET /api/opportunities/:id
 
@@ -2850,7 +3025,7 @@ When selected-intent scope is supplied, sibling acceptance is skipped. Unscoped 
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
 - `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
-- `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. The authenticated `/c/:code` continuation flow preserves this advisory; legacy token links render a review page with an explicit continue-anyway link.
+- `409` — Uptake soft interlock with the same structured advisory and no side effects as the status endpoint. Every caller reaches this endpoint authenticated, so the advisory is the single interlock contract; the unauthenticated connect-link continuation flow that used to re-render it no longer exists.
 - `500` — Status update or DM resolution failed
 
 ---
@@ -3417,7 +3592,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | Tool | Domain | Description |
 |------|--------|-------------|
 | `read_user_profiles` | Profile | Read user profiles (own or by query) |
-| `record_onboarding_privacy_consent` | Profile | Record onboarding EdgeOS import and public lookup consent decisions without completing onboarding |
 | `preview_user_context` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
 | `confirm_user_context` | Profile | Save an approved profile draft or explicit correction text and stamp `profileConfirmedAt` |
 | `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |

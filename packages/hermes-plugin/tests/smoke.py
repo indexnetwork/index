@@ -5,11 +5,13 @@ from __future__ import annotations
 import ast
 import base64
 import importlib.util
+import io
 import json
 import os
 import pathlib
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -90,6 +92,12 @@ class FakeResponse:
         return json.dumps(self.payload).encode()
 
 
+def http_error(status, payload, *, url="https://api.example.test/api/error"):
+    """A urllib HTTPError whose body carries a JSON `{error, advisory}` (matches REST 4xx)."""
+    body = json.dumps(payload).encode()
+    return urllib.error.HTTPError(url, status, "HTTP error", {"Content-Type": "application/json"}, io.BytesIO(body))
+
+
 def mcp_text_response(payload, *, response_id=1):
     return FakeResponse(
         {
@@ -138,7 +146,7 @@ def main() -> None:
     expected_tool_names = (
         ["index_read_intents"]
         + [f"index_{name}" for name in plugin.schemas.FORWARDED_MCP_TOOLS]
-        + ["index_agent_me", "index_pickup_negotiation", "index_respond_negotiation"]
+        + ["index_agent_me", "index_open_app", "index_pickup_negotiation", "index_respond_negotiation"]
     )
     assert tool_names == expected_tool_names, tool_names
     assert len(tool_names) == len(set(tool_names))
@@ -153,6 +161,7 @@ def main() -> None:
     handlers_by_name = {entry["name"]: entry["handler"] for entry in ctx.tools}
     assert handlers_by_name["index_read_intents"] == plugin.tools.index_read_intents
     assert handlers_by_name["index_agent_me"] == plugin.tools.index_agent_me
+    assert handlers_by_name["index_open_app"] == plugin.tools.index_open_app
     assert handlers_by_name["index_pickup_negotiation"] == plugin.tools.index_pickup_negotiation
     assert handlers_by_name["index_respond_negotiation"] == plugin.tools.index_respond_negotiation
     assert handlers_by_name["index_create_intent"].__name__ == "index_create_intent"
@@ -224,6 +233,15 @@ def main() -> None:
     assert "Continue anyway" in dashboard_js
     assert "startChatWithOpportunity" in dashboard_js
     assert "counterpartUserId" in dashboard_js
+    # Mac-app parity: chat opens via the opportunity start-chat route, pause/resume
+    # hits the intent status route, and the accept/skip scope rides along.
+    assert "/start-chat" in dashboard_js
+    assert "togglePauseIntent" in dashboard_js
+    assert "intentScopeId" in dashboard_js
+    assert "PAUSED" in dashboard_js
+    # The debug question seeder must not ship.
+    assert "injectDebugQuestions" not in dashboard_js
+    assert "remove before merging" not in dashboard_js
     assert "MessagesPanel" in dashboard_js
     assert "index-dashboard__msg-thread" in dashboard_js
     assert "/conversations/stream" in dashboard_js
@@ -269,6 +287,12 @@ def main() -> None:
     assert "answering pending Index questions" in package_readme
     assert "dashboard/plugin_api.py" in package_readme
     assert "tools.py" in package_readme
+    assert "### `index_open_app`" in package_readme
+    assert "INDEX_APP_BASE_URL" in package_readme
+    assert "no app-installation detection" in package_readme
+    for stale in ("/c/<code>", "connect link", "x-index-surface"):
+        assert stale not in package_readme, stale
+        assert stale not in dashboard_readme, stale
 
     assert [name for name, _path in ctx.skills] == ["index-negotiator", "index-orchestrator"]
     for _name, skill_md in ctx.skills:
@@ -357,6 +381,202 @@ def main() -> None:
         }
         assert json.loads(create_intent([])) == {"success": False, "error": "Arguments must be an object."}
 
+        # Every opportunity-bearing MCP response gets an https universal link.
+        # There is no app-installation detection: the plugin runs on the agent's
+        # host, and the OS decides app vs landing page when the link is clicked.
+        list_opportunities = handlers_by_name["index_list_opportunities"]
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "opportunities": [
+                                {"opportunityId": "opp-1", "status": "pending"},
+                                {"opportunityId": "opp-2", "status": "negotiating"},
+                            ],
+                            "count": 2,
+                        },
+                    },
+                    response_id=50,
+                )
+            ],
+            captured,
+        )
+        opportunities = json.loads(list_opportunities({}))
+        assert [opp["appUrl"] for opp in opportunities["data"]["opportunities"]] == [
+            "https://index.network/o/opp-1",
+            "https://index.network/o/opp-2",
+        ]
+
+        captured = []
+        install_fake_urlopen(
+            [mcp_text_response({"success": True, "opportunityId": "opp-single"}, response_id=51)],
+            captured,
+        )
+        single = json.loads(list_opportunities({"opportunityId": "opp-single"}))
+        assert single == {
+            "success": True,
+            "opportunityId": "opp-single",
+            "appUrl": "https://index.network/o/opp-single",
+        }
+
+        # Nested/wrapped payloads are walked at any depth, and an appUrl that the
+        # backend already set is never overwritten.
+        captured = []
+        install_fake_urlopen(
+            [
+                mcp_text_response(
+                    {
+                        "success": True,
+                        "data": {
+                            "groups": [
+                                {
+                                    "intent": {
+                                        "id": "intent-1",
+                                        "matches": [{"opportunityId": "opp-nested"}],
+                                    }
+                                },
+                                {"opportunityId": "opp-kept", "appUrl": "https://index.network/o/custom"},
+                            ]
+                        },
+                    },
+                    response_id=52,
+                )
+            ],
+            captured,
+        )
+        nested = json.loads(list_opportunities({}))
+        groups = nested["data"]["groups"]
+        assert groups[0]["intent"]["matches"][0]["appUrl"] == "https://index.network/o/opp-nested"
+        assert groups[1]["appUrl"] == "https://index.network/o/custom"
+
+        # A payload without opportunities is returned untouched.
+        captured = []
+        install_fake_urlopen(
+            [mcp_text_response({"success": True, "data": {"networks": [{"id": "network-1"}]}}, response_id=53)],
+            captured,
+        )
+        untouched = json.loads(list_opportunities({}))
+        assert untouched == {"success": True, "data": {"networks": [{"id": "network-1"}]}}
+
+        # Odd payloads (blank ids, non-string ids, cycles, unexpected objects)
+        # must never raise; they degrade to the response as-is.
+        odd = {"opportunityId": "   ", "nested": {"opportunityId": 42}, "other": {1, 2}}
+        assert plugin.tools._with_app_urls(odd) == odd
+        cyclic = {"opportunityId": "opp-cycle"}
+        cyclic["self"] = cyclic
+        assert plugin.tools._with_app_urls(cyclic)["appUrl"] == "https://index.network/o/opp-cycle"
+        assert plugin.tools._with_app_urls("not-a-container") == "not-a-container"
+
+        # The universal-link origin is overridable for dev/staging.
+        os.environ["INDEX_APP_BASE_URL"] = "https://staging.index.network/"
+        try:
+            assert plugin.tools._with_app_urls({"opportunityId": "opp-1"})["appUrl"] == (
+                "https://staging.index.network/o/opp-1"
+            )
+        finally:
+            os.environ.pop("INDEX_APP_BASE_URL", None)
+
+        # index_open_app hands an Index universal link to the OS. It never probes
+        # for an installed app and never opens foreign URLs.
+        opened = []
+        original_opener_command = plugin.tools._url_opener_command
+        original_open_url = plugin.tools._open_url
+        plugin.tools._url_opener_command = lambda url, system=None: ["open", url]
+        plugin.tools._open_url = lambda command: opened.append(command) or None
+        try:
+            assert json.loads(plugin.tools.index_open_app({})) == {
+                "success": True,
+                "url": "https://index.network",
+            }
+            assert json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"})) == {
+                "success": True,
+                "url": "https://index.network/o/opp-1",
+            }
+            assert opened == [
+                ["open", "https://index.network"],
+                ["open", "https://index.network/o/opp-1"],
+            ]
+            for foreign in (
+                "index://o/opp-1",
+                "https://evil.test/o/opp-1",
+                "http://index.network/o/opp-1",
+                "https://index.network.evil.test/o/opp-1",
+            ):
+                rejected = json.loads(plugin.tools.index_open_app({"target": foreign}))
+                assert rejected["success"] is False, foreign
+                assert rejected["error"] == "target must be an https://index.network URL."
+            assert len(opened) == 2
+            assert json.loads(plugin.tools.index_open_app("nope")) == {
+                "success": False,
+                "error": "Arguments must be an object.",
+            }
+
+            # A schemeless INDEX_APP_BASE_URL (a plausible operator typo) must not
+            # degrade the tool into a generic local-file opener. Both the base
+            # fallback and the absolute-https target check reject a relative path,
+            # and no opener is invoked.
+            os.environ["INDEX_APP_BASE_URL"] = "index.network"
+            try:
+                assert plugin.tools._app_base_url() == "https://index.network"
+                for relative in ("/etc/passwd", "etc/passwd", "//evil.test/x"):
+                    local = json.loads(plugin.tools.index_open_app({"target": relative}))
+                    assert local["success"] is False, relative
+                    assert local["error"] == "target must be an https://index.network URL."
+                assert len(opened) == 2
+            finally:
+                os.environ.pop("INDEX_APP_BASE_URL", None)
+
+            # A base that is malformed in other ways falls back the same way.
+            for bad_base in ("http://index.network", "index://index.network", "https://", "::"):
+                os.environ["INDEX_APP_BASE_URL"] = bad_base
+                try:
+                    assert plugin.tools._app_base_url() == "https://index.network", bad_base
+                finally:
+                    os.environ.pop("INDEX_APP_BASE_URL", None)
+
+            plugin.tools._open_url = lambda command: "exit code 1"
+            failed = json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"}))
+            assert failed["success"] is False
+            assert failed["url"] == "https://index.network/o/opp-1"
+
+            plugin.tools._url_opener_command = lambda url, system=None: None
+            manual = json.loads(plugin.tools.index_open_app({"target": "https://index.network/o/opp-1"}))
+            assert manual["success"] is False
+            assert manual["url"] == "https://index.network/o/opp-1"
+            assert "manually" in manual["error"]
+        finally:
+            plugin.tools._url_opener_command = original_opener_command
+            plugin.tools._open_url = original_open_url
+
+        assert plugin.tools._url_opener_command("https://index.network", system="Darwin") == [
+            "open",
+            "https://index.network",
+        ]
+        # Windows must not route through `cmd /c start`: subprocess quotes an
+        # argument only when it contains whitespace, so cmd.exe metacharacters in
+        # an otherwise valid index.network URL would survive unquoted and run as
+        # separate commands. rundll32 takes the URL as one argv entry, unparsed.
+        injecting_url = "https://index.network/o/x&calc"
+        windows_command = plugin.tools._url_opener_command(injecting_url, system="Windows")
+        assert windows_command == [
+            "rundll32",
+            "url.dll,FileProtocolHandler",
+            injecting_url,
+        ]
+        assert "cmd" not in windows_command
+        assert windows_command.count(injecting_url) == 1
+        assert subprocess.list2cmdline(windows_command) == (
+            "rundll32 url.dll,FileProtocolHandler https://index.network/o/x&calc"
+        )
+        assert plugin.tools._url_opener_command("https://index.network", system="Windows") == [
+            "rundll32",
+            "url.dll,FileProtocolHandler",
+            "https://index.network",
+        ]
+
         os.environ["INDEX_API_URL"] = "https://api.example.test/api"
         captured = []
         install_fake_urlopen([FakeResponse({"agent": {"id": "agent-1", "name": "Hermes"}})], captured)
@@ -444,88 +664,85 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                mcp_text_response(
+                # _resolve_user_id → GET /auth/me (identity, replaces read_network_memberships).
+                FakeResponse({"user": {"id": "user-1"}}),
+                # _call_read_intents → POST /intents/list (carries lifecycle status; includes PAUSED).
+                FakeResponse(
                     {
-                        "success": True,
-                        "data": {
-                            "intents": [
-                                {
-                                    "id": "intent-1",
-                                    "summary": "Find robotics mentors",
-                                    "description": "Looking for mentors in applied robotics.",
-                                }
-                            ],
-                            "count": 1,
-                        },
-                    },
-                    response_id=10,
+                        "intents": [
+                            {
+                                "id": "intent-1",
+                                "summary": "Find robotics mentors",
+                                "payload": "Looking for mentors in applied robotics.",
+                                "status": "ACTIVE",
+                                "pendingQuestionCount": 1,
+                                "waitingOpportunityCount": 1,
+                            }
+                        ],
+                        "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
+                    }
                 ),
-                mcp_text_response(
+                # _call_questions_by_intent("pending") → server-scoped per intent
+                # (identical query to the Mac app; nested detection/payload).
+                FakeResponse(
                     {
-                        "success": True,
-                        "data": {
-                            "questions": [
-                                {
-                                    "id": "question-1",
+                        "questions": [
+                            {
+                                "id": "question-1",
+                                "status": "pending",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
                                     "title": "Robotics focus",
                                     "prompt": "Which robotics area should Index prioritize?",
                                     "options": [{"label": "Hiring", "description": "Find mentors for recruiting."}],
                                     "multiSelect": False,
-                                    "mode": "intent",
-                                    "sourceType": "intent",
-                                    "sourceId": "intent-1",
                                 },
-                                {
-                                    "id": "question-2",
-                                    "title": "Onboarding",
-                                    "prompt": "Tell us about yourself.",
+                            },
+                        ]
+                    }
+                ),
+                # _call_questions_by_intent("answered") → server-scoped settled records
+                # per intent (identical scope to the Mac app), surviving reloads.
+                FakeResponse(
+                    {
+                        "questions": [
+                            {
+                                "id": "question-answered",
+                                "status": "answered",
+                                "detection": {"mode": "intent", "sourceType": "intent", "sourceId": "intent-1"},
+                                "payload": {
+                                    "title": "Focus",
+                                    "prompt": "Which robotics area did you pick?",
                                     "options": [],
                                     "multiSelect": False,
-                                    "mode": "enrichment",
-                                    "sourceType": "profile",
-                                    "sourceId": "user-1",
                                 },
-                            ],
-                            "count": 2,
-                        },
-                    },
-                    response_id=11,
+                                "answer": {
+                                    "selectedOptions": ["Hiring"],
+                                    "freeText": "",
+                                    "answeredAt": "2026-06-01T00:00:00.000Z",
+                                },
+                            }
+                        ]
+                    }
                 ),
-                mcp_text_response(
+                # GET /networks (joined) and GET /networks/discovery/public (discover).
+                FakeResponse(
                     {
-                        "success": True,
-                        "data": {
-                            "memberOf": [
-                                {
-                                    "networkId": "network-1",
-                                    "title": "Robotics Guild",
-                                    "prompt": "People building robotics companies.",
-                                    "permissions": ["member"],
-                                }
-                            ],
-                            "owns": [],
-                            "publicNetworks": [{"title": "Not joined"}],
-                        },
-                    },
-                    response_id=12,
+                        "networks": [
+                            {
+                                "id": "network-1",
+                                "title": "Robotics Guild",
+                                "prompt": "People building robotics companies.",
+                                "isPersonal": False,
+                                "type": "community",
+                                "user": {"id": "owner-x", "name": "Owner"},
+                                "_count": {"members": 3},
+                            }
+                        ],
+                        "pagination": {"current": 1, "total": 1, "count": 1, "totalCount": 1},
+                    }
                 ),
-                mcp_text_response(
-                    {
-                        "success": True,
-                        "data": {
-                            "userId": "user-1",
-                            "count": 1,
-                            "memberships": [
-                                {
-                                    "networkId": "network-1",
-                                    "networkTitle": "Robotics Guild",
-                                    "permissions": ["member"],
-                                }
-                            ],
-                        },
-                    },
-                    response_id=13,
-                ),
+                FakeResponse({"networks": [{"id": "network-2", "title": "Not joined", "memberCount": 5}]}),
                 FakeResponse(
                     {
                         "opportunities": [
@@ -568,7 +785,17 @@ def main() -> None:
                                     },
                                     {"userId": "other-waiting", "networkId": "network-1", "role": "patient"},
                                 ],
-                            }
+                            },
+                            {
+                                "id": "opp-rejected",
+                                "status": "rejected",
+                                "detection": {"triggeredBy": "intent-1"},
+                                "counterpartName": "Rejected Match",
+                                "actors": [
+                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
+                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
+                                ],
+                            },
                         ]
                     }
                 ),
@@ -588,22 +815,6 @@ def main() -> None:
                         ]
                     }
                 ),
-                FakeResponse(
-                    {
-                        "opportunities": [
-                            {
-                                "id": "opp-rejected",
-                                "status": "rejected",
-                                "detection": {"triggeredBy": "intent-1"},
-                                "counterpartName": "Rejected Match",
-                                "actors": [
-                                    {"userId": "user-1", "networkId": "network-1", "intent": "intent-1", "role": "agent"},
-                                    {"userId": "rejected-other", "networkId": "network-1", "role": "patient"},
-                                ],
-                            }
-                        ]
-                    }
-                ),
             ],
             captured,
         )
@@ -614,27 +825,39 @@ def main() -> None:
         intent = intents[0]
         assert intent["id"] == "intent-1"
         assert intent["title"] == "Looking for mentors in applied robotics."
-        assert intent["status"] == "running"
+        # Mac-app signalStatus parity: an active intent with no accepted or
+        # negotiating opportunities reads "live".
+        assert intent["status"] == "live"
+        assert intent["lifecycleStatus"] == "ACTIVE"
         assert intent["questionCount"] == 1
         assert intent["opportunityCount"] == 1
-        assert intent["totalOpportunityCount"] == 3
+        # Consolidated badge count from the server list fields.
+        assert intent["pendingCount"] == 2
+        assert intent["totalOpportunityCount"] == 2
         assert intent["statusCounts"]["pending"] == 1
-        assert intent["statusCounts"]["rejected"] == 1
+        # Rejected is hidden entirely (mac-app parity): no bucket, no count.
+        assert "rejected" not in intent["statusCounts"]
         assert intent["statusCounts"]["expired"] == 1
         assert intent["networks"] == ["Robotics Guild"]
         assert intent["questions"][0]["id"] == "question-1"
         assert intent["questions"][0]["options"][0]["label"] == "Hiring"
+        # Settled records ride along per intent, pending counts unaffected.
+        assert intent["answeredQuestions"][0]["id"] == "question-answered"
+        assert intent["answeredQuestions"][0]["answerText"] == "Hiring"
         assert intent["opportunities"][0]["opportunityId"] == "opp-1"
         assert intent["opportunities"][0]["avatar"] == "https://api.example.test/api/storage/avatars/other/pic.png"
         assert intent["opportunities"][0]["name"] == "Ada"
         assert intent["opportunities"][0]["subtitle"] == "Suggested connection"
         assert intent["opportunities"][0]["mainText"] == "Can advise on robotics hiring."
-        assert intent["opportunities"][0]["networks"] == ["Robotics Guild"]
+        assert "networks" not in intent["opportunities"][0]
         assert intent["opportunities"][0]["counterpartUserId"] == "other"
-        assert summary["general"]["count"] == 2
-        assert summary["general"]["questionCount"] == 1
+        assert intent["opportunities"][0]["intentScopeId"] == "intent-1"
+        # Questions are server-scoped per intent, so the general questions
+        # bucket is always empty (only unlinked opportunities remain general).
+        assert summary["general"]["count"] == 1
+        assert summary["general"]["questionCount"] == 0
         assert summary["general"]["opportunityCount"] == 1
-        assert summary["general"]["questions"][0]["id"] == "question-2"
+        assert summary["general"]["questions"] == []
         assert summary["general"]["opportunities"][0]["opportunityId"] == "opp-general"
         assert summary["general"]["opportunities"][0]["counterpartUserId"] == "other-general"
         all_opp_ids = [
@@ -643,6 +866,7 @@ def main() -> None:
             for opp in group.get("opportunities", [])
         ]
         assert "opp-waiting-on-other" not in all_opp_ids
+        assert "opp-rejected" not in all_opp_ids
         assert summary["general"]["statusCounts"]["pending"] == 1
         assert summary["negotiations"]["count"] == 2
         assert summary["negotiations"]["items"][0]["opportunityId"] == "opp-1"
@@ -652,25 +876,26 @@ def main() -> None:
         assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
         assert summary["totals"] == {
             "intents": 1,
-            "questions": 2,
+            "questions": 1,
             "opportunities": 2,
-            "totalOpportunities": 4,
-            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "rejected": 1, "expired": 1},
+            "totalOpportunities": 3,
+            "statusCounts": {"pending": 2, "negotiating": 0, "accepted": 0, "expired": 1},
         }
-        mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
-        assert mcp_calls == ["read_intents", "read_pending_questions", "read_networks", "read_network_memberships"]
-        rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
-        assert rest_calls[:3] == [
+        # The summary is now fully REST (Mac-app parity): no MCP tool calls remain.
+        calls = [(entry["method"], entry["url"]) for entry in captured]
+        assert calls[:8] == [
+            ("GET", "https://api.example.test/api/auth/me"),
+            ("POST", "https://api.example.test/api/intents/list"),
+            ("GET", "https://api.example.test/api/questions?status=pending&scopeType=intent&scopeId=intent-1"),
+            ("GET", "https://api.example.test/api/questions?status=answered&scopeType=intent&scopeId=intent-1"),
+            ("GET", "https://api.example.test/api/networks"),
+            ("GET", "https://api.example.test/api/networks/discovery/public"),
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
-            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
         ]
-        assert set(rest_calls[3:]) == {
-            ("GET", "https://api.example.test/api/users/other"),
-            ("GET", "https://api.example.test/api/users/other-general"),
-            ("GET", "https://api.example.test/api/users/expired-other"),
-            ("GET", "https://api.example.test/api/users/rejected-other"),
-        }
+        assert captured[1]["body"] == {"limit": 100, "page": 1, "archived": False}
+        # No per-counterpart /users/:id fetches: cards no longer carry socials.
+        assert calls[8:] == []
 
         captured = []
         install_fake_urlopen([FakeResponse({"success": True})], captured)
@@ -693,51 +918,52 @@ def main() -> None:
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/questions/question-1/dismiss"
 
+        # Accept over REST PATCH /opportunities/:id/status (Mac-app parity).
         captured = []
-        install_fake_urlopen([mcp_text_response({"success": True, "conversationId": "conv-9"})], captured)
+        install_fake_urlopen([FakeResponse({"opportunity": {"id": "opp-1"}, "counterpartUserId": "other"})], captured)
         accept_result = dashboard_api.accept_opportunity("opp-1")
-        assert accept_result["success"] is True
-        assert accept_result["status"] == "accepted"
-        assert accept_result["conversationId"] == "conv-9"
-        assert accept_result["chatUrl"] == "https://index.network/chat/conv-9"
-        assert captured[-1]["method"] == "POST"
-        assert captured[-1]["body"]["params"] == {
-            "name": "update_opportunity",
-            "arguments": {"opportunityId": "opp-1", "status": "accepted"},
-        }
+        assert accept_result == {"success": True, "status": "accepted"}
+        assert captured[-1]["method"] == "PATCH"
+        assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/status"
+        assert captured[-1]["body"] == {"status": "accepted"}
         assert dashboard_api.accept_opportunity("") == {
             "success": False,
             "error": "An opportunity id is required.",
         }
 
+        # The 409 uptake advisory (arriving under details.advisory) is surfaced top-level.
         captured = []
         advisory = {
-            "success": False,
-            "error": "Resolve pending uptake questions.",
-            "advisory": {
-                "code": "unresolved_uptake_questions",
-                "advisoryOnly": True,
-                "opportunityId": "opp-1",
-                "questions": [{"id": "q-1", "title": "Capacity", "prompt": "Can they deliver?", "options": [], "multiSelect": False}],
-                "acknowledgedUptakeQuestionIds": [],
-            },
+            "code": "unresolved_uptake_questions",
+            "advisoryOnly": True,
+            "opportunityId": "opp-1",
+            "questions": [{"id": "q-1", "title": "Capacity", "prompt": "Can they deliver?", "options": [], "multiSelect": False}],
+            "acknowledgedUptakeQuestionIds": [],
         }
-        install_fake_urlopen([mcp_text_response(advisory)], captured)
-        assert dashboard_api.accept_opportunity("opp-1") == advisory
+        install_fake_urlopen(
+            [http_error(409, {"error": "Resolve pending uptake questions.", "advisory": advisory})],
+            captured,
+        )
+        advisory_result = dashboard_api.accept_opportunity("opp-1")
+        assert advisory_result["success"] is False
+        assert advisory_result["advisory"] == advisory
+        # Accept is a REST call now, so no `appUrl` is minted here: the deep-link
+        # walk only runs over MCP responses (covered by the index_list_opportunities
+        # and _with_app_urls cases above).
+        assert "appUrl" not in advisory_result["advisory"]
 
+        # Continue-anyway retry carries acknowledged IDs (deduped) and intent scope.
         captured = []
-        install_fake_urlopen([mcp_text_response({"success": True, "conversationId": "conv-10"})], captured)
+        install_fake_urlopen([FakeResponse({"opportunity": {"id": "opp-1"}})], captured)
         acknowledged_result = dashboard_api.accept_opportunity(
-            "opp-1", {"acknowledgedUptakeQuestionIds": ["q-1", "q-1"]}
+            "opp-1", {"acknowledgedUptakeQuestionIds": ["q-1", "q-1"], "scopeId": "intent-1"}
         )
         assert acknowledged_result["success"] is True
-        assert captured[-1]["body"]["params"] == {
-            "name": "update_opportunity",
-            "arguments": {
-                "opportunityId": "opp-1",
-                "status": "accepted",
-                "acknowledgedUptakeQuestionIds": ["q-1"],
-            },
+        assert captured[-1]["body"] == {
+            "status": "accepted",
+            "scopeType": "intent",
+            "scopeId": "intent-1",
+            "acknowledgedUptakeQuestionIds": ["q-1"],
         }
         assert dashboard_api.accept_opportunity("opp-1", {"acknowledgedUptakeQuestionIds": "q-1"}) == {
             "success": False,
@@ -745,19 +971,66 @@ def main() -> None:
         }
 
         captured = []
-        install_fake_urlopen([mcp_text_response({"success": True})], captured)
+        install_fake_urlopen([FakeResponse({"opportunity": {"id": "opp-1"}})], captured)
         assert dashboard_api.skip_opportunity("opp-1") == {"success": True, "status": "rejected"}
-        assert captured[-1]["body"]["params"] == {
-            "name": "update_opportunity",
-            "arguments": {"opportunityId": "opp-1", "status": "rejected"},
+        assert captured[-1]["method"] == "PATCH"
+        assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/status"
+        assert captured[-1]["body"] == {"status": "rejected"}
+
+        # Start chat over REST POST /opportunities/:id/start-chat, returning the DM id.
+        captured = []
+        install_fake_urlopen(
+            [FakeResponse({"conversationId": "conv-9", "counterpartUserId": "other", "opportunity": {}})],
+            captured,
+        )
+        start_chat_result = dashboard_api.start_chat("opp-1", {"scopeId": "intent-1"})
+        assert start_chat_result["success"] is True
+        assert start_chat_result["conversationId"] == "conv-9"
+        assert start_chat_result["counterpartUserId"] == "other"
+        assert start_chat_result["chatUrl"] == "https://index.network/chat/conv-9"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/start-chat"
+        assert captured[-1]["body"] == {"scopeType": "intent", "scopeId": "intent-1"}
+        assert dashboard_api.start_chat("") == {"success": False, "error": "An opportunity id is required."}
+
+        # Pause/resume an intent over REST PATCH /intents/:id/status.
+        captured = []
+        install_fake_urlopen([FakeResponse({"success": True, "intent": {"id": "intent-1", "status": "PAUSED"}, "changed": True})], captured)
+        pause_result = dashboard_api.set_intent_status("intent-1", {"status": "PAUSED"})
+        assert pause_result == {"success": True, "status": "PAUSED"}
+        assert captured[-1]["method"] == "PATCH"
+        assert captured[-1]["url"] == "https://api.example.test/api/intents/intent-1/status"
+        assert captured[-1]["body"] == {"status": "PAUSED"}
+        assert dashboard_api.set_intent_status("intent-1", {"status": "nope"}) == {
+            "success": False,
+            "error": "status must be one of: ACTIVE, PAUSED.",
         }
+        assert dashboard_api.set_intent_status("", {"status": "PAUSED"}) == {
+            "success": False,
+            "error": "An intent id is required.",
+        }
+
+        # Join a public network over REST POST /networks/:id/join.
+        captured = []
+        install_fake_urlopen([FakeResponse({"network": {"id": "network-2"}})], captured)
+        assert dashboard_api.join_network("network-2") == {"success": True}
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == "https://api.example.test/api/networks/network-2/join"
+        assert dashboard_api.join_network("") == {"success": False, "error": "A network id is required."}
 
         captured = []
         install_fake_urlopen(
             [
-                mcp_text_response(
-                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
-                    response_id=20,
+                # profile() resolves identity + email/timezone/prefs from GET /auth/me.
+                FakeResponse(
+                    {
+                        "user": {
+                            "id": "user-1",
+                            "email": "ada@example.test",
+                            "timezone": "Europe/London",
+                            "notificationPreferences": {"connectionUpdates": False, "weeklyNewsletter": True},
+                        }
+                    }
                 ),
                 mcp_text_response(
                     {
@@ -782,16 +1055,6 @@ def main() -> None:
                         }
                     }
                 ),
-                FakeResponse(
-                    {
-                        "user": {
-                            "id": "user-1",
-                            "email": "ada@example.test",
-                            "timezone": "Europe/London",
-                            "notificationPreferences": {"connectionUpdates": False, "weeklyNewsletter": True},
-                        }
-                    }
-                ),
             ],
             captured,
         )
@@ -810,11 +1073,11 @@ def main() -> None:
         assert profile_obj["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
         assert prof["mockedFields"] == ["email"]
         profile_mcp_calls = [entry["body"]["params"]["name"] for entry in captured if entry["body"]]
-        assert profile_mcp_calls == ["read_network_memberships", "read_user_contexts"]
+        assert profile_mcp_calls == ["read_user_contexts"]
         profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
         assert profile_rest_calls == [
-            ("GET", "https://api.example.test/api/users/user-1"),
             ("GET", "https://api.example.test/api/auth/me"),
+            ("GET", "https://api.example.test/api/users/user-1"),
         ]
 
         captured = []
@@ -868,10 +1131,7 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                mcp_text_response(
-                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
-                    response_id=40,
-                ),
+                FakeResponse({"user": {"id": "user-1"}}),
                 FakeResponse(
                     {
                         "conversations": [
@@ -969,10 +1229,7 @@ def main() -> None:
                         }
                     }
                 ),
-                mcp_text_response(
-                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
-                    response_id=41,
-                ),
+                FakeResponse({"user": {"id": "user-1"}}),
             ],
             captured,
         )
@@ -988,10 +1245,7 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                mcp_text_response(
-                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
-                    response_id=42,
-                ),
+                FakeResponse({"user": {"id": "user-1"}}),
                 FakeResponse(
                     {
                         "messages": [
@@ -1058,10 +1312,7 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                mcp_text_response(
-                    {"success": True, "data": {"userId": "user-1", "count": 0, "memberships": []}},
-                    response_id=30,
-                ),
+                FakeResponse({"user": {"id": "user-1"}}),
                 FakeResponse(
                     {
                         "opportunities": [
@@ -1075,7 +1326,6 @@ def main() -> None:
                         ]
                     }
                 ),
-                FakeResponse({"opportunities": []}),
                 FakeResponse({"opportunities": []}),
                 FakeResponse(
                     {
@@ -1109,14 +1359,13 @@ def main() -> None:
         assert other_profile["context"] == "Grace builds compilers."
         public_rest = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
         assert public_rest == [
+            ("GET", "https://api.example.test/api/auth/me"),
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
-            ("GET", "https://api.example.test/api/opportunities?status=rejected"),
             ("GET", "https://api.example.test/api/users/other"),
         ]
         public_mcp = [entry["body"]["params"] for entry in captured if entry["body"]]
         assert public_mcp == [
-            {"name": "read_network_memberships", "arguments": {}},
             {"name": "read_user_contexts", "arguments": {"userId": "other"}},
         ]
 

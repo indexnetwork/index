@@ -315,13 +315,10 @@ const AGENT_FACES = [
    yours and a single picture. The runtimes on the agents page (hermes, claude
    code) are where it *runs*, not who it is, they keep their vendor tiles.
    Everything the negotiator says anywhere in the app wears this picture. */
-/* The record for whoever is signed in. Signing in replaces
-   window.INDEX_DATA.ME wholesale with the live user, while the demo `ME` const
-   stays as it was, so reading the const directly would keep naming the agent
-   after the demo profile. */
+/* The record for whoever is signed in. applyLoaded sets window.INDEX_DATA.ME to
+   the live user once the snapshot loads; live-only, so it is empty until then. */
 function currentMe() {
-  const live = (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || null;
-  return live || (typeof ME !== "undefined" && ME) || {};
+  return (typeof window !== "undefined" && window.INDEX_DATA && window.INDEX_DATA.ME) || {};
 }
 
 /* Where a shuffled face is kept.
@@ -823,16 +820,37 @@ function useInterval(cb, delay) {
   }, [delay]);
 }
 
+/* ---------- useNarrow: true while the observed box is under `max` px ---------- */
+// A pane loses most of its width the moment a third window opens next to it, so
+// the layouts living inside one ask their own box how much room they have
+// instead of trusting the window size.
+function useNarrow(ref, max) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0] && entries[0].contentRect.width;
+      if (w) setNarrow(w < max);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, max]);
+  return narrow;
+}
+
 /* ---------- PipelineFunnel: Amiga gadget strip ---------- */
-// Label first, then its count in a badge. The tabs share the row equally so
-// the strip fills the window width; each keeps its text on one line and the
-// content stays centered inside its cell.
+// Label first, then its count in a badge. The tabs share the row equally so the
+// strip fills the window width and always stays one row deep; a tab too narrow
+// for its label truncates it ("negotiati…") rather than letting the text spill
+// over its neighbours. The count never truncates, it is the part you read.
 function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "all" }) {
   const clickable = !!onClickStage;
   const allActive = activeStage === "all";
   return (
     <div style={{
-      display:"flex", alignItems:"stretch", flexWrap:"wrap",
+      display:"grid",
+      gridTemplateColumns:`repeat(${stages.length}, minmax(0, 1fr))`,
       fontFamily:"var(--mac-mono)",
     }}>
       {stages.map((s, i) => {
@@ -850,9 +868,11 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             disabled={!clickable}
             title={`${s.label} · ${s.count}`}
             style={{
-              flex:"1 1 0", minWidth:0,
-              display:"flex", alignItems:"center", justifyContent:"center", gap:5,
-              padding:"7px 9px",
+              minWidth:0, overflow:"hidden",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:4,
+              // tight sides: in a squeezed column every pixel here is a
+              // character of the label that survives the truncation
+              padding:"7px 5px",
               background: isActive ? A.fg : "transparent",
               color: isActive ? A.paper : A.fg,
               opacity: dim ? 0.45 : 1,
@@ -865,10 +885,11 @@ function PipelineFunnel({ stages, mode = "broad", onClickStage, activeStage = "a
             }}>
             <span style={{
               fontSize:10, letterSpacing:0.4, textTransform:"uppercase",
+              minWidth:0, overflow:"hidden", textOverflow:"ellipsis",
             }}>{s.label}</span>
             <span style={{
               fontSize:10, fontWeight:700, lineHeight:1,
-              padding:"3px 4px", minWidth:14, textAlign:"center",
+              padding:"3px 3px", minWidth:12, textAlign:"center", flex:"0 0 auto",
               border:`1px solid ${isActive ? A.paper : A.fg}`,
               background: accent ? A.accent : "transparent",
               color: accent ? A.fg : (isActive ? A.paper : A.fg),
@@ -1139,14 +1160,43 @@ function MacSegmented({ value, onChange, options, size }) {
   );
 }
 
+/* ---------- one-line, non-blocking notice ---------- */
+// For the things the app can only report, not fix: a retired /c/ link, a deep
+// link to a card this account cannot see. It sits at the foot of the desktop,
+// times out on its own, and never takes the keyboard, so whatever the user was
+// doing keeps working. Anything that needs a decision still gets a MacWindow.
+function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
+  useEffect(() => {
+    if (!onDismiss) return;
+    const t = setTimeout(onDismiss, timeoutMs);
+    return () => clearTimeout(t);
+  }, [text, timeoutMs]);
+  if (!text) return null;
+  return (
+    <div
+      onClick={onDismiss}
+      role="status"
+      title="dismiss"
+      style={{
+        position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)",
+        maxWidth:"min(560px, calc(100% - 36px))",
+        padding:"8px 14px", cursor:"default",
+        background: A.paper, color: A.fg,
+        border:`2px solid ${A.fg}`, boxShadow: bevel("out"),
+        fontFamily:"var(--mac-mono)", fontSize:11.5, lineHeight:1.5,
+        zIndex:1200,
+      }}>{text}</div>
+  );
+}
+
 Object.assign(window, {
   LiveDot, StreamText, KV, Tag, Avatar, photoUrl,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
   AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, setMyAgentFace, currentMe,
   AGENT_FACES, AGENT_FACE_PALETTE,
-  ScoreBar, Ticker, Stat, useInterval,
+  ScoreBar, Ticker, Stat, useInterval, useNarrow,
   PipelineFunnel, SourceBadge, ModeBadge,
-  MacWindow, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
+  MacWindow, MacNotice, MacSegmented, EditBadge, PicturePicker, PICTURE_MAX_BYTES,
   AMIGA_PALETTE: A,
 });

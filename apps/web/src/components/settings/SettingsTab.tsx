@@ -53,31 +53,6 @@ export default function SettingsTab({
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
 
-  // Event metadata state
-  const isEvent = network.type === 'event';
-  const meta = (network.metadata ?? {}) as Record<string, unknown>;
-  const toDateInput = (iso: unknown) => typeof iso === 'string' && iso ? iso.slice(0, 10) : '';
-  const [startDate, setStartDate] = useState(toDateInput(meta.startDate));
-  const [endDate, setEndDate] = useState(toDateInput(meta.endDate));
-  const [location, setLocation] = useState((meta.location as string) || '');
-  const [timezone, setTimezone] = useState((meta.timezone as string) || '');
-  const [themes, setThemes] = useState(
-    Array.isArray(meta.themes) ? (meta.themes as string[]).join(', ') : ''
-  );
-  const [originalStartDate, setOriginalStartDate] = useState(startDate);
-  const [originalEndDate, setOriginalEndDate] = useState(endDate);
-  const [originalLocation, setOriginalLocation] = useState(location);
-  const [originalTimezone, setOriginalTimezone] = useState(timezone);
-  const [originalThemes, setOriginalThemes] = useState(themes);
-  const [isSavingMeta, setIsSavingMeta] = useState(false);
-
-  const hasMetaChanged =
-    startDate !== originalStartDate ||
-    endDate !== originalEndDate ||
-    location !== originalLocation ||
-    timezone !== originalTimezone ||
-    themes !== originalThemes;
-
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local form state from prop changes */
   useEffect(() => {
     setTitle(network.title);
@@ -91,24 +66,7 @@ export default function SettingsTab({
     setRemoveImageRequested(false);
     setDeleteConfirmationText('');
     setIsDangerZoneExpanded(false);
-
-    const m = (network.metadata ?? {}) as Record<string, unknown>;
-    const sd = toDateInput(m.startDate);
-    const ed = toDateInput(m.endDate);
-    const loc = (m.location as string) || '';
-    const tz = (m.timezone as string) || '';
-    const th = Array.isArray(m.themes) ? (m.themes as string[]).join(', ') : '';
-    setStartDate(sd);
-    setEndDate(ed);
-    setLocation(loc);
-    setTimezone(tz);
-    setThemes(th);
-    setOriginalStartDate(sd);
-    setOriginalEndDate(ed);
-    setOriginalLocation(loc);
-    setOriginalTimezone(tz);
-    setOriginalThemes(th);
-  }, [network.id, network.title, network.prompt, network.imageUrl, network.metadata]);
+  }, [network.id, network.title, network.prompt, network.imageUrl]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,56 +131,6 @@ export default function SettingsTab({
     }
   };
 
-  const handleSaveMeta = async () => {
-    if (!startDate || !endDate) {
-      error('Start date and end date are required');
-      return;
-    }
-    if (endDate < startDate) {
-      error('End date must be on or after start date');
-      return;
-    }
-    try {
-      setIsSavingMeta(true);
-      const parsedThemes = themes
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-      const isoStart = `${startDate}T00:00:00.000Z`;
-      const isoEnd = `${endDate}T23:59:59.999Z`;
-      const updatedNetwork = await updateNetwork(networkId, {
-        metadata: {
-          ...(network.metadata ?? {}),
-          startDate: isoStart,
-          endDate: isoEnd,
-          location: location.trim() || undefined,
-          timezone: timezone.trim() || undefined,
-          themes: parsedThemes.length > 0 ? parsedThemes : undefined,
-        },
-      });
-      setOriginalStartDate(startDate);
-      setOriginalEndDate(endDate);
-      setOriginalLocation(location);
-      setOriginalTimezone(timezone);
-      setOriginalThemes(themes);
-      onUpdated(updatedNetwork);
-      success('Event details updated');
-    } catch (err) {
-      logger.error('Error updating event metadata', { error: err });
-      error('Failed to update event details');
-    } finally {
-      setIsSavingMeta(false);
-    }
-  };
-
-  const handleCancelMeta = () => {
-    setStartDate(originalStartDate);
-    setEndDate(originalEndDate);
-    setLocation(originalLocation);
-    setTimezone(originalTimezone);
-    setThemes(originalThemes);
-  };
-
   const handleDeleteIndex = async () => {
     try {
       setIsDeletingIndex(true);
@@ -247,15 +155,6 @@ export default function SettingsTab({
   return (
     <>
       <div className="space-y-6">
-        {/* Type badge */}
-        {isEvent && (
-          <div>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium font-ibm-plex-mono bg-purple-100 text-purple-800">
-              Event
-            </span>
-          </div>
-        )}
-
         {/* Identity header: circle image left, title/placeholder right */}
         <div className="flex items-center gap-5">
           <button
@@ -317,56 +216,6 @@ export default function SettingsTab({
             {isSavingSettings ? 'Saving...' : 'Save'}
           </Button>
         </div>
-
-        {/* Event Details section */}
-        {isEvent && (
-          <div className="pt-6 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Event Details</p>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="startDate" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                    Start date <span className="text-red-500">*</span>
-                  </label>
-                  <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                </div>
-                <div>
-                  <label htmlFor="endDate" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                    End date <span className="text-red-500">*</span>
-                  </label>
-                  <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="location" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                  Location
-                </label>
-                <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. San Francisco, CA" />
-              </div>
-              <div>
-                <label htmlFor="timezone" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                  Timezone
-                </label>
-                <Input id="timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g. America/Los_Angeles" />
-              </div>
-              <div>
-                <label htmlFor="themes" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                  Themes
-                </label>
-                <Input id="themes" value={themes} onChange={(e) => setThemes(e.target.value)} placeholder="e.g. AI, Web3, Climate (comma-separated)" />
-                <p className="text-xs text-gray-400 mt-1.5">Comma-separated list of event themes.</p>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={handleCancelMeta} disabled={isSavingMeta || !hasMetaChanged}>
-                  Cancel
-                </Button>
-                <Button size="sm" onClick={handleSaveMeta} disabled={isSavingMeta || !hasMetaChanged || !startDate || !endDate}>
-                  {isSavingMeta ? 'Saving...' : 'Save'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Danger zone */}
         {!network.isPersonal && (

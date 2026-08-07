@@ -18,8 +18,6 @@ type EnrichmentRunInput = {
   name?: string;
   location?: string;
   bioOrDescription?: string;
-  edgeosProfileText?: string;
-  allowPublicLookup?: boolean;
   linkedinUrl?: string;
   githubUrl?: string;
   twitterUrl?: string;
@@ -40,7 +38,6 @@ interface EnrichmentRunContext {
   indexName?: string;
   sessionId?: string;
   agentId?: string;
-  clientSurface?: 'telegram' | 'web';
 }
 
 interface EnrichmentRunRecord {

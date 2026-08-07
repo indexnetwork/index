@@ -74,10 +74,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
     networks.map((n) => ({
       ...n,
       renderedContext: renderNetworkContext({
-        type: (n.type as string) ?? 'community',
         title: (n.title as string) ?? '',
         prompt: n.prompt as string | undefined,
-        metadata: (n.metadata as Record<string, unknown>) ?? {},
       }),
     }));
 

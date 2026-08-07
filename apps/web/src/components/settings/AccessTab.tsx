@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronLeft, Upload, Download, X, RotateCw, Shield, ShieldOff, EyeOff } from 'lucide-react';
 
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -20,30 +20,6 @@ import { useNavigate } from 'react-router';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('AccessTab');
-
-type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
-
-const PROFILE_ENRICHMENT_OPTIONS: Array<{
-  value: ProfileEnrichmentPolicy;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: 'auto',
-    label: 'Automatic',
-    description: 'Allow automatic member enrichment jobs without an extra consent gate.',
-  },
-  {
-    value: 'consent_required',
-    label: 'Require consent',
-    description: 'Ask members before automatic public lookup or enrichment runs.',
-  },
-  {
-    value: 'disabled',
-    label: 'Disabled',
-    description: 'Do not run automatic public lookup or enrichment for this network.',
-  },
-];
 
 interface AccessTabProps {
   network: Network;
@@ -70,7 +46,7 @@ export default function AccessTab({
   const usersService = createUsersService(api);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(network.permissions?.joinPolicy === 'anyone');
-  const [isUpdatingProfilePolicy, setIsUpdatingProfilePolicy] = useState(false);
+  const [isHiddenFromDirectory, setIsHiddenFromDirectory] = useState(network.hidden ?? false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -99,12 +75,13 @@ export default function AccessTab({
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
     setAnyoneCanJoin(network.permissions?.joinPolicy === 'anyone');
+    setIsHiddenFromDirectory(network.hidden ?? false);
     if (network.permissions?.invitationLink?.code && network.permissions.joinPolicy === 'invite_only') {
       setInvitationLink({ code: network.permissions.invitationLink.code });
     } else {
       setInvitationLink(null);
     }
-  }, [network.id, network.permissions]);
+  }, [network.id, network.permissions, network.hidden]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadMembers = useCallback(async () => {
@@ -177,18 +154,14 @@ export default function AccessTab({
     }
   };
 
-  const handleUpdateProfileEnrichment = async (profileEnrichment: ProfileEnrichmentPolicy) => {
-    if (isUpdatingProfilePolicy) return;
-    setIsUpdatingProfilePolicy(true);
+  const handleUpdateHidden = async (hidden: boolean) => {
     try {
-      const updatedNetwork = await networkService.updatePermissions(networkId, { profileEnrichment });
+      await networkService.updateNetwork(networkId, { hidden });
+      const updatedNetwork = await networkService.getNetwork(networkId);
       onUpdated(updatedNetwork);
-      success('Automatic member enrichment policy updated');
     } catch (err) {
-      logger.error('Error updating profile enrichment policy', { error: err });
-      error('Failed to update profile enrichment policy');
-    } finally {
-      setIsUpdatingProfilePolicy(false);
+      logger.error('Error updating directory visibility', { error: err });
+      error('Failed to update directory visibility');
     }
   };
 
@@ -208,7 +181,7 @@ export default function AccessTab({
   };
 
   const handleAddMember = async (memberUser: Member) => {
-    if (network.isExperiment) {
+    if (network.hasMasterKey) {
       await handleInviteMember(memberUser.email);
       return;
     }
@@ -357,14 +330,13 @@ export default function AccessTab({
     safePage * CONTACTS_PAGE_SIZE
   );
   const noResults = searchHasQueried && filteredSuggestions.length === 0 && filteredMembers.length === 0;
-  const profileEnrichmentPolicy = ((network.permissions as { profileEnrichment?: ProfileEnrichmentPolicy } | undefined)?.profileEnrichment ?? 'auto');
 
   return (
     <>
       <div className="space-y-8">
 
-        {/* Who can join — experiment networks are always private */}
-        {!network.isPersonal && !network.isExperiment && (
+        {/* Who can join — master-key networks are always private */}
+        {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
             <div className="grid grid-cols-2 gap-2">
@@ -394,40 +366,26 @@ export default function AccessTab({
           </div>
         )}
 
-        {/* Profile enrichment policy */}
+        {/* Hidden from directory — personal networks reject non-prompt updates */}
         {!network.isPersonal && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Automatic Member Enrichment</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {PROFILE_ENRICHMENT_OPTIONS.map((option) => {
-                const selected = profileEnrichmentPolicy === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={isUpdatingProfilePolicy}
-                    onClick={() => handleUpdateProfileEnrichment(option.value)}
-                    className={`flex items-start gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed ${selected ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-                  >
-                    <Shield className={`h-4 w-4 flex-shrink-0 mt-0.5 ${selected ? 'text-black' : 'text-gray-400'}`} />
-                    <div>
-                      <p className="text-sm font-medium text-black">{option.label}</p>
-                      <p className="text-xs text-gray-400">{option.description}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            {network.isExperiment && profileEnrichmentPolicy !== 'consent_required' && (
-              <p className="text-xs text-amber-600 mt-2">
-                Consent is recommended for experiment signup networks so attendee profile data is staged until members verify it.
-              </p>
-            )}
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Directory Listing</p>
+            <button
+              type="button"
+              onClick={() => { setIsHiddenFromDirectory(!isHiddenFromDirectory); handleUpdateHidden(!isHiddenFromDirectory); }}
+              className={`w-full flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${isHiddenFromDirectory ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+            >
+              <EyeOff className={`h-4 w-4 flex-shrink-0 ${isHiddenFromDirectory ? 'text-black' : 'text-gray-400'}`} />
+              <div>
+                <p className="text-sm font-medium text-black">Hidden from directory</p>
+                <p className="text-xs text-gray-400">{isHiddenFromDirectory ? 'This network is not shown in public listings' : 'This network appears in public listings'}</p>
+              </div>
+            </button>
           </div>
         )}
 
-        {/* Share link — not applicable for experiment networks */}
-        {!network.isPersonal && !network.isExperiment && (
+        {/* Share link — not applicable for master-key networks */}
+        {!network.isPersonal && !network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
               {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
@@ -470,7 +428,7 @@ export default function AccessTab({
                   className="pl-9"
                 />
               </div>
-              {network.isExperiment && (
+              {network.hasMasterKey && (
                 <>
                   <input
                     ref={csvInputRef}
@@ -513,14 +471,14 @@ export default function AccessTab({
                 {memberSearchQuery.includes('@') ? (
                   <button
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                    onClick={() => network.isExperiment ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
+                    onClick={() => network.hasMasterKey ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
                     disabled={isAddingMember}
                   >
                     <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                       <Plus className="h-3.5 w-3.5 text-gray-500" />
                     </div>
                     <span className="text-sm text-black flex-1 truncate">
-                      {network.isExperiment ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
+                      {network.hasMasterKey ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
                     </span>
                   </button>
                 ) : (
@@ -596,7 +554,7 @@ export default function AccessTab({
                     </button>
                   </Tooltip>
                 )}
-                {network.isExperiment && (
+                {network.hasMasterKey && (
                   <Tooltip content="Resend invitation · expires old key">
                     <button
                       onClick={() => setResendTarget(member)}
@@ -718,7 +676,7 @@ export default function AccessTab({
             </div>
             <div className="px-6 py-5 space-y-4">
               <p className="text-sm text-gray-600">
-                Upload a CSV file with member data. The file must have an <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">email</code> column. Optional profile columns are staged for onboarding until each member grants import consent and verifies their profile: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">bio</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">location</code>, and social links (e.g. <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">linkedin</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">github</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">twitter</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">website</code>).
+                Upload a CSV file with member data. The file must have an <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">email</code> column. Optional profile columns are applied immediately and also retained as onboarding provenance seeds for each member to review: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">bio</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">location</code>, and social links (e.g. <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">linkedin</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">github</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">twitter</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">website</code>).
               </p>
               <button
                 type="button"

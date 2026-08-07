@@ -47,7 +47,7 @@ describe('CSV import → network-scoped agent end-to-end', () => {
     cleanupUserIds.push(ownerId);
 
     const [n] = await db.insert(schema.networks)
-      .values({ title: 'Import Net', isPersonal: false, isExperiment: true })
+      .values({ title: 'Import Net', isPersonal: false })
       .returning({ id: schema.networks.id });
     networkId = n.id;
     cleanupNetworkIds.push(networkId);

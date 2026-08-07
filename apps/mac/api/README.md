@@ -2,11 +2,11 @@
 
 This folder is the standalone API-consumption boundary for the native macOS/iOS prototypes under `apps/mac`.
 
-It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data. `IndexApp-iOS` is not wired yet.
+It is now **wired into `IndexApp`**: `assemble.py` inlines `client.mjs` + `mappers.mjs` + `deeplink.mjs` into `Resources/index.html` as a `window.IndexApi` IIFE, and `src/index-amiga/api.jsx` builds a live client from `window.INDEX_NATIVE` (injected by the Swift shell). When no native credential is present (browser preview), the app falls back to `window.INDEX_DATA` demo data. `IndexApp-iOS` is not wired yet.
 
 ## Role
 
-- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/home`, `/api/questions`, conversations, etc.).
+- Own calls to `services/api` (`/api/auth/me`, `/api/intents/list`, `/api/opportunities/radar`, `/api/questions`, conversations, etc.).
 - Keep endpoint paths aligned with the decorated controllers in `services/api/src/controllers` and the `/api` global prefix in `services/api/src/main.ts`.
 - Convert backend DTOs into the existing prototype shapes (`INTENTS`, people/opportunity cards, clarifiers).
 - Keep auth/token handling isolated from UI components.
@@ -26,6 +26,7 @@ API-key chat uses the **orchestrator** persona (not the Signal web persona). Ses
 
 - `client.mjs` — dependency-free fetch wrapper and resource methods for the Index API (`x-api-key` aware).
 - `mappers.mjs` — pure mappers from API responses to the current mac prototype view models.
+- `deeplink.mjs` — pure `parseDeepLink(url)`: the single place where a `https://index.network/o|u|c/<id>` universal link or an `index://` alias becomes a route. The Swift shell only delivers URLs; it makes no routing decision. Contract tested in `deeplink.spec.mjs`.
 - `index.mjs` — barrel exports for future consumers.
 
 ## Endpoint coverage checked against controllers
@@ -35,7 +36,7 @@ The client base URL includes `/api`, matching the global prefix applied in `serv
 - `auth.controller.ts`: `GET /auth/me`, `PATCH /auth/profile/update`, `POST /auth/cli-credential/revoke`
 - `network.controller.ts`: `GET /networks`, `GET /networks/:id/overview`, `GET /networks/:id/my-intents`, `POST /networks`, `POST /networks/:id/join`, `POST /networks/:id/leave`
 - `intent.controller.ts`: `POST /intents/list`, `GET /intents/:id`, `PATCH /intents/:id/archive`, `PATCH /intents/:id/status`
-- `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/home` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)
+- `opportunity.controller.ts`: `GET /opportunities`, `GET /opportunities/radar` (incl. `scopeType=intent`), `GET /opportunities/chat-context`, `GET /opportunities/:id`, `GET /opportunities/:id/invite-message`, `PATCH /opportunities/:id/status` (incl. intent scope), `POST /opportunities/:id/start-chat` (incl. intent scope)
 - `question.controller.ts`: `GET /questions` (incl. `scopeType=intent`, `conversationId`, `mode`), `POST /questions/:id/answer`, `POST /questions/:id/dismiss`
 - `conversation.controller.ts`: `GET /conversations`, `GET /conversations/negotiations`, `GET /conversations/:id/messages`, `POST /conversations/:id/messages`, `POST /conversations/dm`, `PATCH /conversations/:id/metadata`, `DELETE /conversations/:id`
 - `agent.controller.ts`: `GET /agents` (read-only; management writes are session-only)

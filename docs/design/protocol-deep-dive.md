@@ -116,7 +116,7 @@ The graph supports streaming via `config.writer()` so text tokens and tool-activ
 
 The runtime is persona-neutral: `ChatGraphFactory.withPersona()` reuses the same graph and injected dependencies while selecting a persona-owned prompt, toolset, and loop behaviors. Persisted `conversations.persona` is authoritative for follow-up turns. The main-web Signal Agent persona (`signal`) uses a positive allowlist limited to intent/signal management, intent-to-existing-community assignment, profile context and premise knowledge, read-only network/membership context, pasted-URL scraping, and chat clarification. Its wrappers live-recheck membership, clamp intent/network-focused reads to owned active intents and current memberships, prohibit other-user membership enumeration, and keep creation proposal-only. Before a proposal card is emitted, the protocol persists an owner-scoped 24-hour record through the injected `IntentProposalStore`; it binds the normalized description, optional network, and complete verifier output. Confirmation treats card fields only as exact-match assertions, locks that record and current membership, maps the verifier output directly to the intent analysis columns, and atomically inserts the intent/assignment plus consumes the proposal. The transaction winner obtains observable indexing-queue admission before question/event effects; a later exact consumed-proposal retry can repair failed admission idempotently, while concurrent losers never duplicate those downstream effects. It has no opportunity/discovery-run, negotiation, contact/import, agent-administration, network-administration, or membership-mutation tools. Its discovery-coupled create-intent callback is disabled while proposal hallucination recovery remains enabled. Session-authenticated compatibility chat routes are classified as web from authenticated provenance, while API-key and other non-web consumers retain the default `orchestrator` runtime.
 
-Under the same `WEB_SIGNAL_AGENT_ENABLED` cutover, the session-only incomplete-user route persists a separate `onboarding` persona. Its exact allowlist is consent recording, self context read/preview/confirmation, blocking guided questions, proposal-only intent creation with Signal's live-membership narrowing, and validated onboarding completion. It cannot import Gmail/contacts, discover or mutate opportunities, negotiate, select or join communities, mutate memberships, administer agents/networks, scrape arbitrary URLs, or receive newly registered shared tools automatically. `confirm_user_context` writes the durable `profileConfirmedAt`/`currentStep='first_signal'` marker while preserving privacy JSON. `complete_onboarding({ intentId })` requires a valid marker plus an exact active owned first signal created at or after profile confirmation, then durably records `firstSignalIntentId`, `currentStep='complete'`, and `completedAt`. Flag-off onboarding continues to use the legacy orchestrator prompt/tool flow; API-key and other non-web consumers are unchanged. Compatibility histories remain orchestrator-only, and the session-only web history returns readable legacy orchestrator plus Signal sessions.
+Under the same `WEB_SIGNAL_AGENT_ENABLED` cutover, the session-only incomplete-user route persists a separate `onboarding` persona. Its exact allowlist is self context read/preview/confirmation, blocking guided questions, proposal-only intent creation with Signal's live-membership narrowing, and validated onboarding completion. It cannot import Gmail/contacts, discover or mutate opportunities, negotiate, select or join communities, mutate memberships, administer agents/networks, scrape arbitrary URLs, or receive newly registered shared tools automatically. `confirm_user_context` writes the durable `profileConfirmedAt`/`currentStep='first_signal'` marker while preserving the remaining onboarding state and provenance seeds. `complete_onboarding({ intentId })` requires a valid marker plus an exact active owned first signal created at or after profile confirmation, then durably records `firstSignalIntentId`, `currentStep='complete'`, and `completedAt`. Flag-off onboarding continues to use the legacy orchestrator prompt/tool flow; API-key and other non-web consumers are unchanged. Compatibility histories remain orchestrator-only, and the session-only web history returns readable legacy orchestrator plus Signal sessions.
 
 **Dependencies:** `ChatGraphCompositeDatabase`, `Embedder`, `Scraper`
 
@@ -161,9 +161,9 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 - Write mode detects what needs generation and only runs necessary steps
 - If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
 - Identity updates merge new information with the user's existing identity (name/bio/location on `users`)
-- Onboarding-safe profile tools split consent/draft/confirmation: `record_onboarding_privacy_consent` writes `users.onboarding.privacy`, `preview_user_context` generates a non-persisted draft from allowed sources, and `confirm_user_context` saves only approved content and stamps the durable profile-phase marker.
-- Automatic public enrichment is gated by `networks.permissions.profileEnrichment`: missing/`auto` preserves legacy behavior, `consent_required` requires `privacy.publicProfileLookup.granted === true` and never allows ghosts, and `disabled` blocks public enrichment.
-- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-reads network policy/user onboarding, skips `enrich.user` when disallowed, and lets `ensure_profile_hyde` proceed under consent-required only when the user already has ACTIVE premises.
+- Signup/import profile fields are applied to the account immediately and also retained as provenance seeds. `preview_user_context` uses those seeds to generate a non-persisted draft, and `confirm_user_context` saves approved refinements and stamps the durable profile-phase marker. Network-scoped seed reads never fall back across networks.
+- Automatic public enrichment runs for current network members; the former `networks.permissions.profileEnrichment` gate and the onboarding privacy-consent layer have been removed, and any leftover values in stored JSON are ignored.
+- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-checks user/network existence and current membership, and skips jobs whose subject or scoped membership no longer exists.
 - When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer`. Extracted premises are persisted via the premise graph; premise changes then drive regeneration of the user's `user_contexts` representation. This ensures atomic facts are captured as premises and the synthesized representation is derived from them.
 - The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
 
@@ -267,19 +267,18 @@ The `assign` node has two sub-paths:
 
 **Dependencies:** `IntentNetworkGraphDatabase`
 
-### 3.9 Home (Feed) Graph
+### 3.9 Radar Graph
 
-**File:** `opportunity/feed/feed.graph.ts`
-**Purpose:** Build the opportunity home feed view with dynamic sections.
-**Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `checkCategorizerCache`, `categorizeDynamically`, `cacheCategorizerResults`, `normalizeAndSort`
-**State:** `HomeGraphState` (userId, indexId, limit, opportunities, cards, sections, cachedCards, sectionProposals, etc.)
+**File:** `opportunity/radar/radar.graph.ts`
+**Purpose:** Build the opportunity radar view — a flat, presenter-texted card list, optionally scoped to one intent.
+**Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `normalizeItems`
+**State:** `RadarGraphState` (userId, scopeType/scopeId, limit, opportunities, cards, items, cachedCards, uncachedOpportunities, etc.)
 **Conditional edges:**
 - After `checkPresenterCache`: routes to `generateCardText` (cache misses) or `cachePresenterResults` (all cached)
-- After `checkCategorizerCache`: routes to `categorizeDynamically` (cache miss) or `normalizeAndSort` (cached)
 
-This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text and `HomeCategorizerAgent` for dynamic section grouping, with versioned cache support for both layers. Cache TTL is 24 hours; claim-safety or presenter fallback cards are returned only for the current request and are not cached. Pool adjustments affect ordering and deprioritization copy only when their `recipientUserId + intentId` provenance exactly matches the graph's viewer and selected intent; global Home, other viewers/intents, and legacy unscoped entries ignore them.
+This is a read-only graph (separate from the write-path maintenance graph). It uses `OpportunityPresenter` for card text with a versioned cache (24h TTL); claim-safety or presenter fallback cards are returned only for the current request and are not cached. Responses are a flat `items` array — clients bucket by lifecycle status. Pool adjustments affect ordering and deprioritization copy only when their `recipientUserId + intentId` provenance exactly matches the graph's viewer and selected intent; global Radar, other viewers/intents, and legacy unscoped entries ignore them.
 
-**Dependencies:** `HomeGraphDatabase`, `OpportunityCache`
+**Dependencies:** `RadarGraphDatabase`, `OpportunityCache`
 
 ### 3.10 Maintenance Graph
 
@@ -778,7 +777,7 @@ When enabled, high-scoring candidates enter bilateral negotiation via the Negoti
 
 ### Persistence
 
-Surviving background opportunities are persisted with status `latent`; ambient negotiation and explicit lifecycle actions determine later states. Persisted opportunities are presented through the home feed and can be reviewed from a later chat turn or chat history. The full lifecycle, including retained `draft` compatibility and introducer reactivation, is documented in [Opportunity Status Lifecycle](./opportunity-status-lifecycle.md).
+Surviving background opportunities are persisted with status `latent`; ambient negotiation and explicit lifecycle actions determine later states. Persisted opportunities are presented through the radar view and can be reviewed from a later chat turn or chat history. The full lifecycle, including retained `draft` compatibility and introducer reactivation, is documented in [Opportunity Status Lifecycle](./opportunity-status-lifecycle.md).
 
 ## 8. Intent Lifecycle
 

@@ -1374,19 +1374,19 @@ describe('MCP Server Factory', () => {
     expect(ids).toEqual(['intent-q']);
   });
 
-  // ── IND-583: human-only onboarding privacy consent at the transport seam ────
+  // ── IND-583: human-only onboarding completion at the transport seam ─────────
   //
-  // record_onboarding_privacy_consent and complete_onboarding are human_only. A
-  // registered agent — even one holding BOTH manage:identity and manage:premises
-  // (the exact pair the retired manage:profile grant projected to) — must neither
-  // see them in tools/list nor reach them via tools/call, and the denial must
-  // land before any chat DB, scoped DB, registry, or graph work. The session
-  // human is admitted and reaches the scoped handler seam. tools/list and
-  // tools/call therefore agree for both principals.
+  // complete_onboarding is human_only. A registered agent — even one holding
+  // BOTH manage:identity and manage:premises (the exact pair the retired
+  // manage:profile grant projected to) — must neither see it in tools/list nor
+  // reach it via tools/call, and the denial must land before any chat DB,
+  // scoped DB, registry, or graph work. The session human is admitted and
+  // reaches the scoped handler seam. tools/list and tools/call therefore agree
+  // for both principals.
   const IDENTITY_PREMISES_ACTIONS = ['manage:identity', 'manage:premises'];
-  const HUMAN_ONLY_ONBOARDING_TOOLS = ['record_onboarding_privacy_consent', 'complete_onboarding'] as const;
+  const HUMAN_ONLY_ONBOARDING_TOOLS = ['complete_onboarding'] as const;
 
-  it('hides onboarding privacy consent tools from an agent holding identity+premises grants (tools/list)', async () => {
+  it('hides human-only onboarding tools from an agent holding identity+premises grants (tools/list)', async () => {
     clearMcpToolMetadataCacheForTests();
     const deps = {
       ...mockDeps,
@@ -1408,7 +1408,7 @@ describe('MCP Server Factory', () => {
     }
   });
 
-  it('denies an identity+premises agent calling onboarding consent tools before any DB or graph work', async () => {
+  it('denies an identity+premises agent calling human-only onboarding tools before any DB or graph work', async () => {
     for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
       const counter = { reads: 0 };
       const result = await callTool({
@@ -1426,19 +1426,10 @@ describe('MCP Server Factory', () => {
     }
   });
 
-  it('admits the session human to onboarding privacy consent tools and reaches the scoped handler seam', async () => {
+  it('admits the session human to human-only onboarding tools and reaches the scoped handler seam', async () => {
     // Schema-valid arguments; the session human passes policy and reaches the
     // scoped-deps/handler seam (scopedCreateArgs), which is the admission
     // boundary — the exact parity partner of the agent denial above.
-    const consent = await callTool({
-      identity: { userId: 'test-user-id', isSessionAuth: true },
-      headers: { authorization: 'Bearer session-token' },
-      toolName: 'record_onboarding_privacy_consent',
-      arguments: { publicProfileLookupGranted: true },
-    });
-    expect(consent.code).not.toBe('MCP_CAPABILITY_DENIED');
-    expect(consent.scopedCreateArgs.length).toBe(1);
-
     const complete = await callTool({
       identity: { userId: 'test-user-id', isSessionAuth: true },
       headers: { authorization: 'Bearer session-token' },
@@ -3224,7 +3215,7 @@ describe('MCP Server Factory', () => {
       { tool: 'confirm_opportunity_delivery', args: { opportunityId: '00000000-0000-4000-8000-000000000001', trigger: 'ambient' } },
       // human_only representative registered on this surface (chat-history tools
       // are chat-session-only and never in this MCP registry).
-      { tool: 'record_onboarding_privacy_consent', args: { publicProfileLookupGranted: true } },
+      { tool: 'complete_onboarding', args: {} },
     ] as const;
 
     for (const { tool, args } of enrollmentDomainCalls) {

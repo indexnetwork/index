@@ -729,31 +729,25 @@ export class OpportunityDatabaseAdapter {
     userId: string,
     options?: { status?: string; statuses?: string[]; networkId?: string; scopeType?: 'intent'; scopeId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
-    let intentScopeNetworkIds: string[] | null = null;
+    let intentScopeValid = false;
     if (options?.scopeType === 'intent' && options.scopeId) {
-      const scopeRows = await db
-        .select({ networkId: schema.intentNetworks.networkId })
+      // Scope validity is ownership, not current network assignment: an
+      // intent's assigned networks can change after discovery, and gating the
+      // scoped read on the *current* assignment orphaned every opportunity
+      // anchored on a since-removed network — while countsByIntent (linkage
+      // only) still counted them, so badges said N and the intent radar said 0.
+      // The scoped view must be a pure narrowing of the unscoped view:
+      // unscoped visibility ∩ intent linkage (+ the live-anchor guard below).
+      const owned = await db
+        .select({ id: schema.intents.id })
         .from(schema.intents)
-        .innerJoin(
-          schema.intentNetworks,
-          eq(schema.intentNetworks.intentId, schema.intents.id),
-        )
-        .innerJoin(
-          schema.networkMembers,
-          and(
-            eq(schema.networkMembers.userId, userId),
-            eq(schema.networkMembers.networkId, schema.intentNetworks.networkId),
-          ),
-        )
-        .innerJoin(schema.networks, eq(schema.networks.id, schema.intentNetworks.networkId))
         .where(and(
           eq(schema.intents.id, options.scopeId),
           eq(schema.intents.userId, userId),
-          isNull(schema.networkMembers.deletedAt),
-          isNull(schema.networks.deletedAt),
-        ));
-      intentScopeNetworkIds = [...new Set(scopeRows.map((row) => row.networkId))].sort();
-      if (intentScopeNetworkIds.length === 0) return [];
+        ))
+        .limit(1);
+      if (owned.length === 0) return [];
+      intentScopeValid = true;
     }
 
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
@@ -817,10 +811,10 @@ export class OpportunityDatabaseAdapter {
         )
       )`);
     }
-    if (options?.scopeType === 'intent' && options.scopeId && intentScopeNetworkIds) {
-      // Selected-intent Radar keeps the historical linkage predicate, but the
-      // selected intent must be viewer-owned and its scope is authoritative:
-      // assigned networks intersect live viewer memberships and live networks.
+    if (options?.scopeType === 'intent' && options.scopeId && intentScopeValid) {
+      // Selected-intent Radar: the historical linkage predicate. From-intent
+      // discovery records `detection.triggeredBy`; older or manually linked
+      // rows are selected via the viewer's own actor `intent` stamp.
       conditions.push(sql`(
         ${opportunities.detection}->>'triggeredBy' = ${options.scopeId}
         OR EXISTS (
@@ -830,10 +824,12 @@ export class OpportunityDatabaseAdapter {
         )
       )`);
       // Participant-safe rather than row-strict: every distinct actor user must
-      // have at least one actor anchor inside the intent's valid scope, and that
-      // exact user/network pair must still be active. This blocks candidate
-      // membership leaks while tolerating harmless duplicate actor stamps for
-      // the same participant on another network.
+      // still hold a live membership on at least one network they are anchored
+      // on in this opportunity. This blocks removed-candidate membership leaks
+      // while tolerating harmless duplicate actor stamps for the same
+      // participant on another network. Anchors are the discovery-time
+      // networks stamped on the row — deliberately not the intent's *current*
+      // network assignment, which can change after discovery.
       conditions.push(sql`NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS participant
         WHERE NOT EXISTS (
@@ -843,14 +839,7 @@ export class OpportunityDatabaseAdapter {
             ON nm.user_id = anchor->>'userId'
            AND nm.network_id = anchor->>'networkId'
           JOIN ${schema.networks} n ON n.id = nm.network_id
-          JOIN ${schema.intentNetworks} scoped_intent_network
-            ON scoped_intent_network.network_id = anchor->>'networkId'
-           AND scoped_intent_network.intent_id = ${options.scopeId}
-          JOIN ${schema.intents} scoped_intent
-            ON scoped_intent.id = scoped_intent_network.intent_id
-           AND scoped_intent.user_id = ${userId}
           WHERE anchor->>'userId' = participant->>'userId'
-            AND anchor->>'networkId' = ANY(ARRAY[${sql.join(intentScopeNetworkIds.map((id) => sql`${id}`), sql`, `)}]::text[])
             AND nm.deleted_at IS NULL
             AND n.deleted_at IS NULL
         )
@@ -1739,6 +1728,76 @@ export class OpportunityDatabaseAdapter {
       userId: string;
       networkId: string;
       assertionText: string;
+      similarity: number;
+    }>;
+      },
+    );
+  }
+
+  /**
+   * Cosine similarity search against user_context embeddings, scoped to shared networks.
+   * Matches only per-network context rows (the global networkId-null row is never a
+   * candidate), excluding the discovering user. Optional — lightweight-mode
+   * context-to-context discovery no-ops when the adapter omits it.
+   * @param params - Search parameters including embedding vector, network scope, and exclusions
+   * @returns Matching user contexts ranked by cosine similarity
+   */
+  async searchUserContextsBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }) {
+    return traceAppOperation(
+      {
+        name: 'vector search user contexts by similarity',
+        op: 'db.vector_search',
+        attributes: {
+          subsystem: 'database',
+          'db.system': 'postgresql',
+          'db.operation': 'vector_search',
+          'search.strategy': 'context-similarity',
+          'search.index_scope_count': params.networkIds.length,
+          'search.limit': params.limit,
+        },
+      },
+      async () => {
+    const { embedding, networkIds, excludeUserId, limit, minScore } = params;
+    const vectorStr = `[${embedding.join(',')}]`;
+
+    const rows = await db.execute<{
+      contextId: string;
+      userId: string;
+      networkId: string;
+      text: string;
+      similarity: number;
+    }>(sql`
+      SELECT
+        uc.id AS "contextId",
+        uc.user_id AS "userId",
+        uc.network_id AS "networkId",
+        uc.text AS "text",
+        1 - (uc.embedding <=> ${vectorStr}::vector) AS similarity
+      FROM ${schema.userContexts} uc
+      JOIN ${schema.networkMembers} nm
+        ON nm.user_id = uc.user_id AND nm.network_id = uc.network_id
+      JOIN ${schema.networks} n ON n.id = uc.network_id
+      WHERE uc.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
+        AND uc.user_id != ${excludeUserId}
+        AND nm.deleted_at IS NULL
+        AND n.deleted_at IS NULL
+        AND uc.embedding IS NOT NULL
+        ${minScore !== undefined ? sql`AND 1 - (uc.embedding <=> ${vectorStr}::vector) >= ${minScore}` : sql``}
+      ORDER BY uc.embedding <=> ${vectorStr}::vector
+      LIMIT ${limit}
+    `);
+
+    return rows as Array<{
+      contextId: string;
+      userId: string;
+      networkId: string;
+      text: string;
       similarity: number;
     }>;
       },

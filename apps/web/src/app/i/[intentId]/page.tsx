@@ -24,7 +24,7 @@ import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { NegotiationActivityGroup } from "@/services/conversation";
-import type { HomeViewCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
+import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import type { AnswerBody, PendingQuestion, QuestionAnswer } from "@/services/questions";
 import { cn } from "@/lib/utils";
@@ -355,7 +355,7 @@ export default function IntentDetailPage() {
   } | null>(null);
   const lifecycleGenerationRef = useRef(0);
   const activeIntentIdRef = useRef(intentId);
-  const [opportunities, setOpportunities] = useState<HomeViewCardItem[]>([]);
+  const [opportunities, setOpportunities] = useState<RadarCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
   const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
@@ -582,7 +582,7 @@ export default function IntentDetailPage() {
     if (!intentId) return;
     const seq = ++loadSeqRef.current;
     if (!preserveExisting) setOpportunitiesLoading(true);
-    const applyItems = (items: HomeViewCardItem[]) => {
+    const applyItems = (items: RadarCardItem[]) => {
       // Every response is an authoritative snapshot for this exact intent.
       // Passive refreshes avoid loading flicker, but must still remove rows
       // that changed lifecycle or disappeared from the server response.
@@ -599,12 +599,12 @@ export default function IntentDetailPage() {
     // body until phase 2 replaces them.
     if (!preserveExisting) {
       try {
-        const fast = await opportunitiesService.getHomeView({
+        const fast = await opportunitiesService.getRadarView({
           ...baseOptions,
           presentation: "skeleton",
         });
         if (seq !== loadSeqRef.current) return;
-        applyItems(fast.sections.flatMap((s) => s.items));
+        applyItems(fast.items);
         setOpportunitiesLoading(false);
       } catch {
         // Skeleton phase is best-effort — fall through to the full fetch.
@@ -612,9 +612,9 @@ export default function IntentDetailPage() {
     }
     // Phase 2 (full): presenter text for cache misses; replaces the whole list.
     try {
-      const res = await opportunitiesService.getHomeView(baseOptions);
+      const res = await opportunitiesService.getRadarView(baseOptions);
       if (seq !== loadSeqRef.current) return;
-      applyItems(res.sections.flatMap((s) => s.items));
+      applyItems(res.items);
     } catch {
       if (seq !== loadSeqRef.current) return;
       if (!preserveExisting) setOpportunities([]);
@@ -932,7 +932,7 @@ export default function IntentDetailPage() {
 
   const bucketOf = useCallback(
     // Local actions (accept/reject in this session) override the fetched status.
-    (item: HomeViewCardItem) =>
+    (item: RadarCardItem) =>
       bucketForStatus(opportunityStatusMap[item.opportunityId] ?? item.status),
     [opportunityStatusMap],
   );

@@ -386,7 +386,6 @@ export class EnrichmentGraphFactory {
           const buildBasicInfo = () => {
             const parts = [
               user.name ? `Name: ${user.name}` : '',
-              user.email ? `Email: ${user.email}` : '',
               user.location ? `Location: ${user.location}` : '',
               user.intro ? `Bio: ${user.intro}` : '',
             ].filter(Boolean).join('\n');

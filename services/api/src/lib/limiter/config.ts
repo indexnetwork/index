@@ -1,4 +1,4 @@
-export type LimiterClass = 'auth_write' | 'read' | 'write' | 'mcp_http';
+export type LimiterClass = 'auth_write' | 'read' | 'write' | 'intake_synthesis' | 'mcp_http';
 
 export interface ClassConfig {
   /** Maximum requests allowed per `windowSec`. */
@@ -15,10 +15,14 @@ export const intEnv = (name: string, fallback: number): number => {
 };
 
 const CLASS_ENV: Record<LimiterClass, { envVar: string; fallback: number }> = {
-  auth_write: { envVar: 'LIMITER_AUTH_WRITE_PER_MIN', fallback: 100 },
-  read:       { envVar: 'LIMITER_READ_PER_MIN',       fallback: 1200 },
-  write:      { envVar: 'LIMITER_WRITE_PER_MIN',      fallback: 600 },
-  mcp_http:   { envVar: 'MCP_HTTP_LIMIT_PER_MIN',     fallback: 240 },
+  auth_write:       { envVar: 'LIMITER_AUTH_WRITE_PER_MIN',       fallback: 100 },
+  read:             { envVar: 'LIMITER_READ_PER_MIN',             fallback: 1200 },
+  write:            { envVar: 'LIMITER_WRITE_PER_MIN',            fallback: 600 },
+  // Routes that launch a background LLM synthesis plus a full intent-graph run
+  // and write a durable proposal row per call. The generic write budget lets one
+  // user start 600 of those a minute, so these get their own much tighter class.
+  intake_synthesis: { envVar: 'LIMITER_INTAKE_SYNTHESIS_PER_MIN', fallback: 20 },
+  mcp_http:         { envVar: 'MCP_HTTP_LIMIT_PER_MIN',           fallback: 240 },
 };
 
 /**
@@ -37,10 +41,11 @@ export function resolveClassConfig(cls: LimiterClass): ClassConfig {
  * Use {@link resolveClassConfig} when runtime env overrides must take effect.
  */
 export const CLASS_CONFIG: Record<LimiterClass, ClassConfig> = {
-  auth_write: resolveClassConfig('auth_write'),
-  read:       resolveClassConfig('read'),
-  write:      resolveClassConfig('write'),
-  mcp_http:   resolveClassConfig('mcp_http'),
+  auth_write:       resolveClassConfig('auth_write'),
+  read:             resolveClassConfig('read'),
+  write:            resolveClassConfig('write'),
+  intake_synthesis: resolveClassConfig('intake_synthesis'),
+  mcp_http:         resolveClassConfig('mcp_http'),
 };
 
 export function isLimiterDisabled(): boolean {

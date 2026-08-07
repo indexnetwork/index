@@ -13,12 +13,12 @@ packages/protocol/src/
   enrichment/       Enrichment graph, identity generation, and enrichment tools
   integration/      Integration sync tools
   intent/           Intent graph, inferrer, verifier, reconciler, clarifier, specificity, indexer
-  maintenance/      Maintenance graph (feed health, opportunity expiration)
+  maintenance/      Maintenance graph (radar health, opportunity expiration)
   mcp/              MCP server + elicitation builder/dispatcher
   negotiation/      Negotiation graph, agent (IndexNegotiator), insight + summarizer, tools
   network/          Network (index) graph, membership graph, intent-network (indexer) graph, recommender, tools
   opportunity/      Opportunity graph, evaluator, presenter, enricher, discover, evidence, introducer, delivery card, utils
-    feed/           Home feed graph, feed categorizer, feed health
+    radar/          Radar graph (flat presenter-card list), radar health
   premise/          Premise graph, decomposer, analyzer, indexer, tools
   questioner/       Questioner agent (mode-driven decision-question generation), presets, tools
   shared/
@@ -46,8 +46,8 @@ packages/protocol/src/
 | Network | `network/network.graph.ts` | Manage network CRUD |
 | Network Membership | `network/membership/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `network/indexer/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
-| Feed | `opportunity/feed/feed.graph.ts` | Categorize and curate home feed content |
-| Maintenance | `maintenance/maintenance.graph.ts` | Periodic maintenance tasks (feed health, opportunity expiration) |
+| Radar | `opportunity/radar/radar.graph.ts` | Build the radar view: flat presenter-card list, optionally intent-scoped |
+| Maintenance | `maintenance/maintenance.graph.ts` | Periodic maintenance tasks (radar health, opportunity expiration) |
 | Negotiation | `negotiation/negotiation.graph.ts` | Multi-turn bilateral negotiation flows |
 
 ## Agents
@@ -79,7 +79,6 @@ packages/protocol/src/
 | Lens Inferrer | `shared/hyde/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
 | Opportunity Evaluator | `opportunity/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `opportunity/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
-| Feed Categorizer | `opportunity/feed/feed.categorizer.ts` | Feed graph — classifies and curates feed items |
 | Opportunity Introducer | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | Questioner Agent | `questioner/questioner.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
 | Contact Inviter | `contact/contact.inviter.ts` | Invite flow — generates personalized invite messages |
@@ -93,7 +92,7 @@ Tools are registered in `shared/agent/tool.registry.ts` and assembled per sessio
 
 | File | Tools |
 |------|-------|
-| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `record_onboarding_privacy_consent`, `complete_onboarding`, `get_enrichment_run`, `cancel_enrichment_run` |
+| `enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`, `get_enrichment_run`, `cancel_enrichment_run` |
 | `premise/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `intent/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `network/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
@@ -365,11 +364,11 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `opportunity/opportunity.discover.ts` | Ad-hoc discovery from chat queries |
 | `opportunity/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `opportunity/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
-| `opportunity/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, feed composition helpers |
+| `opportunity/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
 | `opportunity/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | `opportunity/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
 | `opportunity/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |
-| `opportunity/feed/feed.health.ts` | Feed health metrics computation |
+| `opportunity/radar/radar.health.ts` | Radar health metrics computation |
 | `opportunity/opportunity.labels.ts` | Opportunity status and role label constants |
 
 ## Data Model

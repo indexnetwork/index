@@ -169,7 +169,7 @@ import {
   NetworkGraphFactory,
   NetworkMembershipGraphFactory,
   IntentNetworkGraphFactory,
-  HomeGraphFactory,
+  RadarGraphFactory,
   MaintenanceGraphFactory,
 } from "@indexnetwork/protocol";
 ```
@@ -189,7 +189,7 @@ Each factory takes its typed dependencies in the constructor and exposes a
 | `NetworkGraphFactory` | Manage network/network CRUD |
 | `NetworkMembershipGraphFactory` | Manage network/network member join/leave |
 | `IntentNetworkGraphFactory` | Evaluate and assign/unassign intents to indexes |
-| `HomeGraphFactory` | Categorize and curate home-feed content |
+| `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 | `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
 
 ### Persisted chat personas

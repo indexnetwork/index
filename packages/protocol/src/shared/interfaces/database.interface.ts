@@ -7,19 +7,6 @@ import type { NetworkAssignmentMetadata } from '../schemas/network-assignment.sc
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
 
-export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
-
-export interface PrivacyConsentDecision {
-  granted: boolean;
-  decidedAt: string;
-  source: PrivacyConsentSource;
-}
-
-export interface OnboardingPrivacyState {
-  edgeosImport?: PrivacyConsentDecision;
-  publicProfileLookup?: PrivacyConsentDecision;
-}
-
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
   networkId: string;
@@ -57,7 +44,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  privacy?: OnboardingPrivacyState;
   profileSeeds?: OnboardingProfileSeed[];
 }
 
@@ -588,7 +574,7 @@ export interface OpportunityQueryOptions {
   role?: string;
   limit?: number;
   offset?: number;
-  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. home view, API). */
+  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. radar view, API). */
   conversationId?: string;
 }
 
@@ -1731,6 +1717,26 @@ export interface Database {
   }>>;
 
   /**
+   * Cosine similarity search against user_context embeddings, scoped to shared networks.
+   * Matches only per-network context rows (the global networkId-null row is never a
+   * candidate), excluding the discovering user. Optional — lightweight-mode
+   * context-to-context discovery no-ops when the adapter omits it.
+   */
+  searchUserContextsBySimilarity?(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }): Promise<Array<{
+    contextId: string;
+    userId: string;
+    networkId: string;
+    text: string;
+    similarity: number;
+  }>>;
+
+  /**
    * Batched version of premise similarity search. Executes one bounded DB call
    * for all selected source premises instead of one query per source premise.
    * Optional for older/test adapters; OpportunityGraph falls back to the
@@ -2382,6 +2388,8 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
+  // Context-to-context discovery in OpportunityGraph
+  | 'searchUserContextsBySimilarity'
 > & Pick<
   NegotiationQueries,
   // Orphan heal in OpportunityGraph persist node
@@ -2439,6 +2447,8 @@ export type OpportunityGraphDatabase = Pick<
   | 'getUserContext'
   | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
+  // Context-to-context discovery
+  | 'searchUserContextsBySimilarity'
   // HyDE documents for context-to-intent HyDE search
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)
@@ -2889,12 +2899,12 @@ export type HydeGraphDatabase = Pick<
 >;
 
 /**
- * Database interface for Home Graph (opportunity home view).
+ * Database interface for Radar Graph (opportunity radar view).
  * Load opportunities, enrich with profile/index, and support presenter context.
  *
  * Access layer: UserDatabase (own opportunities and profile)
  */
-export type HomeGraphDatabase = Pick<
+export type RadarGraphDatabase = Pick<
   Database,
   | 'getOpportunitiesForUser'
   | 'getOpportunity'

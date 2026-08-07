@@ -10,7 +10,7 @@ import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
 import { describe, test, expect } from "bun:test";
-import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, parseClientSurface, getMcpToolMetadataCacheKey } from "../mcp.server.js";
+import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARDING_ALLOWED, shouldReportMcpToolError, extractBearerToken, getMcpToolMetadataCacheKey } from "../mcp.server.js";
 import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS } from "../../shared/agent/canonical-guidance.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
@@ -296,28 +296,9 @@ describe('getMcpToolMetadataCacheKey', () => {
   });
 });
 
-describe("parseClientSurface", () => {
-  test("defaults absent, empty, and whitespace-only values to web", () => {
-    expect(parseClientSurface(null)).toBe("web");
-    expect(parseClientSurface("")).toBe("web");
-    expect(parseClientSurface("   ")).toBe("web");
-  });
-
-  test("normalizes known surfaces", () => {
-    expect(parseClientSurface("telegram")).toBe("telegram");
-    expect(parseClientSurface(" Telegram ")).toBe("telegram");
-    expect(parseClientSurface("WEB")).toBe("web");
-  });
-
-  test("coerces unknown surfaces to web", () => {
-    expect(parseClientSurface("slack")).toBe("web");
-  });
-});
-
 describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
-      "record_onboarding_privacy_consent",
       "preview_user_context",
       "get_enrichment_run",
       "cancel_enrichment_run",
@@ -373,7 +354,6 @@ describe("buildMcpOnboardingMessage", () => {
   test("uses name-confirmation step when user has a name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
     expect(msg).toContain("You're Alice, right?");
-    expect(msg).toContain("record_onboarding_privacy_consent");
     expect(msg).toContain("preview_user_context");
     expect(msg).toContain("get_enrichment_run");
   });

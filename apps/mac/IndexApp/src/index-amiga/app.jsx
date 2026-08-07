@@ -4,8 +4,13 @@
 // credential the app shows sign-in; INDEX_DATA is only a signed-out demo
 // fallback for browser preview where the Swift bridge is absent.
 
+// Live-only: there is no static demo data. window.INDEX_DATA starts empty and is
+// filled with the signed-in user's ME/NETWORKS/INTENTS by applyLoaded once the
+// snapshot loads; side screens (settings/networks) read that live mirror.
+window.INDEX_DATA = window.INDEX_DATA || {};
+
 // Live data (mapped snapshot + ME/NETWORKS) is threaded through this context so
-// screens can prefer live data and fall back to the demo INDEX_DATA.
+// screens can read it; everything is empty until the snapshot loads.
 const IndexDataContext = React.createContext(null);
 function useIndexData() {
   const ctx = React.useContext(IndexDataContext);
@@ -21,6 +26,52 @@ function nativeAuthed() {
   return !!(window.IndexApp && window.IndexApp.isAuthed());
 }
 
+// Resolve a parsed deep link (see api/deeplink.mjs) to a person card. A card
+// link carries an opportunity id, a profile link a user id, so each is looked
+// up against the loaded radar first. Anything this snapshot does not carry
+// gets one fetch by id through the existing client methods, and null when even
+// that comes up empty, so the caller can say so instead of opening a blank
+// window.
+async function resolveDeepLinkPerson(route, people) {
+  const known = route.route === "card"
+    ? people.find(p => p.id === route.id)
+    : people.find(p => p.userId === route.id);
+  if (known) return known;
+
+  if (!nativeAuthed() || !window.IndexApp) return null;
+  const client = window.IndexApp.getClient();
+  if (!client) return null;
+  try {
+    if (route.route === "card") {
+      const res = await client.opportunities.get(route.id);
+      const row = (res && res.opportunity) || res;
+      if (!row || !row.id) return null;
+      const person = window.IndexApi.mapPeopleFromOpportunities([row])[0] || null;
+      // GET /opportunities/:id names the counterpart under otherParties rather
+      // than the counterpartUserId/counterpartName the list mapper reads, and
+      // the profile needs the user id to fetch their bio.
+      const other = Array.isArray(row.otherParties) ? row.otherParties[0] : null;
+      if (person && other) {
+        person.userId = person.userId || other.id || null;
+        person.name = other.name || person.name;
+      }
+      return person;
+    }
+    const res = await client.users.get(route.id);
+    const user = (res && res.user) || res;
+    if (!user || !user.id) return null;
+    return {
+      id: user.id,
+      userId: user.id,
+      name: user.name || "unknown",
+      location: user.location || "",
+      ...window.IndexApi.mapCounterpartProfile(user),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
   // True until the user creates their first signal, the hub opens empty.
@@ -32,8 +83,8 @@ function App() {
   const [networks, setNetworks] = useState(null);
   const [features, setFeatures] = useState({});
   const live = snapshot !== null;
-  const data = snapshot || window.INDEX_DATA;
-  const { PEOPLE, POOL, FIELD_EVENTS, INTENTS } = data;
+  const data = snapshot || {};
+  const { PEOPLE = [], POOL = [], FIELD_EVENTS = [], INTENTS = [] } = data;
   const [people, setPeople] = useState([]);
   const [conversation, setConversation] = useState([]);
   const [field, setField] = useState([]);
@@ -41,6 +92,74 @@ function App() {
   // A fresh sign-in (vs an already-authed relaunch) goes through the original
   // profile-review gate after the building screen.
   const freshLoginRef = useRef(false);
+
+  // ---- deep links (index:// and universal links) --------------------------
+  // Swift forwards the raw URL it was handed and decides nothing about it;
+  // window.IndexApi.parseDeepLink (apps/mac/api/deeplink.mjs, unit tested) is
+  // the only place a URL turns into a route.
+  const [notice, setNotice] = useState(null);
+  const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
+  const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
+
+  useEffect(() => {
+    if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
+    return window.IndexApp.onDeepLink((url) => {
+      const deepLinkHosts = Array.isArray(window.INDEX_NATIVE?.deepLinkHosts)
+        && window.INDEX_NATIVE.deepLinkHosts.length
+        ? { hosts: window.INDEX_NATIVE.deepLinkHosts }
+        : undefined;
+      const route = (window.IndexApi && window.IndexApi.parseDeepLink)
+        ? window.IndexApi.parseDeepLink(url, deepLinkHosts)
+        : null;
+      if (!route) {
+        // Not ours: stay quiet. Direct or manual invocation can still provide
+        // a recognized-host URL the app cannot route; AASA excludes deeper
+        // web-only profile paths before normal macOS delivery.
+        const ours = (window.IndexApi && window.IndexApi.isIndexDeepLink)
+          ? window.IndexApi.isIndexDeepLink(url, deepLinkHosts)
+          : false;
+        if (ours) setNotice("that link doesn't open in the app — view it on index.network.");
+        return;
+      }
+      if (route.route === "legacy-connect") {
+        // Connect links were retired; there is nothing left to resolve them to.
+        setNotice("this link is no longer supported — open the opportunity from your radar.");
+        return;
+      }
+      setPendingLink(route);
+    });
+  }, []);
+
+  // The resolver reads the radar through a ref, and a link already in flight is
+  // never started twice. Depending on `people` (or restarting on a screen
+  // change) would cancel and re-issue the fallback fetch on every radar update:
+  // a duplicate GET /opportunities/:id at best, and in demo mode the periodic
+  // sim tick could keep restarting it so the link never lands on a card or a
+  // notice at all. One pending link resolves once, and always terminates.
+  const peopleRef = useRef(people);
+  peopleRef.current = people;
+  const resolvingRef = useRef(null);
+
+  // A link can arrive at the login screen or mid-boot (cold launch is the
+  // normal case). Hold it there and apply it once the snapshot is in, rather
+  // than resolving it against data that hasn't loaded.
+  useEffect(() => {
+    if (!pendingLink || screen === "login" || screen === "building") return;
+    if (resolvingRef.current === pendingLink) return;   // already resolving this one
+    const link = pendingLink;
+    resolvingRef.current = link;
+    (async () => {
+      const person = await resolveDeepLinkPerson(link, peopleRef.current);
+      // A newer link arrived mid-flight and owns the slot now; let it finish.
+      if (resolvingRef.current !== link) return;
+      resolvingRef.current = null;
+      if (person) setLinkedCard({ person, route: link.route });
+      else setNotice(link.route === "card"
+        ? "that opportunity isn't on your radar."
+        : "couldn't open that profile.");
+      setPendingLink(null);
+    })();
+  }, [pendingLink, screen]);
 
   // React to native login/logout coming from the Swift shell.
   useEffect(() => {
@@ -50,6 +169,13 @@ function App() {
         setScreen("building");
       } else {
         setSnapshot(null); setMe(null); setNetworks(null);
+        // Drop the whole deep-link pipeline, not just what is on screen: a
+        // resolve still in flight would otherwise render a counterpart's card
+        // over the login screen. Clearing resolvingRef makes the in-flight
+        // resolve fail its own ownership check and bail when it completes.
+        setLinkedCard(null);
+        setPendingLink(null);
+        resolvingRef.current = null;
         setScreen("login");
       }
     });
@@ -169,8 +295,8 @@ function App() {
     setScreen("main");
     seedField();
   };
-  const goOnboarding = () => setScreen("onboarding");
-  const finishOnboarding = async (answers, created) => {
+  const goNewIntent = () => setScreen("new-intent");
+  const finishNewIntent = async (answers, created) => {
     setConversation([]);
     setField([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
@@ -222,8 +348,8 @@ function App() {
       // Native bridge present: wait for __indexAuthChanged; Login shows waiting.
       return true;
     }
-    // No native bridge (browser preview), drop into the demo flow.
-    setScreen("building");
+    // No native bridge (browser preview): live-only, so there is nothing to
+    // show without a real session. Stay on the sign-in screen.
     return false;
   };
 
@@ -251,9 +377,21 @@ function App() {
         {screen === "intents"     && <Intents
                                        fresh={freshUser}
                                        onPickExisting={pickExistingIntent}
-                                       onNew={goOnboarding}
+                                       onNew={goNewIntent}
                                        onSignOut={signOut}/>}
-        {screen === "onboarding"  && <Onboarding onDone={finishOnboarding} onBack={() => setScreen("intents")}/>}
+        {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
+        {screen === "onboarding"  && <Onboarding onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
+        {/* A deep-linked card floats over whatever screen is showing: the link
+            can land on the hub, where the radar's selection state doesn't
+            exist. */}
+        {linkedCard && (
+          <DeepLinkWindow
+            person={linkedCard.person}
+            route={linkedCard.route}
+            onClose={() => setLinkedCard(null)}
+          />
+        )}
+        {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
         {screen === "main"        && (
           <MainView
             profile={profile}
@@ -294,7 +432,7 @@ function MacMenubar({ screen, signals = [], chatGroups = {}, onOpenChat }) {
       <span className="right">
         <span className="m subtle">
           { screen === "intents"    ? "index · your signals"
-          : screen === "onboarding" ? "index · calibrating"
+          : screen === "new-intent" ? "index · calibrating"
           : "" }
         </span>
         <span className="clock">{clock}</span>

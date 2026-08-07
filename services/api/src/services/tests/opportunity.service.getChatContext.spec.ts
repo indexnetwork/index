@@ -150,8 +150,8 @@ const mockGatherPresenterContext = mock(() =>
 
 const presenter = {
   present: mockPresent,
-  presentHomeCard: mock(() => {
-    throw new Error("presentHomeCard should not be called in chat context");
+  presentCard: mock(() => {
+    throw new Error("presentCard should not be called in chat context");
   }),
 };
 
@@ -242,7 +242,7 @@ describe("OpportunityService.getChatContext", () => {
   });
 
   describe("presenter usage", () => {
-    it("should call present() not presentHomeCard()", async () => {
+    it("should call present() not presentCard()", async () => {
       const service = createService([directOpportunity]);
       await service.getChatContext(VIEWER_ID, PEER_ID);
 

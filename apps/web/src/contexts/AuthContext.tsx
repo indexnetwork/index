@@ -13,12 +13,14 @@ const logger = log.context.from('AuthContext');
  * Server-driven feature flags returned alongside the user on GET /auth/me
  * (sibling of `user`, not part of it). `negotiatorChat` gates the pinned
  * Personal Agent entry; `signalAgent` gates the main-web Signal cutover;
- * `agentSurface` gates the read-only Reporter Agent surface.
+ * `agentSurface` gates the read-only Reporter Agent surface; `fastSignalIntake`
+ * swaps the guided intake for the deterministic funnel on the same surfaces.
  */
 export type UserFeatures = {
   negotiatorChat?: boolean;
   signalAgent?: boolean;
   agentSurface?: boolean;
+  fastSignalIntake?: boolean;
 };
 
 type AuthContextType = {
@@ -151,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isHomePage = pathname === '/';
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
-      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/waitlist',
+      '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/waitlist', '/download',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
     const isProtectedPage = pathname.startsWith('/i/');

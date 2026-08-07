@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/hermes-plugin",
-  "version": "0.13.0",
+  "version": "0.16.0",
   "description": "Hermes-native Index Network plugin with MCP and personal-agent tools",
   "license": "MIT",
   "type": "module",
@@ -16,11 +16,13 @@
     "tools.py",
     "skills/",
     "dashboard/",
+    "desktop/dist/",
     "tests/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "python3 tests/smoke.py"
+    "test": "python3 tests/smoke.py",
+    "build:desktop": "node desktop/build.mjs"
   }
 }

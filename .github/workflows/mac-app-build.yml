@@ -1,0 +1,78 @@
+# Compiles the macOS app so Swift breakage is caught in CI instead of at the
+# next developer's `./build.sh`.
+#
+# apps/mac/IndexApp is a WKWebView shell whose Swift sources import Cocoa and
+# WebKit — Apple-only frameworks, so this is the only place in the pipeline
+# that can compile them. Everything else in this repo runs on Linux runners,
+# which means main.swift was previously verified by review alone.
+#
+# Scoped to apps/mac changes (plus manual dispatch) to keep macOS runner
+# minutes, which bill at a higher rate than Linux, proportionate to the risk.
+name: Build macOS app
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "apps/mac/**"
+      - ".github/workflows/mac-app-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mac-app-build-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.20"
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          swiftc --version
+          python3 --version
+
+      - name: Deep-link parser tests
+        working-directory: apps/mac
+        run: bun test api/
+
+      - name: macOS shell and handoff tests
+        working-directory: apps/mac/IndexApp
+        run: |
+          bun test *.spec.mjs
+          bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh
+
+      - name: Assemble web layer
+        working-directory: apps/mac/IndexApp
+        run: python3 assemble.py
+
+      - name: Fail if the committed bundle is stale
+        run: |
+          if ! git diff --quiet -- apps/mac/IndexApp/Resources/index.html; then
+            echo "::error::Resources/index.html is out of date — run apps/mac/IndexApp/assemble.py and commit the result."
+            git diff --stat -- apps/mac/IndexApp/Resources/index.html
+            exit 1
+          fi
+
+      - name: Build and sign the app bundle
+        working-directory: apps/mac/IndexApp
+        run: ./build.sh
+
+      - name: Verify bundle, URL scheme, and entitlements
+        working-directory: apps/mac/IndexApp
+        run: |
+          set -euo pipefail
+          test -x dist/index.app/Contents/MacOS/index
+          plutil -lint dist/index.app/Contents/Info.plist
+          echo "--- registered URL schemes:"
+          plutil -extract CFBundleURLTypes json -o - dist/index.app/Contents/Info.plist
+          echo "--- signature:"
+          codesign -dvv dist/index.app 2>&1 | sed -n '1,12p'
+          echo "--- entitlements actually applied (empty means the ad-hoc retry dropped them):"
+          codesign -d --entitlements :- dist/index.app 2>&1 | sed -n '1,20p'

@@ -16,7 +16,7 @@ An **agent** is an autonomous actor that represents a user within the system. Ag
 
 | Type | Description |
 |------|-------------|
-| `personal` | User-owned agent created during onboarding or experiment-network signup. Connects via the MCP server using an API key. |
+| `personal` | User-owned agent created during onboarding or headless network provisioning (master-key signup, CSV import, owner invite). Connects via the MCP server using an API key. |
 | `system` | Platform-owned agents (e.g. `Index Chat Orchestrator`, `Index Negotiator`) seeded with fixed UUIDs during startup. |
 
 An agent always has exactly one owner (`ownerId → users.id`). System agents are owned by the platform user.
@@ -103,13 +103,13 @@ Every pickup endpoint (`opportunities/pickup`, `test-messages/pickup`, `negotiat
 
 ---
 
-## Experiment Network Provisioning
+## Headless Network Provisioning
 
-When a user is invited or signed up through the headless experiment-network flow, the system automatically provisions:
+When a user is invited by a network owner, imported via CSV, or signed up through the headless master-key flow, the system automatically provisions:
 
 1. A user account.
 2. A personal network for that user.
-3. A personal agent with `scope = 'network'`, restricted to the experiment network.
+3. A personal agent with `scope = 'network'`, restricted to that network.
 4. An API key bound to that agent.
 
 The signup response returns the user, the API key, and a drop-in `mcpServer` config (`name`, `url`, `headers`) ready to paste into any MCP-compatible runtime. No follow-up `agentId` lookup is needed.

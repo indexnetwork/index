@@ -3,6 +3,7 @@ import { ArrowUp, Loader2, Square } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
+import { FastSignalIntake } from "@/components/signals/FastSignalIntake";
 import { GuidedSignalIntake, type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ function RestrictedProfilePhase() {
           Give your agent the context you approve.
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-500">
-          Public lookup is optional. You will review and approve the profile before anything is saved.
+          You will review and approve the profile before anything is saved.
         </p>
 
         <div className="mt-10 space-y-6">
@@ -157,7 +158,8 @@ function RestrictedProfilePhase() {
 
 function RestrictedSignalPhase({ userId, durableIntentId }: { userId: string; durableIntentId?: string }) {
   const navigate = useNavigate();
-  const { refetchUser } = useAuthContext();
+  const { refetchUser, features } = useAuthContext();
+  const fastSignalIntakeEnabled = features?.fastSignalIntake === true;
   const indexesService = useNetworks();
   const { refreshIndexes } = useNetworksState();
   const { error: showError } = useNotifications();
@@ -214,13 +216,17 @@ function RestrictedSignalPhase({ userId, durableIntentId }: { userId: string; du
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#041729] sm:text-4xl">
           Tell your agent what connection matters first.
         </h1>
-        <GuidedSignalIntake
-          prepareSession={prepareSession}
-          sendKickoff={sendKickoff}
-          sendFollowup={sendFollowup}
-          onConfirmed={handleConfirmed}
-          resumeIntentId={resumeIntentId}
-        />
+        {fastSignalIntakeEnabled ? (
+          <FastSignalIntake onConfirmed={handleConfirmed} resumeIntentId={resumeIntentId} />
+        ) : (
+          <GuidedSignalIntake
+            prepareSession={prepareSession}
+            sendKickoff={sendKickoff}
+            sendFollowup={sendFollowup}
+            onConfirmed={handleConfirmed}
+            resumeIntentId={resumeIntentId}
+          />
+        )}
       </main>
     </div>
   );

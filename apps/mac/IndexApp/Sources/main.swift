@@ -12,6 +12,15 @@ enum AppConfig {
     static var apiURL: String { value(for: "API_URL", default: "http://localhost:3001") }
     static var appURL: String { value(for: "APP_URL", default: "http://localhost:3000") }
 
+    static var deepLinkHosts: [String] {
+        let host = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
+        let configuredHost = host?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let configuredHost, !configuredHost.isEmpty {
+            return [configuredHost]
+        }
+        return ["index.network"]
+    }
+
     /// The REST base including the `/api` prefix applied in services/api main.ts.
     static var apiBaseURL: String { trimTrailingSlash(apiURL) + "/api" }
 
@@ -462,6 +471,9 @@ enum HermesSetup {
         if status != 0 {
             return ["ok": false, "error": "hermes \(args.joined(separator: " ")): \(String(output.suffix(300)))"]
         }
+        // The plugin self-installs its Hermes Desktop bundle into
+        // ~/.hermes/desktop-plugins when the gateway loads it (see the
+        // plugin's __init__.py), so the restart below covers the desktop app.
         restartGatewayIfRunning(hermes)
         return ["ok": true]
     }
@@ -479,6 +491,7 @@ enum HermesSetup {
     /// ~/.hermes/.env. The agent (and its keys) are removed server-side by the
     /// caller; this only cleans the local runtime.
     static func teardown() -> [String: Any] {
+        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.hermes/desktop-plugins/index-network")
         if FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.hermes/plugins/index-network") {
             guard let hermes = HarnessDetector.detect().first(where: { $0["id"] == "hermes" })?["path"] else {
                 return ["ok": false, "error": "hermes binary not found on this mac"]
@@ -524,6 +537,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var window: NSWindow!
     var webView: WKWebView!
     private var authServer: LoopbackAuthServer?
+
+    /// Deep links that arrived before the page could receive them (cold launch,
+    /// or a reload in flight). Flushed in arrival order from didFinish.
+    private var pendingDeepLinks: [String] = []
+    /// Bound so a page that never loads cannot grow the queue without limit;
+    /// the oldest entries are dropped first, the user's latest click survives.
+    private let maxPendingDeepLinks = 8
+    private var webViewReady = false
+    /// A failed initial navigation has no document to receive queued events.
+    /// Once a page has finished, a later failed reload can safely use it.
+    private var hasLoadedDocument = false
 
     /// Smallest window the web layout renders correctly at. See the note where
     /// it's applied, the screens clip below roughly 860x600. The width is held
@@ -685,7 +709,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webView(_ webView: WKWebView,
                  didFail navigation: WKNavigation!,
                  withError error: Error) {
+        deepLinkNavigationFailed()
         presentError("Failed to load: \(error.localizedDescription)")
+    }
+
+    // A provisional failure is often just a cancelled navigation, so it stays
+    // silent as before — but readiness still has to come back.
+    func webView(_ webView: WKWebView,
+                 didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        deepLinkNavigationFailed()
+    }
+
+    /// didStartProvisionalNavigation clears `webViewReady` so links are not
+    /// dispatched into a document about to be replaced. A failed reload can
+    /// restore readiness against the previously loaded document; the initial
+    /// load cannot, because flushing into about:blank silently loses events.
+    private func deepLinkNavigationFailed() {
+        guard webView != nil, hasLoadedDocument else { return }
+        webViewReady = true
+        flushPendingDeepLinks()
+    }
+
+    // MARK: - Deep links (index:// scheme + universal links)
+    //
+    // Deliberately thin: this side decides nothing about where a URL leads. It
+    // raises the window and hands the raw absolute string to the page, which
+    // asks window.IndexApi.parseDeepLink (apps/mac/api/deeplink.mjs, unit
+    // tested) what it means. Adding or changing a route touches only that file.
+
+    /// `index://o/<id>` and friends, opened via LaunchServices.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { deliverDeepLink(url) }
+    }
+
+    /// Universal links: macOS hands `https://index.network/...` over as a
+    /// browsing NSUserActivity once the domain is verified against the app's
+    /// associated-domains entitlement (Developer ID-signed builds only).
+    func application(_ application: NSApplication,
+                     continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else { return false }
+        deliverDeepLink(url)
+        return true
+    }
+
+    private func deliverDeepLink(_ url: URL) {
+        let raw = url.absoluteString
+        guard !raw.isEmpty else { return }
+
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+
+        guard webViewReady, webView != nil else {
+            pendingDeepLinks.append(raw)
+            if pendingDeepLinks.count > maxPendingDeepLinks {
+                pendingDeepLinks.removeFirst(pendingDeepLinks.count - maxPendingDeepLinks)
+            }
+            return
+        }
+        dispatchDeepLink(raw)
+    }
+
+    private func dispatchDeepLink(_ raw: String) {
+        let js = "window.dispatchEvent(new CustomEvent('index-deeplink', { detail: { url: \(jsonValue(raw)) } }));"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        // A link arriving mid-load would be dispatched into a document that is
+        // about to be replaced, so queue again until the new one is up.
+        webViewReady = false
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        hasLoadedDocument = true
+        webViewReady = true
+        flushPendingDeepLinks()
+    }
+
+    private func flushPendingDeepLinks() {
+        let queued = pendingDeepLinks
+        pendingDeepLinks.removeAll()
+        for raw in queued { dispatchDeepLink(raw) }
     }
 
     // <input type="file"> does nothing in a WKWebView unless the host puts up
@@ -798,6 +905,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
             "apiKey": cred?.key ?? NSNull(),
+            "deepLinkHosts": AppConfig.deepLinkHosts,
         ]
         let json = (try? JSONSerialization.data(withJSONObject: obj))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

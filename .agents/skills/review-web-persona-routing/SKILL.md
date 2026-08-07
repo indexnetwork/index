@@ -22,8 +22,8 @@ silently breaks those consumers.
 2. Add a dedicated route such as `/chat/web/stream` guarded by
    `RateLimit('write'), SessionOnlyGuard`.
 3. Have the main web composer explicitly call that route. The route itself supplies a
-   server-owned surface enum (`web`); never infer authority from request body,
-   `x-index-surface`, `Origin`, or `prefillMessages`.
+   server-owned surface enum (`web`); never infer authority from request body, a
+   client-declared surface header, `Origin`, or `prefillMessages`.
 4. Persist the selected persona at session creation. For follow-ups, treat stored
    persona as authoritative and reject request/stored mismatch or unknown values.
 5. If scoped sessions are stable, include persona in the internal registry key (for

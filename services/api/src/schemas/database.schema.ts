@@ -14,25 +14,11 @@ export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'syst
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
-export const networkTypeEnum = pgEnum('network_type', ['community', 'event']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
 export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
-
-export type PrivacyConsentSource = 'agentvillage_onboarding' | 'hermes_setup' | 'web_onboarding' | 'api';
-
-export interface PrivacyConsentDecision {
-  granted: boolean;
-  decidedAt: string;
-  source: PrivacyConsentSource;
-}
-
-export interface OnboardingPrivacyState {
-  edgeosImport?: PrivacyConsentDecision;
-  publicProfileLookup?: PrivacyConsentDecision;
-}
 
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
@@ -52,19 +38,34 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  privacy?: OnboardingPrivacyState;
   profileSeeds?: OnboardingProfileSeed[];
 }
-
-export type ProfileEnrichmentPolicy = 'auto' | 'consent_required' | 'disabled';
 
 export interface NetworkPermissionsState {
   joinPolicy: 'anyone' | 'invite_only';
   invitationLink: { code: string } | null;
   allowGuestVibeCheck: boolean;
   contextInjection?: { discovery: boolean };
-  profileEnrichment?: ProfileEnrichmentPolicy;
 }
+
+/**
+ * Early-access "request a network" details, stored under `networks.metadata.request`.
+ * A network row carrying a non-null `requestStatus` is a pending request, not a
+ * usable network: it has no members and is hidden from discovery until a staff
+ * reviewer approves it (which clears `requestStatus` and adds the owner).
+ */
+export interface NetworkRequestDetails {
+  requestedByUserId: string;
+  purpose?: string;
+  audience?: string;
+  expectedSize?: string;
+  notes?: string;
+  reviewNote?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
+export type NetworkRequestStatus = 'pending' | 'needs_changes';
 
 export interface TelegramPrefs {
   chatId: string;
@@ -372,6 +373,58 @@ export const userContexts = pgTable('user_contexts', {
   userIdIdx: index('user_contexts_user_id_idx').on(table.userId),
   networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
 }));
+
+/** Durable protected-base fingerprints used to reject stale matrix child runs. */
+export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
+  key: text('key').primaryKey(),
+  schemaMigrationFingerprint: text('schema_migration_fingerprint').notNull(),
+  fixtureFingerprint: text('fixture_fingerprint').notNull(),
+  fixtureCorpusVersion: text('fixture_corpus_version').notNull(),
+  seededAt: timestamp('seeded_at', { withTimezone: true }).notNull(),
+});
+/** Precomputed fast-intake artifact: one row per user. */
+export const signalIntakePacks = pgTable('signal_intake_packs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  brief: text('brief').notNull(),
+  question: jsonb('question').$type<{
+    title: string;
+    prompt: string;
+    options: Array<{ label: string; description: string }>;
+    multiSelect: boolean;
+  }>().notNull(),
+  premiseHash: text('premise_hash'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+// No explicit user_id index: `.unique()` on user_id already creates
+// `signal_intake_packs_user_id_unique`, a btree on exactly that column, which
+// serves every lookup (getPack) and the upsert's ON CONFLICT target.
+
+export type SignalIntakePackRow = typeof signalIntakePacks.$inferSelect;
+export type NewSignalIntakePackRow = typeof signalIntakePacks.$inferInsert;
+
+export const signalIntakeRunStatusEnum = pgEnum('signal_intake_run_status', ['pending', 'ready', 'failed']);
+
+/** Single-flight record for speculative intake synthesis. */
+export const signalIntakeRuns = pgTable('signal_intake_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  answersHash: text('answers_hash').notNull(),
+  status: signalIntakeRunStatusEnum('status').notNull().default('pending'),
+  proposalId: text('proposal_id'),
+  /** "Looking for" card summary from the synthesis that settled this run. */
+  lookingFor: text('looking_for'),
+  /** "You bring" card summary from the synthesis that settled this run. */
+  youBring: text('you_bring'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userAnswersUniq: uniqueIndex('signal_intake_runs_user_answers_uniq').on(table.userId, table.answersHash),
+  userIdIdx: index('signal_intake_runs_user_id_idx').on(table.userId),
+  createdAtIdx: index('signal_intake_runs_created_at_idx').on(table.createdAt),
+}));
+
+export type SignalIntakeRunRow = typeof signalIntakeRuns.$inferSelect;
 
 export type HydeSourceType = 'intent' | 'query' | 'context';
 
@@ -734,9 +787,11 @@ export const networks = pgTable('networks', {
   prompt: text('prompt'),
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
-  isExperiment: boolean('is_experiment').default(false).notNull(),
-  experimentMasterKeyHash: text('experiment_master_key_hash'),
-  type: networkTypeEnum('type').default('community').notNull(),
+  masterKeyHash: text('master_key_hash'),
+  hidden: boolean('hidden').default(false).notNull(),
+  // Non-null only while this row is an unapproved "create a network" request
+  // (early access). Cleared to null when a staff reviewer approves it.
+  requestStatus: text('request_status').$type<NetworkRequestStatus>(),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}).notNull(),
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',

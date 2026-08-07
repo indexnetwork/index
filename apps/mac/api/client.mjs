@@ -126,6 +126,16 @@ export function createIndexApiClient(options = {}) {
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },
 
+    // Early-access "request a network" flow. Direct create (`networks.create`)
+    // is staff-only on the server; everyone else submits a reviewed request.
+    networkRequests: {
+      // Resolves { requests, canReview } — canReview gates the direct-create UI.
+      listMine: (options = {}) => request('/network-requests', options),
+      create: (body, options = {}) => request('/network-requests', { ...options, method: 'POST', body }),
+      update: (id, body, options = {}) => request(`/network-requests/${encodeURIComponent(id)}`, { ...options, method: 'PATCH', body }),
+      dismiss: (id, options = {}) => request(`/network-requests/${encodeURIComponent(id)}`, { ...options, method: 'DELETE' }),
+    },
+
     agents: {
       list: (options = {}) => request('/agents', options),
       createToken: (agentId, name, options = {}) => request(
@@ -163,6 +173,17 @@ export function createIndexApiClient(options = {}) {
       // Turns a chat `intent_proposal` (proposalId + description) into a
       // persisted intent; resolves { intentId }.
       confirm: (body, options = {}) => request('/intents/confirm', { ...options, method: 'POST', body }),
+      // Dismisses a pending proposal row instead of orphaning it.
+      reject: (body, options = {}) => request('/intents/reject', { ...options, method: 'POST', body }),
+      // Fast-intake funnel (FAST_SIGNAL_INTAKE flag): the server is stateless,
+      // so every call resends the answered rounds. Ends in /intents/confirm.
+      intake: {
+        start: (options = {}) => request('/intents/intake/start', { ...options, method: 'POST', body: {} }),
+        question: (body, options = {}) => request('/intents/intake/question', { ...options, method: 'POST', body }),
+        prepare: (body, options = {}) => request('/intents/intake/prepare', { ...options, method: 'POST', body }),
+        proposal: (body, options = {}) => request('/intents/intake/proposal', { ...options, method: 'POST', body }),
+        revise: (body, options = {}) => request('/intents/intake/revise', { ...options, method: 'POST', body }),
+      },
       get: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}`, options),
       archive: (intentId, options = {}) => request(`/intents/${encodeURIComponent(intentId)}/archive`, { ...options, method: 'PATCH' }),
       updateStatus: (intentId, status, options = {}) => request(
@@ -177,9 +198,9 @@ export function createIndexApiClient(options = {}) {
         `/opportunities${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
-      home: (query = {}, options = {}) => request(`/opportunities/home${toQueryString(query)}`, options),
-      homeForIntent: (intentId, query = {}, options = {}) => request(
-        `/opportunities/home${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
+      radar: (query = {}, options = {}) => request(`/opportunities/radar${toQueryString(query)}`, options),
+      radarForIntent: (intentId, query = {}, options = {}) => request(
+        `/opportunities/radar${toQueryString({ ...query, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       chatContext: (peerUserId, options = {}) => request(
@@ -216,6 +237,14 @@ export function createIndexApiClient(options = {}) {
       ),
       pendingForIntent: (intentId, filters = {}, options = {}) => request(
         `/questions${toQueryString({ status: 'pending', ...filters, scopeType: 'intent', scopeId: intentId })}`,
+        options,
+      ),
+      answered: (filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'answered', ...filters })}`,
+        options,
+      ),
+      answeredForIntent: (intentId, filters = {}, options = {}) => request(
+        `/questions${toQueryString({ status: 'answered', ...filters, scopeType: 'intent', scopeId: intentId })}`,
         options,
       ),
       answer: (questionId, body, options = {}) => request(

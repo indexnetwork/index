@@ -7,11 +7,41 @@ import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
 import { IntentEvents } from '../events/intent.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
+import { toPublicNetworkPermissions } from '../lib/network-permissions';
 import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
 import { QuestionerAdapter, type AnsweredNegotiationOwnerAnswer } from './questioner.adapter';
+
+export interface NetworkShareResponseRow {
+  id: string;
+  title: string;
+  prompt: string | null;
+  imageUrl: string | null;
+  permissions: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  ownerId: string;
+  userName: string;
+  userAvatar: string | null;
+}
+
+/** Map a share-code lookup row to its public invitation response contract. */
+export function buildNetworkShareResponse(row: NetworkShareResponseRow, memberCount: number) {
+  const permissions = toPublicNetworkPermissions(row.permissions);
+  return {
+    id: row.id,
+    title: row.title,
+    prompt: row.prompt,
+    imageUrl: row.imageUrl,
+    joinPolicy: permissions.joinPolicy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+    _count: { members: memberCount },
+  };
+}
 
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
@@ -27,7 +57,7 @@ export class ChatDatabaseAdapter {
     return this._questionerAdapter;
   }
 
-  // Negotiation context methods — required by HomeGraphDatabase
+  // Negotiation context methods — required by RadarGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
   async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
@@ -576,7 +606,6 @@ export class ChatDatabaseAdapter {
     id: string;
     title: string;
     prompt?: string | null;
-    type?: string;
     metadata?: Record<string, unknown> | null;
     permissions?: Record<string, unknown> | null;
   } | null> {
@@ -585,7 +614,6 @@ export class ChatDatabaseAdapter {
         id: schema.networks.id,
         title: schema.networks.title,
         prompt: schema.networks.prompt,
-        type: schema.networks.type,
         metadata: schema.networks.metadata,
         permissions: schema.networks.permissions,
       })
@@ -594,7 +622,7 @@ export class ChatDatabaseAdapter {
       .limit(1);
     const row = rows[0];
     if (!row) return null;
-    return { ...row, permissions: row.permissions as unknown as Record<string, unknown> | null };
+    return { ...row, permissions: { ...toPublicNetworkPermissions(row.permissions) } };
   }
 
   /**
@@ -686,13 +714,13 @@ export class ChatDatabaseAdapter {
         imageUrl: schema.networks.imageUrl,
         permissions: schema.networks.permissions,
         isPersonal: schema.networks.isPersonal,
-        isExperiment: schema.networks.isExperiment,
+        hidden: schema.networks.hidden,
+        masterKeyHash: schema.networks.masterKeyHash,
         ownerId: ownerMembers.userId,
         createdAt: schema.networks.createdAt,
         updatedAt: schema.networks.updatedAt,
         ownerName: schema.users.name,
         ownerAvatar: schema.users.avatar,
-        type: schema.networks.type,
         metadata: schema.networks.metadata,
       })
       .from(schema.networks)
@@ -728,11 +756,11 @@ export class ChatDatabaseAdapter {
           key: row.key,
           prompt: row.prompt,
           imageUrl: row.imageUrl,
-          type: row.type ?? 'community',
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
-          permissions: row.permissions,
+          permissions: toPublicNetworkPermissions(row.permissions),
           isPersonal: row.isPersonal,
-          isExperiment: row.isExperiment,
+          hidden: row.hidden,
+          hasMasterKey: row.masterKeyHash != null,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
@@ -813,7 +841,9 @@ export class ChatDatabaseAdapter {
     const whereConditions = [
       isNull(schema.networks.deletedAt),
       eq(schema.networks.isPersonal, false),
-      or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment)),
+      eq(schema.networks.hidden, false),
+      // Unapproved network requests are inert rows, never discoverable.
+      isNull(schema.networks.requestStatus),
     ];
 
     if (excludeIds.length > 0) {
@@ -835,8 +865,8 @@ export class ChatDatabaseAdapter {
 
     const result = [];
     for (const row of publicIndexes) {
-      const perms = (row.permissions as { joinPolicy?: string } | null);
-      if (perms?.joinPolicy !== 'anyone') continue;
+      const permissions = toPublicNetworkPermissions(row.permissions);
+      if (permissions.joinPolicy !== 'anyone') continue;
 
       const [ownerMember] = await db
         .select({
@@ -865,7 +895,7 @@ export class ChatDatabaseAdapter {
         prompt: row.prompt,
         imageUrl: row.imageUrl,
         createdAt: row.createdAt,
-        permissions: row.permissions,
+        permissions,
         memberCount: Number(countResult?.count ?? 0),
         owner: ownerMember ? {
           id: ownerMember.userId,
@@ -1665,7 +1695,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     networkId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }
   ) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
@@ -1681,6 +1711,7 @@ export class ChatDatabaseAdapter {
     if (data.title !== undefined) updateData.title = data.title;
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+    if (data.hidden !== undefined) updateData.hidden = data.hidden;
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
       const currentPerms = (existing.permissions as schema.NetworkPermissionsState | null) ?? {
         joinPolicy: 'invite_only',
@@ -1694,15 +1725,13 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: data.allowGuestVibeCheck ?? currentPerms.allowGuestVibeCheck ?? false,
       };
     }
-    if (data.type !== undefined) updateData.type = data.type;
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
-    if (data.contextInjection !== undefined || data.profileEnrichment !== undefined) {
+    if (data.contextInjection !== undefined) {
       const currentPerms = (existing.permissions as unknown as Record<string, unknown> | null) ?? {};
       updateData.permissions = {
         ...currentPerms,
         ...((updateData.permissions as Record<string, unknown>) ?? {}),
-        ...(data.contextInjection !== undefined && { contextInjection: data.contextInjection }),
-        ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
+        contextInjection: data.contextInjection,
       };
     }
 
@@ -1733,7 +1762,6 @@ export class ChatDatabaseAdapter {
         ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
-        type: networks.type,
         metadata: networks.metadata,
       })
       .from(networks)
@@ -1755,26 +1783,15 @@ export class ChatDatabaseAdapter {
       db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
       db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
-    const perms = (updatedRow.permissions as schema.NetworkPermissionsState | null) ?? {
-      joinPolicy: 'invite_only',
-      invitationLink: null,
-      allowGuestVibeCheck: false,
-    };
+    const permissions = toPublicNetworkPermissions(updatedRow.permissions);
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
     return {
       id: updatedRow.id,
       title: updatedRow.title,
       prompt: updatedRow.prompt,
       imageUrl: updatedRow.imageUrl,
-      type: updatedRow.type ?? 'community',
       metadata: (updatedRow.metadata ?? {}) as Record<string, unknown>,
-      permissions: {
-        joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-        allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
-        invitationLink: perms.invitationLink ?? null,
-        ...(perms.contextInjection !== undefined && { contextInjection: perms.contextInjection }),
-        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
-      },
+      permissions,
       isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
       updatedAt: updatedRow.updatedAt,
@@ -1830,24 +1847,24 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Cascading soft delete for an experiment network.
+   * Cascading soft delete for a provisioned-cohort network.
    *
-   * Soft-deletes users who were *invited into* this experiment (i.e. have a
-   * network-scoped personal agent permissioned on this network) along with
-   * their data (intents, agents, API keys, personal networks, network
-   * memberships). Organic users who happen to be members but were not
-   * provisioned through the invitation flow are NOT cascaded — they keep their
-   * accounts.
+   * Soft-deletes users provisioned via master-key signup or CSV import into
+   * this network (i.e. have a network-scoped personal agent permissioned on
+   * this network) along with their data (intents, agents, API keys, personal
+   * networks, network memberships). Organic users who happen to be members
+   * but were not provisioned through the invitation flow are NOT cascaded —
+   * they keep their accounts.
    *
-   * @param networkId - The experiment network to delete
+   * @param networkId - The provisioned-cohort network to delete
    */
-  async softDeleteExperimentNetwork(networkId: string): Promise<void> {
+  async softDeleteProvisionedCohort(networkId: string): Promise<void> {
     const now = new Date();
 
-    // Identify experimentally-onboarded users: those who own at least one
-    // agent with a network-scoped permission on this network. These are the
-    // users provisioned by networkInvitationService.invite() (headless/CSV).
-    const experimentUsers = await db
+    // Identify provisioned users: those who own at least one agent with a
+    // network-scoped permission on this network. These are the users
+    // provisioned by networkInvitationService.invite() (headless/CSV).
+    const provisionedUsers = await db
       .selectDistinct({ id: schema.users.id })
       .from(schema.users)
       .innerJoin(schema.agents, eq(schema.agents.ownerId, schema.users.id))
@@ -1862,7 +1879,7 @@ export class ChatDatabaseAdapter {
         isNull(schema.agents.deletedAt),
       ));
 
-    const userIds = experimentUsers.map(u => u.id);
+    const userIds = provisionedUsers.map(u => u.id);
 
     if (userIds.length > 0) {
       // Soft-delete users
@@ -1979,8 +1996,6 @@ export class ChatDatabaseAdapter {
     imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
     allowGuestVibeCheck?: boolean;
-    profileEnrichment?: schema.ProfileEnrichmentPolicy;
-    type?: 'community' | 'event';
     metadata?: Record<string, unknown>;
   }): Promise<{
     id: string;
@@ -1988,7 +2003,6 @@ export class ChatDatabaseAdapter {
     prompt: string | null;
     imageUrl: string | null;
     permissions: schema.NetworkPermissionsState;
-    type: 'community' | 'event';
     metadata: Record<string, unknown>;
   }> {
     const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
@@ -1996,7 +2010,6 @@ export class ChatDatabaseAdapter {
       joinPolicy: finalJoinPolicy,
       invitationLink: { code: crypto.randomUUID() },
       allowGuestVibeCheck: data.allowGuestVibeCheck ?? false,
-      ...(data.profileEnrichment !== undefined && { profileEnrichment: data.profileEnrichment }),
     };
     const [row] = await db
       .insert(networks)
@@ -2005,7 +2018,6 @@ export class ChatDatabaseAdapter {
         prompt: data.prompt ?? null,
         imageUrl: data.imageUrl ?? null,
         permissions,
-        type: data.type ?? 'community',
         metadata: data.metadata ?? {},
       })
       .returning({
@@ -2014,27 +2026,15 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
-        type: networks.type,
         metadata: networks.metadata,
       });
     if (!row) throw new Error('Failed to create network');
-    const perms = (row.permissions as schema.NetworkPermissionsState | null) ?? {
-      joinPolicy: 'invite_only',
-      invitationLink: null,
-      allowGuestVibeCheck: false,
-    };
     return {
       id: row.id,
       title: row.title,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
-      permissions: {
-        joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-        invitationLink: perms.invitationLink ?? null,
-        allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
-        ...(perms.profileEnrichment !== undefined && { profileEnrichment: perms.profileEnrichment }),
-      },
-      type: row.type ?? 'community',
+      permissions: toPublicNetworkPermissions(row.permissions),
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
     };
   }
@@ -2180,7 +2180,7 @@ export class ChatDatabaseAdapter {
       title: row.title,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
-      permissions: row.permissions,
+      permissions: toPublicNetworkPermissions(row.permissions),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
@@ -2229,20 +2229,7 @@ export class ChatDatabaseAdapter {
     if (!row) return null;
 
     const memberCount = await this.getNetworkMemberCount(row.id);
-
-    const perms = row.permissions as { joinPolicy?: string } | null;
-
-    return {
-      id: row.id,
-      title: row.title,
-      prompt: row.prompt,
-      imageUrl: row.imageUrl,
-      joinPolicy: (perms?.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
-      _count: { members: memberCount },
-    };
+    return buildNetworkShareResponse(row, memberCount);
   }
 
   /**
@@ -2300,13 +2287,13 @@ export class ChatDatabaseAdapter {
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
         isPersonal: networks.isPersonal,
-        isExperiment: networks.isExperiment,
+        hidden: networks.hidden,
+        masterKeyHash: networks.masterKeyHash,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
         ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
-        type: networks.type,
         metadata: networks.metadata,
       })
       .from(networks)
@@ -2337,11 +2324,11 @@ export class ChatDatabaseAdapter {
       key: row.key,
       prompt: row.prompt,
       imageUrl: row.imageUrl,
-      type: row.type ?? 'community',
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
-      permissions: row.permissions,
+      permissions: toPublicNetworkPermissions(row.permissions),
       isPersonal: row.isPersonal,
-      isExperiment: row.isExperiment,
+      hidden: row.hidden,
+      hasMasterKey: row.masterKeyHash != null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
@@ -3226,127 +3213,6 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Read the current syncConfig for a specific integration row.
-   * @param networkId - Target index
-   * @param toolkit - Toolkit slug
-   * @returns The syncConfig object or null if no row exists
-   */
-  async getIntegrationSyncConfig(
-    networkId: string,
-    toolkit: string,
-  ): Promise<Record<string, unknown> | null> {
-    const [row] = await db
-      .select({ syncConfig: schema.networkIntegrations.syncConfig })
-      .from(schema.networkIntegrations)
-      .where(
-        and(
-          eq(schema.networkIntegrations.networkId, networkId),
-          eq(schema.networkIntegrations.toolkit, toolkit),
-        ),
-      )
-      .limit(1);
-    return row?.syncConfig ?? null;
-  }
-
-  /**
-   * Read the metadata JSONB for a network.
-   * @param networkId - Target network
-   * @returns The metadata object or null if not found
-   */
-  async getNetworkMetadata(networkId: string): Promise<Record<string, unknown> | null> {
-    const [row] = await db
-      .select({ metadata: schema.networks.metadata })
-      .from(schema.networks)
-      .where(eq(schema.networks.id, networkId))
-      .limit(1);
-    return (row?.metadata as Record<string, unknown>) ?? null;
-  }
-
-  /**
-   * Replace the metadata JSONB for a network.
-   * @param networkId - Target network
-   * @param metadata - New metadata object
-   */
-  async updateNetworkMetadata(networkId: string, metadata: Record<string, unknown>): Promise<void> {
-    await db
-      .update(schema.networks)
-      .set({ metadata, updatedAt: new Date() })
-      .where(eq(schema.networks.id, networkId));
-  }
-
-  /**
-   * Update the syncConfig JSONB column on a network_integrations row.
-   * @param networkId - Target index
-   * @param toolkit - Toolkit slug (e.g. 'google_calendar')
-   * @param syncConfig - New sync configuration to store
-   */
-  async updateIntegrationSyncConfig(
-    networkId: string,
-    toolkit: string,
-    syncConfig: Record<string, unknown>,
-  ): Promise<void> {
-    await db
-      .update(schema.networkIntegrations)
-      .set({ syncConfig })
-      .where(
-        and(
-          eq(schema.networkIntegrations.networkId, networkId),
-          eq(schema.networkIntegrations.toolkit, toolkit),
-        ),
-      );
-  }
-
-  /**
-   * Return all network_integrations rows whose syncConfig.status is 'active',
-   * joined with network_members to include the network owner's userId.
-   * Used by the integration sync worker to find integrations due for a tick.
-   */
-  async getActiveIntegrationSyncs(): Promise<Array<{
-    networkId: string;
-    toolkit: string;
-    connectedAccountId: string;
-    syncConfig: Record<string, unknown>;
-    ownerUserId: string;
-  }>> {
-    // Use a lateral subquery to pick exactly one owner per network,
-    // avoiding duplicate rows when a network has multiple owners.
-    const rows = await db.execute<{
-      network_id: string;
-      toolkit: string;
-      connected_account_id: string;
-      sync_config: Record<string, unknown>;
-      owner_user_id: string;
-    }>(sql`
-      SELECT
-        ni.network_id,
-        ni.toolkit,
-        ni.connected_account_id,
-        ni.sync_config,
-        owner.user_id AS owner_user_id
-      FROM network_integrations ni
-      JOIN networks n ON n.id = ni.network_id AND n.deleted_at IS NULL
-      CROSS JOIN LATERAL (
-        SELECT nm.user_id
-        FROM network_members nm
-        WHERE nm.network_id = ni.network_id
-          AND 'owner' = ANY(nm.permissions)
-          AND nm.deleted_at IS NULL
-        ORDER BY nm.created_at ASC
-        LIMIT 1
-      ) owner
-      WHERE ni.sync_config->>'status' = 'active'
-    `);
-
-    return rows.map((r) => ({
-      networkId: r.network_id,
-      toolkit: r.toolkit,
-      connectedAccountId: r.connected_account_id,
-      syncConfig: r.sync_config as Record<string, unknown>,
-      ownerUserId: r.owner_user_id,
-    }));
-  }
-
-  /**
    * Hard-delete a contact membership from the owner's personal network.
    * @param ownerId - The owner of the personal network
    * @param contactUserId - The contact user to remove
@@ -3705,6 +3571,20 @@ export class ChatDatabaseAdapter {
     limitPerSource: number;
   }) {
     return this.opportunityAdapter.searchPremisesBySimilarityBatch(params);
+  }
+
+  /**
+   * Cosine similarity search against user-context embeddings, scoped to shared networks.
+   * Delegates to OpportunityDatabaseAdapter (which hosts the raw SQL query).
+   */
+  async searchUserContextsBySimilarity(params: {
+    embedding: number[];
+    networkIds: string[];
+    excludeUserId: string;
+    limit: number;
+    minScore?: number;
+  }) {
+    return this.opportunityAdapter.searchUserContextsBySimilarity(params);
   }
 
   /**

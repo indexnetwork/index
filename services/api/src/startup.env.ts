@@ -24,6 +24,19 @@ const isTest = runtimeEnvironment === 'test';
 const isDeployment =
   runtimeEnvironment === 'production' ||
   Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
+
+// EVAL_MODEL_OVERRIDES is an eval-only hook. Gated on `isDeployment`, not on
+// NODE_ENV alone: a deployment may not set NODE_ENV (railway.toml runs the
+// `start` script, which does not), and in that case the protocol's own
+// NODE_ENV=production guard goes inert and the override would actually be
+// honoured. A value present in a deployed environment means someone believes
+// it is doing something. Fail loudly rather than ignore it silently.
+if (isDeployment && process.env.EVAL_MODEL_OVERRIDES) {
+  throw new Error(
+    'EVAL_MODEL_OVERRIDES must not be set in a deployed environment. It is an eval-only model override; remove it from the deployment environment.',
+  );
+}
+
 const requiredUnlessTest = isTest ? z.string().optional() : z.string().trim().min(1);
 const requiredInProduction = isTest || runtimeEnvironment !== 'production' ? z.string().optional() : z.string().trim().min(1);
 const optionalUrl = z.union([z.literal(''), z.string().url()]).optional();
@@ -42,6 +55,7 @@ const envSchema = z.object({
 
   // 2. Authentication
   BETTER_AUTH_SECRET: requiredUnlessTest,
+  OPPORTUNITY_OWNER_APPROVAL_SECRET: z.string().optional(),
   CONNECT_JWT_SECRET: requiredInProduction,
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -60,6 +74,9 @@ const envSchema = z.object({
   EMBEDDING_DIMENSIONS: optionalInt,
   SMARTEST_VERIFIER_MODEL: z.string().optional(),
   SMARTEST_GENERATOR_MODEL: z.string().optional(),
+  // Eval-only per-agent model overrides (JSON). Ignored by the protocol in
+  // production, and rejected outright above when NODE_ENV=production.
+  EVAL_MODEL_OVERRIDES: z.string().optional(),
 
   // 4. Redis
   REDIS_URL: z.string().optional(),
@@ -96,6 +113,10 @@ const envSchema = z.object({
   DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
+  DISCOVERY_ALLOWED_TYPES: z.string().optional(),
+  // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
+  // a typo must never disable discovery, so startup validation stays permissive.
+  DISCOVERY_PROFILE_SOURCE: z.string().optional(),
   PREMISE_DEDUP_SIMILARITY: z.string().optional(), // similarity threshold 0..1 (float)
   QUESTIONER_DISCOVERY_ENABLED: optionalBoolean,
   QUESTIONER_UPTAKE_ENABLED: optionalBoolean,
@@ -114,6 +135,9 @@ const envSchema = z.object({
   REPORTER_BRIEFING_TTL_MS: optionalPositiveInt,
   CHAT_SESSION_GAP_MS: optionalPositiveInt,
   WEB_AGENT_ACTIONS_ENABLED: optionalBoolean,
+  FAST_SIGNAL_INTAKE: optionalBoolean,
+  SIGNAL_INTAKE_MAX_QUESTIONS: z.string().optional(),
+  SIGNAL_INTAKE_QUESTION_MODE: z.string().optional(),
   NEGOTIATOR_TURN_TIMEOUT_MS: optionalInt,
   NEGOTIATION_SCREEN_MODE: z.union([z.literal(''), z.enum(['off', 'shadow', 'enforce'])]).optional(),
   NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
@@ -154,6 +178,7 @@ const envSchema = z.object({
   LIMITER_AUTH_WRITE_PER_MIN: optionalInt,
   LIMITER_READ_PER_MIN: optionalInt,
   LIMITER_WRITE_PER_MIN: optionalInt,
+  LIMITER_INTAKE_SYNTHESIS_PER_MIN: optionalInt,
   MCP_HTTP_LIMIT_PER_MIN: optionalInt,
   LIMITER_IP_HEADERS: z.string().optional(),
   LIMITER_DISABLE: optionalOne,

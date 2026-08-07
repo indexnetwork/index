@@ -68,6 +68,7 @@ bun install
 index/
 ├── apps/
 │   ├── web/             # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
+│   ├── eval-ops/        # Internal eval ops console (local by default; own Railway service)
 │   └── mac/             # Native Apple client subtree
 ├── services/
 │   └── api/             # Backend API and agent engine (Bun, TypeScript)
@@ -280,7 +281,15 @@ cp .env.example .env.test
 
 Change the copied file's `NODE_ENV=development` to `NODE_ENV=test` (or remove
 the declaration), set `DATABASE_URL` to the disposable database, and opt in
-explicitly with `TEST_DATABASE_SAFE=1`. Test entry points capture test mode
+explicitly with `TEST_DATABASE_SAFE=1`.
+
+This is enforced, not just advised: readiness refuses any `DATABASE_URL` whose
+database is named `*prod` or `*production`. Every Neon branch in this project —
+production, dev and local-dev alike — exposes a `protocol_prod` database holding
+a copy of real user data, so that name marks real data on *any* branch, not just
+the production one. Each branch also carries an empty `neondb` alongside it; that
+is the database to point tests at. There is deliberately no override flag, since
+one would reintroduce the footgun the check exists to remove. Test entry points capture test mode
 before dotenv loads and reject conflicting `NODE_ENV` values, so
 `db:migrate:test` cannot bypass the safety marker. Then provision the schema:
 
@@ -349,6 +358,41 @@ bun run db:flush        # Flush all data (development only)
 ```
 
 After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `services/api/drizzle/meta/_journal.json` to match.
+
+### Eval ops site (internal)
+
+A local-by-default web console over the protocol's eval harnesses: browse committed baselines and run
+reports, launch a run and watch its log stream live, compare two artifacts, and reset the
+test-database fixture. Two commands, two terminals:
+
+```bash
+# Terminal 1: the ops API (127.0.0.1:4321)
+cd packages/protocol && bun run eval:web
+
+# Terminal 2: the UI (http://127.0.0.1:5174)
+bun run dev:eval-ops
+```
+
+`eval:web` loads the repo-root `.env.test`, so it uses that file's `OPENROUTER_API_KEY` and
+that file's `DATABASE_URL` as the fixture target.
+
+The four scorecard harnesses (`matching`, `profile`, `premise`, `opportunity`) and the
+`discovery` comparison harness are supported (`OPS_HARNESSES`,
+`packages/protocol/eval/ops/ops.registry.ts`). It **binds loopback and requires a verified
+`@index.network` Index account** — signing in opens the same browser-auth bridge the CLI
+uses, and every route but the two that make signing in possible needs that session. The
+authentication is defence in depth, not permission to widen the site: the `Host` check and
+the `Origin` allowlist are what bound who can reach it, and they are extended by exactly
+one entry only when `EVAL_OPS_PUBLIC_ORIGIN` names the deployed origin — so leave
+`EVAL_OPS_BIND` alone locally. `WEB_APP_URL` and `API_URL` must name the same environment —
+the first mints the sign-in key and the second verifies it, and the server refuses to start
+on a mismatched pair. The app is excluded from the root production build, and is deployed
+as its own Railway service from `apps/eval-ops/railway.toml` rather than from the root
+`railway.toml`, which is the API's.
+
+See [`packages/protocol/eval/ops/README.md`](../../packages/protocol/eval/ops/README.md)
+for the security model and [`apps/eval-ops/README.md`](../../apps/eval-ops/README.md) for
+the app itself.
 
 ### Queue monitoring
 
@@ -446,7 +490,9 @@ The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in the root `
 TRUSTED_ORIGINS=http://localhost:3000
 ```
 
-Restart the API service after changing this value.
+Restart the API service after changing this value. The origin must be listed
+exactly (scheme, host and port) — an unlisted browser origin receives no CORS
+grant at all, which also surfaces as a CORS error in the browser console.
 
 ### pgvector extension missing
 

@@ -8,5 +8,4 @@ export interface ToolRequestContext {
   indexName?: string;
   sessionId?: string;
   agentId?: string;
-  clientSurface?: "telegram" | "web";
 }

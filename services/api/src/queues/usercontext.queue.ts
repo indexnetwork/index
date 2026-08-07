@@ -1,14 +1,16 @@
 import { Job } from 'bullmq';
 
-import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
+import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, SignalIntakePackGenerator } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 
+import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 import { computePremiseHash, type ContextPremise } from '../lib/usercontext/premise-hash';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
+import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
 
 /** BullMQ queue name for per-network user-context regeneration jobs. */
 export const QUEUE_NAME = 'user-context-queue';
@@ -59,6 +61,18 @@ export interface UserContextQueueDeps {
   }) => Promise<{ id: string }>;
   /** Generate HyDE documents for a freshly upserted context. */
   generateContextHyde?: (params: { contextId: string; sourceText: string }) => Promise<void>;
+  /** Existing pack for the premiseHash short-circuit. */
+  getExistingIntakePack?: (userId: string) => Promise<{ premiseHash: string | null } | null>;
+  /**
+   * Regenerate and persist the user's fast-intake pack. `input` carries the same
+   * premises, resolved network titles, and global context text the job already
+   * assembled for the context rows, so the default implementation never re-fetches them.
+   */
+  regenerateIntakePack?: (
+    userId: string,
+    premiseHash: string,
+    input: { premises: Array<{ text: string }>; networkTitles: string[]; globalContext: string | null },
+  ) => Promise<void>;
 }
 
 /**
@@ -85,6 +99,12 @@ export class UserContextQueue {
    * across jobs) rather than re-created per network.
    */
   private generator: UserContextGenerator | undefined;
+
+  /**
+   * Lazily-built, reused fast-intake pack generator. Like {@link generator},
+   * built once and shared across jobs rather than re-created per job.
+   */
+  private intakePackGenerator: SignalIntakePackGenerator | undefined;
 
   constructor(deps?: UserContextQueueDeps) {
     this.deps = deps;
@@ -222,12 +242,41 @@ export class UserContextQueue {
 
     // Global row (networkId = null): the profile-replacing projection. Always generated
     // from active premises, even when the user belongs to no non-personal networks.
-    await regenerateOne(null, () => generateGlobalContext({ premises: premiseTexts }));
+    // The generated text is captured for the fast-intake pack below; when the row is
+    // skipped as fresh, the pack falls back to the stored row's text instead.
+    let globalContextText: string | null = null;
+    await regenerateOne(null, async () => {
+      const result = await generateGlobalContext({ premises: premiseTexts });
+      globalContextText = result.text;
+      return result;
+    });
 
-    // Per-network rows.
+    // Per-network rows. `getNetwork` is resolved unconditionally per network (not only
+    // when a row is actually stale) so `networkTitles` below reflects every network the
+    // user belongs to — the fast-intake pack describes the person across all their
+    // communities, not just the ones whose context changed this run.
+    const networkTitles: string[] = [];
     for (const networkId of networkIds) {
+      let network: { title: string; prompt: string | null } | null = null;
+      try {
+        network = await getNetwork(networkId);
+      } catch (err) {
+        // Isolate a getNetwork failure to this network only — mirrors regenerateOne's
+        // own per-row isolation. Previously getNetwork ran inside the `generate` closure
+        // (inside regenerateOne's try/catch), so a lookup failure was contained to that
+        // one row but still counted toward `failures`, causing the job to throw at the
+        // end so BullMQ retries that row. Now that it runs unconditionally per network
+        // (to collect titles for every network, not just stale ones), an uncaught
+        // failure here would otherwise propagate out of the whole loop and skip both
+        // the remaining networks and the intake-pack refresh below. Log, count it the
+        // same way regenerateOne's own catch does (so the retry guarantee is preserved),
+        // and continue instead of aborting.
+        this.logger.error('Failed to resolve network for context regeneration', { userId, networkId, error: err });
+        failures += 1;
+        continue;
+      }
+      if (network) networkTitles.push(network.title);
       await regenerateOne(networkId, async () => {
-        const network = await getNetwork(networkId);
         if (!network) return null;
         return generateContext({
           premises: premiseTexts,
@@ -237,11 +286,67 @@ export class UserContextQueue {
       });
     }
 
+    // Fast-intake pack shares the premise-hash staleness key with the context rows and
+    // reuses the premises/titles/global-context text already assembled above. It is
+    // best-effort: a pack failure must not fail context regeneration, because
+    // `/intents/intake/start` regenerates synchronously on a cache miss anyway.
+    //
+    // Gated on the same flag as the funnel it feeds: each refresh is a real LLM
+    // call, and nothing reads the pack while the flag is off, so flag-off
+    // regeneration is byte-for-byte the pre-feature behavior and flipping the
+    // flag is what starts the spend.
+    if (isFastSignalIntakeEnabled()) {
+      await this.regenerateIntakePackBestEffort(userId, premiseHash, premiseTexts, networkTitles, globalContextText);
+    }
+
     if (failures > 0) {
       const total = networkIds.length + 1; // + global row
       throw new Error(
         `UserContext regeneration failed for ${failures}/${total} row(s) for user ${userId}; failing job so BullMQ retries`,
       );
+    }
+  }
+
+  /**
+   * Refresh the fast-intake pack when its premise hash is stale.
+   *
+   * Best-effort by contract: every failure is logged and swallowed so it can
+   * never fail context regeneration.
+   *
+   * @param userId - Owner
+   * @param premiseHash - Staleness key shared with the context rows
+   * @param premiseTexts - Active premise texts already assembled by the caller
+   * @param networkTitles - Titles of every network resolved this run
+   * @param globalContextText - Global context text, or null when not generated this run
+   */
+  private async regenerateIntakePackBestEffort(
+    userId: string,
+    premiseHash: string,
+    premiseTexts: Array<{ text: string }>,
+    networkTitles: string[],
+    globalContextText: string | null,
+  ): Promise<void> {
+    const getExistingIntakePack = this.deps?.getExistingIntakePack ?? this.defaultGetExistingIntakePack.bind(this);
+    const regenerateIntakePack = this.deps?.regenerateIntakePack ?? this.defaultRegenerateIntakePack.bind(this);
+    try {
+      const existingPack = await getExistingIntakePack(userId);
+      if (!existingPack || existingPack.premiseHash !== premiseHash) {
+        // A global row that was already fresh this run was never generated, so
+        // fall back to the stored paragraph rather than passing null.
+        let globalContext = globalContextText;
+        if (globalContext === null) {
+          const existingGlobal = await chatDatabaseAdapter.getUserContext(userId, null);
+          globalContext = existingGlobal?.text ?? null;
+        }
+        await regenerateIntakePack(userId, premiseHash, {
+          premises: premiseTexts,
+          networkTitles,
+          globalContext,
+        });
+        this.logger.verbose('Regenerated signal intake pack', { userId });
+      }
+    } catch (err) {
+      this.logger.error('Failed to regenerate signal intake pack', { userId, error: err });
     }
   }
 
@@ -309,6 +414,31 @@ export class UserContextQueue {
       // premiseHash changed, so regenerating is both correct and not wasteful.
       forceRegenerate: true,
       maxLenses: 3,
+    });
+  }
+
+  /** Existing pack's premiseHash (or null) for the short-circuit. */
+  private async defaultGetExistingIntakePack(userId: string): Promise<{ premiseHash: string | null } | null> {
+    const existing = await signalIntakePackAdapter.getPack(userId);
+    return existing ? { premiseHash: existing.premiseHash } : null;
+  }
+
+  /**
+   * Synthesize and persist the fast-intake pack via the protocol generator, reusing
+   * the premises/network titles/global context text the job already assembled.
+   */
+  private async defaultRegenerateIntakePack(
+    userId: string,
+    premiseHash: string,
+    input: { premises: Array<{ text: string }>; networkTitles: string[]; globalContext: string | null },
+  ): Promise<void> {
+    this.intakePackGenerator ??= new SignalIntakePackGenerator();
+    const pack = await this.intakePackGenerator.generate(input);
+    await signalIntakePackAdapter.upsertPack({
+      userId,
+      brief: pack.brief,
+      question: pack.question,
+      premiseHash,
     });
   }
 }

@@ -276,8 +276,8 @@ export { ONBOARDING_ALLOWED } from './mcp.authorization-policy.js';
 
 /**
  * Builds the onboarding gate message for MCP callers.  Condensed from the
- * chat orchestrator's 8-step flow (chat.prompt.ts buildOnboarding) into a
- * 7-step tool-error guide suited for non-interactive MCP clients.
+ * chat orchestrator's flow (chat.prompt.ts buildOnboarding) into a
+ * 6-step tool-error guide suited for non-interactive MCP clients.
  */
 export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
   const nameStep = ctx.hasName
@@ -285,8 +285,8 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     : `1. Ask the user for their name and a short self-description.`;
 
   const communityStep = ctx.networkId
-    ? `5. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
-    : `5. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
+    ? `4. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
+    : `4. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
 
   const allowedList = Array.from(ONBOARDING_ALLOWED).join(', ');
 
@@ -296,13 +296,11 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${allowedList}.\n\n` +
     `Onboarding flow:\n` +
     `${nameStep}\n` +
-    `2. Ask whether the user allows use of event/EdgeOS profile data, then call record_onboarding_privacy_consent(edgeosImportGranted=...).\n` +
-    `3. Ask separately whether the user allows public internet/profile lookup, then call record_onboarding_privacy_consent(publicProfileLookupGranted=...).\n` +
-    `4. Call preview_user_context(...) using only allowed inputs; do not run public lookup unless consent was granted. If it returns profileRunId, poll get_enrichment_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
-    `5. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_context(...).\n` +
+    `2. Call preview_user_context(...). If it returns profileRunId, poll get_enrichment_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
+    `3. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_context(...).\n` +
     `${communityStep}\n` +
-    `6. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted.\n` +
-    `7. Call complete_onboarding() to finish setup. Discovery is optional after onboarding, never mandatory.`
+    `5. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted.\n` +
+    `6. Call complete_onboarding() to finish setup. Discovery is optional after onboarding, never mandatory.`
   );
 }
 
@@ -370,24 +368,6 @@ export function extractBearerToken(req: Request): string | undefined {
   return undefined;
 }
 
-/**
- * Normalizes the x-index-surface header to a typed surface value.
- * Unknown or absent values collapse to 'web'.
- */
-let hasWarnedInvalidSurface = false;
-export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
-  if (raw === null || raw === '') return 'web';
-  const trimmed = raw.trim().toLowerCase();
-  if (trimmed === '') return 'web';
-  if (trimmed === 'telegram') return 'telegram';
-  if (trimmed === 'web') return 'web';
-  if (!hasWarnedInvalidSurface) {
-    hasWarnedInvalidSurface = true;
-    logger.warn('Unknown x-index-surface value (collapsing to web; warning once per process)');
-  }
-  return 'web';
-}
-
 export function createMcpServer(
   deps: ToolRegistryDeps,
   authResolver: McpAuthResolver,
@@ -444,7 +424,6 @@ export function createMcpServer(
   const extractAuthInput = (httpReq: Request): McpAuthInput => ({
     bearerToken: extractBearerToken(httpReq),
     apiKey: httpReq.headers.get('x-api-key') ?? undefined,
-    clientSurface: parseClientSurface(httpReq.headers.get('x-index-surface')),
     telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
     telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
   });
@@ -514,9 +493,6 @@ export function createMcpServer(
         surface: 'mcp',
         sessionAuthenticated: authenticated.identity.isSessionAuth === true,
       });
-      if (authenticated.identity.clientSurface) {
-        context.clientSurface = authenticated.identity.clientSurface;
-      }
       applyNetworkScopeToContext(context, authenticated.identity.networkScopeId);
 
       const subject = resolveMcpCapabilitySubject({

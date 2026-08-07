@@ -20,7 +20,7 @@
  * - discriminator/ — pool discriminator types, env, scorer, adjustments, question, push
  * - negotiation-evidence/ — evidence types, env, extractor, verifier
  * - outcome/ — outcome types, env, hypotheses
- * - feed/ — feed state schema, feed health scorer
+ * - radar/ — radar state schema, radar health scorer
  *
  * IND-551: canonical domain layer for the opportunities capability.
  */
@@ -121,6 +121,6 @@ export {
 } from "../outcome/outcome.env.js";
 export { joinOutcomeHypotheses } from "../outcome/outcome.hypotheses.js";
 
-// feed domain
-export { computeFeedHealth } from "../feed/feed.health.js";
-export type { FeedHealthResult } from "../feed/feed.health.js";
+// radar domain
+export { computeRadarHealth } from "../radar/radar.health.js";
+export type { RadarHealthResult } from "../radar/radar.health.js";

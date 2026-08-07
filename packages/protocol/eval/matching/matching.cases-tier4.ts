@@ -23,7 +23,7 @@ const NETWORK = "idx-commons";
 
 /** Creative-tech discoverer (mirrors the original identity cases). */
 const creativeTechSource: EvaluatorEntity = {
-  userId: "src-yanki",
+  userId: "src-creative-tech",
   profile: {
     name: "(source user)",
     bio: "Professional with a focus on creative technology and game development.",
@@ -51,7 +51,7 @@ const _isA_1: MatchingCase = {
     domains: ["funding", "technology"],
   description: "'startup funders' identity query must reject a bootstrapper who self-funded (bootstrapping ≠ funding others). Minimal-pair variant of investor-vs-funded-engineer.",
   input: {
-    discovererId: "src-yanki",
+    discovererId: "src-creative-tech",
     entities: [
       creativeTechSource,
       {
@@ -83,7 +83,7 @@ const _isA_2: MatchingCase = {
   domains: ["arts"],
   description: "'art director' identity query must reject a solo illustrator with no visual-direction ownership. Minimal-pair of samurai-vs-character-designer.",
   input: {
-    discovererId: "src-yanki",
+    discovererId: "src-creative-tech",
     entities: [
       creativeTechSource,
       {
@@ -114,7 +114,10 @@ const _isA_3: MatchingCase = {
     domains: ["sports"],
   description: "'scouts' identity query must accept a talent scout and reject a recently-signed athlete (being signed ≠ scouting).",
   input: {
-    discovererId: "src-yanki",
+    // The discoverer is the bespoke scouting-org entity below: discovererId must
+    // name an entity in this list, or every entity becomes a candidate and the
+    // evaluator's complete-batch contract can never be satisfied.
+    discovererId: "src-scout",
     entities: [
       {
         userId: "src-scout",
@@ -171,7 +174,7 @@ const _isA_4: MatchingCase = {
     domains: ["funding", "research"],
   description: "'investors' identity query must reject an academic who received a research grant (receiving a grant ≠ investing). Minimal-pair variant.",
   input: {
-    discovererId: "src-yanki",
+    discovererId: "src-creative-tech",
     entities: [
       creativeTechSource,
       {
@@ -381,7 +384,7 @@ const _loc_1: MatchingCase = {
     domains: ["location", "technology"],
   description: "Query asks for London; a Berlin candidate with strong fit is penalized (≤40). Synonym of known-mismatch-penalized.",
   input: {
-    discovererId: "src-yanki",
+    discovererId: "src-creative-tech",
     entities: [
       creativeTechSource,
       {
@@ -412,7 +415,7 @@ const _loc_2: MatchingCase = {
   domains: ["location", "technology"],
   description: "Query asks for Tokyo technical artists; a candidate with empty location must not be penalized. Synonym of unknown-not-penalized.",
   input: {
-    discovererId: "src-yanki",
+    discovererId: "src-creative-tech",
     entities: [
       creativeTechSource,
       {

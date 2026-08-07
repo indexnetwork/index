@@ -39,6 +39,19 @@ export {
   IntentIndexerOutputSchema,
   type IntentIndexerOutput,
   describeIntentUpdateFailure,
+  SignalIntakePackGenerator,
+  normalizeIntakePack,
+  type IntakePack,
+  type IntakePackInput,
+  type IntakePackQuestion,
+  type IntakePackQuestionOption,
+  SignalIntakeOrchestrator,
+  answerLabel,
+  FALLBACK_WHO_QUESTION,
+  FALLBACK_BRING_QUESTION,
+  type IntakeAnswer,
+  type SynthesisInput,
+  type SynthesisResult,
 } from "../application/index.js";
 
 // ── Ports ─────────────────────────────────────────────────────────────────────

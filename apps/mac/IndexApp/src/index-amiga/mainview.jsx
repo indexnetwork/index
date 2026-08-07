@@ -34,7 +34,9 @@ function RetentionNote({ retention, onChange }) {
 function MainView({ profile, people, setPeople, conversation, setConversation,
                     field, setField, stats, simRate, setSimRate, tweaks = {},
                     onOpenRoom, onBack, registerChats, pendingChat, onPendingHandled }) {
-  const { EVENT, CLARIFIERS, FIELD_EVENTS, AMBIENT_NOTES } = window.INDEX_DATA;
+  // Live-only: these demo sim feeds no longer exist, so they default to empty.
+  // The simulation loops below stay wired but idle on empty arrays.
+  const { CLARIFIERS = [], FIELD_EVENTS = [], AMBIENT_NOTES = [] } = window.INDEX_DATA;
   // "awaiting you" is the default tab: it is the only stage the user can act
   // on, so the radar opens on the decisions rather than the whole field.
   const [tab, setTab] = useState("awaiting you");
@@ -62,9 +64,18 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent-chat session id per intent, persisted across signal switches.
+  // Agent chat runs the negotiator persona when the backend enables it: the
+  // negotiator drops list_opportunities in intent-pinned chats (the Radar
+  // beside this pane owns opportunity listing), while api-key callers without
+  // a persona fall back to the orchestrator's unrestricted toolset.
+  const { features } = useIndexEnv();
+  const chatPersona = features && features.negotiatorChat ? "negotiator" : null;
+  // Agent-chat session id per intent, persisted across signal switches. Keyed
+  // by persona too: a session created under one persona cannot be continued
+  // as another (the server rejects the mismatch).
   const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
-  const chatSessionRef = useRef(chatSessions[intentId] || null);
+  const chatKey = chatPersona ? `${chatPersona}:${intentId}` : intentId;
+  const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
   const convByPerson = useRef({});             // opportunityId -> conversationId
   const personByConv = useRef({});             // conversationId -> opportunityId
@@ -81,7 +92,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   /* ----- ambient sim: append field events + maybe bump scores (demo only) ----- */
   useInterval(() => {
-    if (paused) return;
+    if (paused || !FIELD_EVENTS.length) return;
     const ev = FIELD_EVENTS[Math.floor(Math.random() * FIELD_EVENTS.length)];
     setField(prev => [{ ...ev, id: Math.random().toString(36).slice(2), t: now() }, ...prev].slice(0, 50));
     if (Math.random() < 0.4) {
@@ -100,7 +111,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
 
   /* ----- seed feed with the first batch of clarifiers (max 4 open) ----- */
   useEffect(() => {
-    if (live) return;
+    if (live || !CLARIFIERS.length) return;
     if (queuedRef.current) return;
     queuedRef.current = true;
     const timers = [];
@@ -111,6 +122,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   }, []);
 
   const makeClarifier = () => {
+    if (!CLARIFIERS.length) return null;
     const c = CLARIFIERS[clarifierCursor.current % CLARIFIERS.length];
     clarifierCursor.current += 1;
     return {
@@ -132,10 +144,12 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation(prev => {
       const open = prev.filter(it => it.kind === "clarifier" && !it.answered).length;
       if (open >= MAX_OPEN) return prev;
-      return [...prev, makeClarifier()];
+      const c = makeClarifier();
+      return c ? [...prev, c] : prev;
     });
   };
   const pushAmbientNote = () => {
+    if (!AMBIENT_NOTES.length) return;
     const n = AMBIENT_NOTES[Math.floor(Math.random() * AMBIENT_NOTES.length)];
     setConversation(prev => [
       ...prev,
@@ -207,6 +221,25 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     setConversation((prev) => [...prev, ...items]);
   }, [setConversation]);
 
+  // Server-answered questions rise into the scrollback as settled records, so
+  // given answers survive app restarts and include answers from other surfaces.
+  const injectAnsweredClarifiers = React.useCallback((questions) => {
+    const fresh = (questions || []).filter((q) => q && q.id && !seenQuestionIds.current.has(q.id));
+    if (fresh.length === 0) return;
+    fresh.forEach((q) => seenQuestionIds.current.add(q.id));
+    fresh.sort((a, b) => String((a.answer || {}).answeredAt || "").localeCompare(String((b.answer || {}).answeredAt || "")));
+    const items = window.IndexApi.mapClarifiers(fresh).map((c) => {
+      const answer = (c.apiQuestion && c.apiQuestion.answer) || {};
+      const chosen = (Array.isArray(answer.selectedOptions) ? answer.selectedOptions : []).filter(Boolean);
+      return {
+        kind: "clarifier", id: c.id, clarifierId: c.id,
+        source: c.source, sourceMeta: c.sourceMeta, effect: "neutral",
+        text: c.text, answered: true, choice: chosen.join(", ") || answer.freeText || "answered", t: now(),
+      };
+    });
+    setConversation((prev) => [...items, ...prev]);
+  }, [setConversation]);
+
   const refreshRadar = React.useCallback(async () => {
     if (!live || !client) return;
     // Intent radar asks for the full lifecycle (like the web app's RADAR_STATUSES),
@@ -215,19 +248,21 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     // most rejections are agent-side filtering, not user decisions, so
     // showing them implies choices the user never made.
     const radarStatuses = "latent,pending,negotiating,stalled,accepted,expired";
-    const [homeR, qR] = await Promise.all([
-      (intentId ? client.opportunities.homeForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.home()).catch(() => null),
+    const [radarR, qR, answeredR] = await Promise.all([
+      (intentId ? client.opportunities.radarForIntent(intentId, { statuses: radarStatuses }) : client.opportunities.radar()).catch(() => null),
       (intentId ? client.questions.pendingForIntent(intentId) : client.questions.pending()).catch(() => null),
+      (intentId ? client.questions.answeredForIntent(intentId) : client.questions.answered()).catch(() => null),
     ]);
-    if (homeR) {
-      const sections = window.IndexApp.normalizeList(homeR, "sections");
-      const mapped = window.IndexApi.mapPeopleFromHomeSections(sections).map((p) => ({
+    if (radarR) {
+      const items = window.IndexApp.normalizeList(radarR, "items");
+      const mapped = window.IndexApi.mapPeopleFromRadarItems(items).map((p) => ({
         ...p, hidden: false, score: typeof p.score === "number" ? p.score : 0.7,
       }));
       setPeople(mapped);
     }
+    if (answeredR) injectAnsweredClarifiers(window.IndexApp.normalizeList(answeredR, "questions"));
     if (qR) injectClarifiers(window.IndexApp.normalizeList(qR, "questions"));
-  }, [live, client, intentId, setPeople, injectClarifiers]);
+  }, [live, client, intentId, setPeople, injectClarifiers, injectAnsweredClarifiers]);
 
   useEffect(() => {
     if (!live) return;
@@ -318,6 +353,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         sessionId: chatSessionRef.current,
         scopeType: intentId ? "intent" : undefined,
         scopeId: intentId || undefined,
+        persona: chatPersona || undefined,
         onEvent: (e) => {
           if (!e || !e.type) return;
           if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }
@@ -327,7 +363,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
           else if (e.type === "user_question") { fetchChatQuestions(); }
         },
       }).then((sid) => {
-        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[intentId] = sid; }
+        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[chatKey] = sid; }
       }).catch(() => {});
       return;
     }
@@ -969,7 +1005,6 @@ function applyGenericEffect(effect, setPeople) {
 
 /* =================== TOP BAR (mac menubar styling) =================== */
 function TopBar({ paused, setPaused, simRate, setSimRate }) {
-  const { EVENT } = window.INDEX_DATA;
   return (
     <div style={{
       display:"grid", gridTemplateColumns:"auto 1fr auto",
@@ -983,7 +1018,7 @@ function TopBar({ paused, setPaused, simRate, setSimRate }) {
         <LiveDot size={7}/>
         <span style={{ letterSpacing:3, textTransform:"uppercase", fontWeight:700 }}>index</span>
         <span>/</span>
-        <span>always on · {EVENT.arrived} online</span>
+        <span>always on</span>
       </div>
       <div/>
       <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
@@ -1202,7 +1237,7 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
               ) : it.kind === "user" ? (
                 <UserLine key={it.id}>{it.text}</UserLine>
               ) : (
-                <AgentLine key={it.id}>{it.text}</AgentLine>
+                <AgentLine key={it.id}><AgentMarkdown text={it.text}/></AgentLine>
               )
             )}
         </div>
@@ -1529,6 +1564,21 @@ function HELLO_FOR(profile) {
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
 
+// Agent replies arrive as markdown; render them through the vendored marked
+// UMD (window.marked). `<` is escaped first so raw HTML in model output never
+// reaches the DOM — only markdown-generated tags do. Falls back to plain text
+// if marked is missing or throws (e.g. on a half-streamed construct).
+function AgentMarkdown({ text }) {
+  const html = useMemo(() => {
+    if (!window.marked || !text) return null;
+    try {
+      return window.marked.parse(String(text).replace(/</g, "&lt;"), { breaks: true, async: false });
+    } catch (e) { return null; }
+  }, [text]);
+  if (html == null) return text || null;
+  return <div className="agent-md" dangerouslySetInnerHTML={{ __html: html }}/>;
+}
+
 function AgentLine({ children, pending, highlight, collective }) {
   return (
     <div className="fade-up" style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
@@ -1576,11 +1626,17 @@ function opportunityBucket(p) {
 }
 
 /* =================== RIGHT, MATCH FEED =================== */
+// Below this the radar column no longer fits a name, a blurb and the gadgets on
+// one line, so the cards stack their actions instead.
+const MATCH_CARD_ROW_MIN = 340;
+
 function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onOpenRoom, onAccept, onPass, onSummary, onProfile, unread = {}, chatIds = [], profile = {} }) {
   const shownPeople = people.filter(p => opportunityBucket(p) !== null);
   const peopleForTab = tab === "all"
     ? shownPeople
     : shownPeople.filter(p => opportunityBucket(p) === tab);
+  const listRef = useRef(null);
+  const compact = useNarrow(listRef, MATCH_CARD_ROW_MIN);
   return (
     <div style={{
       display:"grid", gridTemplateRows:"auto 1fr", gridTemplateColumns:"minmax(0, 1fr)",
@@ -1601,13 +1657,13 @@ function MatchFeed({ tab, setTab, people, field, funnelStages, pipelineMode, onO
         </div>
       </div>
 
-      <div className="mac-scroll" style={{
+      <div ref={listRef} className="mac-scroll" style={{
         overflowY:"auto", padding:"14px 22px 24px",
         display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:8, alignContent:"start",
       }}>
         {peopleForTab.map(p => (
           <MatchCard key={p.id} person={p} onOpenRoom={onOpenRoom} onAccept={onAccept} onPass={onPass} onSummary={onSummary} onProfile={onProfile}
-            hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0}/>
+            hasChat={chatIds.includes(p.id)} unreadCount={unread[p.id] || 0} compact={compact}/>
         ))}
         {peopleForTab.length === 0 && (
           <div style={{
@@ -1668,7 +1724,7 @@ function AnswerChip({ label, onClick }) {
   );
 }
 
-function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, hasChat = false, unreadCount = 0 }) {
+function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile, hasChat = false, unreadCount = 0, compact = false }) {
   const openProfile = (e) => { e.stopPropagation(); onProfile && onProfile(person.id); };
   const [hover, setHover] = useState(false);
   const accepted = person.status === "accepted";
@@ -1690,8 +1746,12 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
       className="fade-up"
       style={{
         textAlign:"left",
-        display:"grid", gridTemplateColumns:"auto minmax(0, 1fr) auto",
-        gap:14, padding:"14px 14px", minWidth:0,
+        // Narrow column: the gadgets drop to their own row under the avatar and
+        // the blurb, rather than eating the width the name needs.
+        display:"grid",
+        gridTemplateColumns: compact ? "auto minmax(0, 1fr)" : "auto minmax(0, 1fr) auto",
+        gap: compact ? "10px 12px" : 14,
+        padding:"14px 14px", minWidth:0,
         background:"#fff", color:"#000",
         border:"1px solid #000",
         borderLeft: accepted ? "3px solid #FF8A00" : "1px solid #000",
@@ -1720,7 +1780,11 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
           {person.blurb}
         </div>
       </div>
-      <div style={{ display:"grid", justifyItems:"end", gap:6, alignContent:"start" }}>
+      <div style={{
+        display:"grid", gap:6, alignContent:"start",
+        justifyItems: compact ? "start" : "end",
+        ...(compact ? { gridColumn:"2 / -1" } : null),
+      }}>
         {accepted ? (
           <React.Fragment>
             {unreadCount > 0 && (
@@ -1736,7 +1800,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
             >{hasChat ? "open chat ›" : "send message"}</button>
           </React.Fragment>
         ) : readyStage ? (
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
             <button
               className="amiga-gadget primary"
               onClick={(e) => { e.stopPropagation(); onAccept && onAccept(person.id); }}
@@ -2072,9 +2136,39 @@ function SocialLink({ social }) {
   );
 }
 
+/* A card opened from outside the app (an index:// link or a universal link).
+   The route can land on any screen, including the hub where no signal is open
+   and the radar's selection state does not exist, so it floats above whatever
+   is showing instead. It only wraps the windows the radar already uses:
+   an expired opportunity reads as its summary, anything else as the profile.
+   Read-only, because accept/pass/chat belong to the signal that surfaced the
+   card and a deep link does not say which signal that was. */
+function DeepLinkWindow({ person, route, onClose }) {
+  const expired = route === "card" && person.status === "expired";
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:900,
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"56px 18px",
+      }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ display:"flex", width:"min(460px, 100%)", maxHeight:"100%", minHeight:0 }}>
+        {expired
+          ? <SummaryWindow person={person} onClose={onClose}/>
+          : <ProfileWindow person={person} onClose={onClose} actions={false}/>}
+      </div>
+    </div>
+  );
+}
+
 /* Full profile for a person, opens in the 3rd window when you click their
-   name or avatar on the radar. */
-function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
+   name or avatar on the radar. `actions` off drops the stage CTA, for a
+   profile opened outside a signal (see DeepLinkWindow) where accepting or
+   passing has no scope to act in. */
+function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions = true }) {
   const status = person.status;
   const isReady = status === "ready";
   const isAccepted = status === "accepted";
@@ -2168,6 +2262,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
         </div>
 
         {/* footer CTA, matches the radar stage */}
+        {actions && (
         <div style={{
           borderTop:"1px solid #000", padding:"10px 14px", background:"#fff",
           display:"flex", alignItems:"center", gap:10,
@@ -2193,6 +2288,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat }) {
             </span>
           )}
         </div>
+        )}
       </div>
     </MacWindow>
   );
@@ -2392,3 +2488,4 @@ function BottomBar({ stats }) {
 }
 
 window.MainView = MainView;
+window.DeepLinkWindow = DeepLinkWindow;

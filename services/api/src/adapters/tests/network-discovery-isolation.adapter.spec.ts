@@ -2,11 +2,11 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { inArray } from 'drizzle-orm/sql';
+import { and, eq, inArray } from 'drizzle-orm/sql';
 import { v4 as uuidv4 } from 'uuid';
 
 import db from '../../lib/drizzle/drizzle';
-import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, users } from '../../schemas/database.schema';
+import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, userContexts, users } from '../../schemas/database.schema';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../database.adapter';
 import { EmbedderAdapter } from '../embedder.adapter';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
@@ -25,6 +25,9 @@ const ids = {
   removedCandidate: uuidv4(),
   deletedNetworkCandidate: uuidv4(),
   activeNetwork: uuidv4(),
+  // Live network with live memberships that is NOT assigned to selectedIntent:
+  // simulates an intent whose network assignment changed after discovery.
+  reassignedNetwork: uuidv4(),
   deletedNetwork: uuidv4(),
   selectedIntent: uuidv4(),
   otherViewerIntent: uuidv4(),
@@ -34,6 +37,8 @@ const ids = {
   activePremise: uuidv4(),
   removedPremise: uuidv4(),
   deletedNetworkPremise: uuidv4(),
+  activeNet1Context: uuidv4(),
+  activeGlobalContext: uuidv4(),
 };
 
 const vector = makeVector(17);
@@ -54,10 +59,13 @@ beforeAll(async () => {
   ]);
   await db.insert(networks).values([
     { id: ids.activeNetwork, title: `${TEST_PREFIX}active` },
+    { id: ids.reassignedNetwork, title: `${TEST_PREFIX}reassigned` },
     { id: ids.deletedNetwork, title: `${TEST_PREFIX}deleted`, deletedAt: new Date() },
   ]);
   await db.insert(networkMembers).values([
     { networkId: ids.activeNetwork, userId: ids.viewer, permissions: ['owner'] },
+    { networkId: ids.reassignedNetwork, userId: ids.viewer, permissions: ['member'] },
+    { networkId: ids.reassignedNetwork, userId: ids.activeCandidate, permissions: ['member'] },
     // Contact is intentionally valid: discovery eligibility is permission-agnostic.
     { networkId: ids.activeNetwork, userId: ids.activeCandidate, permissions: ['contact'] },
     { networkId: ids.activeNetwork, userId: ids.removedCandidate, permissions: ['member'], deletedAt: new Date() },
@@ -122,6 +130,26 @@ beforeAll(async () => {
     { premiseId: ids.removedPremise, networkId: ids.activeNetwork, relevancyScore: '1' },
     { premiseId: ids.deletedNetworkPremise, networkId: ids.deletedNetwork, relevancyScore: '1' },
   ]);
+  await db.insert(userContexts).values([
+    {
+      id: ids.activeNet1Context,
+      userId: ids.activeCandidate,
+      networkId: ids.activeNetwork,
+      text: 'B is a researcher in net1',
+      embedding: vector,
+      premiseHash: 'net1-hash',
+      generatedAt: new Date(),
+    },
+    {
+      id: ids.activeGlobalContext,
+      userId: ids.activeCandidate,
+      networkId: null,
+      text: 'B is a researcher globally',
+      embedding: vector,
+      premiseHash: 'global-hash',
+      generatedAt: new Date(),
+    },
+  ]);
 }, 30_000);
 
 afterAll(async () => {
@@ -138,6 +166,10 @@ afterAll(async () => {
     ids.removedPremise,
     ids.deletedNetworkPremise,
   ]));
+  await db.delete(userContexts).where(inArray(userContexts.id, [
+    ids.activeNet1Context,
+    ids.activeGlobalContext,
+  ]));
   await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, [
     ids.selectedIntent,
     ids.otherViewerIntent,
@@ -152,8 +184,8 @@ afterAll(async () => {
     ids.removedIntent,
     ids.deletedNetworkIntent,
   ]));
-  await db.delete(networkMembers).where(inArray(networkMembers.networkId, [ids.activeNetwork, ids.deletedNetwork]));
-  await db.delete(networks).where(inArray(networks.id, [ids.activeNetwork, ids.deletedNetwork]));
+  await db.delete(networkMembers).where(inArray(networkMembers.networkId, [ids.activeNetwork, ids.reassignedNetwork, ids.deletedNetwork]));
+  await db.delete(networks).where(inArray(networks.id, [ids.activeNetwork, ids.reassignedNetwork, ids.deletedNetwork]));
   await db.delete(users).where(inArray(users.id, [
     ids.viewer,
     ids.activeCandidate,
@@ -302,6 +334,21 @@ describe('network discovery adapter isolation', () => {
     expect(context.map((row) => row.intentId)).not.toContain(ids.removedIntent);
   });
 
+  it('searchUserContextsBySimilarity returns network-scoped contexts excluding self and the global row', async () => {
+    const rows = await opportunity.searchUserContextsBySimilarity({
+      embedding: vector,
+      networkIds: [ids.activeNetwork],
+      excludeUserId: ids.viewer,
+      limit: 10,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].contextId).toBe(ids.activeNet1Context);
+    expect(rows[0].userId).toBe(ids.activeCandidate);
+    expect(rows[0].networkId).toBe(ids.activeNetwork);
+    expect(rows[0].text).toContain('researcher');
+    expect(rows[0].similarity).toBeGreaterThan(0.99);
+  });
+
   it('selects and transactionally patches only exact triggeredBy pool rows', async () => {
     const makePoolOpportunity = async (input: {
       triggeredBy: string;
@@ -417,7 +464,7 @@ describe('network discovery adapter isolation', () => {
   }, 20_000);
 
   it('keeps paused owned-intent Radar history while blocking inactive participants and foreign scopes', async () => {
-    const makeOpportunity = async (candidateUserId: string, suffix: string) => opportunity.createOpportunity({
+    const makeOpportunity = async (candidateUserId: string, suffix: string, networkId = ids.activeNetwork) => opportunity.createOpportunity({
       detection: {
         source: 'opportunity_graph',
         createdBy: 'agent-opportunity-finder',
@@ -425,8 +472,8 @@ describe('network discovery adapter isolation', () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { userId: ids.viewer, networkId: ids.activeNetwork, role: 'peer', intent: ids.selectedIntent },
-        { userId: candidateUserId, networkId: ids.activeNetwork, role: 'peer' },
+        { userId: ids.viewer, networkId, role: 'peer', intent: ids.selectedIntent },
+        { userId: candidateUserId, networkId, role: 'peer' },
       ],
       interpretation: {
         category: 'collaboration',
@@ -434,14 +481,25 @@ describe('network discovery adapter isolation', () => {
         confidence: 0.9,
         signals: [],
       },
-      context: { networkId: ids.activeNetwork },
+      context: { networkId },
       confidence: '0.9',
       status: 'pending',
     });
 
     const good = await makeOpportunity(ids.activeCandidate, 'good');
     const leaked = await makeOpportunity(ids.removedCandidate, 'removed');
-    createdOpportunityIds.push(good.id, leaked.id);
+    // Model a real reassignment: discovery occurs while this network belongs
+    // to the intent, then the assignment is removed before the Radar read.
+    await db.insert(intentNetworks).values({
+      intentId: ids.selectedIntent,
+      networkId: ids.reassignedNetwork,
+    });
+    const offAssignment = await makeOpportunity(ids.activeCandidate, 'off-assignment', ids.reassignedNetwork);
+    await db.delete(intentNetworks).where(and(
+      eq(intentNetworks.intentId, ids.selectedIntent),
+      eq(intentNetworks.networkId, ids.reassignedNetwork),
+    ));
+    createdOpportunityIds.push(good.id, leaked.id, offAssignment.id);
 
     const radar = await opportunity.getOpportunitiesForUser(ids.viewer, {
       scopeType: 'intent',
@@ -450,6 +508,7 @@ describe('network discovery adapter isolation', () => {
     });
     expect(radar.some((row) => row.id === good.id)).toBe(true);
     expect(radar.some((row) => row.id === leaked.id)).toBe(false);
+    expect(radar.some((row) => row.id === offAssignment.id)).toBe(true);
 
     const foreign = await opportunity.getOpportunitiesForUser(ids.activeCandidate, {
       scopeType: 'intent',

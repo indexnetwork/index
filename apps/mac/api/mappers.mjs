@@ -36,7 +36,7 @@ export function mapEventSummary(input = {}) {
   return {
     ...DEFAULT_EVENT,
     name: selected?.title || DEFAULT_EVENT.name,
-    venue: selected?.type === 'event' ? 'event index' : DEFAULT_EVENT.venue,
+    venue: DEFAULT_EVENT.venue,
     neighborhood: selected?.prompt || DEFAULT_EVENT.neighborhood,
     doors: networks.length ? `${networks.length} indexes joined` : DEFAULT_EVENT.doors,
     attending: memberCount,
@@ -80,28 +80,28 @@ export function mapIntent(intent, questionCount = 0) {
     connected: 0,
     inConversations: 0,
     questions: questionCount,
+    // Consolidated row badge: pending questions + awaiting opportunities,
+    // straight from the server list counts so it matches the Hermes and web
+    // dashboards.
+    pending: count(intent.pendingQuestionCount) + count(intent.waitingOpportunityCount),
     inbound: [],
     source: intent,
   };
 }
 
 /**
- * Convert home-view opportunity sections to the current people card shape.
- * @param {Array<Object>} sections
+ * Convert the radar view's flat presenter-card list to the current people card shape.
+ * @param {Array<Object>} items
  */
-export function mapPeopleFromHomeSections(sections = []) {
-  return sections.flatMap((section) => {
-    const items = Array.isArray(section.items) ? section.items : [];
-    return items.map((item) => mapPersonFromHomeCard(item, section));
-  });
+export function mapPeopleFromRadarItems(items = []) {
+  return items.map((item) => mapPersonFromRadarCard(item));
 }
 
 /**
- * Convert a presenter card from GET /opportunities/home into a mac person card.
+ * Convert a presenter card from GET /opportunities/radar into a mac person card.
  * @param {Object} card
- * @param {Object} [section]
  */
-export function mapPersonFromHomeCard(card, section = {}) {
+export function mapPersonFromRadarCard(card) {
   return {
     id: card.opportunityId || card.userId,
     // kept separate from `id` (which is the opportunity) so the profile window
@@ -231,15 +231,15 @@ export function mapClarifier(question) {
  * @param {Array<Object>} [input.networks]
  * @param {Array<Object>} [input.intents]
  * @param {Array<Object>} [input.questions]
- * @param {Array<Object>} [input.homeSections]
+ * @param {Array<Object>} [input.radarItems]
  * @param {Array<Object>} [input.opportunities]
  */
 export function mapIndexSnapshot(input = {}) {
   const questions = Array.isArray(input.questions) ? input.questions : [];
-  const homeSections = Array.isArray(input.homeSections) ? input.homeSections : [];
+  const radarItems = Array.isArray(input.radarItems) ? input.radarItems : [];
   const opportunityRows = Array.isArray(input.opportunities) ? input.opportunities : [];
-  const people = homeSections.length
-    ? mapPeopleFromHomeSections(homeSections)
+  const people = radarItems.length
+    ? mapPeopleFromRadarItems(radarItems)
     : mapPeopleFromOpportunities(opportunityRows);
 
   return {
@@ -288,6 +288,14 @@ function countQuestionsBySource(questions) {
     counts.set(sourceId, (counts.get(sourceId) || 0) + 1);
   }
   return counts;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number}
+ */
+function count(value) {
+  return typeof value === 'number' && value > 0 ? value : 0;
 }
 
 /**

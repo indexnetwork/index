@@ -383,7 +383,7 @@ describe('OpportunityService.startChat', () => {
       const result = await service.startChat(OPP_ID, VIEWER_ID);
 
       // The user still gets navigated to their chat — siblings are a
-      // home-feed-sync concern, not a blocking one.
+      // radar-sync concern, not a blocking one.
       expect('error' in result).toBe(false);
       if ('error' in result) return;
       expect(result.conversationId).toBe(CONV_ID);

@@ -56,11 +56,17 @@ export type Candidate = {
     sourceId: string | null;
     sourceType: string | null;
     embedding: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    archivedAt: Date | null;
-    lastVisitedAt: Date | null;
-    firstDiscoverySucceededAt: Date | null;
+    /**
+     * Timestamps are carried as exact Postgres text, never as JS Date. The driver
+     * cannot bind a Date as a raw parameter, and a Date round-trip truncates to
+     * milliseconds — every candidate row here stores microseconds, so a truncated
+     * comparison would silently match nothing and report unchanged_control.
+     */
+    createdAt: string;
+    updatedAt: string;
+    archivedAt: string | null;
+    lastVisitedAt: string | null;
+    firstDiscoverySucceededAt: string | null;
     status: string | null;
   };
 };
@@ -192,8 +198,8 @@ type CandidateDbRow = {
   semantic_entropy: number | null; referential_anchor: string | null; intent_mode: string | null;
   speech_act_type: string | null; felicity_authority: number | null; felicity_sincerity: number | null;
   felicity_clarity: number | null; summary: string | null; is_incognito: boolean; embedding: string | null;
-  created_at: Date; updated_at: Date; archived_at: Date | null; last_visited_at: Date | null;
-  first_discovery_succeeded_at: Date | null; status: string | null;
+  created_at: string; updated_at: string; archived_at: string | null; last_visited_at: string | null;
+  first_discovery_succeeded_at: string | null; status: string | null;
 };
 
 /**
@@ -374,8 +380,9 @@ export async function createRuntimeDeps(
         SELECT i.id, i.user_id, i.payload, i.source_id, i.source_type, (p.id IS NOT NULL) AS proposal_confirmed, i.semantic_entropy,
           referential_anchor, intent_mode, speech_act_type, felicity_authority,
           felicity_sincerity, felicity_clarity, summary, is_incognito,
-          embedding::text AS embedding, i.created_at AS created_at, updated_at, archived_at,
-          last_visited_at, first_discovery_succeeded_at, i.status AS status
+          embedding::text AS embedding, i.created_at::text AS created_at, updated_at::text AS updated_at,
+          archived_at::text AS archived_at, last_visited_at::text AS last_visited_at,
+          first_discovery_succeeded_at::text AS first_discovery_succeeded_at, i.status AS status
         FROM intents i LEFT JOIN intent_proposals p ON p.consumed_intent_id = i.id AND p.status = 'consumed'
         WHERE i.felicity_authority IS NULL AND i.felicity_sincerity IS NULL AND i.felicity_clarity IS NULL
         ORDER BY i.created_at ASC, i.id ASC LIMIT ${limit}`);
@@ -448,7 +455,7 @@ export async function createRuntimeDeps(
       const { db, sql } = await getRuntime();
       await db.execute(sql`INSERT INTO intent_verification_backfill_attempts
         (run_id, intent_id, partition, status, payload_hash, context_hash, verifier_output, error_code, applied_at)
-        VALUES (${input.runId}, ${input.intentId}, ${input.partition}, ${input.status}, ${input.payloadHash}, ${input.contextHash}, ${input.verifierOutput ? JSON.stringify(input.verifierOutput) : null}::jsonb, ${input.errorCode}, ${input.status === 'updated' ? new Date() : null})
+        VALUES (${input.runId}, ${input.intentId}, ${input.partition}, ${input.status}, ${input.payloadHash}, ${input.contextHash}, ${input.verifierOutput ? JSON.stringify(input.verifierOutput) : null}::jsonb, ${input.errorCode}, ${input.status === 'updated' ? new Date().toISOString() : null}::timestamptz)
         ON CONFLICT (run_id, intent_id) DO UPDATE SET partition = EXCLUDED.partition, status = EXCLUDED.status,
           payload_hash = EXCLUDED.payload_hash, context_hash = EXCLUDED.context_hash,
           verifier_output = EXCLUDED.verifier_output, error_code = EXCLUDED.error_code,
@@ -458,11 +465,14 @@ export async function createRuntimeDeps(
       const { db, sql } = await getRuntime();
       // Fail closed: all source/lifecycle/payload/embedding/timestamp/old-analysis controls
       // must still match the dry-run snapshot. The SET list is intentionally seven fields only.
+      // intent_mode and speech_act_type are Postgres enums, so every bound value for them —
+      // written or compared — carries an explicit cast; a bare text parameter is rejected with
+      // "column is of type intent_mode but expression is of type text" before any row is read.
       const c = candidate.control;
       return db.transaction(async (tx) => {
       const rows = await tx.execute(sql`
         UPDATE intents SET semantic_entropy = ${analysis.semanticEntropy}, referential_anchor = ${analysis.referentialAnchor},
-          intent_mode = ${analysis.intentMode}, speech_act_type = ${analysis.speechActType},
+          intent_mode = ${analysis.intentMode}::intent_mode, speech_act_type = ${analysis.speechActType}::speech_act_type,
           felicity_authority = ${analysis.felicityAuthority}, felicity_sincerity = ${analysis.felicitySincerity},
           felicity_clarity = ${analysis.felicityClarity}
         WHERE id = ${candidate.id} AND user_id = ${c.userId}
@@ -470,14 +480,14 @@ export async function createRuntimeDeps(
           AND is_incognito IS NOT DISTINCT FROM ${c.isIncognito}
           AND source_id IS NOT DISTINCT FROM ${c.sourceId} AND source_type IS NOT DISTINCT FROM ${c.sourceType}
           AND embedding::text IS NOT DISTINCT FROM ${c.embedding}
-          AND created_at IS NOT DISTINCT FROM ${c.createdAt} AND updated_at IS NOT DISTINCT FROM ${c.updatedAt}
-          AND archived_at IS NOT DISTINCT FROM ${c.archivedAt} AND last_visited_at IS NOT DISTINCT FROM ${c.lastVisitedAt}
-          AND first_discovery_succeeded_at IS NOT DISTINCT FROM ${c.firstDiscoverySucceededAt}
+          AND created_at::text IS NOT DISTINCT FROM ${c.createdAt} AND updated_at::text IS NOT DISTINCT FROM ${c.updatedAt}
+          AND archived_at::text IS NOT DISTINCT FROM ${c.archivedAt} AND last_visited_at::text IS NOT DISTINCT FROM ${c.lastVisitedAt}
+          AND first_discovery_succeeded_at::text IS NOT DISTINCT FROM ${c.firstDiscoverySucceededAt}
           AND status IS NOT DISTINCT FROM ${c.status}
           AND semantic_entropy IS NOT DISTINCT FROM ${candidate.semanticEntropy}
           AND referential_anchor IS NOT DISTINCT FROM ${candidate.referentialAnchor}
-          AND intent_mode IS NOT DISTINCT FROM ${candidate.intentMode}
-          AND speech_act_type IS NOT DISTINCT FROM ${candidate.speechActType}
+          AND intent_mode IS NOT DISTINCT FROM ${candidate.intentMode}::intent_mode
+          AND speech_act_type IS NOT DISTINCT FROM ${candidate.speechActType}::speech_act_type
           AND felicity_authority IS NOT DISTINCT FROM ${candidate.felicityAuthority}
           AND felicity_sincerity IS NOT DISTINCT FROM ${candidate.felicitySincerity}
           AND felicity_clarity IS NOT DISTINCT FROM ${candidate.felicityClarity}
@@ -487,7 +497,7 @@ export async function createRuntimeDeps(
         (run_id, intent_id, partition, status, payload_hash, context_hash, verifier_output, error_code, applied_at)
         VALUES (${provenance.runId}, ${candidate.id}, ${provenance.partition}, ${updated ? 'updated' : 'unchanged_control'},
           ${provenance.payloadHash}, ${provenance.contextHash}, ${JSON.stringify(provenance.verifierOutput)}::jsonb,
-          ${updated ? null : 'unchanged_control'}, ${updated ? new Date() : null})
+          ${updated ? null : 'unchanged_control'}, ${updated ? new Date().toISOString() : null}::timestamptz)
         ON CONFLICT (run_id, intent_id) DO UPDATE SET partition = EXCLUDED.partition, status = EXCLUDED.status,
           payload_hash = EXCLUDED.payload_hash, context_hash = EXCLUDED.context_hash,
           verifier_output = EXCLUDED.verifier_output, error_code = EXCLUDED.error_code,

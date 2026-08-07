@@ -1,10 +1,17 @@
 #!/usr/bin/env bun
 /**
  * Enforces the directed production module graph required after Phase 3.
+ *
+ * Only edges that survive the TypeScript emit are graphed: a cycle matters
+ * because of runtime module initialization (order, TDZ, bundler behavior), and
+ * a type-only import is erased before any of that exists. See
+ * `module-graph.ts` for why the direction-oriented checks keep counting type
+ * edges while this one must not.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-import ts from "typescript";
+
+import { parseSourceFile, runtimeModuleSpecifiers } from "./module-graph.js";
 
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
@@ -36,21 +43,6 @@ function resolveImportPath(from: string, specifier: string): string | undefined 
   const base = resolve(dirname(from), specifier.replace(/\.js$/, ""));
   const candidates = [`${base}.ts`, resolve(base, "index.ts")];
   return candidates.find((path) => Bun.file(path).size > 0);
-}
-
-function importSpecifiers(sourceFile: ts.SourceFile): string[] {
-  const specifiers: string[] = [];
-  const visit = (node: ts.Node) => {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      specifiers.push(node.moduleSpecifier.text);
-    }
-    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
-      specifiers.push(node.argument.literal.text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return specifiers;
 }
 
 function cyclicComponents(graph: Map<string, Set<string>>): string[][] {
@@ -104,8 +96,8 @@ async function resolveImport(from: string, specifier: string): Promise<string[]>
   let targets = facadeTargets.get(candidate);
   if (!targets) {
     targets = (async () => {
-      const facade = ts.createSourceFile(candidate, await readFile(candidate, "utf8"), ts.ScriptTarget.Latest, true);
-      const imports = await Promise.all(importSpecifiers(facade).map((nested) => resolveImport(candidate, nested)));
+      const facade = parseSourceFile(candidate, await readFile(candidate, "utf8"));
+      const imports = await Promise.all(runtimeModuleSpecifiers(facade).map((nested) => resolveImport(candidate, nested)));
       return imports.flat();
     })();
     facadeTargets.set(candidate, targets);
@@ -114,12 +106,12 @@ async function resolveImport(from: string, specifier: string): Promise<string[]>
 }
 
 for (const filePath of files) {
-  const sourceFile = ts.createSourceFile(filePath, await readFile(filePath, "utf8"), ts.ScriptTarget.Latest, true);
-  const imports = await Promise.all(importSpecifiers(sourceFile).map((specifier) => resolveImport(filePath, specifier)));
+  const sourceFile = parseSourceFile(filePath, await readFile(filePath, "utf8"));
+  const imports = await Promise.all(runtimeModuleSpecifiers(sourceFile).map((specifier) => resolveImport(filePath, specifier)));
   graph.set(toModuleId(filePath), new Set(imports.flat()));
 }
 const components = cyclicComponents(graph);
 if (components.length > 0) {
   throw new Error(`Production module cycles are prohibited: ${components.map((component) => component.join(", ")).join("; ")}`);
 }
-console.log("Production module cycle check OK (0 cyclic SCCs).");
+console.log(`Production module cycle check OK (0 cyclic SCCs across ${graph.size} runtime modules).`);

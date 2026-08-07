@@ -237,7 +237,7 @@
       "source": "./shared/interfaces/database.interface.js"
     },
     {
-      "name": "HomeGraphDatabase",
+      "name": "RadarGraphDatabase",
       "kind": "type",
       "stability": "stable",
       "source": "./shared/interfaces/database.interface.js"
@@ -819,7 +819,7 @@
       "source": "./capabilities/participant-agents.facade.js"
     },
     {
-      "name": "HomeGraphFactory",
+      "name": "RadarGraphFactory",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1043,6 +1043,108 @@
     {
       "name": "IntentIndexerOutput",
       "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SignalIntakePackGenerator",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "normalizeIntakePack",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePack",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackQuestion",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakePackQuestionOption",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SignalIntakeOrchestrator",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "answerLabel",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FALLBACK_WHO_QUESTION",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FALLBACK_BRING_QUESTION",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakeAnswer",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "IntakeRound",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FollowUpPlan",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "FollowUpPlanInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SynthesisInput",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "SynthesisResult",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/signals.facade.js"
+    },
+    {
+      "name": "normalizeIntentDescription",
+      "kind": "value",
       "stability": "stable",
       "source": "./capabilities/signals.facade.js"
     },
@@ -1295,6 +1397,48 @@
     {
       "name": "POOL_RERUN_DEBOUNCE_MS",
       "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryAllowedTypes",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryIntentMatchingEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryProfileMatchingEnabled",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "discoveryProfileSource",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "resetDiscoveryEnvWarningsForTests",
+      "kind": "value",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DiscoveryMatchType",
+      "kind": "type",
+      "stability": "stable",
+      "source": "./capabilities/opportunities.facade.js"
+    },
+    {
+      "name": "DiscoveryProfileSource",
+      "kind": "type",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },
@@ -1563,7 +1707,7 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "FEED_SOFT_TARGETS",
+      "name": "RADAR_SOFT_TARGETS",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1575,13 +1719,13 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "computeFeedHealth",
+      "name": "computeRadarHealth",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "FeedHealthInput",
+      "name": "RadarHealthInput",
       "kind": "type",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"
@@ -1701,7 +1845,7 @@
       "source": "./capabilities/opportunities.facade.js"
     },
     {
-      "name": "buildHomeCardPresentationCacheKey",
+      "name": "buildRadarCardPresentationCacheKey",
       "kind": "value",
       "stability": "stable",
       "source": "./capabilities/opportunities.facade.js"

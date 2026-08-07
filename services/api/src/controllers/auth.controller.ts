@@ -9,6 +9,7 @@ import { userService } from '../services/user.service';
 import { enrichmentService } from '../services/enrichment.service';
 import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { isWebSignalAgentEnabled } from '../lib/signal-feature';
+import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { isAgentActionsEnabled, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { log } from '../lib/log';
 
@@ -109,6 +110,7 @@ export class AuthController {
         signalAgent: isWebSignalAgentEnabled(),
         agentSurface: isAgentSurfaceEnabled(),
         agentActions: isAgentActionsEnabled(),
+        fastSignalIntake: isFastSignalIntakeEnabled(),
       },
     });
   }

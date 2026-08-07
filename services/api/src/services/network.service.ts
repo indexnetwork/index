@@ -8,7 +8,7 @@ import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';
 import { validateKey } from '../lib/keys';
 import * as schema from '../schemas/database.schema';
-import { ContextInjectionSchema, ProfileEnrichmentPolicySchema, validateNetworkMetadata } from '../schemas/network.validation';
+import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
 const logger = log.service.from("NetworkService");
 
@@ -37,18 +37,12 @@ export class NetworkService {
   /**
    * Create a new index with the requesting user as owner.
    */
-  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown> }) {
-    const networkType = data.type ?? 'community';
-    const validatedMetadata = validateNetworkMetadata(networkType, data.metadata ?? {});
-    const validatedProfileEnrichment = data.profileEnrichment !== undefined
-      ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
-      : undefined;
-    logger.verbose('Creating index', { userId, title: data.title, type: networkType });
+  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown> }) {
+    const validatedMetadata = validateNetworkMetadata(data.metadata ?? {});
+    logger.verbose('Creating index', { userId, title: data.title });
     const index = await this.adapter.createNetwork({
       ...data,
-      type: networkType,
       metadata: validatedMetadata,
-      profileEnrichment: validatedProfileEnrichment,
     });
     // Add the creating user as the owner
     await this.adapter.addMemberToNetwork(index.id, userId, 'owner');
@@ -61,44 +55,37 @@ export class NetworkService {
   }
 
   /**
-   * Create a new experiment network with a provisioned master key.
-   * Returns the network and the raw master key (shown once; only the hash is stored).
-   * @param userId - The creating user (becomes owner)
-   * @param data - Title, prompt, and imageUrl for the network
-   * @returns The created network detail and the plaintext master key
+   * Enable master-key signup on any network. Owner-only. Generates a master
+   * key, stores only its hash, and forces joinPolicy: 'invite_only' so
+   * key-provisioned networks are not openly joinable. The forcing is not a
+   * lock — owners can change the permissions afterwards. The plaintext is
+   * returned exactly once.
    */
-  async createExperimentNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null }): Promise<{ network: unknown; masterKey: string }> {
-    logger.verbose('Creating experiment network', { userId, title: data.title });
+  async enableMasterKey(networkId: string, userId: string): Promise<{ masterKey: string }> {
+    const isOwner = await this.adapter.isIndexOwner(networkId, userId);
+    if (!isOwner) throw new Error('Owner-only operation');
 
-    // Generate master key
     const { key: masterKey, hash: masterKeyHash } = await generateMasterKey();
+    const [existing] = await db
+      .select({ permissions: schema.networks.permissions })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+    if (!existing) throw new Error('Network not found');
 
-    // Create network with experiment flags
-    const network = await this.adapter.createNetwork({
-      title: data.title,
-      prompt: data.prompt,
-      imageUrl: data.imageUrl,
+    const permissions: schema.NetworkPermissionsState = {
+      ...(existing.permissions as schema.NetworkPermissionsState),
       joinPolicy: 'invite_only',
-    });
-
-    // Set experiment columns and remove invitation link (experiment networks
-    // use master-key signup, not invitation codes)
+    };
     await db
       .update(schema.networks)
       .set({
-        isExperiment: true,
-        experimentMasterKeyHash: masterKeyHash,
-        permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false, profileEnrichment: 'consent_required' },
+        masterKeyHash,
+        permissions,
       })
-      .where(eq(schema.networks.id, network.id));
+      .where(eq(schema.networks.id, networkId));
 
-    // Add creator as owner
-    await this.adapter.addMemberToNetwork(network.id, userId, 'owner');
-
-    const fullNetwork = await this.adapter.getNetworkDetail(network.id, userId);
-    if (!fullNetwork) throw new Error('Failed to create experiment network');
-
-    return { network: fullNetwork, masterKey };
+    return { masterKey };
   }
 
   /**
@@ -121,9 +108,8 @@ export class NetworkService {
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal network.
-   * @throws Error if attempting to change join policy on an experiment network.
    */
-  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; profileEnrichment?: schema.ProfileEnrichmentPolicy; type?: 'community' | 'event'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean }; hidden?: boolean }) {
     logger.verbose('Updating index', { networkId, userId });
     if (await this.adapter.isPersonalNetwork(networkId)) {
       // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),
@@ -139,45 +125,27 @@ export class NetworkService {
       }
       return this.adapter.updateIndexSettings(networkId, userId, { prompt: data.prompt });
     }
-    if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
-      await this.assertJoinPolicyNotLockedByExperiment(networkId);
-    }
-    let validatedMetadata = data.metadata;
-    if (data.type !== undefined || data.metadata !== undefined) {
-      const currentNetwork = await this.adapter.getNetworkDetail(networkId, userId);
-      const effectiveType = data.type ?? currentNetwork?.type ?? 'community';
-      const effectiveMetadata = data.metadata ?? (currentNetwork?.metadata as Record<string, unknown>) ?? {};
-      validatedMetadata = validateNetworkMetadata(effectiveType, effectiveMetadata);
-    }
+    const validatedMetadata = data.metadata !== undefined
+      ? validateNetworkMetadata(data.metadata)
+      : undefined;
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
       : undefined;
-    const validatedProfileEnrichment = data.profileEnrichment !== undefined
-      ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
-      : undefined;
-    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection, profileEnrichment: validatedProfileEnrichment });
+    return this.adapter.updateIndexSettings(networkId, userId, { ...data, metadata: validatedMetadata, contextInjection: validatedContextInjection });
   }
 
   /**
    * Update index permissions. Owner-only.
-   * @throws Error if attempting to change join policy on an experiment network.
    */
-  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean }; profileEnrichment?: schema.ProfileEnrichmentPolicy }) {
+  async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; contextInjection?: { discovery: boolean } }) {
     await this.assertNotPersonal(networkId);
-    if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
-      await this.assertJoinPolicyNotLockedByExperiment(networkId);
-    }
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
-      : undefined;
-    const validatedProfileEnrichment = data.profileEnrichment !== undefined
-      ? ProfileEnrichmentPolicySchema.parse(data.profileEnrichment)
       : undefined;
     logger.verbose('Updating permissions', { networkId, userId });
     return this.adapter.updateIndexSettings(networkId, userId, {
       ...data,
       contextInjection: validatedContextInjection,
-      profileEnrichment: validatedProfileEnrichment,
     });
   }
 
@@ -234,28 +202,23 @@ export class NetworkService {
   }
 
   /**
-   * Soft-delete a network. Owner-only.
+   * Soft-delete a network. Owner-only. Runs the ordinary owner delete first
+   * (membership checks + network soft-delete, byte-identical to the
+   * pre-cascade path), then cascades to any provisioned cohort: only users
+   * provisioned via master-key signup / CSV import own network-scoped
+   * agents, so the cascade no-ops on ordinary networks. The cohort lookup
+   * keys off agents/agent_permissions, not network_members, so it still
+   * resolves after the network is soft-deleted.
    * @throws Error if the index is a personal network.
    */
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('Deleting index', { networkId, userId });
     await this.assertNotPersonal(networkId);
 
-    // Check if this is an experiment network
-    const [network] = await db
-      .select({ isExperiment: schema.networks.isExperiment })
-      .from(schema.networks)
-      .where(eq(schema.networks.id, networkId))
-      .limit(1);
-
-    if (network?.isExperiment) {
-      // Verify ownership first
-      const isOwner = await this.adapter.isIndexOwner(networkId, userId);
-      if (!isOwner) throw new Error('Access denied: Not an owner of this network');
-      await this.adapter.softDeleteExperimentNetwork(networkId);
-    } else {
-      await this.adapter.deleteIndexForOwner(networkId, userId);
-    }
+    const isOwner = await this.adapter.isIndexOwner(networkId, userId);
+    if (!isOwner) throw new Error('Access denied: Not an owner of this network');
+    await this.adapter.deleteIndexForOwner(networkId, userId);
+    await this.adapter.softDeleteProvisionedCohort(networkId);
   }
 
   /**
@@ -471,51 +434,34 @@ export class NetworkService {
   }
 
   /**
-   * Assert that join policy fields cannot be changed on experiment networks.
-   * Experiment networks enforce `joinPolicy: 'invite_only'` and `allowGuestVibeCheck: false` permanently.
-   * @throws Error if the network is an experiment network.
-   */
-  private async assertJoinPolicyNotLockedByExperiment(networkId: string): Promise<void> {
-    const [network] = await db
-      .select({ isExperiment: schema.networks.isExperiment })
-      .from(schema.networks)
-      .where(eq(schema.networks.id, networkId))
-      .limit(1);
-    if (network?.isExperiment) {
-      throw new Error('Cannot modify join policy on experiment networks');
-    }
-  }
-
-  /**
-   * Rotate the master key on an experiment network. The plaintext is returned
-   * exactly once and never persisted; the hash replaces the existing
-   * `experiment_master_key_hash`. Every owner of the network receives an
-   * email with the new key.
+   * Rotate the master key on a network. The plaintext is returned exactly
+   * once and never persisted; the hash replaces the existing
+   * `master_key_hash`. Every owner of the network receives an email with the
+   * new key.
    *
-   * @param networkId - The experiment network ID
+   * @param networkId - The network ID
    * @param userId - The requesting user ID (must be an owner)
    * @returns The new plaintext master key (shown once; only the hash is stored)
-   * @throws Error('Not an experiment network') when the target is not an
-   *         experiment or has no existing hash.
+   * @throws Error('Network has no master key') when the target is missing,
+   *         deleted, or has no existing hash.
    * @throws Error('Owner-only operation') when the caller is not an owner.
    */
-  async rotateExperimentMasterKey(networkId: string, userId: string): Promise<{ masterKey: string }> {
-    logger.verbose('Rotating experiment master key', { networkId, userId });
+  async rotateMasterKey(networkId: string, userId: string): Promise<{ masterKey: string }> {
+    logger.verbose('Rotating master key', { networkId, userId });
 
     const [network] = await db
       .select({
         id: schema.networks.id,
         title: schema.networks.title,
-        isExperiment: schema.networks.isExperiment,
-        experimentMasterKeyHash: schema.networks.experimentMasterKeyHash,
+        masterKeyHash: schema.networks.masterKeyHash,
         deletedAt: schema.networks.deletedAt,
       })
       .from(schema.networks)
       .where(eq(schema.networks.id, networkId))
       .limit(1);
 
-    if (!network || network.deletedAt || !network.isExperiment || !network.experimentMasterKeyHash) {
-      throw new Error('Not an experiment network');
+    if (!network || network.deletedAt || !network.masterKeyHash) {
+      throw new Error('Network has no master key');
     }
 
     const isOwner = await this.adapter.isIndexOwner(networkId, userId);
@@ -525,7 +471,7 @@ export class NetworkService {
 
     const { key, hash } = await generateMasterKey();
     await db.update(schema.networks)
-      .set({ experimentMasterKeyHash: hash })
+      .set({ masterKeyHash: hash })
       .where(eq(schema.networks.id, networkId));
 
     // Pre-fetch owners synchronously so the fire-and-forget path only does fast

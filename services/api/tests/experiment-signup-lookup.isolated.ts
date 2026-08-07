@@ -8,7 +8,7 @@ import { ExperimentService, SignupNotCompleteError } from '../src/services/exper
 import db from '../src/lib/drizzle/drizzle';
 import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, userSocials, users } from '../src/schemas/database.schema';
 import { generateMasterKey } from '../src/lib/experiment/master-key';
-import { NetworkExperimentController } from '../src/controllers/network-experiment.controller';
+import { NetworkController } from '../src/controllers/network.controller';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../src/lib/testing/database-test-budget';
 
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 120_000);
@@ -24,14 +24,13 @@ afterAll(async () => {
   for (const f of [...cleanup].reverse()) await f();
 }, 60_000);
 
-async function setupExperimentNetwork() {
+async function setupMasterKeyNetwork() {
   const [network] = await db
     .insert(networks)
     .values({
-      title: `Experiment Lookup Test ${randomUUID().slice(0, 6)}`,
-      isExperiment: true,
+      title: `Master-Key Lookup Test ${randomUUID().slice(0, 6)}`,
       isPersonal: false,
-      experimentMasterKeyHash: 'test-hash-not-verified-at-service-layer',
+      masterKeyHash: 'test-hash-not-verified-at-service-layer',
     })
     .returning({ id: networks.id });
 
@@ -62,7 +61,7 @@ async function cleanupUser(userId: string) {
 
 describe('experimentService.lookupSignup', () => {
   it('returns user when fully provisioned', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-ok-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -75,7 +74,7 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('is idempotent: does not rotate the user key', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-idem-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -100,14 +99,14 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('throws SignupNotCompleteError when email is unknown', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-missing-${randomUUID()}@example.com`;
 
     await expect(experimentService.lookupSignup(networkId, email)).rejects.toBeInstanceOf(SignupNotCompleteError);
   }, 15_000);
 
   it('throws SignupNotCompleteError when user is soft-deleted', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-softdel-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -119,8 +118,8 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('throws SignupNotCompleteError when membership is missing', async () => {
-    const { networkId } = await setupExperimentNetwork();
-    const { networkId: otherNetworkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
+    const { networkId: otherNetworkId } = await setupMasterKeyNetwork();
     const email = `lookup-nomember-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(otherNetworkId, { email });
@@ -131,7 +130,7 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('throws SignupNotCompleteError when membership is soft-deleted', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-memsoftdel-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -149,7 +148,7 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('throws SignupNotCompleteError when scoped agent is missing', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-noagent-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -168,7 +167,7 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('throws SignupNotCompleteError when scoped agent is soft-deleted', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-agentsoftdel-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -184,7 +183,7 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('normalizes the email (case + whitespace) before lookup', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const email = `lookup-norm-${randomUUID()}@example.com`;
 
     const signedUp = await experimentService.signup(networkId, { email });
@@ -196,7 +195,7 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 
   it('finds user via case-insensitive email lookup (legacy mixed-case rows)', async () => {
-    const { networkId } = await setupExperimentNetwork();
+    const { networkId } = await setupMasterKeyNetwork();
     const localPart = `lookup-legacy-${randomUUID()}`;
     const lowercaseEmail = `${localPart}@example.com`;
 
@@ -216,16 +215,15 @@ describe('experimentService.lookupSignup', () => {
   }, 15_000);
 });
 
-async function setupExperimentNetworkWithKey() {
+async function setupMasterKeyNetworkWithKey() {
   const { key, hash } = await generateMasterKey();
 
   const [network] = await db
     .insert(networks)
     .values({
-      title: `Experiment Lookup HTTP ${randomUUID().slice(0, 6)}`,
-      isExperiment: true,
+      title: `Master-Key Lookup HTTP ${randomUUID().slice(0, 6)}`,
       isPersonal: false,
-      experimentMasterKeyHash: hash,
+      masterKeyHash: hash,
     })
     .returning({ id: networks.id });
 
@@ -247,11 +245,11 @@ function buildLookupRequest(networkId: string, masterKey: string | null, body: u
   });
 }
 
-describe('NetworkExperimentController.signupLookup', () => {
-  const controller = new NetworkExperimentController();
+describe('NetworkController.signupLookup', () => {
+  const controller = new NetworkController();
 
   it('returns 200 with the user when fully provisioned', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
     const email = `http-ok-${randomUUID()}@example.com`;
     const signedUp = await experimentService.signup(networkId, { email });
     cleanup.push(() => cleanupUser(signedUp.user.id));
@@ -269,7 +267,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 409 when the email is unknown', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, masterKey, { email: `missing-${randomUUID()}@example.com` }),
@@ -283,8 +281,8 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 409 when membership is missing in this network', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
-    const { networkId: otherNetworkId } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
+    const { networkId: otherNetworkId } = await setupMasterKeyNetworkWithKey();
     const email = `http-othermember-${randomUUID()}@example.com`;
     const signedUp = await experimentService.signup(otherNetworkId, { email });
     cleanup.push(() => cleanupUser(signedUp.user.id));
@@ -299,7 +297,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('normalizes the email (case + whitespace) at the controller boundary', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
     const email = `http-norm-${randomUUID()}@example.com`;
     const signedUp = await experimentService.signup(networkId, { email });
     cleanup.push(() => cleanupUser(signedUp.user.id));
@@ -316,7 +314,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 400 when email is whitespace-only', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, masterKey, { email: '   ' }),
@@ -330,7 +328,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 400 when body is missing email', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, masterKey, {}),
@@ -344,7 +342,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 400 when email is malformed', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, masterKey, { email: 'not-an-email' }),
@@ -358,7 +356,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 400 when body is unparseable JSON', async () => {
-    const { networkId, masterKey } = await setupExperimentNetworkWithKey();
+    const { networkId, masterKey } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, masterKey, 'not-json'),
@@ -370,7 +368,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 401 when x-api-key header is missing', async () => {
-    const { networkId } = await setupExperimentNetworkWithKey();
+    const { networkId } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, null, { email: `noauth-${randomUUID()}@example.com` }),
@@ -382,7 +380,7 @@ describe('NetworkExperimentController.signupLookup', () => {
   }, 15_000);
 
   it('returns 403 when master key is wrong', async () => {
-    const { networkId } = await setupExperimentNetworkWithKey();
+    const { networkId } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(networkId, 'wrong-key-' + randomUUID(), { email: `badauth-${randomUUID()}@example.com` }),
@@ -393,18 +391,17 @@ describe('NetworkExperimentController.signupLookup', () => {
     expect(res.status).toBe(403);
   }, 15_000);
 
-  it('returns 403 when the network is not an experiment network', async () => {
+  it('returns 403 when the network has no master key', async () => {
     const [plain] = await db
       .insert(networks)
       .values({
         title: `Plain network ${randomUUID().slice(0, 6)}`,
-        isExperiment: false,
         isPersonal: false,
       })
       .returning({ id: networks.id });
     cleanup.push(() => db.delete(networks).where(eq(networks.id, plain.id)).then(() => undefined));
 
-    const { masterKey } = await setupExperimentNetworkWithKey();
+    const { masterKey } = await setupMasterKeyNetworkWithKey();
 
     const res = await controller.signupLookup(
       buildLookupRequest(plain.id, masterKey, { email: `plain-${randomUUID()}@example.com` }),

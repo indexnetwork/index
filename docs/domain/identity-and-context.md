@@ -51,13 +51,11 @@ The synthesis pipeline that produces identity and context from raw data is calle
 
 ### Web scraping
 
-When a user connects social accounts or provides URLs (LinkedIn, GitHub, personal website), the system can scrape publicly available information and feed it to enrichment. Networks may opt into `profileEnrichment: 'consent_required'`, in which case automatic member-enrichment jobs run public lookup only after `privacy.publicProfileLookup.granted === true`; `profileEnrichment: 'disabled'` blocks network-triggered public enrichment entirely. Missing policy means `auto` for backward compatibility.
-
-> The `profileEnrichment` network policy and the `publicProfileLookup` consent key are persisted/serialized identifiers and are retained as-is.
+When a user connects social accounts or provides URLs (LinkedIn, GitHub, personal website), the system can scrape publicly available information and feed it to enrichment. Network-triggered public enrichment runs automatically for members; the former `profileEnrichment` network permission has been removed, and any leftover value in stored permissions JSON is ignored. The former onboarding consent layer (`record_onboarding_privacy_consent`, `users.onboarding.privacy`) has also been removed; opt-in/opt-out will be defined per implementation/application by a separate enrichment service.
 
 ### Event/import seeds and onboarding drafts
 
-Experiment-network `/signup` and CSV import provision the user, scoped agent, and membership immediately, but rich payloads (`name`, `bio`, `location`, socials) are staged under `users.onboarding.profileSeeds` instead of being written to active identity fields. Privacy-first clients first record two independent consent decisions under `users.onboarding.privacy`: whether event/EdgeOS-provided data may be used, and whether public lookup may run. The onboarding-safe `preview_user_profile` tool can use staged seeds only after EdgeOS/import consent, synthesizes a draft without persisting it, and `confirm_user_profile` saves only the approved draft or approved correction text.
+Master-key `/signup` and CSV import provision the user, scoped agent, and membership immediately and apply rich payloads (`name`, `bio`, `location`, socials) to the active account. Automatic enrichment may then run for current network members. The same imported fields are retained under `users.onboarding.profileSeeds` as provenance so `preview_user_context` can explain and refine the active profile without persisting its draft; `confirm_user_context` saves approved refinements. Network-scoped seed reads never fall back across networks.
 
 ### User-directed updates
 
@@ -84,8 +82,8 @@ The opportunity graph also uses contexts for **context-to-intent discovery**: it
 The enrichment graph manages the full lifecycle:
 
 1. **Check** (`check_state`): Determine whether the user needs enrichment, keyed on the presence of ACTIVE premises
-2. **Consent/draft (onboarding clients)**: Record EdgeOS import and public lookup decisions, then build a non-persisted draft for approval
-3. **Scrape/enrich** (`scrape`): Gather public data only when the network policy allows it and the user has consented where required
+2. **Draft (onboarding clients)**: Build a non-persisted draft for approval
+3. **Scrape/enrich** (`scrape`): Gather public data
 4. **Decompose** (`decompose_premises`): Break the enrichment input into premises with individual vector embeddings
 5. **Context/HyDE refresh**: Premise changes enqueue `UserContextQueue`, which regenerates the user's `user_contexts` representation (global + per-network) plus their embeddings and HyDE documents
 

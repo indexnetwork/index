@@ -14,3 +14,24 @@ export { IntentIndexer } from "../signals/application/intent.indexer.js";
 export type { IntentIndexerOutput } from "../signals/application/intent.indexer.js";
 export { createIntentTools } from "../signals/application/intent.tools.js";
 export type { IntentToolDeps } from "./signals.tools.port.js";
+export {
+  SignalIntakePackGenerator,
+  normalizeIntakePack,
+  type IntakePack,
+  type IntakePackInput,
+  type IntakePackQuestion,
+  type IntakePackQuestionOption,
+} from "../signals/application/intake.pack.generator.js";
+export {
+  SignalIntakeOrchestrator,
+  answerLabel,
+  FALLBACK_WHO_QUESTION,
+  FALLBACK_BRING_QUESTION,
+  type IntakeAnswer,
+  type IntakeRound,
+  type FollowUpPlan,
+  type FollowUpPlanInput,
+  type SynthesisInput,
+  type SynthesisResult,
+} from "../signals/application/intake.orchestrator.js";
+export { normalizeIntentDescription } from "../signals/domain/intent.proposal.js";

@@ -9,7 +9,7 @@
  */
 
 // ── Core graphs ───────────────────────────────────────────────────────────────
-export { HomeGraphFactory } from "../opportunity/feed/feed.graph.js";
+export { RadarGraphFactory } from "../opportunity/radar/radar.graph.js";
 export { OpportunityGraphFactory } from "../opportunity/application/opportunity.graph.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "../opportunity/application/opportunity.newborn-stamping.js";
 
@@ -28,6 +28,16 @@ export type { PresenterDatabase } from "../opportunity/application/opportunity.p
 // ── MCP tool factory ──────────────────────────────────────────────────────────
 export { createOpportunityTools } from "../opportunity/application/opportunity.tools.js";
 export type { OpportunityToolDeps } from "./opportunities.tools.port.js";
+
+// ── Discovery env accessors ───────────────────────────────────────────────────
+export {
+  discoveryAllowedTypes,
+  discoveryIntentMatchingEnabled,
+  discoveryProfileMatchingEnabled,
+  discoveryProfileSource,
+  resetDiscoveryEnvWarningsForTests,
+} from "../opportunity/discovery.env.js";
+export type { DiscoveryMatchType, DiscoveryProfileSource } from "../opportunity/discovery.env.js";
 
 // ── Pool discriminator (Lens A) ───────────────────────────────────────────────
 export { PoolDiscriminatorMiner } from "../opportunity/discriminator/discriminator.miner.js";
@@ -67,10 +77,10 @@ export { runOutcomeShadow } from "../opportunity/outcome/outcome.shadow.js";
 export type { OutcomeLabel, OutcomeExample, OutcomeShadowResult } from "../opportunity/outcome/outcome.types.js";
 
 // ── Domain predicates and feed algorithms ─────────────────────────────────────
-export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, FEED_SOFT_TARGETS } from "../opportunity/domain/opportunity.utils.js";
+export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "../opportunity/domain/opportunity.utils.js";
 export { getPrimaryActionLabel } from "../opportunity/domain/opportunity.labels.js";
-export { computeFeedHealth } from "../opportunity/feed/feed.health.js";
-export type { FeedHealthInput } from "../opportunity/feed/feed.health.js";
+export { computeRadarHealth } from "../opportunity/radar/radar.health.js";
+export type { RadarHealthInput } from "../opportunity/radar/radar.health.js";
 
 // ── Introducer / ambient discovery ───────────────────────────────────────────
 export { isIntroducerDiscoveryEnabled } from "../opportunity/application/opportunity.introducer-feature.js";
@@ -100,5 +110,5 @@ export { presentOpportunity, stripUuids, truncateAtBoundary } from "../opportuni
 export type { UserInfo } from "../opportunity/domain/opportunity.presentation.js";
 export { stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText } from "../opportunity/domain/opportunity.claim-safety.js";
 export { safeFallbackSummary } from "../opportunity/domain/opportunity.safe-presentation.js";
-export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildHomeCardPresentationCacheKey } from "../opportunity/domain/opportunity.presentation-cache.js";
+export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "../opportunity/domain/opportunity.presentation-cache.js";
 export { getOrCreateDeliveryCardBatch } from "../opportunity/application/delivery-card.cache.js";
