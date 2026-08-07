@@ -185,18 +185,23 @@ describe("historical case 01", () => {
     }
   });
 
-  it("is review-pending and strict validation fails only on that decision", () => {
+  it("records independent approval while preserving explicit authoring-mode mutations", () => {
     expect(HISTORICAL_CASE_01.historicalQuality.anonymizationReview).toEqual({
-      reviewer: "independent-review-pending",
-      reviewedAt: "2026-08-06",
+      reviewer: "ind637.source-auditor:56c4419b",
+      reviewedAt: "2026-08-07",
       recognizability: "medium",
-      decision: "pending",
-      rationale: "Pending independent verification of first-contact chronology, field-level provenance, combination leakage, and exact matching, matrix, and seed serializations.",
+      decision: "approved",
+      rationale:
+        "The reviewer approved H1 at checkpoint 6c20448cc20387953c0bf22b7d17f3249d47e391 after verifying source metadata, Ted→Jens and joint-spouse attribution, pre-telephone chronology, exact provenance, neutral feasible negatives, outcome isolation, all four serialization boundaries, and medium combination recognizability.",
     });
-    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_01)).toThrow(/anonymization review must be approved/);
-    const approved = structuredClone(HISTORICAL_CASE_01);
-    approved.historicalQuality.anonymizationReview.decision = "approved";
-    expect(() => validateHistoricalQualityCase(approved)).not.toThrow();
+    expect(() => validateHistoricalQualityCase(HISTORICAL_CASE_01)).not.toThrow();
+
+    for (const decision of ["pending", "revise"] as const) {
+      const mutation = structuredClone(HISTORICAL_CASE_01);
+      mutation.historicalQuality.anonymizationReview.decision = decision;
+      expect(() => validateHistoricalQualityCase(mutation)).toThrow(/anonymization review must be approved/);
+      expect(() => validateHistoricalQualityCase(mutation, { requireApprovedReview: false })).not.toThrow();
+    }
     expectDeeplyFrozen(HISTORICAL_CASE_01);
   });
 });

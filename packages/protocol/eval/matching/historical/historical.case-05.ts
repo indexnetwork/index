@@ -324,11 +324,12 @@ export const HISTORICAL_CASE_05 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["pnas-kariko-weissman-profile"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "2026-08-06",
+      reviewer: "ind637.source-auditor:cebb5a22",
+      reviewedAt: "2026-08-07",
       recognizability: "medium",
-      decision: "pending",
-      rationale: "Pending independent verification of the reversed seeker direction, event-relative ordering, field-level provenance, semantic negatives, and exact serialized boundaries.",
+      decision: "approved",
+      rationale:
+        "The reviewer approved H5 at checkpoint 0f6147f0e3faa410fff8793d9a5450373dbf1442 after verifying exact citation metadata, Drew→Katalin seeker chronology, around-1997 event uncertainty, exact provenance, no post-contact immune-sensing facts, distinct negatives, outcome isolation, all four serialization boundaries, and medium recognizability.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {

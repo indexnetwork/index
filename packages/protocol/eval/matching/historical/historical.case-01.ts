@@ -277,11 +277,12 @@ export const HISTORICAL_CASE_01 = defineHistoricalQualityCase({
     },
     outcomeCitationIds: ["cooper-hewitt-quistgaard"],
     anonymizationReview: {
-      reviewer: "independent-review-pending",
-      reviewedAt: "2026-08-06",
+      reviewer: "ind637.source-auditor:56c4419b",
+      reviewedAt: "2026-08-07",
       recognizability: "medium",
-      decision: "pending",
-      rationale: "Pending independent verification of first-contact chronology, field-level provenance, combination leakage, and exact matching, matrix, and seed serializations.",
+      decision: "approved",
+      rationale:
+        "The reviewer approved H1 at checkpoint 6c20448cc20387953c0bf22b7d17f3249d47e391 after verifying source metadata, Ted→Jens and joint-spouse attribution, pre-telephone chronology, exact provenance, neutral feasible negatives, outcome isolation, all four serialization boundaries, and medium combination recognizability.",
     },
     semanticNegatives: { ...semanticNegatives },
     triggerInputs: {
