@@ -1494,10 +1494,13 @@
 
 .index-dashboard__login-brand {
   margin: 0;
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
   color: var(--color-card-foreground, inherit);
+}
+
+.index-dashboard__login-brand svg {
+  display: block;
+  height: 14px;
+  width: auto;
 }
 
 .index-dashboard__login-copy {

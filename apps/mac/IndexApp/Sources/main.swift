@@ -317,7 +317,7 @@ final class LoopbackAuthServer {
         <style>
         body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:#14241f;color:#F4FBF6;\
         font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-        .nav{display:flex;align-items:center;padding:22px 56px;border-bottom:1px solid rgba(244,251,246,0.22)}
+        .nav{display:flex;align-items:center;padding:22px 56px}
         .nav svg{height:14px;width:auto;display:block}
         main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
         .c{text-align:center;max-width:420px}
