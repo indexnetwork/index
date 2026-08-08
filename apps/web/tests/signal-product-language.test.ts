@@ -94,11 +94,6 @@ const copyChecks: Array<{
     expected: ['share your signal', 'relevant opportunities'],
     legacy: ['share your intent', 'relevant matches'],
   },
-  {
-    file: 'src/app/l/[code]/page.tsx',
-    expected: ['share your signal', 'relevant opportunities'],
-    legacy: ['share your intent', 'relevant matches'],
-  },
 ];
 
 describe('interactive web product language', () => {

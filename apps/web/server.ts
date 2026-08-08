@@ -32,6 +32,7 @@ function appleAppSiteAssociation(): string {
           components: [
             { "/": "/c/*" },
             { "/": "/o/*" },
+            { "/": "/l/*" },
             {
               "/": "/u/*/?*",
               exclude: true,

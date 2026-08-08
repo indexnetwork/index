@@ -2089,3 +2089,46 @@
     border-bottom: 1px solid var(--color-border, rgba(148, 163, 184, 0.24));
   }
 }
+
+/* Private-network invite join (hermes://l/<code> / #invite=). */
+.index-dashboard__invite-modal {
+  max-width: 26rem;
+}
+
+.index-dashboard__invite-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.index-dashboard__invite-kicker {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground, #94a3b8);
+}
+
+.index-dashboard__invite-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-foreground, #f8fafc);
+}
+
+.index-dashboard__invite-meta,
+.index-dashboard__invite-copy {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-muted-foreground, #94a3b8);
+}
+
+.index-dashboard__invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

@@ -5,24 +5,42 @@ import { isIndexDeepLink, parseDeepLink } from './deeplink.mjs';
 const OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b222';
 const USER_ID = '00000000-0000-4000-8000-00000000c333';
 const CONNECT_CODE = 'a1b2c3d4';
+const INVITE_CODE = 'hUs-Gtuu5r2AOakJ0g-zDUV5vt';
 
 describe('mac deep-link routing contract', () => {
-  it('routes universal links for all three paths', () => {
+  it('routes universal links for all four paths', () => {
     expect(parseDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`))
       .toEqual({ route: 'card', id: OPPORTUNITY_ID });
     expect(parseDeepLink(`https://index.network/u/${USER_ID}`))
       .toEqual({ route: 'profile', id: USER_ID });
     expect(parseDeepLink(`https://index.network/c/${CONNECT_CODE}`))
       .toEqual({ route: 'legacy-connect', code: CONNECT_CODE });
+    expect(parseDeepLink(`https://index.network/l/${INVITE_CODE}`))
+      .toEqual({ route: 'invite', code: INVITE_CODE });
   });
 
-  it('routes index:// links for all three paths', () => {
+  it('routes index:// links for all four paths', () => {
     expect(parseDeepLink(`index://o/${OPPORTUNITY_ID}`))
       .toEqual({ route: 'card', id: OPPORTUNITY_ID });
     expect(parseDeepLink(`index://u/${USER_ID}`))
       .toEqual({ route: 'profile', id: USER_ID });
     expect(parseDeepLink(`index://c/${CONNECT_CODE}`))
       .toEqual({ route: 'legacy-connect', code: CONNECT_CODE });
+    expect(parseDeepLink(`index://l/${INVITE_CODE}`))
+      .toEqual({ route: 'invite', code: INVITE_CODE });
+  });
+
+  it('ignores query strings and trailing slashes on invite links', () => {
+    expect(parseDeepLink(`https://index.network/l/${INVITE_CODE}/`))
+      .toEqual({ route: 'invite', code: INVITE_CODE });
+    expect(parseDeepLink(`index://l/${INVITE_CODE}?ref=mail#top`))
+      .toEqual({ route: 'invite', code: INVITE_CODE });
+  });
+
+  it('rejects invite links with no code', () => {
+    expect(parseDeepLink('https://index.network/l')).toBeNull();
+    expect(parseDeepLink('https://index.network/l/')).toBeNull();
+    expect(parseDeepLink('index://l')).toBeNull();
   });
 
   it('accepts the scheme alias without an authority and with extra slashes', () => {

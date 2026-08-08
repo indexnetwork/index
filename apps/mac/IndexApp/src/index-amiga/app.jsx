@@ -73,6 +73,126 @@ async function resolveDeepLinkPerson(route, people) {
   }
 }
 
+// Join screen for a network invite deep link (index://l/<code>). Previews the
+// network by its share code (public), then joins on an explicit tap. An
+// invalid or expired code lands on a retryable error rather than a blank
+// window. Rendered only once the user is signed in and past onboarding.
+function InviteJoin({ code, onJoined, onClose }) {
+  const [step, setStep] = useState("loading");   // loading | preview | joining | error
+  const [network, setNetwork] = useState(null);
+  const [error, setError] = useState(null);
+
+  const loadPreview = React.useCallback(() => {
+    const client = window.IndexApp && window.IndexApp.getClient
+      ? window.IndexApp.getClient()
+      : null;
+    if (!client || !client.networks || !client.networks.shareByCode) {
+      setStep("error");
+      setError("This invite code has expired — ask for a new one.");
+      return () => {};
+    }
+    let cancelled = false;
+    setStep("loading");
+    setError(null);
+    client.networks.shareByCode(code)
+      .then((res) => {
+        if (cancelled) return;
+        const net = (res && res.network) || res;
+        if (!net || !net.id) throw new Error("not found");
+        setNetwork(net);
+        setStep("preview");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStep("error");
+        setError("This invite code has expired — ask for a new one.");
+      });
+    return () => { cancelled = true; };
+  }, [code]);
+
+  useEffect(() => loadPreview(), [loadPreview]);
+
+  const join = async () => {
+    const client = window.IndexApp && window.IndexApp.getClient
+      ? window.IndexApp.getClient()
+      : null;
+    if (!client) return;
+    setStep("joining");
+    try {
+      const result = await client.networks.acceptInvitation(code);
+      if (onJoined) await onJoined(result);
+      onClose && onClose();
+    } catch (e) {
+      setStep("error");
+      setError((e && e.message) || "Couldn't join — the invite may have expired.");
+    }
+  };
+
+  const memberCount = network && network._count ? network._count.members : null;
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:900,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      padding:"56px 18px",
+    }}>
+      <div style={{ width:420, maxWidth:"100%" }}>
+        <MacWindow title="index · join" onClose={onClose} dismiss style={{ minHeight:0 }}>
+          <div style={{ padding:"30px 30px 26px" }}>
+            {step === "loading" && (
+              <p style={{
+                fontFamily:"var(--mac-sans)", fontSize:14, color:"var(--ink-2)", margin:0,
+              }}>reading the invite…</p>
+            )}
+
+            {step === "error" && (
+              <>
+                <h1 style={{
+                  fontFamily:"var(--amiga-mono)", fontWeight:600, fontSize:22,
+                  margin:0, color:"#000",
+                }}>invite unavailable</h1>
+                <p style={{
+                  marginTop:12, marginBottom:22,
+                  fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"#000",
+                }}>{error}</p>
+                <div style={{ display:"flex", gap:10 }}>
+                  <SignInButton primary onClick={loadPreview}>retry</SignInButton>
+                  <SignInButton onClick={onClose}>cancel</SignInButton>
+                </div>
+              </>
+            )}
+
+            {(step === "preview" || step === "joining") && network && (
+              <>
+                <p style={{
+                  margin:0, fontFamily:"var(--mac-mono)", fontSize:10.5,
+                  letterSpacing:1, textTransform:"uppercase", color:"var(--ink-3)",
+                }}>you're invited to join</p>
+                <h1 style={{
+                  marginTop:8, marginBottom:0,
+                  fontFamily:"var(--amiga-mono)", fontWeight:700, fontSize:28,
+                  lineHeight:1.1, letterSpacing:-0.4, color:"#000",
+                }}>{network.title}</h1>
+                {memberCount != null && (
+                  <p style={{
+                    marginTop:10, marginBottom:0,
+                    fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+                  }}>{memberCount} {memberCount === 1 ? "member" : "members"}</p>
+                )}
+                <div style={{ marginTop:22 }}>
+                  <SignInButton primary disabled={step === "joining"} onClick={join}>
+                    {step === "joining" ? "joining…" : "join network"}
+                  </SignInButton>
+                </div>
+              </>
+            )}
+          </div>
+        </MacWindow>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [screen, setScreen] = useState(() => nativeAuthed() ? "building" : "login");
   // True until the user creates their first signal, the hub opens empty.
@@ -101,6 +221,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
   const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
+  const [pendingInvite, setPendingInvite] = useState(null); // invite-link code, held until ready
 
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
@@ -125,6 +246,13 @@ function App() {
       if (route.route === "legacy-connect") {
         // Connect links were retired; there is nothing left to resolve them to.
         setNotice("this link is no longer supported — open the opportunity from your radar.");
+        return;
+      }
+      if (route.route === "invite") {
+        // A network invite is not a card to resolve against the radar: hold the
+        // code and show the join screen once the user is signed in and past
+        // onboarding (see the inviteReady gate below).
+        setPendingInvite(route.code);
         return;
       }
       setPendingLink(route);
@@ -176,6 +304,7 @@ function App() {
         // resolve fail its own ownership check and bail when it completes.
         setLinkedCard(null);
         setPendingLink(null);
+        setPendingInvite(null);
         resolvingRef.current = null;
         setScreen("login");
       }
@@ -237,6 +366,25 @@ function App() {
       INTENTS: loaded.snapshot.INTENTS || [],
     });
   };
+
+  // Called by the invite join screen once the accept call succeeds. Reload the
+  // snapshot so the freshly joined network shows in networks/settings, then
+  // announce it. The join screen closes itself; this only refreshes state.
+  const onInviteJoined = async (result) => {
+    const title = (result && result.index && result.index.title) || "the network";
+    if (nativeAuthed() && window.IndexApp) {
+      const snap = await window.IndexApp.loadSnapshot().catch(() => null);
+      if (snap) applyLoaded(snap);
+    }
+    setNotice(result && result.alreadyMember
+      ? `you're already in ${title}.`
+      : `joined ${title}.`);
+  };
+
+  // Hold an invite link through login and onboarding: only show the join screen
+  // once the user is signed in and past the profile-confirm gate.
+  const inviteReady = !!pendingInvite
+    && screen !== "login" && screen !== "building" && screen !== "onboarding";
 
   const signOut = () => {
     if (window.IndexApp && window.IndexApp.logout()) {
@@ -401,6 +549,15 @@ function App() {
             person={linkedCard.person}
             route={linkedCard.route}
             onClose={() => setLinkedCard(null)}
+          />
+        )}
+        {/* Network invite from a deep link, once past login + onboarding: a
+            preview with an explicit Join, not a silent auto-join. */}
+        {inviteReady && (
+          <InviteJoin
+            code={pendingInvite}
+            onJoined={onInviteJoined}
+            onClose={() => setPendingInvite(null)}
           />
         )}
         {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}

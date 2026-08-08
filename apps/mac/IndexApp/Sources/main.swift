@@ -13,12 +13,23 @@ enum AppConfig {
     static var appURL: String { value(for: "APP_URL", default: "http://localhost:3000") }
 
     static var deepLinkHosts: [String] {
-        let host = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
-        let configuredHost = host?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Associated-domains host from the bundle (set by link-host.sh at build),
+        // plus the configured APP_URL host so https invite links from the web
+        // origin the app is pointed at (e.g. dev.index.network) also route.
+        var hosts: [String] = []
+        let bundleHost = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String
+        let configuredHost = bundleHost?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let configuredHost, !configuredHost.isEmpty {
-            return [configuredHost]
+            hosts.append(configuredHost)
+        } else {
+            hosts.append("index.network")
         }
-        return ["index.network"]
+        if let appHost = URL(string: appURL)?.host?.lowercased(),
+           !appHost.isEmpty,
+           !hosts.contains(where: { $0.lowercased() == appHost }) {
+            hosts.append(appHost)
+        }
+        return hosts
     }
 
     /// The REST base including the `/api` prefix applied in services/api main.ts.

@@ -15,8 +15,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { isAuthenticated } = useAuthContext();
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
-  const publicRoutes = ['/c', '/l', '/index'];
-  const bareRoutes = ['/', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
+  const publicRoutes = ['/c', '/index'];
+  // /l is chrome-free like the marketing landing: app-only invite accept.
+  const bareRoutes = ['/', '/l', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
@@ -138,7 +139,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                         }
                       >
                         <Header 
-                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/') && !isCliAuth}
+                          showHeaderButtons={!pathname?.startsWith('/index/') && !isCliAuth}
                           keepButtonSpace={isCliAuth}
                           forcePublicView={isLandingOrBlog}
                         />

@@ -258,6 +258,12 @@ def main() -> None:
     # Background pollers must be gated on the signed-in state so pre-login 401s
     # cannot race the login transition (else the user must reload the page).
     assert 'auth !== "authed"' in dashboard_js
+    # Private-network invite join (hermes://l/<code> / #invite=), Mac parity.
+    assert "InviteJoinModal" in dashboard_js
+    assert "/invite/" in dashboard_js
+    assert "index-network-invite" in dashboard_js
+    assert "You're invited to join" in dashboard_js
+    assert "Join network" in dashboard_js
 
     # Hermes Desktop ships the same Getting started gate via the built bundle.
     desktop_js_path = ROOT / "desktop" / "dist" / "plugin.js"
@@ -276,6 +282,10 @@ def main() -> None:
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
     assert "index-dashboard__login" in desktop_js
+    # Desktop claims hermes://l/<code> via hermesDesktop.onDeepLink.
+    assert "InviteJoinModal" in desktop_js
+    assert 'kind !== \'l\'' in desktop_js or 'kind !== "l"' in desktop_js
+    assert "onDeepLink" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
@@ -1085,6 +1095,58 @@ def main() -> None:
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/networks/network-2/join"
         assert dashboard_api.join_network("") == {"success": False, "error": "A network id is required."}
+
+        # Private-network invite preview + accept (hermes://l/<code>).
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "network": {
+                            "id": "network-9",
+                            "title": "Edge Lab",
+                            "_count": {"members": 12},
+                        }
+                    }
+                )
+            ],
+            captured,
+        )
+        assert dashboard_api.preview_invite("share-abc") == {
+            "success": True,
+            "network": {"id": "network-9", "title": "Edge Lab", "memberCount": 12},
+        }
+        assert captured[-1]["method"] == "GET"
+        assert captured[-1]["url"] == "https://api.example.test/api/networks/share/share-abc"
+        assert dashboard_api.preview_invite("") == {
+            "success": False,
+            "error": "An invite code is required.",
+        }
+
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "index": {"id": "network-9", "title": "Edge Lab"},
+                        "membership": {"id": "mem-1"},
+                        "alreadyMember": False,
+                    }
+                )
+            ],
+            captured,
+        )
+        accepted = dashboard_api.accept_invite("share-abc")
+        assert accepted["success"] is True
+        assert accepted["index"]["title"] == "Edge Lab"
+        assert captured[-1]["method"] == "POST"
+        assert captured[-1]["url"] == (
+            "https://api.example.test/api/networks/invitation/share-abc/accept"
+        )
+        assert dashboard_api.accept_invite("") == {
+            "success": False,
+            "error": "An invite code is required.",
+        }
 
         captured = []
         install_fake_urlopen(

@@ -58,6 +58,15 @@ function DesktopPage() {
     React.createElement(DashboardComponent))
 }
 
+function stashDesktopInvite(code) {
+  const c = String(code || '').trim()
+  if (!c) return
+  try { window.sessionStorage.setItem('index-invite', c) } catch (e) { /* private mode */ }
+  try {
+    window.dispatchEvent(new CustomEvent('index-network-invite', { detail: { code: c } }))
+  } catch (e) { /* noop */ }
+}
+
 export default {
   id: 'index-network',
   name: 'Index Network',
@@ -70,6 +79,17 @@ export default {
     style.textContent = PLUGIN_CSS
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
+
+    // hermes://l/<code> — core Hermes only handles kind=blueprint; we claim
+    // invite links, open this page, and let the dashboard show Join once ready.
+    if (window.hermesDesktop && typeof window.hermesDesktop.onDeepLink === 'function') {
+      const offDeepLink = window.hermesDesktop.onDeepLink(function (payload) {
+        if (!payload || payload.kind !== 'l' || !payload.name) return
+        stashDesktopInvite(payload.name)
+        try { host.navigate('/index-network') } catch (e) { /* route not ready yet */ }
+      })
+      if (typeof offDeepLink === 'function') ctx.onDispose(offDeepLink)
+    }
 
     ctx.registerMany([
       {

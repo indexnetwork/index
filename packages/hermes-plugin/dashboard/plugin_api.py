@@ -1132,6 +1132,58 @@ def join_network(network_id: str) -> dict[str, Any]:
     return {"success": True}
 
 
+@router.get("/invite/{code}")
+def preview_invite(code: str) -> dict[str, Any]:
+    """Public preview of a private-network invite (`GET /networks/share/:code`).
+
+    Same shape the Index macOS app uses for `hermes://l/<code>` / `index://l/<code>`
+    join screens: network title, owner, member count. No membership required.
+    """
+    code = _text(code)
+    if not code:
+        return {"success": False, "error": "An invite code is required."}
+    payload = tools._api_request("GET", f"/networks/share/{quote(code, safe='')}")
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload, dict) else None
+    if not isinstance(network, dict) or not _text(network.get("id")):
+        return {"success": False, "error": "This invite code has expired — ask for a new one."}
+    count = None
+    raw_count = network.get("_count")
+    if isinstance(raw_count, dict) and isinstance(raw_count.get("members"), int):
+        count = raw_count["members"]
+    return {
+        "success": True,
+        "network": {
+            "id": _text(network.get("id")),
+            "title": _text(network.get("title"), "Untitled network"),
+            "memberCount": count,
+        },
+    }
+
+
+@router.post("/invite/{code}/accept")
+def accept_invite(code: str) -> dict[str, Any]:
+    """Accept a private-network invitation (`POST /networks/invitation/:code/accept`)."""
+    code = _text(code)
+    if not code:
+        return {"success": False, "error": "An invite code is required."}
+    payload = tools._api_request(
+        "POST",
+        f"/networks/invitation/{quote(code, safe='')}/accept",
+        {},
+    )
+    if payload.get("success") is False:
+        return payload
+    # Surface the Index API envelope as-is ({ index, membership, alreadyMember })
+    # plus success so the dashboard can toast and refresh.
+    if isinstance(payload, dict):
+        out = dict(payload)
+        out.setdefault("success", True)
+        return out
+    return {"success": True}
+
+
 def _sanitize_network_request_input(body: Any) -> tuple[dict[str, Any] | None, str | None]:
     """Validate/normalize the early-access request form fields before forwarding.
 
