@@ -176,28 +176,14 @@ struct HermesPersistenceCompatibilityFixture {
         defer { try? FileManager.default.removeItem(at: layout.root) }
 
         trace("constructed layout at \(layout.root.path)")
-        for destination in [
-            layout.installationURL,
-            layout.applicationSupport
-                .appendingPathComponent(CredentialStore.service, isDirectory: true)
-                .appendingPathComponent("hermes-setup-journal.json"),
-            layout.applicationSupport
-                .appendingPathComponent(CredentialStore.service, isDirectory: true)
-                .appendingPathComponent("hermes-saga-operation.json"),
-        ] {
-            do {
-                try HermesFilesystem.removeOrphanTemporaryFiles(
-                    in: destination.deletingLastPathComponent(),
-                    destinationName: destination.lastPathComponent
-                )
-                trace("checked orphan files for \(destination.lastPathComponent)")
-            } catch {
-                trace("orphan check failed for \(destination.path): \(error), errno=\(errno)")
-                throw error
-            }
+        let initialStore: HermesLocalStore
+        do {
+            initialStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
+            trace("opened initial local store")
+        } catch {
+            trace("initial local store failed: \(error), errno=\(errno)")
+            throw error
         }
-        let initialStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
-        trace("opened initial local store")
         let decoded = try initialStore.loadOrCreateInstallation()
         trace("decoded historical installation")
         try require(decoded.installationId == "installation-old", "historical installation ID did not decode")
