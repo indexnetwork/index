@@ -379,8 +379,7 @@ test('keeps a Linux source contract for the macOS-native historical persistence 
   expect(nativeCompatibility).toContain('exactHistoricalInstallationJSON');
   expect(nativeCompatibility).toContain('{"installationId":"installation-old","currentSetupAttemptId":"attempt-old"}');
   expect(nativeCompatibility).toContain('HermesLocalStore(applicationSupportURL:');
-  expect(nativeCompatibility).toContain('temporaryDirectory');
-  expect(nativeCompatibility).toContain('resolvingSymlinksInPath()');
+  expect(nativeCompatibility).toContain('URL(fileURLWithPath: "/private/tmp"');
   expect(nativeCompatibility).toContain('manager.handle(inspectRequest)');
   expect(nativeCompatibility).toContain('manager.handle(rebindRequest)');
   for (const rejection of ['malformed', 'newer', 'tampered']) {
