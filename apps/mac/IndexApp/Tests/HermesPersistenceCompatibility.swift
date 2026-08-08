@@ -98,8 +98,10 @@ struct HermesPersistenceCompatibilityFixture {
     static let historicalCronID = "owned-cron-old"
 
     static func main() throws {
+        trace("starting historical rebind")
         try runHistoricalRebind()
 
+        trace("checking malformed record rejection")
         try assertRejected("malformed") {
             let layout = try makeLayout(label: "malformed", installationJSON: "{")
             defer { try? FileManager.default.removeItem(at: layout.root) }
@@ -109,6 +111,7 @@ struct HermesPersistenceCompatibilityFixture {
             }
         }
 
+        trace("checking newer record rejection")
         try assertRejected("newer") {
             let newer = #"{"installationId":"installation-old","currentSetupAttemptId":"attempt-old","version":2}"#
             let layout = try makeLayout(label: "newer", installationJSON: newer)
@@ -119,6 +122,7 @@ struct HermesPersistenceCompatibilityFixture {
             }
         }
 
+        trace("checking tampered cron rejection")
         try assertRejected("tampered") {
             let layout = try makeLayout(
                 label: "tampered",
@@ -132,6 +136,10 @@ struct HermesPersistenceCompatibilityFixture {
         }
 
         print("macOS native Hermes historical persistence compatibility passed")
+    }
+
+    private static func trace(_ message: String) {
+        FileHandle.standardError.write(Data("[HermesPersistenceCompatibility] \(message)\n".utf8))
     }
 
     private static var inspectRequest: HermesRuntimeRequest {
@@ -167,27 +175,36 @@ struct HermesPersistenceCompatibilityFixture {
         )
         defer { try? FileManager.default.removeItem(at: layout.root) }
 
+        trace("constructed layout at \(layout.root.path)")
         let initialStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
+        trace("opened initial local store")
         let decoded = try initialStore.loadOrCreateInstallation()
+        trace("decoded historical installation")
         try require(decoded.installationId == "installation-old", "historical installation ID did not decode")
         try require(decoded.currentSetupAttemptId == "attempt-old", "historical setup did not decode")
         try require(decoded.currentOwnerId == nil, "historical record unexpectedly gained an owner")
 
         let manager = makeManager(layout)
+        trace("constructed runtime manager")
         let inspected = manager.handle(inspectRequest)
+        trace("completed pre-owner inspect: \(inspected.errorCode ?? "ok")")
         try require(!inspected.ok, "pre-owner inspect unexpectedly succeeded")
         try require(inspected.errorCode == "owner_unattributed", "inspect did not surface owner_unattributed")
         try require(inspected.state?.scheduleEnabled == false, "inspect did not pause the historical cron")
 
         let adoptedStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
+        trace("opened adopted local store")
         let adopted = try adoptedStore.loadOrCreateInstallation()
+        trace("decoded adopted installation")
         try require(adopted.installationId == "installation-old", "adoption changed installation ID")
         try require(adopted.currentSetupAttemptId == "attempt-old", "adoption changed historical setup")
         try require(adopted.currentCronJobId == historicalCronID, "adoption did not persist immutable cron ID")
         try require(adopted.currentCronSetupAttemptId == "attempt-old", "adoption lost cron generation")
         try require(adopted.currentOwnerId == nil, "inspect attributed an owner")
 
+        trace("starting exact pre-owner rebind")
         let rebound = manager.handle(rebindRequest)
+        trace("completed rebind: \(rebound.errorCode ?? "ok")")
         try require(rebound.ok, "exact pre-owner rebind failed: \(rebound.errorCode ?? "none")")
         try require(rebound.stage == "scheduleDisabled", "rebind did not finish disabled")
 
