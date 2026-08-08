@@ -1,5 +1,3 @@
-import '../src/startup.env';
-
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentWithRelations } from '../src/adapters/agent.database.adapter';

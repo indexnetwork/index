@@ -38,9 +38,17 @@ jobs:
           swiftc --version
           python3 --version
 
-      - name: Deep-link parser tests
+      - name: Provider-free Mac runtime and deep-link tests
         working-directory: apps/mac
-        run: bun test api/
+        run: |
+          # Keep this macOS compile workflow dependency-free. React/happy-dom
+          # render tests and the protocol-composed acceptance run in the
+          # frozen-install Hermes security workflow on Linux.
+          bun test \
+            api/agent-runtime.spec.mjs \
+            api/agent-runtime-saga.spec.mjs \
+            api/client.spec.mjs \
+            api/deeplink.spec.mjs
 
       - name: macOS shell and handoff tests
         working-directory: apps/mac/IndexApp

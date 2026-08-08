@@ -75,6 +75,8 @@ jobs:
             src/negotiation/tests/negotiation.turn-cap.spec.ts \
             src/negotiation/tests/negotiation.tools.spec.ts \
             src/negotiation/tests/negotiator-timeout.spec.ts
+          cd ../..
+          bun test apps/mac/api/task-5-acceptance.spec.ts
 
       - name: Runtime controller, audience, and isolated-inventory tests
         env:

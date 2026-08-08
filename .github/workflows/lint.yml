@@ -101,8 +101,10 @@ jobs:
 
   test:
     # Runs the hermetic pinning/characterization specs that mock all external
-    # systems (Redis/LLM/DB), so they need no services, secrets, or built
-    # protocol dist. Keeps these regression pins gated in CI rather than
+    # systems (Redis/LLM/DB), so they need no services or secrets. The timeout
+    # seams import shared protocol turn/speaker contracts through the package
+    # boundary, so this job builds protocol dist before running them. Keeps
+    # these regression pins gated in CI rather than
     # depending on local-only manual runs.
     #
     # NOTE: pinned to a newer Bun than the lint/typecheck jobs (1.2.20). The
@@ -125,6 +127,9 @@ jobs:
         run: |
           bun pm cache rm || true
           bun install --frozen-lockfile
+
+      - name: Build packages/protocol
+        run: cd packages/protocol && bun run build
 
       - name: Run hermetic pinning tests
         run: |
