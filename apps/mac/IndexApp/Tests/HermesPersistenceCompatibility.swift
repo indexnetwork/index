@@ -266,13 +266,14 @@ struct HermesPersistenceCompatibilityFixture {
         cronPrompt: String = HermesRuntimeManager.historicalPreOwnerCronPrompt
     ) throws -> FixtureLayout {
         let manager = FileManager.default
-        // Resolve the OS-managed /private/tmp alias with POSIX realpath before
-        // exercising production's descriptor walker. Foundation's URL
-        // resolvingSymlinksInPath leaves this macOS alias unresolved.
-        let tempPath = "/private/tmp".withCString { Darwin.realpath($0, nil) }
-        guard let tempPath else { throw FixtureFailure.assertion("could not resolve native temp root") }
-        defer { Darwin.free(tempPath) }
-        let root = URL(fileURLWithPath: String(cString: tempPath), isDirectory: true)
+        // GitHub's macOS runner exports a real, job-owned temporary directory;
+        // its /var and /private/tmp compatibility paths are symlinks that the
+        // production no-symlink boundary must reject.
+        guard let runnerTemp = ProcessInfo.processInfo.environment["RUNNER_TEMP"],
+              !runnerTemp.isEmpty else {
+            throw FixtureFailure.assertion("RUNNER_TEMP is required for the native fixture")
+        }
+        let root = URL(fileURLWithPath: runnerTemp, isDirectory: true)
             .appendingPathComponent("index-hermes-native-\(label)-\(UUID().uuidString)", isDirectory: true)
         let applicationSupport = root.appendingPathComponent("Application Support", isDirectory: true)
         let installationDirectory = applicationSupport
