@@ -1107,7 +1107,9 @@ test('filesystem policy retains no-follow parents and env writers coordinate und
   ]) expect(runtime).toContain(contract);
   expect(runtime).toContain('0o600');
   expect(runtime).toContain('environmentChanged');
-  expect(runtime).toContain('flock');
+  expect(runtime).toContain('Darwin.lockf');
+  expect(runtime).toContain('F_LOCK');
+  expect(runtime).toContain('F_ULOCK');
   expect(runtime).toContain('.index-network.env.lock');
   expect(runtime).toContain('Unmanaged external writers');
   expect(runtime).not.toContain('usingNewMetadataOnly');

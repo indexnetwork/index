@@ -703,10 +703,10 @@ private enum HermesFilesystem {
         guard Darwin.fstat(descriptor, &status) == 0,
               status.st_mode & fileTypeMask == regularType,
               Darwin.fchmod(descriptor, mode_t(0o600)) == 0,
-              Darwin.flock(descriptor, LOCK_EX) == 0 else {
+              Darwin.lockf(descriptor, F_LOCK, 0) == 0 else {
             throw HermesRuntimeFailure.localCleanupFailed
         }
-        defer { _ = Darwin.flock(descriptor, LOCK_UN) }
+        defer { _ = Darwin.lockf(descriptor, F_ULOCK, 0) }
         return try body(parent)
     }
 
