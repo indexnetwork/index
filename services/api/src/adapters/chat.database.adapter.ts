@@ -676,8 +676,14 @@ export class ChatDatabaseAdapter {
   }
 
   async getNetworksForUser(userId: string) {
-    const memberIndexIds = await db
-      .select({ networkId: schema.networkMembers.networkId })
+    // Caller's memberships — keep permissions so each network can carry the
+    // viewer's role (owner vs member). Inferring ownership from `user.id`
+    // (a single owner row) mislabels co-owned / multi-owner networks.
+    const memberships = await db
+      .select({
+        networkId: schema.networkMembers.networkId,
+        permissions: schema.networkMembers.permissions,
+      })
       .from(schema.networkMembers)
       .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
       .where(
@@ -688,7 +694,13 @@ export class ChatDatabaseAdapter {
         )
       );
 
-    const ids = [...new Set(memberIndexIds.map((r) => r.networkId))];
+    const membershipByNetworkId = new Map<string, string[]>();
+    for (const row of memberships) {
+      if (!membershipByNetworkId.has(row.networkId)) {
+        membershipByNetworkId.set(row.networkId, row.permissions ?? []);
+      }
+    }
+    const ids = [...membershipByNetworkId.keys()];
     if (ids.length === 0) {
       return {
         networks: [],
@@ -750,6 +762,11 @@ export class ChatDatabaseAdapter {
           .select({ count: count() })
           .from(schema.networkMembers)
           .where(and(eq(schema.networkMembers.networkId, row.id), isNull(schema.networkMembers.deletedAt)));
+        const viewerPermissions = membershipByNetworkId.get(row.id) ?? [];
+        const role: 'owner' | 'member' =
+          viewerPermissions.includes('owner') || viewerPermissions.includes('admin')
+            ? 'owner'
+            : 'member';
         return {
           id: row.id,
           title: row.title,
@@ -761,6 +778,7 @@ export class ChatDatabaseAdapter {
           isPersonal: row.isPersonal,
           hidden: row.hidden,
           hasMasterKey: row.masterKeyHash != null,
+          role,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
