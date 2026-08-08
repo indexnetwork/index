@@ -15,7 +15,7 @@ import { log } from '@/lib/logger';
 
 const logger = log.page.from('l/[code]');
 
-type PageStep = 'loading' | 'auth-required' | 'onboarding-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
+type PageStep = 'loading' | 'auth-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
 
 type PageState = {
   step: PageStep;
@@ -39,7 +39,6 @@ export default function InvitationPage() {
   const navigate = useNavigate();
   const { success, error: notifyError } = useNotifications();
   const { refreshIndexes } = useNetworksState();
-  const { refetchUser } = useAuthContext();
 
   // Invite links grant alpha access by default
   useEffect(() => {
@@ -70,24 +69,13 @@ export default function InvitationPage() {
         }
 
         if (!isAuthenticated) {
-          // Persist the code so onboarding can pick it up after sign-up
-          localStorage.setItem('pendingInviteCode', code!);
           setState(prev => ({ ...prev, step: 'auth-required' }));
           return;
         }
 
-        // User is authenticated - check whether they've completed onboarding
         try {
           const response = await api.get<APIResponse<User>>('/auth/me');
           if (response.user) {
-            if (!response.user.onboarding?.completedAt) {
-              // Deferred join: code is in localStorage, redirect to onboarding
-              localStorage.setItem('pendingInviteCode', code!);
-              navigate('/onboarding');
-              return;
-            }
-            // Clean up deferred invite code since user will join explicitly via button
-            localStorage.removeItem('pendingInviteCode');
             setState(prev => ({ ...prev, user: response.user || null, step: 'ready-to-join' }));
           }
         } catch (err) {
@@ -150,9 +138,7 @@ export default function InvitationPage() {
   };
 
   const handleLogin = () => {
-    // Return to this invite page after magic-link / OAuth so the deferred join
-    // resolves; otherwise the default callback (origin) drops onboarded users on
-    // `/` and the pending invite is never accepted.
+    // Return to this invite page after magic-link / OAuth so the user can accept.
     openLoginModal(window.location.href);
   };
 

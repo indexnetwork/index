@@ -177,12 +177,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Force redirect to /onboarding only from the authenticated home page.
-    if (authenticated && user && !user.onboarding?.completedAt && isHomePage) {
-      navigate('/onboarding', { replace: true });
-      return;
-    }
-
     setIsLoading(false);
   }, [authenticated, ready, navigate, pathname, user, userLoading, userFetchAttempted, openLoginModal]);
 

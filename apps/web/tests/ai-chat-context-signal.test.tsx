@@ -107,7 +107,6 @@ function Probe() {
       </button>
       <button onClick={() => void chat.sendWebMessage('second')}>web second</button>
       <button onClick={() => void chat.sendMessage('compatibility')}>compatibility</button>
-      <button onClick={() => void chat.sendOnboardingMessage('onboarding')}>onboarding</button>
       <button onClick={() => chat.clearChat()}>clear</button>
       <button onClick={() => chat.clearChat({ abortStream: false })}>clear detached</button>
       <button onClick={() => chat.startSignalSession()}>start signal</button>
@@ -304,20 +303,6 @@ describe('AIChatContext Signal persona transport and ownership', () => {
       message: 'queued follow-up',
       sessionId: 'web-session',
     });
-  });
-
-  test('onboarding sends use the dedicated server-clamped route', async () => {
-    mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({
-      sessionId: 'onboarding-session',
-      persona: 'orchestrator',
-    }));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'onboarding' }));
-
-    await waitFor(() => expect(text('session')).toBe('onboarding-session'));
-    expect(mocks.apiClient.stream.mock.calls[0]?.[0]).toBe('/chat/onboarding/stream');
-    expect(mocks.apiClient.stream.mock.calls[0]?.[1]).not.toHaveProperty('persona');
   });
 
   test('an old successful response cannot repopulate chat after clear', async () => {

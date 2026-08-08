@@ -99,11 +99,6 @@ const copyChecks: Array<{
     expected: ['share your signal', 'relevant opportunities'],
     legacy: ['share your intent', 'relevant matches'],
   },
-  {
-    file: 'src/app/onboarding/page.tsx',
-    expected: ['Failed to create signal'],
-    legacy: ['Failed to create intent'],
-  },
 ];
 
 describe('interactive web product language', () => {

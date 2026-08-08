@@ -104,7 +104,7 @@ export interface TraceEvent {
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
-export type ChatTransport = "compatibility" | "web" | "onboarding";
+export type ChatTransport = "compatibility" | "web";
 
 export interface QueuedMessage {
   id: string;
@@ -121,7 +121,7 @@ export interface ChatSendOptions {
   prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
   persona?: "signal" | "reporter";
   /** @deprecated Product surfaces should use their dedicated send helper. */
-  surface?: "web" | "onboarding";
+  surface?: "web";
   existingMessageId?: string;
   /** Surface-specific recovery hook. Errors remain handled by the shared chat state machine. */
   onError?: (error: unknown) => void;
@@ -213,13 +213,6 @@ interface AIChatContextType {
     fileIds?: string[],
     attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
-  ) => Promise<void>;
-  /** Incomplete-user onboarding transport; server-clamped to orchestrator. */
-  sendOnboardingMessage: (
-    message: string,
-    fileIds?: string[],
-    attachmentNames?: string[],
-    options?: Omit<ChatSendOptions, "surface" | "persona">,
   ) => Promise<void>;
   /** Clear messages and session state. Detached route cleanup may preserve a one-shot forced persona. */
   clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
@@ -614,15 +607,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       const operationSessionId = targetSessionId ?? sessionId;
       const requestedPersona = options?.persona
         ?? (!operationSessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
-      const effectiveTransport: ChatTransport = transport === "onboarding"
-        ? "onboarding"
-        : transport === "web"
-          || requestedPersona === "signal"
-          || requestedPersona === "reporter"
-          || sessionPersona === "signal"
-          || sessionPersona === "reporter"
-          ? "web"
-          : "compatibility";
+      const effectiveTransport: ChatTransport = transport === "web"
+        || requestedPersona === "signal"
+        || requestedPersona === "reporter"
+        || sessionPersona === "signal"
+        || sessionPersona === "reporter"
+        ? "web"
+        : "compatibility";
 
       invalidateActiveSend("superseded");
       intentResolutionOwnerRef.current = null;
@@ -704,9 +695,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
         const streamEndpoint = effectiveTransport === "web"
           ? "/chat/web/stream"
-          : effectiveTransport === "onboarding"
-            ? "/chat/onboarding/stream"
-            : "/chat/stream";
+          : "/chat/stream";
         const response = await apiClient.stream(streamEndpoint, bodyPayload, {
           signal: operation.controller.signal,
         });
@@ -1258,15 +1247,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     attachmentNames?: string[],
     options?: ChatSendOptions,
   ) => {
-    const transport: ChatTransport = options?.surface === "onboarding"
-      ? "onboarding"
-      : options?.surface === "web"
-        || options?.persona === "signal"
-        || options?.persona === "reporter"
-        || sessionPersona === "signal"
-        || sessionPersona === "reporter"
-        ? "web"
-        : "compatibility";
+    const transport: ChatTransport = options?.surface === "web"
+      || options?.persona === "signal"
+      || options?.persona === "reporter"
+      || sessionPersona === "signal"
+      || sessionPersona === "reporter"
+      ? "web"
+      : "compatibility";
     return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
   }, [sendMessageWithTransport, sessionPersona]);
 
@@ -1276,13 +1263,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
   ) => sendMessageWithTransport("web", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
-
-  const sendOnboardingMessage = useCallback((
-    message: string,
-    fileIds?: string[],
-    attachmentNames?: string[],
-    options?: Omit<ChatSendOptions, "surface" | "persona">,
-  ) => sendMessageWithTransport("onboarding", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
 
   const stopStream = useCallback(() => {
     const active = activeSendRef.current;
@@ -1684,7 +1664,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         stopStream,
         sendMessage,
         sendWebMessage,
-        sendOnboardingMessage,
         clearChat,
         startSignalSession,
         startReporterSession,
