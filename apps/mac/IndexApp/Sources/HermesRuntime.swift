@@ -506,13 +506,25 @@ private enum HermesFilesystem {
         }
         if beforeResult < 0, errno == ENOENT { return nil }
         guard beforeResult == 0, isDirectoryPathRecord(before) else {
+            if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                FileHandle.standardError.write(Data(
+                    "[HermesFilesystem] pre-open validation failed name=\(name) result=\(beforeResult) errno=\(errno) mode=\(before.st_mode)\n".utf8
+                ))
+            }
             throw HermesRuntimeFailure.localCleanupFailed
         }
 
         let descriptor = name.withCString {
             Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY)
         }
-        guard descriptor >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
+        guard descriptor >= 0 else {
+            if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                FileHandle.standardError.write(Data(
+                    "[HermesFilesystem] directory open failed name=\(name) errno=\(errno)\n".utf8
+                ))
+            }
+            throw HermesRuntimeFailure.localCleanupFailed
+        }
         var closeDescriptor = true
         defer {
             if closeDescriptor { _ = Darwin.close(descriptor) }
@@ -556,6 +568,11 @@ private enum HermesFilesystem {
     private static func names(in directory: HermesDirectoryDescriptor) throws -> [String] {
         let duplicate = Darwin.dup(directory.rawValue)
         guard duplicate >= 0, let stream = Darwin.fdopendir(duplicate) else {
+            if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                FileHandle.standardError.write(Data(
+                    "[HermesFilesystem] fdopendir failed duplicate=\(duplicate) errno=\(errno)\n".utf8
+                ))
+            }
             if duplicate >= 0 { _ = Darwin.close(duplicate) }
             throw HermesRuntimeFailure.localCleanupFailed
         }
@@ -572,7 +589,14 @@ private enum HermesFilesystem {
             if name != ".", name != ".." { result.append(name) }
             errno = 0
         }
-        guard errno == 0 else { throw HermesRuntimeFailure.localCleanupFailed }
+        guard errno == 0 else {
+            if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                FileHandle.standardError.write(Data(
+                    "[HermesFilesystem] readdir failed errno=\(errno)\n".utf8
+                ))
+            }
+            throw HermesRuntimeFailure.localCleanupFailed
+        }
         return result
     }
 
@@ -887,10 +911,19 @@ final class HermesLocalStore {
         operationURL = directoryURL.appendingPathComponent("hermes-saga-operation.json")
         do {
             for destination in [installationURL, journalURL, operationURL] {
-                try HermesFilesystem.removeOrphanTemporaryFiles(
-                    in: directoryURL,
-                    destinationName: destination.lastPathComponent
-                )
+                do {
+                    try HermesFilesystem.removeOrphanTemporaryFiles(
+                        in: directoryURL,
+                        destinationName: destination.lastPathComponent
+                    )
+                } catch {
+                    if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                        FileHandle.standardError.write(Data(
+                            "[HermesLocalStore] orphan cleanup failed destination=\(destination.lastPathComponent) error=\(error) errno=\(errno)\n".utf8
+                        ))
+                    }
+                    throw error
+                }
             }
         } catch {
             throw HermesRuntimeFailure.installationStoreFailed
