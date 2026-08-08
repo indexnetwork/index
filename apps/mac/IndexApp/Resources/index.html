@@ -39811,7 +39811,7 @@ function Networks({ onClose }) {
 
 </script>
 <script type="text/babel">
-/* global myAgent, setMyAgentFace, currentMe */
+/* global myAgent */
 // One Personal Agent, with a durable Index-versus-Hermes execution binding.
 // Server state decides who may pick up negotiations; the native bridge owns
 // generation-fenced local Hermes wiring. Identity and policy never branch on
@@ -39840,7 +39840,7 @@ function freshSetupAttemptId() {
 
 // The face, name, memory/history navigation, and policy statement are one
 // stable Personal Agent surface. Runtime state is intentionally not a prop.
-function NegotiatorProfile({ agent, onShuffle, onOpenMemory, onOpenHistory }) {
+function NegotiatorProfile({ agent, onOpenMemory, onOpenHistory }) {
   const btn = {
     fontFamily:"var(--mac-mono)", fontSize:11, padding:"5px 12px",
     border:"1px solid #000", background:"#fff", color:"#000",
@@ -39861,12 +39861,9 @@ function NegotiatorProfile({ agent, onShuffle, onOpenMemory, onOpenHistory }) {
           <div style={{
             fontFamily:"var(--mac-mono)", fontSize:17, fontWeight:700, color:"#000",
           }}>{agent.name}</div>
-          <div style={{ display:"flex", alignItems:"center", gap:9, flexWrap:"wrap" }}>
-            <button style={btn} onClick={onShuffle}>⟳ shuffle</button>
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
-              authority: negotiations only
-            </span>
-          </div>
+          <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>
+            authority: negotiations only
+          </span>
         </div>
       </div>
       <nav aria-label="Personal Agent memory and history" style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -40090,17 +40087,9 @@ function Agents({ onClose, onOpenMemory, onOpenHistory }) {
     runtimeView, busy, selectHermes, selectIndex, disconnect, retry,
   } = useAgentRuntimeOwner();
 
-  const [, bump] = useState(0);
+  // The Personal Agent avatar is derived from the account identity and stays
+  // stable across runtime changes; this pane intentionally has no shuffle UI.
   const myNegotiator = myAgent();
-  const shuffleCount = useRef(0);
-  const shuffleFace = () => {
-    shuffleCount.current += 1;
-    setMyAgentFace({
-      seed:`${currentMe().name}#${shuffleCount.current}-${Math.floor(performance.now())}`,
-      photo:null,
-    });
-    bump(value => value + 1);
-  };
 
   return (
     <div style={{
@@ -40140,7 +40129,6 @@ function Agents({ onClose, onOpenMemory, onOpenHistory }) {
             <SectionRule size={13}>identity, history, and policy</SectionRule>
             <NegotiatorProfile
               agent={myNegotiator}
-              onShuffle={shuffleFace}
               onOpenMemory={onOpenMemory}
               onOpenHistory={onOpenHistory}
             />
