@@ -242,7 +242,11 @@ struct HermesPersistenceCompatibilityFixture {
         cronPrompt: String = HermesRuntimeManager.historicalPreOwnerCronPrompt
     ) throws -> FixtureLayout {
         let manager = FileManager.default
+        // macOS exposes temporaryDirectory below /var, which is a platform
+        // symlink to /private/var. Resolve only this OS-provided fixture root
+        // before exercising production's intentionally strict O_NOFOLLOW walk.
         let root = manager.temporaryDirectory
+            .resolvingSymlinksInPath()
             .appendingPathComponent("index-hermes-native-\(label)-\(UUID().uuidString)", isDirectory: true)
         let applicationSupport = root.appendingPathComponent("Application Support", isDirectory: true)
         let installationDirectory = applicationSupport
