@@ -486,6 +486,12 @@ private enum HermesFilesystem {
                 }
             }
             if next < 0, errno == ENOENT, !createMissing { return nil }
+            if next < 0,
+               ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                FileHandle.standardError.write(Data(
+                    "[HermesFilesystem] openDirectory failed component=\(component) errno=\(errno)\n".utf8
+                ))
+            }
             guard next >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
             current = HermesDirectoryDescriptor(rawValue: next)
         }
@@ -508,6 +514,11 @@ private enum HermesFilesystem {
     private static func names(in directory: HermesDirectoryDescriptor) throws -> [String] {
         let duplicate = Darwin.dup(directory.rawValue)
         guard duplicate >= 0, let stream = Darwin.fdopendir(duplicate) else {
+            if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
+                FileHandle.standardError.write(Data(
+                    "[HermesFilesystem] fdopendir failed duplicate=\(duplicate) errno=\(errno)\n".utf8
+                ))
+            }
             if duplicate >= 0 { _ = Darwin.close(duplicate) }
             throw HermesRuntimeFailure.localCleanupFailed
         }

@@ -98,6 +98,7 @@ struct HermesPersistenceCompatibilityFixture {
     static let historicalCronID = "owned-cron-old"
 
     static func main() throws {
+        Darwin.setenv("INDEX_HERMES_FIXTURE_TRACE", "1", 1)
         trace("starting historical rebind")
         try runHistoricalRebind()
 
