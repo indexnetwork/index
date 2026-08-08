@@ -193,6 +193,37 @@ function injectedFilesystemPolicy({ components, leaf, destructive = false }) {
   return 'safe';
 }
 
+function injectedVerifiedChildDirectory({ lstat, open, fstat, close = () => {} }) {
+  const before = lstat();
+  if (before === ABSENT) return null;
+  if (before.kind !== 'directory' || before.symlink) throw new Error('unsafe_path');
+
+  const descriptor = open();
+  let keepDescriptor = false;
+  try {
+    const opened = fstat(descriptor);
+    const after = lstat();
+    const allDirectories = opened.kind === 'directory'
+      && after !== ABSENT && after.kind === 'directory' && !after.symlink;
+    const sameIdentity = before.dev === opened.dev && before.ino === opened.ino
+      && opened.dev === after.dev && opened.ino === after.ino;
+    if (!allDirectories || !sameIdentity) throw new Error('unsafe_path');
+    keepDescriptor = true;
+    return descriptor;
+  } finally {
+    if (!keepDescriptor) close(descriptor);
+  }
+}
+
+function injectedOpenDirectoryComponent({ createMissing, mkdir, ...operations }) {
+  let descriptor = injectedVerifiedChildDirectory(operations);
+  if (descriptor !== null || !createMissing) return descriptor;
+  mkdir();
+  descriptor = injectedVerifiedChildDirectory(operations);
+  if (descriptor === null) throw new Error('unsafe_path');
+  return descriptor;
+}
+
 function isOwnedTemporary(name, destination = '.env') {
   const escaped = destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^\\.${escaped}\\.[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.tmp$`, 'i').test(name);
@@ -1101,7 +1132,76 @@ test('binary-less disconnect scrubs safe local wiring but remains retryable', ()
   expect(state.journal).toBe('disconnecting');
 });
 
-test('filesystem policy retains no-follow parents and env writers coordinate under an advisory lock', () => {
+test('directory components use two no-follow path stats plus descriptor identity verification', () => {
+  const verifiedOpen = runtime.match(
+    /private static func openVerifiedChildDirectory\([\s\S]*?\n    \}\n\n    static func entryStatus/,
+  )?.[0] ?? '';
+  expect(verifiedOpen).toContain('AT_SYMLINK_NOFOLLOW');
+  expect(verifiedOpen.match(/Darwin\.fstatat/g)?.length).toBe(2);
+  expect(verifiedOpen).toContain('Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY)');
+  expect(verifiedOpen).not.toContain('O_DIRECTORY | O_NOFOLLOW');
+  expect(verifiedOpen).toContain('Darwin.fstat(descriptor, &opened)');
+  expect(verifiedOpen).toContain('before.st_dev == opened.st_dev');
+  expect(verifiedOpen).toContain('before.st_ino == opened.st_ino');
+  expect(verifiedOpen).toContain('opened.st_dev == after.st_dev');
+  expect(verifiedOpen).toContain('opened.st_ino == after.st_ino');
+  expect(verifiedOpen).toContain('defer {');
+  expect(verifiedOpen).toContain('Darwin.close(descriptor)');
+  expect(runtime).toMatch(/for component in[\s\S]*openVerifiedChildDirectory/);
+  expect(runtime).toMatch(/private static func openChildDirectory\([\s\S]*try openVerifiedChildDirectory/);
+  expect(runtime).toMatch(/Darwin\.mkdirat[\s\S]*openVerifiedChildDirectory/);
+  expect(runtime).toContain('O_RDONLY | O_NOFOLLOW');
+
+  const record = (overrides = {}) => ({
+    kind: 'directory', symlink: false, dev: 7, ino: 11, ...overrides,
+  });
+  const run = ({ pathRecords = [record(), record()], opened = record(), ...options } = {}) => {
+    const observations = [...pathRecords];
+    let mkdirCalls = 0;
+    const result = injectedOpenDirectoryComponent({
+      createMissing: false,
+      lstat: () => observations.shift() ?? ABSENT,
+      open: () => 42,
+      fstat: () => opened,
+      mkdir: () => { mkdirCalls += 1; },
+      ...options,
+    });
+    return { result, mkdirCalls };
+  };
+
+  expect(run().result).toBe(42);
+  expect(run({
+    pathRecords: [record({ apfsFirmlink: true }), record({ apfsFirmlink: true })],
+    opened: record({ apfsFirmlink: true }),
+  }).result).toBe(42);
+  for (const candidate of [
+    { pathRecords: [record({ symlink: true })] },
+    { pathRecords: [record({ kind: 'file' })] },
+    { pathRecords: [record(), record({ symlink: true })] },
+    { opened: record({ kind: 'file' }) },
+    { opened: record({ dev: 8 }) },
+    { opened: record({ ino: 12 }) },
+    { pathRecords: [record(), record({ dev: 8 })] },
+    { pathRecords: [record(), record({ ino: 12 })] },
+  ]) expect(() => run(candidate)).toThrow('unsafe_path');
+
+  const closed = [];
+  expect(() => run({
+    opened: record({ ino: 12 }),
+    close: (descriptor) => closed.push(descriptor),
+  })).toThrow('unsafe_path');
+  expect(closed).toEqual([42]);
+
+  expect(run({ pathRecords: [ABSENT] }).result).toBeNull();
+  const created = record({ ino: 99 });
+  expect(run({
+    createMissing: true,
+    pathRecords: [ABSENT, created, created],
+    opened: created,
+  })).toEqual({ result: 42, mkdirCalls: 1 });
+});
+
+test('filesystem policy retains verified parents and env writers coordinate under an advisory lock', () => {
   for (const contract of [
     'O_DIRECTORY', 'O_NOFOLLOW', 'openat', 'renameat', 'unlinkat', 'fdopendir',
     'removeOwnedDirectory', 'verifyRegularFile', 'fsyncDirectory', 'removeOrphanTemporaryFiles',

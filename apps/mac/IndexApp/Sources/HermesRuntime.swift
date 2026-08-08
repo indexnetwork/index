@@ -470,32 +470,74 @@ private enum HermesFilesystem {
         guard root >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
         var current = HermesDirectoryDescriptor(rawValue: root)
         for component in standardized.pathComponents.dropFirst() {
-            let opened = component.withCString {
-                Darwin.openat(current.rawValue, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-            }
-            var next = opened
-            if next < 0, errno == ENOENT, createMissing {
+            var next = try openVerifiedChildDirectory(in: current, name: component)
+            if next == nil, createMissing {
                 let made = component.withCString {
                     Darwin.mkdirat(current.rawValue, $0, mode_t(0o700))
                 }
                 guard made == 0 || errno == EEXIST else {
                     throw HermesRuntimeFailure.localCleanupFailed
                 }
-                next = component.withCString {
-                    Darwin.openat(current.rawValue, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-                }
+                next = try openVerifiedChildDirectory(in: current, name: component)
             }
-            if next < 0, errno == ENOENT, !createMissing { return nil }
-            if next < 0,
-               ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
-                FileHandle.standardError.write(Data(
-                    "[HermesFilesystem] openDirectory failed component=\(component) errno=\(errno)\n".utf8
-                ))
-            }
-            guard next >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
-            current = HermesDirectoryDescriptor(rawValue: next)
+            if next == nil, !createMissing { return nil }
+            guard let next else { throw HermesRuntimeFailure.localCleanupFailed }
+            current = next
         }
         return current
+    }
+
+    private static func isDirectoryPathRecord(_ status: stat) -> Bool {
+        let type = status.st_mode & fileTypeMask
+        return type == directoryType && type != symbolicLinkType
+    }
+
+    /// Opens one descriptor-relative directory without O_NOFOLLOW, which is
+    /// incompatible with APFS firmlinks. The two no-follow path observations
+    /// must identify the same directory as the retained descriptor, so a user
+    /// symlink or any concurrent path replacement is rejected.
+    private static func openVerifiedChildDirectory(
+        in parent: HermesDirectoryDescriptor,
+        name: String
+    ) throws -> HermesDirectoryDescriptor? {
+        var before = stat()
+        let beforeResult = name.withCString {
+            Darwin.fstatat(parent.rawValue, $0, &before, AT_SYMLINK_NOFOLLOW)
+        }
+        if beforeResult < 0, errno == ENOENT { return nil }
+        guard beforeResult == 0, isDirectoryPathRecord(before) else {
+            throw HermesRuntimeFailure.localCleanupFailed
+        }
+
+        let descriptor = name.withCString {
+            Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY)
+        }
+        guard descriptor >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
+        var closeDescriptor = true
+        defer {
+            if closeDescriptor { _ = Darwin.close(descriptor) }
+        }
+
+        var opened = stat()
+        guard Darwin.fstat(descriptor, &opened) == 0 else {
+            throw HermesRuntimeFailure.localCleanupFailed
+        }
+        var after = stat()
+        let afterResult = name.withCString {
+            Darwin.fstatat(parent.rawValue, $0, &after, AT_SYMLINK_NOFOLLOW)
+        }
+        guard afterResult == 0,
+              isDirectoryPathRecord(after),
+              opened.st_mode & fileTypeMask == directoryType,
+              before.st_dev == opened.st_dev,
+              before.st_ino == opened.st_ino,
+              opened.st_dev == after.st_dev,
+              opened.st_ino == after.st_ino else {
+            throw HermesRuntimeFailure.localCleanupFailed
+        }
+
+        closeDescriptor = false
+        return HermesDirectoryDescriptor(rawValue: descriptor)
     }
 
     static func entryStatus(
@@ -514,11 +556,6 @@ private enum HermesFilesystem {
     private static func names(in directory: HermesDirectoryDescriptor) throws -> [String] {
         let duplicate = Darwin.dup(directory.rawValue)
         guard duplicate >= 0, let stream = Darwin.fdopendir(duplicate) else {
-            if ProcessInfo.processInfo.environment["INDEX_HERMES_FIXTURE_TRACE"] == "1" {
-                FileHandle.standardError.write(Data(
-                    "[HermesFilesystem] fdopendir failed duplicate=\(duplicate) errno=\(errno)\n".utf8
-                ))
-            }
             if duplicate >= 0 { _ = Darwin.close(duplicate) }
             throw HermesRuntimeFailure.localCleanupFailed
         }
@@ -635,12 +672,7 @@ private enum HermesFilesystem {
         in parent: HermesDirectoryDescriptor,
         name: String
     ) throws -> HermesDirectoryDescriptor? {
-        let descriptor = name.withCString {
-            Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        }
-        if descriptor < 0, errno == ENOENT { return nil }
-        guard descriptor >= 0 else { throw HermesRuntimeFailure.localCleanupFailed }
-        return HermesDirectoryDescriptor(rawValue: descriptor)
+        try openVerifiedChildDirectory(in: parent, name: name)
     }
 
     private static func removeDirectoryContents(

@@ -98,7 +98,6 @@ struct HermesPersistenceCompatibilityFixture {
     static let historicalCronID = "owned-cron-old"
 
     static func main() throws {
-        Darwin.setenv("INDEX_HERMES_FIXTURE_TRACE", "1", 1)
         trace("starting historical rebind")
         try runHistoricalRebind()
 
@@ -266,10 +265,9 @@ struct HermesPersistenceCompatibilityFixture {
         cronPrompt: String = HermesRuntimeManager.historicalPreOwnerCronPrompt
     ) throws -> FixtureLayout {
         let manager = FileManager.default
-        // FileManager.temporaryDirectory is exposed as /var/folders on macOS;
-        // that platform alias is incompatible with production's intentionally
-        // strict component-by-component O_NOFOLLOW traversal. /private/tmp is
-        // the canonical writable temp root and contains no alias component.
+        // Keep the native fixture on the canonical writable temp path. Its
+        // traversal exercises the same APFS firmlink-compatible verification
+        // required by production Home and Application Support paths.
         let root = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
             .appendingPathComponent("index-hermes-native-\(label)-\(UUID().uuidString)", isDirectory: true)
         let applicationSupport = root.appendingPathComponent("Application Support", isDirectory: true)
