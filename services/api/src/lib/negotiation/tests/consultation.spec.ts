@@ -77,6 +77,29 @@ describe('external owner consultation eligibility', () => {
     });
   });
 
+  it.each([
+    ['uncapped zero remains eligible far beyond six', 0, 20, true],
+    ['absent defaults to six at the next turn', undefined, 5, false],
+    ['positive remains eligible before its boundary', 4, 2, true],
+    ['positive is ineligible at its next-turn boundary', 3, 2, false],
+  ] as const)('%s', (_label, maxTurns, turnCount, expected) => {
+    const input = fixture();
+    if (maxTurns === undefined) delete input.task.metadata.maxTurns;
+    else input.task.metadata.maxTurns = maxTurns;
+    input.messages = Array.from({ length: turnCount }, (_, index) => ({
+      senderId: `agent:${index % 2 === turnCount % 2 ? userId : 'user-counterparty'}`,
+      turn: {
+        action: index === turnCount - 1 ? 'counter' : 'outreach',
+        assessment: { suggestedRoles: { ownUser: 'agent', otherUser: 'patient' } },
+      },
+    }));
+    // The claiming owner is eligible only when the final persisted turn is the
+    // bound counterparty's canonical turn.
+    input.messages[turnCount - 1]!.senderId = 'agent:user-counterparty';
+
+    expect(assessExternalConsultationEligibility(input).eligible).toBe(expected);
+  });
+
   it.each(['off', 'shadow', 'on'] as const)(
     'preserves %s semantics for a structurally valid policy-ineligible turn',
     (policyMode) => {
@@ -219,8 +242,7 @@ describe('external owner consultation eligibility', () => {
       negotiationId: 'task-1',
       userId,
       coordinates: result.coordinates,
-      safeInput: { disclosureSubject: 'availability', draftQuestion: 'May I share your availability?' },
-      consultationPolicyReason: result.policy.reason,
+      reason: result.policy.reason ?? 'consequential_disclosure_permission',
     });
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toContain('user-counterparty');
@@ -229,8 +251,10 @@ describe('external owner consultation eligibility', () => {
     expect(payload.context).toMatchObject({
       counterpartyHint: 'the other participant',
       indexContext: 'the selected network',
-      disclosureSubject: 'availability',
+      consultationPolicyReason: 'consequential_disclosure_permission',
     });
+    expect(payload.context).not.toHaveProperty('disclosureSubject');
+    expect(payload.context).not.toHaveProperty('draftQuestion');
   });
 });
 

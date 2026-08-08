@@ -54,6 +54,7 @@ negotiationClaimTimeoutQueue.cancelTimeout = async (negotiationId: string) => {
 
 const { NegotiationPollingService } = await import('../src/services/negotiation-polling.service');
 const { conversationDatabaseAdapter } = await import('../src/adapters/database.adapter');
+const { agentDatabaseAdapter } = await import('../src/adapters/agent.database.adapter');
 const { questionerAdapter } = await import('../src/adapters/questioner.adapter.instance');
 const { QuestionEvents } = await import('../src/events/question.event');
 const { handleQuestionAnswered } = await import('../src/events/handlers/question.answer.handler');
@@ -90,7 +91,7 @@ async function seedClaimedNegotiation(label: string) {
     return row.id;
   }));
   const [network] = await db.insert(schema.networks).values({
-    name: `Consult ${label} ${randomUUID()}`,
+    title: `Consult ${label} ${randomUUID()}`,
     description: 'isolated consultation fixture',
     isPersonal: false,
   }).returning({ id: schema.networks.id });
@@ -119,11 +120,58 @@ async function seedClaimedNegotiation(label: string) {
     status: 'negotiating',
   }).returning({ id: schema.opportunities.id });
   cleanupOpportunities.push(opportunity.id);
-  const [agent] = await db.insert(schema.agents).values({
-    ownerId: owner,
-    name: `External ${label}`,
-    type: 'external',
-  }).returning({ id: schema.agents.id });
+  const [agent, counterpartyAgent] = await Promise.all([
+    agentDatabaseAdapter.createAgent({
+      ownerId: owner,
+      name: `consultation-e2e-agent-${randomUUID()}`,
+      type: 'external',
+    }),
+    agentDatabaseAdapter.createAgent({
+      ownerId: counterparty,
+      name: `consultation-e2e-counterparty-agent-${randomUUID()}`,
+      type: 'external',
+    }),
+  ]);
+  const [credential, counterpartyCredential] = await db.insert(schema.apikeys).values([
+    {
+      key: `consultation-e2e-key-${randomUUID()}`,
+      userId: owner,
+      referenceId: owner,
+      metadata: JSON.stringify({ agentId: agent.id }),
+      enabled: true,
+    },
+    {
+      key: `consultation-e2e-counterparty-key-${randomUUID()}`,
+      userId: counterparty,
+      referenceId: counterparty,
+      metadata: JSON.stringify({ agentId: counterpartyAgent.id }),
+      enabled: true,
+    },
+  ]).returning({ id: schema.apikeys.id });
+  await Promise.all([
+    agentDatabaseAdapter.setNegotiationExecutorBinding({
+      ownerId: owner,
+      targetAgentId: agent.id,
+      exactTargetPermissions: false,
+    }),
+    agentDatabaseAdapter.setNegotiationExecutorBinding({
+      ownerId: counterparty,
+      targetAgentId: counterpartyAgent.id,
+      exactTargetPermissions: false,
+    }),
+  ]);
+  const principal = {
+    credentialId: credential.id,
+    agentId: agent.id,
+    audience: null,
+    setupAttemptId: null,
+  };
+  const counterpartyPrincipal = {
+    credentialId: counterpartyCredential.id,
+    agentId: counterpartyAgent.id,
+    audience: null,
+    setupAttemptId: null,
+  };
   const conversation = await conversationDatabaseAdapter.createConversation([
     { participantId: `agent:${owner}`, participantType: 'agent' },
     { participantId: `agent:${counterparty}`, participantType: 'agent' },
@@ -163,12 +211,12 @@ async function seedClaimedNegotiation(label: string) {
     } }],
   });
   await conversationDatabaseAdapter.updateTaskState(task.id, 'waiting_for_agent');
-  const service = new NegotiationPollingService({
-    authorizePickup: async () => true,
-    authorizeRespond: async () => true,
-  } as never);
-  expect(await service.pickup(agent.id, owner)).toMatchObject({ taskId: task.id, canConsultOwner: true });
-  return { owner, counterparty, network, ownerIntent, counterpartyIntent, opportunity, agent, conversation, task, service };
+  const service = new NegotiationPollingService();
+  expect(await service.pickup(agent.id, owner, principal)).toMatchObject({ taskId: task.id, canConsultOwner: true });
+  return {
+    owner, counterparty, network, ownerIntent, counterpartyIntent, opportunity,
+    agent, principal, counterpartyAgent, counterpartyPrincipal, conversation, task, service,
+  };
 }
 
 /**
@@ -204,7 +252,7 @@ async function addForeignNetworkActor(fixture: Fixture) {
   }).returning({ id: schema.users.id });
   cleanupUsers.push(foreignUser.id);
   const [foreignNetwork] = await db.insert(schema.networks).values({
-    name: `Foreign consultation network ${randomUUID()}`,
+    title: `Foreign consultation network ${randomUUID()}`,
     description: 'foreign-network admission fixture',
     isPersonal: false,
   }).returning({ id: schema.networks.id });
@@ -342,7 +390,7 @@ function installContinuationExecution() {
   const dispatched: Array<Record<string, unknown>> = [];
   const runExisting = new NegotiationRunExistingQueue({
     continuationAdapter: questionerAdapter,
-    invokeOpportunityGraph: async ({ opportunityId, options }) => {
+    invokeOpportunityGraph: async ({ options }) => {
       const execution = options.negotiationContinuation as {
         taskId: string;
         settlementId: string;
@@ -350,21 +398,19 @@ function installContinuationExecution() {
         fence: number;
       };
       executedSuccessors.push(execution.successorTaskId);
-      await conversationDatabaseAdapter.updateTaskState(execution.successorTaskId, 'completed', undefined, execution as never);
-      await conversationDatabaseAdapter.createArtifact({
-        taskId: execution.successorTaskId,
-        name: 'negotiation-outcome',
-        parts: [{ kind: 'data', data: { hasOpportunity: false, agreedRoles: [], reasoning: 'continuation fixture', turnCount: 2 } }],
-        metadata: { hasOpportunity: false, turnCount: 2, continuationOutcome: 'stalled' },
-        continuationExecution: execution as never,
-      });
-      await conversationDatabaseAdapter.updateOpportunityStatus(opportunityId, 'stalled', undefined, execution as never);
+      await conversationDatabaseAdapter.updateTaskState(
+        execution.successorTaskId,
+        'waiting_for_agent',
+        undefined,
+        execution as never,
+        `settlement-park-${execution.settlementId}`,
+      );
       return { negotiationContinuationReceipt: {
         priorTaskId: execution.taskId,
         settlementId: execution.settlementId,
         successorTaskId: execution.successorTaskId,
         fence: execution.fence,
-        outcome: 'stalled',
+        outcome: 'waiting_for_agent',
       } };
     },
   });
@@ -412,7 +458,8 @@ async function settleThroughContinuation(kind: SettlementKind) {
     fixture.agent.id,
     fixture.owner,
     fixture.task.id,
-    { disclosureSubject: 'availability' },
+    { reason: 'consequential_disclosure_permission' },
+    fixture.principal,
   )).status).toBe('input_required');
   const { binding, question } = await persistInflightQuestion(fixture);
   const continuation = installContinuationExecution();
@@ -444,16 +491,40 @@ async function settleThroughContinuation(kind: SettlementKind) {
         sql`${conversationSchema.tasks.metadata}->>'resumeFromTaskId' = ${fixture.task.id}`,
         sql`${conversationSchema.tasks.metadata}->>'continuationSettlementId' = ${binding.settlementId}`,
       ));
-    expect(successors).toEqual([{ id: successorTaskId, state: 'completed' }]);
+    expect(successors).toEqual([{ id: successorTaskId, state: 'waiting_for_agent' }]);
+
+    const [counterpartyHeartbeatBefore] = await db.select({ value: schema.agents.lastNegotiationPickupAt })
+      .from(schema.agents)
+      .where(eq(schema.agents.id, fixture.counterpartyAgent.id));
+    const [consultingResult, counterpartyResult] = await Promise.all([
+      fixture.service.pickup(fixture.agent.id, fixture.owner, fixture.principal),
+      fixture.service.pickup(
+        fixture.counterpartyAgent.id,
+        fixture.counterparty,
+        fixture.counterpartyPrincipal,
+      ),
+    ]);
+
+    expect(consultingResult).toMatchObject({ taskId: successorTaskId });
+    expect(counterpartyResult).toBeNull();
+    expect(await conversationDatabaseAdapter.getTask(successorTaskId)).toMatchObject({
+      state: 'claimed',
+      claimedByAgentId: fixture.agent.id,
+    });
+    const [counterpartyHeartbeatAfter] = await db.select({ value: schema.agents.lastNegotiationPickupAt })
+      .from(schema.agents)
+      .where(eq(schema.agents.id, fixture.counterpartyAgent.id));
+    expect(counterpartyHeartbeatAfter.value).toEqual(counterpartyHeartbeatBefore.value);
+
     const [{ value: completionArtifacts }] = await db.select({ value: sql<number>`count(*)::int` })
       .from(conversationSchema.artifacts)
       .where(and(
         eq(conversationSchema.artifacts.taskId, successorTaskId),
         eq(conversationSchema.artifacts.name, 'negotiation-outcome'),
       ));
-    expect(Number(completionArtifacts)).toBe(1);
+    expect(Number(completionArtifacts)).toBe(0);
     const prior = await conversationDatabaseAdapter.getTask(fixture.task.id);
-    expect((prior!.metadata!.questionSettlement as Record<string, unknown>).continuationStatus).toBe('completed');
+    expect((prior!.metadata!.questionSettlement as Record<string, unknown>).continuationStatus).toBe('requested');
   } finally {
     await continuation.runExisting.close();
   }
@@ -484,7 +555,8 @@ describe('external consultation atomic adapter races', () => {
       fixture.agent.id,
       fixture.owner,
       fixture.task.id,
-      { disclosureSubject: 'availability' },
+      { reason: 'consequential_disclosure_permission' },
+      fixture.principal,
     )).rejects.toThrow('consultation binding is no longer current');
 
     expect(await counts(fixture)).toEqual(before);
@@ -503,7 +575,8 @@ describe('external consultation atomic adapter races', () => {
       fixture.agent.id,
       fixture.owner,
       fixture.task.id,
-      { disclosureSubject: 'availability' },
+      { reason: 'consequential_disclosure_permission' },
+      fixture.principal,
     )).rejects.toThrow('consultation binding is no longer current');
 
     expect(await counts(fixture)).toEqual(before);
@@ -521,7 +594,8 @@ describe('external consultation atomic adapter races', () => {
       fixture.agent.id,
       fixture.owner,
       fixture.task.id,
-      { disclosureSubject: 'availability' },
+      { reason: 'consequential_disclosure_permission' },
+      fixture.principal,
     )).resolves.toMatchObject({ status: 'input_required' });
 
     const persisted = await conversationDatabaseAdapter.getTask(fixture.task.id);
@@ -532,7 +606,7 @@ describe('external consultation atomic adapter races', () => {
     });
   }, 60_000);
 
-  it.each([
+  bunIt.each([
     ['wrong participant', 'agent:unrelated-user'],
     ['system', 'system:negotiation-timeout'],
   ] as const)('revalidates the exact bound counterparty against a %s sender under the task lock', async (_label, senderId) => {
@@ -549,7 +623,8 @@ describe('external consultation atomic adapter races', () => {
         fixture.agent.id,
         fixture.owner,
         fixture.task.id,
-        { disclosureSubject: 'availability' },
+        { reason: 'consequential_disclosure_permission' },
+        fixture.principal,
       )).rejects.toThrow('no longer held by this claim');
     } finally {
       adapter.pauseClaimedNegotiationForConsultation = original;
@@ -573,8 +648,8 @@ describe('external consultation atomic adapter races', () => {
     let results: PromiseSettledResult<unknown>[];
     try {
       results = await Promise.allSettled([
-        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { disclosureSubject: 'availability' }),
-        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { disclosureSubject: 'availability' }),
+        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { reason: 'consequential_disclosure_permission' }, fixture.principal),
+        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { reason: 'consequential_disclosure_permission' }, fixture.principal),
       ]);
     } finally {
       restore();
@@ -606,8 +681,8 @@ describe('external consultation atomic adapter races', () => {
     let results: PromiseSettledResult<unknown>[];
     try {
       results = await Promise.allSettled([
-        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { disclosureSubject: 'availability' }),
-        fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept')),
+        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { reason: 'consequential_disclosure_permission' }, fixture.principal),
+        fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept'), fixture.principal),
       ]);
     } finally {
       restore();
@@ -624,7 +699,7 @@ describe('external consultation atomic adapter races', () => {
       expect(persisted?.state).toBe('input_required');
       expect(after.artifacts).toBe(0);
     }
-    await expect(fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept'))).rejects.toThrow();
+    await expect(fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept'), fixture.principal)).rejects.toThrow();
     await assertStable(fixture, after);
   }, 60_000);
 
@@ -646,7 +721,7 @@ describe('external consultation atomic adapter races', () => {
     let results: PromiseSettledResult<unknown>[];
     try {
       results = await Promise.allSettled([
-        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { disclosureSubject: 'availability' }),
+        fixture.service.consult(fixture.agent.id, fixture.owner, fixture.task.id, { reason: 'consequential_disclosure_permission' }, fixture.principal),
         claimTimeout.processJob('negotiation_claim_timeout', {
           negotiationId: fixture.task.id,
           turnNumber: 1,
@@ -691,7 +766,7 @@ describe('external consultation atomic adapter races', () => {
     let results: PromiseSettledResult<unknown>[];
     try {
       results = await Promise.allSettled([
-        fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept')),
+        fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept'), fixture.principal),
         claimTimeout.processJob('negotiation_claim_timeout', {
           negotiationId: fixture.task.id,
           turnNumber: 1,
@@ -714,7 +789,7 @@ describe('external consultation atomic adapter races', () => {
       turnNumber: 1,
       agentId: fixture.agent.id,
     });
-    await expect(fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept'))).rejects.toThrow();
+    await expect(fixture.service.respond(fixture.agent.id, fixture.owner, fixture.task.id, turn('accept'), fixture.principal)).rejects.toThrow();
     expect(fallbackExecutions).toBe(responseWon ? 0 : 1);
     await assertStable(fixture, after);
     await claimTimeout.close();
@@ -722,8 +797,8 @@ describe('external consultation atomic adapter races', () => {
 });
 
 describe('external consultation exact continuation E2E', () => {
-  it.each(['answer', 'dismiss', 'expire'] as const)(
-    '%s dispatches through Questioner and run-existing, executes the exact successor once, and deduplicates delivery',
+  bunIt.each(['answer', 'dismiss', 'expire'] as const)(
+    '%s parks one exact successor and lets only the consulting executor win the real pickup race',
     async (kind) => {
       await settleThroughContinuation(kind);
     },

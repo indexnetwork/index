@@ -48,6 +48,15 @@ jobs:
           bun test *.spec.mjs
           bash -n build.sh link-host.sh provisioning-profile.sh notarize.sh
 
+      - name: Native historical Hermes persistence compatibility
+        working-directory: apps/mac/IndexApp
+        run: |
+          swiftc -parse-as-library \
+            Sources/HermesRuntime.swift \
+            Tests/HermesPersistenceCompatibility.swift \
+            -o "$RUNNER_TEMP/hermes-persistence-compatibility"
+          "$RUNNER_TEMP/hermes-persistence-compatibility"
+
       - name: Assemble web layer
         working-directory: apps/mac/IndexApp
         run: python3 assemble.py

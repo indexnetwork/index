@@ -3,7 +3,7 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm/sql';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { intentNetworks, intents, networkMembers, networks, opportunities, questions } from '../schemas/database.schema';
-import { artifacts, tasks } from '../schemas/conversation.schema';
+import { artifacts, messages, tasks } from '../schemas/conversation.schema';
 
 export const CONTINUATION_EXECUTION_LEASE_MS = 45_000;
 
@@ -443,20 +443,28 @@ export async function heartbeatContinuationExecution(
  * completion: the parent settlement stays requested and the stored fence is
  * retained until a fenced polling/timeout path produces a terminal receipt.
  */
+export async function parkContinuationExecutionInTransaction(
+  database: DrizzleDB,
+  execution: ContinuationExecutionFence,
+): Promise<void> {
+  const successor = await assertFenceOwnership(database, execution);
+  if (!['waiting_for_agent', 'claimed', 'input_required'].includes(successor.state)) {
+    throw new Error('Negotiation continuation pause does not prove a parked successor');
+  }
+  await database.update(tasks).set({
+    metadata: sql`jsonb_set(${tasks.metadata}, '{continuationExecution,status}', '"parked"'::jsonb, false)`,
+    updatedAt: new Date(),
+  }).where(eq(tasks.id, execution.successorTaskId));
+}
+
 export async function parkContinuationExecution(
   database: DrizzleDB,
   execution: ContinuationExecutionFence,
 ): Promise<void> {
-  await database.transaction(async (tx) => {
-    const successor = await assertFenceOwnership(tx as unknown as DrizzleDB, execution);
-    if (!['waiting_for_agent', 'claimed', 'input_required'].includes(successor.state)) {
-      throw new Error('Negotiation continuation pause does not prove a parked successor');
-    }
-    await tx.update(tasks).set({
-      metadata: sql`jsonb_set(${tasks.metadata}, '{continuationExecution,status}', '"parked"'::jsonb, false)`,
-      updatedAt: new Date(),
-    }).where(eq(tasks.id, execution.successorTaskId));
-  });
+  await database.transaction((tx) => parkContinuationExecutionInTransaction(
+    tx as unknown as DrizzleDB,
+    execution,
+  ));
 }
 
 /**
@@ -464,93 +472,251 @@ export async function parkContinuationExecution(
  * picks up the exact task. The new token/fence defeats stale workers and
  * expired leases before the poller can write a turn.
  */
+export async function claimParkedContinuationExecutionInTransaction(
+  tx: DrizzleDB,
+  taskId: string,
+  agentId: string,
+  leaseMs = CONTINUATION_EXECUTION_LEASE_MS,
+): Promise<{ task: typeof tasks.$inferSelect; execution: ContinuationExecutionFence } | null> {
+  const [task] = await tx.select().from(tasks).where(and(
+    eq(tasks.id, taskId),
+    eq(tasks.state, 'waiting_for_agent'),
+  )).limit(1).for('update');
+  const stored = parseExecution(record(task?.metadata)?.continuationExecution);
+  if (!task || !stored || stored.status !== 'parked') return null;
+  const [prior] = await tx.select({ metadata: tasks.metadata }).from(tasks)
+    .where(eq(tasks.id, stored.priorTaskId)).limit(1).for('update');
+  const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
+  const consultation = settlement
+    ? await loadPrivateConsultation(tx, settlement)
+    : null;
+  if (!settlement || settlement.continuationStatus !== 'requested' || !consultation) {
+    throw new Error('Parked continuation settlement is unavailable');
+  }
+  const now = new Date();
+  const execution: StoredExecution = {
+    ...stored,
+    token: crypto.randomUUID(),
+    fence: stored.fence + 1,
+    status: 'claimed',
+    leaseExpiresAt: new Date(now.getTime() + leaseMs).toISOString(),
+    claimedAt: now.toISOString(),
+    heartbeatAt: now.toISOString(),
+  };
+  const fence: ContinuationExecutionFence = {
+    taskId: stored.priorTaskId, settlementId: stored.settlementId,
+    opportunityId: settlement.opportunityId, userId: settlement.recipientUserId,
+    recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
+    intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
+    opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
+    counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
+    conversationId: task.conversationId, token: execution.token, fence: execution.fence,
+    leaseExpiresAt: execution.leaseExpiresAt, consultation,
+  };
+  if (!await validateMaterialBinding(tx, fence)) {
+    throw new Error('Parked continuation material binding drifted');
+  }
+  const [claimed] = await tx.update(tasks).set({
+    state: 'claimed', claimedByAgentId: agentId, claimedAt: now, updatedAt: now,
+    metadata: sql`jsonb_set(${tasks.metadata}, '{continuationExecution}', ${JSON.stringify(execution)}::jsonb, true)`,
+  }).where(and(eq(tasks.id, task.id), eq(tasks.state, 'waiting_for_agent'))).returning();
+  if (!claimed) return null;
+  return { task: claimed, execution: fence };
+}
+
 export async function claimParkedContinuationExecution(
   database: DrizzleDB,
   taskId: string,
   agentId: string,
   leaseMs = CONTINUATION_EXECUTION_LEASE_MS,
 ): Promise<{ task: typeof tasks.$inferSelect; execution: ContinuationExecutionFence } | null> {
+  return database.transaction((tx) => claimParkedContinuationExecutionInTransaction(
+    tx as unknown as DrizzleDB,
+    taskId,
+    agentId,
+    leaseMs,
+  ));
+}
+
+/**
+ * Atomically validates and claims the exact parked continuation generation for
+ * timeout fallback. A stale job cannot increment the continuation fence or
+ * change task state: park generation, stored attempt/fence, and conversation
+ * turn count are checked under the task lock before the claim is written.
+ */
+export async function claimParkedContinuationExecutionForTimeout(
+  database: DrizzleDB,
+  input: {
+    taskId: string;
+    agentId: string;
+    parkGeneration: string;
+    turnNumber: number;
+    continuation: {
+      priorTaskId: string;
+      settlementId: string;
+      successorTaskId: string;
+      token: string;
+      fence: number;
+    };
+  },
+): Promise<{ task: typeof tasks.$inferSelect; execution: ContinuationExecutionFence } | null> {
   return database.transaction(async (tx) => {
-    const [task] = await tx.select().from(tasks).where(and(
-      eq(tasks.id, taskId),
+    const transaction = tx as unknown as DrizzleDB;
+    const [current] = await transaction.select().from(tasks).where(and(
+      eq(tasks.id, input.taskId),
       eq(tasks.state, 'waiting_for_agent'),
+      sql`${tasks.metadata}->>'negotiationParkGeneration' = ${input.parkGeneration}`,
     )).limit(1).for('update');
-    const stored = parseExecution(record(task?.metadata)?.continuationExecution);
-    if (!task || !stored || stored.status !== 'parked') return null;
-    const [prior] = await tx.select({ metadata: tasks.metadata }).from(tasks)
-      .where(eq(tasks.id, stored.priorTaskId)).limit(1).for('update');
-    const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
-    const consultation = settlement
-      ? await loadPrivateConsultation(tx as unknown as DrizzleDB, settlement)
-      : null;
-    if (!settlement || settlement.continuationStatus !== 'requested' || !consultation) {
-      throw new Error('Parked continuation settlement is unavailable');
-    }
-    const now = new Date();
-    const execution: StoredExecution = {
-      ...stored,
-      token: crypto.randomUUID(),
-      fence: stored.fence + 1,
-      status: 'claimed',
-      leaseExpiresAt: new Date(now.getTime() + leaseMs).toISOString(),
-      claimedAt: now.toISOString(),
-      heartbeatAt: now.toISOString(),
-    };
-    const fence: ContinuationExecutionFence = {
-      taskId: stored.priorTaskId, settlementId: stored.settlementId,
-      opportunityId: settlement.opportunityId, userId: settlement.recipientUserId,
-      recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
-      intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
-      opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
-      counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
-      conversationId: task.conversationId, token: execution.token, fence: execution.fence,
-      leaseExpiresAt: execution.leaseExpiresAt, consultation,
-    };
-    if (!await validateMaterialBinding(tx as unknown as DrizzleDB, fence)) {
-      throw new Error('Parked continuation material binding drifted');
-    }
-    const [claimed] = await tx.update(tasks).set({
-      state: 'claimed', claimedByAgentId: agentId, claimedAt: now, updatedAt: now,
-      metadata: sql`jsonb_set(${tasks.metadata}, '{continuationExecution}', ${JSON.stringify(execution)}::jsonb, true)`,
-    }).where(and(eq(tasks.id, task.id), eq(tasks.state, 'waiting_for_agent'))).returning();
+    const stored = parseExecution(record(current?.metadata)?.continuationExecution);
+    if (
+      !current
+      || !stored
+      || stored.status !== 'parked'
+      || stored.priorTaskId !== input.continuation.priorTaskId
+      || stored.settlementId !== input.continuation.settlementId
+      || stored.successorTaskId !== input.continuation.successorTaskId
+      || stored.token !== input.continuation.token
+      || stored.fence !== input.continuation.fence
+    ) return null;
+    const turns = await transaction.select({ id: messages.id }).from(messages)
+      .where(eq(messages.conversationId, current.conversationId));
+    if (turns.length !== input.turnNumber) return null;
+
+    const claimed = await claimParkedContinuationExecutionInTransaction(
+      transaction,
+      input.taskId,
+      input.agentId,
+    );
     if (!claimed) return null;
-    return { task: claimed, execution: fence };
+    const [working] = await transaction.update(tasks).set({
+      state: 'working',
+      updatedAt: new Date(),
+    }).where(and(
+      eq(tasks.id, input.taskId),
+      eq(tasks.state, 'claimed'),
+      eq(tasks.claimedByAgentId, input.agentId),
+    )).returning();
+    return working ? { task: working, execution: claimed.execution } : null;
   });
 }
 
+/**
+ * Load the exact continuation claim generation for its timeout worker. Unlike
+ * an ordinary mutation fence, the lease is expected to have elapsed when this
+ * runs; the job-supplied token/fence and current material binding are the CAS.
+ */
+export async function readClaimedContinuationExecutionForTimeoutInTransaction(
+  database: DrizzleDB,
+  taskId: string,
+  expected: { priorTaskId: string; settlementId: string; successorTaskId: string; token: string; fence: number },
+): Promise<ContinuationExecutionFence | null> {
+  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).for('update');
+  const stored = parseExecution(record(task?.metadata)?.continuationExecution);
+  if (
+    !task
+    || !stored
+    || stored.status !== 'claimed'
+    || stored.priorTaskId !== expected.priorTaskId
+    || stored.settlementId !== expected.settlementId
+    || stored.successorTaskId !== expected.successorTaskId
+    || stored.token !== expected.token
+    || stored.fence !== expected.fence
+  ) return null;
+  const [prior] = await database.select({ metadata: tasks.metadata }).from(tasks)
+    .where(eq(tasks.id, stored.priorTaskId)).limit(1).for('update');
+  const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
+  const consultation = settlement ? await loadPrivateConsultation(database, settlement) : null;
+  if (!settlement || settlement.continuationStatus !== 'requested' || !consultation) return null;
+  const execution: ContinuationExecutionFence = {
+    taskId: stored.priorTaskId, settlementId: stored.settlementId,
+    opportunityId: settlement.opportunityId, userId: settlement.recipientUserId,
+    recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
+    intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
+    opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
+    counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
+    conversationId: task.conversationId, token: stored.token, fence: stored.fence,
+    leaseExpiresAt: stored.leaseExpiresAt, consultation,
+  };
+  return await validateMaterialBinding(database, execution) ? execution : null;
+}
+
+/**
+ * Rotate an elapsed external claim into a fresh timeout-owned continuation
+ * fence. The old Bull identity is validated first; token/fence renewal and the
+ * timeout task acquisition live in the caller's surrounding transaction.
+ */
+export async function rotateClaimedContinuationExecutionForTimeoutInTransaction(
+  database: DrizzleDB,
+  taskId: string,
+  expected: { priorTaskId: string; settlementId: string; successorTaskId: string; token: string; fence: number },
+  leaseMs = CONTINUATION_EXECUTION_LEASE_MS,
+): Promise<ContinuationExecutionFence | null> {
+  const current = await readClaimedContinuationExecutionForTimeoutInTransaction(database, taskId, expected);
+  if (!current) return null;
+  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).for('update');
+  const stored = parseExecution(record(task?.metadata)?.continuationExecution);
+  if (!task || !stored || stored.status !== 'claimed') return null;
+  const now = new Date();
+  const rotated: StoredExecution = {
+    ...stored,
+    token: crypto.randomUUID(),
+    fence: stored.fence + 1,
+    leaseExpiresAt: new Date(now.getTime() + leaseMs).toISOString(),
+    heartbeatAt: now.toISOString(),
+  };
+  const [updated] = await database.update(tasks).set({
+    metadata: sql`jsonb_set(${tasks.metadata}, '{continuationExecution}', ${JSON.stringify(rotated)}::jsonb, true)`,
+    updatedAt: now,
+  }).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
+  return updated ? {
+    ...current,
+    token: rotated.token,
+    fence: rotated.fence,
+    leaseExpiresAt: rotated.leaseExpiresAt,
+  } : null;
+}
+
 /** Load the current claimed fence for a poller/timeout write; malformed or stale rows fail closed. */
+export async function readClaimedContinuationExecutionInTransaction(
+  database: DrizzleDB,
+  taskId: string,
+): Promise<ContinuationExecutionFence | null> {
+  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).for('update');
+  const stored = parseExecution(record(task?.metadata)?.continuationExecution);
+  if (!task || !stored || stored.status !== 'claimed') return null;
+  const [prior] = await database.select({ metadata: tasks.metadata }).from(tasks)
+    .where(eq(tasks.id, stored.priorTaskId)).limit(1).for('update');
+  const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
+  const consultation = settlement
+    ? await loadPrivateConsultation(database, settlement)
+    : null;
+  if (!settlement || settlement.continuationStatus !== 'requested' || !consultation) return null;
+  const execution: ContinuationExecutionFence = {
+    taskId: stored.priorTaskId, settlementId: stored.settlementId,
+    opportunityId: settlement.opportunityId, userId: settlement.recipientUserId,
+    recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
+    intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
+    opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
+    counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
+    conversationId: task.conversationId, token: stored.token, fence: stored.fence,
+    leaseExpiresAt: stored.leaseExpiresAt, consultation,
+  };
+  try {
+    await assertContinuationExecutionEffect(database, execution);
+    return execution;
+  } catch {
+    return null;
+  }
+}
+
 export async function readClaimedContinuationExecution(
   database: DrizzleDB,
   taskId: string,
 ): Promise<ContinuationExecutionFence | null> {
-  return database.transaction(async (tx) => {
-    const [task] = await tx.select().from(tasks).where(eq(tasks.id, taskId)).limit(1).for('update');
-    const stored = parseExecution(record(task?.metadata)?.continuationExecution);
-    if (!task || !stored || stored.status !== 'claimed') return null;
-    const [prior] = await tx.select({ metadata: tasks.metadata }).from(tasks)
-      .where(eq(tasks.id, stored.priorTaskId)).limit(1).for('update');
-    const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
-    const consultation = settlement
-      ? await loadPrivateConsultation(tx as unknown as DrizzleDB, settlement)
-      : null;
-    if (!settlement || settlement.continuationStatus !== 'requested' || !consultation) return null;
-    const execution: ContinuationExecutionFence = {
-      taskId: stored.priorTaskId, settlementId: stored.settlementId,
-      opportunityId: settlement.opportunityId, userId: settlement.recipientUserId,
-      recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
-      intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
-      opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
-      counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
-      conversationId: task.conversationId, token: stored.token, fence: stored.fence,
-      leaseExpiresAt: stored.leaseExpiresAt, consultation,
-    };
-    try {
-      await assertContinuationExecutionEffect(tx as unknown as DrizzleDB, execution);
-      return execution;
-    } catch {
-      return null;
-    }
-  });
+  return database.transaction((tx) => readClaimedContinuationExecutionInTransaction(
+    tx as unknown as DrizzleDB,
+    taskId,
+  ));
 }
 
 export async function releaseContinuationExecution(
@@ -571,60 +737,66 @@ export async function releaseContinuationExecution(
   });
 }
 
+export async function completeContinuationExecutionInTransaction(
+  database: DrizzleDB,
+  execution: ContinuationExecutionFence,
+  receipt: ContinuationReceipt,
+): Promise<void> {
+  const successor = await assertFenceOwnership(database, execution);
+  if (
+    receipt.priorTaskId !== execution.taskId
+    || receipt.settlementId !== execution.settlementId
+    || receipt.successorTaskId !== execution.successorTaskId
+    || receipt.fence !== execution.fence
+    || (receipt.outcome === 'waiting_for_agent' && !['waiting_for_agent', 'claimed'].includes(successor.state))
+    || (receipt.outcome === 'input_required' && successor.state !== 'input_required')
+    || (['accepted', 'rejected', 'stalled'].includes(receipt.outcome) && successor.state !== 'completed')
+  ) throw new Error('Negotiation continuation receipt does not prove the exact successor');
+
+  const terminalOpportunityStatus = receipt.outcome === 'accepted'
+    ? 'pending'
+    : receipt.outcome === 'rejected'
+      ? 'rejected'
+      : receipt.outcome === 'stalled'
+        ? 'stalled'
+        : undefined;
+  const binding = await validateMaterialBinding(database, execution, terminalOpportunityStatus);
+  if (!binding) throw new Error('Negotiation continuation material binding drifted before receipt');
+  if (terminalOpportunityStatus) {
+    const [artifact] = await database.select({ metadata: artifacts.metadata })
+      .from(artifacts)
+      .where(and(eq(artifacts.taskId, execution.successorTaskId), eq(artifacts.name, 'negotiation-outcome')))
+      .limit(1)
+      .for('update');
+    if (record(artifact?.metadata)?.continuationOutcome !== receipt.outcome) {
+      throw new Error('Negotiation continuation terminal receipt does not match its exact artifact');
+    }
+  }
+  const [prior] = await database.select({ metadata: tasks.metadata }).from(tasks)
+    .where(eq(tasks.id, execution.taskId)).limit(1).for('update');
+  const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
+  if (!settlement || !settlementMatches(settlement, execution) || settlement.continuationStatus !== 'requested') {
+    throw new Error('Exact negotiation continuation settlement is unavailable');
+  }
+  const completedAt = new Date().toISOString();
+  await database.update(tasks).set({
+    metadata: sql`jsonb_set(jsonb_set(${tasks.metadata}, '{continuationExecution,status}', '"completed"'::jsonb, false), '{continuationExecution,completedAt}', to_jsonb(${completedAt}::text), true)`,
+    updatedAt: new Date(),
+  }).where(eq(tasks.id, execution.successorTaskId));
+  await database.update(tasks).set({
+    metadata: sql`jsonb_set(jsonb_set(${tasks.metadata}, '{questionSettlement,continuationStatus}', '"completed"'::jsonb, false), '{questionSettlement,completedAt}', to_jsonb(${completedAt}::text), true)`,
+    updatedAt: new Date(),
+  }).where(eq(tasks.id, execution.taskId));
+}
+
 export async function completeContinuationExecution(
   database: DrizzleDB,
   execution: ContinuationExecutionFence,
   receipt: ContinuationReceipt,
 ): Promise<void> {
-  await database.transaction(async (tx) => {
-    const successor = await assertFenceOwnership(tx as unknown as DrizzleDB, execution);
-    if (
-      receipt.priorTaskId !== execution.taskId
-      || receipt.settlementId !== execution.settlementId
-      || receipt.successorTaskId !== execution.successorTaskId
-      || receipt.fence !== execution.fence
-      || (receipt.outcome === 'waiting_for_agent' && !['waiting_for_agent', 'claimed'].includes(successor.state))
-      || (receipt.outcome === 'input_required' && successor.state !== 'input_required')
-      || (['accepted', 'rejected', 'stalled'].includes(receipt.outcome) && successor.state !== 'completed')
-    ) throw new Error('Negotiation continuation receipt does not prove the exact successor');
-
-    const terminalOpportunityStatus = receipt.outcome === 'accepted'
-      ? 'pending'
-      : receipt.outcome === 'rejected'
-        ? 'rejected'
-        : receipt.outcome === 'stalled'
-          ? 'stalled'
-          : undefined;
-    const binding = await validateMaterialBinding(
-      tx as unknown as DrizzleDB,
-      execution,
-      terminalOpportunityStatus,
-    );
-    if (!binding) throw new Error('Negotiation continuation material binding drifted before receipt');
-    if (terminalOpportunityStatus) {
-      const [artifact] = await tx.select({ metadata: artifacts.metadata })
-        .from(artifacts)
-        .where(and(eq(artifacts.taskId, execution.successorTaskId), eq(artifacts.name, 'negotiation-outcome')))
-        .limit(1)
-        .for('update');
-      if (record(artifact?.metadata)?.continuationOutcome !== receipt.outcome) {
-        throw new Error('Negotiation continuation terminal receipt does not match its exact artifact');
-      }
-    }
-    const [prior] = await tx.select({ metadata: tasks.metadata }).from(tasks)
-      .where(eq(tasks.id, execution.taskId)).limit(1).for('update');
-    const settlement = parseSettlement(record(prior?.metadata)?.questionSettlement);
-    if (!settlement || !settlementMatches(settlement, execution) || settlement.continuationStatus !== 'requested') {
-      throw new Error('Exact negotiation continuation settlement is unavailable');
-    }
-    const completedAt = new Date().toISOString();
-    await tx.update(tasks).set({
-      metadata: sql`jsonb_set(jsonb_set(${tasks.metadata}, '{continuationExecution,status}', '"completed"'::jsonb, false), '{continuationExecution,completedAt}', to_jsonb(${completedAt}::text), true)`,
-      updatedAt: new Date(),
-    }).where(eq(tasks.id, execution.successorTaskId));
-    await tx.update(tasks).set({
-      metadata: sql`jsonb_set(jsonb_set(${tasks.metadata}, '{questionSettlement,continuationStatus}', '"completed"'::jsonb, false), '{questionSettlement,completedAt}', to_jsonb(${completedAt}::text), true)`,
-      updatedAt: new Date(),
-    }).where(eq(tasks.id, execution.taskId));
-  });
+  await database.transaction((tx) => completeContinuationExecutionInTransaction(
+    tx as unknown as DrizzleDB,
+    execution,
+    receipt,
+  ));
 }

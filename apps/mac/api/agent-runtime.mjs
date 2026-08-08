@@ -4,7 +4,11 @@ export const HERMES_RUNTIME_TIMEOUTS_MS = Object.freeze({
   enable: 210_000,
   confirmHealthy: 15_000,
   disable: 75_000,
+  prepareLogout: 90_000,
   disconnect: 330_000,
+  loadOperation: 15_000,
+  saveOperation: 15_000,
+  clearOperation: 15_000,
 });
 
 // Native commands execute on one serial queue. Queue wait is bounded separately
@@ -17,6 +21,70 @@ function bridgeAbortError() {
   error.name = 'AbortError';
   error.code = 'ABORT_ERR';
   return error;
+}
+
+const JOURNAL_COMMANDS = new Set(['saveOperation', 'clearOperation']);
+const OPERATION_JOURNAL_STAGES = Object.freeze({
+  'select-hermes': new Set([
+    'prepare-pending', 'prepared', 'configured', 'activated', 'native-recovery',
+  ]),
+  'select-index': new Set(['server-pending', 'server-complete']),
+  disconnect: new Set(['server-pending', 'server-complete']),
+});
+
+function hasExactKeys(value, expected) {
+  return value && !Array.isArray(value) && typeof value === 'object'
+    && Object.keys(value).sort().join('\0') === [...expected].sort().join('\0');
+}
+
+function validJournalIdentifier(value) {
+  return typeof value === 'string' && value.length > 0
+    && !value.includes('\0') && !/[\r\n]/.test(value);
+}
+
+function validOperationJournal(value) {
+  if (!hasExactKeys(value, [
+    'version', 'operation', 'stage', 'ownerId', 'installationId', 'setupAttemptId', 'executorId',
+  ])) return false;
+  if (value.version !== 1
+    || !OPERATION_JOURNAL_STAGES[value.operation]?.has(value.stage)
+    || !validJournalIdentifier(value.ownerId)
+    || !validJournalIdentifier(value.installationId)) return false;
+  if (value.operation === 'select-hermes') {
+    return validJournalIdentifier(value.setupAttemptId)
+      && (value.stage === 'prepare-pending'
+        ? value.executorId === null
+        : validJournalIdentifier(value.executorId));
+  }
+  const bothNull = value.setupAttemptId === null && value.executorId === null;
+  const bothPresent = validJournalIdentifier(value.setupAttemptId)
+    && validJournalIdentifier(value.executorId);
+  return bothNull || bothPresent;
+}
+
+function validateRuntimePayload(command, payload) {
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
+    return 'Hermes runtime payload must be an object';
+  }
+  if (command === 'loadOperation') {
+    return hasExactKeys(payload, []) ? null : 'Hermes operation load payload must be empty';
+  }
+  if (JOURNAL_COMMANDS.has(command)) {
+    return hasExactKeys(payload, ['operationJournal'])
+      && validOperationJournal(payload.operationJournal)
+      ? null
+      : `Hermes ${command} requires only a strict operation journal payload`;
+  }
+  if (command === 'prepareLogout') {
+    return payload.setupAttemptId === null
+      || (typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)
+      ? null
+      : 'Hermes logout generation must be nonempty or explicitly null';
+  }
+  if (command !== 'inspect' && !(typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)) {
+    return 'Hermes runtime generation is required';
+  }
+  return null;
 }
 
 /** Request-correlated bridge with native-dequeue acknowledgement and hard bounds. */
@@ -91,9 +159,8 @@ export function createHermesRuntimeBridge({
   function request(command, payload = {}, { signal } = {}) {
     const executionTimeoutMs = HERMES_RUNTIME_TIMEOUTS_MS[command];
     if (!executionTimeoutMs) return Promise.reject(new Error('unsupported Hermes runtime command'));
-    if (command !== 'inspect' && !payload.setupAttemptId) {
-      return Promise.reject(new Error('Hermes runtime generation is required'));
-    }
+    const payloadError = validateRuntimePayload(command, payload);
+    if (payloadError) return Promise.reject(new Error(payloadError));
     if (Object.prototype.hasOwnProperty.call(payload, 'credential') && command !== 'configureDisabled') {
       return Promise.reject(new Error('credential is allowed only for Hermes configuration'));
     }

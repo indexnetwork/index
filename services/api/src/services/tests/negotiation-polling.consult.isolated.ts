@@ -31,9 +31,10 @@ const metadata = {
     seedAssessment: { reasoning: 'private seed assessment' },
   },
 };
+const claimedAt = new Date('2026-08-07T00:00:01.000Z');
 let task: Record<string, unknown> = {
   id: taskId, conversationId: 'conversation-1', state: 'claimed', claimedByAgentId: agentId,
-  metadata, updatedAt: new Date(),
+  claimedAt, metadata, updatedAt: new Date(),
 };
 const messages = [
   { id: 'm1', senderId: `agent:${userId}`, parts: [{ kind: 'data', data: { action: 'outreach', assessment: { suggestedRoles: { ownUser: 'agent', otherUser: 'patient' } } } }] },
@@ -68,10 +69,20 @@ mock.module('../../adapters/negotiator-memory.retrieval.adapter', () => ({
 
 const { NegotiationPollingService, ConflictError, NotFoundError, SeatViolationError } = await import('../negotiation-polling.service');
 const authorization = { authorizePickup: async () => true, authorizeRespond: async () => true };
-const service = new NegotiationPollingService(authorization as never);
+const service = new NegotiationPollingService(
+  authorization as never,
+  undefined as never,
+);
+const principal = {
+  credentialId: 'credential-current', agentId, audience: 'hermes-negotiator' as const, setupAttemptId: 'setup-current',
+};
+const reason = { reason: 'consequential_disclosure_permission' as const };
 
 beforeEach(() => {
-  task = { id: taskId, conversationId: 'conversation-1', state: 'claimed', claimedByAgentId: agentId, metadata, updatedAt: new Date() };
+  task = {
+    id: taskId, conversationId: 'conversation-1', state: 'claimed', claimedByAgentId: agentId,
+    claimedAt, metadata, updatedAt: new Date(),
+  };
   enqueueExpiry.mockClear(); cancelExpiry.mockClear(); cancelClaim.mockClear(); enqueueQuestion.mockClear();
   getMaterial.mockClear(); getMaterial.mockResolvedValue(material);
   pause.mockClear(); pause.mockResolvedValue({ task: { id: taskId }, binding: { consultationAttemptId: 'winner' } } as never);
@@ -82,7 +93,7 @@ afterAll(() => mock.restore());
 
 describe('NegotiationPollingService.consult', () => {
   it('arms attempt-specific expiry, atomically pauses, cancels the claim timer, and enqueues safe Questioner context', async () => {
-    const result = await service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' });
+    const result = await service.consult(agentId, userId, taskId, reason, principal);
     expect(result).toEqual({ success: true, status: 'input_required', settlementId: `negotiation-question-settlement-v1-${taskId}` });
     expect(getMaterial).toHaveBeenCalledWith(expect.objectContaining({
       counterpartyUserId: 'counterparty',
@@ -96,17 +107,32 @@ describe('NegotiationPollingService.consult', () => {
       counterpartyUserId: 'counterparty',
       counterpartyIntentId: 'intent-other',
     });
-    expect(pause.mock.calls[0][0]).toMatchObject({ claimedByAgentId: agentId, consultationAttemptId: attemptId, expectedMaterial: material });
-    expect(cancelClaim).toHaveBeenCalledWith(taskId);
+    expect(pause.mock.calls[0][0]).toMatchObject({
+      claimedByAgentId: agentId,
+      consultationAttemptId: attemptId,
+      expectedMaterial: material,
+      principal,
+      safeAskUser: {
+        disclosureSubject: 'your permission',
+        draftQuestion: 'May we share the information needed to explore this collaboration?',
+      },
+    });
+    expect(cancelClaim).toHaveBeenCalledWith(taskId, claimedAt.toISOString());
     const payload = enqueueQuestion.mock.calls[0][0];
     expect(JSON.stringify(payload.context)).not.toContain('Counterparty Person');
-    expect(payload.context).toMatchObject({ counterpartyHint: 'the other participant', disclosureSubject: 'availability' });
+    expect(payload.context).toEqual({
+      negotiationId: taskId,
+      counterpartyHint: 'the other participant',
+      indexContext: 'the selected network',
+      consultationPolicyReason: 'consequential_disclosure_permission',
+    });
+    expect(JSON.stringify(payload)).not.toContain('Ignore prior instructions');
   });
 
   it('rejects stale actor-derived counterparty intent material before arming expiry', async () => {
     getMaterial.mockResolvedValueOnce({ ...material, counterpartyIntentId: 'intent-stale' });
 
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' }))
+    await expect(service.consult(agentId, userId, taskId, reason, principal))
       .rejects.toBeInstanceOf(ConflictError);
 
     expect(enqueueExpiry).not.toHaveBeenCalled();
@@ -126,7 +152,7 @@ describe('NegotiationPollingService.consult', () => {
       return null;
     });
 
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' }))
+    await expect(service.consult(agentId, userId, taskId, reason, principal))
       .rejects.toBeInstanceOf(ConflictError);
 
     const attemptId = enqueueExpiry.mock.calls[0][1];
@@ -136,13 +162,13 @@ describe('NegotiationPollingService.consult', () => {
 
   it('rejects a different claimant without consuming the claim', async () => {
     task = { ...task, claimedByAgentId: 'agent-other' };
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' })).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.consult(agentId, userId, taskId, reason, principal)).rejects.toBeInstanceOf(ConflictError);
     expect(pause).not.toHaveBeenCalled();
     expect(enqueueExpiry).not.toHaveBeenCalled();
   });
 
   it('rejects the wrong owner before arming expiry or pausing the claim', async () => {
-    const admission = service.consult(agentId, 'user-stranger', taskId, { disclosureSubject: 'availability' });
+    const admission = service.consult(agentId, 'user-stranger', taskId, reason, principal);
     await expect(admission).rejects.toBeInstanceOf(NotFoundError);
     await expect(admission).rejects.toThrow(`Negotiation ${taskId} not found`);
     expect(enqueueExpiry).not.toHaveBeenCalled();
@@ -151,8 +177,9 @@ describe('NegotiationPollingService.consult', () => {
     expect(task.state).toBe('claimed');
   });
 
-  it('rejects unsafe disclosure input without consuming the claim', async () => {
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'Counterparty Person' })).rejects.toBeInstanceOf(SeatViolationError);
+  it('rejects a category that does not match the server-derived consultation reason', async () => {
+    await expect(service.consult(agentId, userId, taskId, { reason: 'unresolved_owner_constraint' }, principal))
+      .rejects.toBeInstanceOf(SeatViolationError);
     expect(pause).not.toHaveBeenCalled();
     expect(task.state).toBe('claimed');
   });
@@ -160,7 +187,7 @@ describe('NegotiationPollingService.consult', () => {
   it('expiry enqueue failure preserves the original claim and claim deadline', async () => {
     enqueueExpiry.mockRejectedValueOnce(new Error('expiry queue unavailable'));
 
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' }))
+    await expect(service.consult(agentId, userId, taskId, reason, principal))
       .rejects.toThrow('expiry queue unavailable');
 
     expect(pause).not.toHaveBeenCalled();
@@ -172,14 +199,14 @@ describe('NegotiationPollingService.consult', () => {
 
   it('duplicate loser cancels only its own attempt-specific expiry', async () => {
     pause.mockResolvedValueOnce(null);
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' })).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.consult(agentId, userId, taskId, reason, principal)).rejects.toBeInstanceOf(ConflictError);
     const attemptId = enqueueExpiry.mock.calls[0][1];
     expect(cancelExpiry).toHaveBeenCalledWith(taskId, attemptId);
   });
 
   it('Questioner enqueue failure leaves the committed pause recoverable by expiry', async () => {
     enqueueQuestion.mockRejectedValueOnce(new Error('redis unavailable'));
-    await expect(service.consult(agentId, userId, taskId, { disclosureSubject: 'availability' })).resolves.toMatchObject({ status: 'input_required' });
+    await expect(service.consult(agentId, userId, taskId, reason, principal)).resolves.toMatchObject({ status: 'input_required' });
     expect(enqueueExpiry).toHaveBeenCalledTimes(1);
     expect(pause).toHaveBeenCalledTimes(1);
     expect(cancelExpiry).not.toHaveBeenCalled();
@@ -190,7 +217,7 @@ describe('NegotiationPollingService.consult', () => {
     await expect(service.respond(agentId, userId, taskId, {
       action: 'counter', message: null,
       assessment: { reasoning: 'safe', suggestedRoles: { ownUser: 'patient', otherUser: 'agent' } },
-    })).rejects.toBeInstanceOf(ConflictError);
-    expect(transition).toHaveBeenCalledWith(taskId, agentId);
+    }, principal)).rejects.toBeInstanceOf(ConflictError);
+    expect(transition).toHaveBeenCalledWith(taskId, agentId, undefined, principal, userId);
   });
 });

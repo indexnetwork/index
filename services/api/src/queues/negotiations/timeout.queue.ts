@@ -1,12 +1,13 @@
+import { createHash } from 'node:crypto';
 import type { Job, Queue } from 'bullmq';
-import type { AskUserExpiryPayload, NegotiationGraphDatabase } from '@indexnetwork/protocol';
+import type { AskUserExpiryPayload, NegotiationContinuationTimeoutIdentity, NegotiationGraphDatabase } from '@indexnetwork/protocol';
 
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
-import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution } from '../../adapters/negotiation-continuation.atomic';
 import type { ConversationDatabaseAdapter } from '../../adapters/conversation.database.adapter';
 
-import { runTimeoutFallback, type NegotiationTaskMeta, type TimeoutNegotiatorInvoke } from './timeout.shared';
+import { runResumableTimeoutFallback, type NegotiationTaskMeta, type ResumableTimeoutFaultStep, type TimeoutNegotiatorInvoke } from './timeout.shared';
+import type { NegotiationTimeoutExecutionStore } from '../../lib/negotiation/timeout-execution';
 
 /** BullMQ queue name for negotiation timeout jobs. */
 export const QUEUE_NAME = 'negotiation-timeout';
@@ -15,6 +16,14 @@ export const QUEUE_NAME = 'negotiation-timeout';
 export interface NegotiationTimeoutJobData {
   negotiationId: string;
   turnNumber: number;
+  /** Exact token persisted when this task generation entered waiting_for_agent. */
+  parkGeneration: string;
+  /** Exact parked continuation attempt/fence, when applicable. */
+  continuation?: NegotiationContinuationTimeoutIdentity;
+}
+
+function timeoutGenerationKey(generation: string): string {
+  return createHash('sha256').update(generation, 'utf8').digest('hex').slice(0, 24);
 }
 
 /** Server-only coordinates for an external consultation expiry. */
@@ -40,6 +49,9 @@ export interface NegotiationTimeoutQueueDeps {
   queue?: Queue<NegotiationTimeoutQueueJobData>;
   invokeNegotiator?: TimeoutNegotiatorInvoke;
   parkWindowMs?: number;
+  now?: () => number;
+  /** Test-only crash seam around durable execution boundaries. */
+  faultAfterStep?: (step: ResumableTimeoutFaultStep) => void | Promise<void>;
   /** Authoritatively settle the exact stamped question/task cohort. */
   settleInflightExpiry?: (input: AskUserExpiryPayload & {
     taskId: string;
@@ -104,20 +116,23 @@ export class NegotiationTimeoutQueue {
    * @param delayMs - Delay in milliseconds before the timeout fires
    * @returns The BullMQ job ID
    */
-  async enqueueTimeout(negotiationId: string, turnNumber: number, delayMs: number): Promise<string> {
-    const jobId = `neg-timeout-${negotiationId}`;
+  async enqueueTimeout(
+    negotiationId: string,
+    turnNumber: number,
+    delayMs: number,
+    parkGeneration: string,
+    continuation?: NegotiationContinuationTimeoutIdentity,
+  ): Promise<string> {
+    const jobId = `neg-timeout-${negotiationId}-${timeoutGenerationKey(parkGeneration)}`;
 
-    // Remove any existing timeout job for this negotiation before adding a new one
-    try {
-      const existing = await this.queue.getJob(jobId);
-      if (existing) {
-        await existing.remove();
-      }
-    } catch {
-      // Job may not exist, ignore
-    }
-
-    const job = await this.queue.add('negotiation_timeout', { negotiationId, turnNumber }, {
+    // Generation-specific IDs make add idempotent. Never remove-and-readd the
+    // same generation: a repair must preserve its original absolute deadline.
+    const job = await this.queue.add('negotiation_timeout', {
+      negotiationId,
+      turnNumber,
+      parkGeneration,
+      ...(continuation ? { continuation } : {}),
+    }, {
       jobId,
       delay: delayMs,
       attempts: 3,
@@ -135,8 +150,8 @@ export class NegotiationTimeoutQueue {
    *
    * @param negotiationId - The negotiation task ID
    */
-  async cancelTimeout(negotiationId: string): Promise<void> {
-    const jobId = `neg-timeout-${negotiationId}`;
+  async cancelTimeout(negotiationId: string, parkGeneration: string): Promise<void> {
+    const jobId = `neg-timeout-${negotiationId}-${timeoutGenerationKey(parkGeneration)}`;
     try {
       const job = await this.queue.getJob(jobId);
       if (job) {
@@ -269,68 +284,37 @@ export class NegotiationTimeoutQueue {
    * Handle a negotiation timeout: run the AI agent for the stalled turn.
    */
   private async handleTimeout(data: NegotiationTimeoutJobData): Promise<void> {
-    const { negotiationId, turnNumber } = data;
+    const { negotiationId, turnNumber, parkGeneration, continuation } = data;
+    if (typeof parkGeneration !== 'string' || !Number.isInteger(turnNumber)) {
+      this.logger.info('Timeout job lacks an exact park generation, skipping', { negotiationId });
+      return;
+    }
     const database = (
       this.deps?.database
       ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter
-    ) as NegotiationGraphDatabase & Pick<ConversationDatabaseAdapter, 'transitionClaimedTaskToWorking'>;
+    ) as NegotiationGraphDatabase & NegotiationTimeoutExecutionStore & Pick<ConversationDatabaseAdapter, 'getTask'>;
 
-    // Load the negotiation task
-    const task = await database.getTask(negotiationId);
-    if (!task) {
-      this.logger.warn('Task not found, skipping', { negotiationId });
+    const acquired = await database.acquireWaitingNegotiationTimeoutExecution({
+      taskId: negotiationId,
+      parkGeneration,
+      turnNumber,
+      ...(continuation ? { continuation } : {}),
+    });
+    if (!acquired) {
+      this.logger.info('Timeout generation is stale or no longer acquirable', { negotiationId });
       return;
     }
-
-    // Only process if still waiting_for_agent and turn matches
-    if (task.state !== 'waiting_for_agent') {
-      this.logger.info('Task no longer waiting, skipping (stale job)', {
-        negotiationId,
-        currentState: task.state,
-      });
-      return;
-    }
-
-    const meta = task.metadata as NegotiationTaskMeta & { continuationExecution?: { status?: unknown } } | null;
+    const meta = acquired.task.metadata as NegotiationTaskMeta | null;
     if (meta?.type !== 'negotiation') {
       this.logger.warn('Task is not a negotiation, skipping', { negotiationId });
       return;
     }
-
-    // A parked exact continuation must acquire a fresh token/fence before the
-    // timeout path can transition or write anything.
-    const parked = meta.continuationExecution?.status === 'parked';
-    // Keep provider-free queue tests free of Drizzle initialization. Production
-    // only loads the database singleton after durable metadata proves this is a
-    // fenced parked continuation.
-    const continuationDb = parked
-      ? (await import('../../lib/drizzle/drizzle')).default
-      : null;
-    const claimedContinuation = parked && continuationDb
-      ? await claimParkedContinuationExecution(continuationDb, task.id, 'system:negotiation-timeout')
-      : null;
-    if (parked && !claimedContinuation) return;
-    const effectiveTask = claimedContinuation
-      ? await database.transitionClaimedTaskToWorking(
-          task.id,
-          'system:negotiation-timeout',
-          claimedContinuation.execution,
-        )
-      : task;
-    if (!effectiveTask) return;
-    const execution = claimedContinuation?.execution;
-    const messages = await database.getMessagesForConversation(effectiveTask.conversationId);
-    const currentTurnCount = messages.length;
-
-    if (currentTurnCount !== turnNumber) {
-      this.logger.info('Turn count mismatch, skipping (stale job)', {
-        negotiationId, expectedTurn: turnNumber, actualTurn: currentTurnCount,
-      });
-      return;
-    }
-
-    const result = await runTimeoutFallback({
+    const messages = await database.getMessagesForConversation(acquired.task.conversationId);
+    const parkWindowMs = this.deps?.parkWindowMs
+      ?? (await import('@indexnetwork/protocol')).AMBIENT_PARK_WINDOW_MS;
+    await runResumableTimeoutFallback({
       database,
+      acquired,
       logger: this.logger,
       labels: {
         fallback: 'External agent timed out, running AI fallback',
@@ -338,31 +322,24 @@ export class NegotiationTimeoutQueue {
         statusUpdateFailed: 'Failed to update opportunity status on timeout finalization',
       },
       negotiationId,
-      taskId: effectiveTask.id,
-      conversationId: effectiveTask.conversationId,
       meta,
       messages,
-      currentTurnCount,
       seedReasoning: 'Timeout fallback',
-      maxTurns: 6,
-      rearm: async (newTurnCount) => {
-        const parkWindowMs =
-          this.deps?.parkWindowMs
-          ?? (await import('@indexnetwork/protocol')).AMBIENT_PARK_WINDOW_MS;
-        await this.enqueueTimeout(negotiationId, newTurnCount, parkWindowMs);
+      maxTurns: meta.maxTurns,
+      parkWindowMs,
+      rearm: async (newTurnCount, nextParkGeneration, delayMs, nextContinuation) => {
+        await this.enqueueTimeout(
+          negotiationId,
+          newTurnCount,
+          delayMs,
+          nextParkGeneration,
+          nextContinuation,
+        );
       },
       invokeNegotiator: this.deps?.invokeNegotiator,
-      ...(execution ? { continuationExecution: execution } : {}),
+      faultAfterStep: this.deps?.faultAfterStep,
+      now: this.deps?.now,
     });
-    if (execution && result.continuationOutcome) {
-      if (!continuationDb) throw new Error('Continuation database unavailable after fenced timeout claim');
-      if (result.continuationOutcome === 'waiting_for_agent') await parkContinuationExecution(continuationDb, execution);
-      else await completeContinuationExecution(continuationDb, execution, {
-        priorTaskId: execution.taskId, settlementId: execution.settlementId,
-        successorTaskId: execution.successorTaskId, fence: execution.fence,
-        outcome: result.continuationOutcome,
-      });
-    }
   }
 
   /**

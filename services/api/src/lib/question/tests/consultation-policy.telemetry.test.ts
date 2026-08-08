@@ -20,8 +20,6 @@ const policyInput: QuestionerInput = {
   context: {
     negotiationId: 'task-1',
     counterpartyHint: 'the other participant',
-    disclosureSubject: 'your permission',
-    draftQuestion: 'May we share the information needed to explore this collaboration?',
     indexContext: 'the selected network',
     consultationPolicyReason: 'consequential_disclosure_permission',
   },

@@ -27,9 +27,11 @@ export type NegotiationRuntimeView = {
 export type PrepareHermesRuntimeResult = {
   binding: NegotiationRuntimeView;
   executorId: string;
-  credential: { id: string; key: string };
+  credential: { id: string; key: string; expiresAt: string };
   setupAttemptId: string;
 };
+
+export type DisconnectHermesInstallationResult = 'disconnected' | 'absent' | 'owner_mismatch';
 
 export type RuntimeSelectionInput =
   | { runtime: 'index' }
@@ -46,7 +48,7 @@ export interface AgentRuntimeStore {
     ownerId: string;
     installationId: string;
     setupAttemptId: string;
-  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string } }>;
+  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string; expiresAt: string } }>;
   setNegotiationExecutorBinding(input: {
     ownerId: string;
     targetAgentId: string | null;
@@ -62,7 +64,7 @@ export interface AgentRuntimeStore {
   disconnectHermesInstallation(input: {
     ownerId: string;
     installationId: string;
-  }): Promise<boolean>;
+  }): Promise<DisconnectHermesInstallationResult>;
   touchNegotiationPickup(agentId: string): Promise<void>;
 }
 
@@ -142,8 +144,11 @@ export class AgentRuntimeService {
 
   /** Select Index, revoke the installation credentials, and mark it inactive. */
   async disconnectHermes(ownerId: string, installationId: string): Promise<NegotiationRuntimeView> {
-    const disconnected = await this.store.disconnectHermesInstallation({ ownerId, installationId });
-    if (!disconnected) throw new RuntimeNotFoundError();
+    const outcome = await this.store.disconnectHermesInstallation({ ownerId, installationId });
+    // Global absence is positive evidence that this owner has nothing to revoke,
+    // so logout is idempotent. An installation owned by someone else remains a
+    // non-enumerating 404 and is never treated as absence.
+    if (outcome === 'owner_mismatch') throw new RuntimeNotFoundError();
     return this.getRuntime(ownerId, installationId);
   }
 

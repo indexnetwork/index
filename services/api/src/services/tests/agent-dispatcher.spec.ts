@@ -72,8 +72,10 @@ describe('AgentDispatcherImpl.dispatch', () => {
   it('parks with the provided timeoutMs when a fresh external agent exists', async () => {
     findAuthorizedAgents.mockResolvedValue([makeAgent({ lastNegotiationPickupAt: FRESH })]);
     const result = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
-    expect(result).toEqual({ handled: false, reason: 'waiting', resumeToken: 'neg-1' });
-    expect(enqueueTimeout).toHaveBeenCalledWith('neg-1', 0, 300_000);
+    expect(result).toEqual({ handled: false, reason: 'waiting', resumeToken: expect.any(String) });
+    expect(enqueueTimeout).toHaveBeenCalledWith(
+      'neg-1', 0, 300_000, (result as { resumeToken: string }).resumeToken, undefined,
+    );
   });
 
   it('parks when at least one of multiple agents is fresh', async () => {

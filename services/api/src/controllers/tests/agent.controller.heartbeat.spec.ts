@@ -1,269 +1,204 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { AgentController } from '../agent.controller';
+import { parseFiniteLimit, pickupNegotiationAtControllerBoundary, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../../lib/agent/negotiation-controller-boundary';
+import { recordRequestAuthContext } from '../../lib/request-auth-context';
 
-// Shared call log so tests can assert authorization happens before heartbeat updates.
+const AGENT_ID = 'agent-123';
+const OWNER_ID = 'user-456';
+const RESULT = { taskId: 'task-1' };
 const callOrder: string[] = [];
 
-const touchLastSeenMock = mock(async (_agentId: string): Promise<void> => {
-  callOrder.push('touch');
+const resolveAgentPrincipal = mock(async (_request: Request): Promise<string | null> => {
+  callOrder.push('authorize');
+  return AGENT_ID;
 });
-const touchNegotiationPickupMock = mock(async (_agentId: string): Promise<void> => {
-  callOrder.push('touchNegotiation');
+const pickup = mock(async () => {
+  callOrder.push('pickup-transaction');
+  return RESULT;
 });
-const resolveAgentPrincipalMock = mock(async (_req: Request): Promise<string | null> => TEST_AGENT_ID);
-const getByIdMock = mock(async (_agentId: string, _userId: string) => {
-  callOrder.push('getById');
-  return { id: _agentId };
+// This intentionally exists only as a canary. The hermetic production seam has
+// no way to receive or call an out-of-transaction heartbeat dependency.
+const touchNegotiationPickup = mock(async () => {
+  callOrder.push('controller-heartbeat');
 });
-const negotiationPickupMock = mock(async (_agentId: string, _userId: string) => {
-  callOrder.push('pickupNegotiation');
-  return null;
-});
-const negotiationConsultMock = mock(async () => ({ success: true as const, status: 'input_required' as const, settlementId: 'settlement-1' }));
-const negotiationRespondMock = mock(async () => ({ success: true as const }));
-const testMessagePickupMock = mock(async (_agentId: string) => {
-  callOrder.push('pickupTestMessage');
-  return null;
-});
-const opportunityPickupMock = mock(async (_agentId: string) => {
-  callOrder.push('pickupOpportunity');
-  return null;
-});
-const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number) => ({
-  opportunities: [],
-  totalPending: 0,
-}));
 
-const agents = {
-  touchLastSeen: touchLastSeenMock,
-  touchNegotiationPickup: touchNegotiationPickupMock,
-  getById: getByIdMock,
-};
-const negotiations = {
-  pickup: negotiationPickupMock,
-  consult: negotiationConsultMock,
-  respond: negotiationRespondMock,
-};
-const testMessages = {
-  pickup: testMessagePickupMock,
-};
-const deliveries = {
-  pickupPending: opportunityPickupMock,
-  fetchPendingCandidates: fetchPendingCandidatesMock,
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const TEST_AGENT_ID = 'agent-123';
-const TEST_USER_ID = 'user-456';
-
-const mockUser = { id: TEST_USER_ID, email: 'test@example.com' };
-
-function makeController() {
-  return new AgentController(
-    agents as never,
-    negotiations as never,
-    testMessages as never,
-    deliveries as never,
-    resolveAgentPrincipalMock,
-  );
+function request(context: {
+  kind: 'api_key';
+  agentId: string | null;
+  credentialId?: string | null;
+  audience?: 'hermes-negotiator' | null;
+  setupAttemptId?: string | null;
+} = {
+  kind: 'api_key',
+  agentId: AGENT_ID,
+  credentialId: 'credential-current',
+  audience: 'hermes-negotiator',
+  setupAttemptId: 'setup-current',
+}): Request {
+  const value = new Request(`http://localhost/agents/${AGENT_ID}/negotiations/pickup`, {
+    method: 'POST',
+    headers: context.audience === 'hermes-negotiator'
+      ? { 'x-index-hermes-run-id': 'run-provider-free' }
+      : undefined,
+  });
+  recordRequestAuthContext(value, context);
+  return value;
 }
 
-function makeParams(id: string): Record<string, string> {
-  return { id };
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('AgentController pickup endpoints heartbeat', () => {
-  let controller: InstanceType<typeof AgentController>;
-
-  beforeEach(() => {
-    controller = makeController();
-    callOrder.length = 0;
-    touchLastSeenMock.mockClear();
-    touchNegotiationPickupMock.mockClear();
-    resolveAgentPrincipalMock.mockClear();
-    resolveAgentPrincipalMock.mockResolvedValue(TEST_AGENT_ID);
-    negotiationPickupMock.mockClear();
-    negotiationConsultMock.mockClear();
-    negotiationRespondMock.mockClear();
-    testMessagePickupMock.mockClear();
-    opportunityPickupMock.mockClear();
-    fetchPendingCandidatesMock.mockClear();
-    getByIdMock.mockClear();
+beforeEach(() => {
+  callOrder.length = 0;
+  resolveAgentPrincipal.mockClear();
+  resolveAgentPrincipal.mockImplementation(async () => {
+    callOrder.push('authorize');
+    return AGENT_ID;
   });
-
-  it('pickupNegotiation bumps lastNegotiationPickupAt AFTER exact-principal pickup authorization', async () => {
-    const req = new Request('http://localhost/agents/agent-123/negotiations/pickup', { method: 'POST' });
-
-    await controller.pickupNegotiation(req, mockUser as never, makeParams(TEST_AGENT_ID));
-
-    expect(touchNegotiationPickupMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    expect(touchLastSeenMock).not.toHaveBeenCalled();
-    // Pickup runs first (it enforces selected-executor authority); heartbeat fires only after.
-    expect(callOrder).toEqual(['pickupNegotiation', 'touchNegotiation']);
+  pickup.mockClear();
+  pickup.mockImplementation(async () => {
+    callOrder.push('pickup-transaction');
+    return RESULT;
   });
+  touchNegotiationPickup.mockClear();
+});
 
-  it('pickupTestMessage bumps lastSeenAt AFTER getById authorizes the caller', async () => {
-    const req = new Request('http://localhost/agents/agent-123/test-messages/pickup', { method: 'POST' });
-
-    await controller.pickupTestMessage(req, mockUser as never, makeParams(TEST_AGENT_ID));
-
-    expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    expect(callOrder).toEqual(['getById', 'pickupTestMessage', 'touch']);
-  });
-
-  it('pickupOpportunity bumps lastSeenAt AFTER getById authorizes the caller', async () => {
-    const req = new Request('http://localhost/agents/agent-123/opportunities/pickup', { method: 'POST' });
-
-    await controller.pickupOpportunity(req, mockUser as never, makeParams(TEST_AGENT_ID));
-
-    expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    // Pickup pins the order: getById (auth) → touch (heartbeat) → pickupPending (work).
-    // The heartbeat cannot fire without getById, and work follows the heartbeat.
-    expect(callOrder).toEqual(['getById', 'touch', 'pickupOpportunity']);
-  });
-
-  it('bumps lastSeenAt even when nothing pending (empty poll)', async () => {
-    // All three pickup mocks already return null (empty). Verify heartbeat fires regardless.
-    const negReq = new Request('http://localhost/agents/agent-123/negotiations/pickup', { method: 'POST' });
-    const msgReq = new Request('http://localhost/agents/agent-123/test-messages/pickup', { method: 'POST' });
-    const oppReq = new Request('http://localhost/agents/agent-123/opportunities/pickup', { method: 'POST' });
-
-    await controller.pickupNegotiation(negReq, mockUser as never, makeParams(TEST_AGENT_ID));
-    await controller.pickupTestMessage(msgReq, mockUser as never, makeParams(TEST_AGENT_ID));
-    await controller.pickupOpportunity(oppReq, mockUser as never, makeParams(TEST_AGENT_ID));
-
-    expect(touchNegotiationPickupMock).toHaveBeenCalledTimes(1);
-    expect(touchNegotiationPickupMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    expect(touchLastSeenMock).toHaveBeenCalledTimes(2);
-    expect(touchLastSeenMock).toHaveBeenNthCalledWith(1, TEST_AGENT_ID);
-    expect(touchLastSeenMock).toHaveBeenNthCalledWith(2, TEST_AGENT_ID);
-  });
-
-  it('does NOT bump lastSeenAt when pickup throws (unauthorized probe)', async () => {
-    negotiationPickupMock.mockImplementationOnce(async () => {
-      callOrder.push('pickupNegotiation');
-      throw new Error('Not authorized');
+describe('hermetic negotiation pickup controller seam', () => {
+  it('returns only the exact-principal service result and has no controller heartbeat writer', async () => {
+    const outcome = await pickupNegotiationAtControllerBoundary({
+      request: request(),
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      resolveAgentPrincipal,
+      negotiations: { pickup },
     });
-    const req = new Request('http://localhost/agents/agent-999/negotiations/pickup', { method: 'POST' });
 
-    await controller.pickupNegotiation(req, mockUser as never, makeParams('agent-999'));
-
-    expect(negotiationPickupMock).toHaveBeenCalled();
-    expect(touchNegotiationPickupMock).not.toHaveBeenCalled();
-    expect(touchLastSeenMock).not.toHaveBeenCalled();
-    expect(callOrder).toEqual(['pickupNegotiation']);
+    expect(outcome).toEqual({ kind: 'authorized', value: RESULT });
+    expect(pickup).toHaveBeenCalledWith(AGENT_ID, OWNER_ID, {
+      agentId: AGENT_ID,
+      credentialId: 'credential-current',
+      audience: 'hermes-negotiator',
+      setupAttemptId: 'setup-current',
+    }, 'run-provider-free');
+    expect(touchNegotiationPickup).not.toHaveBeenCalled();
+    expect(callOrder).toEqual(['authorize', 'pickup-transaction']);
   });
 
-  it.each<[string, string | null]>([
-    ['session', null],
-    ['unbound owner key', null],
-    ['wrong agent key', 'agent-other'],
-  ])('rejects a %s before pickup or negotiation heartbeat', async (_label, principalAgentId) => {
-    resolveAgentPrincipalMock.mockResolvedValueOnce(principalAgentId);
-    const req = new Request('http://localhost/agents/agent-123/negotiations/pickup', { method: 'POST' });
+  it('preserves an authorized empty transaction result without a second heartbeat', async () => {
+    pickup.mockResolvedValueOnce(null);
 
-    const response = await controller.pickupNegotiation(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    const outcome = await pickupNegotiationAtControllerBoundary({
+      request: request(),
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      resolveAgentPrincipal,
+      negotiations: { pickup },
+    });
 
-    expect((response as Response).status).toBe(403);
-    expect(negotiationPickupMock).not.toHaveBeenCalled();
-    expect(touchNegotiationPickupMock).not.toHaveBeenCalled();
+    expect(outcome).toEqual({ kind: 'empty' });
+    expect(pickup).toHaveBeenCalledTimes(1);
+    expect(touchNegotiationPickup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['session or unbound owner key', null],
+    ['different agent key', 'agent-other'],
+  ] as const)('rejects a %s before the transaction service', async (_label, resolvedAgentId) => {
+    resolveAgentPrincipal.mockResolvedValueOnce(resolvedAgentId);
+
+    const outcome = await pickupNegotiationAtControllerBoundary({
+      request: request({ kind: 'api_key', agentId: resolvedAgentId }),
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      resolveAgentPrincipal,
+      negotiations: { pickup },
+    });
+
+    expect(outcome).toEqual({ kind: 'forbidden' });
+    expect(pickup).not.toHaveBeenCalled();
+    expect(touchNegotiationPickup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing credential identity', { kind: 'api_key' as const, agentId: AGENT_ID }],
+    ['mismatched recorded agent', { kind: 'api_key' as const, agentId: 'agent-other', credentialId: 'credential-current' }],
+  ])('rejects %s even when the resolver claims the route agent', async (_label, context) => {
+    const outcome = await pickupNegotiationAtControllerBoundary({
+      request: request(context),
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      resolveAgentPrincipal,
+      negotiations: { pickup },
+    });
+
+    expect(outcome).toEqual({ kind: 'forbidden' });
+    expect(pickup).not.toHaveBeenCalled();
+    expect(touchNegotiationPickup).not.toHaveBeenCalled();
   });
 });
 
-describe('AgentController negotiation consultation admission', () => {
-  beforeEach(() => {
-    resolveAgentPrincipalMock.mockResolvedValue(TEST_AGENT_ID);
-    negotiationConsultMock.mockClear();
-    negotiationRespondMock.mockClear();
-  });
-
-  it('accepts only the strict two-field consultation body under exact-principal authorization', async () => {
-    const controller = makeController();
-    const response = await controller.consultNegotiation(new Request(
-      `http://localhost/agents/${TEST_AGENT_ID}/negotiations/task-1/consult`,
-      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disclosureSubject: 'availability', draftQuestion: 'May I share it?' }) },
-    ), mockUser as never, { id: TEST_AGENT_ID, negotiationId: 'task-1' });
-    expect((response as Response).status).toBe(200);
-    expect(negotiationConsultMock).toHaveBeenCalledWith(TEST_AGENT_ID, TEST_USER_ID, 'task-1', {
-      disclosureSubject: 'availability', draftQuestion: 'May I share it?',
+describe('hermetic non-negotiation pickup seams', () => {
+  it('authorizes test-message pickup before work and touches lastSeen only afterward', async () => {
+    const order: string[] = [];
+    const result = await pickupTestMessageAtControllerBoundary({
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      authorize: async () => { order.push('authorize'); },
+      pickup: async () => { order.push('pickup'); return null; },
+      touchLastSeen: async () => { order.push('touch'); },
     });
+
+    expect(result).toBeNull();
+    expect(order).toEqual(['authorize', 'pickup', 'touch']);
   });
 
-  it('rejects unknown consultation fields and ask_user through ordinary respond', async () => {
-    const controller = makeController();
-    const consult = await controller.consultNegotiation(new Request(
-      `http://localhost/agents/${TEST_AGENT_ID}/negotiations/task-1/consult`,
-      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disclosureSubject: 'availability', counterparty: 'private' }) },
-    ), mockUser as never, { id: TEST_AGENT_ID, negotiationId: 'task-1' });
-    expect((consult as Response).status).toBe(400);
-    expect(negotiationConsultMock).not.toHaveBeenCalled();
+  it('does not spoof test-message liveness when ownership authorization fails', async () => {
+    const order: string[] = [];
+    const operation = pickupTestMessageAtControllerBoundary({
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      authorize: async () => { order.push('authorize'); throw new Error('Not authorized'); },
+      pickup: async () => { order.push('pickup'); return null; },
+      touchLastSeen: async () => { order.push('touch'); },
+    });
 
-    const respond = await controller.respondNegotiation(new Request(
-      `http://localhost/agents/${TEST_AGENT_ID}/negotiations/task-1/respond`,
-      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'ask_user', assessment: { reasoning: 'x', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } }) },
-    ), mockUser as never, { id: TEST_AGENT_ID, negotiationId: 'task-1' });
-    expect((respond as Response).status).toBe(400);
-    expect(negotiationRespondMock).not.toHaveBeenCalled();
+    await expect(operation).rejects.toThrow('Not authorized');
+    expect(order).toEqual(['authorize']);
+  });
+
+  it('authorizes opportunity pickup, touches lastSeen, then reserves work', async () => {
+    const order: string[] = [];
+    const result = await pickupOpportunityAtControllerBoundary({
+      agentId: AGENT_ID,
+      ownerId: OWNER_ID,
+      authorize: async () => { order.push('authorize'); },
+      touchLastSeen: async () => { order.push('touch'); },
+      pickup: async () => { order.push('pickup'); return null; },
+    });
+
+    expect(result).toBeNull();
+    expect(order).toEqual(['authorize', 'touch', 'pickup']);
   });
 });
 
-// ---------------------------------------------------------------------------
-// GET /:id/opportunities/pending — ?limit query parameter
-// ---------------------------------------------------------------------------
-
-describe('AgentController getPendingOpportunities ?limit parameter', () => {
-  let controller: InstanceType<typeof AgentController>;
-
-  beforeEach(() => {
-    controller = makeController();
-    fetchPendingCandidatesMock.mockClear();
-    getByIdMock.mockClear();
-    touchLastSeenMock.mockClear();
-  });
-
-  // The controller only validates "parses to a finite number"; the service
-  // does the [1, 20] clamp + integer truncation. So in-range out-of-bounds
-  // values (0, -3, 21, 1.5) are passed through and normalized downstream;
-  // only NaN/Infinity/non-numeric strings get a 400 here.
-
+describe('hermetic pending-opportunity limit parsing', () => {
   it.each<[string, number]>([
-    ['7', 7],
-    ['1', 1],
-    ['20', 20],
-    ['21', 21], // service clamps to 20
-    ['0', 0], // service clamps to 1
-    ['-3', -3], // service clamps to 1
-    ['1.5', 1.5], // service truncates to 1
-  ])('forwards ?limit=%s to service as %p', async (param, forwarded) => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=${param}`);
-    await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, forwarded);
+    ['7', 7], ['1', 1], ['20', 20], ['21', 21],
+    ['0', 0], ['-3', -3], ['1.5', 1.5],
+  ])('accepts finite ?limit=%s for downstream normalization', (param, expected) => {
+    expect(parseFiniteLimit(`http://localhost/pending?limit=${param}`))
+      .toEqual({ kind: 'valid', value: expected });
   });
 
-  it.each<[string, string]>([
-    ['absent', `http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending`],
-    ['empty', `http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=`],
-  ])('passes undefined to service when ?limit is %s', async (_label, url) => {
-    const req = new Request(url);
-    await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, undefined);
+  it.each([
+    'http://localhost/pending',
+    'http://localhost/pending?limit=',
+  ])('maps absent or empty limits to undefined', (url) => {
+    expect(parseFiniteLimit(url)).toEqual({ kind: 'valid', value: undefined });
   });
 
   it.each(['abc', 'Infinity', '-Infinity', 'NaN'])(
-    'returns 400 when ?limit=%s (not finite)',
-    async (param) => {
-      const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=${param}`);
-      const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-      expect((res as Response).status).toBe(400);
-      expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
+    'rejects non-finite ?limit=%s',
+    (param) => {
+      expect(parseFiniteLimit(`http://localhost/pending?limit=${param}`))
+        .toEqual({ kind: 'invalid' });
     },
   );
 });

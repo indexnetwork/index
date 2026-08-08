@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { authenticateApiKey } from '../../../services/api/src/guards/auth.guard';
 import { NegotiationPollingAuthorization } from '../../../services/api/src/lib/agent/negotiation-polling-authorization';
-import { assessExternalConsultationEligibility } from '../../../services/api/src/lib/negotiation/consultation';
+import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload } from '../../../services/api/src/lib/negotiation/consultation';
+import { getRequestAuthContext } from '../../../services/api/src/lib/request-auth-context';
 import { AgentDispatcherImpl } from '../../../services/api/src/services/agent-dispatcher.service';
 import { AgentRuntimeService } from '../../../services/api/src/services/agent-runtime.service';
 import { AgentRuntimeTransactionHarness } from '../../../services/api/tests/support/agent-runtime-transaction.harness';
@@ -19,11 +20,13 @@ describe('Task 5 production-boundary acceptance', () => {
     const runtime = new AgentRuntimeService(persistence);
     const polling = new NegotiationPollingAuthorization(persistence);
     let transientKey = '';
+    let transientCredentialId = '';
 
     const api = {
       prepareHermesRuntime: async (installationId: string, setupAttemptId: string) => {
         const result = await runtime.prepareHermes(OWNER_ID, installationId, setupAttemptId);
         transientKey = result.credential.key;
+        transientCredentialId = result.credential.id;
         return result;
       },
       setRuntimeBinding: (input: Parameters<AgentRuntimeService['setRuntime']>[1]) => (
@@ -100,15 +103,23 @@ describe('Task 5 production-boundary acceptance', () => {
       status: 'active',
     });
 
+    const negotiatorRequest = new Request('https://protocol.example/api/agents/me');
     const authenticated = await authenticateApiKey(
-      new Request('https://protocol.example/api/agent-runtime'),
+      negotiatorRequest,
       transientKey,
       persistence,
     );
     expect(authenticated.id).toBe(OWNER_ID);
+    expect(getRequestAuthContext(negotiatorRequest)).toEqual({
+      kind: 'api_key',
+      agentId: executorId,
+      credentialId: transientCredentialId,
+      audience: 'hermes-negotiator',
+      setupAttemptId: ATTEMPT,
+    });
     expect(await polling.isAuthorized(executorId!, OWNER_ID)).toBe(true);
 
-    const timeoutJobs: Array<[string, number, number]> = [];
+    const timeoutJobs: Array<[string, number, number, string]> = [];
     const dispatcher = new AgentDispatcherImpl(
       {
         findAuthorizedAgents: async () => {
@@ -118,8 +129,8 @@ describe('Task 5 production-boundary acceptance', () => {
         },
       },
       {
-        enqueueTimeout: async (negotiationId: string, attempt: number, timeoutMs: number) => {
-          timeoutJobs.push([negotiationId, attempt, timeoutMs]);
+        enqueueTimeout: async (negotiationId: string, attempt: number, timeoutMs: number, parkGeneration: string) => {
+          timeoutJobs.push([negotiationId, attempt, timeoutMs, parkGeneration]);
           return 'timeout-job';
         },
       } as ConstructorParameters<typeof AgentDispatcherImpl>[1],
@@ -130,8 +141,10 @@ describe('Task 5 production-boundary acceptance', () => {
       { negotiationId: 'negotiation-1', history: [] },
       { timeoutMs: 5_000 },
     );
-    expect(dispatch).toMatchObject({ reason: 'waiting', resumeToken: 'negotiation-1' });
-    expect(timeoutJobs).toEqual([['negotiation-1', 0, 5_000]]);
+    expect(dispatch).toMatchObject({ reason: 'waiting', resumeToken: expect.any(String) });
+    expect(timeoutJobs).toEqual([[
+      'negotiation-1', 0, 5_000, (dispatch as { resumeToken: string }).resumeToken,
+    ]]);
 
     const consultation = assessExternalConsultationEligibility({
       task: {
@@ -157,7 +170,25 @@ describe('Task 5 production-boundary acceptance', () => {
       userId: OWNER_ID, agentId: executorId!, policyMode: 'on',
       wiring: { askUserEnabled: true, questionerEnabled: true, expiryEnabled: true },
     });
-    expect(consultation).toMatchObject({ eligible: true, structuralEligible: true });
+    expect(consultation).toMatchObject({
+      eligible: true,
+      structuralEligible: true,
+      policy: { eligible: true, reason: 'consequential_disclosure_permission' },
+    });
+    const consultationPayload = buildExternalConsultationQuestionerPayload({
+      negotiationId: 'task-1',
+      userId: OWNER_ID,
+      coordinates: consultation.coordinates!,
+      reason: consultation.policy.reason!,
+    });
+    expect(consultationPayload.context).toEqual({
+      negotiationId: 'task-1',
+      counterpartyHint: 'the other participant',
+      indexContext: 'the selected network',
+      consultationPolicyReason: 'consequential_disclosure_permission',
+    });
+    expect(consultationPayload.context).not.toHaveProperty('disclosureSubject');
+    expect(consultationPayload.context).not.toHaveProperty('draftQuestion');
 
     await selectIndexRuntime({
       api, nativeRuntime, ownerId: OWNER_ID,

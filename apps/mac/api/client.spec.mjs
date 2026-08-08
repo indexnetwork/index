@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  createIndexApiClient, createPinnedIndexApiClient, normalizeApiBaseUrl, toQueryString,
+  createIndexApiClient, createPinnedIndexApiClient, IndexApiError, normalizeApiBaseUrl, toQueryString,
 } from './client.mjs';
 
 const SELECTED_INTENT_ID = '00000000-0000-4000-8000-00000000a111';
@@ -81,6 +81,21 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('disconnectHermesRuntime', (client) => client.disconnectHermesRuntime(installationId), {
       path: `/agent-runtime/hermes/${installationId}`, method: 'DELETE',
     });
+  });
+
+  it('preserves disconnect 404 as authorization/not-found rather than guessing absence', async () => {
+    const client = createPinnedIndexApiClient({
+      apiBaseUrl: 'https://protocol.example/api',
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'runtime_not_found' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      }),
+    }, 'owner-key');
+
+    await expect(client.disconnectHermesRuntime('installation-other-owner'))
+      .rejects.toBeInstanceOf(IndexApiError);
+    await expect(client.disconnectHermesRuntime('installation-other-owner'))
+      .rejects.toMatchObject({ status: 404, response: { error: 'runtime_not_found' } });
   });
 
   it('uses controller-backed auth/network/intent endpoints', async () => {

@@ -113,6 +113,10 @@ function nullableNonemptyString(value) {
 
 function sanitizeJournal(value) {
   if (!value || Array.isArray(value) || typeof value !== 'object' || value.version !== 1) return null;
+  const exactKeys = [
+    'executorId', 'installationId', 'operation', 'ownerId', 'setupAttemptId', 'stage', 'version',
+  ];
+  if (Object.keys(value).sort().join('\0') !== exactKeys.join('\0')) return null;
   const allowedStages = SAGA_JOURNAL_STAGES[value.operation];
   if (!allowedStages || !allowedStages.has(value.stage)) return null;
   if (!nonemptyString(value.ownerId) || !nonemptyString(value.installationId)) return null;
@@ -143,45 +147,98 @@ function sanitizeJournal(value) {
   };
 }
 
-/** Non-secret persistent journal adapter. The injected storage may be app-owned
- * WKWebView storage; production uses localStorage in the bundled document. */
-export function createLocalStorageSagaJournal(storage = globalThis.localStorage, key = SAGA_JOURNAL_KEY) {
-  if (!storage || typeof storage.getItem !== 'function') {
+/** App-owned native Application Support journal. The optional legacy storage
+ * is read exactly once when native has no record; only a valid strict record is
+ * migrated, and the old bytes are removed only after native persistence is
+ * confirmed. Every request is serialized so load/migrate/save/clear cannot
+ * overtake one another across React effects. */
+export function createNativeSagaJournal(
+  nativeRuntime,
+  legacyStorage = globalThis.localStorage,
+  legacyKey = SAGA_JOURNAL_KEY,
+) {
+  if (typeof nativeRuntime !== 'function') {
     throw new Error('Persistent Hermes saga storage is unavailable');
   }
+  let queue = Promise.resolve();
+  let migrationChecked = false;
+  const serialized = (operation) => {
+    const result = queue.then(operation, operation);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
+  };
+  const decodeNative = (result, command) => {
+    const successful = requireSuccessfulNativeResult(result, command);
+    if (successful.operationJournal == null) return null;
+    const journal = sanitizeJournal(successful.operationJournal);
+    if (!journal) throw new Error('Invalid Hermes saga journal');
+    return journal;
+  };
+  const loadNative = async () => decodeNative(
+    await nativeRuntime('loadOperation', {}), 'loadOperation',
+  );
   return {
-    async load() {
-      const raw = storage.getItem(key);
-      if (!raw) return null;
-      try {
-        const parsed = sanitizeJournal(JSON.parse(raw));
-        if (!parsed) throw new Error('Invalid Hermes saga journal');
-        return parsed;
-      } catch (error) {
-        // Preserve corrupt recovery evidence and fail closed rather than
-        // silently treating an unfinished server-first mutation as absent.
-        if (error?.message === 'Invalid Hermes saga journal') throw error;
-        throw new Error('Invalid Hermes saga journal', { cause: error });
-      }
+    load() {
+      return serialized(async () => {
+        const existing = await loadNative();
+        if (existing || migrationChecked) return existing;
+        migrationChecked = true;
+        if (!legacyStorage || typeof legacyStorage.getItem !== 'function') return null;
+        const raw = legacyStorage.getItem(legacyKey);
+        if (!raw) return null;
+        let legacy;
+        try { legacy = sanitizeJournal(JSON.parse(raw)); } catch { legacy = null; }
+        if (!legacy) {
+          // Preserve malformed legacy evidence byte-for-byte and fail closed.
+          throw new Error('Invalid Hermes saga journal');
+        }
+        const saved = decodeNative(
+          await nativeRuntime('saveOperation', { operationJournal: legacy }),
+          'saveOperation',
+        );
+        if (!sameJournal(saved, legacy)) {
+          throw new Error('Invalid Hermes saga journal');
+        }
+        legacyStorage.removeItem(legacyKey);
+        return saved;
+      });
     },
-    async save(value) {
-      const sanitized = sanitizeJournal(value);
-      if (!sanitized) throw new Error('Invalid Hermes saga journal');
-      storage.setItem(key, JSON.stringify(sanitized));
-      return sanitized;
+    save(value) {
+      return serialized(async () => {
+        const sanitized = sanitizeJournal(value);
+        if (!sanitized) throw new Error('Invalid Hermes saga journal');
+        const saved = decodeNative(
+          await nativeRuntime('saveOperation', { operationJournal: sanitized }),
+          'saveOperation',
+        );
+        if (!sameJournal(saved, sanitized)) {
+          throw new Error('Invalid Hermes saga journal');
+        }
+        return saved;
+      });
     },
-    async clear(expected) {
-      const current = await this.load();
-      if (!current) return;
-      if (expected && (
-        current.operation !== expected.operation
-        || current.ownerId !== expected.ownerId
-        || current.setupAttemptId !== expected.setupAttemptId
-        || current.installationId !== expected.installationId
-      )) return;
-      storage.removeItem(key);
+    clear(expected) {
+      return serialized(async () => {
+        const sanitized = sanitizeJournal(expected);
+        if (!sanitized) throw new Error('Invalid Hermes saga journal');
+        return decodeNative(
+          await nativeRuntime('clearOperation', { operationJournal: sanitized }),
+          'clearOperation',
+        );
+      });
     },
   };
+}
+
+function sameJournal(left, right) {
+  return !!left && !!right
+    && left.version === right.version
+    && left.operation === right.operation
+    && left.stage === right.stage
+    && left.ownerId === right.ownerId
+    && left.installationId === right.installationId
+    && left.setupAttemptId === right.setupAttemptId
+    && left.executorId === right.executorId;
 }
 
 function operationJournal(operation, stage, {
@@ -474,6 +531,88 @@ async function performDisconnect({ api, nativeRuntime, operationStore, journal, 
   }, { signal }), 'disconnect', journal.setupAttemptId);
   await operationStore?.clear(serverComplete);
   return { binding, localState: disconnected.state || null };
+}
+
+/**
+ * Logout barrier: persist an owner-pinned disconnect/revoke intent, attempt the
+ * owner runtime revocation path, and regardless of its result ask native to
+ * quarantine scheduling and scrub the dedicated Hermes environment credential.
+ * Native owner-key revocation remains unreachable until that local postcondition
+ * is proven. Server uncertainty deliberately remains server-pending for the
+ * next login by this same owner.
+ */
+export async function prepareHermesLogout({
+  api, nativeRuntime, operationStore, ownerId,
+}) {
+  if (!nonemptyString(ownerId)) throw ownerMismatchError();
+  const inspection = requireSuccessfulNativeResult(
+    await nativeRuntime('inspect', { ownerId }), 'inspect',
+  );
+  const localState = inspection.state || null;
+  const existing = await operationStore?.load() || null;
+  if (existing && existing.ownerId !== ownerId) {
+    return pauseOwnerMismatchedGeneration({ nativeRuntime, localState });
+  }
+  const installationId = localState?.installationId || existing?.installationId;
+  if (!nonemptyString(installationId)) {
+    const error = new Error('Hermes inspection did not return an installation identity');
+    error.code = 'installation_missing';
+    error.stage = 'logout';
+    throw error;
+  }
+
+  const hasExactGeneration = nonemptyString(localState?.setupAttemptId)
+    && nonemptyString(localState?.executorId);
+  const journal = operationJournal('disconnect', 'server-pending', {
+    ownerId,
+    installationId,
+    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
+    executorId: hasExactGeneration ? localState.executorId : null,
+  });
+  await operationStore?.save(journal);
+
+  let binding = null;
+  let serverError = null;
+  try {
+    binding = await api.disconnectHermesRuntime(installationId);
+    await operationStore?.save({ ...journal, stage: 'server-complete' });
+  } catch (error) {
+    serverError = error;
+  }
+
+  const prepared = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
+    ownerId,
+    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
+  }), 'prepareLogout');
+  const scrubbedState = prepared.state || null;
+  const exactPrepared = prepared.stage === 'logout_prepared'
+    && scrubbedState?.installationId === installationId
+    && scrubbedState?.scheduleEnabled === false
+    && scrubbedState?.negotiatorMode === false;
+  if (!exactPrepared) throw generationMismatch('prepareLogout', prepared);
+
+  // Keep both pending and server-complete evidence until native owner-key
+  // revocation independently reproves the local postcondition. Native clears
+  // only server-complete; uncertainty survives logout for same-owner recovery.
+  // Local pause/scrub has already completed, but the owner credential must stay
+  // usable so this same owner can authoritatively retry the server disconnect.
+  if (serverError) {
+    const uncertainty = serverError instanceof Error
+      ? serverError
+      : new Error('Hermes server disconnect remains uncertain');
+    uncertainty.code = uncertainty.code || 'server_disconnect_uncertain';
+    uncertainty.stage = 'logout';
+    uncertainty.retryable = true;
+    uncertainty.state = scrubbedState;
+    uncertainty.serverUncertain = true;
+    throw uncertainty;
+  }
+  return {
+    ownerId,
+    binding,
+    localState: scrubbedState,
+    serverUncertain: false,
+  };
 }
 
 /** Revoke/select Index on the server before exact local key/plugin/schedule cleanup. */
@@ -771,6 +910,13 @@ export function createAgentRuntimeCoordinator({
     })
   ));
 
+  const prepareLogout = () => enqueue('logout', (api, _signal, capturedOwner) => (
+    prepareHermesLogout({
+      api, nativeRuntime, operationStore,
+      ownerId: capturedOwner.ownerId,
+    })
+  ));
+
   const disconnect = () => enqueue('disconnect', (api, signal, capturedOwner) => (
     disconnectHermesSaga({
       api, nativeRuntime, operationStore,
@@ -825,7 +971,7 @@ export function createAgentRuntimeCoordinator({
   };
 
   return {
-    changeOwner, bootstrap, selectHermes, selectIndex, disconnect, retry, refresh, dispose,
+    changeOwner, bootstrap, selectHermes, selectIndex, prepareLogout, disconnect, retry, refresh, dispose,
     snapshot: () => ({ ...state, authEpoch, operationRevision }),
     idle: () => tail,
   };

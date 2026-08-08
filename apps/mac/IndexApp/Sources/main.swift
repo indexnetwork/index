@@ -589,11 +589,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             return
         }
         // Grant read access to the whole Resources dir so any sibling assets resolve.
-        // The bridge still admits only this exact main-document URL.
+        // The delegate still admits only this exact standardized main document.
         let trustedURL = url.standardizedFileURL
         trustedBundledDocumentURL = trustedURL
         let dir = trustedURL.deletingLastPathComponent()
         webView.loadFileURL(trustedURL, allowingReadAccessTo: dir)
+    }
+
+    /// The credential-bearing WebView is a single-document shell, not a
+    /// browser. Only the exact bundled main document may commit. User-activated
+    /// web links are handed to LaunchServices and every other navigation shape
+    /// (redirect, replacement, subframe, popup, custom/data/javascript URL) is
+    /// cancelled without attempting a permissive fallback.
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        let requestURL = navigationAction.request.url?.standardizedFileURL
+        let isMainFrame = navigationAction.targetFrame?.isMainFrame == true
+        if isMainFrame,
+           let trustedBundledDocumentURL,
+           requestURL == trustedBundledDocumentURL {
+            decisionHandler(.allow)
+            return
+        }
+
+        if navigationAction.navigationType == .linkActivated,
+           let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https" {
+            NSWorkspace.shared.open(url)
+        }
+        decisionHandler(.cancel)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse,
+        decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+    ) {
+        let responseURL = navigationResponse.response.url?.standardizedFileURL
+        let exactMainDocument = navigationResponse.isForMainFrame
+            && responseURL == trustedBundledDocumentURL
+            && navigationResponse.canShowMIMEType
+        decisionHandler(exactMainDocument ? .allow : .cancel)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        // Navigation policy already externalizes an approved link activation.
+        // Never create a second credential-bearing WebView.
+        return nil
     }
 
     private func presentError(_ message: String) {
@@ -737,11 +788,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             return
         }
         if message.name == "indexAuth" {
+            // Apply the same exact document + process generation admission as
+            // the runtime bridge before even decoding page-controlled data.
+            guard isTrustedBridgeMessage(message) else { return }
+            let admittedGeneration = trustedDocumentGeneration
             let body = message.body as? [String: Any]
             let action = body?["action"] as? String
-            if action == "login" { startLogin() }
-            else if action == "logout" { logout() }
-            else if action == "detectHarnesses" { detectHarnesses() }
+            if action == "login" { startLogin(admittedGeneration: admittedGeneration) }
+            else if action == "completeLogout" {
+                logout(
+                    ownerId: body?["ownerId"] as? String,
+                    admittedGeneration: admittedGeneration
+                )
+            }
+            else if action == "detectHarnesses" { detectHarnesses(admittedGeneration: admittedGeneration) }
             else if action == "setAgentFace" {
                 // The page is loaded from a file:// URL, where WebKit gives the
                 // document an opaque origin and localStorage is not persisted.
@@ -769,13 +829,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     /// Scan for installed agent CLIs off the main thread, then hand the
     /// result to the page via window.__indexHarnessesDetected.
-    private func detectHarnesses() {
+    private func detectHarnesses(admittedGeneration: UInt64) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let found = HarnessDetector.detect()
             let json = (try? JSONSerialization.data(withJSONObject: found))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             DispatchQueue.main.async {
-                self?.webView.evaluateJavaScript(
+                guard let self,
+                      self.webViewReady,
+                      admittedGeneration == self.trustedDocumentGeneration,
+                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+                self.webView.evaluateJavaScript(
                     "if (typeof window.__indexHarnessesDetected === 'function') { window.__indexHarnessesDetected(\(json)); }",
                     completionHandler: nil)
             }
@@ -789,7 +853,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func handleHermesRuntimeMessage(_ message: WKScriptMessage) {
         // This trust check deliberately precedes even reading/decoding the body:
         // subframes and any replacement document get no bridge work or reply.
-        guard isTrustedHermesRuntimeMessage(message) else { return }
+        guard isTrustedBridgeMessage(message) else { return }
         let admittedGeneration = trustedDocumentGeneration
         let body = message.body as? [String: Any]
         let requestId = body?["requestId"] as? String ?? ""
@@ -827,7 +891,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    private func isTrustedHermesRuntimeMessage(_ message: WKScriptMessage) -> Bool {
+    private func isTrustedBridgeMessage(_ message: WKScriptMessage) -> Bool {
         guard webViewReady,
               message.frameInfo.isMainFrame,
               let trustedBundledDocumentURL,
@@ -900,11 +964,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     /// Begin the browser login flow: open /cli-auth with a one-time state and a
     /// loopback callback that captures the minted API key.
-    private func startLogin() {
+    private func startLogin(admittedGeneration: UInt64) {
         authServer?.stop()
         let state = randomState()
         let server = LoopbackAuthServer(state: state) { [weak self] result in
-            DispatchQueue.main.async { self?.finishLogin(result) }
+            DispatchQueue.main.async {
+                self?.finishLogin(result, admittedGeneration: admittedGeneration)
+            }
         }
         authServer = server
         server.start { [weak self] portResult in
@@ -919,12 +985,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 ]
                 if let url = comps?.url { NSWorkspace.shared.open(url) }
             case .failure:
-                self.finishLogin(.failure(LoopbackAuthServer.AuthError.noPort))
+                self.finishLogin(
+                    .failure(LoopbackAuthServer.AuthError.noPort),
+                    admittedGeneration: admittedGeneration
+                )
             }
         }
     }
 
-    private func finishLogin(_ result: Result<(apiKey: String, keyId: String), Error>) {
+    private func finishLogin(
+        _ result: Result<(apiKey: String, keyId: String), Error>,
+        admittedGeneration: UInt64
+    ) {
         authServer?.stop()
         authServer = nil
         switch result {
@@ -932,17 +1004,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             CredentialStore.save(StoredCredential(
                 key: cred.apiKey, keyId: cred.keyId,
                 apiUrl: AppConfig.trimTrailingSlash(AppConfig.apiURL)))
-            notifyAuthChanged(apiKey: cred.apiKey)
+            notifyAuthChanged(apiKey: cred.apiKey, admittedGeneration: admittedGeneration)
         case .failure:
             // Null tells the page login didn't complete, so it returns to sign-in.
-            notifyAuthChanged(apiKey: nil)
+            notifyAuthChanged(apiKey: nil, admittedGeneration: admittedGeneration)
         }
     }
 
-    private func logout() {
+    private func logout(ownerId: String?, admittedGeneration: UInt64) {
+        guard let ownerId,
+              let evidence = hermesRuntime.logoutEvidence(ownerId: ownerId) else { return }
         if let cred = CredentialStore.load() { revokeCredential(cred) }
         CredentialStore.delete()
-        notifyAuthChanged(apiKey: nil)
+        hermesRuntime.finishLogoutEvidence(evidence)
+        notifyAuthChanged(apiKey: nil, admittedGeneration: admittedGeneration)
     }
 
     /// Best-effort server-side revoke so a signed-out key can't be reused.
@@ -956,7 +1031,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         URLSession.shared.dataTask(with: req).resume()
     }
 
-    private func notifyAuthChanged(apiKey: String?) {
+    private func notifyAuthChanged(apiKey: String?, admittedGeneration: UInt64) {
+        guard webViewReady,
+              admittedGeneration == trustedDocumentGeneration,
+              webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
         let key = jsonValue(apiKey)
         let js = """
         window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { apiBaseUrl: \(jsonValue(AppConfig.apiBaseURL)), apiKey: \(key) });

@@ -984,14 +984,21 @@ not local process detection. A stale or never-seen preferred executor is covered
 inline by Index before parking. A fresh executor may park a turn, but the
 existing response-window/claim timers bound pickup and completion; stopped or
 invalid external execution falls back once through the same atomic task state.
-Both executors receive the same owner-scoped context, memory, policy envelope,
-seat rules, and persisted history.
+The Personal Agent's stable identity, product history, owner memory, and policy
+remain server-owned and continuous across runtime changes. They are not a shared
+runtime payload: dedicated Hermes receives only a privacy-minimal structural
+envelope (seat, protocol version, deadline, closed allowed actions, consultation
+eligibility, opportunity id/status, and message-free speaker/action history)
+plus closed server-authored directives. Raw owner context or memory, private
+consultation prose, evaluator/actor prose, and shared-message prose never cross
+the dedicated Hermes boundary.
 
 An exact selected active poller with its exact agent-bound key can call
 `POST /api/agents/:agentId/negotiations/:negotiationId/consult`. Admission binds
 the exact owner, agent, claim, attempt, actor intent, opportunity, task, and
-policy eligibility. Only `disclosureSubject` and optional `draftQuestion` cross
-the endpoint. The server authors and persists the `ask_user` turn, arms expiry,
+policy eligibility. Exactly the closed `{reason}` body crosses the endpoint;
+the server derives all disclosure and question copy from fixed templates, then
+authors and persists the `ask_user` turn, arms expiry,
 and transitions the exact task to `input_required`; answering, dismissal, or
 expiry resumes only the settlement-bound successor through the existing
 Questioner continuation pipeline.

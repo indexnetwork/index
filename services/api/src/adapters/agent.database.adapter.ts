@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm/sql';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime-errors';
 import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../lib/apikey/credential';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
+import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS } from '../lib/agent/hermes-credential';
 
 const logger = log.lib.from('agent.database.adapter');
 
@@ -559,7 +560,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     ownerId: string;
     installationId: string;
     setupAttemptId: string;
-  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string } }> {
+  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string; expiresAt: string } }> {
     const prepared = await db.transaction(async (tx) => {
       await this.acquireOwnerRuntimeLock(tx, input.ownerId);
 
@@ -617,6 +618,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       const plainKey = generateApiKey();
       const hashedKey = await hashApiKey(plainKey);
       const now = new Date();
+      const expiresAt = new Date(now.getTime() + HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS);
       const [credential] = await tx
         .insert(schema.apikeys)
         .values({
@@ -625,14 +627,21 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           referenceId: input.ownerId,
           name: 'Hermes Negotiator API Key',
           start: plainKey.substring(0, API_KEY_START_LENGTH),
-          metadata: JSON.stringify({ agentId: row.id, setupAttemptId: input.setupAttemptId }),
+          metadata: JSON.stringify({
+            agentId: row.id,
+            setupAttemptId: input.setupAttemptId,
+            audience: HERMES_NEGOTIATOR_AUDIENCE,
+            kind: HERMES_NEGOTIATOR_CREDENTIAL_KIND,
+            expiresAt: expiresAt.toISOString(),
+          }),
           createdAt: now,
           updatedAt: now,
           enabled: true,
+          expiresAt,
         })
         .returning({ id: schema.apikeys.id });
 
-      return { row, credential: { id: credential.id, key: plainKey } };
+      return { row, credential: { id: credential.id, key: plainKey, expiresAt: expiresAt.toISOString() } };
     });
 
     const agent = await this.getAgentWithRelations(prepared.row.id);
@@ -707,7 +716,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
             or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
             sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${candidate.id}`,
             input.exactTargetPermissions
-              ? sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}`
+              ? and(
+                  isNotNull(schema.apikeys.expiresAt),
+                  sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}`,
+                  sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+                  sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
+                )
               : undefined,
           ))
           .limit(1);
@@ -854,6 +868,14 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           eq(schema.apikeys.enabled, true),
           or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
           sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${selected.id}`,
+          selected.runtimeKind === 'hermes'
+            ? and(
+                isNotNull(schema.apikeys.expiresAt),
+                sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${selected.runtimeSetupAttemptId}`,
+                sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+                sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
+              )
+            : undefined,
         ))
         .limit(1);
 
@@ -901,9 +923,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   }
 
   /** Select Index and remove one installation and all of its credentials. */
-  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }): Promise<boolean> {
+  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }): Promise<'disconnected' | 'absent' | 'owner_mismatch'> {
     return db.transaction(async (tx) => {
       await this.acquireOwnerRuntimeLock(tx, input.ownerId);
+      // First resolve and lock only this owner's exact installation. Installation
+      // UUIDs may coincide across owners, so if it is absent, a separate
+      // non-locking existence read distinguishes proven global absence (safe
+      // idempotent logout) from a cross-owner target (non-enumerating 404).
       const [target] = await tx
         .select()
         .from(schema.agents)
@@ -916,7 +942,18 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         ))
         .limit(1)
         .for('update');
-      if (!target) return false;
+      if (!target) {
+        const [otherOwner] = await tx.select({ id: schema.agents.id }).from(schema.agents)
+          .where(and(
+            ne(schema.agents.ownerId, input.ownerId),
+            eq(schema.agents.type, 'external'),
+            eq(schema.agents.runtimeKind, 'hermes'),
+            eq(schema.agents.installationId, input.installationId),
+            isNull(schema.agents.deletedAt),
+          ))
+          .limit(1);
+        return otherOwner ? 'owner_mismatch' : 'absent';
+      }
 
       await tx.execute(sql`
         UPDATE agent_permissions
@@ -950,7 +987,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       await tx.delete(schema.apikeys).where(
         sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}`,
       );
-      return true;
+      return 'disconnected';
     });
   }
 

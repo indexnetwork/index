@@ -6,6 +6,7 @@ export {
   NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
   NEGOTIATION_QUESTION_GENERIC_NETWORK,
   NEGOTIATION_QUESTION_GENERIC_UPTAKE_ACTIVITY,
+  consultationPromptFor,
   isSafeNegotiationQuestionText,
 } from "../negotiation/public/index.js";
 export type { NegotiationConsultationReason } from "../negotiation/public/index.js";

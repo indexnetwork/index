@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'bun:test';
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+import { createHermesRuntimeBridge } from './agent-runtime.mjs';
 import {
   bootstrapHermesRuntime,
   createAgentRuntimeCoordinator,
-  createLocalStorageSagaJournal,
+  createNativeSagaJournal,
   disconnectHermesSaga,
+  prepareHermesLogout,
   runViewRuntimeAction,
   reconcileHermesSaga,
   runHermesSelectionSaga,
@@ -256,6 +261,207 @@ describe('selection, disconnect, and relaunch reconciliation', () => {
     expect(result).toEqual({ binding: INDEX, localState: LOCAL_DISABLED });
   });
 
+  it('logout scrubs locally at every in-flight stage but rejects while server disconnect is uncertain', async () => {
+    const inFlight = [
+      null,
+      persistedOperation('select-hermes', 'prepare-pending', { executorId: null }),
+      persistedOperation('select-hermes', 'prepared'),
+      persistedOperation('select-hermes', 'configured'),
+      persistedOperation('select-hermes', 'activated'),
+      persistedOperation('select-hermes', 'native-recovery'),
+      persistedOperation('select-index', 'server-pending'),
+      persistedOperation('select-index', 'server-complete'),
+      persistedOperation('disconnect', 'server-pending'),
+      persistedOperation('disconnect', 'server-complete'),
+    ];
+    for (const seed of inFlight) {
+      const h = persistentJournalHarness(seed);
+      if (seed) await h.journal.load(); // migrate the pre-relaunch evidence first
+      const calls = [];
+      const nativeRuntime = async (command, payload) => {
+        if (command.endsWith('Operation')) return h.nativeRuntime(command, payload);
+        calls.push([command, payload]);
+        if (command === 'inspect') return { ok: true, stage: 'inspected', state: LOCAL_ENABLED };
+        if (command === 'prepareLogout') return {
+          ok: true,
+          stage: 'logout_prepared',
+          state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        };
+        throw new Error(`unexpected ${command}`);
+      };
+      const operationStore = createNativeSagaJournal(h.nativeRuntime, null);
+      await expect(prepareHermesLogout({
+        ownerId: OWNER,
+        operationStore,
+        nativeRuntime,
+        api: { disconnectHermesRuntime: async (installationId) => {
+          calls.push(['server-disconnect', installationId]);
+          throw new Error('server response uncertain');
+        } },
+      })).rejects.toMatchObject({
+        code: 'server_disconnect_uncertain',
+        stage: 'logout',
+        retryable: true,
+        serverUncertain: true,
+        state: { ...LOCAL_DISABLED, negotiatorMode: false },
+      });
+      expect(calls).toEqual([
+        ['inspect', { ownerId: OWNER }],
+        ['server-disconnect', INSTALLATION],
+        ['prepareLogout', { ownerId: OWNER, setupAttemptId: ATTEMPT }],
+      ]);
+      expect(await operationStore.load()).toEqual(
+        persistedOperation('disconnect', 'server-pending'),
+      );
+    }
+  });
+
+  it('does not reinterpret a server 404 as absence, but still completes the local logout scrub', async () => {
+    const { journal } = persistentJournalHarness();
+    const calls = [];
+    const notFound = Object.assign(new Error('runtime_not_found'), { status: 404 });
+
+    await expect(prepareHermesLogout({
+      ownerId: OWNER,
+      operationStore: journal,
+      api: { disconnectHermesRuntime: async () => { calls.push('server-404'); throw notFound; } },
+      nativeRuntime: async (command) => {
+        calls.push(command);
+        if (command === 'inspect') return { ok: true, stage: 'inspected', state: LOCAL_ENABLED };
+        return {
+          ok: true,
+          stage: 'logout_prepared',
+          state: { ...LOCAL_DISABLED, negotiatorMode: false },
+        };
+      },
+    })).rejects.toMatchObject({
+      code: 'server_disconnect_uncertain', status: 404, serverUncertain: true,
+      state: { scheduleEnabled: false, negotiatorMode: false },
+    });
+
+    expect(calls).toEqual(['inspect', 'server-404', 'prepareLogout']);
+    expect(await journal.load()).toEqual(persistedOperation('disconnect', 'server-pending'));
+  });
+
+  it('logout retains server-complete evidence until native owner-key revocation and supports credential-only local scrub', async () => {
+    const { journal, nativeRuntime: journalRuntime } = persistentJournalHarness();
+    const calls = [];
+    const result = await prepareHermesLogout({
+      ownerId: OWNER,
+      operationStore: journal,
+      api: {
+        disconnectHermesRuntime: async (installationId) => {
+          calls.push(['server-disconnect', installationId]);
+          return INDEX;
+        },
+      },
+      nativeRuntime: async (command, payload) => {
+        if (command.endsWith('Operation')) return journalRuntime(command, payload);
+        calls.push([command, payload]);
+        if (command === 'inspect') return {
+          ok: true, stage: 'inspected', state: {
+            ...LOCAL_DISABLED, setupAttemptId: null, executorId: null,
+            schedulePresent: false, negotiatorMode: true,
+          },
+        };
+        if (command === 'prepareLogout') return {
+          ok: true, stage: 'logout_prepared', state: {
+            ...LOCAL_DISABLED, setupAttemptId: null, executorId: null,
+            schedulePresent: false, negotiatorMode: false,
+          },
+        };
+        throw new Error(`unexpected ${command}`);
+      },
+    });
+    expect(result).toMatchObject({ ownerId: OWNER, serverUncertain: false });
+    expect(calls).toEqual([
+      ['inspect', { ownerId: OWNER }],
+      ['server-disconnect', INSTALLATION],
+      ['prepareLogout', { ownerId: OWNER, setupAttemptId: null }],
+    ]);
+    expect(await journal.load()).toEqual(persistedOperation('disconnect', 'server-complete', {
+      setupAttemptId: null, executorId: null,
+    }));
+  });
+
+  it('production bridge carries bootstrap journal and logout scrub through correlated native callbacks', async () => {
+    const posted = [];
+    let nativeRecord = null;
+    let local = {
+      ...LOCAL_DISABLED, executorId: null, setupAttemptId: null,
+      schedulePresent: false, scheduleEnabled: false, negotiatorMode: true,
+    };
+    let sequence = 0;
+    let bridge;
+    bridge = createHermesRuntimeBridge({
+      createRequestId: () => `production-${++sequence}`,
+      postMessage: (message) => {
+        posted.push(structuredClone(message));
+        queueMicrotask(() => {
+          expect(bridge.receiveProgress({ requestId: message.requestId, event: 'started' })).toBe(true);
+          let result;
+          if (message.command === 'inspect') {
+            result = { ok: true, stage: 'inspected', state: local };
+          } else if (message.command === 'loadOperation') {
+            result = { ok: true, stage: 'operation_loaded', operationJournal: nativeRecord };
+          } else if (message.command === 'saveOperation') {
+            nativeRecord = structuredClone(message.operationJournal);
+            result = { ok: true, stage: 'operation_saved', operationJournal: nativeRecord };
+          } else if (message.command === 'prepareLogout') {
+            local = { ...local, negotiatorMode: false, scheduleEnabled: false };
+            result = { ok: true, stage: 'logout_prepared', state: local };
+          } else {
+            throw new Error(`unexpected production callback command ${message.command}`);
+          }
+          expect(bridge.receive({ requestId: message.requestId, ...result })).toBe(true);
+        });
+      },
+    });
+    const nativeRuntime = (command, payload = {}, options = {}) => (
+      bridge.request(command, payload, options)
+    );
+    const operationStore = createNativeSagaJournal(nativeRuntime, null);
+    const api = {
+      getRuntimeBinding: async () => INDEX,
+      disconnectHermesRuntime: async () => INDEX,
+    };
+
+    await expect(bootstrapHermesRuntime({
+      api, nativeRuntime, operationStore, ownerId: OWNER,
+    })).resolves.toMatchObject({ installationId: INSTALLATION, binding: INDEX });
+    await expect(prepareHermesLogout({
+      api, nativeRuntime, operationStore, ownerId: OWNER,
+    })).resolves.toMatchObject({ ownerId: OWNER, serverUncertain: false });
+
+    expect(posted.map(({ command }) => command)).toEqual([
+      'inspect', 'loadOperation',
+      'inspect', 'loadOperation', 'saveOperation', 'saveOperation', 'prepareLogout',
+    ]);
+    expect(posted.every(({ requestId }) => /^production-\d+$/.test(requestId))).toBe(true);
+    expect(posted.find(({ command }) => command === 'prepareLogout')).toMatchObject({
+      ownerId: OWNER, setupAttemptId: null,
+    });
+    expect(nativeRecord).toEqual(persistedOperation('disconnect', 'server-complete', {
+      setupAttemptId: null, executorId: null,
+    }));
+    expect(local.negotiatorMode).toBe(false);
+    expect(bridge.pendingCount()).toBe(0);
+  });
+
+  it('logout never reaches native credential revocation when local scrub postconditions are unproven', async () => {
+    const { journal } = persistentJournalHarness();
+    await expect(prepareHermesLogout({
+      ownerId: OWNER,
+      operationStore: journal,
+      api: { disconnectHermesRuntime: async () => INDEX },
+      nativeRuntime: async (command) => {
+        if (command === 'inspect') return { ok: true, stage: 'inspected', state: LOCAL_ENABLED };
+        return { ok: true, stage: 'logout_prepared', state: { ...LOCAL_DISABLED, negotiatorMode: true } };
+      },
+    })).rejects.toMatchObject({ code: 'native_generation_mismatch' });
+    expect(await journal.load()).toEqual(persistedOperation('disconnect', 'server-complete'));
+  });
+
   it('disconnect selects/revokes on the server before exact local cleanup', async () => {
     const calls = [];
     const result = await disconnectHermesSaga({
@@ -432,7 +638,22 @@ function persistentJournalHarness(seed = null) {
     setItem: (storageKey, value) => values.set(storageKey, value),
     removeItem: (storageKey) => values.delete(storageKey),
   };
-  return { journal: createLocalStorageSagaJournal(storage), values, key };
+  let nativeRecord = null;
+  const nativeRuntime = async (command, payload = {}) => {
+    if (command === 'loadOperation') {
+      return { ok: true, stage: 'operation_loaded', operationJournal: nativeRecord };
+    }
+    if (command === 'saveOperation') {
+      nativeRecord = structuredClone(payload.operationJournal);
+      return { ok: true, stage: 'operation_saved', operationJournal: nativeRecord };
+    }
+    if (command === 'clearOperation') {
+      if (JSON.stringify(nativeRecord) === JSON.stringify(payload.operationJournal)) nativeRecord = null;
+      return { ok: true, stage: 'operation_cleared', operationJournal: nativeRecord };
+    }
+    throw new Error(`unexpected journal command ${command}`);
+  };
+  return { journal: createNativeSagaJournal(nativeRuntime, storage), values, key, nativeRuntime };
 }
 
 function persistedOperation(operation, stage, overrides = {}) {
@@ -520,6 +741,48 @@ describe('owner-bound strict JavaScript saga journal', () => {
 });
 
 describe('durable JavaScript operation crash boundaries', () => {
+  it('survives an actual bridge/store relaunch through an atomic native-owned file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'index-native-journal-'));
+    const file = join(directory, 'hermes-saga-operation.json');
+    const makeBridgeInstance = () => async (command, payload = {}) => {
+      let current = null;
+      try { current = JSON.parse(await readFile(file, 'utf8')); } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      if (command === 'loadOperation') {
+        return { ok: true, stage: 'operation_loaded', operationJournal: current };
+      }
+      if (command === 'saveOperation') {
+        const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+        await writeFile(temporary, JSON.stringify(payload.operationJournal), { mode: 0o600 });
+        await rename(temporary, file);
+        return { ok: true, stage: 'operation_saved', operationJournal: payload.operationJournal };
+      }
+      if (command === 'clearOperation') {
+        if (JSON.stringify(current) === JSON.stringify(payload.operationJournal)) {
+          await rm(file, { force: true });
+          current = null;
+        }
+        return { ok: true, stage: 'operation_cleared', operationJournal: current };
+      }
+      throw new Error(`unexpected ${command}`);
+    };
+    try {
+      const record = persistedOperation('select-index', 'server-pending');
+      const firstProcessStore = createNativeSagaJournal(makeBridgeInstance(), null);
+      await firstProcessStore.save(record);
+
+      // New request bridge and new adapter instance model a fresh WebView/app
+      // process; no JavaScript object from the writer is reused.
+      const relaunchedStore = createNativeSagaJournal(makeBridgeInstance(), null);
+      expect(await relaunchedStore.load()).toEqual(record);
+      await relaunchedStore.clear(record);
+      expect(await createNativeSagaJournal(makeBridgeInstance(), null).load()).toBeNull();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('persists only non-secret identifiers before select-Index and disconnect server mutations', async () => {
     for (const operation of ['select-index', 'disconnect']) {
       const { journal, values } = persistentJournalHarness();

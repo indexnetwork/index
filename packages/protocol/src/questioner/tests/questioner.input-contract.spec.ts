@@ -45,7 +45,7 @@ const inflight: QuestionerInput = {
     negotiationId: 'task-1',
     counterpartyHint: 'the other participant',
     indexContext: 'the selected network',
-    disclosureSubject: 'budget range',
+    consultationPolicyReason: 'consequential_disclosure_permission',
   },
 };
 

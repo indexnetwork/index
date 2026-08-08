@@ -177,13 +177,13 @@ INDEX_PICKUP_NEGOTIATION = {
 INDEX_RESPOND_NEGOTIATION = {
     "name": "index_respond_negotiation",
     "description": (
-        "Respond to a claimed Index Network negotiation turn as the user's "
-        "personal agent. Use after index_pickup_negotiation returns pending=true. "
-        "Choose one action, provide concise reasoning, and include suggested "
-        "roles for both sides."
+        "Consume this scheduled pass by submitting one closed response for the "
+        "negotiation returned by index_pickup_negotiation. The server selects "
+        "the protocol action and shared prose from fixed templates."
     ),
     "parameters": {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "agentId": {
                 "type": "string",
@@ -198,52 +198,19 @@ INDEX_RESPOND_NEGOTIATION = {
             },
             "action": {
                 "type": "string",
-                "enum": [
-                    "propose",
-                    "accept",
-                    "reject",
-                    "counter",
-                    "question",
-                    "outreach",
-                    "withdraw",
-                    "decline",
-                ],
+                "enum": ["accept", "decline", "request_time", "continue"],
                 "description": (
-                    "One action copied verbatim from the pickup response's allowedActions. "
-                    "The union covers v1 and v2; the server enforces the exact protocol, "
-                    "seat, and final-turn subset. Owner consultation is a separate tool."
+                    "One closed directive copied from the pickup response's allowedActions. "
+                    "No model-authored shared message is accepted."
                 ),
             },
-            "message": {
+            "roleAlignment": {
                 "type": "string",
-                "description": (
-                    "Optional human-readable message. Required for counter and "
-                    "question actions; recommended whenever the decision needs explanation."
-                ),
-            },
-            "reasoning": {
-                "type": "string",
-                "description": "Required private rationale for the assessment and chosen action.",
-            },
-            "suggestedRoles": {
-                "type": "object",
-                "description": "Required role assessment for the caller and counterparty.",
-                "properties": {
-                    "ownUser": {
-                        "type": "string",
-                        "enum": ["agent", "patient", "peer"],
-                        "description": "Suggested role for the user's side of the opportunity.",
-                    },
-                    "otherUser": {
-                        "type": "string",
-                        "enum": ["agent", "patient", "peer"],
-                        "description": "Suggested role for the counterparty's side of the opportunity.",
-                    },
-                },
-                "required": ["ownUser", "otherUser"],
+                "enum": ["peers", "owner_leads", "counterparty_leads"],
+                "description": "Closed role alignment used to derive protocol roles.",
             },
         },
-        "required": ["negotiationId", "action", "reasoning", "suggestedRoles"],
+        "required": ["negotiationId", "action", "roleAlignment"],
     },
 }
 
@@ -269,20 +236,20 @@ INDEX_CONSULT_OWNER = {
                 "type": "string",
                 "description": "Required negotiation UUID returned by index_pickup_negotiation.",
             },
-            "disclosureSubject": {
+            "reason": {
                 "type": "string",
-                "minLength": 1,
+                "enum": [
+                    "consequential_disclosure_permission",
+                    "repeated_non_convergence",
+                    "insufficient_commitment_authority",
+                    "unresolved_owner_constraint",
+                ],
                 "description": (
-                    "Required privacy-minimal description of the fact or decision "
-                    "that must be disclosed to the owner."
+                    "Required closed server consultation category. The server "
+                    "must independently derive the same category for this claim."
                 ),
             },
-            "draftQuestion": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Optional concise question draft for the owner.",
-            },
         },
-        "required": ["negotiationId", "disclosureSubject"],
+        "required": ["negotiationId", "reason"],
     },
 }

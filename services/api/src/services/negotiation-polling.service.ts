@@ -1,5 +1,5 @@
-import { eq, and, sql, asc } from 'drizzle-orm/sql';
-import { notArchivedNegotiationTaskWhere } from '../adapters/negotiation-attempt.atomic';
+import { createHash } from 'node:crypto';
+import { eq } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
@@ -8,13 +8,17 @@ import { conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
 import { log } from '../lib/log';
-import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationAction, NegotiationSeat, NegotiationProtocolVersion, NegotiatorMemoryEntry } from '@indexnetwork/protocol';
+import { allowedHermesActionsFor, buildHermesNegotiationTurn, consultationPromptFor, HERMES_OWNER_DIRECTIVE, isNegotiationTurnCapReached, type HermesNegotiationAction, type HermesNegotiationResponse, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment, type NegotiationAction, type NegotiationConsultationReason, type NegotiationSeat, type NegotiationProtocolVersion, type NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
-import { claimParkedContinuationExecution, completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
-import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isRejectLikeAction, isTerminalAction, negotiationConsultationPolicyMode, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage, validateInflightAskUserFields } from '@indexnetwork/protocol';
+import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
+import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isRejectLikeAction, isTerminalAction, negotiationConsultationPolicyMode, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
+import type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+import type { AtomicHermesResponseInput, AtomicHermesResponseResult, HermesRunMutationAuthority } from '../adapters/conversation.database.adapter';
+import { remainingDeadlineDelayMs } from '../lib/negotiation/timeout-execution';
+import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -69,11 +73,12 @@ export class SeatViolationError extends Error {
  * picks up a parked turn, the claim timer is armed with whatever time is left
  * since park start, not a fresh full budget.
  *
- * Clamped to a 1-second floor so BullMQ delay is always positive.
+ * Clamped to zero: an already elapsed preserved deadline is repaired as an
+ * immediate BullMQ fallback rather than being extended.
  *
  * @param parkStartTime - The timestamp when the task entered `waiting_for_agent`
  * @param totalBudgetMs - The total park-window budget in milliseconds
- * @returns Remaining milliseconds (minimum 1 000)
+ * @returns Remaining milliseconds (zero when the original deadline elapsed)
  */
 export function computeRemainingBudgetMs(
   parkStartTime: Date,
@@ -81,7 +86,7 @@ export function computeRemainingBudgetMs(
 ): number {
   const elapsedMs = Date.now() - parkStartTime.getTime();
   const remainingMs = totalBudgetMs - elapsedMs;
-  return Math.max(1_000, remainingMs);
+  return Math.max(0, remainingMs);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,9 +141,26 @@ export interface PickupResult {
   privateConsultation?: { kind: 'answer' | 'dismiss' | 'timeout'; selectedOptions: string[]; freeText?: string };
 }
 
+export interface HermesPickupResult {
+  negotiationId: string;
+  taskId: string;
+  opportunity: { id: string; status: string } | null;
+  turn: {
+    number: number;
+    deadline: string;
+    history: Array<{ turnNumber: number; agent: 'source' | 'candidate'; action: string }>;
+    counterpartyAction: string;
+  };
+  seat: NegotiationSeat;
+  protocolVersion: NegotiationProtocolVersion;
+  allowedActions: HermesNegotiationAction[];
+  canConsultOwner: boolean;
+  ownerDirective: typeof HERMES_OWNER_DIRECTIVE;
+  runCapability: string;
+}
+
 export type ConsultNegotiationInput = {
-  disclosureSubject: string;
-  draftQuestion?: string;
+  reason: NegotiationConsultationReason;
 };
 
 export type ConsultNegotiationResult = {
@@ -195,8 +217,24 @@ interface NegotiationTaskMetadata {
   };
 }
 
-/** Default maximum turns before a negotiation is force-finalized. */
-const DEFAULT_MAX_TURNS = 6;
+function hermesResponseIdentity(taskId: string, capability: string): AtomicHermesResponseInput['identity'] {
+  const digest = createHash('sha256').update(`${taskId}\0${capability}`, 'utf8').digest('hex');
+  return {
+    receiptId: `hermes-response:${digest}`,
+    messageId: `hermes-response-message:${digest}`,
+    artifactId: `hermes-response-artifact:${digest}`,
+    sessionId: `hermes-response-session:${digest}`,
+  };
+}
+
+export type HermesResponsePersistence = Pick<typeof conversationDatabaseAdapter,
+  | 'getTask'
+  | 'getMessagesForConversation'
+  | 'getPendingHermesResponseOutboxes'
+  | 'getHermesResponseReplay'
+  | 'respondHermesNegotiationAtomically'
+  | 'markHermesResponseOutboxDelivered'
+>;
 
 /** Durable successor markers require a current continuation fence; never downgrade to generic CAS. */
 function hasContinuationIdentity(metadata: unknown): boolean {
@@ -228,6 +266,9 @@ function hasContinuationIdentity(metadata: unknown): boolean {
 export class NegotiationPollingService {
   constructor(
     private readonly authorization: NegotiationPollingAuthorization = negotiationPollingAuthorization,
+    private readonly pickupAdapter: Pick<typeof conversationDatabaseAdapter, 'pickupNegotiationAtomically'> = conversationDatabaseAdapter,
+    private readonly responsePersistence: HermesResponsePersistence = conversationDatabaseAdapter,
+    private readonly now: () => number = Date.now,
   ) {}
 
   /**
@@ -241,111 +282,102 @@ export class NegotiationPollingService {
    * @param userId - The user the agent represents
    * @returns The pickup result with opportunity context and turn history, or null if nothing pending
    */
-  async pickup(agentId: string, userId: string): Promise<PickupResult | null> {
+  async pickup(
+    agentId: string,
+    userId: string,
+    principal: NegotiationCredentialPrincipal,
+    runId?: string,
+  ): Promise<PickupResult | HermesPickupResult | null> {
     if (!await this.authorization.authorizePickup(agentId, userId)) {
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
 
-    // 1. Check if agent already has a claimed turn (idempotency)
-    const [existingClaim] = await db
-      .select()
-      .from(convSchema.tasks)
-      .where(
-        and(
-          eq(convSchema.tasks.state, 'claimed'),
-          eq(convSchema.tasks.claimedByAgentId, agentId),
-          sql`${convSchema.tasks.metadata}->>'type' = 'negotiation'`,
-          notArchivedNegotiationTaskWhere(),
-        ),
-      )
-      .limit(1);
-
-    if (existingClaim) {
-      logger.info('Returning existing claimed turn', {
-        agentId,
-        taskId: existingClaim.id,
-      });
-      // Idempotent repick path: the pre-park timestamp is not readily available
-      // once a task is claimed, so we fall back to updatedAt (the claim time).
-      // The resulting deadline is OPTIMISTIC — it can be later than when the
-      // already-armed claim-timer will actually fire (parkStart + 5min), because
-      // claimTime > parkStart. Agents may briefly see more time than they have.
-      // TODO(plan-b): persist park-start on task metadata at waiting_for_agent
-      // transition so both initial pickup and idempotent repick derive deadlines
-      // from the same origin. Tracked alongside the per-turn park-window work.
-      return this.buildPickupResult(existingClaim, userId, existingClaim.updatedAt ?? new Date());
+    // A fresh cron/gateway session repairs durable queue work committed by an
+    // earlier process before selecting another negotiation. This path is scoped
+    // to the exact current agent/owner and does not retain or require the old
+    // raw run capability. Delivery failure rejects pickup, so ordinary success
+    // can never strand a known pending response outbox.
+    const pendingOutboxes = await this.responsePersistence.getPendingHermesResponseOutboxes(
+      agentId,
+      userId,
+      principal,
+    );
+    for (const pending of pendingOutboxes) {
+      await this.deliverHermesResponseOutbox(pending.taskId, pending.result);
     }
 
-    // 2. Find oldest task in waiting_for_agent where user is source or candidate
-    const [pendingTask] = await db
-      .select()
-      .from(convSchema.tasks)
-      .where(
-        and(
-          eq(convSchema.tasks.state, 'waiting_for_agent'),
-          sql`${convSchema.tasks.metadata}->>'type' = 'negotiation'`,
-          notArchivedNegotiationTaskWhere(),
-          sql`(
-            ${convSchema.tasks.metadata}->>'sourceUserId' = ${userId}
-            OR ${convSchema.tasks.metadata}->>'candidateUserId' = ${userId}
-          )`,
-        ),
-      )
-      .orderBy(asc(convSchema.tasks.createdAt))
-      .limit(1);
-
-    if (!pendingTask) {
+    const pickup = await this.pickupAdapter.pickupNegotiationAtomically({
+      agentId,
+      ownerId: userId,
+      principal,
+      ...(runId ? { runId } : {}),
+    });
+    if (pickup.kind === 'unauthorized') {
+      throw new UnauthorizedError(`Agent ${agentId} is no longer the selected negotiation executor`);
+    }
+    if (pickup.kind === 'empty') return null;
+    if (pickup.kind === 'run_exhausted') {
+      throw new ConflictError('This Hermes run has already picked up a negotiation task');
+    }
+    if (pickup.kind === 'conflict') {
+      logger.info('Lost race to claim negotiation task', { agentId, userId });
       return null;
     }
 
-    // 3. Atomically transition to claimed (WHERE state = 'waiting_for_agent' prevents races)
-    const continuationMeta = pendingTask.metadata as { continuationExecution?: { status?: unknown } } | null;
-    const parkedContinuation = continuationMeta?.continuationExecution?.status === 'parked';
-    const claimed = parkedContinuation
-      ? (await claimParkedContinuationExecution(db, pendingTask.id, agentId))?.task
-      : (await db.update(convSchema.tasks)
-        .set({ state: 'claimed', claimedByAgentId: agentId, claimedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(convSchema.tasks.id, pendingTask.id), eq(convSchema.tasks.state, 'waiting_for_agent')))
-        .returning())[0];
-
-    if (!claimed) {
-      // Another agent won the race
-      logger.info('Lost race to claim task', {
-        agentId,
-        taskId: pendingTask.id,
-      });
-      return null;
-    }
-
-    // 4. Cancel park-window timer (no longer unpicked)
-    await negotiationTimeoutQueue.cancelTimeout(claimed.id);
-
-    // 5. Enqueue claim timeout using remaining park-window budget.
-    // NOTE: claimed.updatedAt is the post-update value (Drizzle RETURNING returns
-    // the updated row). The pre-claim updatedAt — the park-start time — lives in
-    // pendingTask.updatedAt, captured from the SELECT before the CAS transition.
-    // TODO(plan-b): the dispatcher accepts `options.timeoutMs` per call (5 min
-    // ambient today, 60s orchestrator after Plan B), but the originating window
-    // is not persisted on the task. Until it is, this path assumes every parked
-    // turn used AMBIENT_PARK_WINDOW_MS; the orchestrator trigger will over-report
-    // remaining budget until the per-turn window is threaded through the timeout
-    // job payload or task metadata. Safe for this PR (ambient-only parking).
+    const claimed = pickup.task;
+    const claimedAt = claimed.claimedAt?.toISOString();
+    if (!claimedAt) throw new Error(`Claimed negotiation ${claimed.id} has no claim generation`);
     const messages = await conversationDatabaseAdapter.getMessagesForConversation(claimed.conversationId);
     const turnNumber = messages.length;
-    const remainingMs = computeRemainingBudgetMs(pendingTask.updatedAt, AMBIENT_PARK_WINDOW_MS);
-    await negotiationClaimTimeoutQueue.enqueueTimeout(claimed.id, turnNumber, agentId, remainingMs);
+    const remainingMs = computeRemainingBudgetMs(pickup.parkStartTime, AMBIENT_PARK_WINDOW_MS);
+    const execution = (claimed.metadata as {
+      continuationExecution?: {
+        priorTaskId?: unknown;
+        settlementId?: unknown;
+        successorTaskId?: unknown;
+        token?: unknown;
+        fence?: unknown;
+      };
+    } | null)?.continuationExecution;
+    const continuation = execution
+      && typeof execution.priorTaskId === 'string'
+      && typeof execution.settlementId === 'string'
+      && typeof execution.successorTaskId === 'string'
+      && typeof execution.token === 'string'
+      && typeof execution.fence === 'number'
+      ? {
+          priorTaskId: execution.priorTaskId,
+          settlementId: execution.settlementId,
+          successorTaskId: execution.successorTaskId,
+          token: execution.token,
+          fence: execution.fence,
+        }
+      : undefined;
 
-    logger.info('Turn claimed', {
+    // Both new and exact-existing claims run this delivery repair. The job ID
+    // is claim-generation specific, so an existing add cannot extend the
+    // original deadline or duplicate fallback.
+    await negotiationTimeoutQueue.cancelTimeout(claimed.id, pickup.parkGeneration);
+    await negotiationClaimTimeoutQueue.enqueueTimeout(
+      claimed.id,
+      turnNumber,
+      agentId,
+      claimedAt,
+      remainingMs,
+      continuation,
+    );
+
+    logger.info(pickup.kind === 'existing' ? 'Returning existing claimed turn after timer repair' : 'Turn claimed', {
       agentId,
       userId,
       taskId: claimed.id,
       turnNumber,
     });
 
-    // 6. Return pickup result
-    // Pass pendingTask.updatedAt (the pre-claim park-start time) so the
-    // deadline reflects the true remaining park-window, not the claim time.
-    return this.buildPickupResult(claimed, userId, pendingTask.updatedAt);
+    const result = await this.buildPickupResult(claimed, userId, pickup.parkStartTime);
+    return principal.audience === 'hermes-negotiator'
+      ? this.projectHermesPickup(result, pickup.runCapability)
+      : result;
   }
 
   /**
@@ -357,9 +389,22 @@ export class NegotiationPollingService {
     userId: string,
     negotiationId: string,
     input: ConsultNegotiationInput,
+    principal: NegotiationCredentialPrincipal,
+    runAuthority?: HermesRunMutationAuthority,
   ): Promise<ConsultNegotiationResult> {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
+    }
+    if (runAuthority && await conversationDatabaseAdapter.isHermesRunMutationReplay(
+      negotiationId,
+      principal,
+      runAuthority,
+    )) {
+      return {
+        success: true,
+        status: 'input_required',
+        settlementId: negotiationQuestionSettlementId(negotiationId),
+      };
     }
     const task = await conversationDatabaseAdapter.getTask(negotiationId);
     if (!task) throw new NotFoundError(`Negotiation ${negotiationId} not found`);
@@ -410,33 +455,10 @@ export class NegotiationPollingService {
       });
     }
 
-    const counterparty = metadata.sourceUserId === userId
-      ? metadata.turnContext?.candidateUser
-      : metadata.turnContext?.sourceUser;
-    const turnContext = metadata.turnContext;
-    const safeAskUser = validateInflightAskUserFields({
-      disclosureSubject: input.disclosureSubject,
-      draftQuestion: input.draftQuestion,
-      forbiddenIdentifiers: [
-        counterparty?.id ?? '',
-        counterparty?.profile?.name ?? '',
-        negotiationId,
-        eligibility.coordinates.opportunityId,
-        eligibility.coordinates.recipientIntentId,
-        eligibility.coordinates.networkId,
-      ],
-      forbiddenSourceText: [
-        counterparty?.profile?.bio ?? '',
-        counterparty?.profile?.location ?? '',
-        ...(counterparty?.intents ?? []).flatMap((intent) => [intent.title, intent.description]),
-        turnContext?.seedAssessment?.reasoning ?? '',
-        turnContext?.indexContext?.prompt ?? '',
-        turnContext?.discoveryQuery ?? '',
-      ],
-    });
-    if (!safeAskUser) {
-      throw new SeatViolationError('Consultation fields contain unsafe or private negotiation material');
+    if (!eligibility.policy.reason || eligibility.policy.reason !== input.reason) {
+      throw new SeatViolationError('Consultation reason does not match the server-authorized category');
     }
+    const safeAskUser = consultationPromptFor(eligibility.policy.reason);
 
     const hasContinuation = hasContinuationIdentity(task.metadata);
     const continuationExecution = hasContinuation
@@ -496,9 +518,9 @@ export class NegotiationPollingService {
         expectedTurnCount: messages.length,
         expectedMaterial: material,
         safeAskUser,
-        ...(eligibility.policy.reason && policyMode !== 'off'
-          ? { consultationPolicyReason: eligibility.policy.reason }
-          : {}),
+        consultationPolicyReason: eligibility.policy.reason,
+        principal,
+        ...(runAuthority ? { runAuthority } : {}),
         ...(continuationExecution ? { continuationExecution } : {}),
       });
     } catch (error) {
@@ -507,18 +529,24 @@ export class NegotiationPollingService {
     }
     if (!paused) {
       await negotiationTimeoutQueue.cancelAskUserExpiry(negotiationId, consultationAttemptId);
+      if (runAuthority && await conversationDatabaseAdapter.isHermesRunMutationReplay(
+        negotiationId,
+        principal,
+        runAuthority,
+      )) {
+        return { success: true, status: 'input_required', settlementId };
+      }
       throw new ConflictError(`Negotiation ${negotiationId} is no longer held by this claim`);
     }
 
-    await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId);
+    if (task.claimedAt) {
+      await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId, task.claimedAt.toISOString());
+    }
     const payload = buildExternalConsultationQuestionerPayload({
       negotiationId,
       userId,
       coordinates: eligibility.coordinates,
-      safeInput: safeAskUser,
-      ...(eligibility.policy.reason && policyMode !== 'off'
-        ? { consultationPolicyReason: eligibility.policy.reason }
-        : {}),
+      reason: eligibility.policy.reason,
     });
     await questionerEnqueue!(payload).catch((error) => {
       logger.error('Failed to enqueue external owner consultation; expiry recovery remains armed', {
@@ -555,11 +583,169 @@ export class NegotiationPollingService {
     userId: string,
     negotiationId: string,
     input: RespondInput,
+    principal: NegotiationCredentialPrincipal,
+  ): Promise<{ success: true }> {
+    if (!await this.authorization.authorizeRespond(agentId, userId)) {
+      throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
+    }
+    // Legacy agent-bound responses retain their existing adapter flow. The
+    // dedicated Hermes endpoint below uses the single-transaction response seam.
+    return this.respondLegacy(agentId, userId, negotiationId, input, principal);
+  }
+
+  async respondHermes(
+    agentId: string,
+    userId: string,
+    negotiationId: string,
+    input: HermesNegotiationResponse,
+    principal: NegotiationCredentialPrincipal,
+    runAuthority: HermesRunMutationAuthority,
   ): Promise<{ success: true }> {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
 
+    const replay = await this.responsePersistence.getHermesResponseReplay(
+      negotiationId,
+      principal,
+      runAuthority,
+    );
+    if (replay) {
+      await this.deliverHermesResponseOutbox(negotiationId, replay);
+      return { success: true };
+    }
+
+    const preflight = await this.responsePersistence.getTask(negotiationId);
+    if (!preflight) throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+    const metadata = preflight.metadata as NegotiationTaskMetadata | null;
+    if (metadata?.type !== 'negotiation') throw new NotFoundError(`Task ${negotiationId} is not a negotiation`);
+    if (metadata.sourceUserId !== userId && metadata.candidateUserId !== userId) {
+      throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+    }
+    const protocolVersion = (readProtocolVersion(metadata) ?? 'v1') as NegotiationProtocolVersion;
+    const seat = resolveSeat(userId, metadata);
+    const messages = await this.responsePersistence.getMessagesForConversation(preflight.conversationId);
+    if (expectedNegotiationSpeaker(metadata, messages) !== userId) {
+      throw new SeatViolationError('It is not this owner\'s turn to respond in the negotiation');
+    }
+    const newTurnCount = messages.length + 1;
+    const isFinalTurn = isNegotiationTurnCapReached(newTurnCount, metadata.maxTurns);
+    const allowed = allowedActionsFor(protocolVersion, seat, isFinalTurn);
+    const turn = buildHermesNegotiationTurn(input, allowed);
+    if (!turn) throw new SeatViolationError('Closed Hermes action is not available for this negotiation turn');
+
+    const finalState = isTerminalAction(turn.action) || isFinalTurn
+      ? 'completed'
+      : 'waiting_for_agent';
+    const currentSpeaker: 'source' | 'candidate' = metadata.sourceUserId === userId ? 'source' : 'candidate';
+    const history = this.parseHistory(messages);
+    const outcome = finalState === 'completed'
+      ? this.buildOutcome(
+          [...history, turn],
+          newTurnCount,
+          turn.action,
+          metadata.sourceUserId,
+          metadata.candidateUserId,
+          currentSpeaker === 'source' ? 'candidate' : 'source',
+        )
+      : undefined;
+    const opportunityStatus = finalState === 'completed' && metadata.opportunityId
+      ? turn.action === 'accept'
+        ? 'pending'
+        : isRejectLikeAction(turn.action)
+          ? 'rejected'
+          : 'stalled'
+      : null;
+    const continuationOutcome = finalState === 'completed'
+      ? turn.action === 'accept'
+        ? 'accepted'
+        : isRejectLikeAction(turn.action)
+          ? 'rejected'
+          : 'stalled'
+      : undefined;
+
+    const result = await this.responsePersistence.respondHermesNegotiationAtomically({
+      agentId,
+      ownerId: userId,
+      taskId: negotiationId,
+      principal,
+      authority: runAuthority,
+      expectedConversationId: preflight.conversationId,
+      expectedTaskUpdatedAt: preflight.updatedAt,
+      expectedTurnCount: messages.length,
+      turn,
+      finalState,
+      ...(outcome ? { outcome } : {}),
+      ...(metadata.opportunityId && opportunityStatus
+        ? { opportunity: { id: metadata.opportunityId, status: opportunityStatus } }
+        : {}),
+      ...(continuationOutcome ? { continuationOutcome } : {}),
+      parkTimeoutMs: AMBIENT_PARK_WINDOW_MS,
+      identity: hermesResponseIdentity(negotiationId, runAuthority.capability),
+    });
+    if (result.kind === 'unauthorized') {
+      throw new UnauthorizedError(`Agent ${agentId} is no longer the selected negotiation executor`);
+    }
+    if (result.kind === 'not_found') throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+    if (result.kind === 'conflict') {
+      if (result.claimedByAgentId && result.claimedByAgentId !== agentId) {
+        throw new ConflictError(`Negotiation ${negotiationId} is claimed by a different agent`);
+      }
+      throw new ConflictError(`Negotiation ${negotiationId} is in state '${result.state ?? 'unknown'}', expected 'claimed'`);
+    }
+
+    await this.deliverHermesResponseOutbox(negotiationId, result);
+    logger.info(finalState === 'completed' ? 'Negotiation finalized' : 'Turn submitted, waiting for next agent', {
+      negotiationId,
+      action: turn.action,
+      turnCount: newTurnCount,
+    });
+    return { success: true };
+  }
+
+  private async deliverHermesResponseOutbox(
+    negotiationId: string,
+    result: Extract<AtomicHermesResponseResult, { kind: 'committed' | 'replay' }>,
+  ): Promise<void> {
+    if (result.outboxDelivered) return;
+    try {
+      await negotiationClaimTimeoutQueue.cancelTimeout(
+        negotiationId,
+        result.queueIntent.claimGeneration,
+      );
+      if (result.queueIntent.rearmParkTimeout) {
+        await negotiationTimeoutQueue.enqueueTimeout(
+          negotiationId,
+          result.queueIntent.rearmParkTimeout.turnNumber,
+          remainingDeadlineDelayMs(result.queueIntent.rearmParkTimeout.deadlineAt, this.now()),
+          result.queueIntent.rearmParkTimeout.parkGeneration,
+          result.queueIntent.rearmParkTimeout.continuation,
+        );
+      }
+      if (!await this.responsePersistence.markHermesResponseOutboxDelivered(
+        negotiationId,
+        result.receipt.receiptId,
+      )) throw new Error('Hermes response outbox receipt changed before delivery acknowledgement');
+    } catch (error) {
+      // The database response is already committed. Keep the outbox pending and
+      // reject this request; a future independent pickup will retry the same
+      // queue IDs before claiming work, including after a process restart.
+      logger.error('Failed to deliver committed Hermes response queue outbox', {
+        negotiationId,
+        receiptId: result.receipt.receiptId,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  private async respondLegacy(
+    agentId: string,
+    userId: string,
+    negotiationId: string,
+    input: RespondInput,
+    principal: NegotiationCredentialPrincipal,
+  ): Promise<{ success: true }> {
     // 1. Seat + version validation (v2 client-advocate protocol) — BEFORE the
     //    CAS transition, so a rejected action leaves the claim intact and the
     //    agent can retry with a valid one. The action must be within the
@@ -578,7 +764,10 @@ export class NegotiationPollingService {
     const protocolVersion = (readProtocolVersion(preflightMeta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, preflightMeta);
     const preflightMessages = await conversationDatabaseAdapter.getMessagesForConversation(preflight.conversationId);
-    const isFinalTurn = preflightMessages.length + 1 >= (preflightMeta.maxTurns ?? DEFAULT_MAX_TURNS);
+    if (expectedNegotiationSpeaker(preflightMeta, preflightMessages) !== userId) {
+      throw new SeatViolationError('It is not this owner\'s turn to respond in the negotiation');
+    }
+    const isFinalTurn = isNegotiationTurnCapReached(preflightMessages.length + 1, preflightMeta.maxTurns);
     if (!allowedActionsFor(protocolVersion, seat, isFinalTurn).includes(input.action)) {
       throw new SeatViolationError(seatViolationMessage(input.action, seat, protocolVersion));
     }
@@ -595,9 +784,13 @@ export class NegotiationPollingService {
     if (hasContinuation && !continuationExecution) {
       throw new ConflictError(`Negotiation ${negotiationId} continuation fence is no longer current`);
     }
-    const task = continuationExecution
-      ? await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId, agentId, continuationExecution)
-      : await conversationDatabaseAdapter.transitionClaimedTaskToWorking(negotiationId, agentId);
+    const task = await conversationDatabaseAdapter.transitionClaimedTaskToWorking(
+      negotiationId,
+      agentId,
+      continuationExecution ?? undefined,
+      principal,
+      userId,
+    );
 
     if (!task) {
       // Either the task does not exist, is no longer claimed, or is claimed by
@@ -623,7 +816,9 @@ export class NegotiationPollingService {
 
     // 3. Cancel 6h claim timeout (the CAS already fenced it off, but remove the
     //    delayed job so it doesn't wake up and short-circuit on state mismatch).
-    await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId);
+    if (preflight.claimedAt) {
+      await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId, preflight.claimedAt.toISOString());
+    }
 
     // 4. The caller IS the current speaker (they claimed the turn) — attribute
     //    the message to them directly rather than deriving from turn parity.
@@ -649,11 +844,10 @@ export class NegotiationPollingService {
     });
 
     const newTurnCount = currentTurnCount + 1;
-    const maxTurns = meta.maxTurns ?? DEFAULT_MAX_TURNS;
 
     // 6. Evaluate: terminal action (accept/reject/withdraw/decline) or maxTurns
     //    -> finalize, else -> waiting_for_agent + re-arm timeout
-    if (isTerminalAction(input.action) || newTurnCount >= maxTurns) {
+    if (isTerminalAction(input.action) || isNegotiationTurnCapReached(newTurnCount, meta.maxTurns)) {
       // Parse full history for outcome building
       const history = this.parseHistory(messages);
       const fullHistory = [...history, turn];
@@ -712,11 +906,32 @@ export class NegotiationPollingService {
         turnCount: newTurnCount,
       });
     } else {
-      // Continue: set to waiting_for_agent and re-arm park-window timeout
-      await conversationDatabaseAdapter.updateTaskState(task.id, 'waiting_for_agent', undefined, continuationExecution ?? undefined);
+      // Continue: persist and arm one exact park generation.
+      const parkGeneration = crypto.randomUUID();
+      await conversationDatabaseAdapter.updateTaskState(
+        task.id,
+        'waiting_for_agent',
+        undefined,
+        continuationExecution ?? undefined,
+        parkGeneration,
+      );
       if (continuationExecution) await parkContinuationExecution(db, continuationExecution);
 
-      await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
+      await negotiationTimeoutQueue.enqueueTimeout(
+        negotiationId,
+        newTurnCount,
+        AMBIENT_PARK_WINDOW_MS,
+        parkGeneration,
+        continuationExecution
+          ? {
+              priorTaskId: continuationExecution.taskId,
+              settlementId: continuationExecution.settlementId,
+              successorTaskId: continuationExecution.successorTaskId,
+              token: continuationExecution.token,
+              fence: continuationExecution.fence,
+            }
+          : undefined,
+      );
 
       logger.info('Turn submitted, waiting for next agent', {
         negotiationId,
@@ -731,6 +946,34 @@ export class NegotiationPollingService {
   // ─────────────────────────────────────────────────────────────────────────
   // Private helpers
   // ─────────────────────────────────────────────────────────────────────────
+
+  private projectHermesPickup(
+    result: PickupResult,
+    runCapability: string | undefined,
+  ): HermesPickupResult {
+    if (!runCapability) {
+      throw new ConflictError('Hermes pickup did not produce a run-bound capability');
+    }
+    return {
+      negotiationId: result.negotiationId,
+      taskId: result.taskId,
+      opportunity: result.opportunity
+        ? { id: result.opportunity.id, status: result.opportunity.status }
+        : null,
+      turn: {
+        number: result.turn.number,
+        deadline: result.turn.deadline,
+        history: result.turn.history.map(({ turnNumber, agent, action }) => ({ turnNumber, agent, action })),
+        counterpartyAction: result.turn.counterpartyAction,
+      },
+      seat: result.seat,
+      protocolVersion: result.protocolVersion,
+      allowedActions: allowedHermesActionsFor(result.allowedActions),
+      canConsultOwner: result.canConsultOwner,
+      ownerDirective: HERMES_OWNER_DIRECTIVE,
+      runCapability,
+    };
+  }
 
   /**
    * Builds a {@link PickupResult} from a task row.
@@ -825,7 +1068,7 @@ export class NegotiationPollingService {
     // use the terminal-cap vocabulary and never advertise consultation.
     const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, meta);
-    const isFinalTurn = turnNumber + 1 >= (meta.maxTurns ?? DEFAULT_MAX_TURNS);
+    const isFinalTurn = isNegotiationTurnCapReached(turnNumber + 1, meta.maxTurns);
     const questionerEnqueue = questionerEnqueueIfEnabled();
     const consultation = assessExternalConsultationEligibility({
       task: {

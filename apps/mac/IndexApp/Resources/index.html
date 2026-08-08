@@ -34641,13 +34641,68 @@ function safeDecode(segment) {
   }
 }
 
+const ALLOWED_MARKDOWN_TAGS = new Set([
+  'A', 'BLOCKQUOTE', 'BR', 'CODE', 'DEL', 'EM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+  'HR', 'LI', 'OL', 'P', 'PRE', 'STRONG', 'UL',
+]);
+
+function safeExternalHref(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Convert untrusted model markdown to a strict HTML subset. Raw HTML is escaped
+ * before parsing, and the resulting tree is allowlisted again so parser changes
+ * cannot introduce active content or credential-reading event handlers.
+ */
+function renderAgentMarkdown(marked, DOMParserType, value) {
+  if (!marked || typeof marked.parse !== 'function' || !DOMParserType || !value) return null;
+  const escaped = String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const parsed = marked.parse(escaped, { breaks: true, async: false });
+  if (typeof parsed !== 'string') return null;
+
+  const document = new DOMParserType().parseFromString(`<body>${parsed}</body>`, 'text/html');
+  const body = document.body;
+  if (!body) return null;
+
+  for (const element of [...body.querySelectorAll('*')]) {
+    if (!ALLOWED_MARKDOWN_TAGS.has(element.tagName)) {
+      element.replaceWith(...element.childNodes);
+      continue;
+    }
+    const parsedHref = element.tagName === 'A'
+      ? safeExternalHref(element.getAttribute('href'))
+      : null;
+    for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name);
+    if (element.tagName === 'A') {
+      if (parsedHref) {
+        element.setAttribute('href', parsedHref);
+        element.setAttribute('target', '_blank');
+        element.setAttribute('rel', 'noopener noreferrer');
+      } else {
+        element.replaceWith(...element.childNodes);
+      }
+    }
+  }
+  return body.innerHTML;
+}
+
 const HERMES_RUNTIME_TIMEOUTS_MS = Object.freeze({
   inspect: 130_000,
   configureDisabled: 330_000,
   enable: 210_000,
   confirmHealthy: 15_000,
   disable: 75_000,
+  prepareLogout: 90_000,
   disconnect: 330_000,
+  loadOperation: 15_000,
+  saveOperation: 15_000,
+  clearOperation: 15_000,
 });
 
 // Native commands execute on one serial queue. Queue wait is bounded separately
@@ -34660,6 +34715,70 @@ function bridgeAbortError() {
   error.name = 'AbortError';
   error.code = 'ABORT_ERR';
   return error;
+}
+
+const JOURNAL_COMMANDS = new Set(['saveOperation', 'clearOperation']);
+const OPERATION_JOURNAL_STAGES = Object.freeze({
+  'select-hermes': new Set([
+    'prepare-pending', 'prepared', 'configured', 'activated', 'native-recovery',
+  ]),
+  'select-index': new Set(['server-pending', 'server-complete']),
+  disconnect: new Set(['server-pending', 'server-complete']),
+});
+
+function hasExactKeys(value, expected) {
+  return value && !Array.isArray(value) && typeof value === 'object'
+    && Object.keys(value).sort().join('\0') === [...expected].sort().join('\0');
+}
+
+function validJournalIdentifier(value) {
+  return typeof value === 'string' && value.length > 0
+    && !value.includes('\0') && !/[\r\n]/.test(value);
+}
+
+function validOperationJournal(value) {
+  if (!hasExactKeys(value, [
+    'version', 'operation', 'stage', 'ownerId', 'installationId', 'setupAttemptId', 'executorId',
+  ])) return false;
+  if (value.version !== 1
+    || !OPERATION_JOURNAL_STAGES[value.operation]?.has(value.stage)
+    || !validJournalIdentifier(value.ownerId)
+    || !validJournalIdentifier(value.installationId)) return false;
+  if (value.operation === 'select-hermes') {
+    return validJournalIdentifier(value.setupAttemptId)
+      && (value.stage === 'prepare-pending'
+        ? value.executorId === null
+        : validJournalIdentifier(value.executorId));
+  }
+  const bothNull = value.setupAttemptId === null && value.executorId === null;
+  const bothPresent = validJournalIdentifier(value.setupAttemptId)
+    && validJournalIdentifier(value.executorId);
+  return bothNull || bothPresent;
+}
+
+function validateRuntimePayload(command, payload) {
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
+    return 'Hermes runtime payload must be an object';
+  }
+  if (command === 'loadOperation') {
+    return hasExactKeys(payload, []) ? null : 'Hermes operation load payload must be empty';
+  }
+  if (JOURNAL_COMMANDS.has(command)) {
+    return hasExactKeys(payload, ['operationJournal'])
+      && validOperationJournal(payload.operationJournal)
+      ? null
+      : `Hermes ${command} requires only a strict operation journal payload`;
+  }
+  if (command === 'prepareLogout') {
+    return payload.setupAttemptId === null
+      || (typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)
+      ? null
+      : 'Hermes logout generation must be nonempty or explicitly null';
+  }
+  if (command !== 'inspect' && !(typeof payload.setupAttemptId === 'string' && payload.setupAttemptId.length > 0)) {
+    return 'Hermes runtime generation is required';
+  }
+  return null;
 }
 
 /** Request-correlated bridge with native-dequeue acknowledgement and hard bounds. */
@@ -34734,9 +34853,8 @@ function createHermesRuntimeBridge({
   function request(command, payload = {}, { signal } = {}) {
     const executionTimeoutMs = HERMES_RUNTIME_TIMEOUTS_MS[command];
     if (!executionTimeoutMs) return Promise.reject(new Error('unsupported Hermes runtime command'));
-    if (command !== 'inspect' && !payload.setupAttemptId) {
-      return Promise.reject(new Error('Hermes runtime generation is required'));
-    }
+    const payloadError = validateRuntimePayload(command, payload);
+    if (payloadError) return Promise.reject(new Error(payloadError));
     if (Object.prototype.hasOwnProperty.call(payload, 'credential') && command !== 'configureDisabled') {
       return Promise.reject(new Error('credential is allowed only for Hermes configuration'));
     }
@@ -35179,6 +35297,10 @@ function nullableNonemptyString(value) {
 
 function sanitizeJournal(value) {
   if (!value || Array.isArray(value) || typeof value !== 'object' || value.version !== 1) return null;
+  const exactKeys = [
+    'executorId', 'installationId', 'operation', 'ownerId', 'setupAttemptId', 'stage', 'version',
+  ];
+  if (Object.keys(value).sort().join('\0') !== exactKeys.join('\0')) return null;
   const allowedStages = SAGA_JOURNAL_STAGES[value.operation];
   if (!allowedStages || !allowedStages.has(value.stage)) return null;
   if (!nonemptyString(value.ownerId) || !nonemptyString(value.installationId)) return null;
@@ -35209,45 +35331,98 @@ function sanitizeJournal(value) {
   };
 }
 
-/** Non-secret persistent journal adapter. The injected storage may be app-owned
- * WKWebView storage; production uses localStorage in the bundled document. */
-function createLocalStorageSagaJournal(storage = globalThis.localStorage, key = SAGA_JOURNAL_KEY) {
-  if (!storage || typeof storage.getItem !== 'function') {
+/** App-owned native Application Support journal. The optional legacy storage
+ * is read exactly once when native has no record; only a valid strict record is
+ * migrated, and the old bytes are removed only after native persistence is
+ * confirmed. Every request is serialized so load/migrate/save/clear cannot
+ * overtake one another across React effects. */
+function createNativeSagaJournal(
+  nativeRuntime,
+  legacyStorage = globalThis.localStorage,
+  legacyKey = SAGA_JOURNAL_KEY,
+) {
+  if (typeof nativeRuntime !== 'function') {
     throw new Error('Persistent Hermes saga storage is unavailable');
   }
+  let queue = Promise.resolve();
+  let migrationChecked = false;
+  const serialized = (operation) => {
+    const result = queue.then(operation, operation);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
+  };
+  const decodeNative = (result, command) => {
+    const successful = requireSuccessfulNativeResult(result, command);
+    if (successful.operationJournal == null) return null;
+    const journal = sanitizeJournal(successful.operationJournal);
+    if (!journal) throw new Error('Invalid Hermes saga journal');
+    return journal;
+  };
+  const loadNative = async () => decodeNative(
+    await nativeRuntime('loadOperation', {}), 'loadOperation',
+  );
   return {
-    async load() {
-      const raw = storage.getItem(key);
-      if (!raw) return null;
-      try {
-        const parsed = sanitizeJournal(JSON.parse(raw));
-        if (!parsed) throw new Error('Invalid Hermes saga journal');
-        return parsed;
-      } catch (error) {
-        // Preserve corrupt recovery evidence and fail closed rather than
-        // silently treating an unfinished server-first mutation as absent.
-        if (error?.message === 'Invalid Hermes saga journal') throw error;
-        throw new Error('Invalid Hermes saga journal', { cause: error });
-      }
+    load() {
+      return serialized(async () => {
+        const existing = await loadNative();
+        if (existing || migrationChecked) return existing;
+        migrationChecked = true;
+        if (!legacyStorage || typeof legacyStorage.getItem !== 'function') return null;
+        const raw = legacyStorage.getItem(legacyKey);
+        if (!raw) return null;
+        let legacy;
+        try { legacy = sanitizeJournal(JSON.parse(raw)); } catch { legacy = null; }
+        if (!legacy) {
+          // Preserve malformed legacy evidence byte-for-byte and fail closed.
+          throw new Error('Invalid Hermes saga journal');
+        }
+        const saved = decodeNative(
+          await nativeRuntime('saveOperation', { operationJournal: legacy }),
+          'saveOperation',
+        );
+        if (!sameJournal(saved, legacy)) {
+          throw new Error('Invalid Hermes saga journal');
+        }
+        legacyStorage.removeItem(legacyKey);
+        return saved;
+      });
     },
-    async save(value) {
-      const sanitized = sanitizeJournal(value);
-      if (!sanitized) throw new Error('Invalid Hermes saga journal');
-      storage.setItem(key, JSON.stringify(sanitized));
-      return sanitized;
+    save(value) {
+      return serialized(async () => {
+        const sanitized = sanitizeJournal(value);
+        if (!sanitized) throw new Error('Invalid Hermes saga journal');
+        const saved = decodeNative(
+          await nativeRuntime('saveOperation', { operationJournal: sanitized }),
+          'saveOperation',
+        );
+        if (!sameJournal(saved, sanitized)) {
+          throw new Error('Invalid Hermes saga journal');
+        }
+        return saved;
+      });
     },
-    async clear(expected) {
-      const current = await this.load();
-      if (!current) return;
-      if (expected && (
-        current.operation !== expected.operation
-        || current.ownerId !== expected.ownerId
-        || current.setupAttemptId !== expected.setupAttemptId
-        || current.installationId !== expected.installationId
-      )) return;
-      storage.removeItem(key);
+    clear(expected) {
+      return serialized(async () => {
+        const sanitized = sanitizeJournal(expected);
+        if (!sanitized) throw new Error('Invalid Hermes saga journal');
+        return decodeNative(
+          await nativeRuntime('clearOperation', { operationJournal: sanitized }),
+          'clearOperation',
+        );
+      });
     },
   };
+}
+
+function sameJournal(left, right) {
+  return !!left && !!right
+    && left.version === right.version
+    && left.operation === right.operation
+    && left.stage === right.stage
+    && left.ownerId === right.ownerId
+    && left.installationId === right.installationId
+    && left.setupAttemptId === right.setupAttemptId
+    && left.executorId === right.executorId;
 }
 
 function operationJournal(operation, stage, {
@@ -35540,6 +35715,88 @@ async function performDisconnect({ api, nativeRuntime, operationStore, journal, 
   }, { signal }), 'disconnect', journal.setupAttemptId);
   await operationStore?.clear(serverComplete);
   return { binding, localState: disconnected.state || null };
+}
+
+/**
+ * Logout barrier: persist an owner-pinned disconnect/revoke intent, attempt the
+ * owner runtime revocation path, and regardless of its result ask native to
+ * quarantine scheduling and scrub the dedicated Hermes environment credential.
+ * Native owner-key revocation remains unreachable until that local postcondition
+ * is proven. Server uncertainty deliberately remains server-pending for the
+ * next login by this same owner.
+ */
+async function prepareHermesLogout({
+  api, nativeRuntime, operationStore, ownerId,
+}) {
+  if (!nonemptyString(ownerId)) throw ownerMismatchError();
+  const inspection = requireSuccessfulNativeResult(
+    await nativeRuntime('inspect', { ownerId }), 'inspect',
+  );
+  const localState = inspection.state || null;
+  const existing = await operationStore?.load() || null;
+  if (existing && existing.ownerId !== ownerId) {
+    return pauseOwnerMismatchedGeneration({ nativeRuntime, localState });
+  }
+  const installationId = localState?.installationId || existing?.installationId;
+  if (!nonemptyString(installationId)) {
+    const error = new Error('Hermes inspection did not return an installation identity');
+    error.code = 'installation_missing';
+    error.stage = 'logout';
+    throw error;
+  }
+
+  const hasExactGeneration = nonemptyString(localState?.setupAttemptId)
+    && nonemptyString(localState?.executorId);
+  const journal = operationJournal('disconnect', 'server-pending', {
+    ownerId,
+    installationId,
+    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
+    executorId: hasExactGeneration ? localState.executorId : null,
+  });
+  await operationStore?.save(journal);
+
+  let binding = null;
+  let serverError = null;
+  try {
+    binding = await api.disconnectHermesRuntime(installationId);
+    await operationStore?.save({ ...journal, stage: 'server-complete' });
+  } catch (error) {
+    serverError = error;
+  }
+
+  const prepared = requireSuccessfulNativeResult(await nativeRuntime('prepareLogout', {
+    ownerId,
+    setupAttemptId: hasExactGeneration ? localState.setupAttemptId : null,
+  }), 'prepareLogout');
+  const scrubbedState = prepared.state || null;
+  const exactPrepared = prepared.stage === 'logout_prepared'
+    && scrubbedState?.installationId === installationId
+    && scrubbedState?.scheduleEnabled === false
+    && scrubbedState?.negotiatorMode === false;
+  if (!exactPrepared) throw generationMismatch('prepareLogout', prepared);
+
+  // Keep both pending and server-complete evidence until native owner-key
+  // revocation independently reproves the local postcondition. Native clears
+  // only server-complete; uncertainty survives logout for same-owner recovery.
+  // Local pause/scrub has already completed, but the owner credential must stay
+  // usable so this same owner can authoritatively retry the server disconnect.
+  if (serverError) {
+    const uncertainty = serverError instanceof Error
+      ? serverError
+      : new Error('Hermes server disconnect remains uncertain');
+    uncertainty.code = uncertainty.code || 'server_disconnect_uncertain';
+    uncertainty.stage = 'logout';
+    uncertainty.retryable = true;
+    uncertainty.state = scrubbedState;
+    uncertainty.serverUncertain = true;
+    throw uncertainty;
+  }
+  return {
+    ownerId,
+    binding,
+    localState: scrubbedState,
+    serverUncertain: false,
+  };
 }
 
 /** Revoke/select Index on the server before exact local key/plugin/schedule cleanup. */
@@ -35837,6 +36094,13 @@ function createAgentRuntimeCoordinator({
     })
   ));
 
+  const prepareLogout = () => enqueue('logout', (api, _signal, capturedOwner) => (
+    prepareHermesLogout({
+      api, nativeRuntime, operationStore,
+      ownerId: capturedOwner.ownerId,
+    })
+  ));
+
   const disconnect = () => enqueue('disconnect', (api, signal, capturedOwner) => (
     disconnectHermesSaga({
       api, nativeRuntime, operationStore,
@@ -35891,7 +36155,7 @@ function createAgentRuntimeCoordinator({
   };
 
   return {
-    changeOwner, bootstrap, selectHermes, selectIndex, disconnect, retry, refresh, dispose,
+    changeOwner, bootstrap, selectHermes, selectIndex, prepareLogout, disconnect, retry, refresh, dispose,
     snapshot: () => ({ ...state, authEpoch, operationRevision }),
     idle: () => tail,
   };
@@ -35903,7 +36167,7 @@ function runViewRuntimeAction(action) {
   Promise.resolve().then(action).catch(() => undefined);
 }
 
-window.IndexApi = { createIndexApiClient: createIndexApiClient, createPinnedIndexApiClient: createPinnedIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromRadarItems: mapPeopleFromRadarItems, mapPersonFromRadarCard: mapPersonFromRadarCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink, isIndexDeepLink: isIndexDeepLink, mapAgentRuntimeState: mapAgentRuntimeState, waitForHermesHealth: waitForHermesHealth, createHermesRuntimeBridge: createHermesRuntimeBridge, HERMES_RUNTIME_TIMEOUTS_MS: HERMES_RUNTIME_TIMEOUTS_MS, HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS: HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS, runHermesSelectionSaga: runHermesSelectionSaga, bootstrapHermesRuntime: bootstrapHermesRuntime, reconcileHermesSaga: reconcileHermesSaga, selectIndexRuntime: selectIndexRuntime, disconnectHermesSaga: disconnectHermesSaga, createLocalStorageSagaJournal: createLocalStorageSagaJournal, createAgentRuntimeCoordinator: createAgentRuntimeCoordinator, runViewRuntimeAction: runViewRuntimeAction, HERMES_SETUP_JOURNAL_STAGES: HERMES_SETUP_JOURNAL_STAGES };
+window.IndexApi = { createIndexApiClient: createIndexApiClient, createPinnedIndexApiClient: createPinnedIndexApiClient, IndexApiError: IndexApiError, normalizeApiBaseUrl: normalizeApiBaseUrl, toQueryString: toQueryString, mapIndexSnapshot: mapIndexSnapshot, mapIntents: mapIntents, mapIntent: mapIntent, mapPeopleFromRadarItems: mapPeopleFromRadarItems, mapPersonFromRadarCard: mapPersonFromRadarCard, mapPeopleFromOpportunities: mapPeopleFromOpportunities, mapCounterpartProfile: mapCounterpartProfile, mapSocials: mapSocials, mapClarifiers: mapClarifiers, mapClarifier: mapClarifier, mapOpportunityStatusToPrototype: mapOpportunityStatusToPrototype, mapEventSummary: mapEventSummary, parseDeepLink: parseDeepLink, isIndexDeepLink: isIndexDeepLink, mapAgentRuntimeState: mapAgentRuntimeState, waitForHermesHealth: waitForHermesHealth, createHermesRuntimeBridge: createHermesRuntimeBridge, HERMES_RUNTIME_TIMEOUTS_MS: HERMES_RUNTIME_TIMEOUTS_MS, HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS: HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS, runHermesSelectionSaga: runHermesSelectionSaga, bootstrapHermesRuntime: bootstrapHermesRuntime, reconcileHermesSaga: reconcileHermesSaga, selectIndexRuntime: selectIndexRuntime, prepareHermesLogout: prepareHermesLogout, disconnectHermesSaga: disconnectHermesSaga, createNativeSagaJournal: createNativeSagaJournal, createAgentRuntimeCoordinator: createAgentRuntimeCoordinator, runViewRuntimeAction: runViewRuntimeAction, HERMES_SETUP_JOURNAL_STAGES: HERMES_SETUP_JOURNAL_STAGES, renderAgentMarkdown: renderAgentMarkdown };
 
 })();
 </script>
@@ -37139,13 +37403,30 @@ window.IndexApp = (function () {
   function hasBridge() {
     return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth);
   }
-  function post(action) {
+  function post(action, payload) {
     if (!hasBridge()) return false;
-    window.webkit.messageHandlers.indexAuth.postMessage({ action });
+    window.webkit.messageHandlers.indexAuth.postMessage({ action, ...(payload || {}) });
     return true;
   }
   function login() { return post("login"); }
-  function logout() { return post("logout"); }
+  let logoutSafetyHandler = null;
+  let logoutInFlight = false;
+  function setLogoutSafetyHandler(handler) {
+    logoutSafetyHandler = typeof handler === "function" ? handler : null;
+    return () => { if (logoutSafetyHandler === handler) logoutSafetyHandler = null; };
+  }
+  function logout() {
+    if (!hasBridge() || !logoutSafetyHandler) return false;
+    if (logoutInFlight) return true;
+    logoutInFlight = true;
+    Promise.resolve()
+      .then(() => logoutSafetyHandler())
+      // Native key deletion/revocation is unreachable until the coordinator has
+      // persisted select-Index recovery and proven local scheduling paused.
+      .then((result) => post("completeLogout", { ownerId:result.ownerId }))
+      .catch(() => { logoutInFlight = false; });
+    return true;
+  }
 
   // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.
   // Resolves with [{id,label,command,path}], or null when there is no native
@@ -37207,6 +37488,7 @@ window.IndexApp = (function () {
   // window.INDEX_NATIVE. Fan that out to any React subscribers.
   const authSubscribers = new Set();
   window.__indexAuthChanged = function (key) {
+    if (!key) logoutInFlight = false;
     authSubscribers.forEach((cb) => { try { cb(key); } catch (e) { /* ignore */ } });
   };
   function onAuthChanged(cb) {
@@ -37508,6 +37790,7 @@ window.IndexApp = (function () {
     loadSnapshot,
     login,
     logout,
+    setLogoutSafetyHandler,
     detectHarnesses,
     hermesRuntime,
     onAuthChanged,
@@ -39728,12 +40011,15 @@ function AgentRuntimeProvider({ ownerCredential, children }) {
   });
   const coordinatorRef = useRef(null);
   if (!coordinatorRef.current) {
-    const operationStore = window.IndexApi.createLocalStorageSagaJournal(window.localStorage);
+    const nativeRuntime = (command, payload, options) => (
+      window.IndexApp.hermesRuntime(command, payload, options)
+    );
+    const operationStore = window.IndexApi.createNativeSagaJournal(
+      nativeRuntime, window.localStorage,
+    );
     coordinatorRef.current = window.IndexApi.createAgentRuntimeCoordinator({
       operationStore,
-      nativeRuntime:(command, payload, options) => (
-        window.IndexApp.hermesRuntime(command, payload, options)
-      ),
+      nativeRuntime,
       waitForHealth:window.IndexApi.waitForHermesHealth,
       onState:setRuntimeState,
     });
@@ -39764,6 +40050,11 @@ function AgentRuntimeProvider({ ownerCredential, children }) {
       current = false;
       coordinator.changeOwner(null).catch(() => {});
     };
+  }, [coordinator, ownerCredential]);
+
+  useEffect(() => {
+    if (!ownerCredential || !window.IndexApp?.setLogoutSafetyHandler) return () => {};
+    return window.IndexApp.setLogoutSafetyHandler(() => coordinator.prepareLogout());
   }, [coordinator, ownerCredential]);
 
   useEffect(() => {
@@ -43244,15 +43535,14 @@ function HELLO_FOR(profile) {
 // The agent mark itself lives in primitives as AgentAvatar, every surface
 // where something speaks on your behalf uses that one visual.
 
-// Agent replies arrive as markdown; render them through the vendored marked
-// UMD (window.marked). `<` is escaped first so raw HTML in model output never
-// reaches the DOM — only markdown-generated tags do. Falls back to plain text
-// if marked is missing or throws (e.g. on a half-streamed construct).
+// Agent replies are untrusted model output. The shared renderer escapes raw
+// HTML, then allowlists the markdown tree and only retains normalized http(s)
+// links. WKNavigationDelegate sends those links to NSWorkspace, never into this
+// credential-bearing document.
 function AgentMarkdown({ text }) {
   const html = useMemo(() => {
-    if (!window.marked || !text) return null;
     try {
-      return window.marked.parse(String(text).replace(/</g, "&lt;"), { breaks: true, async: false });
+      return window.IndexApi.renderAgentMarkdown(window.marked, window.DOMParser, text);
     } catch (e) { return null; }
   }, [text]);
   if (html == null) return text || null;

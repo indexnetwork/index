@@ -33,7 +33,7 @@ Override `INDEX_APP_BASE_URL` only for dev/staging environments, and only with a
 ### Runtime modes
 
 - **`full` (default):** preserves the existing broad MCP wrappers, `index_open_app`, negotiation tools, orchestrator and negotiator skills, pre-LLM hook, `/index` command, desktop dashboard installation, and plugin-local web dashboard routes/tab registration.
-- **`negotiator`:** registers exactly `index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`, and the `index-network:index-negotiator` skill. It registers no discovery or opportunity pickup/delivery capabilities, broad MCP wrappers, `index_open_app`, hook, command, orchestrator skill, or active dashboard API/component.
+- **`negotiator`:** registers exactly `index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`, and the `index-network:index-negotiator` skill. It registers no discovery or opportunity pickup/delivery capabilities, broad MCP wrappers, `index_open_app`, hook, command, orchestrator skill, or active dashboard API/component. The Index macOS-owned cron additionally persists `enabled_toolsets: ["index-network"]` and only that skill, so core shell/browser/HTTP/MCP and unrelated plugin/global tools are excluded by Hermes job configuration rather than prompt instructions.
 
 `plugin.yaml` lists the static package capability union for Hermes discovery. `register(ctx)` applies the tool/skill/hook/command mode boundary. Dashboard discovery is orthogonal to that function, so `dashboard/plugin_api.py` independently uses the same shared raw mode parser: in restricted mode its exported FastAPI router has no routes, and the web bundle does not register its component unless the full-only `/api/plugins/index-network/mode` endpoint confirms exact `full`. Missing or empty `INDEX_PLUGIN_MODE` remains backward-compatible full mode; an unknown non-empty, whitespace-only, or whitespace-padded value fails closed to negotiator mode.
 
@@ -75,7 +75,7 @@ The full list is `provides_tools` in `plugin.yaml`.
 { "agentId": "optional personal agent UUID" }
 ```
 
-If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work returns `{ "success": true, "pending": false }`; a claimed turn returns `pending: true` plus the negotiation payload.
+If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work returns `{ "success": true, "pending": false }`; a claimed turn returns a privacy-minimal projection. Raw negotiator memory, consultation selections/free text, private context, and shared-message prose are omitted. The native plugin supplies a random process run ID, stores the returned opaque one-shot capability outside model arguments, and never exposes either value to the model.
 
 **`index_open_app`** — opens an `https://index.network/...` universal link with the operating system's default handler (see [`index_open_app`](#index_open_app) below).
 
@@ -85,17 +85,12 @@ If `agentId` is omitted it is resolved via `/api/agents/me`. No pending work ret
 {
   "agentId": "optional personal agent UUID",
   "negotiationId": "required negotiation UUID from pickup",
-  "action": "propose | accept | reject | counter | question | outreach | withdraw | decline",
-  "message": "required for counter/question; optional otherwise",
-  "reasoning": "required private rationale",
-  "suggestedRoles": {
-    "ownUser": "agent | patient | peer",
-    "otherUser": "agent | patient | peer"
-  }
+  "action": "accept | decline | request_time | continue",
+  "roleAlignment": "peers | owner_leads | counterparty_leads"
 }
 ```
 
-The handler maps this to the backend body shape (`action`, `message`, and an `assessment` object containing `reasoning` and `suggestedRoles`). The union covers v1 and v2 actions, but callers must copy one action from each pickup response's `allowedActions`; the server enforces the exact protocol-version, seat, and final-turn subset. `ask_user` is never accepted through this response tool.
+The handler rejects extra fields, attaches the hidden run authority, and sends only the closed action and role alignment. The server maps them to an allowed protocol action plus fixed shared-message and assessment templates. Model-authored `message`, `reasoning`, assessment, run ID, capability, and arbitrary prose are never accepted. Respond and consult atomically consume the same exact task/credential/setup-generation/run capability; an exact retry uses the durable server receipt and one run cannot pick up or mutate a second task.
 
 **`index_consult_owner`** — pauses one eligible claimed turn for a privacy-minimal owner question:
 
@@ -103,12 +98,11 @@ The handler maps this to the backend body shape (`action`, `message`, and an `as
 {
   "agentId": "optional personal agent UUID",
   "negotiationId": "required negotiation UUID from pickup",
-  "disclosureSubject": "required minimal subject needing owner input",
-  "draftQuestion": "optional concise owner question"
+  "reason": "consequential_disclosure_permission | repeated_non_convergence | insufficient_commitment_authority | unresolved_owner_constraint"
 }
 ```
 
-Use it only when pickup returns `canConsultOwner: true`. The handler resolves an omitted `agentId`, requires the negotiation and disclosure fields, and reconstructs the REST body from only `disclosureSubject` and optional `draftQuestion`; extra model-provided fields are never forwarded. A successful response has `status: "input_required"` and ends the pass—do not also submit a negotiation response.
+Use it only when pickup returns `canConsultOwner: true`. The handler resolves an omitted `agentId`, requires one closed server-owned reason category, and reconstructs the REST body as exactly `{reason}`; free-form question/disclosure fields and extra model-provided fields are never forwarded. The server independently derives and matches the category. A successful response has `status: "input_required"` and ends the pass—do not also submit a negotiation response.
 
 ### Opportunity deep links (`appUrl`)
 

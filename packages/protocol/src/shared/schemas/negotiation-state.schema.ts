@@ -30,17 +30,24 @@ export type NegotiationSeat = "initiator" | "counterparty";
 /** Negotiation protocol version stamped on task metadata. */
 export type NegotiationProtocolVersion = "v1" | "v2";
 
+/** Closed, content-free reasons that select server-owned consultation copy. */
+export const NEGOTIATION_CONSULTATION_REASONS = [
+  "unresolved_owner_constraint",
+  "consequential_disclosure_permission",
+  "repeated_non_convergence",
+  "insufficient_commitment_authority",
+] as const;
+export const NegotiationConsultationReasonSchema = z.enum(NEGOTIATION_CONSULTATION_REASONS);
+export type NegotiationConsultationReason = z.infer<typeof NegotiationConsultationReasonSchema>;
+
 /**
- * Payload for the v2 `ask_user` action (P3.2): the negotiator pauses the
- * negotiation to consult its OWN client. `disclosureSubject` states what the
- * negotiator wants permission to share or needs to know; `draftQuestion` is
- * the negotiator's own phrasing, refined by the questioner's
- * `negotiation_inflight` preset before delivery.
+ * Payload for a v2 `ask_user` action. Agents may choose only a closed reason;
+ * disclosure subjects and question wording are always rendered by fixed
+ * server templates and can never carry model-authored instructions.
  */
 export const AskUserPayloadSchema = z.object({
-  disclosureSubject: z.string(),
-  draftQuestion: z.string().nullable().optional(),
-});
+  reason: NegotiationConsultationReasonSchema,
+}).strict();
 export type AskUserPayload = z.infer<typeof AskUserPayloadSchema>;
 
 export const NegotiationTurnSchema = z.object({

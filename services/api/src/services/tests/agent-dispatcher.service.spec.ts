@@ -76,7 +76,7 @@ describe('AgentDispatcherImpl.dispatch', () => {
   it('returns waiting and enqueues timeout when external agent exists (long timeout)', async () => {
     agents = [makeAgent({ lastNegotiationPickupAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
-    expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
+    expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: expect.any(String) });
     expect(timeoutEnqueued).toBe(true);
   });
 
@@ -90,7 +90,7 @@ describe('AgentDispatcherImpl.dispatch', () => {
   it('does not require transports — any fresh external agent triggers waiting', async () => {
     agents = [makeAgent({ transports: [], lastNegotiationPickupAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
-    expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
+    expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: expect.any(String) });
   });
 });
 

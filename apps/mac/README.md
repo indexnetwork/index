@@ -9,6 +9,12 @@ The native macOS application for Index, a React-based UI wrapped in a Swift WKWe
 - **Design:** Amiga Workbench 1.3 theme with IBM Plex Sans and JetBrains Mono fonts
 - **Build:** Python script to inline all dependencies (React, Babel, fonts, JSX modules) for fully offline operation
 
+### Credential-bearing WebView boundary
+
+The native shell admits navigation and bridge messages only for the exact standardized bundled `index.html` main document and current document generation. User-activated `http`/`https` links open through `NSWorkspace`; replacement, subframe, popup, redirect, `javascript:`, and `data:` navigations are cancelled. Model markdown is escaped and reduced to a strict inert tag allowlist before rendering.
+
+Hermes saga recovery is stored atomically under the app's Application Support directory through the request-correlated native bridge, not `file://` localStorage. Logout persists owner-pinned disconnect/revoke evidence, attempts the owner runtime revoke path, and independently proves immutable-ID schedule quarantine plus removal of all app-owned Hermes env wiring before native owner-credential revocation. Server uncertainty remains as strict same-owner recovery evidence while the dedicated local Hermes key is still scrubbed.
+
 ## Prerequisites
 
 - **macOS 11.0+**

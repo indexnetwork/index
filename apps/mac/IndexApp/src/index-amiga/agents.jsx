@@ -198,12 +198,15 @@ function AgentRuntimeProvider({ ownerCredential, children }) {
   });
   const coordinatorRef = useRef(null);
   if (!coordinatorRef.current) {
-    const operationStore = window.IndexApi.createLocalStorageSagaJournal(window.localStorage);
+    const nativeRuntime = (command, payload, options) => (
+      window.IndexApp.hermesRuntime(command, payload, options)
+    );
+    const operationStore = window.IndexApi.createNativeSagaJournal(
+      nativeRuntime, window.localStorage,
+    );
     coordinatorRef.current = window.IndexApi.createAgentRuntimeCoordinator({
       operationStore,
-      nativeRuntime:(command, payload, options) => (
-        window.IndexApp.hermesRuntime(command, payload, options)
-      ),
+      nativeRuntime,
       waitForHealth:window.IndexApi.waitForHermesHealth,
       onState:setRuntimeState,
     });
@@ -234,6 +237,11 @@ function AgentRuntimeProvider({ ownerCredential, children }) {
       current = false;
       coordinator.changeOwner(null).catch(() => {});
     };
+  }, [coordinator, ownerCredential]);
+
+  useEffect(() => {
+    if (!ownerCredential || !window.IndexApp?.setLogoutSafetyHandler) return () => {};
+    return window.IndexApp.setLogoutSafetyHandler(() => coordinator.prepareLogout());
   }, [coordinator, ownerCredential]);
 
   useEffect(() => {

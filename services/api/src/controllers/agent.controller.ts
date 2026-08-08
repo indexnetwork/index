@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { HermesNegotiationResponseSchema, NegotiationConsultationReasonSchema } from '@indexnetwork/protocol';
 
-import { AuthGuard, authorizeNegotiationPickupPrincipal, authorizeNegotiationRespondPrincipal, OwnerControlGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, authorizeNegotiationRespondPrincipal, OwnerControlGuard, SessionOnlyGuard, requireNegotiationCredentialPrincipal, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
@@ -9,6 +10,8 @@ import { AgentTestMessageService } from '../services/agent-test-message.service'
 import { agentService } from '../services/agent.service';
 import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError, SeatViolationError } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
+import { parseFiniteLimit, pickupNegotiationAtControllerBoundary, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
+import { readHermesRunHeaders } from '../lib/agent/hermes-negotiation-run';
 
 const agentTestMessageService = new AgentTestMessageService();
 
@@ -77,8 +80,7 @@ const respondNegotiationSchema = z.object({
 });
 
 const consultNegotiationSchema = z.object({
-  disclosureSubject: z.string().trim().min(1),
-  draftQuestion: z.string().trim().min(1).optional(),
+  reason: NegotiationConsultationReasonSchema,
 }).strict();
 
 function jsonError(error: string, status: number) {
@@ -114,9 +116,16 @@ function errorStatus(err: unknown, fallback = 400): number {
   return fallback;
 }
 
-function consultationErrorResponse(
+type NegotiationControllerOperation = 'pickup' | 'respond' | 'consult';
+
+function negotiationErrorResponse(
   err: unknown,
-  context: { agentId: string; negotiationId: string; stage: 'authorization' | 'consultation' },
+  context: {
+    agentId: string;
+    negotiationId?: string;
+    operation: NegotiationControllerOperation;
+    stage: 'authorization' | 'mutation';
+  },
 ): Response {
   if (err instanceof SeatViolationError) return jsonError(err.message, 400);
   if (err instanceof UnauthorizedError) return jsonError(err.message, 403);
@@ -127,16 +136,21 @@ function consultationErrorResponse(
   const directCode = err && typeof err === 'object' && 'code' in err
     ? (err as { code?: unknown }).code
     : undefined;
-  logger.error('Negotiation consultation failed', {
-    ...context,
+  logger.error(`Negotiation ${context.operation} failed`, {
+    agentId: context.agentId,
+    ...(context.negotiationId ? { negotiationId: context.negotiationId } : {}),
+    stage: context.stage,
     error,
     ...(typeof directCode === 'string' ? { code: directCode } : {}),
   });
   captureAppException(err, {
     subsystem: 'protocol',
-    operation: 'agent.negotiation.consult',
+    operation: `agent.negotiation.${context.operation}`,
     tags: { stage: context.stage },
-    context: { agentId: context.agentId, negotiationId: context.negotiationId },
+    context: {
+      agentId: context.agentId,
+      ...(context.negotiationId ? { negotiationId: context.negotiationId } : {}),
+    },
   });
   return jsonError('Internal server error', 500);
 }
@@ -164,15 +178,10 @@ async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | R
  * Range clamping is the service's responsibility — see callers' validation contract.
  */
 function parseLimitParam(req: Request): number | undefined | Response {
-  const limitParam = new URL(req.url).searchParams.get('limit');
-  if (limitParam === null || limitParam === '') {
-    return undefined;
-  }
-  const parsed = Number(limitParam);
-  if (!Number.isFinite(parsed)) {
-    return jsonError('limit must be a finite number', 400);
-  }
-  return parsed;
+  const parsed = parseFiniteLimit(req.url);
+  return parsed.kind === 'invalid'
+    ? jsonError('limit must be a finite number', 400)
+    : parsed.value;
 }
 
 async function parseOptionalBody<T>(req: Request, schema: z.ZodSchema<T>, emptyValue: unknown): Promise<T | Response> {
@@ -456,19 +465,29 @@ export class AgentController {
     }
 
     try {
-      if (!await authorizeNegotiationPickupPrincipal(req, agentId, this.resolveAgentPrincipal)) {
+      // Pickup linearizes exact runtime authority, task outcome, and heartbeat
+      // in the polling adapter's one owner-locked transaction. The hermetic
+      // controller seam has no independent heartbeat writer.
+      const outcome = await pickupNegotiationAtControllerBoundary({
+        request: req,
+        agentId,
+        ownerId: user.id,
+        resolveAgentPrincipal: this.resolveAgentPrincipal,
+        negotiations: this.negotiations,
+      });
+      if (outcome.kind === 'forbidden') {
         throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
       }
-      // Pickup admission verifies the exact active selected external executor.
-      // Only an authorized poll, including an empty one, stamps this heartbeat.
-      const result = await this.negotiations.pickup(agentId, user.id);
-      await this.agents.touchNegotiationPickup(agentId);
-      if (!result) {
+      if (outcome.kind === 'empty') {
         return new Response(null, { status: 204 });
       }
-      return Response.json(result);
+      return Response.json(outcome.value);
     } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
+      return negotiationErrorResponse(err, {
+        agentId,
+        operation: 'pickup',
+        stage: 'mutation',
+      });
     }
   }
 
@@ -486,20 +505,43 @@ export class AgentController {
         throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
       }
     } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-
-    const body = await parseBody(req, respondNegotiationSchema);
-    if (body instanceof Response) {
-      return body;
+      return negotiationErrorResponse(err, {
+        agentId,
+        negotiationId,
+        operation: 'respond',
+        stage: 'authorization',
+      });
     }
 
     try {
-      const result = await this.negotiations.respond(agentId, user.id, negotiationId, body);
+      const principal = requireNegotiationCredentialPrincipal(req);
+      if (principal.audience === 'hermes-negotiator') {
+        const runHeaders = readHermesRunHeaders(req);
+        if (!runHeaders?.capability) {
+          throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
+        }
+        const body = await parseBody(req, HermesNegotiationResponseSchema);
+        if (body instanceof Response) return body;
+        return Response.json(await this.negotiations.respondHermes(
+          agentId,
+          user.id,
+          negotiationId,
+          body,
+          principal,
+          { runId: runHeaders.runId, capability: runHeaders.capability, outcome: 'responded' },
+        ));
+      }
+      const body = await parseBody(req, respondNegotiationSchema);
+      if (body instanceof Response) return body;
+      const result = await this.negotiations.respond(agentId, user.id, negotiationId, body, principal);
       return Response.json(result);
     } catch (err) {
-      // UnauthorizedError/NotFoundError/ConflictError map to 403/404/409 via errorStatus.
-      return jsonError(parseErrorMessage(err), errorStatus(err));
+      return negotiationErrorResponse(err, {
+        agentId,
+        negotiationId,
+        operation: 'respond',
+        stage: 'mutation',
+      });
     }
   }
 
@@ -517,15 +559,41 @@ export class AgentController {
         throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
       }
     } catch (err) {
-      return consultationErrorResponse(err, { agentId, negotiationId, stage: 'authorization' });
+      return negotiationErrorResponse(err, {
+        agentId,
+        negotiationId,
+        operation: 'consult',
+        stage: 'authorization',
+      });
     }
 
     const body = await parseBody(req, consultNegotiationSchema);
     if (body instanceof Response) return body;
     try {
-      return Response.json(await this.negotiations.consult(agentId, user.id, negotiationId, body));
+      const principal = requireNegotiationCredentialPrincipal(req);
+      const runHeaders = principal.audience === 'hermes-negotiator'
+        ? readHermesRunHeaders(req)
+        : null;
+      if (principal.audience === 'hermes-negotiator' && !runHeaders?.capability) {
+        throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
+      }
+      return Response.json(await this.negotiations.consult(
+        agentId,
+        user.id,
+        negotiationId,
+        body,
+        principal,
+        runHeaders?.capability
+          ? { runId: runHeaders.runId, capability: runHeaders.capability, outcome: 'consulted' }
+          : undefined,
+      ));
     } catch (err) {
-      return consultationErrorResponse(err, { agentId, negotiationId, stage: 'consultation' });
+      return negotiationErrorResponse(err, {
+        agentId,
+        negotiationId,
+        operation: 'consult',
+        stage: 'mutation',
+      });
     }
   }
 
@@ -561,10 +629,13 @@ export class AgentController {
     }
 
     try {
-      // Verify ownership before bumping heartbeat so unauthorized probes can't spoof liveness.
-      await this.agents.getById(agentId, user.id);
-      const result = await this.testMessages.pickup(agentId);
-      await this.agents.touchLastSeen(agentId);
+      const result = await pickupTestMessageAtControllerBoundary({
+        agentId,
+        ownerId: user.id,
+        authorize: (id, ownerId) => this.agents.getById(id, ownerId),
+        pickup: (id) => this.testMessages.pickup(id),
+        touchLastSeen: (id) => this.agents.touchLastSeen(id),
+      });
       if (!result) {
         return new Response(null, { status: 204 });
       }
@@ -609,13 +680,13 @@ export class AgentController {
     }
 
     try {
-      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
-      await this.agents.getById(agentId, user.id);
-
-      // Heartbeat: record that this personal agent is actively polling
-      await this.agents.touchLastSeen(agentId);
-
-      const result = await this.deliveries.pickupPending(agentId);
+      const result = await pickupOpportunityAtControllerBoundary({
+        agentId,
+        ownerId: user.id,
+        authorize: (id, ownerId) => this.agents.getById(id, ownerId),
+        touchLastSeen: (id) => this.agents.touchLastSeen(id),
+        pickup: (id) => this.deliveries.pickupPending(id),
+      });
       if (!result) {
         return new Response(null, { status: 204 });
       }

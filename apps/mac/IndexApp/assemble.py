@@ -25,8 +25,9 @@ API_EXPORTS = [
     "mapClarifiers", "mapClarifier", "mapOpportunityStatusToPrototype", "mapEventSummary",
     "parseDeepLink", "isIndexDeepLink",
     "mapAgentRuntimeState", "waitForHermesHealth", "createHermesRuntimeBridge", "HERMES_RUNTIME_TIMEOUTS_MS", "HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS",
-    "runHermesSelectionSaga", "bootstrapHermesRuntime", "reconcileHermesSaga", "selectIndexRuntime", "disconnectHermesSaga",
-    "createLocalStorageSagaJournal", "createAgentRuntimeCoordinator", "runViewRuntimeAction", "HERMES_SETUP_JOURNAL_STAGES",
+    "runHermesSelectionSaga", "bootstrapHermesRuntime", "reconcileHermesSaga", "selectIndexRuntime", "prepareHermesLogout", "disconnectHermesSaga",
+    "createNativeSagaJournal", "createAgentRuntimeCoordinator", "runViewRuntimeAction", "HERMES_SETUP_JOURNAL_STAGES",
+    "renderAgentMarkdown",
 ]
 
 # Pinned CDN URLs -> local vendored files (downloaded once into src/vendor/).
@@ -60,7 +61,7 @@ for url, fname in VENDOR.items():
 def build_index_api() -> str:
     parts = []
     for fname in (
-        "client.mjs", "mappers.mjs", "deeplink.mjs",
+        "client.mjs", "mappers.mjs", "deeplink.mjs", "markdown.mjs",
         "agent-runtime.mjs", "agent-runtime-saga.mjs",
     ):
         code = (API_DIR / fname).read_text()

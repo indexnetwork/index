@@ -1,4 +1,4 @@
-import { assessConsultationEligibility, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
+import { assessConsultationEligibility, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
 
 export { consultationExpiryReadiness } from './consultation-expiry';
 export type { ConsultationExpiryReadinessInput } from './consultation-expiry';
@@ -175,11 +175,9 @@ export function assessExternalConsultationEligibility(
   const protocolVersion = stringValue(metadata.protocolVersion) as NegotiationProtocolVersion | null;
   const coordinates = externalConsultationCoordinatesFor(metadata, input.userId);
   const seat = seatFor(metadata, input.userId);
-  const maxTurns = typeof metadata.maxTurns === 'number' && Number.isInteger(metadata.maxTurns) && metadata.maxTurns > 0
-    ? metadata.maxTurns
-    : 6;
+  const maxTurns = typeof metadata.maxTurns === 'number' ? metadata.maxTurns : undefined;
   const isOpeningTurn = input.messages.length === 0;
-  const isFinalTurn = input.messages.length + 1 >= maxTurns;
+  const isFinalTurn = isNegotiationTurnCapReached(input.messages.length + 1, maxTurns);
   const last = input.messages.at(-1);
   const lastAction = actionValue(last?.turn.action);
   const counterpartyTurn = Boolean(
@@ -242,8 +240,7 @@ export function buildExternalConsultationQuestionerPayload(input: {
   negotiationId: string;
   userId: string;
   coordinates: ExternalConsultationCoordinates;
-  safeInput: { disclosureSubject: string; draftQuestion?: string };
-  consultationPolicyReason?: NegotiationConsultationReason;
+  reason: NegotiationConsultationReason;
 }): QuestionerInput {
   return {
     mode: 'negotiation_inflight',
@@ -263,9 +260,7 @@ export function buildExternalConsultationQuestionerPayload(input: {
       negotiationId: input.negotiationId,
       counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
       indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
-      disclosureSubject: input.safeInput.disclosureSubject,
-      ...(input.safeInput.draftQuestion ? { draftQuestion: input.safeInput.draftQuestion } : {}),
-      ...(input.consultationPolicyReason ? { consultationPolicyReason: input.consultationPolicyReason } : {}),
+      consultationPolicyReason: input.reason,
     },
   };
 }

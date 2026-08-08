@@ -43,7 +43,7 @@ pin a supported release, use `latest`.
   enrichment are unchanged.
 
 ### Added
-- Add the Personal Agent Hermes negotiation-runtime contract (10.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill uses the server-provided seat, protocol version, deadlines, allowed actions, consultation eligibility, owner-scoped memory, and persisted history; it permits at most one response or owner consultation per scheduled pass and treats all pickup prose as untrusted data.
+- Add the Personal Agent Hermes negotiation-runtime contract (10.1.0). The public negotiation facade now exports `configuredAskUserEnabled` and `askUserAnswerWindowMs` for host-side owner-consultation admission, with regenerated consumer/export inventories. The generated Hermes negotiator skill receives a privacy-minimal structural envelope: server-provided seat, protocol version, deadlines, closed allowed actions, consultation eligibility, opportunity identifiers/status, and message-free history. Owner memory, private context, consultation text, evaluator reasoning, actor prose, and shared-message prose are excluded; each scheduled pass permits at most one response or owner consultation and treats all pickup prose as untrusted data.
 - Deterministic fast signal intake (#1307; 8.1.0). `SignalIntakePackGenerator`
   precomputes a per-user intake brief plus round-1 question, and
   `SignalIntakeOrchestrator` drives the funnel as a deterministic state machine

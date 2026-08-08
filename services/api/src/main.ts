@@ -35,7 +35,7 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
-import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
+import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -65,6 +65,8 @@ import { emailQueue } from './queues/email.queue';
 import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
+import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negotiation/timeout-upgrade-reconciliation';
+import { getRedisClient } from './adapters/cache.adapter';
 import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
@@ -93,7 +95,7 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -452,6 +454,29 @@ notificationQueue.startWorker();
 enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
+// Upgrade legacy park/claim rows before either timeout worker can consume an
+// old generation-less delayed payload. The database stamps a durable install
+// outbox under row lock; deterministic Bull IDs make rolling-start delivery
+// concurrent and crash-safe. Refuse to start these workers if the explicitly
+// bounded sweep did not drain, rather than processing only part of the legacy
+// cohort unsafely.
+const timeoutUpgrade = new TimeoutUpgradeReconciler(
+  conversationDatabaseAdapter,
+  {
+    enqueueOrdinary: (...args) => negotiationTimeoutQueue.enqueueTimeout(...args),
+    enqueueClaim: (...args) => negotiationClaimTimeoutQueue.enqueueTimeout(...args),
+  },
+  new RedisTimeoutUpgradeLease(getRedisClient()),
+);
+const timeoutUpgradeResult = await timeoutUpgrade.reconcile({
+  parkWindowMs: AMBIENT_PARK_WINDOW_MS,
+  batchSize: 100,
+  maxBatches: 100,
+});
+if (!timeoutUpgradeResult.exhausted) {
+  throw new Error('Negotiation timeout upgrade reconciliation exceeded its bounded startup budget');
+}
+log.queue.from('NegotiationTimeoutUpgrade').info('Timeout upgrade reconciliation complete', { ...timeoutUpgradeResult });
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
@@ -840,7 +865,7 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError) {
+            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

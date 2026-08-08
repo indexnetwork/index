@@ -246,13 +246,33 @@ describe('queue-aware Hermes bridge bounds', () => {
     return { bridge, messages, timers };
   }
 
-  it('starts each execution timeout only after trusted native dequeue progress', async () => {
+  it('admits every production command explicitly and starts its bounded timeout only after native dequeue', async () => {
+    const operationJournal = {
+      version: 1, operation: 'disconnect', stage: 'server-pending',
+      ownerId: 'owner-1', installationId: 'installation-local',
+      setupAttemptId: null, executorId: null,
+    };
+    const productionCommands = [
+      ['inspect', { ownerId: 'owner-1' }],
+      ['configureDisabled', {
+        ownerId: 'owner-1', installationId: 'installation-local', executorId: 'executor-hermes',
+        setupAttemptId: 'setup-current', credential: 'transient-secret',
+      }],
+      ['enable', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
+      ['confirmHealthy', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
+      ['disable', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
+      ['prepareLogout', { ownerId: 'owner-1', setupAttemptId: null }],
+      ['disconnect', { ownerId: 'owner-1', setupAttemptId: 'setup-current' }],
+      ['loadOperation', {}],
+      ['saveOperation', { operationJournal }],
+      ['clearOperation', { operationJournal }],
+    ];
     const h = bridgeHarness();
-    for (const command of Object.keys(HERMES_RUNTIME_TIMEOUTS_MS)) {
-      const payload = command === 'inspect' ? {} : { setupAttemptId: 'setup-current' };
+    for (const [command, payload] of productionCommands) {
       const promise = h.bridge.request(command, payload);
       const message = h.messages.at(-1);
       const queueTimer = h.timers.at(-1);
+      expect(message).toEqual({ ...payload, requestId: message.requestId, command });
       expect(queueTimer.duration).toBe(HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS);
       expect(h.bridge.receiveProgress({
         requestId: message.requestId, event: 'started', credential: 'must-not-be-trusted',
@@ -262,10 +282,38 @@ describe('queue-aware Hermes bridge bounds', () => {
       expect(h.bridge.receive({ requestId: message.requestId, ok: true, stage: command })).toBe(true);
       await expect(promise).resolves.toMatchObject({ ok: true });
     }
+    expect(productionCommands.map(([command]) => command)).toHaveLength(10);
     expect(HERMES_RUNTIME_QUEUE_WAIT_TIMEOUT_MS).toBeGreaterThanOrEqual(10 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.configureDisabled).toBeGreaterThanOrEqual(5 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.disconnect).toBeGreaterThanOrEqual(5 * 60_000);
     expect(HERMES_RUNTIME_TIMEOUTS_MS.enable).toBeGreaterThanOrEqual(3 * 60_000);
+    for (const command of ['prepareLogout', 'loadOperation', 'saveOperation', 'clearOperation']) {
+      expect(HERMES_RUNTIME_TIMEOUTS_MS[command]).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps command-specific generation and journal payload admission strict', async () => {
+    const h = bridgeHarness();
+    await expect(h.bridge.request('enable', { ownerId: 'owner-1', setupAttemptId: null }))
+      .rejects.toThrow('generation is required');
+    const logout = h.bridge.request(
+      'prepareLogout', { ownerId: 'owner-1', setupAttemptId: null },
+    );
+    const admittedLogout = h.messages.at(-1);
+    h.bridge.receive({ requestId: admittedLogout.requestId, ok: true, stage: 'logout_prepared' });
+    await expect(logout).resolves.toMatchObject({ ok: true });
+    await expect(h.bridge.request('loadOperation', { setupAttemptId: 'not-allowed' }))
+      .rejects.toThrow('payload must be empty');
+    await expect(h.bridge.request('saveOperation', { operationJournal: {} }))
+      .rejects.toThrow('strict operation journal payload');
+    await expect(h.bridge.request('clearOperation', {
+      operationJournal: {
+        version: 1, operation: 'disconnect', stage: 'server-pending',
+        ownerId: 'owner-1', installationId: 'installation-local',
+        setupAttemptId: null, executorId: null, credential: 'not-allowed',
+      },
+    })).rejects.toThrow('strict operation journal payload');
+    expect(h.messages).toHaveLength(1);
   });
 
   it('bounds queue wait separately and ignores late progress/results after timeout', async () => {

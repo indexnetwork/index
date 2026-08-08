@@ -34,6 +34,7 @@ mock.module('../../queues/negotiations/claim-timeout.queue', () => ({
 
 const { negotiationPollingService, SeatViolationError, ConflictError } = await import('../negotiation-polling.service');
 const { conversationDatabaseAdapter } = await import('../../adapters/database.adapter');
+const { agentDatabaseAdapter } = await import('../../adapters/agent.database.adapter');
 const { default: db } = await import('../../lib/drizzle/drizzle');
 const dbSchema = await import('../../schemas/database.schema');
 const convSchema = await import('../../schemas/conversation.schema');
@@ -47,6 +48,9 @@ let userA: string; // initiator
 let userB: string; // counterparty
 let agentA: string;
 let agentB: string;
+type LegacyPrincipal = { credentialId: string; agentId: string; audience: null; setupAttemptId: null };
+let principalA: LegacyPrincipal;
+let principalB: LegacyPrincipal;
 const cleanupConversations: string[] = [];
 const cleanupOpportunities: string[] = [];
 
@@ -57,11 +61,28 @@ async function seedUser(name: string): Promise<string> {
   return u.id;
 }
 
-async function seedAgent(ownerId: string): Promise<string> {
-  const [a] = await db.insert(dbSchema.agents)
+async function seedAgent(ownerId: string): Promise<{ id: string; principal: LegacyPrincipal }> {
+  const [agent] = await db.insert(dbSchema.agents)
     .values({ ownerId, name: 'seat-spec-agent', type: 'external' })
     .returning({ id: dbSchema.agents.id });
-  return a.id;
+  const [credential] = await db.insert(dbSchema.apikeys)
+    .values({
+      key: `seat-spec-key-${randomUUID()}`,
+      userId: ownerId,
+      referenceId: ownerId,
+      metadata: JSON.stringify({ agentId: agent.id }),
+      enabled: true,
+    })
+    .returning({ id: dbSchema.apikeys.id });
+  await agentDatabaseAdapter.setNegotiationExecutorBinding({
+    ownerId,
+    targetAgentId: agent.id,
+    exactTargetPermissions: false,
+  });
+  return {
+    id: agent.id,
+    principal: { credentialId: credential.id, agentId: agent.id, audience: null, setupAttemptId: null },
+  };
 }
 
 async function seedOpportunity(): Promise<string> {
@@ -150,8 +171,8 @@ async function claimFor(taskId: string, who: 'A' | 'B') {
 beforeAll(async () => {
   userA = await seedUser('Seat Spec Initiator');
   userB = await seedUser('Seat Spec Counterparty');
-  agentA = await seedAgent(userA);
-  agentB = await seedAgent(userB);
+  ({ id: agentA, principal: principalA } = await seedAgent(userA));
+  ({ id: agentB, principal: principalB } = await seedAgent(userB));
 }, 30_000);
 
 afterAll(async () => {
@@ -168,7 +189,7 @@ afterAll(async () => {
 describe('pickup — seat announcement', () => {
   it('announces seat, protocolVersion, and allowedActions for the claiming user', async () => {
     const { taskId } = await seedNegotiation({ protocolVersion: 'v2' });
-    const result = await negotiationPollingService.pickup(agentA, userA);
+    const result = await negotiationPollingService.pickup(agentA, userA, principalA);
 
     expect(result).not.toBeNull();
     expect(result!.taskId).toBe(taskId);
@@ -181,11 +202,11 @@ describe('pickup — seat announcement', () => {
     expect(result!.canConsultOwner).toBe(false);
 
     // Idempotent repick returns the same announcement
-    const again = await negotiationPollingService.pickup(agentA, userA);
+    const again = await negotiationPollingService.pickup(agentA, userA, principalA);
     expect(again!.seat).toBe('initiator');
 
     // Finish the flow so this task doesn't linger claimed
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('withdraw'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('withdraw'), principalA);
     expect(await getTaskState(taskId)).toBe('completed');
   }, 30_000);
 });
@@ -196,12 +217,12 @@ describe('respond — v2 seat validation', () => {
     await claimFor(taskId, 'A');
 
     expect(
-      negotiationPollingService.respond(agentA, userA, taskId, respondInput('accept')),
+      negotiationPollingService.respond(agentA, userA, taskId, respondInput('accept'), principalA),
     ).rejects.toThrow(SeatViolationError);
 
     // The claim survives the violation — the agent can retry with a valid action
     expect(await getTaskState(taskId)).toBe('claimed');
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach'), principalA);
     expect(await getTaskState(taskId)).toBe('waiting_for_agent');
   }, 30_000);
 
@@ -210,15 +231,15 @@ describe('respond — v2 seat validation', () => {
     await claimFor(taskId, 'A');
 
     expect(
-      negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach')),
+      negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach'), principalA),
     ).rejects.toThrow(SeatViolationError);
 
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('propose'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('propose'), principalA);
     expect(await getTaskState(taskId)).toBe('waiting_for_agent');
 
     // Legacy reject from the other side still finalizes
     await claimFor(taskId, 'B');
-    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('reject'));
+    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('reject'), principalB);
     expect(await getTaskState(taskId)).toBe('completed');
   }, 30_000);
 });
@@ -229,16 +250,16 @@ describe('respond — full v2 flows', () => {
     const { taskId, conversationId } = await seedNegotiation({ protocolVersion: 'v2', opportunityId });
 
     await claimFor(taskId, 'A');
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach', 'let us connect'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach', 'let us connect'), principalA);
 
     await claimFor(taskId, 'B');
-    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('counter', 'tell me more'));
+    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('counter', 'tell me more'), principalB);
 
     await claimFor(taskId, 'A');
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('counter', 'here is more'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('counter', 'here is more'), principalA);
 
     await claimFor(taskId, 'B');
-    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('accept'));
+    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('accept'), principalB);
 
     expect(await getTaskState(taskId)).toBe('completed');
     expect(await getOpportunityStatus(opportunityId)).toBe('pending');
@@ -264,7 +285,7 @@ describe('respond — full v2 flows', () => {
     });
 
     await claimFor(taskId, 'A');
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('withdraw'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('withdraw'), principalA);
 
     expect(await getTaskState(taskId)).toBe('completed');
     expect(await getOpportunityStatus(opportunityId)).toBe('rejected');
@@ -279,7 +300,7 @@ describe('respond — full v2 flows', () => {
     });
 
     await claimFor(taskId, 'B');
-    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('decline'));
+    await negotiationPollingService.respond(agentB, userB, taskId, respondInput('decline'), principalB);
 
     expect(await getTaskState(taskId)).toBe('completed');
     expect(await getOpportunityStatus(opportunityId)).toBe('rejected');
@@ -299,10 +320,10 @@ describe('respond — seat attribution is parity-proof', () => {
 
     await claimFor(taskId, 'A');
     expect(
-      negotiationPollingService.respond(agentA, userA, taskId, respondInput('accept')),
+      negotiationPollingService.respond(agentA, userA, taskId, respondInput('accept'), principalA),
     ).rejects.toThrow(SeatViolationError);
 
-    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('counter', 'answering your question'));
+    await negotiationPollingService.respond(agentA, userA, taskId, respondInput('counter', 'answering your question'), principalA);
 
     const messages = await conversationDatabaseAdapter.getMessagesForConversation(conversationId);
     expect(messages[messages.length - 1].senderId).toBe(`agent:${userA}`);
@@ -314,7 +335,7 @@ describe('respond — guards unchanged', () => {
     const { taskId } = await seedNegotiation({ protocolVersion: 'v2' });
     // waiting_for_agent, never claimed
     expect(
-      negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach')),
+      negotiationPollingService.respond(agentA, userA, taskId, respondInput('outreach'), principalA),
     ).rejects.toThrow(ConflictError);
   }, 30_000);
 });

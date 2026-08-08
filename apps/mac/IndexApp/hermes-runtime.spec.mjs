@@ -6,10 +6,17 @@ const runtime = await Bun.file(runtimeFile).exists()
   : '';
 const main = await Bun.file(new URL('./Sources/main.swift', import.meta.url)).text();
 const build = await Bun.file(new URL('./build.sh', import.meta.url)).text();
+const nativeCompatibilityFile = new URL('./Tests/HermesPersistenceCompatibility.swift', import.meta.url);
+const nativeCompatibility = await Bun.file(nativeCompatibilityFile).exists()
+  ? await Bun.file(nativeCompatibilityFile).text()
+  : '';
+const macWorkflow = await Bun.file(new URL('../../../.github/workflows/mac-app-build.yml', import.meta.url)).text();
 
 const OWNED_NAME = 'Index Personal Agent Negotiator';
 const OWNED_SCHEDULE = 'every 1m';
-const OWNED_PROMPT = 'Use skill_view("index-network:index-negotiator") and run one scheduled autonomous Index negotiation pass.';
+const OWNED_PROMPT = 'Run one scheduled autonomous Index negotiation pass.';
+const OWNED_SKILL = 'index-network:index-negotiator';
+const OWNED_TOOLSET = 'index-network';
 
 const ABSENT = Symbol('absent');
 
@@ -89,6 +96,12 @@ function injectedSuccess(readLocalState) {
   } catch (failure) {
     return { ok: false, errorCode: failure.message };
   }
+}
+
+function injectedNavigationPolicy({ url, bundledURL, isMainFrame, linkActivated, openExternal }) {
+  if (isMainFrame && url === bundledURL) return 'allow';
+  if (linkActivated && /^https?:\/\//i.test(url)) openExternal(url);
+  return 'cancel';
 }
 
 function admitHermesMessage({ isMainFrame, frameURL, bundledURL, decode, execute }) {
@@ -260,33 +273,121 @@ function injectedRelaunchInspect({ state, verifyPostconditions, removeJournal })
   return state.journal?.stage ?? 'inspected';
 }
 
-function injectedPreOwnerInspect({ installation, cron, events }) {
-  const decoded = {
-    installationId: installation.installationId,
-    currentOwnerId: installation.currentOwnerId ?? null,
-    currentExecutorId: installation.currentExecutorId ?? null,
-    currentSetupAttemptId: installation.currentSetupAttemptId ?? null,
+function injectedCronOwnershipInventory({ jobs, ownership }) {
+  const attributable = jobs.filter((job) => (
+    job.id === ownership.jobId
+    || job.index_app_installation_id === ownership.installationId
+    || job.index_app_owner_id === ownership.ownerId
+    || job.index_app_setup_attempt_id === ownership.setupAttemptId
+  ));
+  const exactId = jobs.filter((job) => job.id === ownership.jobId);
+  const owned = exactId.length === 1 ? exactId[0] : null;
+  const markerExact = owned
+    && owned.index_app_installation_id === ownership.installationId
+    && owned.index_app_owner_id === ownership.ownerId
+    && owned.index_app_setup_attempt_id === ownership.setupAttemptId;
+  const sandboxExact = owned
+    && owned.name === OWNED_NAME
+    && owned.prompt === OWNED_PROMPT
+    && owned.skills?.length === 1 && owned.skills[0] === OWNED_SKILL
+    && owned.skill === OWNED_SKILL
+    && owned.enabled_toolsets?.length === 1 && owned.enabled_toolsets[0] === OWNED_TOOLSET;
+  const duplicate = attributable.some((job) => job !== owned);
+  return {
+    attributable,
+    owned,
+    safe: exactId.length === 1 && markerExact && sandboxExact && !duplicate,
+    enabled: attributable.filter((job) => job.enabled),
   };
-  if (decoded.currentSetupAttemptId
-      && (!decoded.currentOwnerId || !decoded.currentExecutorId)) {
+}
+
+function injectedPreOwnerConfigureRebind({ installation, cron, request }) {
+  const preOwner = installation.currentSetupAttemptId
+    && installation.currentOwnerId == null
+    && installation.currentExecutorId == null;
+  if (!preOwner) {
+    if (installation.currentOwnerId && installation.currentOwnerId !== request.ownerId) {
+      throw new Error('owner_mismatch');
+    }
+    throw new Error('not_pre_owner');
+  }
+  const exact = installation.installationId === request.installationId
+    && installation.currentCronJobId === cron.id
+    && installation.currentCronSetupAttemptId === installation.currentSetupAttemptId
+    && cron.index_app_installation_id === installation.installationId
+    && cron.index_app_setup_attempt_id === installation.currentSetupAttemptId
+    && cron.index_app_owner_id == null
+    && cron.enabled === false
+    && cron.name === OWNED_NAME
+    && cron.schedule === OWNED_SCHEDULE
+    && cron.prompt === OWNED_PROMPT
+    && cron.skills?.length === 1 && cron.skills[0] === OWNED_SKILL
+    && cron.skill === OWNED_SKILL
+    && cron.enabled_toolsets?.length === 1 && cron.enabled_toolsets[0] === OWNED_TOOLSET;
+  if (!exact) throw new Error('cron_store_invalid');
+  installation.currentOwnerId = request.ownerId;
+  installation.currentExecutorId = request.executorId;
+  installation.currentSetupAttemptId = request.setupAttemptId;
+  installation.currentCronSetupAttemptId = request.setupAttemptId;
+  cron.index_app_owner_id = request.ownerId;
+  cron.index_app_setup_attempt_id = request.setupAttemptId;
+  return {
+    installationId: installation.installationId,
+    ownerId: installation.currentOwnerId,
+    executorId: installation.currentExecutorId,
+    setupAttemptId: installation.currentSetupAttemptId,
+    schedulePresent: true,
+    scheduleEnabled: cron.enabled,
+  };
+}
+
+function injectedPreOwnerInspect({ installationStore, cron, events }) {
+  let installation = structuredClone(installationStore.read());
+  if (!installation.currentCronJobId && installation.currentSetupAttemptId && cron) {
+    installation.currentCronJobId = cron.id;
+    installation.currentCronSetupAttemptId = installation.currentSetupAttemptId;
+    installationStore.save(installation);
+    events.push(['adopt', cron.id]);
+  }
+  const localState = () => {
+    const persisted = installationStore.read();
+    const observedCron = persisted.currentCronJobId === cron?.id ? cron : null;
+    return {
+      installationId: persisted.installationId,
+      ownerId: persisted.currentOwnerId ?? null,
+      executorId: persisted.currentExecutorId ?? null,
+      setupAttemptId: persisted.currentSetupAttemptId ?? null,
+      schedulePresent: !!observedCron,
+      scheduleEnabled: observedCron?.enabled ?? false,
+    };
+  };
+  if (installation.currentSetupAttemptId
+      && (!installation.currentOwnerId || !installation.currentExecutorId)) {
     if (cron?.enabled) {
       events.push(['pause', cron.id]);
       cron.enabled = false;
     }
     events.push(['surface', 'owner_unattributed']);
     const error = new Error('owner_unattributed');
-    error.state = {
-      installationId: decoded.installationId,
-      ownerId: decoded.currentOwnerId,
-      executorId: decoded.currentExecutorId,
-      setupAttemptId: decoded.currentSetupAttemptId,
-      schedulePresent: !!cron,
-      scheduleEnabled: cron?.enabled ?? false,
-    };
+    error.state = localState();
     throw error;
   }
-  return decoded;
+  return localState();
 }
+
+test('keeps a Linux source contract for the macOS-native historical persistence fixture', () => {
+  expect(nativeCompatibility).toContain('exactHistoricalInstallationJSON');
+  expect(nativeCompatibility).toContain('{"installationId":"installation-old","currentSetupAttemptId":"attempt-old"}');
+  expect(nativeCompatibility).toContain('HermesLocalStore(applicationSupportURL:');
+  expect(nativeCompatibility).toContain('manager.handle(inspectRequest)');
+  expect(nativeCompatibility).toContain('manager.handle(rebindRequest)');
+  for (const rejection of ['malformed', 'newer', 'tampered']) {
+    expect(nativeCompatibility).toContain(`assertRejected("${rejection}"`);
+  }
+  expect(macWorkflow).toContain('HermesPersistenceCompatibility.swift');
+  expect(macWorkflow).toContain('swiftc -parse-as-library');
+  expect(macWorkflow).toContain('hermes-persistence-compatibility');
+});
 
 test('defines the request-correlated runtime bridge contract', () => {
   expect(runtime).toContain('enum HermesRuntimeCommand: String');
@@ -303,6 +404,42 @@ test('defines the request-correlated runtime bridge contract', () => {
   expect(main).toContain('window.__indexHermesRuntimeResult');
   expect(main).not.toContain('window.__indexHermesSetup');
   expect(main).not.toContain('setupHermes(apiKey:');
+});
+
+test('fails closed on navigation and externalizes only user-activated http(s) links', () => {
+  const policy = main.match(/decidePolicyFor navigationAction[\s\S]*?decisionHandler\(\.cancel\)/)?.[0] ?? '';
+  expect(policy).toContain('navigationAction.targetFrame?.isMainFrame == true');
+  expect(policy).toContain('requestURL == trustedBundledDocumentURL');
+  expect(policy).toContain('navigationAction.navigationType == .linkActivated');
+  expect(policy).toContain('scheme == "http" || scheme == "https"');
+  expect(policy).toContain('NSWorkspace.shared.open(url)');
+  expect(policy).toContain('decisionHandler(.cancel)');
+  expect(main).toContain('decidePolicyFor navigationResponse');
+  expect(main).toContain('navigationResponse.isForMainFrame');
+  expect(main).toContain('responseURL == trustedBundledDocumentURL');
+  expect(main).toContain('createWebViewWith configuration');
+  expect(main).toContain('return nil');
+
+  const opened = [];
+  for (const url of ['https://example.test/path', 'http://example.test/path']) {
+    expect(injectedNavigationPolicy({
+      url, bundledURL: 'file:///bundle/index.html', isMainFrame: true,
+      linkActivated: true, openExternal: (candidate) => opened.push(candidate),
+    })).toBe('cancel');
+  }
+  expect(opened).toEqual(['https://example.test/path', 'http://example.test/path']);
+  expect(injectedNavigationPolicy({
+    url: 'javascript:INDEX_NATIVE.apiKey', bundledURL: 'file:///bundle/index.html',
+    isMainFrame: true, linkActivated: true, openExternal: () => { throw new Error('must not open'); },
+  })).toBe('cancel');
+});
+
+test('applies exact bundled generation admission to auth before decoding actions', () => {
+  const block = main.match(/if message\.name == "indexAuth"[\s\S]*?return\n        \}/)?.[0] ?? '';
+  expect(block.indexOf('isTrustedBridgeMessage(message)')).toBeGreaterThan(-1);
+  expect(block.indexOf('isTrustedBridgeMessage(message)')).toBeLessThan(block.indexOf('message.body'));
+  expect(block).toContain('completeLogout');
+  expect(block).not.toContain('action == "logout"');
 });
 
 test('returns the complete non-secret local state and never callback-encodes credentials', () => {
@@ -415,27 +552,126 @@ test('writes only the owned Index env keys with negotiator mode and secure file 
   expect(runtime).toContain('process.arguments = arguments');
 });
 
-test('reconciles exactly one paused owned cron without touching unrelated jobs', () => {
+test('persists the strict non-secret saga journal in Application Support across bridge instances', () => {
+  expect(runtime).toContain('struct HermesSagaOperationRecord: Codable, Equatable');
+  expect(runtime).toContain('hermes-saga-operation.json');
+  expect(runtime).toContain('Set(values.allKeys.map(\\.stringValue)) == Self.exactKeys');
+  expect(runtime).toContain('func loadOperation() throws -> HermesSagaOperationRecord?');
+  expect(runtime).toContain('func saveOperation(_ record: HermesSagaOperationRecord) throws');
+  expect(runtime).toContain('func clearOperation(expected: HermesSagaOperationRecord)');
+  expect(runtime).toContain('HermesSecureFileWriter.write');
+  for (const command of ['loadOperation', 'saveOperation', 'clearOperation']) {
+    expect(runtime).toMatch(new RegExp(`case [^\\n]*\\b${command}\\b`));
+  }
+  const record = runtime.match(/struct HermesSagaOperationRecord[\s\S]*?private enum HermesRuntimeFailure/)?.[0] ?? '';
+  expect(record).not.toContain('credential');
+  expect(record).not.toContain('message');
+  expect(record).not.toContain('prompt');
+});
+
+test('persists immutable cron ID and generation markers, adopting by exact name only once', () => {
+  expect(runtime).toContain('var currentCronJobId: String?');
+  expect(runtime).toContain('var currentCronSetupAttemptId: String?');
+  expect(runtime).toContain('let cronJobId: String?');
+  expect(runtime).toContain('func legacyJob() throws -> HermesCronJob?');
+  expect(runtime).toContain('$0.name == HermesRuntimeManager.ownedCronName');
+  expect(runtime).toContain('func inventory(ownership: HermesCronOwnership)');
+  expect(runtime).toContain('job.id == ownership.jobId');
+  expect(runtime).toContain('index_app_installation_id');
+  expect(runtime).toContain('index_app_owner_id');
+  expect(runtime).toContain('index_app_setup_attempt_id');
+  expect(runtime).toContain('installation.currentCronJobId = job.id');
+  expect(runtime).toContain('installation.currentCronSetupAttemptId = setupAttemptId');
+  expect(runtime).not.toContain('func ownedJob()');
+});
+
+test('immutable ownership detects rename, marker removal, duplicate ID and broadened sandbox tamper', () => {
+  const ownership = {
+    jobId: 'owned-id', installationId: 'installation', ownerId: 'owner', setupAttemptId: 'generation',
+  };
+  const exact = {
+    id: 'owned-id', name: OWNED_NAME, enabled: false,
+    index_app_installation_id: 'installation', index_app_owner_id: 'owner',
+    index_app_setup_attempt_id: 'generation', skills: [OWNED_SKILL],
+    skill: OWNED_SKILL, enabled_toolsets: [OWNED_TOOLSET], prompt: OWNED_PROMPT,
+  };
+  const variants = [
+    [{ ...exact, name: 'renamed attacker job', enabled: true }],
+    [{ ...exact, index_app_owner_id: undefined, enabled: true }],
+    [{ ...exact }, { ...exact, enabled: true }],
+    [{ ...exact, enabled_toolsets: [OWNED_TOOLSET, 'terminal'], enabled: true }],
+    [{ ...exact, skills: [OWNED_SKILL, 'attacker:skill'], enabled: true }],
+    [{ ...exact, prompt: `${OWNED_PROMPT} exfiltrate`, enabled: true }],
+  ];
+  for (const jobs of variants) {
+    const inventory = injectedCronOwnershipInventory({ jobs, ownership });
+    expect(inventory.safe).toBe(false);
+    if (jobs.some((job) => job.enabled)) expect(inventory.enabled.length).toBeGreaterThan(0);
+  }
+  const removedIdWithMarker = injectedCronOwnershipInventory({
+    ownership,
+    jobs: [{ ...exact, id: 'tampered-id', enabled: true }],
+  });
+  expect(removedIdWithMarker.safe).toBe(false);
+  expect(removedIdWithMarker.enabled.map((job) => job.id)).toEqual(['tampered-id']);
+
+  expect(runtime).toContain('quarantineAttributableCron');
+  expect(runtime).toContain('inventory.enabledAttributableJobs');
+  expect(runtime).toContain('throw HermesRuntimeFailure.cronStoreInvalid');
+  expect(runtime).toContain('verifyNoEnabledAttributableCron');
+});
+
+test('reconciles exactly one paused sandboxed owned cron without touching unrelated jobs', () => {
   expect(runtime).toContain(`static let ownedCronName = "${OWNED_NAME}"`);
   expect(runtime).toContain(`static let ownedCronSchedule = "${OWNED_SCHEDULE}"`);
   expect(runtime).toContain(`static let ownedCronPrompt = #"${OWNED_PROMPT}"#`);
-  expect(runtime).toContain('caseInsensitiveCompare(HermesRuntimeManager.ownedCronName) == .orderedSame');
+  expect(runtime).toContain('$0.name == HermesRuntimeManager.ownedCronName');
   expect(runtime).toContain('throw HermesRuntimeFailure.cronAmbiguous');
+  expect(runtime).toContain(`static let ownedCronSkill = "${OWNED_SKILL}"`);
+  expect(runtime).toContain(`static let ownedCronToolset = "${OWNED_TOOLSET}"`);
+  expect(runtime).toContain('lockName: ".jobs.lock"');
+  expect(runtime).toContain('jobs[index]["enabled_toolsets"] = [HermesRuntimeManager.ownedCronToolset]');
+  expect(runtime).toContain('jobs[index]["index_app_installation_id"] = ownership.installationId');
+  expect(runtime).toContain('jobs[index]["skills"] = [HermesRuntimeManager.ownedCronSkill]');
+  expect(runtime).toContain('isExactOwnedCron(verified)');
+  expect(runtime).toContain('job.enabledToolsets == [Self.ownedCronToolset]');
+  expect(runtime).toContain('job.skills == [Self.ownedCronSkill]');
   for (const command of ['"create"', '"edit"', '"pause"', '"resume"', '"remove"']) {
     expect(runtime).toContain(command);
   }
-  expect(runtime).toContain('["cron", "pause", job.id]');
+  expect(runtime).toContain('["cron", "pause", jobId]');
   expect(runtime).toContain('["cron", "resume", job.id]');
-  expect(runtime).toContain('["cron", "remove", job.id]');
+  expect(runtime).toContain('["cron", "remove", jobId]');
   expect(runtime).not.toContain('removeAllCron');
   expect(runtime).not.toContain('cron", "remove"].map');
+});
+
+test('sandbox configuration denies injected core tools rather than relying on prompt prose', () => {
+  const persistedJob = {
+    skills: [OWNED_SKILL],
+    skill: OWNED_SKILL,
+    enabled_toolsets: [OWNED_TOOLSET],
+  };
+  const toolRegistry = [
+    { name: 'index_pickup_negotiation', toolset: 'index-network' },
+    { name: 'terminal', toolset: 'terminal' },
+    { name: 'browser', toolset: 'web' },
+    { name: 'mcp', toolset: 'mcp' },
+  ];
+  const exposed = toolRegistry
+    .filter((tool) => persistedJob.enabled_toolsets.includes(tool.toolset))
+    .map((tool) => tool.name);
+  expect(exposed).toEqual(['index_pickup_negotiation']);
+  expect(exposed).not.toContain('terminal');
+  expect(OWNED_PROMPT).not.toMatch(/do not use|forbid|deny/i);
 });
 
 test('inspection fail-closes partial setup locally and native code never calls server APIs', () => {
   expect(runtime).toContain('if journal != nil, cron?.enabled == true');
   expect(runtime).toContain('if case .journalInvalid = failure');
   expect(runtime).toContain('installation.currentSetupAttemptId != nil');
-  expect(runtime).toContain('pauseOwnedCron');
+  expect(runtime).toContain('quarantineAttributableCron');
+  expect(runtime).toContain('pauseCronByID');
   expect(runtime).toContain('stage: journal?.stage.rawValue ?? "inspected"');
   expect(runtime).not.toContain('URLSession');
   expect(runtime).not.toContain('/api/agents');
@@ -448,7 +684,7 @@ test('migrates a pre-owner confirmed generation by pausing before surfacing pres
   expect(runtime).toContain('return "owner_unattributed"');
   const inspectBlock = runtime.match(/private func inspect\([\s\S]*?private func configureDisabled/)?.[0] ?? '';
   const unattributedCheck = inspectBlock.indexOf('generationOwnerIsUnattributed');
-  const pause = inspectBlock.indexOf('pauseOwnedCron', unattributedCheck);
+  const pause = inspectBlock.indexOf('pauseCronByID', unattributedCheck);
   const surface = inspectBlock.indexOf('throw HermesRuntimeFailure.ownerUnattributed', unattributedCheck);
   expect(unattributedCheck).toBeGreaterThan(-1);
   expect(pause).toBeGreaterThan(unattributedCheck);
@@ -462,17 +698,21 @@ test('migrates a pre-owner confirmed generation by pausing before surfacing pres
     installationId: 'installation-old',
     currentSetupAttemptId: 'attempt-old',
   });
-  const installation = JSON.parse(oldJSON);
-  const before = structuredClone(installation);
+  let persistedInstallation = JSON.parse(oldJSON);
+  const installationStore = {
+    read: () => structuredClone(persistedInstallation),
+    save: (next) => { persistedInstallation = structuredClone(next); },
+  };
   const cron = { id: 'owned-cron-old', enabled: true };
   const events = [];
   let surfaced;
   try {
-    injectedPreOwnerInspect({ installation, cron, events });
+    injectedPreOwnerInspect({ installationStore, cron, events });
   } catch (error) {
     surfaced = error;
   }
   expect(events).toEqual([
+    ['adopt', 'owned-cron-old'],
     ['pause', 'owned-cron-old'],
     ['surface', 'owner_unattributed'],
   ]);
@@ -483,19 +723,104 @@ test('migrates a pre-owner confirmed generation by pausing before surfacing pres
       setupAttemptId: 'attempt-old', schedulePresent: true, scheduleEnabled: false,
     },
   });
-  expect(installation).toEqual(before);
+  expect(persistedInstallation).toEqual({
+    installationId: 'installation-old',
+    currentSetupAttemptId: 'attempt-old',
+    currentCronJobId: 'owned-cron-old',
+    currentCronSetupAttemptId: 'attempt-old',
+  });
   expect(cron.enabled).toBe(false);
 
-  // The error fallback is evaluated only after inspect performed the pause.
+  // The error fallback is evaluated only after inspect performed the adoption
+  // and pause; localState observes the partial legacy tuple by immutable ID
+  // without upgrading it into an owner-attributed operational capability.
   const handleBlock = runtime.match(/func handle\([\s\S]*?private func inspect/)?.[0] ?? '';
+  const localStateBlock = runtime.match(/private func localState\([\s\S]*?private func success/)?.[0] ?? '';
   expect(handleBlock).toContain('state: try? localState()');
+  expect(localStateBlock).toContain('generationOwnerIsUnattributed');
+  expect(localStateBlock).toContain('cronStore.job(id: jobId)');
+  expect(localStateBlock.indexOf('generationOwnerIsUnattributed')).toBeLessThan(
+    localStateBlock.indexOf('verifiedOwnedCron'),
+  );
+
+  // Complete the source state-machine path using the immutable ID persisted by
+  // inspect and the paused state observed by localState. Only exact historical
+  // installation/setup markers permit configureDisabled to publish the owner.
+  Object.assign(cron, {
+    name: OWNED_NAME, schedule: OWNED_SCHEDULE, prompt: OWNED_PROMPT,
+    skills: [OWNED_SKILL], skill: OWNED_SKILL, enabled_toolsets: [OWNED_TOOLSET],
+    index_app_installation_id: 'installation-old', index_app_owner_id: null,
+    index_app_setup_attempt_id: 'attempt-old',
+  });
+  expect(injectedPreOwnerConfigureRebind({
+    installation: persistedInstallation,
+    cron,
+    request: {
+      installationId: 'installation-old', ownerId: 'owner-new', executorId: 'executor-new',
+      setupAttemptId: 'attempt-new',
+    },
+  })).toMatchObject({
+    ownerId: 'owner-new', executorId: 'executor-new', setupAttemptId: 'attempt-new',
+    scheduleEnabled: false,
+  });
+});
+
+test('configureDisabled explicitly rebinds only the exact paused pre-owner generation', () => {
+  const configureBlock = runtime.match(/private func configureDisabled\([\s\S]*?private func enable/)?.[0] ?? '';
+  expect(configureBlock).toContain('preOwnerRecord');
+  expect(configureBlock).toContain('preOwnerRebindJob');
+  expect(configureBlock.indexOf('preOwnerRebindJob')).toBeLessThan(
+    configureBlock.indexOf('cronOwnership(installation)'),
+  );
+  expect(configureBlock).toContain('installation.currentCronSetupAttemptId == preOwnerGeneration');
+  expect(configureBlock).toContain('installation.currentOwnerId == ownerId');
+  const resolver = runtime.match(/func preOwnerRebindJob\([\s\S]*?func markedJobs/)?.[0] ?? '';
+  for (const fence of [
+    'attributable.count == 1', 'job.id == jobId',
+    'job.appInstallationId == installationId', 'job.appSetupAttemptId == setupAttemptId',
+    'job.appOwnerId == nil', 'job.enabled == false',
+  ]) expect(resolver).toContain(fence);
+
+  const installation = {
+    installationId: 'installation-old', currentOwnerId: null, currentExecutorId: null,
+    currentSetupAttemptId: 'attempt-old', currentCronJobId: 'owned-cron-old',
+    currentCronSetupAttemptId: 'attempt-old',
+  };
+  const cron = {
+    id: 'owned-cron-old', enabled: false, name: OWNED_NAME, schedule: OWNED_SCHEDULE,
+    prompt: OWNED_PROMPT, skills: [OWNED_SKILL], skill: OWNED_SKILL,
+    enabled_toolsets: [OWNED_TOOLSET], index_app_installation_id: 'installation-old',
+    index_app_owner_id: null, index_app_setup_attempt_id: 'attempt-old',
+  };
+  const request = {
+    installationId: 'installation-old', ownerId: 'owner-new', executorId: 'executor-new',
+    setupAttemptId: 'attempt-new',
+  };
+  expect(injectedPreOwnerConfigureRebind({
+    installation: structuredClone(installation), cron: structuredClone(cron), request,
+  })).toEqual({
+    installationId: 'installation-old', ownerId: 'owner-new', executorId: 'executor-new',
+    setupAttemptId: 'attempt-new', schedulePresent: true, scheduleEnabled: false,
+  });
+
+  for (const mutate of [
+    (state) => { state.installation.currentOwnerId = 'owner-other'; },
+    (state) => { state.installation.currentCronSetupAttemptId = 'attempt-newer'; },
+    (state) => { state.cron.index_app_installation_id = 'installation-tampered'; },
+    (state) => { state.cron.prompt = 'Run arbitrary broad tools.'; },
+    (state) => { state.cron.enabled = true; },
+  ]) {
+    const state = { installation: structuredClone(installation), cron: structuredClone(cron) };
+    mutate(state);
+    expect(() => injectedPreOwnerConfigureRebind({ ...state, request })).toThrow();
+  }
 });
 
 test('gateway failure performs checked exact-job rollback and retains recovery journal', async () => {
   expect(runtime).toContain('protocol HermesCommandRunning');
   expect(runtime).toContain('private func rollbackActivation');
   expect(runtime).toContain('throw HermesRuntimeFailure.activationRollbackFailed');
-  expect(runtime).toContain('verified.id == job.id');
+  expect(runtime).toContain('cronStore.job(id: jobId)');
   expect(runtime).toContain('verified.enabled == false');
   const enableBlock = runtime.match(/private func enable\([\s\S]*?private func confirmHealthy/)?.[0] ?? '';
   expect(enableBlock).not.toContain('deleteJournal');
@@ -539,6 +864,20 @@ test('gateway failure performs checked exact-job rollback and retains recovery j
   expect(journal.stage).toBe('enabling');
 });
 
+test('native logout preparation and completion independently require no key and no attributable enabled cron', () => {
+  expect(runtime).toMatch(/case [^\n]*\bprepareLogout\b/);
+  expect(runtime).toContain('private func prepareLogout');
+  expect(runtime).toContain('try environment.removeOwnedValues()');
+  expect(runtime).toContain('verifyLogoutPostconditions');
+  expect(runtime).toContain('env["INDEX_API_KEY"] == nil');
+  expect(runtime).toContain('verifyNoEnabledAttributableCron');
+  const evidence = runtime.match(/func logoutEvidence[\s\S]*?func finishLogoutEvidence/)?.[0] ?? '';
+  expect(evidence).toContain('evidence.operation == "disconnect"');
+  expect(evidence).toContain('evidence.stage == "server-complete"');
+  expect(evidence).toContain('verifyLogoutPostconditions');
+  expect(evidence).not.toContain('state.scheduleEnabled == false');
+});
+
 test('disable requires a non-empty matching generation before pausing', () => {
   expect(runtime).toMatch(/guard let ownerId = validValue\(request\.ownerId\),\s*installation\.currentOwnerId == ownerId,\s*let expectedSetupAttemptId = validValue\(request\.setupAttemptId\),\s*installation\.currentSetupAttemptId == expectedSetupAttemptId else \{\s*return try success\(request, stage: "disable_noop"\)/s);
   for (const suppliedAttemptId of [undefined, null, '', 'stale']) {
@@ -558,6 +897,18 @@ test('disable requires a non-empty matching generation before pausing', () => {
     pause: () => { pauses += 1; },
   })).toBe('disabled');
   expect(pauses).toBe(1);
+});
+
+test('prepare-before-configure compensation is a safe no-op only for an unpublished nil-owner generation', () => {
+  const disconnect = runtime.match(/private func disconnect\([\s\S]*?private func finishTerminalDisconnect/)?.[0] ?? '';
+  const absent = disconnect.indexOf('installation.currentOwnerId == nil, journal == nil');
+  const terminal = disconnect.indexOf('stage: "disconnected"', absent);
+  const ownerFence = disconnect.indexOf('installation.currentOwnerId == ownerId', terminal);
+  expect(absent).toBeGreaterThan(-1);
+  expect(terminal).toBeGreaterThan(absent);
+  expect(ownerFence).toBeGreaterThan(terminal);
+  expect(disconnect).toContain('installation.currentSetupAttemptId == expectedSetupAttemptId');
+  expect(disconnect).toContain('disconnect_noop');
 });
 
 test('successful results require complete readable local state', () => {
@@ -618,8 +969,8 @@ test('admits Hermes messages only from the exact bundled main frame before decod
   expect(main).toContain('message.frameInfo.isMainFrame');
   expect(main).toContain('trustedBundledDocumentURL');
   const handler = main.match(/private func handleHermesRuntimeMessage[\s\S]*?\n    \}/)?.[0] ?? '';
-  expect(handler.indexOf('isTrustedHermesRuntimeMessage')).toBeGreaterThan(-1);
-  expect(handler.indexOf('isTrustedHermesRuntimeMessage')).toBeLessThan(handler.indexOf('message.body'));
+  expect(handler.indexOf('isTrustedBridgeMessage')).toBeGreaterThan(-1);
+  expect(handler.indexOf('isTrustedBridgeMessage')).toBeLessThan(handler.indexOf('message.body'));
   const emitter = main.match(/private func emitHermesRuntimeResult[\s\S]*?\n    \}/)?.[0] ?? '';
   expect(emitter).toContain('webView.url?.standardizedFileURL == trustedBundledDocumentURL');
 

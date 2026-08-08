@@ -3,6 +3,7 @@ import type { ApiKeyAuthenticationCredential, ApiKeyAuthenticationStore, Authent
 import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../../src/lib/apikey/credential';
 import type { NegotiationPollingAuthorizationStore } from '../../src/lib/agent/negotiation-polling-authorization';
 import type { AgentRuntimeStore } from '../../src/services/agent-runtime.service';
+import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS } from '../../src/lib/agent/hermes-credential';
 
 interface PersistedCredential extends ApiKeyAuthenticationCredential {
   id: string;
@@ -34,6 +35,7 @@ export class AgentRuntimeTransactionHarness implements
   };
   private lock: Promise<void> = Promise.resolve();
   private sequence = 0;
+  private committedNegotiationMutations = 0;
 
   seedUser(user: AuthenticatedUser): void {
     this.state.users.set(user.id, structuredClone(user));
@@ -78,10 +80,67 @@ export class AgentRuntimeTransactionHarness implements
     this.deleteCredentialsForAgent(this.state, agentId);
   }
 
+  expireCredential(credentialId: string): void {
+    const row = this.state.credentials.get(credentialId);
+    if (row) row.expiresAt = new Date(0);
+  }
+
+  negotiationMutationCount(): number {
+    return this.committedNegotiationMutations;
+  }
+
+  /** Provider-free model of the production lock-time principal fence. */
+  async attemptNegotiationMutation(
+    ownerId: string,
+    principal: { credentialId: string; agentId: string; audience: string | null; setupAttemptId: string | null },
+    betweenPreflightAndMutation?: () => Promise<void>,
+  ): Promise<boolean> {
+    // Deliberately model the service's non-authoritative preflight before the
+    // deterministic barrier used by race tests.
+    await this.getAgentWithRelations(principal.agentId);
+    await betweenPreflightAndMutation?.();
+    return this.transaction((draft) => {
+      const agent = draft.agents.get(principal.agentId);
+      const credential = draft.credentials.get(principal.credentialId);
+      const credentialMetadata = this.parseMetadata(credential?.metadata ?? null);
+      const permission = [...draft.permissions.values()].some((row) =>
+        row.agentId === principal.agentId
+        && row.userId === ownerId
+        && row.scope === 'global'
+        && row.actions.includes('manage:negotiations'));
+      const authorized = Boolean(
+        agent
+        && agent.ownerId === ownerId
+        && agent.status === 'active'
+        && agent.handleNegotiations
+        && permission
+        && credential?.enabled
+        && credential.expiresAt
+        && credential.expiresAt.getTime() > Date.now()
+        && credentialMetadata?.agentId === principal.agentId
+        && credentialMetadata.audience === HERMES_NEGOTIATOR_AUDIENCE
+        && credentialMetadata.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND
+        && credentialMetadata.setupAttemptId === principal.setupAttemptId
+        && agent.runtimeSetupAttemptId === principal.setupAttemptId,
+      );
+      if (authorized) this.committedNegotiationMutations += 1;
+      return authorized;
+    });
+  }
+
   snapshot(): {
     agents: AgentRow[];
     permissions: Array<{ agentId: string; userId: string; scope: 'global'; actions: string[] }>;
-    credentials: Array<{ id: string; agentId: string | null; setupAttemptId: string | null; keyHash: string }>;
+    credentials: Array<{
+      id: string;
+      agentId: string | null;
+      setupAttemptId: string | null;
+      audience: string | null;
+      kind: string | null;
+      expiresAt: Date | null;
+      metadataExpiresAt: string | null;
+      keyHash: string;
+    }>;
   } {
     return {
       agents: [...this.state.agents.values()].map((row) => structuredClone(row)),
@@ -97,6 +156,10 @@ export class AgentRuntimeTransactionHarness implements
           id: row.id,
           agentId: typeof metadata?.agentId === 'string' ? metadata.agentId : null,
           setupAttemptId: typeof metadata?.setupAttemptId === 'string' ? metadata.setupAttemptId : null,
+          audience: typeof metadata?.audience === 'string' ? metadata.audience : null,
+          kind: typeof metadata?.kind === 'string' ? metadata.kind : null,
+          expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
+          metadataExpiresAt: typeof metadata?.expiresAt === 'string' ? metadata.expiresAt : null,
           keyHash: row.keyHash,
         };
       }),
@@ -107,7 +170,7 @@ export class AgentRuntimeTransactionHarness implements
     ownerId: string;
     installationId: string;
     setupAttemptId: string;
-  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string } }> {
+  }): Promise<{ agent: AgentWithRelations; credential: { id: string; key: string; expiresAt: string } }> {
     return this.transaction(async (draft) => {
       let row = [...draft.agents.values()].find((candidate) =>
         candidate.ownerId === input.ownerId
@@ -135,6 +198,7 @@ export class AgentRuntimeTransactionHarness implements
       this.deleteCredentialsForAgent(draft, row.id);
 
       const key = generateApiKey();
+      const expiresAt = new Date(Date.now() + HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS);
       const credential: PersistedCredential = {
         id: `credential-${++this.sequence}`,
         keyHash: await hashApiKey(key),
@@ -142,13 +206,19 @@ export class AgentRuntimeTransactionHarness implements
         referenceId: input.ownerId,
         userId: input.ownerId,
         enabled: true,
-        expiresAt: null,
-        metadata: JSON.stringify({ agentId: row.id, setupAttemptId: input.setupAttemptId }),
+        expiresAt,
+        metadata: JSON.stringify({
+          agentId: row.id,
+          setupAttemptId: input.setupAttemptId,
+          audience: HERMES_NEGOTIATOR_AUDIENCE,
+          kind: HERMES_NEGOTIATOR_CREDENTIAL_KIND,
+          expiresAt: expiresAt.toISOString(),
+        }),
       };
       draft.credentials.set(credential.id, credential);
       return {
         agent: this.withRelations(draft, row),
-        credential: { id: credential.id, key },
+        credential: { id: credential.id, key, expiresAt: expiresAt.toISOString() },
       };
     });
   }
@@ -271,14 +341,14 @@ export class AgentRuntimeTransactionHarness implements
     return row ? this.withRelations(this.state, row) : null;
   }
 
-  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }): Promise<boolean> {
+  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }) {
     return this.transaction((draft) => {
-      const target = [...draft.agents.values()].find((candidate) =>
-        candidate.ownerId === input.ownerId
-        && candidate.type === 'external'
+      const matches = [...draft.agents.values()].filter((candidate) =>
+        candidate.type === 'external'
         && candidate.runtimeKind === 'hermes'
-        && candidate.installationId === input.installationId) ?? null;
-      if (!target) return false;
+        && candidate.installationId === input.installationId);
+      const target = matches.find((candidate) => candidate.ownerId === input.ownerId) ?? null;
+      if (!target) return matches.length > 0 ? 'owner_mismatch' as const : 'absent' as const;
 
       for (const agent of draft.agents.values()) {
         if (agent.ownerId !== input.ownerId || agent.type !== 'external') continue;
@@ -293,7 +363,7 @@ export class AgentRuntimeTransactionHarness implements
       target.runtimeSetupAttemptId = null;
       target.updatedAt = new Date();
       this.deleteCredentialsForAgent(draft, target.id);
-      return true;
+      return 'disconnected' as const;
     });
   }
 
@@ -313,6 +383,7 @@ export class AgentRuntimeTransactionHarness implements
     const row = [...this.state.credentials.values()].find((credential) => credential.keyHash === hash);
     if (!row) return null;
     return {
+      id: row.id,
       referenceId: row.referenceId,
       userId: row.userId,
       enabled: row.enabled,

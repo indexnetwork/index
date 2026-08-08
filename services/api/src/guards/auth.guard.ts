@@ -7,6 +7,10 @@ import { apikeys, users } from '../schemas/database.schema';
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { getRequestAuthContext, recordRequestAuthContext } from '../lib/request-auth-context';
+import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
+
+export { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND } from '../lib/agent/hermes-credential';
+export type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
 const logger = log.server.from('auth.guard');
 
@@ -17,6 +21,7 @@ export interface AuthenticatedUser {
 }
 
 export interface ApiKeyAuthenticationCredential {
+  id?: string;
   referenceId: string | null;
   userId: string | null;
   enabled: boolean;
@@ -127,6 +132,91 @@ function parseApiKeyAgentId(metadata: string | null): string | null {
   return typeof parsed?.agentId === 'string' ? parsed.agentId : null;
 }
 
+function parseApiKeyAudience(metadata: string | null): typeof HERMES_NEGOTIATOR_AUDIENCE | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return parsed?.audience === HERMES_NEGOTIATOR_AUDIENCE
+    ? HERMES_NEGOTIATOR_AUDIENCE
+    : null;
+}
+
+function parseApiKeySetupAttemptId(metadata: string | null): string | null {
+  const parsed = parseApiKeyMetadata(metadata);
+  return typeof parsed?.setupAttemptId === 'string' ? parsed.setupAttemptId : null;
+}
+
+/**
+ * Dedicated-audience credentials are a closed authentication contract. Inspect
+ * the audience directly before resolving an owner so malformed dedicated rows
+ * cannot collapse into the legacy `audience: null` / unbound-key behavior.
+ */
+function hasValidHermesAuthenticationIdentity(row: ApiKeyAuthenticationCredential): boolean {
+  const parsed = parseApiKeyMetadata(row.metadata);
+  if (parsed?.audience !== HERMES_NEGOTIATOR_AUDIENCE) return true;
+
+  return typeof row.id === 'string'
+    && row.id.trim().length > 0
+    && typeof parsed.agentId === 'string'
+    && parsed.agentId.trim().length > 0
+    && typeof parsed.setupAttemptId === 'string'
+    && parsed.setupAttemptId.trim().length > 0
+    && parsed.kind === HERMES_NEGOTIATOR_CREDENTIAL_KIND
+    && row.expiresAt !== null
+    && typeof parsed.expiresAt === 'string'
+    && parsed.expiresAt === row.expiresAt.toISOString();
+}
+
+/** Stable 403 for an explicitly negotiation-only credential used elsewhere. */
+export class HermesNegotiatorRouteDeniedError extends Error {
+  constructor(message = 'This Hermes negotiator credential is not authorized for this endpoint') {
+    super(message);
+    this.name = 'HermesNegotiatorRouteDeniedError';
+  }
+}
+
+/**
+ * Centrally enforce the REST allowlist for the dedicated Hermes audience.
+ * Legacy agent-bound keys have no explicit audience and retain their historical
+ * route behavior. The URL is matched exactly after removing the optional API
+ * prefix; query strings never influence admission.
+ */
+export function assertApiKeyAudienceRoute(
+  req: Request,
+  principal: Pick<NegotiationCredentialPrincipal, 'agentId' | 'audience'>,
+): void {
+  if (principal.audience !== HERMES_NEGOTIATOR_AUDIENCE) return;
+
+  const method = req.method.toUpperCase();
+  const rawPath = new URL(req.url, 'http://localhost').pathname;
+  const path = rawPath === '/api' ? '/' : rawPath.replace(/^\/api(?=\/)/, '');
+  if (method === 'GET' && path === '/agents/me') return;
+
+  const escapedAgentId = principal.agentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const negotiationRoute = new RegExp(
+    `^/agents/${escapedAgentId}/negotiations/(?:pickup|[^/]+/(?:respond|consult))$`,
+  );
+  if (method === 'POST' && negotiationRoute.test(path)) return;
+
+  throw new HermesNegotiatorRouteDeniedError();
+}
+
+/** Read the exact authenticated principal required by negotiation mutations. */
+export function requireNegotiationCredentialPrincipal(req: Request): NegotiationCredentialPrincipal {
+  const context = getRequestAuthContext(req);
+  if (
+    context?.kind !== 'api_key'
+    || !context.agentId
+    || !context.credentialId
+  ) {
+    throw new OwnerControlRequiredError('Negotiation polling requires an exact agent-bound API key');
+  }
+  return {
+    credentialId: context.credentialId,
+    agentId: context.agentId,
+    audience: context.audience ?? null,
+    setupAttemptId: context.setupAttemptId ?? null,
+  };
+}
+
 function isLegacyCliV1Metadata(metadata: string | null): boolean {
   const parsed = parseApiKeyMetadata(metadata);
   return parsed?.client === 'cli'
@@ -231,6 +321,10 @@ export async function authenticateApiKey(
     logger.warn('API key rejected', { reason: 'incompatible_bearer_metadata', keyHashPrefix, ua });
     throw new Error('Invalid API key');
   }
+  if (!hasValidHermesAuthenticationIdentity(row)) {
+    logger.warn('API key rejected', { reason: 'malformed_hermes_identity', keyHashPrefix, ua });
+    throw new Error('Invalid API key');
+  }
 
   let userId: string | null;
   try {
@@ -251,9 +345,17 @@ export async function authenticateApiKey(
     throw new Error('Invalid API key');
   }
 
-  recordRequestAuthContext(req, {
-    kind: 'api_key',
+  const context = {
+    kind: 'api_key' as const,
     agentId: options.forceNullAgentId ? null : parseApiKeyAgentId(row.metadata),
+    audience: options.forceNullAgentId ? null : parseApiKeyAudience(row.metadata),
+    credentialId: row.id ?? null,
+    setupAttemptId: options.forceNullAgentId ? null : parseApiKeySetupAttemptId(row.metadata),
+  };
+  recordRequestAuthContext(req, context);
+  if (context.agentId) assertApiKeyAudienceRoute(req, {
+    agentId: context.agentId,
+    audience: context.audience,
   });
 
   return {
@@ -304,6 +406,7 @@ const databaseApiKeyAuthenticationStore: ApiKeyAuthenticationStore = {
     const database = (await import('../lib/drizzle/drizzle')).default;
     const [row] = await database
       .select({
+        id: apikeys.id,
         referenceId: apikeys.referenceId,
         userId: apikeys.userId,
         enabled: apikeys.enabled,

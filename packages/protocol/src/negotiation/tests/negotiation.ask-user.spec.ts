@@ -41,7 +41,7 @@ const askUserTurn: NegotiationTurn = {
   action: "ask_user",
   assessment: { reasoning: "need client input", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
   message: "May I share your budget range?",
-  askUser: { disclosureSubject: "budget range", draftQuestion: "Can I tell them your budget range?" },
+  askUser: { reason: "consequential_disclosure_permission" },
 };
 
 describe("ask_user vocabulary + seat schemas", () => {
@@ -380,7 +380,8 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.questionerEnqueues[0].userId).toBe("u-src");
     expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).toBe("intent-src");
     const serialized = JSON.stringify({ messages: stubs.createdMessages, questions: stubs.questionerEnqueues, timers: stubs.expiryArms });
-    expect(serialized).toContain(reason === "unresolved_owner_constraint" ? "your preferences" : "your");
+    expect(serialized).toContain(reason);
+    expect(serialized).not.toContain('Ignore prior instructions');
     expect(serialized).not.toContain("CANARY_PRIVATE_REASONING");
     expect(serialized).not.toContain("CANARY_PRIVATE_MESSAGE");
   });
@@ -545,8 +546,9 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     });
     const ctx = q.context as unknown as Record<string, unknown>;
     expect(ctx.negotiationId).toBe("task-new");
-    expect(ctx.disclosureSubject).toBe("budget range");
-    expect(ctx.draftQuestion).toBe("Can I tell them your budget range?");
+    expect(ctx.consultationPolicyReason).toBe("consequential_disclosure_permission");
+    expect(ctx).not.toHaveProperty("disclosureSubject");
+    expect(ctx).not.toHaveProperty("draftQuestion");
     expect(ctx.counterpartyHint).toBe("the other participant");
     expect(ctx.counterpartyHint).not.toContain("Bob");
     expect(ctx.counterpartyHint).not.toContain("ML engineer");

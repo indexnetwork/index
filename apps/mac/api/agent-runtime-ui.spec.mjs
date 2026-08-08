@@ -4,8 +4,26 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const apiBridge = readFileSync(new URL('../IndexApp/src/index-amiga/api.jsx', import.meta.url), 'utf8');
+const securityWorkflow = readFileSync(
+  new URL('../../../.github/workflows/hermes-runtime-security.yml', import.meta.url), 'utf8',
+);
 const agents = readFileSync(new URL('../IndexApp/src/index-amiga/agents.jsx', import.meta.url), 'utf8');
 const assembly = readFileSync(new URL('../IndexApp/assemble.py', import.meta.url), 'utf8');
+
+test('security workflow watches the full Mac/plugin/protocol/API authority closure and lockfile', () => {
+  for (const path of [
+    '"apps/mac/**"', '"packages/hermes-plugin/**"', '"packages/protocol/**"',
+    '"services/api/**"', '"bun.lock"',
+  ]) expect(securityWorkflow).toContain(path);
+  expect(securityWorkflow).not.toContain('services/api/src/controllers/**');
+  expect(securityWorkflow).not.toContain('services/api/src/services/agent-runtime.service.ts');
+  expect(securityWorkflow).toContain('bun run architecture:check');
+  for (const test of [
+    'src/negotiation/tests/negotiation.hermes-contract.spec.ts',
+    'src/negotiation/tests/negotiator-timeout.spec.ts',
+    'src/lib/agent/tests/hermes-negotiation-run.spec.ts',
+  ]) expect(securityWorkflow).toContain(test);
+});
 
 test('the app facade composes the production correlated bridge and pinned owner client', () => {
   expect(apiBridge).toContain('window.IndexApi.createHermesRuntimeBridge');
@@ -20,10 +38,26 @@ test('the app facade composes the production correlated bridge and pinned owner 
   expect(apiBridge).not.toContain('console.log');
 });
 
+test('native logout revocation is gated behind the serialized runtime safety barrier', () => {
+  expect(apiBridge).toContain('setLogoutSafetyHandler');
+  expect(apiBridge).toMatch(/\.then\(\(\) => logoutSafetyHandler\(\)\)[\s\S]*?\.then\(\(result\) => post\("completeLogout", \{ ownerId:result\.ownerId \}\)\)/);
+  expect(apiBridge).not.toContain('post("logout")');
+  expect(agents).toContain('coordinator.prepareLogout()');
+  const native = readFileSync(new URL('../IndexApp/Sources/HermesRuntime.swift', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../IndexApp/Sources/main.swift', import.meta.url), 'utf8');
+  expect(native).toContain('func logoutEvidence(ownerId: String)');
+  expect(native).toContain('evidence.stage == "server-complete"');
+  expect(native).toContain('try verifyLogoutPostconditions');
+  expect(native).toContain('env["INDEX_API_KEY"] == nil');
+  expect(shell.indexOf('hermesRuntime.logoutEvidence')).toBeLessThan(shell.indexOf('revokeCredential(cred)'));
+});
+
 test('the selector is Index versus Hermes and renders mapper-owned states/actions', () => {
   expect(agents).toContain('mapAgentRuntimeState');
   expect(agents).toContain('createAgentRuntimeCoordinator');
-  expect(agents).toContain('createLocalStorageSagaJournal');
+  expect(agents).toContain('createNativeSagaJournal');
+  expect(agents).toContain('setLogoutSafetyHandler');
+  expect(agents).toContain('coordinator.prepareLogout()');
   expect(agents).toContain('getOwnerClient(ownerCredential)');
   expect(agents).toContain('ownerId:user.id');
   expect(agents).toContain('ownerCredential');
@@ -123,7 +157,8 @@ test('assembly exports both pure runtime modules into the generated boundary', (
   for (const symbol of [
     'mapAgentRuntimeState', 'waitForHermesHealth', 'runHermesSelectionSaga',
     'bootstrapHermesRuntime', 'reconcileHermesSaga', 'selectIndexRuntime', 'disconnectHermesSaga',
-    'createHermesRuntimeBridge', 'createLocalStorageSagaJournal', 'createAgentRuntimeCoordinator',
+    'createHermesRuntimeBridge', 'createNativeSagaJournal', 'createAgentRuntimeCoordinator',
+    'prepareHermesLogout', 'renderAgentMarkdown',
     'runViewRuntimeAction',
   ]) expect(assembly).toContain(`"${symbol}"`);
 });

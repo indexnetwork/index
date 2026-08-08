@@ -98,7 +98,10 @@ class RuntimeMemoryStore implements AgentRuntimeStore {
         setupAttemptId: input.setupAttemptId,
       };
       this.credentials.set(existing.id, credential);
-      return { agent: structuredClone(existing), credential: { id: credential.id, key: credential.key } };
+      return {
+        agent: structuredClone(existing),
+        credential: { id: credential.id, key: credential.key, expiresAt: '2026-09-06T00:00:00.000Z' },
+      };
     });
   }
 
@@ -177,11 +180,12 @@ class RuntimeMemoryStore implements AgentRuntimeStore {
     return current ? structuredClone(current) : null;
   }
 
-  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }): Promise<boolean> {
+  async disconnectHermesInstallation(input: { ownerId: string; installationId: string }) {
     return this.serialize(async () => {
-      const current = [...this.agents.values()].find((item) =>
-        item.ownerId === input.ownerId && item.runtimeKind === 'hermes' && item.installationId === input.installationId);
-      if (!current) return false;
+      const matches = [...this.agents.values()].filter((item) =>
+        item.runtimeKind === 'hermes' && item.installationId === input.installationId);
+      const current = matches.find((item) => item.ownerId === input.ownerId);
+      if (!current) return matches.length > 0 ? 'owner_mismatch' as const : 'absent' as const;
       for (const item of this.agents.values()) {
         if (item.ownerId === input.ownerId && item.type === 'external') {
           item.handleNegotiations = false;
@@ -194,7 +198,7 @@ class RuntimeMemoryStore implements AgentRuntimeStore {
       current.runtimeSetupAttemptId = null;
       this.credentials.delete(current.id);
       this.selectedId = null;
-      return true;
+      return 'disconnected' as const;
     });
   }
 
@@ -329,6 +333,20 @@ describe('AgentRuntimeService', () => {
     expect(store.currentCredential(AGENT_ID)).toBeNull();
   });
 
+  it('treats a proven globally absent installation as idempotent owner logout success', async () => {
+    const store = new RuntimeMemoryStore();
+    const service = new AgentRuntimeService(store);
+
+    await expect(service.disconnectHermes(OWNER_ID, INSTALLATION_ID)).resolves.toEqual({
+      selectedRuntime: 'index',
+      executor: null,
+      installation: null,
+      health: 'never-seen',
+      indexCovering: true,
+      freshnessThresholdMs: NEGOTIATION_EXECUTOR_FRESHNESS_MS,
+    });
+  });
+
   it('keeps selected installation A authoritative while preparing installation B', async () => {
     const persistence = new AgentRuntimeTransactionHarness();
     persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
@@ -386,6 +404,42 @@ describe('AgentRuntimeService', () => {
 });
 
 describe('Agent runtime transactional persistence adapter contract', () => {
+  for (const mutation of ['pickup claim', 'respond transition', 'consultation pause'] as const) {
+    for (const race of ['deselect', 'disconnect', 'rotate'] as const) {
+      it(`${mutation} revalidates after a deterministic ${race} barrier and cannot mutate`, async () => {
+        const persistence = new AgentRuntimeTransactionHarness();
+        persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
+        const runtime = new AgentRuntimeService(persistence);
+        const prepared = await runtime.prepareHermes(OWNER_ID, INSTALLATION_ID, 'setup-current');
+        await runtime.setRuntime(OWNER_ID, {
+          runtime: 'hermes',
+          installationId: INSTALLATION_ID,
+          executorId: prepared.executorId,
+          setupAttemptId: 'setup-current',
+        });
+        const principal = {
+          credentialId: prepared.credential.id,
+          agentId: prepared.executorId,
+          audience: 'hermes-negotiator',
+          setupAttemptId: 'setup-current',
+        };
+
+        const result = await persistence.attemptNegotiationMutation(OWNER_ID, principal, async () => {
+          if (race === 'deselect') {
+            await runtime.setRuntime(OWNER_ID, { runtime: 'index' });
+          } else if (race === 'disconnect') {
+            await runtime.disconnectHermes(OWNER_ID, INSTALLATION_ID);
+          } else {
+            await runtime.prepareHermes(OWNER_ID, INSTALLATION_ID, 'setup-rotated');
+          }
+        });
+
+        expect(result).toBe(false);
+        expect(persistence.negotiationMutationCount()).toBe(0);
+      });
+    }
+  }
+
   it('serializes concurrent prepare operations into one persisted generation and credential', async () => {
     const persistence = new AgentRuntimeTransactionHarness();
     persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
@@ -400,14 +454,34 @@ describe('Agent runtime transactional persistence adapter contract', () => {
     expect(snapshot.agents).toHaveLength(1);
     expect(snapshot.credentials).toHaveLength(1);
     expect(snapshot.permissions).toHaveLength(0);
+    expect(snapshot.credentials[0]).toMatchObject({
+      audience: 'hermes-negotiator',
+      kind: 'agent-runtime',
+    });
+    expect(snapshot.credentials[0]?.expiresAt).toBeInstanceOf(Date);
+    expect(snapshot.credentials[0]?.metadataExpiresAt).toBe(snapshot.credentials[0]?.expiresAt?.toISOString());
     expect(snapshot.agents[0]?.runtimeSetupAttemptId).toBe(snapshot.credentials[0]?.setupAttemptId);
     const current = prepared.find((result) => result.setupAttemptId === snapshot.agents[0]?.runtimeSetupAttemptId);
     expect(current).toBeDefined();
     await expect(authenticateApiKey(
-      new Request('http://localhost', { headers: { 'x-api-key': current!.credential.key } }),
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': current!.credential.key } }),
       current!.credential.key,
       persistence,
     )).resolves.toMatchObject({ id: OWNER_ID });
+  });
+
+  it('rejects an expired prepared Hermes credential', async () => {
+    const persistence = new AgentRuntimeTransactionHarness();
+    persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
+    const runtime = new AgentRuntimeService(persistence);
+    const prepared = await runtime.prepareHermes(OWNER_ID, INSTALLATION_ID, 'setup-expiry');
+    persistence.expireCredential(prepared.credential.id);
+
+    await expect(authenticateApiKey(
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': prepared.credential.key } }),
+      prepared.credential.key,
+      persistence,
+    )).rejects.toThrow('Invalid API key');
   });
 
   it('serializes concurrent activation and persists one selected executor with exact authority', async () => {
@@ -475,12 +549,12 @@ describe('Agent runtime transactional persistence adapter contract', () => {
       setupAttemptId: 'setup-current',
     });
     await expect(authenticateApiKey(
-      new Request('http://localhost', { headers: { 'x-api-key': old.credential.key } }),
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': old.credential.key } }),
       old.credential.key,
       persistence,
     )).rejects.toThrow('Invalid API key');
     await expect(authenticateApiKey(
-      new Request('http://localhost', { headers: { 'x-api-key': current.credential.key } }),
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': current.credential.key } }),
       current.credential.key,
       persistence,
     )).resolves.toMatchObject({ id: OWNER_ID });

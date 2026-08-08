@@ -88,7 +88,7 @@ describe('OwnerControlGuard', () => {
     const first = await runtime.prepareHermes(OWNER.id, INSTALLATION_ID, 'setup-first');
     const current = await runtime.prepareHermes(OWNER.id, INSTALLATION_ID, 'setup-current');
     const authenticate = (key: string) => authenticateApiKey(
-      new Request('http://localhost/api/agent-runtime', { headers: { 'x-api-key': key } }),
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': key } }),
       key,
       persistence,
     );
@@ -106,13 +106,13 @@ describe('OwnerControlGuard', () => {
     const current = await runtime.prepareHermes(OWNER.id, INSTALLATION_ID, SETUP_ATTEMPT_ID);
 
     await expect(authenticateApiKey(
-      new Request('http://localhost/api/agent-runtime', { headers: { 'x-api-key': current.credential.key } }),
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': current.credential.key } }),
       current.credential.key,
       persistence,
     )).resolves.toEqual(OWNER);
     await runtime.disconnectHermes(OWNER.id, INSTALLATION_ID);
     await expect(authenticateApiKey(
-      new Request('http://localhost/api/agent-runtime', { headers: { 'x-api-key': current.credential.key } }),
+      new Request('http://localhost/api/agents/me', { headers: { 'x-api-key': current.credential.key } }),
       current.credential.key,
       persistence,
     )).rejects.toThrow('Invalid API key');
@@ -218,6 +218,26 @@ describe('AgentRuntimeController', () => {
     );
     expect(response.status).toBe(200);
     expect(disconnectHermes).toHaveBeenCalledWith(OWNER.id, INSTALLATION_ID);
+  });
+
+  it('returns owner-scoped success when the real service proves the installation absent', async () => {
+    const persistence = new AgentRuntimeTransactionHarness();
+    persistence.seedUser(OWNER);
+    const realController = new AgentRuntimeController(
+      new AgentRuntimeService(persistence),
+      reportUnexpectedError,
+    );
+
+    const response = await realController.disconnect(
+      new Request(`http://localhost/api/agent-runtime/hermes/${INSTALLATION_ID}`, { method: 'DELETE' }),
+      OWNER,
+      { installationId: INSTALLATION_ID },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      selectedRuntime: 'index', installation: null, executor: null,
+    });
   });
 
   it.each([

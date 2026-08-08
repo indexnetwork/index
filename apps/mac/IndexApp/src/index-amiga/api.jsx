@@ -61,13 +61,30 @@ window.IndexApp = (function () {
   function hasBridge() {
     return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.indexAuth);
   }
-  function post(action) {
+  function post(action, payload) {
     if (!hasBridge()) return false;
-    window.webkit.messageHandlers.indexAuth.postMessage({ action });
+    window.webkit.messageHandlers.indexAuth.postMessage({ action, ...(payload || {}) });
     return true;
   }
   function login() { return post("login"); }
-  function logout() { return post("logout"); }
+  let logoutSafetyHandler = null;
+  let logoutInFlight = false;
+  function setLogoutSafetyHandler(handler) {
+    logoutSafetyHandler = typeof handler === "function" ? handler : null;
+    return () => { if (logoutSafetyHandler === handler) logoutSafetyHandler = null; };
+  }
+  function logout() {
+    if (!hasBridge() || !logoutSafetyHandler) return false;
+    if (logoutInFlight) return true;
+    logoutInFlight = true;
+    Promise.resolve()
+      .then(() => logoutSafetyHandler())
+      // Native key deletion/revocation is unreachable until the coordinator has
+      // persisted select-Index recovery and proven local scheduling paused.
+      .then((result) => post("completeLogout", { ownerId:result.ownerId }))
+      .catch(() => { logoutInFlight = false; });
+    return true;
+  }
 
   // Swift answers a detectHarnesses post via window.__indexHarnessesDetected.
   // Resolves with [{id,label,command,path}], or null when there is no native
@@ -129,6 +146,7 @@ window.IndexApp = (function () {
   // window.INDEX_NATIVE. Fan that out to any React subscribers.
   const authSubscribers = new Set();
   window.__indexAuthChanged = function (key) {
+    if (!key) logoutInFlight = false;
     authSubscribers.forEach((cb) => { try { cb(key); } catch (e) { /* ignore */ } });
   };
   function onAuthChanged(cb) {
@@ -430,6 +448,7 @@ window.IndexApp = (function () {
     loadSnapshot,
     login,
     logout,
+    setLogoutSafetyHandler,
     detectHarnesses,
     hermesRuntime,
     onAuthChanged,
