@@ -44,89 +44,51 @@ function ensureAssets() {
   return assetsPromise
 }
 
-function stashDesktopInvite(code) {
-  const c = String(code || '').trim()
-  if (!c) return
-  try { window.sessionStorage.removeItem('index-public-join') } catch (e) { /* noop */ }
-  try { window.sessionStorage.setItem('index-invite', c) } catch (e) { /* private mode */ }
-  try {
-    window.dispatchEvent(new CustomEvent('index-network-invite', { detail: { code: c } }))
-  } catch (e) { /* noop */ }
-}
+// Native OS alerts for newly actionable opportunities, via the ctx.os door
+// (hermes-agent#78685). Fires only while the user is away from Hermes and is
+// gated by Settings ▸ Notifications ▸ "Plugin notifications"; on older desktop
+// shells without ctx.os it silently no-ops.
+const SEEN_OPPORTUNITIES_KEY = 'notifiedOpportunityIds'
+const OPPORTUNITY_POLL_MS = 30 * 1000
 
-function stashDesktopPublicJoin(networkId) {
-  const id = String(networkId || '').trim()
-  if (!id) return
-  try { window.sessionStorage.removeItem('index-invite') } catch (e) { /* noop */ }
-  try { window.sessionStorage.setItem('index-public-join', id) } catch (e) { /* private mode */ }
-  try {
-    window.dispatchEvent(new CustomEvent('index-network-public-join', { detail: { networkId: id } }))
-  } catch (e) { /* noop */ }
-}
-
-function readJoinQueryFromHash() {
-  const hash = String(window.location.hash || '')
-  const q = hash.indexOf('?')
-  if (q < 0) return { invite: null, join: null }
-  let params
-  try { params = new URLSearchParams(hash.slice(q + 1)) } catch (e) { return { invite: null, join: null } }
-  return {
-    invite: String(params.get('invite') || '').trim() || null,
-    join: String(params.get('join') || '').trim() || null,
-  }
-}
-
-function applyJoinQueryFromHash() {
-  const q = readJoinQueryFromHash()
-  if (q.invite) stashDesktopInvite(q.invite)
-  if (q.join) stashDesktopPublicJoin(q.join)
-}
-
-function openIndexNetwork(query) {
-  const q = query && (query.invite || query.join)
-    ? ('?' + new URLSearchParams(
-      query.invite ? { invite: query.invite } : { join: query.join }
-    ).toString())
-    : ''
-  try { host.navigate('/index-network' + q) } catch (e) { /* route not ready yet */ }
-}
-
-function handleIndexDeepLink(payload) {
-  if (!payload || !payload.name) return false
-  const kind = String(payload.kind || '').toLowerCase()
-  if (kind === 'l') {
-    stashDesktopInvite(payload.name)
-    openIndexNetwork({ invite: payload.name })
-    return true
-  }
-  if (kind === 'index' || kind === 'index-network') {
-    stashDesktopPublicJoin(payload.name)
-    openIndexNetwork({ join: payload.name })
-    return true
-  }
-  return false
-}
-
-let deepLinkOff = null
-function attachDeepLinkListener() {
-  if (deepLinkOff) return deepLinkOff
-  if (!window.hermesDesktop || typeof window.hermesDesktop.onDeepLink !== 'function') return null
-  const off = window.hermesDesktop.onDeepLink(function (payload) {
-    handleIndexDeepLink(payload)
+function collectPendingOpportunities(data) {
+  const lists = [(data.general && data.general.opportunities) || []]
+  ;(data.intents || []).forEach(function (intent) { lists.push(intent.opportunities || []) })
+  const pending = []
+  lists.forEach(function (list) {
+    list.forEach(function (item) {
+      if (item.opportunityId && (item.status === 'pending' || item.status === 'latent')) pending.push(item)
+    })
   })
-  deepLinkOff = typeof off === 'function' ? off : function () { /* noop */ }
-  try { void window.hermesDesktop.signalDeepLinkReady?.() } catch (e) { /* older shells */ }
-  return deepLinkOff
+  return pending
 }
 
-function detachDeepLinkListener() {
-  if (typeof deepLinkOff === 'function') {
-    try { deepLinkOff() } catch (e) { /* noop */ }
-  }
-  deepLinkOff = null
+function checkOpportunities(ctx) {
+  restCall('/summary', { method: 'GET' })
+    .then(function (data) {
+      if (!data || data.success === false) return
+      const pending = collectPendingOpportunities(data)
+      const seen = ctx.storage.get(SEEN_OPPORTUNITIES_KEY, null)
+      const ids = pending.map(function (item) { return item.opportunityId })
+      if (seen === null) {
+        ctx.storage.set(SEEN_OPPORTUNITIES_KEY, ids) // first run — baseline silently
+        return
+      }
+      const fresh = pending.filter(function (item) { return seen.indexOf(item.opportunityId) === -1 })
+      if (!fresh.length) return
+      ctx.storage.set(SEEN_OPPORTUNITIES_KEY, seen.concat(ids).filter(function (id, i, all) {
+        return all.indexOf(id) === i
+      }).slice(-200))
+      if (!ctx.os || !ctx.os.notify) return
+      ctx.os.notify({
+        title: 'Index Network',
+        body: fresh.length === 1
+          ? 'New opportunity: ' + fresh[0].name
+          : fresh.length + ' new opportunities are waiting'
+      })
+    })
+    .catch(function () { /* backend not reachable — the next poll retries */ })
 }
-
-attachDeepLinkListener()
 
 function DesktopPage() {
   const tick = React.useState(0)
@@ -136,12 +98,6 @@ function DesktopPage() {
       if (alive) tick[1](function (n) { return n + 1 })
     })
     return function () { alive = false }
-  }, [])
-  React.useEffect(function () {
-    applyJoinQueryFromHash()
-    function onHash() { applyJoinQueryFromHash() }
-    window.addEventListener('hashchange', onHash)
-    return function () { window.removeEventListener('hashchange', onHash) }
   }, [])
   if (!DashboardComponent) return null
   return React.createElement('div', { className: 'index-network-desktop-page' },
@@ -160,14 +116,9 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    attachDeepLinkListener()
-    ctx.onDispose(detachDeepLinkListener)
-
-    try {
-      const join = window.sessionStorage.getItem('index-public-join')
-      const invite = window.sessionStorage.getItem('index-invite')
-      if (join || invite) openIndexNetwork(join ? { join: join } : { invite: invite })
-    } catch (e) { /* private mode */ }
+    const opportunityTimer = window.setInterval(function () { checkOpportunities(ctx) }, OPPORTUNITY_POLL_MS)
+    checkOpportunities(ctx)
+    ctx.onDispose(function () { window.clearInterval(opportunityTimer) })
 
     ctx.registerMany([
       {

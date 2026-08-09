@@ -411,62 +411,10 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  // Join deep links arrive via hermes://l/<code>, hermes://index/<id>, or
-  // #invite= / #join= (web dashboard). Persist across login/onboarding.
-  const INVITE_STORAGE_KEY = "index-invite";
-  const PUBLIC_JOIN_STORAGE_KEY = "index-public-join";
-  const INVITE_EVENT = "index-network-invite";
-  const PUBLIC_JOIN_EVENT = "index-network-public-join";
-
-  function normalizeJoinId(value) {
-    const c = String(value || "").trim();
-    return c || null;
-  }
-
-  function readStoredInvite() {
-    try {
-      return normalizeJoinId(window.sessionStorage.getItem(INVITE_STORAGE_KEY));
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function storeInvite(code) {
-    const c = normalizeJoinId(code);
-    if (!c) return null;
-    try { window.sessionStorage.setItem(INVITE_STORAGE_KEY, c); } catch (e) { /* private mode */ }
-    clearStoredPublicJoin();
-    return c;
-  }
-
-  function clearStoredInvite() {
-    try { window.sessionStorage.removeItem(INVITE_STORAGE_KEY); } catch (e) { /* noop */ }
-  }
-
-  function readStoredPublicJoin() {
-    try {
-      return normalizeJoinId(window.sessionStorage.getItem(PUBLIC_JOIN_STORAGE_KEY));
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function storePublicJoin(networkId) {
-    const id = normalizeJoinId(networkId);
-    if (!id) return null;
-    try { window.sessionStorage.setItem(PUBLIC_JOIN_STORAGE_KEY, id); } catch (e) { /* private mode */ }
-    clearStoredInvite();
-    return id;
-  }
-
-  function clearStoredPublicJoin() {
-    try { window.sessionStorage.removeItem(PUBLIC_JOIN_STORAGE_KEY); } catch (e) { /* noop */ }
-  }
-
   function parseHash() {
     // The desktop app owns window.location.hash (its router routes on it) —
     // keep intent selection purely in component state there.
-    if (DESKTOP_ENV) return { intentId: null, inviteCode: null, joinId: null };
+    if (DESKTOP_ENV) return { intentId: null };
     const raw = (window.location.hash || "").replace(/^#/, "");
     const params = {};
     raw.split("&").forEach(function (pair) {
@@ -477,80 +425,15 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     });
     return {
       intentId: params.intent || null,
-      inviteCode: normalizeJoinId(params.invite),
-      joinId: normalizeJoinId(params.join),
     };
   }
 
   function writeHash(intentId) {
     if (DESKTOP_ENV) return;
-    // Preserve a pending #invite= / #join= while rewriting the intent selection.
-    const hash = parseHash();
-    const parts = [];
-    if (intentId) parts.push("intent=" + encodeURIComponent(intentId));
-    if (hash.inviteCode) parts.push("invite=" + encodeURIComponent(hash.inviteCode));
-    if (hash.joinId) parts.push("join=" + encodeURIComponent(hash.joinId));
-    const target = parts.length ? "#" + parts.join("&") : "";
-    if ((window.location.hash || "") !== target) {
-      window.location.hash = target;
-    }
-  }
-
-  function stripHashJoinParams() {
-    if (DESKTOP_ENV) return;
-    const intentId = parseHash().intentId;
     const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
     }
-  }
-
-  function takePendingInvite() {
-    const fromHash = parseHash().inviteCode;
-    if (fromHash) {
-      storeInvite(fromHash);
-      stripHashJoinParams();
-      return fromHash;
-    }
-    if (DESKTOP_ENV) {
-      try {
-        const hash = String(window.location.hash || "");
-        const q = hash.indexOf("?");
-        if (q >= 0) {
-          const invite = normalizeJoinId(new URLSearchParams(hash.slice(q + 1)).get("invite"));
-          if (invite) {
-            storeInvite(invite);
-            return invite;
-          }
-        }
-      } catch (e) { /* noop */ }
-    }
-    return readStoredInvite();
-  }
-
-  function takePendingPublicJoin() {
-    const fromHash = parseHash().joinId;
-    if (fromHash) {
-      storePublicJoin(fromHash);
-      stripHashJoinParams();
-      return fromHash;
-    }
-    // Desktop routes live in the location hash (#/index-network?join=…);
-    // parseHash() ignores them under DESKTOP_ENV, so read the query here.
-    if (DESKTOP_ENV) {
-      try {
-        const hash = String(window.location.hash || "");
-        const q = hash.indexOf("?");
-        if (q >= 0) {
-          const join = normalizeJoinId(new URLSearchParams(hash.slice(q + 1)).get("join"));
-          if (join) {
-            storePublicJoin(join);
-            return join;
-          }
-        }
-      } catch (e) { /* noop */ }
-    }
-    return readStoredPublicJoin();
   }
 
   function EmptyState(props) {
@@ -2080,127 +1963,6 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     );
   }
 
-  // Private invite (`code`) or public network (`networkId`) join. Preview is
-  // public; accept/join requires the signed-in API key. Parent holds the value
-  // through login/onboarding and only mounts this once the dashboard is ready.
-  function InviteJoinModal(props) {
-    const useState = React.useState;
-    const useEffect = React.useEffect;
-    const code = props.code || null;
-    const networkId = props.networkId || null;
-    const isInvite = !!code;
-    const previewError = isInvite
-      ? "This invite code has expired — ask for a new one."
-      : "This network was not found or is private.";
-    const joinError = isInvite
-      ? "Couldn't join — the invite may have expired."
-      : "Couldn't join that network.";
-    const stepState = useState("loading");
-    const step = stepState[0]; const setStep = stepState[1];
-    const networkState = useState(null);
-    const network = networkState[0]; const setNetwork = networkState[1];
-    const errState = useState(null);
-    const err = errState[0]; const setErr = errState[1];
-
-    function loadPreview() {
-      let cancelled = false;
-      setStep("loading");
-      setErr(null);
-      const path = isInvite
-        ? API + "/invite/" + encodeURIComponent(code)
-        : API + "/networks/public/" + encodeURIComponent(networkId);
-      fetchPluginJSON(path)
-        .then(function (payload) {
-          if (cancelled) return;
-          if (!payload || payload.success === false || !payload.network || !payload.network.id) {
-            throw new Error((payload && payload.error) || previewError);
-          }
-          setNetwork(payload.network);
-          setStep("preview");
-        })
-        .catch(function (e) {
-          if (cancelled) return;
-          setStep("error");
-          setErr((e && e.message) || previewError);
-        });
-      return function () { cancelled = true; };
-    }
-
-    useEffect(function () { return loadPreview(); }, [code, networkId]);
-
-    function join() {
-      setStep("joining");
-      setErr(null);
-      const path = isInvite
-        ? API + "/invite/" + encodeURIComponent(code) + "/accept"
-        : API + "/networks/" + encodeURIComponent(networkId) + "/join";
-      fetchPluginJSON(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || joinError);
-          }
-          if (props.onJoined) props.onJoined(payload);
-          if (props.onClose) props.onClose();
-        })
-        .catch(function (e) {
-          setStep("error");
-          setErr((e && e.message) || joinError);
-        });
-    }
-
-    const memberCount = network && typeof network.memberCount === "number" ? network.memberCount : null;
-    const body = step === "loading"
-      ? React.createElement("p", { className: "index-dashboard__invite-copy" },
-        isInvite ? "Reading the invite…" : "Reading the network…")
-      : (step === "error"
-        ? [
-          React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" },
-            isInvite ? "Invite unavailable" : "Network unavailable"),
-          React.createElement("p", { key: "c", className: "index-dashboard__invite-copy" }, err),
-          React.createElement("div", { key: "a", className: "index-dashboard__invite-actions" },
-            React.createElement(Button, { type: "button", size: "sm", onClick: loadPreview }, "Retry"),
-            React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-          ),
-        ]
-        : [
-          isInvite
-            ? React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
-              "You're invited to join")
-            : null,
-          React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" }, network.title),
-          memberCount != null
-            ? React.createElement("p", { key: "m", className: "index-dashboard__invite-meta" },
-              memberCount + (memberCount === 1 ? " member" : " members"))
-            : null,
-          React.createElement("div", { key: "a", className: "index-dashboard__invite-actions" },
-            React.createElement(Button, {
-              type: "button",
-              size: "sm",
-              disabled: step === "joining",
-              onClick: join,
-            }, step === "joining" ? "Joining…" : "Join network"),
-            React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-          ),
-        ]);
-
-    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", {
-        className: "index-dashboard__profile-panel index-dashboard__invite-modal",
-        onClick: function (e) { e.stopPropagation(); },
-      },
-        React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Join network"),
-          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
-        ),
-        React.createElement("div", { className: "index-dashboard__invite-body" }, body),
-      ),
-    );
-  }
-
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
   // on the right. Create opens the (reviewed) request form as a modal. Owner
   // rows open a detail modal with Access-tab invite links (web parity).
@@ -3536,13 +3298,6 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     const editingRequestState = useState(null);
     const editingRequest = editingRequestState[0];
     const setEditingRequest = editingRequestState[1];
-    // Held through login/onboarding; modal mounts only when ready.
-    const pendingInviteState = useState(function () { return takePendingInvite(); });
-    const pendingInvite = pendingInviteState[0];
-    const setPendingInvite = pendingInviteState[1];
-    const pendingPublicJoinState = useState(function () { return takePendingPublicJoin(); });
-    const pendingPublicJoin = pendingPublicJoinState[0];
-    const setPendingPublicJoin = pendingPublicJoinState[1];
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
@@ -3939,10 +3694,6 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
 
     function signOut() {
       setProfileOpen(false);
-      clearStoredInvite();
-      clearStoredPublicJoin();
-      setPendingInvite(null);
-      setPendingPublicJoin(null);
       fetchPluginJSON(API + "/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3954,80 +3705,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       });
     }
 
-    function closeInvite() {
-      clearStoredInvite();
-      setPendingInvite(null);
-    }
-
-    function closePublicJoin() {
-      clearStoredPublicJoin();
-      setPendingPublicJoin(null);
-    }
-
-    function onInviteJoined() {
-      load();
-    }
-
     useEffect(function () {
       checkAuth();
     }, []);
-
-    // Desktop deep links and web #invite= / #join= land here; hold until the
-    // user is signed in and past Getting started (Mac inviteReady parity).
-    useEffect(function () {
-      function onInviteEvent(ev) {
-        const code = storeInvite(ev && ev.detail && ev.detail.code);
-        if (code) {
-          setPendingPublicJoin(null);
-          setPendingInvite(code);
-        }
-      }
-      function onPublicJoinEvent(ev) {
-        const id = storePublicJoin(ev && ev.detail && ev.detail.networkId);
-        if (id) {
-          setPendingInvite(null);
-          setPendingPublicJoin(id);
-        }
-      }
-      window.addEventListener(INVITE_EVENT, onInviteEvent);
-      window.addEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
-      function onHashChange() {
-        const code = takePendingInvite();
-        if (code) {
-          setPendingPublicJoin(null);
-          setPendingInvite(code);
-          return;
-        }
-        const id = takePendingPublicJoin();
-        if (id) {
-          setPendingInvite(null);
-          setPendingPublicJoin(id);
-        }
-      }
-      window.addEventListener("hashchange", onHashChange);
-      return function () {
-        window.removeEventListener(INVITE_EVENT, onInviteEvent);
-        window.removeEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
-        window.removeEventListener("hashchange", onHashChange);
-      };
-    }, []);
-
-    // Cold-start / late deep-link: a stash may land after the first render.
-    // Re-pull from sessionStorage / hash once the gates are open.
-    useEffect(function () {
-      if (auth !== "authed" || needsOnboarding) return;
-      const code = takePendingInvite();
-      if (code) {
-        setPendingPublicJoin(null);
-        setPendingInvite(code);
-        return;
-      }
-      const id = takePendingPublicJoin();
-      if (id) {
-        setPendingInvite(null);
-        setPendingPublicJoin(id);
-      }
-    }, [auth, needsOnboarding]);
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');
@@ -4257,19 +3937,6 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
       createOpen
         ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
         : null,
-      (pendingInvite && auth === "authed" && !needsOnboarding)
-        ? React.createElement(InviteJoinModal, {
-          code: pendingInvite,
-          onJoined: onInviteJoined,
-          onClose: closeInvite,
-        })
-        : ((pendingPublicJoin && auth === "authed" && !needsOnboarding)
-          ? React.createElement(InviteJoinModal, {
-            networkId: pendingPublicJoin,
-            onJoined: onInviteJoined,
-            onClose: closePublicJoin,
-          })
-          : null),
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
@@ -4351,89 +4018,51 @@ function ensureAssets() {
   return assetsPromise
 }
 
-function stashDesktopInvite(code) {
-  const c = String(code || '').trim()
-  if (!c) return
-  try { window.sessionStorage.removeItem('index-public-join') } catch (e) { /* noop */ }
-  try { window.sessionStorage.setItem('index-invite', c) } catch (e) { /* private mode */ }
-  try {
-    window.dispatchEvent(new CustomEvent('index-network-invite', { detail: { code: c } }))
-  } catch (e) { /* noop */ }
-}
+// Native OS alerts for newly actionable opportunities, via the ctx.os door
+// (hermes-agent#78685). Fires only while the user is away from Hermes and is
+// gated by Settings ▸ Notifications ▸ "Plugin notifications"; on older desktop
+// shells without ctx.os it silently no-ops.
+const SEEN_OPPORTUNITIES_KEY = 'notifiedOpportunityIds'
+const OPPORTUNITY_POLL_MS = 30 * 1000
 
-function stashDesktopPublicJoin(networkId) {
-  const id = String(networkId || '').trim()
-  if (!id) return
-  try { window.sessionStorage.removeItem('index-invite') } catch (e) { /* noop */ }
-  try { window.sessionStorage.setItem('index-public-join', id) } catch (e) { /* private mode */ }
-  try {
-    window.dispatchEvent(new CustomEvent('index-network-public-join', { detail: { networkId: id } }))
-  } catch (e) { /* noop */ }
-}
-
-function readJoinQueryFromHash() {
-  const hash = String(window.location.hash || '')
-  const q = hash.indexOf('?')
-  if (q < 0) return { invite: null, join: null }
-  let params
-  try { params = new URLSearchParams(hash.slice(q + 1)) } catch (e) { return { invite: null, join: null } }
-  return {
-    invite: String(params.get('invite') || '').trim() || null,
-    join: String(params.get('join') || '').trim() || null,
-  }
-}
-
-function applyJoinQueryFromHash() {
-  const q = readJoinQueryFromHash()
-  if (q.invite) stashDesktopInvite(q.invite)
-  if (q.join) stashDesktopPublicJoin(q.join)
-}
-
-function openIndexNetwork(query) {
-  const q = query && (query.invite || query.join)
-    ? ('?' + new URLSearchParams(
-      query.invite ? { invite: query.invite } : { join: query.join }
-    ).toString())
-    : ''
-  try { host.navigate('/index-network' + q) } catch (e) { /* route not ready yet */ }
-}
-
-function handleIndexDeepLink(payload) {
-  if (!payload || !payload.name) return false
-  const kind = String(payload.kind || '').toLowerCase()
-  if (kind === 'l') {
-    stashDesktopInvite(payload.name)
-    openIndexNetwork({ invite: payload.name })
-    return true
-  }
-  if (kind === 'index' || kind === 'index-network') {
-    stashDesktopPublicJoin(payload.name)
-    openIndexNetwork({ join: payload.name })
-    return true
-  }
-  return false
-}
-
-let deepLinkOff = null
-function attachDeepLinkListener() {
-  if (deepLinkOff) return deepLinkOff
-  if (!window.hermesDesktop || typeof window.hermesDesktop.onDeepLink !== 'function') return null
-  const off = window.hermesDesktop.onDeepLink(function (payload) {
-    handleIndexDeepLink(payload)
+function collectPendingOpportunities(data) {
+  const lists = [(data.general && data.general.opportunities) || []]
+  ;(data.intents || []).forEach(function (intent) { lists.push(intent.opportunities || []) })
+  const pending = []
+  lists.forEach(function (list) {
+    list.forEach(function (item) {
+      if (item.opportunityId && (item.status === 'pending' || item.status === 'latent')) pending.push(item)
+    })
   })
-  deepLinkOff = typeof off === 'function' ? off : function () { /* noop */ }
-  try { void window.hermesDesktop.signalDeepLinkReady?.() } catch (e) { /* older shells */ }
-  return deepLinkOff
+  return pending
 }
 
-function detachDeepLinkListener() {
-  if (typeof deepLinkOff === 'function') {
-    try { deepLinkOff() } catch (e) { /* noop */ }
-  }
-  deepLinkOff = null
+function checkOpportunities(ctx) {
+  restCall('/summary', { method: 'GET' })
+    .then(function (data) {
+      if (!data || data.success === false) return
+      const pending = collectPendingOpportunities(data)
+      const seen = ctx.storage.get(SEEN_OPPORTUNITIES_KEY, null)
+      const ids = pending.map(function (item) { return item.opportunityId })
+      if (seen === null) {
+        ctx.storage.set(SEEN_OPPORTUNITIES_KEY, ids) // first run — baseline silently
+        return
+      }
+      const fresh = pending.filter(function (item) { return seen.indexOf(item.opportunityId) === -1 })
+      if (!fresh.length) return
+      ctx.storage.set(SEEN_OPPORTUNITIES_KEY, seen.concat(ids).filter(function (id, i, all) {
+        return all.indexOf(id) === i
+      }).slice(-200))
+      if (!ctx.os || !ctx.os.notify) return
+      ctx.os.notify({
+        title: 'Index Network',
+        body: fresh.length === 1
+          ? 'New opportunity: ' + fresh[0].name
+          : fresh.length + ' new opportunities are waiting'
+      })
+    })
+    .catch(function () { /* backend not reachable — the next poll retries */ })
 }
-
-attachDeepLinkListener()
 
 function DesktopPage() {
   const tick = React.useState(0)
@@ -4443,12 +4072,6 @@ function DesktopPage() {
       if (alive) tick[1](function (n) { return n + 1 })
     })
     return function () { alive = false }
-  }, [])
-  React.useEffect(function () {
-    applyJoinQueryFromHash()
-    function onHash() { applyJoinQueryFromHash() }
-    window.addEventListener('hashchange', onHash)
-    return function () { window.removeEventListener('hashchange', onHash) }
   }, [])
   if (!DashboardComponent) return null
   return React.createElement('div', { className: 'index-network-desktop-page' },
@@ -4467,14 +4090,9 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    attachDeepLinkListener()
-    ctx.onDispose(detachDeepLinkListener)
-
-    try {
-      const join = window.sessionStorage.getItem('index-public-join')
-      const invite = window.sessionStorage.getItem('index-invite')
-      if (join || invite) openIndexNetwork(join ? { join: join } : { invite: invite })
-    } catch (e) { /* private mode */ }
+    const opportunityTimer = window.setInterval(function () { checkOpportunities(ctx) }, OPPORTUNITY_POLL_MS)
+    checkOpportunities(ctx)
+    ctx.onDispose(function () { window.clearInterval(opportunityTimer) })
 
     ctx.registerMany([
       {
