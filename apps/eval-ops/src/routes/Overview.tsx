@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { SUPPORTS_SIDES } from '../../../../packages/protocol/eval/ops/ops.sides';
 import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
-import { api, type HarnessDescriptor, type ArtifactRef, type IndexIssue, type RunRecord, type FixtureStatus } from '../api/client';
+import { api, isHistoricalQualityArtifact, type HarnessDescriptor, type ArtifactRef, type IndexIssue, type RunRecord, type FixtureStatus } from '../api/client';
 
 interface OverviewState {
   harnesses: HarnessDescriptor[];
@@ -126,7 +126,12 @@ function HarnessHealth({
               >
                 {harness.harness}
               </Link>
-              {SUPPORTS_SIDES[harness.harness] ? (
+              {latestRun?.measurementKind === 'historical-quality-pilot' ? (
+                <>
+                  <span className="text-term-dim">historical quality:</span>
+                  <QualityCompleteness artifactId={latestRun.id} />
+                </>
+              ) : SUPPORTS_SIDES[harness.harness] ? (
                 /**
                  * This harness gets neither cell, because neither number exists
                  * for it. It reads, writes and compares no baseline by design —
@@ -169,6 +174,32 @@ function HarnessHealth({
         );
       })}
     </div>
+  );
+}
+
+function QualityCompleteness({ artifactId }: { artifactId: string }) {
+  const [value, setValue] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    api.artifact(artifactId).then((artifact) => {
+      if (!mounted) return;
+      setValue(isHistoricalQualityArtifact(artifact)
+        ? `${artifact.measurement.completedSlots}/${artifact.measurement.requestedSlots}`
+        : 'unavailable');
+    }).catch(() => {
+      if (mounted) setValue('unavailable');
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [artifactId]);
+
+  return (
+    <span>
+      <span className="font-mono">{value ?? '…'}</span>{' '}
+      <span className="text-term-dim">completed/requested</span>
+    </span>
   );
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { api, onAuthRefusal, subscribeToRun, encodeArtifactId } from '../src/api/client';
+import type { HistoricalQualityArtifact } from '../src/api/client';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 describe('subscribeToRun', () => {
   let mockSource: {
@@ -334,6 +336,19 @@ describe('config and run-comparison client methods', () => {
     await expect(api.createConfig(profile)).rejects.toThrow(
       'A config named "sonnet-evaluator" already exists',
     );
+  });
+});
+
+describe('historical quality client types', () => {
+  it('name the strict measurement, funnel, and participant fields served by V2', () => {
+    const artifact = COMPLETE_HISTORICAL_QUALITY_ARTIFACT as HistoricalQualityArtifact;
+    const first = artifact.payload.cases[0]!;
+
+    expect(artifact.measurement.kind).toBe('historical-quality-pilot');
+    expect(artifact.measurement.completedSlots).toBe(10);
+    expect(first.stageFunnel?.participants).toBe(24);
+    expect(first.participantMetrics).toHaveLength(24);
+    expect(first.participantMetrics[0]?.role).toBe('target');
   });
 });
 

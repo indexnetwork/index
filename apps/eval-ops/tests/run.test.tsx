@@ -6,6 +6,7 @@ import { parseEvalArtifact } from '../../../packages/protocol/eval/shared/artifa
 import { Run } from '../src/routes/Run';
 import type { Artifact, ArtifactCase, ArtifactConfigDelta, ArtifactRule, RunRecord } from '../src/api/client';
 import { DISCOVERY_RUN_REPORT } from './fixtures/discovery-run-report';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 const RUN: RunRecord = {
   id: 'run-1',
@@ -735,6 +736,36 @@ function unpairedRowsReport(): Artifact {
     { caseId: BUILDER, side: 'a', repetition: 1, outcome: 'passed', literalCaseId: BUILDER },
   ]);
 }
+
+describe('Run · historical quality', () => {
+  const qualityRun: RunRecord = {
+    ...AB_RUN,
+    spec: {
+      kind: 'eval',
+      harness: 'discovery',
+      profile: 'default',
+      flags: { runs: 1, case: 'ordinary/non-quality-looking-case-id' },
+    },
+    argv: ['bun', 'run', 'eval:discovery', '--', '--env', 'DISCOVERY_ALLOWED_TYPES=intent'],
+    workload: 10,
+  };
+
+  it.each([
+    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '10/10'],
+    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '9/10'],
+  ])('routes a %s measurement by artifact discriminator', async (_kind, report, completeness) => {
+    stubArtifactFetch(report);
+    renderRun(qualityRun);
+
+    expect(await screen.findByText(completeness)).toBeInTheDocument();
+    expect(screen.queryByText(/aggregate pass rate/i)).toBeNull();
+    expect(screen.queryByTestId('ab-side-a')).toBeNull();
+    expect(screen.queryByText(/baseline diff/i)).toBeNull();
+    expect(screen.queryByText(/^profile:$/i)).toBeNull();
+    expect(document.body.textContent).not.toContain('%');
+    expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner|citation|reviewer/i);
+  });
+});
 
 describe('Run · discovery', () => {
   it('renders a single run as a scorecard, not as a pair with one side', async () => {

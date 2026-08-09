@@ -7,9 +7,10 @@ import { Frame } from '../components/Frame';
 import { StatusChip } from '../components/StatusChip';
 import { LogView } from '../components/LogView';
 import { CaseTable } from '../components/CaseTable';
+import { HistoricalQualityReport } from '../components/HistoricalQualityReport';
 import { RunProgressView } from '../components/RunProgress';
 import { HarnessProgressParser, type RunProgress } from '../../../../packages/protocol/eval/ops/ops.progress';
-import { api, encodeArtifactId, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type HarnessDescriptor, type RunRecord } from '../api/client';
+import { api, encodeArtifactId, isHistoricalQualityArtifact, isTerminalStatus, subscribeToRun, type Artifact, type CompareResult, type HarnessDescriptor, type RunRecord } from '../api/client';
 
 interface RunState {
   run: RunRecord | null;
@@ -152,6 +153,9 @@ function RunDetail({ runId }: { runId: string }) {
         if (!mounted) return;
         setState((prev) => ({ ...prev, artifact }));
 
+        // Descriptive quality evidence has no scorecard baseline semantics.
+        if (isHistoricalQualityArtifact(artifact)) return;
+
         // Only compare if non-experimental, and never for a harness that runs
         // operator-chosen configurations: it has no committed baseline and never
         // will, in EITHER of its shapes (`discovery --help`: "Runs the real
@@ -259,6 +263,8 @@ function RunDetail({ runId }: { runId: string }) {
 
   const run = state.run;
   const isRunning = run.status === 'running' || run.status === 'queued';
+  const qualityArtifact = isHistoricalQualityArtifact(state.artifact) ? state.artifact : null;
+  const isQuality = qualityArtifact !== null;
   const harnessQuestion =
     run.spec.kind === 'eval'
       ? state.harnesses.find((h) => h.harness === (run.spec as { harness: string }).harness)?.question ?? null
@@ -321,11 +327,13 @@ function RunDetail({ runId }: { runId: string }) {
                   <span className="text-term-dim">{harnessQuestion}</span>
                 )}
               </div>
-              <div className="flex gap-4">
-                <span className="text-term-dim w-24">profile:</span>
-                <span>{run.spec.profile}</span>
-              </div>
-              {overridesSummary !== null && (
+              {!isQuality && (
+                <div className="flex gap-4">
+                  <span className="text-term-dim w-24">profile:</span>
+                  <span>{run.spec.profile}</span>
+                </div>
+              )}
+              {!isQuality && overridesSummary !== null && (
                 <div className="flex gap-4">
                   {/* "environment" for a run whose environment IS the subject, and
                       "overrides" for one where it is a deviation from a baseline.
@@ -403,7 +411,9 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       )}
 
-      {state.artifact && (comparesSides ? (
+      {state.artifact && (qualityArtifact !== null ? (
+        <HistoricalQualityReport artifact={qualityArtifact} />
+      ) : comparesSides ? (
         // The scorecard frame would report this run's aggregate pass rate: the
         // mean across two DIFFERENT configurations, which is a number about
         // neither of them, over a case table listing each side's rows as if
@@ -424,7 +434,7 @@ function RunDetail({ runId }: { runId: string }) {
         </Frame>
       ))}
 
-      {state.comparison && !run.experimental && (
+      {state.comparison && !isQuality && !run.experimental && (
         <Frame label="baseline diff">
           {state.comparison.comparable ? (
             <div className="space-y-2">

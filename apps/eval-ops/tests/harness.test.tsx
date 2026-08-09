@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { Harness } from '../src/routes/Harness';
 import { encodeArtifactId } from '../src/api/client';
 import type { HarnessDescriptor } from '../src/api/client';
+import { INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, historicalQualityRef } from './historical-quality.fixture';
 
 const BASELINE_PATH = 'matching/baselines/matching.baseline.json';
 const RUN_PATH = 'matching/runs/2026-07-30.json';
@@ -162,6 +163,41 @@ describe('Harness', () => {
     expect(screen.getByText('97.1%')).toBeInTheDocument();
     expect(screen.getByText('baseline')).toBeInTheDocument();
     expect(screen.getByText('run')).toBeInTheDocument();
+  });
+
+  it('shows a quality artifact as completed/requested instead of a pass-rate score', async () => {
+    const qualityRef = historicalQualityRef(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, 'quality');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const href = String(url);
+        if (href.endsWith('/api/harnesses')) {
+          return new Response(JSON.stringify({
+            harnesses: [{
+              harness: 'discovery',
+              script: 'eval:discovery',
+              flags: [],
+              defaultRuns: 1,
+              caseCount: 5,
+              question: 'Does discovery return useful candidates?',
+              detail: 'detail',
+              agents: [],
+            }],
+          }));
+        }
+        if (href.endsWith('/api/artifacts/quality')) {
+          return new Response(JSON.stringify(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT));
+        }
+        return new Response(JSON.stringify({ refs: [qualityRef], issues: [] }));
+      }),
+    );
+
+    renderHarness('discovery');
+
+    expect(await screen.findByText('9/10')).toBeInTheDocument();
+    expect(screen.getByText(/completed\/requested/i)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('90.0%');
+    expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);
   });
 
   it('surfaces index issues for this harness and hides unrelated ones', async () => {

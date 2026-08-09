@@ -1,0 +1,46 @@
+import { EvalArtifactEnvelopeV2Schema, isHistoricalQualityArtifact, type HistoricalQualityArtifactEnvelope } from '../../../packages/protocol/eval/shared/artifact';
+import { makeHistoricalQualityArtifact, makeIncompleteHistoricalQualityArtifact } from '../../../packages/protocol/eval/shared/tests/artifact.fixtures';
+import type { ArtifactRef } from '../src/api/client';
+
+function parseQualityFixture(value: unknown): HistoricalQualityArtifactEnvelope {
+  const artifact = EvalArtifactEnvelopeV2Schema.parse(value);
+  if (!isHistoricalQualityArtifact(artifact)) {
+    throw new Error('fixture is not a historical quality artifact');
+  }
+  return artifact;
+}
+
+/** Every UI fixture passes through the protocol's real strict V2 dispatcher. */
+export const COMPLETE_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture(
+  makeHistoricalQualityArtifact(),
+);
+
+export const INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT = parseQualityFixture(
+  makeIncompleteHistoricalQualityArtifact(),
+);
+
+export function historicalQualityRef(
+  artifact: HistoricalQualityArtifactEnvelope = COMPLETE_HISTORICAL_QUALITY_ARTIFACT,
+  id = 'historical-quality',
+): ArtifactRef {
+  return {
+    id,
+    harness: artifact.harness as ArtifactRef['harness'],
+    kind: 'run',
+    path: `discovery/runs/${id}.json`,
+    schemaVersion: artifact.schemaVersion,
+    createdAt: artifact.createdAt,
+    models: artifact.models,
+    runs: artifact.runs,
+    selection: artifact.selection,
+    git: artifact.git,
+    corpusFingerprint: artifact.corpusFingerprint,
+    configFingerprint: artifact.configFingerprint,
+    aggregatePassRate: artifact.payload.aggregatePassRate,
+    caseCount: artifact.payload.cases.length,
+    complete: artifact.completeness.complete,
+    measurementKind: artifact.measurement.kind,
+    sizeBytes: 4096,
+    mtimeMs: Date.parse(artifact.createdAt),
+  };
+}

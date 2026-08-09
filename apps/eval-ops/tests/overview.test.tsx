@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { BrowserRouter } from 'react-router';
 
 import { Overview } from '../src/routes/Overview';
+import { INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, historicalQualityRef } from './historical-quality.fixture';
 
 const HARNESSES = {
   harnesses: [
@@ -139,6 +140,50 @@ describe('Overview', () => {
     expect(screen.queryByText('latest:')).toBeNull();
     // 100.0% is the artifact's aggregate: the mean across both sides.
     expect(screen.queryByText(/100\.0%/)).toBeNull();
+  });
+
+  it('shows quality execution as completed/requested instead of a score or delta', async () => {
+    const qualityRef = historicalQualityRef(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, 'quality');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const href = String(url);
+        if (href.endsWith('/api/harnesses')) {
+          return new Response(JSON.stringify({
+            harnesses: [{
+              harness: 'discovery',
+              script: 'eval:discovery',
+              caseCount: 5,
+              defaultRuns: 1,
+              flags: [],
+              question: 'Does discovery return useful candidates?',
+              detail: 'detail',
+              agents: [],
+            }],
+          }));
+        }
+        if (href.endsWith('/api/artifacts')) {
+          return new Response(JSON.stringify({ refs: [qualityRef], issues: [] }));
+        }
+        if (href.endsWith('/api/artifacts/quality')) {
+          return new Response(JSON.stringify(INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT));
+        }
+        if (href.endsWith('/api/runs')) return new Response(JSON.stringify({ runs: [], issues: [] }));
+        if (href.endsWith('/api/fixture')) return new Response(JSON.stringify({ allowed: false, reason: 'not configured' }));
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+
+    render(
+      <BrowserRouter>
+        <Overview />
+      </BrowserRouter>,
+    );
+
+    expect(await screen.findByText('9/10')).toBeInTheDocument();
+    expect(screen.getByText(/completed\/requested/i)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('90.0%');
+    expect(document.body.textContent).not.toMatch(/baseline delta|regression|winner/i);
   });
 
   it('surfaces index issues instead of hiding them', async () => {

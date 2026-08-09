@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 
 import { ArtifactView } from '../src/routes/ArtifactView';
 import { encodeArtifactId } from '../src/api/client';
+import { COMPLETE_HISTORICAL_QUALITY_ARTIFACT, INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT } from './historical-quality.fixture';
 
 const BASELINE_PATH = 'matching/baselines/matching.baseline.json';
 const BASELINE_ID = encodeArtifactId(BASELINE_PATH);
@@ -114,6 +115,20 @@ describe('ArtifactView', () => {
 
     expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull();
     expect(screen.queryByText(/^exit /)).toBeNull();
+  });
+
+  it.each([
+    ['complete', COMPLETE_HISTORICAL_QUALITY_ARTIFACT, '10/10'],
+    ['incomplete', INCOMPLETE_HISTORICAL_QUALITY_ARTIFACT, '9/10'],
+  ])('routes a %s quality measurement to the dedicated report', async (_kind, artifact, completeness) => {
+    stubArtifact(artifact);
+    const { container } = renderArtifact('quality-artifact');
+
+    expect(await screen.findByText(completeness)).toBeInTheDocument();
+    expect(screen.queryByText(/aggregate pass rate/i)).toBeNull();
+    expect(screen.queryByRole('link', { name: /compare/i })).toBeNull();
+    expect(container.textContent).not.toContain('%');
+    expect(container.textContent).not.toMatch(/baseline delta|regression|winner/i);
   });
 });
 
