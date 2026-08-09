@@ -33,6 +33,7 @@ function appleAppSiteAssociation(): string {
             { "/": "/c/*" },
             { "/": "/o/*" },
             { "/": "/l/*" },
+            { "/": "/index/*" },
             {
               "/": "/u/*/?*",
               exclude: true,

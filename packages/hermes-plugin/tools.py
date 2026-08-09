@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 _DEFAULT_INDEX_MCP_URL = "https://protocol.index.network/mcp"
@@ -130,33 +131,81 @@ def _timeout_seconds() -> float:
     return parsed if parsed > 0 else 30.0
 
 
+def _hermes_env_get(name: str) -> str:
+    """Read `name` from the process env, else from the Hermes `.env` file.
+
+    Dashboard / desktop plugin workers sometimes see `INDEX_API_KEY` in
+    `os.environ` but not `INDEX_API_URL` (profile secret scopes, partial
+    dotenv loads). Falling back to `~/.hermes/.env` keeps invite/login URLs
+    paired with the API the key actually hits.
+    """
+    raw = os.environ.get(name, "").strip()
+    if raw:
+        return raw
+    override = os.environ.get("HERMES_ENV_PATH", "").strip()
+    env_path = Path(override) if override else Path.home() / ".hermes" / ".env"
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    prefix = f"{name}="
+    export_prefix = f"export {name}="
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith(export_prefix):
+            value = stripped[len(export_prefix) :]
+        elif stripped.startswith(prefix):
+            value = stripped[len(prefix) :]
+        else:
+            continue
+        return value.strip().strip("'").strip('"')
+    return ""
+
+
 def _mcp_url() -> str:
-    return os.environ.get("INDEX_MCP_URL", _DEFAULT_INDEX_MCP_URL).strip() or _DEFAULT_INDEX_MCP_URL
+    return _hermes_env_get("INDEX_MCP_URL") or _DEFAULT_INDEX_MCP_URL
 
 
 def _api_url() -> str:
-    return os.environ.get("INDEX_API_URL", _DEFAULT_INDEX_API_URL).strip() or _DEFAULT_INDEX_API_URL
+    return _hermes_env_get("INDEX_API_URL") or _DEFAULT_INDEX_API_URL
+
+
+def _web_origin_from_api_url(api_url: str) -> str | None:
+    """Pair a web origin with an API base (`protocol.dev…` → `https://dev…`)."""
+    try:
+        parts = urllib.parse.urlsplit(api_url)
+    except ValueError:
+        return None
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    host = parts.hostname
+    if host in ("localhost", "127.0.0.1"):
+        return f"{parts.scheme}://{host}:3000"
+    if host.startswith("protocol."):
+        host = host[len("protocol.") :]
+    return f"{parts.scheme}://{host}"
 
 
 def _app_base_url() -> str:
-    """Return the universal-link origin used for Index deep links.
+    """Return the Index web origin for deep links, invites, and `/cli-auth`.
 
-    Only a well-formed `https://<host>` origin is honored. A malformed or
-    schemeless override (for example `index.network`) falls back to the constant:
-    a base that parses to an empty scheme/netloc would make every relative path
-    compare equal to it in `index_open_app` and turn that tool into a generic
-    local-file opener.
+    Prefer a well-formed `https://…` `INDEX_APP_BASE_URL`, else derive from
+    `INDEX_API_URL` (including a `~/.hermes/.env` fallback), else production.
     """
-    raw = os.environ.get("INDEX_APP_BASE_URL", "").strip().rstrip("/")
-    if not raw:
-        return INDEX_APP_BASE_URL
-    try:
-        parts = urllib.parse.urlsplit(raw)
-    except ValueError:
-        return INDEX_APP_BASE_URL
-    if parts.scheme != "https" or not parts.netloc:
-        return INDEX_APP_BASE_URL
-    return raw
+    raw = _hermes_env_get("INDEX_APP_BASE_URL").rstrip("/")
+    if raw:
+        try:
+            parts = urllib.parse.urlsplit(raw)
+        except ValueError:
+            parts = None
+        if parts and parts.scheme == "https" and parts.netloc:
+            return raw
+    derived = _web_origin_from_api_url(_api_url())
+    if derived:
+        return derived.rstrip("/")
+    return INDEX_APP_BASE_URL
 
 
 def _attach_app_urls(value: Any, base_url: str, depth: int = 0) -> None:

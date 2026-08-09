@@ -15,9 +15,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { isAuthenticated } = useAuthContext();
 
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
-  const publicRoutes = ['/c', '/index'];
-  // /l is chrome-free like the marketing landing: app-only invite accept.
-  const bareRoutes = ['/', '/l', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
+  const publicRoutes = ['/c'];
+  // /l and /index are chrome-free: app-only network join / invite accept.
+  const bareRoutes = ['/', '/l', '/index', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.

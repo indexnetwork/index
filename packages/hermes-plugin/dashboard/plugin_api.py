@@ -231,14 +231,13 @@ def _call_questions_by_intent(
 def _web_url() -> str:
     """Resolve the Index web app origin for outbound chat/profile/invite links.
 
-    Prefer explicit `INDEX_WEB_URL`, then the same env-aware origin used for
-    `/cli-auth` (`INDEX_APP_BASE_URL` or derived from `INDEX_API_URL`). Never
-    hardcode production when the plugin is pointed at dev/staging.
+    Prefer explicit `INDEX_WEB_URL` (env or `~/.hermes/.env`), then the same
+    origin used for `/cli-auth` / deep links (`tools._app_base_url`).
     """
-    raw = os.environ.get("INDEX_WEB_URL", "").strip()
+    raw = tools._hermes_env_get("INDEX_WEB_URL")
     if raw:
         return raw.rstrip("/")
-    return _login_app_base_url()
+    return tools._app_base_url()
 
 
 def _update_opportunity(
@@ -1017,25 +1016,11 @@ def auth_status() -> dict[str, Any]:
 def _login_app_base_url() -> str:
     """Web origin that serves `/cli-auth`, paired with the active API environment.
 
-    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
-    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
-    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
-    pointed at dev/staging signs in against the matching web app instead of prod.
-    Without this pairing a dev-configured plugin would mint a prod key that then
-    401s against the dev API.
+    Delegates to `tools._app_base_url` so login, invites, and opportunity
+    `appUrl`s all share one pairing rule (`INDEX_APP_BASE_URL`, else derive
+    from `INDEX_API_URL` / `~/.hermes/.env`, else production).
     """
-    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
-        return tools._app_base_url()
-    try:
-        parts = urlsplit(tools._api_url())
-    except ValueError:
-        return tools.INDEX_APP_BASE_URL
-    if parts.scheme in ("http", "https") and parts.netloc:
-        host = parts.netloc
-        if host.startswith("protocol."):
-            host = host[len("protocol."):]
-        return f"{parts.scheme}://{host}"
-    return tools.INDEX_APP_BASE_URL
+    return tools._app_base_url()
 
 
 @router.post("/auth/login/start")
@@ -1120,6 +1105,7 @@ def summary() -> dict[str, Any]:
     return {
         "success": True,
         "webUrl": _web_url(),
+        "apiUrl": tools._api_url(),
         "currentUserId": current_user_id or None,
         "onboarding": onboarding,
         "intents": dashboard["intents"],
@@ -1403,6 +1389,21 @@ def update_network_permissions(network_id: str, body: dict[str, Any] | None = Bo
     return out
 
 
+def _network_preview_payload(network: dict[str, Any]) -> dict[str, Any]:
+    count = None
+    raw_count = network.get("_count")
+    if isinstance(raw_count, dict) and isinstance(raw_count.get("members"), int):
+        count = raw_count["members"]
+    return {
+        "success": True,
+        "network": {
+            "id": _text(network.get("id")),
+            "title": _text(network.get("title"), "Untitled network"),
+            "memberCount": count,
+        },
+    }
+
+
 @router.get("/invite/{code}")
 def preview_invite(code: str) -> dict[str, Any]:
     """Public preview of a private-network invite (`GET /networks/share/:code`).
@@ -1419,18 +1420,26 @@ def preview_invite(code: str) -> dict[str, Any]:
     network = payload.get("network") if isinstance(payload, dict) else None
     if not isinstance(network, dict) or not _text(network.get("id")):
         return {"success": False, "error": "This invite code has expired — ask for a new one."}
-    count = None
-    raw_count = network.get("_count")
-    if isinstance(raw_count, dict) and isinstance(raw_count.get("members"), int):
-        count = raw_count["members"]
-    return {
-        "success": True,
-        "network": {
-            "id": _text(network.get("id")),
-            "title": _text(network.get("title"), "Untitled network"),
-            "memberCount": count,
-        },
-    }
+    return _network_preview_payload(network)
+
+
+@router.get("/networks/public/{network_id}")
+def preview_public_network(network_id: str) -> dict[str, Any]:
+    """Public preview of an open network (`GET /networks/public/:id`).
+
+    Used by `hermes://index/<id>` / `index://index/<id>` join screens. Only
+    networks with joinPolicy `anyone` resolve; private ones 404 upstream.
+    """
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("GET", f"/networks/public/{quote(network_id, safe='')}")
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload, dict) else None
+    if not isinstance(network, dict) or not _text(network.get("id")):
+        return {"success": False, "error": "This network was not found or is private."}
+    return _network_preview_payload(network)
 
 
 @router.post("/invite/{code}/accept")

@@ -2,7 +2,6 @@ import { createContext, useContext, ReactNode, useState, useEffect, useCallback,
 import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexesV2 } from '@/services/v2/networks.service';
-import { useNetworks as useIndexesAPI } from '@/contexts/APIContext';
 import { log } from '@/lib/logger';
 
 const logger = log.context.from('IndexesContext');
@@ -24,11 +23,9 @@ export function NetworksProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const indexesV2 = useIndexesV2();
-  const indexesAPI = useIndexesAPI();
   const { isAuthenticated } = useAuthContext();
   const hasFetchedRef = useRef(false);
   const hasDataRef = useRef(false);
-  const pendingJoinProcessedRef = useRef(false);
 
   const refreshIndexes = useCallback(async () => {
     try {
@@ -73,27 +70,8 @@ export function NetworksProvider({ children }: { children: ReactNode }) {
       setError(null);
       hasFetchedRef.current = false;
       hasDataRef.current = false;
-      pendingJoinProcessedRef.current = false;
     }
   }, [isAuthenticated, refreshIndexes]);
-
-  // Handle pending index join after authentication
-  useEffect(() => {
-    if (!isAuthenticated || pendingJoinProcessedRef.current) return;
-
-    const pendingNetworkId = typeof window !== 'undefined'
-      ? localStorage.getItem('pending_network_join')
-      : null;
-
-    if (!pendingNetworkId) return;
-
-    pendingJoinProcessedRef.current = true;
-    localStorage.removeItem('pending_network_join');
-
-    indexesAPI.joinIndex(pendingNetworkId)
-      .then(() => refreshIndexes())
-      .catch((err) => logger.error('Failed to auto-join pending network', { error: err }));
-  }, [isAuthenticated, indexesAPI, refreshIndexes]);
 
   return (
     <NetworksContext.Provider value={{

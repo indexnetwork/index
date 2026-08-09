@@ -88,6 +88,24 @@ describe('mac Index API client endpoint contract', () => {
     expect(calls[0].init.headers['x-api-key']).toBeUndefined();
   });
 
+  it('previews a public network by id without sending credentials', async () => {
+    const { calls, fetchImpl } = createRecordingFetch();
+    const client = createIndexApiClient({
+      apiBaseUrl: 'https://protocol.example/api/',
+      getToken: () => 'token-1',
+      getApiKey: () => 'key-1',
+      fetchImpl,
+    });
+
+    await client.networks.publicById('net/1');
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://protocol.example/api/networks/public/net%2F1');
+    expect(calls[0].init.method).toBe('GET');
+    expect(calls[0].init.headers.Authorization).toBeUndefined();
+    expect(calls[0].init.headers['x-api-key']).toBeUndefined();
+  });
+
   it('uses controller-backed opportunity endpoints', async () => {
     await expectCall('opportunities.list', (client) => client.opportunities.list({ status: 'pending', limit: 10 }), { path: '/opportunities?status=pending&limit=10' });
     await expectCall('opportunities.list scoped intent', (client) => client.opportunities.list({ status: 'pending', scopeType: 'intent', scopeId: SELECTED_INTENT_ID, limit: 10 }), { path: `/opportunities?status=pending&scopeType=intent&scopeId=${SELECTED_INTENT_ID}&limit=10` });

@@ -258,15 +258,19 @@ def main() -> None:
     # Background pollers must be gated on the signed-in state so pre-login 401s
     # cannot race the login transition (else the user must reload the page).
     assert 'auth !== "authed"' in dashboard_js
-    # Private-network invite join (hermes://l/<code> / #invite=), Mac parity.
+    # Private invite + public join (hermes://l|index / #invite=|#join=), Mac parity.
     assert "InviteJoinModal" in dashboard_js
     assert "/invite/" in dashboard_js
+    assert "/networks/public/" in dashboard_js
     assert "index-network-invite" in dashboard_js
+    assert "index-network-public-join" in dashboard_js
     assert "You're invited to join" in dashboard_js
+    assert "Join this network" in dashboard_js
     assert "Join network" in dashboard_js
     # Owner network detail: overview / settings / access (web parity, no integrations).
     assert "NetworkDetailModal" in dashboard_js
     assert "networkShareUrl" in dashboard_js
+    assert "resolveShareBase" in dashboard_js
     assert "Invitation Link" in dashboard_js
     assert "Network Link" in dashboard_js
     assert "/permissions" in dashboard_js
@@ -296,11 +300,11 @@ def main() -> None:
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
     assert "index-dashboard__login" in desktop_js
-    # Desktop claims hermes://l/<code> via hermesDesktop.onDeepLink.
+    # Desktop claims hermes://l/<code> and hermes://index/<id> via onDeepLink.
     assert "InviteJoinModal" in desktop_js
     assert "NetworkDetailModal" in desktop_js
     assert "Invitation Link" in desktop_js
-    assert 'kind !== \'l\'' in desktop_js or 'kind !== "l"' in desktop_js
+    assert "stashDesktopPublicJoin" in desktop_js
     assert "onDeepLink" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
@@ -397,6 +401,15 @@ def main() -> None:
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
+    old_app_base = os.environ.pop("INDEX_APP_BASE_URL", None)
+    old_web_url = os.environ.pop("INDEX_WEB_URL", None)
+    # Isolate tools._hermes_env_get from the developer ~/.hermes/.env so
+    # INDEX_API_URL fallbacks do not leak a personal dev host into assertions.
+    old_hermes_env_path = os.environ.get("HERMES_ENV_PATH")
+    isolated_env = tempfile.NamedTemporaryFile("w", delete=False, suffix=".env", encoding="utf-8")
+    isolated_env.write("")
+    isolated_env.close()
+    os.environ["HERMES_ENV_PATH"] = isolated_env.name
     old_urlopen = urllib.request.urlopen
     try:
         missing_key = json.loads(plugin.tools.index_read_intents({}))
@@ -1176,6 +1189,33 @@ def main() -> None:
             "error": "An invite code is required.",
         }
 
+        # Public-network join preview (hermes://index/<id>).
+        captured = []
+        install_fake_urlopen(
+            [
+                FakeResponse(
+                    {
+                        "network": {
+                            "id": "network-3",
+                            "title": "Open Lab",
+                            "_count": {"members": 4},
+                        }
+                    }
+                )
+            ],
+            captured,
+        )
+        assert dashboard_api.preview_public_network("network-3") == {
+            "success": True,
+            "network": {"id": "network-3", "title": "Open Lab", "memberCount": 4},
+        }
+        assert captured[-1]["method"] == "GET"
+        assert captured[-1]["url"] == "https://api.example.test/api/networks/public/network-3"
+        assert dashboard_api.preview_public_network("") == {
+            "success": False,
+            "error": "A network id is required.",
+        }
+
         captured = []
         install_fake_urlopen(
             [
@@ -1632,10 +1672,10 @@ def main() -> None:
             assert "FOO=1" in cleared and "BAR=2" in cleared
             assert "INDEX_API_KEY" not in os.environ
 
-            # Login origin pairs with the active API env: an explicit
+            # Login/invite origin pairs with the active API env: an explicit
             # INDEX_APP_BASE_URL wins, otherwise it derives from INDEX_API_URL by
             # dropping the leading `protocol.` label (so dev never mints a prod key).
-            # Invite/chat webUrl must follow the same pairing (not hardcode prod).
+            # Also reads INDEX_API_URL from the Hermes .env when not in os.environ.
             saved_api_url = os.environ.get("INDEX_API_URL")
             saved_web_url = os.environ.get("INDEX_WEB_URL")
             os.environ.pop("INDEX_APP_BASE_URL", None)
@@ -1644,6 +1684,7 @@ def main() -> None:
                 os.environ["INDEX_API_URL"] = "https://protocol.dev.index.network/api"
                 assert dashboard_api._login_app_base_url() == "https://dev.index.network"
                 assert dashboard_api._web_url() == "https://dev.index.network"
+                assert plugin.tools._app_base_url() == "https://dev.index.network"
                 os.environ["INDEX_API_URL"] = "https://protocol.index.network/api"
                 assert dashboard_api._login_app_base_url() == "https://index.network"
                 assert dashboard_api._web_url() == "https://index.network"
@@ -1652,11 +1693,24 @@ def main() -> None:
                 assert dashboard_api._web_url() == "https://staging.index.network"
                 os.environ["INDEX_WEB_URL"] = "https://custom.example"
                 assert dashboard_api._web_url() == "https://custom.example"
+                # .env fallback when process env lacks INDEX_API_URL
+                os.environ.pop("INDEX_API_URL", None)
+                os.environ.pop("INDEX_APP_BASE_URL", None)
+                os.environ.pop("INDEX_WEB_URL", None)
+                env_path = pathlib.Path(env_file)
+                env_path.write_text(
+                    "FOO=1\nINDEX_API_URL=https://protocol.dev.index.network/api\nBAR=2\n",
+                    encoding="utf-8",
+                )
+                assert plugin.tools._api_url() == "https://protocol.dev.index.network/api"
+                assert dashboard_api._web_url() == "https://dev.index.network"
             finally:
                 os.environ.pop("INDEX_APP_BASE_URL", None)
                 os.environ.pop("INDEX_WEB_URL", None)
                 if saved_api_url is not None:
                     os.environ["INDEX_API_URL"] = saved_api_url
+                else:
+                    os.environ.pop("INDEX_API_URL", None)
                 if saved_web_url is not None:
                     os.environ["INDEX_WEB_URL"] = saved_web_url
 
@@ -1741,6 +1795,21 @@ def main() -> None:
             os.environ["INDEX_API_URL"] = old_api_url
         else:
             os.environ.pop("INDEX_API_URL", None)
+        if old_app_base is not None:
+            os.environ["INDEX_APP_BASE_URL"] = old_app_base
+        else:
+            os.environ.pop("INDEX_APP_BASE_URL", None)
+        if old_web_url is not None:
+            os.environ["INDEX_WEB_URL"] = old_web_url
+        else:
+            os.environ.pop("INDEX_WEB_URL", None)
+        os.environ.pop("HERMES_ENV_PATH", None)
+        if old_hermes_env_path is not None:
+            os.environ["HERMES_ENV_PATH"] = old_hermes_env_path
+        try:
+            os.unlink(isolated_env.name)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

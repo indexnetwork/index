@@ -173,25 +173,33 @@ window.IndexApp = (function () {
     };
   }
 
-  // Web origin for share / invitation links (Access tab). Prefer the configured
-  // APP_URL the shell injected — deepLinkHosts puts the associated-domains
-  // (often prod) host first, which must not drive share URLs on dev/staging.
+  // Web origin for share / invitation links. Always pair with the active API
+  // host (drop leading `protocol.`) — never deepLinkHosts[0] (prod AASA host).
+  // Remote APP_URL wins when set; localhost APP_URL is ignored for remote APIs.
   function webBaseUrl() {
-    const appUrl = native().appUrl;
-    if (appUrl) return String(appUrl).replace(/\/+$/, "");
-
-    // Browser preview / missing shell: derive from the API base the same way
-    // Hermes pairs login with INDEX_API_URL (drop leading `protocol.`).
     try {
       const u = new URL(apiBaseUrl());
       let host = u.hostname;
       if (host === "localhost" || host === "127.0.0.1") {
+        const appUrl = native().appUrl;
+        if (appUrl) return String(appUrl).replace(/\/+$/, "");
         return `${u.protocol}//${host}:3000`;
       }
       if (host.startsWith("protocol.")) host = host.slice("protocol.".length);
+      const appUrl = native().appUrl;
+      if (appUrl) {
+        try {
+          const a = new URL(appUrl);
+          if (a.hostname && a.hostname !== "localhost" && a.hostname !== "127.0.0.1") {
+            return String(appUrl).replace(/\/+$/, "");
+          }
+        } catch (e) { /* ignore bad APP_URL */ }
+      }
       return `https://${host}`;
     } catch (e) { /* fall through */ }
 
+    const appUrl = native().appUrl;
+    if (appUrl) return String(appUrl).replace(/\/+$/, "");
     const hosts = native().deepLinkHosts;
     const host = Array.isArray(hosts) && hosts.length ? String(hosts[0]) : "index.network";
     return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;

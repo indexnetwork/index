@@ -350,28 +350,31 @@
     );
   }
 
-  // Invite codes arrive via hermes://l/<code> (desktop) or #invite=<code> (web
-  // dashboard). Persist across the login/onboarding gates in sessionStorage.
+  // Join deep links arrive via hermes://l/<code>, hermes://index/<id>, or
+  // #invite= / #join= (web dashboard). Persist across login/onboarding.
   const INVITE_STORAGE_KEY = "index-invite";
+  const PUBLIC_JOIN_STORAGE_KEY = "index-public-join";
   const INVITE_EVENT = "index-network-invite";
+  const PUBLIC_JOIN_EVENT = "index-network-public-join";
 
-  function normalizeInviteCode(code) {
-    const c = String(code || "").trim();
+  function normalizeJoinId(value) {
+    const c = String(value || "").trim();
     return c || null;
   }
 
   function readStoredInvite() {
     try {
-      return normalizeInviteCode(window.sessionStorage.getItem(INVITE_STORAGE_KEY));
+      return normalizeJoinId(window.sessionStorage.getItem(INVITE_STORAGE_KEY));
     } catch (e) {
       return null;
     }
   }
 
   function storeInvite(code) {
-    const c = normalizeInviteCode(code);
+    const c = normalizeJoinId(code);
     if (!c) return null;
     try { window.sessionStorage.setItem(INVITE_STORAGE_KEY, c); } catch (e) { /* private mode */ }
+    clearStoredPublicJoin();
     return c;
   }
 
@@ -379,10 +382,30 @@
     try { window.sessionStorage.removeItem(INVITE_STORAGE_KEY); } catch (e) { /* noop */ }
   }
 
+  function readStoredPublicJoin() {
+    try {
+      return normalizeJoinId(window.sessionStorage.getItem(PUBLIC_JOIN_STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storePublicJoin(networkId) {
+    const id = normalizeJoinId(networkId);
+    if (!id) return null;
+    try { window.sessionStorage.setItem(PUBLIC_JOIN_STORAGE_KEY, id); } catch (e) { /* private mode */ }
+    clearStoredInvite();
+    return id;
+  }
+
+  function clearStoredPublicJoin() {
+    try { window.sessionStorage.removeItem(PUBLIC_JOIN_STORAGE_KEY); } catch (e) { /* noop */ }
+  }
+
   function parseHash() {
     // The desktop app owns window.location.hash (its router routes on it) —
     // keep intent selection purely in component state there.
-    if (DESKTOP_ENV) return { intentId: null, inviteCode: null };
+    if (DESKTOP_ENV) return { intentId: null, inviteCode: null, joinId: null };
     const raw = (window.location.hash || "").replace(/^#/, "");
     const params = {};
     raw.split("&").forEach(function (pair) {
@@ -393,24 +416,26 @@
     });
     return {
       intentId: params.intent || null,
-      inviteCode: normalizeInviteCode(params.invite),
+      inviteCode: normalizeJoinId(params.invite),
+      joinId: normalizeJoinId(params.join),
     };
   }
 
   function writeHash(intentId) {
     if (DESKTOP_ENV) return;
-    // Preserve a pending #invite= while rewriting the intent selection.
-    const invite = parseHash().inviteCode;
+    // Preserve a pending #invite= / #join= while rewriting the intent selection.
+    const hash = parseHash();
     const parts = [];
     if (intentId) parts.push("intent=" + encodeURIComponent(intentId));
-    if (invite) parts.push("invite=" + encodeURIComponent(invite));
+    if (hash.inviteCode) parts.push("invite=" + encodeURIComponent(hash.inviteCode));
+    if (hash.joinId) parts.push("join=" + encodeURIComponent(hash.joinId));
     const target = parts.length ? "#" + parts.join("&") : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
     }
   }
 
-  function stripHashInvite() {
+  function stripHashJoinParams() {
     if (DESKTOP_ENV) return;
     const intentId = parseHash().intentId;
     const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
@@ -423,10 +448,20 @@
     const fromHash = parseHash().inviteCode;
     if (fromHash) {
       storeInvite(fromHash);
-      stripHashInvite();
+      stripHashJoinParams();
       return fromHash;
     }
     return readStoredInvite();
+  }
+
+  function takePendingPublicJoin() {
+    const fromHash = parseHash().joinId;
+    if (fromHash) {
+      storePublicJoin(fromHash);
+      stripHashJoinParams();
+      return fromHash;
+    }
+    return readStoredPublicJoin();
   }
 
   function EmptyState(props) {
@@ -851,10 +886,28 @@
     ]);
   }
 
-  function networkShareUrl(network, webUrl) {
+  function resolveShareBase(webUrl, apiUrl) {
+    if (webUrl) return String(webUrl).replace(/\/+$/, "");
+    // Derive from the API the summary reported — never invent production.
+    if (apiUrl) {
+      try {
+        const u = new URL(apiUrl);
+        let host = u.hostname;
+        if (host === "localhost" || host === "127.0.0.1") {
+          return u.protocol + "//" + host + ":3000";
+        }
+        if (host.indexOf("protocol.") === 0) host = host.slice("protocol.".length);
+        return "https://" + host;
+      } catch (e) { /* ignore */ }
+    }
+    return null;
+  }
+
+  function networkShareUrl(network, webUrl, apiUrl) {
     if (!network || network.isPersonal || network.hasMasterKey) return null;
     if (network.role !== "owner") return null;
-    const base = String(webUrl || "https://index.network").replace(/\/+$/, "");
+    const base = resolveShareBase(webUrl, apiUrl);
+    if (!base) return null;
     if (network.joinPolicy === "anyone" && network.id) {
       return base + "/index/" + encodeURIComponent(network.id);
     }
@@ -964,7 +1017,7 @@
     const showDelete = showDeleteState[0];
     const setShowDelete = showDeleteState[1];
     const PAGE_SIZE = 10;
-    const shareUrl = networkShareUrl(local, props.webUrl);
+    const shareUrl = networkShareUrl(local, props.webUrl, props.apiUrl);
     const count = typeof local.memberCount === "number" ? local.memberCount : members.length || null;
     const isPublic = local.joinPolicy === "anyone";
     const label = isPublic ? "Network Link" : "Invitation Link";
@@ -1933,13 +1986,21 @@
     );
   }
 
-  // Private-network invite join (Mac InviteJoin parity). Preview is public;
-  // accept requires the signed-in API key. Parent holds the code through
-  // login/onboarding and only mounts this once the dashboard is ready.
+  // Private invite (`code`) or public network (`networkId`) join. Preview is
+  // public; accept/join requires the signed-in API key. Parent holds the value
+  // through login/onboarding and only mounts this once the dashboard is ready.
   function InviteJoinModal(props) {
     const useState = React.useState;
     const useEffect = React.useEffect;
-    const code = props.code;
+    const code = props.code || null;
+    const networkId = props.networkId || null;
+    const isInvite = !!code;
+    const previewError = isInvite
+      ? "This invite code has expired — ask for a new one."
+      : "This network was not found or is private.";
+    const joinError = isInvite
+      ? "Couldn't join — the invite may have expired."
+      : "Couldn't join that network.";
     const stepState = useState("loading");
     const step = stepState[0]; const setStep = stepState[1];
     const networkState = useState(null);
@@ -1951,11 +2012,14 @@
       let cancelled = false;
       setStep("loading");
       setErr(null);
-      fetchPluginJSON(API + "/invite/" + encodeURIComponent(code))
+      const path = isInvite
+        ? API + "/invite/" + encodeURIComponent(code)
+        : API + "/networks/public/" + encodeURIComponent(networkId);
+      fetchPluginJSON(path)
         .then(function (payload) {
           if (cancelled) return;
           if (!payload || payload.success === false || !payload.network || !payload.network.id) {
-            throw new Error((payload && payload.error) || "This invite code has expired — ask for a new one.");
+            throw new Error((payload && payload.error) || previewError);
           }
           setNetwork(payload.network);
           setStep("preview");
@@ -1963,40 +2027,45 @@
         .catch(function (e) {
           if (cancelled) return;
           setStep("error");
-          setErr((e && e.message) || "This invite code has expired — ask for a new one.");
+          setErr((e && e.message) || previewError);
         });
       return function () { cancelled = true; };
     }
 
-    useEffect(function () { return loadPreview(); }, [code]);
+    useEffect(function () { return loadPreview(); }, [code, networkId]);
 
     function join() {
       setStep("joining");
       setErr(null);
-      fetchPluginJSON(API + "/invite/" + encodeURIComponent(code) + "/accept", {
+      const path = isInvite
+        ? API + "/invite/" + encodeURIComponent(code) + "/accept"
+        : API + "/networks/" + encodeURIComponent(networkId) + "/join";
+      fetchPluginJSON(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       })
         .then(function (payload) {
           if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || "Couldn't join — the invite may have expired.");
+            throw new Error((payload && payload.error) || joinError);
           }
           if (props.onJoined) props.onJoined(payload);
           if (props.onClose) props.onClose();
         })
         .catch(function (e) {
           setStep("error");
-          setErr((e && e.message) || "Couldn't join — the invite may have expired.");
+          setErr((e && e.message) || joinError);
         });
     }
 
     const memberCount = network && typeof network.memberCount === "number" ? network.memberCount : null;
     const body = step === "loading"
-      ? React.createElement("p", { className: "index-dashboard__invite-copy" }, "Reading the invite…")
+      ? React.createElement("p", { className: "index-dashboard__invite-copy" },
+        isInvite ? "Reading the invite…" : "Reading the network…")
       : (step === "error"
         ? [
-          React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" }, "Invite unavailable"),
+          React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" },
+            isInvite ? "Invite unavailable" : "Network unavailable"),
           React.createElement("p", { key: "c", className: "index-dashboard__invite-copy" }, err),
           React.createElement("div", { key: "a", className: "index-dashboard__invite-actions" },
             React.createElement(Button, { type: "button", size: "sm", onClick: loadPreview }, "Retry"),
@@ -2004,7 +2073,8 @@
           ),
         ]
         : [
-          React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" }, "You're invited to join"),
+          React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
+            isInvite ? "You're invited to join" : "Join this network"),
           React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" }, network.title),
           memberCount != null
             ? React.createElement("p", { key: "m", className: "index-dashboard__invite-meta" },
@@ -2102,6 +2172,7 @@
         ? React.createElement(NetworkDetailModal, {
           network: openNet,
           webUrl: props.webUrl,
+          apiUrl: props.apiUrl,
           currentUserId: props.currentUserId,
           onClose: function () { setOpenNet(null); },
           onUpdated: onUpdated,
@@ -3369,10 +3440,13 @@
     const editingRequestState = useState(null);
     const editingRequest = editingRequestState[0];
     const setEditingRequest = editingRequestState[1];
-    // Held through login/onboarding; modal mounts only when inviteReady.
+    // Held through login/onboarding; modal mounts only when ready.
     const pendingInviteState = useState(function () { return takePendingInvite(); });
     const pendingInvite = pendingInviteState[0];
     const setPendingInvite = pendingInviteState[1];
+    const pendingPublicJoinState = useState(function () { return takePendingPublicJoin(); });
+    const pendingPublicJoin = pendingPublicJoinState[0];
+    const setPendingPublicJoin = pendingPublicJoinState[1];
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
@@ -3770,7 +3844,9 @@
     function signOut() {
       setProfileOpen(false);
       clearStoredInvite();
+      clearStoredPublicJoin();
       setPendingInvite(null);
+      setPendingPublicJoin(null);
       fetchPluginJSON(API + "/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3787,6 +3863,11 @@
       setPendingInvite(null);
     }
 
+    function closePublicJoin() {
+      clearStoredPublicJoin();
+      setPendingPublicJoin(null);
+    }
+
     function onInviteJoined() {
       load();
     }
@@ -3795,22 +3876,43 @@
       checkAuth();
     }, []);
 
-    // Desktop deep links and web #invite= land here; hold the code until the
+    // Desktop deep links and web #invite= / #join= land here; hold until the
     // user is signed in and past Getting started (Mac inviteReady parity).
     useEffect(function () {
       function onInviteEvent(ev) {
         const code = storeInvite(ev && ev.detail && ev.detail.code);
-        if (code) setPendingInvite(code);
+        if (code) {
+          setPendingPublicJoin(null);
+          setPendingInvite(code);
+        }
+      }
+      function onPublicJoinEvent(ev) {
+        const id = storePublicJoin(ev && ev.detail && ev.detail.networkId);
+        if (id) {
+          setPendingInvite(null);
+          setPendingPublicJoin(id);
+        }
       }
       window.addEventListener(INVITE_EVENT, onInviteEvent);
+      window.addEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
       function onHashChange() {
         if (DESKTOP_ENV) return;
         const code = takePendingInvite();
-        if (code) setPendingInvite(code);
+        if (code) {
+          setPendingPublicJoin(null);
+          setPendingInvite(code);
+          return;
+        }
+        const id = takePendingPublicJoin();
+        if (id) {
+          setPendingInvite(null);
+          setPendingPublicJoin(id);
+        }
       }
       if (!DESKTOP_ENV) window.addEventListener("hashchange", onHashChange);
       return function () {
         window.removeEventListener(INVITE_EVENT, onInviteEvent);
+        window.removeEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
         if (!DESKTOP_ENV) window.removeEventListener("hashchange", onHashChange);
       };
     }, []);
@@ -3982,6 +4084,7 @@
               networks: summary && summary.networks,
               requests: networkRequests,
               webUrl: summary && summary.webUrl,
+              apiUrl: summary && summary.apiUrl,
               currentUserId: summary && summary.currentUserId,
               onCreate: openCreate,
               onJoin: joinNetwork,

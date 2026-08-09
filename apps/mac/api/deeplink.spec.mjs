@@ -6,9 +6,10 @@ const OPPORTUNITY_ID = '00000000-0000-4000-8000-00000000b222';
 const USER_ID = '00000000-0000-4000-8000-00000000c333';
 const CONNECT_CODE = 'a1b2c3d4';
 const INVITE_CODE = 'hUs-Gtuu5r2AOakJ0g-zDUV5vt';
+const NETWORK_ID = '00000000-0000-4000-8000-00000000d444';
 
 describe('mac deep-link routing contract', () => {
-  it('routes universal links for all four paths', () => {
+  it('routes universal links for all five paths', () => {
     expect(parseDeepLink(`https://index.network/o/${OPPORTUNITY_ID}`))
       .toEqual({ route: 'card', id: OPPORTUNITY_ID });
     expect(parseDeepLink(`https://index.network/u/${USER_ID}`))
@@ -17,9 +18,11 @@ describe('mac deep-link routing contract', () => {
       .toEqual({ route: 'legacy-connect', code: CONNECT_CODE });
     expect(parseDeepLink(`https://index.network/l/${INVITE_CODE}`))
       .toEqual({ route: 'invite', code: INVITE_CODE });
+    expect(parseDeepLink(`https://index.network/index/${NETWORK_ID}`))
+      .toEqual({ route: 'network-join', id: NETWORK_ID });
   });
 
-  it('routes index:// links for all four paths', () => {
+  it('routes index:// links for all five paths', () => {
     expect(parseDeepLink(`index://o/${OPPORTUNITY_ID}`))
       .toEqual({ route: 'card', id: OPPORTUNITY_ID });
     expect(parseDeepLink(`index://u/${USER_ID}`))
@@ -28,6 +31,8 @@ describe('mac deep-link routing contract', () => {
       .toEqual({ route: 'legacy-connect', code: CONNECT_CODE });
     expect(parseDeepLink(`index://l/${INVITE_CODE}`))
       .toEqual({ route: 'invite', code: INVITE_CODE });
+    expect(parseDeepLink(`index://index/${NETWORK_ID}`))
+      .toEqual({ route: 'network-join', id: NETWORK_ID });
   });
 
   it('ignores query strings and trailing slashes on invite links', () => {

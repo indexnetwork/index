@@ -61,9 +61,20 @@ function DesktopPage() {
 function stashDesktopInvite(code) {
   const c = String(code || '').trim()
   if (!c) return
+  try { window.sessionStorage.removeItem('index-public-join') } catch (e) { /* noop */ }
   try { window.sessionStorage.setItem('index-invite', c) } catch (e) { /* private mode */ }
   try {
     window.dispatchEvent(new CustomEvent('index-network-invite', { detail: { code: c } }))
+  } catch (e) { /* noop */ }
+}
+
+function stashDesktopPublicJoin(networkId) {
+  const id = String(networkId || '').trim()
+  if (!id) return
+  try { window.sessionStorage.removeItem('index-invite') } catch (e) { /* noop */ }
+  try { window.sessionStorage.setItem('index-public-join', id) } catch (e) { /* private mode */ }
+  try {
+    window.dispatchEvent(new CustomEvent('index-network-public-join', { detail: { networkId: id } }))
   } catch (e) { /* noop */ }
 }
 
@@ -80,12 +91,14 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    // hermes://l/<code> — core Hermes only handles kind=blueprint; we claim
-    // invite links, open this page, and let the dashboard show Join once ready.
+    // hermes://l/<code> and hermes://index/<id> — core Hermes only handles
+    // kind=blueprint; we claim network joins, open this page, and show Join.
     if (window.hermesDesktop && typeof window.hermesDesktop.onDeepLink === 'function') {
       const offDeepLink = window.hermesDesktop.onDeepLink(function (payload) {
-        if (!payload || payload.kind !== 'l' || !payload.name) return
-        stashDesktopInvite(payload.name)
+        if (!payload || !payload.name) return
+        if (payload.kind === 'l') stashDesktopInvite(payload.name)
+        else if (payload.kind === 'index') stashDesktopPublicJoin(payload.name)
+        else return
         try { host.navigate('/index-network') } catch (e) { /* route not ready yet */ }
       })
       if (typeof offDeepLink === 'function') ctx.onDispose(offDeepLink)

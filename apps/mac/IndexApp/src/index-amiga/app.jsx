@@ -77,54 +77,52 @@ async function resolveDeepLinkPerson(route, people) {
 // network by its share code (public), then joins on an explicit tap. An
 // invalid or expired code lands on a retryable error rather than a blank
 // window. Rendered only once the user is signed in and past onboarding.
-function InviteJoin({ code, onJoined, onClose }) {
+function NetworkJoinOverlay({
+  title = "index · join",
+  loadingLabel,
+  errorTitle,
+  errorFallback,
+  kicker,
+  loadPreview,
+  onJoin,
+  onJoined,
+  onClose,
+}) {
   const [step, setStep] = useState("loading");   // loading | preview | joining | error
   const [network, setNetwork] = useState(null);
   const [error, setError] = useState(null);
 
-  const loadPreview = React.useCallback(() => {
-    const client = window.IndexApp && window.IndexApp.getClient
-      ? window.IndexApp.getClient()
-      : null;
-    if (!client || !client.networks || !client.networks.shareByCode) {
-      setStep("error");
-      setError("This invite code has expired — ask for a new one.");
-      return () => {};
-    }
+  const runPreview = React.useCallback(() => {
     let cancelled = false;
     setStep("loading");
     setError(null);
-    client.networks.shareByCode(code)
-      .then((res) => {
+    Promise.resolve()
+      .then(() => loadPreview())
+      .then((net) => {
         if (cancelled) return;
-        const net = (res && res.network) || res;
         if (!net || !net.id) throw new Error("not found");
         setNetwork(net);
         setStep("preview");
       })
-      .catch(() => {
+      .catch((e) => {
         if (cancelled) return;
         setStep("error");
-        setError("This invite code has expired — ask for a new one.");
+        setError((e && e.message) || errorFallback);
       });
     return () => { cancelled = true; };
-  }, [code]);
+  }, [loadPreview, errorFallback]);
 
-  useEffect(() => loadPreview(), [loadPreview]);
+  useEffect(() => runPreview(), [runPreview]);
 
   const join = async () => {
-    const client = window.IndexApp && window.IndexApp.getClient
-      ? window.IndexApp.getClient()
-      : null;
-    if (!client) return;
     setStep("joining");
     try {
-      const result = await client.networks.acceptInvitation(code);
+      const result = await onJoin(network);
       if (onJoined) await onJoined(result);
       onClose && onClose();
     } catch (e) {
       setStep("error");
-      setError((e && e.message) || "Couldn't join — the invite may have expired.");
+      setError((e && e.message) || errorFallback);
     }
   };
 
@@ -137,12 +135,12 @@ function InviteJoin({ code, onJoined, onClose }) {
       padding:"56px 18px",
     }}>
       <div style={{ width:420, maxWidth:"100%" }}>
-        <MacWindow title="index · join" onClose={onClose} dismiss style={{ minHeight:0 }}>
+        <MacWindow title={title} onClose={onClose} dismiss style={{ minHeight:0 }}>
           <div style={{ padding:"30px 30px 26px" }}>
             {step === "loading" && (
               <p style={{
                 fontFamily:"var(--mac-sans)", fontSize:14, color:"var(--ink-2)", margin:0,
-              }}>reading the invite…</p>
+              }}>{loadingLabel}</p>
             )}
 
             {step === "error" && (
@@ -150,13 +148,13 @@ function InviteJoin({ code, onJoined, onClose }) {
                 <h1 style={{
                   fontFamily:"var(--amiga-mono)", fontWeight:600, fontSize:22,
                   margin:0, color:"#000",
-                }}>invite unavailable</h1>
+                }}>{errorTitle}</h1>
                 <p style={{
                   marginTop:12, marginBottom:22,
                   fontFamily:"var(--mac-sans)", fontSize:13, lineHeight:1.5, color:"#000",
                 }}>{error}</p>
                 <div style={{ display:"flex", gap:10 }}>
-                  <SignInButton primary onClick={loadPreview}>retry</SignInButton>
+                  <SignInButton primary onClick={runPreview}>retry</SignInButton>
                   <SignInButton onClick={onClose}>cancel</SignInButton>
                 </div>
               </>
@@ -167,7 +165,7 @@ function InviteJoin({ code, onJoined, onClose }) {
                 <p style={{
                   margin:0, fontFamily:"var(--mac-mono)", fontSize:10.5,
                   letterSpacing:1, textTransform:"uppercase", color:"var(--ink-3)",
-                }}>you're invited to join</p>
+                }}>{kicker}</p>
                 <h1 style={{
                   marginTop:8, marginBottom:0,
                   fontFamily:"var(--amiga-mono)", fontWeight:700, fontSize:28,
@@ -190,6 +188,72 @@ function InviteJoin({ code, onJoined, onClose }) {
         </MacWindow>
       </div>
     </div>
+  );
+}
+
+function InviteJoin({ code, onJoined, onClose }) {
+  const loadPreview = React.useCallback(() => {
+    const client = window.IndexApp && window.IndexApp.getClient
+      ? window.IndexApp.getClient()
+      : null;
+    if (!client || !client.networks || !client.networks.shareByCode) {
+      return Promise.reject(new Error("This invite code has expired — ask for a new one."));
+    }
+    return client.networks.shareByCode(code).then((res) => (res && res.network) || res);
+  }, [code]);
+
+  const onJoin = React.useCallback(async () => {
+    const client = window.IndexApp && window.IndexApp.getClient
+      ? window.IndexApp.getClient()
+      : null;
+    if (!client) throw new Error("Couldn't join — the invite may have expired.");
+    return client.networks.acceptInvitation(code);
+  }, [code]);
+
+  return (
+    <NetworkJoinOverlay
+      loadingLabel="reading the invite…"
+      errorTitle="invite unavailable"
+      errorFallback="This invite code has expired — ask for a new one."
+      kicker="you're invited to join"
+      loadPreview={loadPreview}
+      onJoin={onJoin}
+      onJoined={onJoined}
+      onClose={onClose}
+    />
+  );
+}
+
+function PublicJoin({ networkId, onJoined, onClose }) {
+  const loadPreview = React.useCallback(() => {
+    const client = window.IndexApp && window.IndexApp.getClient
+      ? window.IndexApp.getClient()
+      : null;
+    if (!client || !client.networks || !client.networks.publicById) {
+      return Promise.reject(new Error("This network was not found or is private."));
+    }
+    return client.networks.publicById(networkId).then((res) => (res && res.network) || res);
+  }, [networkId]);
+
+  const onJoin = React.useCallback(async () => {
+    const client = window.IndexApp && window.IndexApp.getClient
+      ? window.IndexApp.getClient()
+      : null;
+    if (!client) throw new Error("Couldn't join that network.");
+    return client.networks.join(networkId);
+  }, [networkId]);
+
+  return (
+    <NetworkJoinOverlay
+      loadingLabel="reading the network…"
+      errorTitle="network unavailable"
+      errorFallback="This network was not found or is private."
+      kicker="join this network"
+      loadPreview={loadPreview}
+      onJoin={onJoin}
+      onJoined={onJoined}
+      onClose={onClose}
+    />
   );
 }
 
@@ -222,6 +286,7 @@ function App() {
   const [pendingLink, setPendingLink] = useState(null);   // parsed route, not applied yet
   const [linkedCard, setLinkedCard] = useState(null);     // { person, route } on screen
   const [pendingInvite, setPendingInvite] = useState(null); // invite-link code, held until ready
+  const [pendingPublicJoin, setPendingPublicJoin] = useState(null); // public /index/:id
 
   useEffect(() => {
     if (!window.IndexApp || !window.IndexApp.onDeepLink) return;
@@ -252,7 +317,13 @@ function App() {
         // A network invite is not a card to resolve against the radar: hold the
         // code and show the join screen once the user is signed in and past
         // onboarding (see the inviteReady gate below).
+        setPendingPublicJoin(null);
         setPendingInvite(route.code);
+        return;
+      }
+      if (route.route === "network-join") {
+        setPendingInvite(null);
+        setPendingPublicJoin(route.id);
         return;
       }
       setPendingLink(route);
@@ -305,6 +376,7 @@ function App() {
         setLinkedCard(null);
         setPendingLink(null);
         setPendingInvite(null);
+        setPendingPublicJoin(null);
         resolvingRef.current = null;
         setScreen("login");
       }
@@ -367,11 +439,12 @@ function App() {
     });
   };
 
-  // Called by the invite join screen once the accept call succeeds. Reload the
-  // snapshot so the freshly joined network shows in networks/settings, then
-  // announce it. The join screen closes itself; this only refreshes state.
-  const onInviteJoined = async (result) => {
-    const title = (result && result.index && result.index.title) || "the network";
+  // Called by invite / public join once accept succeeds. Reload the snapshot so
+  // the freshly joined network shows in networks/settings, then announce it.
+  const onNetworkJoined = async (result) => {
+    const title = (result && result.index && result.index.title)
+      || (result && result.network && result.network.title)
+      || "the network";
     if (nativeAuthed() && window.IndexApp) {
       const snap = await window.IndexApp.loadSnapshot().catch(() => null);
       if (snap) applyLoaded(snap);
@@ -381,10 +454,11 @@ function App() {
       : `joined ${title}.`);
   };
 
-  // Hold an invite link through login and onboarding: only show the join screen
-  // once the user is signed in and past the profile-confirm gate.
-  const inviteReady = !!pendingInvite
-    && screen !== "login" && screen !== "building" && screen !== "onboarding";
+  // Hold invite / public-join links through login and onboarding: only show the
+  // join screen once the user is signed in and past the profile-confirm gate.
+  const pastGates = screen !== "login" && screen !== "building" && screen !== "onboarding";
+  const inviteReady = !!pendingInvite && pastGates;
+  const publicJoinReady = !!pendingPublicJoin && pastGates;
 
   const signOut = () => {
     if (window.IndexApp && window.IndexApp.logout()) {
@@ -551,13 +625,20 @@ function App() {
             onClose={() => setLinkedCard(null)}
           />
         )}
-        {/* Network invite from a deep link, once past login + onboarding: a
-            preview with an explicit Join, not a silent auto-join. */}
+        {/* Network invite / public join from a deep link, once past login +
+            onboarding: a preview with an explicit Join, not a silent auto-join. */}
         {inviteReady && (
           <InviteJoin
             code={pendingInvite}
-            onJoined={onInviteJoined}
+            onJoined={onNetworkJoined}
             onClose={() => setPendingInvite(null)}
+          />
+        )}
+        {publicJoinReady && (
+          <PublicJoin
+            networkId={pendingPublicJoin}
+            onJoined={onNetworkJoined}
+            onClose={() => setPendingPublicJoin(null)}
           />
         )}
         {notice && <MacNotice text={notice} onDismiss={() => setNotice(null)}/>}
