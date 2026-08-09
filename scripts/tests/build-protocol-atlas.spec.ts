@@ -504,6 +504,54 @@ describe("protocol atlas generator", () => {
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
   });
 
+  test("detects named re-export calls escaping an unresolved accessor closure", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-barrel.ts"] =
+      'export { isOutcomeQuestionsActivated as outcomeQuestionsActive } from "./outcome.env.js";\n';
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+      'import { outcomeQuestionsActive } from "./unresolved-barrel.js";',
+      "export function consumeOutcomeQuestions() { return outcomeQuestionsActive(); }",
+    ].join("\n");
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("detects local value alias calls escaping an unresolved accessor closure", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+      'import { isOutcomeQuestionsActivated } from "./outcome.env.js";',
+      "const active = isOutcomeQuestionsActivated;",
+      "export function consumeOutcomeQuestions() { return active(); }",
+    ].join("\n");
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("detects namespace-import aliases escaping an unresolved accessor closure", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+      'import * as outcomeQuestions from "./outcome.env.js";',
+      "const active = outcomeQuestions.isOutcomeQuestionsActivated;",
+      "export function consumeOutcomeQuestions() { return active(); }",
+    ].join("\n");
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("rejects shadowed same-name declarations as definitive chain evidence", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const path = "packages/protocol/src/negotiation/application/negotiation.graph.ts";
+    input.sourceFiles[path] = input.sourceFiles[path]
+      .replaceAll("configuredScreenMode()", "this.configuredScreenMode()")
+      .replace("export class NegotiationGraphFactory {", 'export class NegotiationGraphFactory {\n  private configuredScreenMode() { return "off" as const; }');
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("reference chain has no ordered link");
+  });
+
   test("requires exact named test calls rather than arbitrary source substrings", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     const delta = content.configurationExperiments.find(({ id }) => id === "negotiation-screen")!.modes.find(({ id }) => id === "shadow")!.deltas[0];

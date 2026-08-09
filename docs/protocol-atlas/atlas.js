@@ -151,7 +151,7 @@
     if (!generatedAvailable) {
       console.error("Protocol Atlas generated data validation failed:", fullValidation.errors);
     } else {
-      const configuration = core.configurationAvailability(generated);
+      const configuration = core.configurationAvailability(generated, content);
       if (configuration.errors.length > 0 && generated.schemaVersion === 2) {
         console.error("Protocol Atlas omitted malformed configuration experiments:", configuration.errors);
         generatedWarning = [generatedWarning, ...configuration.errors].filter(Boolean).join(" ");
@@ -583,7 +583,7 @@
     section.append(heading, element("p", "configuration-disclaimer", atlasContent.configurationDisclaimer || "Configuration comparisons use package fallbacks only."));
     section.append(element("p", "configuration-coverage", "Coverage: reviewed non-secret behavior gates only. Credentials, provider tuning, ordinary timeouts, and throughput settings are excluded. Unresolved paths are not deprecated."));
 
-    const availability = core.configurationAvailability(atlasGenerated);
+    const availability = core.configurationAvailability(atlasGenerated, atlasContent);
     if (!availability.available) {
       section.append(element("p", "atlas-empty configuration-unavailable", availability.errors[0]));
       target.append(section);

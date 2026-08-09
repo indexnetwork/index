@@ -9,7 +9,7 @@ type AtlasCore = {
   validateData(content: unknown, generated: unknown): { ok: boolean; errors: string[] };
   searchItems(query: string, content: ReturnType<typeof fixtureContent>, generated: ReturnType<typeof fixtureGenerated>): Array<{ id: string }>;
   filterGraph(filters: Record<string, string[]>, generated: ReturnType<typeof fixtureGenerated>): ReturnType<typeof expectedOpportunityAgentSubgraph>;
-  configurationAvailability(generated: unknown): { available: boolean; experiments: Array<{ id: string }>; errors: string[] };
+  configurationAvailability(generated: unknown, content?: ReturnType<typeof fixtureContent>): { available: boolean; experiments: Array<{ id: string }>; errors: string[] };
   deriveConfigurationComparison(experimentId: string, modeId: string, content: ReturnType<typeof fixtureContent>, generated: ReturnType<typeof fixtureGenerated>): Record<string, unknown> | null;
 };
 
@@ -276,7 +276,7 @@ describe("ProtocolAtlasCore configuration lab", () => {
 
   test("keeps schema-1 ordinary atlas data while reporting the lab unavailable", () => {
     expect(core().validateData(fixtureContent(), fixtureGeneratedV1()).ok).toBe(true);
-    expect(core().configurationAvailability(fixtureGeneratedV1())).toEqual({
+    expect(core().configurationAvailability(fixtureGeneratedV1(), fixtureContent())).toEqual({
       available: false,
       experiments: [],
       errors: ["Configuration Lab unavailable for this artifact."],
@@ -289,12 +289,47 @@ describe("ProtocolAtlasCore configuration lab", () => {
     malformed.id = "malformed";
     malformed.modes[1].assignments[0] = null as never;
     generated.configurationExperiments.push(malformed);
-    const availability = core().configurationAvailability(generated);
+    const availability = core().configurationAvailability(generated, fixtureContent());
     expect(availability.available).toBe(true);
     expect(availability.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract"]);
     expect(availability.errors.join(" ")).toContain("malformed");
     expect(availability.errors.join(" ")).toContain("assignment");
     expect(core().validateData(fixtureContent(), generated).ok).toBe(true);
+  });
+
+  test("guards malformed accepted values and nested evidence before use", () => {
+    const generated = fixtureGenerated();
+    const badAccepted = structuredClone(generated.configurationExperiments[0]);
+    badAccepted.id = "bad-accepted";
+    badAccepted.settings[0].acceptedValues = null as never;
+    const badClosure = structuredClone(generated.configurationExperiments[0]);
+    badClosure.id = "bad-closure";
+    badClosure.settings[0].accessorClosure = [null as never];
+    const badPrerequisite = structuredClone(generated.configurationExperiments[0]);
+    badPrerequisite.id = "bad-prerequisite";
+    badPrerequisite.modes[0].prerequisites = [null as never];
+    generated.configurationExperiments.push(badAccepted, badClosure, badPrerequisite);
+
+    const availability = core().configurationAvailability(generated, fixtureContent());
+    expect(availability.available).toBe(true);
+    expect(availability.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract"]);
+    expect(availability.errors.join(" ")).toContain("bad-accepted");
+    expect(availability.errors.join(" ")).toContain("bad-closure");
+    expect(availability.errors.join(" ")).toContain("bad-prerequisite");
+  });
+
+  test("omits an experiment whose runtime delta references a missing curated step", () => {
+    const generated = fixtureGenerated();
+    const malformed = structuredClone(generated.configurationExperiments[0]);
+    malformed.id = "bad-step-target";
+    malformed.modes[2].deltas[0].targetKind = "step";
+    malformed.modes[2].deltas[0].targetId = "missing-step";
+    generated.configurationExperiments.push(malformed);
+
+    const availability = core().configurationAvailability(generated, fixtureContent());
+    expect(availability.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract"]);
+    expect(availability.errors.join(" ")).toContain("bad-step-target");
+    expect(availability.errors.join(" ")).toContain("step target is missing");
   });
 });
 
