@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { HISTORICAL_QUALITY_CASES } from "../../matching/matching.historical.js";
 import { fingerprintCanonicalJson } from "../../shared/index.js";
 import type { HistoricalQualityCase } from "../historical-quality.corpus.js";
+import { HISTORICAL_SHARED_NETWORK, HISTORICAL_SHARED_POOL_APPROVAL_RECORD, HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS, HISTORICAL_SHARED_POOL_FIXTURE, HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS } from "../historical-quality.shared-pool.fixture.js";
 import { HistoricalSharedPoolApprovalReceiptSchema, admitHistoricalSharedPool, buildHistoricalSharedPoolPlan, historicalRetrievalDocumentFingerprint, historicalSharedPoolPlanFingerprint, historicalSharedPoolSeedFingerprint, stableQualityId, verifyHistoricalSharedPoolApprovalReceipt, type HistoricalSharedPoolApprovalReceipt, type HistoricalSharedPoolFixture } from "../historical-quality.shared-pool.js";
 
 const sortedCases = [...HISTORICAL_QUALITY_CASES].sort((left, right) => left.id.localeCompare(right.id));
@@ -303,5 +304,189 @@ describe("historical shared-pool contract", () => {
       },
     };
     expect(admitHistoricalSharedPool({ cases: HISTORICAL_QUALITY_CASES, fixture: approvedFixture, current: { authorId: receipt().authorId, contentRevision: receipt().contentRevision } })).toEqual(plan);
+  });
+});
+
+describe("pending historical shared-pool fixture", () => {
+  const sourceParticipantIds = new Set(["h1-a", "h2-a", "h3-a", "h4-a", "h5-a"]);
+  const caseByParticipantId = new Map(HISTORICAL_QUALITY_CASES.flatMap((historicalCase) =>
+    historicalCase.input.entities.map((entity) => [entity.userId, historicalCase] as const)));
+  const rowByParticipantId = new Map(HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS.map((row) => [row.participantId, row] as const));
+  const fixturePlan = buildHistoricalSharedPoolPlan({ cases: HISTORICAL_QUALITY_CASES, fixture: HISTORICAL_SHARED_POOL_FIXTURE });
+  const projection = fixturePlan.seedProjection;
+  const isSorted = (ids: readonly string[]): boolean => ids.every((id, index) => index === 0 || ids[index - 1]! < id);
+
+  it("uses the exact neutral shared network literal", () => {
+    expect(HISTORICAL_SHARED_NETWORK).toEqual({
+      id: stableQualityId("network", "shared-pool-v1"),
+      title: "Interdisciplinary collaboration community",
+      prompt: "A private community where people describe what they are working on, what they can contribute, and the kinds of collaboration they are open to.",
+    });
+  });
+
+  it("preserves all five source enrichment rows byte-for-byte", () => {
+    for (const participantId of sourceParticipantIds) {
+      const historicalCase = caseByParticipantId.get(participantId)!;
+      expect(historicalCase.input.discovererId).toBe(participantId);
+      const expected = historicalCase.historicalQuality.triggerInputs.enrichment;
+      const actual = rowByParticipantId.get(participantId)!;
+      expect(actual.premises).toEqual(expected.premises);
+      expect(actual.userContext).toBe(expected.userContext);
+    }
+  });
+
+  it("mechanically derives every other premise, source path, and context from approved fields", () => {
+    for (const [participantId, entity] of entityById) {
+      if (sourceParticipantIds.has(participantId)) continue;
+      const historicalCase = caseByParticipantId.get(participantId)!;
+      const intentPayload = entity.intents![0]!.payload;
+      const row = rowByParticipantId.get(participantId)!;
+      expect(row.premises).toEqual([intentPayload]);
+      expect(row.premiseSourcePaths).toEqual([
+        `case:${historicalCase.id}/participant:${participantId}/intent:0/payload`,
+      ]);
+      expect(row.contextSourcePaths).toEqual([
+        `case:${historicalCase.id}/participant:${participantId}/profile/bio`,
+        `case:${historicalCase.id}/participant:${participantId}/profile/location`,
+        `case:${historicalCase.id}/participant:${participantId}/profile/interests`,
+        `case:${historicalCase.id}/participant:${participantId}/profile/skills`,
+        `case:${historicalCase.id}/participant:${participantId}/intent:0/payload`,
+      ]);
+      expect(row.userContext).toBe([
+        `Bio: ${entity.profile.bio ?? ""}`,
+        `Location: ${entity.profile.location ?? ""}`,
+        `Interests: ${(entity.profile.interests ?? []).join(", ")}`,
+        `Skills: ${(entity.profile.skills ?? []).join(", ")}`,
+        `Intent: ${intentPayload}`,
+      ].join("\n"));
+    }
+  });
+
+  it("gives all 25 participants complete enrichment and exact retrieval-document coverage", () => {
+    expect(HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS).toHaveLength(25);
+    expect(rowByParticipantId.size).toBe(25);
+    const totalPremises = HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS.reduce((total, row) => total + row.premises.length, 0);
+    expect(HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS).toHaveLength(totalPremises + 25);
+
+    for (const [participantId, entity] of entityById) {
+      expect(entity.intents).toHaveLength(1);
+      const row = rowByParticipantId.get(participantId)!;
+      expect(row.premises.length).toBeGreaterThan(0);
+      expect(row.userContext.length).toBeGreaterThan(0);
+      const documents = HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS.filter((document) => document.participantId === participantId);
+      expect(documents.filter((document) => document.sourceType === "premise")).toHaveLength(row.premises.length);
+      expect(documents.filter((document) => document.sourceType === "context")).toHaveLength(1);
+    }
+  });
+
+  it("builds the exact ordered, unique, owned database-shaped projection", () => {
+    expect(projection.users).toHaveLength(25);
+    expect(projection.networks).toEqual([HISTORICAL_SHARED_NETWORK]);
+    expect(projection.memberships).toHaveLength(25);
+    expect(projection.intents).toHaveLength(25);
+    expect(projection.intentNetworkAssignments).toHaveLength(25);
+    expect(projection.premises).toHaveLength(HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS.reduce((total, row) => total + row.premises.length, 0));
+    expect(projection.contexts).toHaveLength(25);
+    expect(projection.documents).toHaveLength(projection.premises.length + projection.contexts.length);
+
+    for (const rows of [projection.users, projection.intents, projection.premises, projection.contexts]) {
+      const ids = rows.map((row) => row.id);
+      expect(isSorted(ids)).toBeTrue();
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+    const membershipIds = projection.memberships.map((row) => `${row.networkId}\0${row.userId}`);
+    const assignmentIds = projection.intentNetworkAssignments.map((row) => `${row.networkId}\0${row.intentId}`);
+    expect(isSorted(membershipIds)).toBeTrue();
+    expect(new Set(membershipIds).size).toBe(25);
+    expect(isSorted(assignmentIds)).toBeTrue();
+    expect(new Set(assignmentIds).size).toBe(25);
+    expect(isSorted(projection.documents.map((row) => row.documentId))).toBeTrue();
+    expect(new Set(projection.documents.map((row) => row.documentId)).size).toBe(projection.documents.length);
+
+    const userIds = new Set(projection.users.map((row) => row.id));
+    const intentById = new Map(projection.intents.map((row) => [row.id, row] as const));
+    const sourceById = new Map<string, {
+      participantId: string;
+      sourceType: "premise" | "context";
+      text: string;
+      sourcePaths: readonly string[];
+    }>([
+      ...projection.premises.map((row) => [row.id, {
+        participantId: row.participantId,
+        sourceType: "premise" as const,
+        text: row.text,
+        sourcePaths: [row.sourcePath],
+      }] as const),
+      ...projection.contexts.map((row) => [row.id, {
+        participantId: row.participantId,
+        sourceType: "context" as const,
+        text: row.text,
+        sourcePaths: row.sourcePaths,
+      }] as const),
+    ]);
+    for (const membership of projection.memberships) {
+      expect(membership.networkId).toBe(HISTORICAL_SHARED_NETWORK.id);
+      expect(userIds.has(membership.userId)).toBeTrue();
+    }
+    for (const intent of projection.intents) {
+      expect(userIds.has(intent.userId)).toBeTrue();
+      const participantId = projection.contexts.find((context) => context.userId === intent.userId)!.participantId;
+      expect(intent.id).toBe(stableQualityId("intent", participantId));
+      expect(intent.userId).toBe(stableQualityId("user", participantId));
+    }
+    for (const assignment of projection.intentNetworkAssignments) {
+      expect(assignment.networkId).toBe(HISTORICAL_SHARED_NETWORK.id);
+      expect(intentById.has(assignment.intentId)).toBeTrue();
+    }
+    for (const premise of projection.premises) {
+      expect(userIds.has(premise.userId)).toBeTrue();
+      expect(intentById.get(premise.intentId)?.userId).toBe(premise.userId);
+    }
+    for (const context of projection.contexts) {
+      expect(context.userId).toBe(stableQualityId("user", context.participantId));
+    }
+    for (const document of projection.documents) {
+      const source = sourceById.get(document.sourceRowId)!;
+      expect(document.participantId).toBe(source.participantId);
+      expect(document.sourceType).toBe(source.sourceType);
+      expect(document.text).toBe(source.text);
+      expect(document.sourcePaths).toEqual(source.sourcePaths);
+      expect(document.strategy).toBe("historical-quality-fixture");
+      expect(document.targetCorpus).toBe(document.sourceType);
+      expect(document.targetFrame).toBe("discovery");
+      expect(document.contentFingerprint).toBe(fingerprintCanonicalJson(document.text));
+    }
+  });
+
+  it("contains actual pending authorship and exact current fingerprints without reviewer facts", () => {
+    expect(HISTORICAL_SHARED_POOL_APPROVAL_RECORD).toEqual({
+      status: "pending",
+      authorId: "yanki@index.network",
+      corpusVersion: HISTORICAL_SHARED_POOL_FIXTURE.corpusVersion,
+      planFingerprint: historicalSharedPoolPlanFingerprint(fixturePlan),
+      seedProjectionFingerprint: historicalSharedPoolSeedFingerprint(projection),
+      retrievalDocumentFingerprint: historicalRetrievalDocumentFingerprint(projection.documents),
+    });
+    expect(() => admitHistoricalSharedPool({
+      cases: HISTORICAL_QUALITY_CASES,
+      fixture: HISTORICAL_SHARED_POOL_FIXTURE,
+      current: { authorId: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.authorId, contentRevision: "0".repeat(40) },
+    })).toThrow(/pending approval/);
+  });
+
+  it("keeps pooled fixture and seed projections free of audit and reviewer leakage", () => {
+    const serialized = JSON.stringify({
+      network: HISTORICAL_SHARED_NETWORK,
+      enrichmentRows: HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS,
+      retrievalDocuments: HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS,
+      seedProjection: projection,
+    });
+    for (const forbidden of [
+      "reportNames", "citations", "http://", "https://", "cutoff", "anonymizationReview",
+      "semanticNegatives", "semanticNegativeReason", "reviewerId", "reviewedAt", "rationale",
+    ]) expect(serialized).not.toContain(forbidden);
+    expect(Object.keys(HISTORICAL_SHARED_POOL_APPROVAL_RECORD).sort()).toEqual([
+      "authorId", "corpusVersion", "planFingerprint", "retrievalDocumentFingerprint", "seedProjectionFingerprint", "status",
+    ]);
   });
 });
