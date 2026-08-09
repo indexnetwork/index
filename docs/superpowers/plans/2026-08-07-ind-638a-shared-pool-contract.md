@@ -156,7 +156,7 @@ Task 1 first exports the strict `HistoricalSharedPoolApprovalReceiptSchema` and 
 
 ## Tasks
 
-### 1. Build the deterministic shared-pool contract
+### Task 1: Build the deterministic shared-pool contract
 
 **Files**
 
@@ -327,7 +327,7 @@ git add packages/protocol/eval/discovery-env-matrix/historical-quality.shared-po
 git commit -m "feat(eval): define historical shared pool contract"
 ```
 
-### 2. Author the literal pooled fixture in pending state
+### Task 2: Author the literal pooled fixture in pending state
 
 **Files**
 
@@ -474,7 +474,7 @@ git add packages/protocol/eval/discovery-env-matrix/historical-quality.shared-po
 git commit -m "feat(eval): author pending historical shared pool fixture"
 ```
 
-### 3. Complete the independent pooled approval checkpoint
+### Task 3: Complete the independent pooled approval checkpoint
 
 **Files**
 
@@ -596,7 +596,7 @@ if git diff --cached --name-only | grep -Fx 'docs/research/2026-08-07-ind-638a-s
 git commit -m "feat(eval): bind shared pool independent approval"
 ```
 
-### 4. Add the dedicated pilot planner and provider-free CLI contract
+### Task 4: Add the dedicated pilot planner and provider-free CLI contract
 
 **Files**
 
@@ -750,7 +750,7 @@ git add packages/protocol/eval/discovery-env-matrix/historical-quality.pilot.ts 
 git commit -m "feat(eval): add historical quality pilot contract"
 ```
 
-### 5. Extract dependency-free production trigger builders with queue parity
+### Task 5: Extract dependency-free production trigger builders with queue parity
 
 **Files**
 
@@ -860,7 +860,7 @@ git add services/api/src/queues/opportunity/discovery-trigger.builders.ts servic
 git commit -m "refactor(api): share production discovery trigger builders"
 ```
 
-### 6. Implement participant metrics, stage funnels, and incomplete suppression
+### Task 6: Implement participant metrics, stage funnels, and incomplete suppression
 
 **Files**
 
@@ -974,7 +974,7 @@ git add packages/protocol/eval/discovery-env-matrix/historical-quality.metrics.t
 git commit -m "feat(eval): define historical quality metrics"
 ```
 
-### 7. Refactor strict V2 artifact bases, specialize quality schemas, and exclude quality from Ops comparisons
+### Task 7: Refactor strict V2 artifact bases, specialize quality schemas, and exclude quality from Ops comparisons
 
 **Files**
 
@@ -1153,7 +1153,7 @@ git add packages/protocol/eval/shared/artifact.ts packages/protocol/eval/shared/
 git commit -m "feat(eval): govern historical quality artifacts"
 ```
 
-### 8. Render historical quality truthfully in Eval Ops
+### Task 8: Render historical quality truthfully in Eval Ops
 
 **Files**
 
@@ -1257,7 +1257,7 @@ git add apps/eval-ops/src/api/client.ts apps/eval-ops/src/components/HistoricalQ
 git commit -m "feat(eval-ops): render historical quality evidence"
 ```
 
-### 9. Document and version the PR A contract
+### Task 9: Document and version the PR A contract
 
 **Files**
 
@@ -1339,7 +1339,7 @@ git add packages/protocol/package.json packages/protocol/CHANGELOG.md services/a
 git commit -m "chore: version IND-638A shared pool contract"
 ```
 
-### 10. Run provider-free validation and record the PR handoff checkpoint
+### Task 10: Run provider-free validation and record the PR handoff checkpoint
 
 **Files**
 
