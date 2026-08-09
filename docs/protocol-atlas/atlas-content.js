@@ -13,13 +13,13 @@
     {
       id: "approved-material",
       title: "Begin with approved material",
-      summary: "Only participant-approved material may become durable protocol context.",
+      summary: "Only participant-approved, minimized material may become durable protocol context; contact-data minimization excludes unnecessary imported contact detail.",
       conceptIds: ["participant", "premise", "context"],
       nodeIds: ["component.enrichment-graph-factory", "component.premise-graph-factory"],
       invariantIds: ["participant-consent", "no-fabrication"],
       sourcePaths: ["packages/protocol/src/enrichment/enrichment.graph.ts", "packages/protocol/src/premise/premise.graph.ts"],
       notes: {
-        protocol: "Approval is the trust boundary: supplied or inferred material is not durable context until the participant accepts it.",
+        protocol: "Approval is the trust boundary: supplied or inferred material is not durable context until the participant accepts it, and contact-data minimization keeps unrelated imported details out.",
         implementation: "The enrichment and premise graphs expose the package-level review and premise-processing behavior.",
       },
     },
@@ -457,6 +457,13 @@
       ["packages/protocol/src/opportunity/discovery.env.ts", "discoveryIntentMatchingEnabled"],
       ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
+    profileSource: evidence("DISCOVERY_PROFILE_SOURCE", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped", [
+      ["packages/protocol/src/opportunity/discovery.env.ts", "discoveryProfileSource"],
+      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    ]),
+    contextToIntent: evidence("DISCOVERY_CONTEXT_TO_INTENT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "lightweight mode: context→context runs when legacy context→intent switch is disabled", [
+      ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
+    ]),
     sourcePremise: evidence("DISCOVERY_SOURCE_PREMISE_LIMIT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "premise discovery uses scoped capped source premises and one batched DB search", [
       ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"],
       ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
@@ -558,7 +565,8 @@
       value: Object.prototype.hasOwnProperty.call(spec.values, settingRecord.key) ? spec.values[settingRecord.key] : null,
     }));
     const resolvedValues = assignments.map(({ key, value }) => ({ key, value: value === null ? configurationSettings[key].fallback : value }));
-    const evidenceRecords = Array.isArray(evidenceRecord) ? evidenceRecord : evidenceRecord ? [evidenceRecord] : [];
+    const selectedEvidence = spec.evidence || evidenceRecord;
+    const evidenceRecords = Array.isArray(selectedEvidence) ? selectedEvidence : selectedEvidence ? [selectedEvidence] : [];
     const deltas = spec.fallback ? [] : coverage === "unresolved"
       ? [{ id: `${experimentId}.${spec.id}`, effect: "unresolved", targetKind: "node", targetId: spec.targetId || "component.opportunity-graph-factory", settingKeys: unresolvedSettingKeys, noDirectProtocolConsumer: true }]
       : evidenceRecords.map((record) => ({
@@ -598,8 +606,8 @@
       mode("fallback", {}, "Intent and premise-profile retrieval are eligible from package fallbacks.", true),
       mode("intent-only", { DISCOVERY_ALLOWED_TYPES: "intent" }, "Profile retrieval is bypassed; intent retrieval remains eligible.", false, "bypassed"),
       mode("premise-profile", { DISCOVERY_ALLOWED_TYPES: "profile", DISCOVERY_PROFILE_SOURCE: "premise" }, "Only premise-backed profile retrieval is eligible."),
-      mode("context-profile", { DISCOVERY_ALLOWED_TYPES: "profile", DISCOVERY_PROFILE_SOURCE: "user_context" }, "Only participant-context profile retrieval is eligible."),
-      mode("context-cross-match", { DISCOVERY_ALLOWED_TYPES: "intent,profile", DISCOVERY_PROFILE_SOURCE: "user_context", DISCOVERY_CONTEXT_TO_INTENT: "1" }, "Context-to-intent cross matching becomes eligible.", false, "activated"),
+      mode("context-profile", { DISCOVERY_ALLOWED_TYPES: "profile", DISCOVERY_PROFILE_SOURCE: "user_context" }, "Only participant-context profile retrieval is eligible.", false, "changed", [], [], { evidence: definitiveEvidence.profileSource }),
+      mode("context-cross-match", { DISCOVERY_ALLOWED_TYPES: "intent,profile", DISCOVERY_PROFILE_SOURCE: "user_context", DISCOVERY_CONTEXT_TO_INTENT: "1" }, "Context-to-intent cross matching becomes eligible.", false, "activated", [], [], { evidence: definitiveEvidence.contextToIntent }),
     ], definitiveEvidence.discovery, ["retrieve-candidates"]),
     experiment("discovery-premise-limit", "Discovery premise fan-out", "opportunities", ["DISCOVERY_SOURCE_PREMISE_LIMIT"], "fallback-40", [
       mode("fallback-40", {}, "At most 40 source premises are loaded.", true),
@@ -709,42 +717,58 @@
       {
         id: "orientation",
         title: "Orientation",
-        summary: "Read the atlas as a protocol guide: normative concepts and invariants first, package implementation evidence second.",
+        summary: "Read normative protocol meaning first, then inspect the current package implementation without confusing product or historical vocabulary for universal rules.",
         stepIds: [],
+        sections: [
+          { id: "protocol-layers", title: "Protocol and Implementation layers", summary: "The Protocol layer explains storage-independent concepts and invariants; the Implementation layer cites the current packages/protocol reference implementation.", items: ["Protocol: normative concepts, trust boundaries, and invariants", "Implementation: current package facades, graphs, tools, agents, ports, and host requirements"] },
+          { id: "vocabulary-layers", title: "Three vocabulary layers", summary: "Terms remain visibly translated instead of silently merged.", items: ["Normative protocol vocabulary", "Current product vocabulary", "Historical/internal implementation vocabulary"] },
+        ],
       },
       {
         id: "primitives",
-        title: "Trusted context",
-        summary: "How approved material becomes attributable premises, current context, and scoped derived representations.",
+        title: "Primitives",
+        summary: "Meet the protocol concepts before following how approved material becomes attributable, scoped context.",
         stepIds: trustedContextSteps.map(({ id }) => id),
+        sections: [
+          { id: "protocol-primitives", title: "Protocol primitives", summary: "The stable conceptual vocabulary used throughout the atlas.", items: ["Participant", "Software Agent", "Signal", "Premise", "Context", "Community", "Membership and agent permission", "Candidate", "Opportunity", "Negotiation", "Connection"] },
+          { id: "agent-role-distinction", title: "Agent is not a valency role", summary: "A Software Agent is an attributable software actor. Provider/helper role is a negotiated relationship role that historical implementation vocabulary calls valency role agent.", items: ["Software Agent: registered actor", "Provider/helper role: relationship role, not software"] },
+        ],
       },
       {
         id: "trust-scope",
-        title: "Signals and trust scope",
-        summary: "How a participant expression becomes a verified Signal assigned only to admitted communities.",
+        title: "Trust + Scope",
+        summary: "Understand how verified Signals remain bounded by intersected authority, privacy, and participant consent.",
         stepIds: expressSignalSteps.map(({ id }) => id),
+        sections: [
+          { id: "effective-scope-intersection", title: "Effective scope is an intersection", summary: "Effective scope = request scope ∩ active memberships ∩ agent permissions ∩ applicable Community policy.", items: ["No single assignment, credential, or request widens another constraint", "Every delegated action remains attributable"] },
+          { id: "privacy-and-consent", title: "Privacy, minimization, and consent", summary: "Data minimization keeps only necessary approved evidence; incognito behavior prevents identity or context from being surfaced beyond its permitted scope; agent negotiation never substitutes for participant consent.", items: ["Attribution", "Privacy and data minimization", "Incognito behavior", "Participant consent boundary"] },
+        ],
       },
       {
         id: "discovery",
-        title: "Private discovery",
-        summary: "How background processing evaluates private Candidates and surfaces safe, legible Opportunities.",
+        title: "Discovery",
+        summary: "Follow background processing as it evaluates private Candidates and surfaces safe, legible Opportunities.",
         stepIds: discoverOpportunitySteps.map(({ id }) => id),
       },
       {
         id: "consent",
-        title: "Consent and connection",
-        summary: "How two explicit participant decisions—not agent negotiation—allow an Opportunity to become a Connection.",
+        title: "Consent",
+        summary: "See how separate explicit participant decisions—not agent negotiation—allow an Opportunity to become a Connection.",
         stepIds: consentConnectSteps.map(({ id }) => id),
       },
       {
         id: "runtime",
-        title: "External agent runtime",
-        summary: "How MCP requests are authenticated, policy-scoped, registered, and invoked through protocol-owned capabilities.",
+        title: "Runtime",
+        summary: "Drill down through package-owned composition and stop at every injected host boundary.",
         stepIds: externalAgentMcpSteps.map(({ id }) => id),
+        sections: [
+          { id: "runtime-drilldown", title: "Reference runtime drill-down", summary: "Follow the implementation hierarchy without crossing into a concrete host.", items: ["Protocol entry surface", "Runtime shell", "Capability facade", "Tool or graph factory", "Graph node or structured agent", "Domain state and schema", "Injected port", "Required host capability"] },
+          { id: "host-boundary-stop", title: "Stop at the host boundary", summary: "The protocol declares the injected port or callback and the required host capability. Concrete adapters, routes, queues, persistence, and deployment remain outside this atlas.", items: ["Describe the requirement", "Do not depict concrete host implementation"] },
+        ],
       },
       {
         id: "explore",
-        title: "Explore implementation evidence",
+        title: "Explore",
         summary: "Inspect generated package nodes and edges while keeping host fulfillment outside the atlas boundary.",
         stepIds: [],
       },
@@ -795,7 +819,7 @@
       { id: "community", title: "Community", definition: "A trust and discovery scope in which admitted participants and Signals may be evaluated; product language says Network.", normative: true },
       { id: "membership", title: "Membership", definition: "A participant's current admission and role within a Community.", normative: true },
       { id: "agent-permission", title: "Agent Permission", definition: "A participant-granted authorization for a Software Agent to perform named actions in bounded scope.", normative: true },
-      { id: "effective-scope", title: "Effective Scope", definition: "The intersection of Signal assignment, active membership, agent permission, and the requested action.", normative: true },
+      { id: "effective-scope", title: "Effective Scope", definition: "The intersection of request scope, active Community memberships, agent permissions, and applicable Community policy.", normative: true },
       { id: "candidate", title: "Candidate", definition: "A private possible counterpart under evaluation; it is not participant-visible and carries no implication of consent.", normative: true },
       { id: "opportunity", title: "Opportunity", definition: "A participant-visible, safely presented prospect that passed admission and fit checks but is not yet a Connection.", normative: true },
       { id: "negotiation", title: "Negotiation", definition: "A bounded, attributable agent exchange that may clarify fit and roles but cannot give participant consent.", normative: true },
@@ -804,7 +828,7 @@
       { id: "radar", title: "Radar", definition: "Reference-implementation retrieval machinery used to find private Candidates; it is not a normative primitive.", normative: false, classification: "product/reference-implementation" },
     ],
     invariants: [
-      { id: "scope-intersection", title: "Scope is intersected", text: "Effective scope is the intersection of Signal assignment, active Community membership, agent permission, and the requested action; no input widens another." },
+      { id: "scope-intersection", title: "Scope is intersected", text: "Effective scope is the intersection of request scope, active Community memberships, agent permissions, and applicable Community policy; no input widens another." },
       { id: "participant-consent", title: "Participants decide", text: "Material use, sending, acceptance, and connection require the participant decisions specified for each action." },
       { id: "action-attribution", title: "Actions are attributable", text: "Every participant or Software Agent action must remain attributable to an authenticated actor and, for delegated action, its participant authority." },
       { id: "candidate-private", title: "Candidates remain private", text: "Candidate identity and private evaluation evidence are not disclosed merely because discovery retrieved or evaluated a possible counterpart." },

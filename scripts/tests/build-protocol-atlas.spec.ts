@@ -54,6 +54,7 @@ type MutableConfigurationContent = {
       readSites: Array<{ path: string; symbol: string }>;
       accessorClosure: Array<{ path: string; symbol: string }>;
       acceptedValues: string[];
+      readTiming?: string;
     }>;
     modes: Array<{
       id: string;
@@ -152,9 +153,13 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   expect(css).toContain("@media (max-width: 640px)");
   const layerToggleRule = css.match(/#atlas-layer-toggle button\s*\{([^}]*)\}/)?.[1];
   expect(layerToggleRule).toMatch(/min-height:\s*(?:2\.75rem|44px)/);
-  expect(css).toContain("--edge-runtime-pattern: 10 5");
-  expect(css).toContain("--edge-injected-pattern: 3 4");
+  expect(css).toContain("--edge-runtime-pattern: none");
+  expect(css).toContain("--edge-static-pattern: 10 5");
+  expect(css).toContain("--edge-injected-pattern: 2 5");
   expect(css).toContain("--edge-conceptual-pattern: 1 5");
+  expect(css).toMatch(/\.atlas-edge--runtime \.atlas-edge__line,[\s\S]*?border-top-style:\s*solid/);
+  expect(css).toMatch(/\.atlas-edge--static \.atlas-edge__line,[\s\S]*?border-top-style:\s*dashed/);
+  expect(css).toContain(".atlas-diagram-relations");
   expect(css).toMatch(/\.atlas-edge text\s*\{/);
   expect(css).toContain(".configuration-delta--activated");
   expect(css).toContain(".configuration-delta--bypassed");
@@ -193,6 +198,46 @@ describe("protocol atlas curated content", () => {
     const artifact = buildAtlasArtifact(input, content);
     expect(validateCuratedReferences(content, artifact)).toEqual([]);
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
+  });
+
+  test("locks chapter teaching sections and source discrepancy coverage", async () => {
+    const content = await loadAtlasContent() as {
+      chapters: Array<{ id: string; title: string; summary: string; sections?: Array<{ id: string; title: string; summary: string; items: string[] }> }>;
+      flows: Array<{ id: string; steps: Array<{ id: string; summary: string; notes: { protocol: string; implementation: string } }> }>;
+      concepts: Array<{ id: string; definition: string }>;
+      invariants: Array<{ id: string; text: string }>;
+      relationships: Array<{ id: string; kind: string; title?: string; summary: string }>;
+      configurationExperiments: Array<{ id: string; modes: Array<{ id: string; deltas: MutableConfigurationDelta[] }> }>;
+    };
+    expect(content.chapters.map(({ title }) => title)).toEqual([
+      "Orientation", "Primitives", "Trust + Scope", "Discovery", "Consent", "Runtime", "Explore",
+    ]);
+    const sectionsByChapter = Object.fromEntries(content.chapters.map((chapter) => [chapter.id, chapter.sections?.map(({ id }) => id) ?? []]));
+    expect(sectionsByChapter.orientation).toEqual(["protocol-layers", "vocabulary-layers"]);
+    expect(sectionsByChapter.primitives).toEqual(["protocol-primitives", "agent-role-distinction"]);
+    expect(sectionsByChapter["trust-scope"]).toEqual(["effective-scope-intersection", "privacy-and-consent"]);
+    expect(sectionsByChapter.runtime).toEqual(["runtime-drilldown", "host-boundary-stop"]);
+    const chapterCopy = JSON.stringify(content.chapters);
+    for (const text of [
+      "Normative protocol vocabulary", "Current product vocabulary", "Historical/internal implementation vocabulary",
+      "Participant", "Software Agent", "Provider/helper role", "applicable Community policy",
+      "data minimization", "incognito", "entry surface", "runtime shell", "capability facade",
+      "tool or graph factory", "domain state and schema", "injected port", "required host capability",
+    ]) expect(chapterCopy.toLocaleLowerCase()).toContain(text.toLocaleLowerCase());
+    const trustedContext = content.flows.find(({ id }) => id === "trusted-context")!;
+    expect(JSON.stringify(trustedContext)).toContain("contact-data minimization");
+    expect(content.concepts.find(({ id }) => id === "effective-scope")?.definition).toContain("applicable Community policy");
+    expect(content.invariants.find(({ id }) => id === "scope-intersection")?.text).toContain("applicable Community policy");
+    expect(content.relationships.filter(({ kind }) => kind === "discrepancy").map(({ id }) => id)).toEqual([
+      "gap-bounded-negotiation", "gap-lifecycle-vocabulary", "gap-community-network", "gap-background-discovery", "gap-candidate-presentation",
+    ]);
+    const discovery = content.configurationExperiments.find(({ id }) => id === "discovery-corpus")!;
+    expect(discovery.modes.find(({ id }) => id === "context-profile")?.deltas).toEqual([
+      expect.objectContaining({ settingKeys: ["DISCOVERY_PROFILE_SOURCE"], behaviorTest: expect.objectContaining({ testName: expect.stringContaining("DISCOVERY_PROFILE_SOURCE=user_context") }) }),
+    ]);
+    expect(discovery.modes.find(({ id }) => id === "context-cross-match")?.deltas).toEqual([
+      expect.objectContaining({ settingKeys: ["DISCOVERY_CONTEXT_TO_INTENT"], behaviorTest: expect.objectContaining({ testName: expect.stringContaining("context→intent") }) }),
+    ]);
   });
 
   test("preserves approved concept, invariant, flow-step, and vocabulary contracts", async () => {
@@ -262,6 +307,14 @@ describe("protocol atlas curated content", () => {
     ]);
   });
 
+  test("rejects missing or malformed required chapter teaching sections", async () => {
+    const content = await loadAtlasContent() as { chapters: Array<{ id: string; sections?: unknown }> };
+    const artifact = buildAtlasArtifact(await loadProtocolGeneratorInput(repoRoot), content);
+    const primitives = content.chapters.find(({ id }) => id === "primitives")!;
+    primitives.sections = [{ id: "protocol-primitives", title: "", summary: "", items: [] }];
+    expect(validateCuratedReferences(content, artifact).join("\n")).toContain("required teaching section");
+  });
+
   test("forbids concrete host implementation paths in curated content", async () => {
     const content = await loadAtlasContent() as { flows: Array<{ steps: Array<{ sourcePaths?: string[] }> }> };
     content.flows[0].steps[0].sourcePaths = ["services/api/src/main.ts"];
@@ -296,6 +349,28 @@ describe("protocol atlas generator", () => {
     expect(validateAtlasArtifact(artifact, fixtureRoot)).toEqual(
       expect.arrayContaining([expect.stringContaining("duplicate node id"), expect.stringContaining("missing target")]),
     );
+  });
+
+  test("rejects invalid generated record shapes and enum values", async () => {
+    const content = await loadAtlasContent();
+    const artifact = buildAtlasArtifact(await loadProtocolGeneratorInput(repoRoot), content);
+    const mutations: Array<[string, (copy: AtlasArtifact) => void, string]> = [
+      ["node kind", (copy) => { (copy.nodes[0] as unknown as Record<string, unknown>).kind = "database"; }, "node kind"],
+      ["node layer", (copy) => { (copy.nodes[0] as unknown as Record<string, unknown>).layer = "host"; }, "node layer"],
+      ["node capability", (copy) => { (copy.nodes[0] as unknown as Record<string, unknown>).capability = 42; }, "node capability"],
+      ["edge kind", (copy) => { (copy.edges[0] as unknown as Record<string, unknown>).kind = "telemetry"; }, "edge kind"],
+      ["edge label", (copy) => { (copy.edges[0] as unknown as Record<string, unknown>).label = null; }, "edge label"],
+      ["read timing", (copy) => { ((copy.configurationExperiments[0].settings as Array<Record<string, unknown>>)[0]).readTiming = "whenever"; }, "readTiming"],
+      ["coverage", (copy) => { copy.configurationExperiments[0].coverage = "observed"; }, "coverage"],
+      ["effect", (copy) => { const mode = (copy.configurationExperiments[0].modes as Array<Record<string, unknown>>).find(({ deltas }) => Array.isArray(deltas) && deltas.length > 0)!; (mode.deltas as Array<Record<string, unknown>>)[0].effect = "teleported"; }, "effect"],
+      ["target kind", (copy) => { const mode = (copy.configurationExperiments[0].modes as Array<Record<string, unknown>>).find(({ deltas }) => Array.isArray(deltas) && deltas.length > 0)!; (mode.deltas as Array<Record<string, unknown>>)[0].targetKind = "route"; }, "targetKind"],
+      ["assignment shape", (copy) => { (copy.configurationExperiments[0].modes[0].assignments as unknown[]) = [null]; }, "assignment"],
+    ];
+    for (const [label, mutate, expected] of mutations) {
+      const copy = structuredClone(artifact);
+      mutate(copy);
+      expect(validateAtlasArtifact(copy, repoRoot).join("\n"), label).toContain(expected);
+    }
   });
 
   test("derives static edges only from runtime module references", () => {

@@ -4,6 +4,8 @@
   const RECOVERY_NOTICE = "That atlas location no longer exists. Returned to Orientation.";
   const LAYERS = new Set(["protocol", "implementation"]);
   const FILTER_KEYS = ["capabilities", "kinds", "edgeKinds"];
+  const NODE_KINDS = new Set(["facade", "tool-family", "graph-factory", "agent", "port", "runtime-shell", "host-requirement", "public-symbol"]);
+  const EDGE_KINDS = new Set(["static", "runtime", "injected", "conceptual"]);
 
   function emptyFilters() {
     return { capabilities: [], kinds: [], edgeKinds: [] };
@@ -410,8 +412,20 @@
       }
 
       const nodeIds = new Set(nodes.filter(isRecord).map((node) => node.id));
+      for (const node of nodes) {
+        if (!isRecord(node)) continue;
+        if (!NODE_KINDS.has(node.kind)) errors.push(`node kind is invalid for ${String(node.id)}`);
+        if (node.layer !== "implementation") errors.push(`node layer is invalid for ${String(node.id)}`);
+        for (const field of ["id", "label", "capability", "sourcePath", "summary"]) {
+          if (typeof node[field] !== "string" || node[field].length === 0) errors.push(`node ${String(node.id)} ${field} must be a non-empty string`);
+        }
+      }
       for (const edge of edges) {
         if (!isRecord(edge)) continue;
+        if (!EDGE_KINDS.has(edge.kind)) errors.push(`edge kind is invalid for ${String(edge.id)}`);
+        for (const field of ["id", "sourceId", "targetId", "label", "evidencePath"]) {
+          if (typeof edge[field] !== "string" || edge[field].length === 0) errors.push(`edge ${String(edge.id)} ${field} must be a non-empty string`);
+        }
         if (!nodeIds.has(edge.sourceId)) errors.push(`edge ${String(edge.id)} has missing source endpoint ${String(edge.sourceId)}`);
         if (!nodeIds.has(edge.targetId)) errors.push(`edge ${String(edge.id)} has missing target endpoint ${String(edge.targetId)}`);
       }

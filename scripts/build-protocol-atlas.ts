@@ -18,6 +18,13 @@ export type AtlasNodeKind =
   | "host-requirement"
   | "public-symbol";
 export type AtlasEdgeKind = "static" | "runtime" | "injected" | "conceptual";
+const ATLAS_NODE_KINDS = ["facade", "tool-family", "graph-factory", "agent", "port", "runtime-shell", "host-requirement", "public-symbol"] as const;
+const ATLAS_EDGE_KINDS = ["static", "runtime", "injected", "conceptual"] as const;
+const ATLAS_NODE_LAYERS = ["implementation"] as const;
+const CONFIGURATION_COVERAGE = ["definitive", "unresolved"] as const;
+const CONFIGURATION_READ_TIMINGS = ["module-load", "invocation"] as const;
+const CONFIGURATION_EFFECTS = ["activated", "bypassed", "changed", "unresolved"] as const;
+const CONFIGURATION_TARGET_KINDS = ["node", "edge", "step"] as const;
 export type AtlasNode = {
   id: string;
   label: string;
@@ -598,24 +605,163 @@ function pathIssue(path: string, repoRoot: string, description: string): string 
   return undefined;
 }
 
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function stringArrayValue(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => nonEmptyString(entry));
+}
+
+function enumValue(value: unknown, allowed: readonly string[]): boolean {
+  return typeof value === "string" && allowed.includes(value);
+}
+
+function validateGeneratedConfigurationShape(experiments: unknown): string[] {
+  const issues: string[] = [];
+  if (!Array.isArray(experiments)) return ["generated configurationExperiments must be an array"];
+  for (const candidate of experiments) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      issues.push("configuration experiment must be an object");
+      continue;
+    }
+    const experiment = candidate as Record<string, unknown>;
+    const id = nonEmptyString(experiment.id) ? experiment.id : "<missing>";
+    for (const field of ["id", "title", "summary", "capability", "fallbackModeId"] as const) {
+      if (!nonEmptyString(experiment[field])) issues.push(`${id} configuration ${field} must be a non-empty string`);
+    }
+    if (!enumValue(experiment.coverage, CONFIGURATION_COVERAGE)) issues.push(`${id} configuration coverage is invalid`);
+    for (const field of ["affectedChapterIds", "affectedStepIds"] as const) {
+      if (!stringArrayValue(experiment[field])) issues.push(`${id} configuration ${field} must be a string array`);
+    }
+    if (!Array.isArray(experiment.settings) || experiment.settings.length === 0) issues.push(`${id} configuration settings must be a non-empty array`);
+    for (const settingCandidate of Array.isArray(experiment.settings) ? experiment.settings : []) {
+      if (!settingCandidate || typeof settingCandidate !== "object" || Array.isArray(settingCandidate)) {
+        issues.push(`${id} configuration setting must be an object`);
+        continue;
+      }
+      const setting = settingCandidate as Record<string, unknown>;
+      const key = nonEmptyString(setting.key) ? setting.key : "<missing>";
+      if (!nonEmptyString(setting.key)) issues.push(`${id} configuration setting key must be a non-empty string`);
+      if (!Array.isArray(setting.readSites) || setting.readSites.length === 0) issues.push(`${id}.${key} readSites must be a non-empty array`);
+      for (const site of Array.isArray(setting.readSites) ? setting.readSites : []) {
+        if (!site || typeof site !== "object" || Array.isArray(site) || !nonEmptyString((site as Record<string, unknown>).path) || !nonEmptyString((site as Record<string, unknown>).symbol)) issues.push(`${id}.${key} read site is malformed`);
+      }
+      if (!nonEmptyString(setting.entryAccessorSymbol)) issues.push(`${id}.${key} entryAccessorSymbol must be a non-empty string`);
+      if (!Array.isArray(setting.accessorClosure)) issues.push(`${id}.${key} accessorClosure must be an array`);
+      for (const hop of Array.isArray(setting.accessorClosure) ? setting.accessorClosure : []) {
+        if (!hop || typeof hop !== "object" || Array.isArray(hop) || !nonEmptyString((hop as Record<string, unknown>).path) || !nonEmptyString((hop as Record<string, unknown>).symbol)) issues.push(`${id}.${key} accessor closure hop is malformed`);
+      }
+      if (!stringArrayValue(setting.acceptedValues) || setting.acceptedValues.length === 0) issues.push(`${id}.${key} acceptedValues must be a non-empty string array`);
+      if (!nonEmptyString(setting.fallback)) issues.push(`${id}.${key} fallback must be a non-empty string`);
+      if (!enumValue(setting.readTiming, CONFIGURATION_READ_TIMINGS)) issues.push(`${id}.${key} readTiming is invalid`);
+    }
+    if (!Array.isArray(experiment.modes) || experiment.modes.length === 0) issues.push(`${id} configuration modes must be a non-empty array`);
+    for (const modeCandidate of Array.isArray(experiment.modes) ? experiment.modes : []) {
+      if (!modeCandidate || typeof modeCandidate !== "object" || Array.isArray(modeCandidate)) {
+        issues.push(`${id} configuration mode must be an object`);
+        continue;
+      }
+      const mode = modeCandidate as Record<string, unknown>;
+      const modeId = `${id}.${nonEmptyString(mode.id) ? mode.id : "<missing>"}`;
+      if (!nonEmptyString(mode.id)) issues.push(`${modeId} id must be a non-empty string`);
+      if (!nonEmptyString(mode.explanation)) issues.push(`${modeId} explanation must be a non-empty string`);
+      if (!stringArrayValue(mode.caveats)) issues.push(`${modeId} caveats must be a string array`);
+      for (const field of ["assignments", "resolvedValues", "prerequisites", "deltas"] as const) {
+        if (!Array.isArray(mode[field])) issues.push(`${modeId} ${field} must be an array`);
+      }
+      for (const assignment of Array.isArray(mode.assignments) ? mode.assignments : []) {
+        if (!assignment || typeof assignment !== "object" || Array.isArray(assignment) || !nonEmptyString((assignment as Record<string, unknown>).key) || !((assignment as Record<string, unknown>).value === null || typeof (assignment as Record<string, unknown>).value === "string")) issues.push(`${modeId} assignment is malformed`);
+      }
+      for (const resolved of Array.isArray(mode.resolvedValues) ? mode.resolvedValues : []) {
+        if (!resolved || typeof resolved !== "object" || Array.isArray(resolved) || !nonEmptyString((resolved as Record<string, unknown>).key) || !nonEmptyString((resolved as Record<string, unknown>).value)) issues.push(`${modeId} resolved value is malformed`);
+      }
+      for (const prerequisite of Array.isArray(mode.prerequisites) ? mode.prerequisites : []) {
+        if (!prerequisite || typeof prerequisite !== "object" || Array.isArray(prerequisite)) {
+          issues.push(`${modeId} prerequisite is malformed`);
+          continue;
+        }
+        const record = prerequisite as Record<string, unknown>;
+        if (record.kind === "setting") {
+          if (!nonEmptyString(record.key) || !(record.value === null || typeof record.value === "string")) issues.push(`${modeId} setting prerequisite is malformed`);
+        } else if (record.kind === "injected-capability") {
+          if (!nonEmptyString(record.nodeId)) issues.push(`${modeId} injected prerequisite is malformed`);
+        } else issues.push(`${modeId} prerequisite kind is invalid`);
+      }
+      for (const deltaCandidate of Array.isArray(mode.deltas) ? mode.deltas : []) {
+        if (!deltaCandidate || typeof deltaCandidate !== "object" || Array.isArray(deltaCandidate)) {
+          issues.push(`${modeId} delta is malformed`);
+          continue;
+        }
+        const delta = deltaCandidate as Record<string, unknown>;
+        const deltaId = `${modeId}.${nonEmptyString(delta.id) ? delta.id : "<missing>"}`;
+        if (!nonEmptyString(delta.id)) issues.push(`${deltaId} id must be a non-empty string`);
+        if (!enumValue(delta.effect, CONFIGURATION_EFFECTS)) issues.push(`${deltaId} effect is invalid`);
+        if (!enumValue(delta.targetKind, CONFIGURATION_TARGET_KINDS)) issues.push(`${deltaId} targetKind is invalid`);
+        if (!nonEmptyString(delta.targetId)) issues.push(`${deltaId} targetId must be a non-empty string`);
+        if (!stringArrayValue(delta.settingKeys) || delta.settingKeys.length === 0) issues.push(`${deltaId} settingKeys must be a non-empty string array`);
+        if (delta.effect === "unresolved") {
+          if (delta.noDirectProtocolConsumer !== true) issues.push(`${deltaId} unresolved assertion is malformed`);
+        } else {
+          if (!nonEmptyString(delta.consumerPath) || !nonEmptyString(delta.consumerSymbol)) issues.push(`${deltaId} consumer evidence is malformed`);
+          if (!Array.isArray(delta.referenceChain) || delta.referenceChain.length === 0) issues.push(`${deltaId} referenceChain must be a non-empty array`);
+          const behaviorTest = delta.behaviorTest;
+          if (!behaviorTest || typeof behaviorTest !== "object" || Array.isArray(behaviorTest) || !nonEmptyString((behaviorTest as Record<string, unknown>).path) || !nonEmptyString((behaviorTest as Record<string, unknown>).testName)) issues.push(`${deltaId} behaviorTest is malformed`);
+        }
+      }
+    }
+  }
+  return issues;
+}
+
 export function validateAtlasArtifact(artifact: AtlasArtifact, repoRoot: string): string[] {
   const issues: string[] = [];
-  if (artifact.schemaVersion !== 2) issues.push("generated schemaVersion must be 2");
-  if (!Array.isArray(artifact.configurationExperiments)) issues.push("generated configurationExperiments must be an array");
-  for (const id of duplicateIds(artifact.nodes)) issues.push(`duplicate node id: ${id}`);
-  for (const id of duplicateIds(artifact.edges)) issues.push(`duplicate edge id: ${id}`);
-  for (const id of duplicateIds(artifact.configurationExperiments)) issues.push(`duplicate configuration experiment id: ${id}`);
-  const nodeIds = new Set(artifact.nodes.map(({ id }) => id));
-  for (const node of artifact.nodes) {
-    const issue = pathIssue(node.sourcePath, repoRoot, `node ${node.id} sourcePath`);
-    if (issue) issues.push(issue);
+  const root = artifact as unknown as Record<string, unknown>;
+  if (root.schemaVersion !== 2) issues.push("generated schemaVersion must be 2");
+  const nodes = recordArray(root.nodes);
+  const edges = recordArray(root.edges);
+  const experiments = root.configurationExperiments;
+  if (!Array.isArray(root.nodes)) issues.push("generated nodes must be an array");
+  if (!Array.isArray(root.edges)) issues.push("generated edges must be an array");
+  issues.push(...validateGeneratedConfigurationShape(experiments));
+  for (const id of duplicateIds(nodes.filter((record): record is { id: string } => nonEmptyString(record.id)))) issues.push(`duplicate node id: ${id}`);
+  for (const id of duplicateIds(edges.filter((record): record is { id: string } => nonEmptyString(record.id)))) issues.push(`duplicate edge id: ${id}`);
+  for (const id of duplicateIds(recordArray(experiments).filter((record): record is { id: string } => nonEmptyString(record.id)))) issues.push(`duplicate configuration experiment id: ${id}`);
+  const nodeIds = new Set(nodes.map(({ id }) => id).filter(nonEmptyString));
+  for (const node of nodes) {
+    const id = nonEmptyString(node.id) ? node.id : "<missing>";
+    if (!nonEmptyString(node.id)) issues.push("node id must be a non-empty string");
+    if (!nonEmptyString(node.label)) issues.push(`node ${id} label must be a non-empty string`);
+    if (!enumValue(node.kind, ATLAS_NODE_KINDS)) issues.push(`node ${id} node kind is invalid`);
+    if (!enumValue(node.layer, ATLAS_NODE_LAYERS)) issues.push(`node ${id} node layer is invalid`);
+    if (!nonEmptyString(node.capability)) issues.push(`node ${id} node capability must be a non-empty string`);
+    if (!nonEmptyString(node.summary)) issues.push(`node ${id} summary must be a non-empty string`);
+    if (!stringArrayValue(node.chapterIds)) issues.push(`node ${id} chapterIds must be a string array`);
+    if (!stringArrayValue(node.flowIds)) issues.push(`node ${id} flowIds must be a string array`);
+    if (node.symbol !== undefined && !nonEmptyString(node.symbol)) issues.push(`node ${id} symbol must be a non-empty string`);
+    if (node.stability !== undefined && !enumValue(node.stability, ["stable", "experimental"])) issues.push(`node ${id} stability is invalid`);
+    if (!nonEmptyString(node.sourcePath)) issues.push(`node ${id} sourcePath must be a non-empty string`);
+    else {
+      const issue = pathIssue(node.sourcePath, repoRoot, `node ${id} sourcePath`);
+      if (issue) issues.push(issue);
+    }
   }
-  for (const edge of artifact.edges) {
-    if (!nodeIds.has(edge.sourceId)) issues.push(`edge ${edge.id} has missing source ${edge.sourceId}`);
-    if (!nodeIds.has(edge.targetId)) issues.push(`edge ${edge.id} has missing target ${edge.targetId}`);
-    const issue = pathIssue(edge.evidencePath, repoRoot, `edge ${edge.id} evidencePath`);
-    if (issue) issues.push(issue);
-    if (edge.kind !== "static" && !edge.evidenceSymbol) issues.push(`edge ${edge.id} must name an evidenceSymbol`);
+  for (const edge of edges) {
+    const id = nonEmptyString(edge.id) ? edge.id : "<missing>";
+    if (!nonEmptyString(edge.id)) issues.push("edge id must be a non-empty string");
+    if (!nonEmptyString(edge.sourceId)) issues.push(`edge ${id} sourceId must be a non-empty string`);
+    if (!nonEmptyString(edge.targetId)) issues.push(`edge ${id} targetId must be a non-empty string`);
+    if (!enumValue(edge.kind, ATLAS_EDGE_KINDS)) issues.push(`edge ${id} edge kind is invalid`);
+    if (!nonEmptyString(edge.label)) issues.push(`edge ${id} edge label must be a non-empty string`);
+    if (!nodeIds.has(edge.sourceId)) issues.push(`edge ${id} has missing source ${String(edge.sourceId)}`);
+    if (!nodeIds.has(edge.targetId)) issues.push(`edge ${id} has missing target ${String(edge.targetId)}`);
+    if (!nonEmptyString(edge.evidencePath)) issues.push(`edge ${id} evidencePath must be a non-empty string`);
+    else {
+      const issue = pathIssue(edge.evidencePath, repoRoot, `edge ${id} evidencePath`);
+      if (issue) issues.push(issue);
+    }
+    if (edge.kind !== "static" && !nonEmptyString(edge.evidenceSymbol)) issues.push(`edge ${id} must name an evidenceSymbol`);
+    if (edge.evidenceSymbol !== undefined && !nonEmptyString(edge.evidenceSymbol)) issues.push(`edge ${id} evidenceSymbol must be a non-empty string`);
   }
   return issues;
 }
@@ -672,6 +818,27 @@ export function validateCuratedReferences(content: unknown, artifact: AtlasArtif
       issues.add(`duplicate curated ${name} id: ${id}`);
     }
   }
+
+  const requiredTeachingSections: Readonly<Record<string, readonly string[]>> = {
+    orientation: ["protocol-layers", "vocabulary-layers"],
+    primitives: ["protocol-primitives", "agent-role-distinction"],
+    "trust-scope": ["effective-scope-intersection", "privacy-and-consent"],
+    runtime: ["runtime-drilldown", "host-boundary-stop"],
+  };
+  for (const [chapterId, requiredIds] of Object.entries(requiredTeachingSections)) {
+    const chapter = chapters.find(({ id }) => id === chapterId);
+    const sections = curatedRecords(chapter?.sections);
+    const sectionIds = idsFor(sections);
+    if (!chapter || !sameStrings(sectionIds, requiredIds)) issues.add(`chapter ${chapterId} must contain every required teaching section`);
+    for (const section of sections) {
+      if (typeof section.id !== "string" || !section.id || typeof section.title !== "string" || !section.title || typeof section.summary !== "string" || !section.summary || !stringArrayValue(section.items) || section.items.length === 0) {
+        issues.add(`chapter ${chapterId} has malformed required teaching section ${String(section.id)}`);
+      }
+    }
+  }
+  const requiredDiscrepancies = ["gap-bounded-negotiation", "gap-lifecycle-vocabulary", "gap-community-network", "gap-background-discovery", "gap-candidate-presentation"];
+  const discrepancyIds = relationships.filter(({ kind }) => kind === "discrepancy").map(({ id }) => id).filter((id): id is string => typeof id === "string");
+  if (!sameStrings(discrepancyIds, requiredDiscrepancies)) issues.add("curated discrepancy notes must exactly match the approved five records");
 
   const referenceKinds: Readonly<Record<string, keyof typeof knownIds>> = {
     nodeId: "node", nodeIds: "node",
@@ -1604,6 +1771,7 @@ export function validateConfigurationExperiments(
   const issues: string[] = [];
   if (!content || typeof content !== "object" || Array.isArray(content)) return ["configuration content must be an object"];
   const experiments = recordArray((content as Record<string, unknown>).configurationExperiments);
+  issues.push(...validateGeneratedConfigurationShape((content as Record<string, unknown>).configurationExperiments));
   const serializedExperiments = JSON.stringify(experiments);
   if (/"(?:generatedAt|timestamp|lineNumber|sourceLine)"/.test(serializedExperiments)) issues.push("configuration experiments must not contain timestamps or line numbers");
   if (serializedExperiments.includes(resolve(repoRoot))) issues.push("configuration experiments must not contain absolute machine paths");

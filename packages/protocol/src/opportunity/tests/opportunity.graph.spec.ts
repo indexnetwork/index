@@ -927,7 +927,9 @@ describe('Opportunity Graph', () => {
   describe('Evaluation node: rejection cooldown', () => {
     test('applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
       const previousCooldown = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
+      const previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
       process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = '1';
+      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
       const evaluatorInputs: EvaluatorInput[] = [];
       const evaluator: OpportunityEvaluatorLike = {
         invokeEntityBundle: async (input) => {
@@ -971,6 +973,8 @@ describe('Opportunity Graph', () => {
       } finally {
         if (previousCooldown === undefined) delete process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
         else process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = previousCooldown;
+        if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
+        else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
       }
     });
   });

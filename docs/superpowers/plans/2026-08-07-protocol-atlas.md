@@ -1830,7 +1830,7 @@ Run:
 ```bash
 bun test scripts/tests/build-protocol-atlas.spec.ts scripts/tests/protocol-atlas-core.spec.ts
 bun run check:protocol-atlas
-bunx eslint packages/protocol/scripts/architecture/capability-model.ts \
+bunx eslint --no-ignore packages/protocol/scripts/architecture/capability-model.ts \
   packages/protocol/scripts/architecture/capability-boundaries.ts \
   packages/protocol/scripts/architecture/tests/capability-model.spec.ts \
   scripts/build-protocol-atlas.ts scripts/tests/build-protocol-atlas.spec.ts \

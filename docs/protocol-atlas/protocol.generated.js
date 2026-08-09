@@ -1404,24 +1404,16 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-corpus.context-cross-match.discovery-allowed-types",
+              "id": "discovery-corpus.context-cross-match.discovery-context-to-intent",
               "effect": "activated",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
               "settingKeys": [
-                "DISCOVERY_ALLOWED_TYPES"
+                "DISCOVERY_CONTEXT_TO_INTENT"
               ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
-                {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryAllowedTypes"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryIntentMatchingEnabled"
-                },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
                   "symbol": "OpportunityGraphFactory"
@@ -1429,7 +1421,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
-                "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
+                "testName": "lightweight mode: context→context runs when legacy context→intent switch is disabled"
               }
             }
           ],
@@ -1469,23 +1461,19 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
           "prerequisites": [],
           "deltas": [
             {
-              "id": "discovery-corpus.context-profile.discovery-allowed-types",
+              "id": "discovery-corpus.context-profile.discovery-profile-source",
               "effect": "changed",
               "targetKind": "node",
               "targetId": "component.opportunity-graph-factory",
               "settingKeys": [
-                "DISCOVERY_ALLOWED_TYPES"
+                "DISCOVERY_PROFILE_SOURCE"
               ],
               "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
               "consumerSymbol": "OpportunityGraphFactory",
               "referenceChain": [
                 {
                   "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryAllowedTypes"
-                },
-                {
-                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
-                  "symbol": "discoveryIntentMatchingEnabled"
+                  "symbol": "discoveryProfileSource"
                 },
                 {
                   "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
@@ -1494,7 +1482,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
-                "testName": "DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches"
+                "testName": "DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped"
               }
             }
           ],

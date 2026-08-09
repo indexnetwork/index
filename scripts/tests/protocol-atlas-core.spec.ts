@@ -68,16 +68,16 @@ const fixtureGenerated = () => ({
   nodes: [
     {
       id: "component.opportunity-graph-factory", label: "OpportunityGraphFactory", symbol: "OpportunityGraphFactory",
-      capability: "opportunities", kind: "graph-factory", summary: "Runs discovery.",
-      sourcePath: "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+      capability: "opportunities", kind: "graph-factory", layer: "implementation", summary: "Runs discovery.",
+      sourcePath: "packages/protocol/src/opportunity/application/opportunity.graph.ts", chapterIds: ["discovery"], flowIds: ["discover-opportunity"],
     },
     {
       id: "component.opportunity-evaluator", label: "Opportunity Evaluator", symbol: "OpportunityEvaluator",
-      capability: "opportunities", kind: "agent", summary: "Evaluates candidate fit.",
-      sourcePath: "packages/protocol/src/opportunity/application/opportunity.evaluator.ts",
+      capability: "opportunities", kind: "agent", layer: "implementation", summary: "Evaluates candidate fit.",
+      sourcePath: "packages/protocol/src/opportunity/application/opportunity.evaluator.ts", chapterIds: ["discovery"], flowIds: ["discover-opportunity"],
     },
   ],
-  edges: [{ id: "runtime.evaluate", sourceId: "component.opportunity-graph-factory", targetId: "component.opportunity-evaluator", kind: "runtime" }],
+  edges: [{ id: "runtime.evaluate", sourceId: "component.opportunity-graph-factory", targetId: "component.opportunity-evaluator", kind: "runtime", label: "evaluates", evidencePath: "packages/protocol/src/opportunity/application/opportunity.graph.ts", evidenceSymbol: "OpportunityGraphFactory" }],
   configurationExperiments: [
     {
       id: "negotiation-screen", title: "Negotiation screen", summary: "Controls first-turn screening.", capability: "negotiation",
@@ -129,7 +129,22 @@ type RendererHarness = {
   cleanup(): void;
 };
 
-async function rendererHarness(options: { hash?: string; generated?: ReturnType<typeof fixtureGenerated> | ReturnType<typeof fixtureGeneratedV1> | null } = {}): Promise<RendererHarness> {
+async function loadProductionAtlas() {
+  const globals = globalThis as typeof globalThis & { ProtocolAtlasContent?: unknown; ProtocolAtlasGenerated?: unknown };
+  delete globals.ProtocolAtlasContent;
+  delete globals.ProtocolAtlasGenerated;
+  await import(`../../docs/protocol-atlas/atlas-content.js?production-test=${crypto.randomUUID()}`);
+  await import(`../../docs/protocol-atlas/protocol.generated.js?production-test=${crypto.randomUUID()}`);
+  const result = {
+    content: structuredClone(globals.ProtocolAtlasContent),
+    generated: structuredClone(globals.ProtocolAtlasGenerated),
+  };
+  delete globals.ProtocolAtlasContent;
+  delete globals.ProtocolAtlasGenerated;
+  return result;
+}
+
+async function rendererHarness(options: { hash?: string; content?: unknown; generated?: unknown | null } = {}): Promise<RendererHarness> {
   const window = new GlobalWindow({ url: `file:///protocol-atlas/index.html${options.hash ?? ""}` });
   window.document.body.innerHTML = `
     <header><div id="atlas-layer-toggle"></div><button id="atlas-search" type="button">Search</button></header>
@@ -151,7 +166,7 @@ async function rendererHarness(options: { hash?: string; generated?: ReturnType<
   install("getSelection", window.getSelection.bind(window));
   install("addEventListener", window.addEventListener.bind(window));
   install("removeEventListener", window.removeEventListener.bind(window));
-  install("ProtocolAtlasContent", fixtureContent());
+  install("ProtocolAtlasContent", options.content ?? fixtureContent());
   install("ProtocolAtlasGenerated", options.generated === null ? undefined : (options.generated ?? fixtureGenerated()));
 
   await import(`../../docs/protocol-atlas/atlas.js?test=${crypto.randomUUID()}`);
@@ -415,6 +430,18 @@ describe("ProtocolAtlasCore data validation", () => {
     expect(result.errors.join("\n")).toContain("component.missing");
   });
 
+  test("rejects invalid generated node and edge enum values at runtime", () => {
+    const generated = fixtureGenerated();
+    (generated.nodes[0] as unknown as Record<string, unknown>).kind = "database";
+    (generated.nodes[0] as unknown as Record<string, unknown>).layer = "host";
+    (generated.edges[0] as unknown as Record<string, unknown>).kind = "telemetry";
+    const result = core().validateData(fixtureContent(), generated);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain("node kind");
+    expect(result.errors.join("\n")).toContain("node layer");
+    expect(result.errors.join("\n")).toContain("edge kind");
+  });
+
   test("returns validation errors instead of throwing on missing runtime data", () => {
     expect(() => core().validateData(null, undefined)).not.toThrow();
     expect(core().validateData(null, undefined).ok).toBe(false);
@@ -551,6 +578,71 @@ describe("Protocol Atlas guided renderer", () => {
       expect(activeStep(harness.document)).toBe("Retrieve candidates");
     } finally {
       harness.cleanup();
+    }
+  });
+});
+
+describe("Protocol Atlas chapter teaching and relationship fallback", () => {
+  test("renders the approved chapter briefings and all discrepancy notes", async () => {
+    const production = await loadProductionAtlas();
+    const harness = await rendererHarness({ content: production.content, generated: production.generated });
+    try {
+      expect(Array.from(harness.document.querySelectorAll("#atlas-nav button"), (button) => button.textContent)).toEqual([
+        "Orientation", "Primitives", "Trust + Scope", "Discovery", "Consent", "Runtime", "Explore",
+      ]);
+      const orientation = harness.document.querySelector("#atlas-diagram")?.textContent || "";
+      expect(orientation).toContain("Normative protocol vocabulary");
+      expect(orientation).toContain("Current product vocabulary");
+      expect(orientation).toContain("Historical/internal implementation vocabulary");
+      for (const title of [
+        "Bounded negotiation versus external-agent exception", "Product and internal lifecycle vocabularies",
+        "Community versus Network/index", "Background discovery versus stale synchronous examples",
+        "Private Candidate versus surfaced Opportunity",
+      ]) expect(orientation).toContain(title);
+      buttonWithText(harness.document, "#atlas-nav button", "Primitives")?.click();
+      expect(harness.document.querySelector(".atlas-chapter-teaching")?.textContent).toContain("Provider/helper role");
+      buttonWithText(harness.document, "#atlas-nav button", "Trust + Scope")?.click();
+      const trust = harness.document.querySelector(".atlas-chapter-teaching")?.textContent || "";
+      expect(trust).toContain("applicable Community policy");
+      expect(trust).toContain("incognito");
+      buttonWithText(harness.document, "#atlas-nav button", "Runtime")?.click();
+      const runtime = harness.document.querySelector(".atlas-chapter-teaching")?.textContent || "";
+      expect(runtime).toMatch(/entry surface[\s\S]*runtime shell[\s\S]*capability facade[\s\S]*tool or graph factory[\s\S]*injected port[\s\S]*required host capability/i);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("keeps protocol and implementation relationships available as semantic text", async () => {
+    const production = await loadProductionAtlas();
+    const protocolHarness = await rendererHarness({
+      content: production.content,
+      generated: production.generated,
+      hash: "#chapter=discovery&step=retrieve-candidates",
+    });
+    try {
+      const rows = protocolHarness.document.querySelectorAll(".atlas-diagram-relations li");
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows[0]?.textContent).toMatch(/Effective Scope[\s\S]*(bounds retrieval of|conceptual)[\s\S]*Candidate/);
+    } finally {
+      protocolHarness.cleanup();
+    }
+
+    const generated = fixtureGenerated();
+    const enforce = generated.configurationExperiments[0].modes.find(({ id }) => id === "enforce")!;
+    enforce.deltas = [{ ...enforce.deltas[0], id: "screen-edge", effect: "changed", targetKind: "edge", targetId: "runtime.evaluate" }];
+    const implementationHarness = await rendererHarness({
+      generated,
+      hash: "#chapter=explore&layer=implementation&experiment=negotiation-screen&mode=enforce",
+    });
+    try {
+      const relationship = implementationHarness.document.querySelector(".atlas-diagram-relations li");
+      expect(relationship?.textContent).toContain("OpportunityGraphFactory");
+      expect(relationship?.textContent).toContain("runtime");
+      expect(relationship?.textContent).toContain("Opportunity Evaluator");
+      expect(relationship?.textContent).toContain("~ changed");
+    } finally {
+      implementationHarness.cleanup();
     }
   });
 });
@@ -740,7 +832,8 @@ describe("Protocol Atlas history, search, filters, and recovery", () => {
     const generated = fixtureGenerated();
     generated.nodes.push({
       id: "component.signal-tool", label: "Signal Tool", symbol: "SignalTool", capability: "signals",
-      kind: "tool-family", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+      kind: "tool-family", layer: "implementation", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+      chapterIds: ["explore"], flowIds: [],
     });
     const harness = await rendererHarness({ generated });
     try {
@@ -763,7 +856,8 @@ describe("Protocol Atlas history, search, filters, and recovery", () => {
     const generated = fixtureGenerated();
     generated.nodes.push({
       id: "component.signal-tool", label: "Signal Tool", symbol: "SignalTool", capability: "signals",
-      kind: "tool-family", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+      kind: "tool-family", layer: "implementation", summary: "Handles signals.", sourcePath: "packages/protocol/src/signals/tool.ts",
+      chapterIds: ["explore"], flowIds: [],
     });
     const harness = await rendererHarness({ generated });
     try {

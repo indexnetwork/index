@@ -28,9 +28,9 @@
   --edge-runtime: var(--green);
   --edge-injected: var(--amber);
   --edge-conceptual: var(--violet);
-  --edge-static-pattern: none;
-  --edge-runtime-pattern: 10 5;
-  --edge-injected-pattern: 3 4;
+  --edge-static-pattern: 10 5;
+  --edge-runtime-pattern: none;
+  --edge-injected-pattern: 2 5;
   --edge-conceptual-pattern: 1 5;
 
   --space-1: 0.25rem;
@@ -454,6 +454,11 @@ button.atlas-node {
 
 .atlas-edge--runtime .atlas-edge__line,
 .atlas-edge[data-edge-kind="runtime"] .atlas-edge__line {
+  border-top-style: solid;
+}
+
+.atlas-edge--static .atlas-edge__line,
+.atlas-edge[data-edge-kind="static"] .atlas-edge__line {
   border-top-style: dashed;
 }
 
@@ -702,10 +707,43 @@ button.atlas-chip {
   text-transform: uppercase;
 }
 
-.atlas-overview-grid {
+.atlas-overview-grid,
+.atlas-teaching-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
+}
+
+.atlas-chapter-teaching,
+.atlas-curated-notes {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.atlas-teaching-card p,
+.atlas-note-callout p {
+  color: var(--ink-muted);
+}
+
+.atlas-teaching-items,
+.atlas-note-list,
+.atlas-diagram-relations {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.atlas-note-list {
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-note-callout {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 0.25rem solid var(--amber);
+  background: var(--surface-panel);
 }
 
 .atlas-stepper button {
@@ -752,6 +790,44 @@ button.atlas-chip {
   display: block;
   height: 10rem;
 }
+
+.atlas-relationship-fallback {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.atlas-diagram-relations {
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-relationship {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 2.75rem;
+  padding: var(--space-2);
+  border-left: 0.2rem solid var(--edge-color, var(--edge-conceptual));
+  background: var(--surface-panel);
+}
+
+.atlas-relationship--runtime { --edge-color: var(--edge-runtime); }
+.atlas-relationship--static { --edge-color: var(--edge-static); }
+.atlas-relationship--injected { --edge-color: var(--edge-injected); }
+.atlas-relationship--conceptual { --edge-color: var(--edge-conceptual); }
+
+.atlas-relationship__kind {
+  color: var(--edge-color);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.atlas-relationship__kind::before { content: "→ "; }
 
 .atlas-diagram-nodes {
   position: absolute;
@@ -1138,7 +1214,8 @@ noscript {
   .atlas-stepper,
   .atlas-diagram-grid,
   .atlas-flow,
-  .atlas-overview-grid {
+  .atlas-overview-grid,
+  .atlas-teaching-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1170,6 +1247,15 @@ noscript {
 
   .atlas-diagram-nodes .atlas-node {
     max-height: none;
+  }
+
+  .atlas-relationship {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .atlas-relationship__kind {
+    text-align: left;
   }
 
   .configuration-assignments {

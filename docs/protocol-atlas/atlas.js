@@ -102,7 +102,15 @@
     visit(atlasContent);
     return {
       schemaVersion: 1,
-      nodes: [...ids].map((id) => ({ id })),
+      nodes: [...ids].map((id) => ({
+        id,
+        label: id,
+        kind: "public-symbol",
+        layer: "implementation",
+        capability: "curated-validation",
+        sourcePath: "packages/protocol/README.md",
+        summary: "Synthetic node used only to validate curated references before generated evidence loads.",
+      })),
       edges: [],
     };
   }
@@ -506,6 +514,7 @@
     heading.id = "atlas-title";
     target.append(heading);
     appendText(target, "p", "atlas-lede", chapter.summary);
+    renderChapterTeaching(target, chapter);
 
     const flow = currentFlow(atlasState, atlasContent);
     if (!flow) {
@@ -536,6 +545,48 @@
     target.append(actions);
   }
 
+  function renderChapterTeaching(target, chapter) {
+    const sections = records(chapter.sections);
+    if (sections.length === 0) return;
+    const teaching = element("section", "atlas-chapter-teaching");
+    teaching.setAttribute("aria-label", `${chapter.title} chapter briefing`);
+    appendText(teaching, "h2", null, "Chapter briefing");
+    const grid = element("div", "atlas-teaching-grid");
+    for (const section of sections) {
+      const card = element("article", "atlas-card atlas-teaching-card");
+      appendText(card, "h3", null, section.title);
+      appendText(card, "p", null, section.summary);
+      const items = element("ul", "atlas-teaching-items");
+      for (const item of records(section.items)) items.append(element("li", null, item));
+      card.append(items);
+      grid.append(card);
+    }
+    teaching.append(grid);
+    target.append(teaching);
+  }
+
+  function renderCuratedNotes(target, atlasContent) {
+    const groups = [
+      { kind: "discrepancy", title: "Source discrepancies", className: "atlas-discrepancies" },
+      { kind: "reference-concept", title: "Reference-implementation concepts", className: "atlas-reference-notes" },
+    ];
+    for (const group of groups) {
+      const notes = records(atlasContent.relationships).filter((record) => record.kind === group.kind);
+      if (notes.length === 0) continue;
+      const section = element("section", `atlas-curated-notes ${group.className}`);
+      appendText(section, "h2", null, group.title);
+      const list = element("ul", "atlas-note-list");
+      for (const note of notes) {
+        const item = element("li", "atlas-note-callout");
+        appendText(item, "h3", null, note.title);
+        appendText(item, "p", null, note.summary);
+        list.append(item);
+      }
+      section.append(list);
+      target.append(section);
+    }
+  }
+
   function renderChapterOverview(target, chapter, atlasState, atlasContent, atlasGenerated) {
     if (chapter.id === "orientation") {
       const grid = element("div", "atlas-overview-grid");
@@ -547,6 +598,7 @@
       appendText(implementationCard, "p", null, "Generated evidence points only into packages/protocol and marks host obligations as explicit boundaries.");
       grid.append(protocolCard, implementationCard);
       target.append(grid);
+      renderCuratedNotes(target, atlasContent);
       return;
     }
 
@@ -768,7 +820,8 @@
     const deltaByTarget = new Map(records(comparison && comparison.deltas).map((delta) => [delta.targetId, delta]));
     const positions = new Map(nodes.map((node, index) => [node.id, { x: 100 + index * 200, y: 80 }]));
     const visibleIds = new Set(positions.keys());
-    for (const edge of diagramEdges(step, atlasState, atlasContent, atlasGenerated, visibleIds)) {
+    const visibleEdges = diagramEdges(step, atlasState, atlasContent, atlasGenerated, visibleIds);
+    for (const edge of visibleEdges) {
       const source = positions.get(edge.sourceId);
       const target = positions.get(edge.targetId);
       if (!source || !target) continue;
@@ -791,6 +844,25 @@
       group.append(edgeTitle, line, edgeLabel);
       svg.append(group);
     }
+
+    const relationshipSection = element("section", "atlas-relationship-fallback");
+    appendText(relationshipSection, "h3", null, "Relationships");
+    const relationshipList = element("ul", "atlas-diagram-relations");
+    relationshipList.setAttribute("aria-label", `${step.title} relationships`);
+    for (const edge of visibleEdges) {
+      const source = byId(nodes, edge.sourceId);
+      const target = byId(nodes, edge.targetId);
+      if (!source || !target) continue;
+      const edgeDelta = deltaByTarget.get(edge.id);
+      const item = element("li", `atlas-relationship atlas-relationship--${edge.kind || "conceptual"}${edgeDelta ? ` configuration-delta--${edgeDelta.effect}` : ""}`);
+      item.setAttribute("data-edge-kind", edge.kind || "conceptual");
+      appendText(item, "strong", "atlas-relationship__source", source.label || source.title || source.id);
+      appendText(item, "span", "atlas-relationship__kind", `${edge.kind || "conceptual"}: ${edge.label || edge.kind || "relationship"}`);
+      appendText(item, "strong", "atlas-relationship__target", target.label || target.title || target.id);
+      if (edgeDelta) appendText(item, "span", "configuration-delta__label", configurationEffectLabel(edgeDelta.effect));
+      relationshipList.append(item);
+    }
+    relationshipSection.append(relationshipList);
 
     const overlay = element("ol", "atlas-diagram-nodes");
     if (nodes.length === 0) {
@@ -834,7 +906,7 @@
       item.append(button);
       overlay.append(item);
     }
-    wrapper.append(svg, overlay);
+    wrapper.append(svg, overlay, relationshipSection);
     return wrapper;
   }
 
