@@ -394,7 +394,7 @@ describe('Route rendering smoke tests', () => {
       route: '/download',
     });
     expect(container).toBeTruthy();
-    expect(container.textContent).toContain('Index for macOS');
+    expect(container.textContent).toContain('Get the apps');
   });
 
   test('/u/:id — User profile page renders without crashing', async () => {

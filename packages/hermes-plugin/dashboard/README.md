@@ -31,14 +31,7 @@ The selected intent is mirrored into the URL hash (`#intent=<id>`) so browser Ba
 
 The backend route reuses `../tools.py` rather than creating a second Index client. That keeps `INDEX_API_KEY`, `INDEX_MCP_URL`, timeout handling, Telegram forwarding, MCP response decoding, and network-scoped agent visibility in one place.
 
-The dashboard's persisted writes are: submitting an answer to an existing pending question, accepting/skipping an opportunity (MCP `update_opportunity` → `accepted`/`rejected`), self-joining an open community from the Networks **Discover** tab (MCP `create_network_membership`), accepting a private-network invite (`POST /invite/:code/accept` → Index `POST /networks/invitation/:code/accept`), archiving an intent (`PATCH /intents/:id/archive`), submitting an early-access "create a network" request (`POST /network-requests`, plus `PATCH`/`DELETE` to update or withdraw it), profile edits (`PATCH /auth/profile/update` + avatar upload to `POST /storage/avatars`), and sending direct messages (`POST /conversations/:id/messages`) — all scoped to the authenticated user/API-key principal.
-
-Network joins use the same flow as the Index macOS app:
-
-- Private invite: `hermes://l/<code>` (Desktop, `kind === "l"`) or `#invite=<code>` → `GET /invite/:code` → `POST /invite/:code/accept`
-- Public network: `hermes://index/<id>` (Desktop, `kind === "index"`) or `#join=<id>` → `GET /networks/public/:id` → `POST /networks/:id/join`
-
-Both stash through login / Getting started, then show preview + explicit **Join network**.
+The dashboard's persisted writes are: submitting an answer to an existing pending question, accepting/skipping an opportunity (MCP `update_opportunity` → `accepted`/`rejected`), self-joining an open community from the Networks **Discover** tab (MCP `create_network_membership`), archiving an intent (`PATCH /intents/:id/archive`), submitting an early-access "create a network" request (`POST /network-requests`, plus `PATCH`/`DELETE` to update or withdraw it), profile edits (`PATCH /auth/profile/update` + avatar upload to `POST /storage/avatars`), and sending direct messages (`POST /conversations/:id/messages`) — all scoped to the authenticated user/API-key principal.
 
 The Profile panel reads what the plugin's `INDEX_API_KEY` can reach (`GET /profile` → identity name/bio/location/context via MCP `read_user_contexts` self-read, avatar/socials via public `GET /users/:id`, and email/timezone/notification preferences via `GET /auth/me`). Since #1077 unified `AuthGuard` to accept `x-api-key`, profile saves (`PATCH /profile` → `PATCH /auth/profile/update`) and avatar uploads (`POST /profile/avatar` → multipart `POST /storage/avatars`) persist for real; only `email` stays read-only (it is not in the profile update schema). The `POST /profile/intro` backend route still exists but the UI no longer exposes intro generation. The read-only counterpart view (`GET /profile/:id`) is backed by the public `GET /users/:id` plus `read_user_contexts(userId)` and is constrained to the current user's visible opportunity counterparts; the counterpart's `userId` is derived from the opportunity's non-introducer actors.
 

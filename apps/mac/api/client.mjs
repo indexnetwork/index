@@ -219,14 +219,6 @@ export function createIndexApiClient(options = {}) {
         `/networks/search-users${toQueryString({ q: query, networkId })}`,
         options,
       ),
-      // Public preview of an invite-link target: name, owner and member count,
-      // no membership required (used by the invite deep-link join screen).
-      shareByCode: (code, options = {}) => request(`/networks/share/${encodeURIComponent(code)}`, { ...options, auth: false }),
-      // Public preview of an open network by id (joinPolicy anyone only).
-      publicById: (networkId, options = {}) => request(`/networks/public/${encodeURIComponent(networkId)}`, { ...options, auth: false }),
-      // Accept a private-network invitation by its link code. Resolves
-      // { index, membership, alreadyMember }.
-      acceptInvitation: (code, options = {}) => request(`/networks/invitation/${encodeURIComponent(code)}/accept`, { ...options, method: 'POST', body: {} }),
       join: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/join`, { ...options, method: 'POST', body: {} }),
       leave: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/leave`, { ...options, method: 'POST', body: {} }),
     },

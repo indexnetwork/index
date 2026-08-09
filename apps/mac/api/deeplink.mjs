@@ -19,30 +19,26 @@ const ROUTE_BY_SEGMENT = {
   o: 'card',
   u: 'profile',
   c: 'legacy-connect',
-  l: 'invite',
-  index: 'network-join',
 };
 
 /** Routes whose second segment is an opaque code rather than an entity id. */
-const CODE_ROUTES = new Set(['legacy-connect', 'invite']);
+const CODE_ROUTES = new Set(['legacy-connect']);
 
 /**
  * @typedef {{ route: 'card', id: string }
  *   | { route: 'profile', id: string }
- *   | { route: 'legacy-connect', code: string }
- *   | { route: 'invite', code: string }
- *   | { route: 'network-join', id: string }} DeepLinkRoute
+ *   | { route: 'legacy-connect', code: string }} DeepLinkRoute
  */
 
 /**
  * Resolve a deep link into a route, or null when it is not one of ours.
  *
  * Accepts two URL families:
- *   · `https://<allowed host>/o|u|c|l|index/<id>` — universal links. Only https,
+ *   · `https://<allowed host>/o|u|c/<id>` — universal links. Only https,
  *     since that is the only scheme macOS ever hands over as a universal link;
  *     extra hosts (staging, a review app) go through `options.hosts` so adding
  *     one never touches the routing table.
- *   · `index://o|u|c|l|index/<id>` — the internal scheme alias, no host to check.
+ *   · `index://o|u|c/<id>` — the internal scheme alias, no host to check.
  *
  * Query strings, fragments and trailing slashes are ignored. Anything else —
  * a foreign host, an unknown path, a missing id, malformed input — is null.

@@ -57,7 +57,6 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('networks.updateMemberPermissions', (client) => client.networks.updateMemberPermissions('net/1', 'u1', ['owner']), { path: '/networks/net%2F1/members/u1', method: 'PATCH', body: { permissions: ['owner'] } });
     await expectCall('networks.inviteMember', (client) => client.networks.inviteMember('net/1', { email: 'a@b.co' }), { path: '/networks/net%2F1/members/invite', method: 'POST', body: { email: 'a@b.co' } });
     await expectCall('networks.searchUsers', (client) => client.networks.searchUsers('ada', 'net/1'), { path: '/networks/search-users?q=ada&networkId=net%2F1' });
-    await expectCall('networks.acceptInvitation', (client) => client.networks.acceptInvitation('code/1'), { path: '/networks/invitation/code%2F1/accept', method: 'POST', body: {} });
     await expectCall('intents.list', (client) => client.intents.list({ page: 1 }), { path: '/intents/list', method: 'POST', body: { page: 1 } });
     await expectCall('intents.get', (client) => client.intents.get('intent/1'), { path: '/intents/intent%2F1' });
     await expectCall('intents.archive', (client) => client.intents.archive('intent/1'), { path: '/intents/intent%2F1/archive', method: 'PATCH' });
@@ -68,42 +67,6 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('intents.intake.prepare', (client) => client.intents.intake.prepare({ rounds: [] }), { path: '/intents/intake/prepare', method: 'POST', body: { rounds: [] } });
     await expectCall('intents.intake.proposal', (client) => client.intents.intake.proposal({ runId: 'r1', rounds: [] }), { path: '/intents/intake/proposal', method: 'POST', body: { runId: 'r1', rounds: [] } });
     await expectCall('intents.intake.revise', (client) => client.intents.intake.revise({ runId: 'r1', rounds: [], feedback: 'f' }), { path: '/intents/intake/revise', method: 'POST', body: { runId: 'r1', rounds: [], feedback: 'f' } });
-  });
-
-  it('previews an invite link without sending credentials', async () => {
-    const { calls, fetchImpl } = createRecordingFetch();
-    const client = createIndexApiClient({
-      apiBaseUrl: 'https://protocol.example/api/',
-      getToken: () => 'token-1',
-      getApiKey: () => 'key-1',
-      fetchImpl,
-    });
-
-    await client.networks.shareByCode('code/1');
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe('https://protocol.example/api/networks/share/code%2F1');
-    expect(calls[0].init.method).toBe('GET');
-    expect(calls[0].init.headers.Authorization).toBeUndefined();
-    expect(calls[0].init.headers['x-api-key']).toBeUndefined();
-  });
-
-  it('previews a public network by id without sending credentials', async () => {
-    const { calls, fetchImpl } = createRecordingFetch();
-    const client = createIndexApiClient({
-      apiBaseUrl: 'https://protocol.example/api/',
-      getToken: () => 'token-1',
-      getApiKey: () => 'key-1',
-      fetchImpl,
-    });
-
-    await client.networks.publicById('net/1');
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe('https://protocol.example/api/networks/public/net%2F1');
-    expect(calls[0].init.method).toBe('GET');
-    expect(calls[0].init.headers.Authorization).toBeUndefined();
-    expect(calls[0].init.headers['x-api-key']).toBeUndefined();
   });
 
   it('uses controller-backed opportunity endpoints', async () => {

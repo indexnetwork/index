@@ -14,7 +14,7 @@ enum AppConfig {
 
     static var deepLinkHosts: [String] {
         // Associated-domains host from the bundle (set by link-host.sh at build),
-        // plus the configured APP_URL host so https invite links from the web
+        // plus the configured APP_URL host so https links from the web
         // origin the app is pointed at (e.g. dev.index.network) also route.
         var hosts: [String] = []
         let bundleHost = Bundle.main.object(forInfoDictionaryKey: "IndexDeepLinkHost") as? String

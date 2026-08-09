@@ -20,9 +20,9 @@ const MARKETING: Record<string, PageMeta> = {
     type: "article",
   },
   "/download": {
-    title: "Download Index for macOS",
+    title: "Install Index & Hermes | Index Network",
     description:
-      "Get the Index macOS app. Opportunity links open directly in the app, where you can review and accept them.",
+      "Install the Index macOS app and Hermes Desktop plugin to stay connected to your networks.",
     image: DEFAULT_IMAGE,
     type: "website",
   },

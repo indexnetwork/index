@@ -258,16 +258,9 @@ def main() -> None:
     # Background pollers must be gated on the signed-in state so pre-login 401s
     # cannot race the login transition (else the user must reload the page).
     assert 'auth !== "authed"' in dashboard_js
-    # Private invite + public join (hermes://l|index / #invite=|#join=), Mac parity.
-    assert "InviteJoinModal" in dashboard_js
-    assert "networkId: pendingPublicJoin" in dashboard_js
-    assert "/invite/" in dashboard_js
-    assert "/networks/public/" in dashboard_js
-    assert "index-network-invite" in dashboard_js
-    assert "index-network-public-join" in dashboard_js
-    assert "You're invited to join" in dashboard_js
-    assert "Join this network" not in dashboard_js
-    assert "Join network" in dashboard_js
+    assert "InviteJoinModal" not in dashboard_js
+    assert "index-network-invite" not in dashboard_js
+    assert "index-network-public-join" not in dashboard_js
     # Owner network detail: overview / settings / access (web parity, no integrations).
     assert "NetworkDetailModal" in dashboard_js
     assert "networkShareUrl" in dashboard_js
@@ -301,15 +294,10 @@ def main() -> None:
     assert "Log in with browser" in desktop_js
     assert "/auth/login/start" in desktop_js
     assert "index-dashboard__login" in desktop_js
-    # Desktop claims hermes://l/<code> and hermes://index/<id> via onDeepLink.
-    assert "InviteJoinModal" in desktop_js
-    assert "networkId: pendingPublicJoin" in desktop_js
+    assert "InviteJoinModal" not in desktop_js
+    assert "handleIndexDeepLink" not in desktop_js
+    assert "onDeepLink" not in desktop_js
     assert "NetworkDetailModal" in desktop_js
-    assert "Invitation Link" in desktop_js
-    assert "stashDesktopPublicJoin" in desktop_js
-    assert "handleIndexDeepLink" in desktop_js
-    assert "signalDeepLinkReady" in desktop_js
-    assert "onDeepLink" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js
@@ -1140,85 +1128,6 @@ def main() -> None:
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/networks/network-2/join"
         assert dashboard_api.join_network("") == {"success": False, "error": "A network id is required."}
-
-        # Private-network invite preview + accept (hermes://l/<code>).
-        captured = []
-        install_fake_urlopen(
-            [
-                FakeResponse(
-                    {
-                        "network": {
-                            "id": "network-9",
-                            "title": "Edge Lab",
-                            "_count": {"members": 12},
-                        }
-                    }
-                )
-            ],
-            captured,
-        )
-        assert dashboard_api.preview_invite("share-abc") == {
-            "success": True,
-            "network": {"id": "network-9", "title": "Edge Lab", "memberCount": 12},
-        }
-        assert captured[-1]["method"] == "GET"
-        assert captured[-1]["url"] == "https://api.example.test/api/networks/share/share-abc"
-        assert dashboard_api.preview_invite("") == {
-            "success": False,
-            "error": "An invite code is required.",
-        }
-
-        captured = []
-        install_fake_urlopen(
-            [
-                FakeResponse(
-                    {
-                        "index": {"id": "network-9", "title": "Edge Lab"},
-                        "membership": {"id": "mem-1"},
-                        "alreadyMember": False,
-                    }
-                )
-            ],
-            captured,
-        )
-        accepted = dashboard_api.accept_invite("share-abc")
-        assert accepted["success"] is True
-        assert accepted["index"]["title"] == "Edge Lab"
-        assert captured[-1]["method"] == "POST"
-        assert captured[-1]["url"] == (
-            "https://api.example.test/api/networks/invitation/share-abc/accept"
-        )
-        assert dashboard_api.accept_invite("") == {
-            "success": False,
-            "error": "An invite code is required.",
-        }
-
-        # Public-network join preview (hermes://index/<id>).
-        captured = []
-        install_fake_urlopen(
-            [
-                FakeResponse(
-                    {
-                        "network": {
-                            "id": "network-3",
-                            "title": "Open Lab",
-                            "_count": {"members": 4},
-                        }
-                    }
-                )
-            ],
-            captured,
-        )
-        assert dashboard_api.preview_public_network("network-3") == {
-            "success": True,
-            "network": {"id": "network-3", "title": "Open Lab", "memberCount": 4},
-        }
-        assert captured[-1]["method"] == "GET"
-        assert captured[-1]["url"] == "https://api.example.test/api/networks/public/network-3"
-        assert dashboard_api.preview_public_network("") == {
-            "success": False,
-            "error": "A network id is required.",
-        }
 
         captured = []
         install_fake_urlopen(

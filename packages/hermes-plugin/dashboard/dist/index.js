@@ -350,62 +350,10 @@
     );
   }
 
-  // Join deep links arrive via hermes://l/<code>, hermes://index/<id>, or
-  // #invite= / #join= (web dashboard). Persist across login/onboarding.
-  const INVITE_STORAGE_KEY = "index-invite";
-  const PUBLIC_JOIN_STORAGE_KEY = "index-public-join";
-  const INVITE_EVENT = "index-network-invite";
-  const PUBLIC_JOIN_EVENT = "index-network-public-join";
-
-  function normalizeJoinId(value) {
-    const c = String(value || "").trim();
-    return c || null;
-  }
-
-  function readStoredInvite() {
-    try {
-      return normalizeJoinId(window.sessionStorage.getItem(INVITE_STORAGE_KEY));
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function storeInvite(code) {
-    const c = normalizeJoinId(code);
-    if (!c) return null;
-    try { window.sessionStorage.setItem(INVITE_STORAGE_KEY, c); } catch (e) { /* private mode */ }
-    clearStoredPublicJoin();
-    return c;
-  }
-
-  function clearStoredInvite() {
-    try { window.sessionStorage.removeItem(INVITE_STORAGE_KEY); } catch (e) { /* noop */ }
-  }
-
-  function readStoredPublicJoin() {
-    try {
-      return normalizeJoinId(window.sessionStorage.getItem(PUBLIC_JOIN_STORAGE_KEY));
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function storePublicJoin(networkId) {
-    const id = normalizeJoinId(networkId);
-    if (!id) return null;
-    try { window.sessionStorage.setItem(PUBLIC_JOIN_STORAGE_KEY, id); } catch (e) { /* private mode */ }
-    clearStoredInvite();
-    return id;
-  }
-
-  function clearStoredPublicJoin() {
-    try { window.sessionStorage.removeItem(PUBLIC_JOIN_STORAGE_KEY); } catch (e) { /* noop */ }
-  }
-
   function parseHash() {
     // The desktop app owns window.location.hash (its router routes on it) —
     // keep intent selection purely in component state there.
-    if (DESKTOP_ENV) return { intentId: null, inviteCode: null, joinId: null };
+    if (DESKTOP_ENV) return { intentId: null };
     const raw = (window.location.hash || "").replace(/^#/, "");
     const params = {};
     raw.split("&").forEach(function (pair) {
@@ -416,80 +364,15 @@
     });
     return {
       intentId: params.intent || null,
-      inviteCode: normalizeJoinId(params.invite),
-      joinId: normalizeJoinId(params.join),
     };
   }
 
   function writeHash(intentId) {
     if (DESKTOP_ENV) return;
-    // Preserve a pending #invite= / #join= while rewriting the intent selection.
-    const hash = parseHash();
-    const parts = [];
-    if (intentId) parts.push("intent=" + encodeURIComponent(intentId));
-    if (hash.inviteCode) parts.push("invite=" + encodeURIComponent(hash.inviteCode));
-    if (hash.joinId) parts.push("join=" + encodeURIComponent(hash.joinId));
-    const target = parts.length ? "#" + parts.join("&") : "";
-    if ((window.location.hash || "") !== target) {
-      window.location.hash = target;
-    }
-  }
-
-  function stripHashJoinParams() {
-    if (DESKTOP_ENV) return;
-    const intentId = parseHash().intentId;
     const target = intentId ? "#intent=" + encodeURIComponent(intentId) : "";
     if ((window.location.hash || "") !== target) {
       window.location.hash = target;
     }
-  }
-
-  function takePendingInvite() {
-    const fromHash = parseHash().inviteCode;
-    if (fromHash) {
-      storeInvite(fromHash);
-      stripHashJoinParams();
-      return fromHash;
-    }
-    if (DESKTOP_ENV) {
-      try {
-        const hash = String(window.location.hash || "");
-        const q = hash.indexOf("?");
-        if (q >= 0) {
-          const invite = normalizeJoinId(new URLSearchParams(hash.slice(q + 1)).get("invite"));
-          if (invite) {
-            storeInvite(invite);
-            return invite;
-          }
-        }
-      } catch (e) { /* noop */ }
-    }
-    return readStoredInvite();
-  }
-
-  function takePendingPublicJoin() {
-    const fromHash = parseHash().joinId;
-    if (fromHash) {
-      storePublicJoin(fromHash);
-      stripHashJoinParams();
-      return fromHash;
-    }
-    // Desktop routes live in the location hash (#/index-network?join=…);
-    // parseHash() ignores them under DESKTOP_ENV, so read the query here.
-    if (DESKTOP_ENV) {
-      try {
-        const hash = String(window.location.hash || "");
-        const q = hash.indexOf("?");
-        if (q >= 0) {
-          const join = normalizeJoinId(new URLSearchParams(hash.slice(q + 1)).get("join"));
-          if (join) {
-            storePublicJoin(join);
-            return join;
-          }
-        }
-      } catch (e) { /* noop */ }
-    }
-    return readStoredPublicJoin();
   }
 
   function EmptyState(props) {
@@ -2019,127 +1902,6 @@
     );
   }
 
-  // Private invite (`code`) or public network (`networkId`) join. Preview is
-  // public; accept/join requires the signed-in API key. Parent holds the value
-  // through login/onboarding and only mounts this once the dashboard is ready.
-  function InviteJoinModal(props) {
-    const useState = React.useState;
-    const useEffect = React.useEffect;
-    const code = props.code || null;
-    const networkId = props.networkId || null;
-    const isInvite = !!code;
-    const previewError = isInvite
-      ? "This invite code has expired — ask for a new one."
-      : "This network was not found or is private.";
-    const joinError = isInvite
-      ? "Couldn't join — the invite may have expired."
-      : "Couldn't join that network.";
-    const stepState = useState("loading");
-    const step = stepState[0]; const setStep = stepState[1];
-    const networkState = useState(null);
-    const network = networkState[0]; const setNetwork = networkState[1];
-    const errState = useState(null);
-    const err = errState[0]; const setErr = errState[1];
-
-    function loadPreview() {
-      let cancelled = false;
-      setStep("loading");
-      setErr(null);
-      const path = isInvite
-        ? API + "/invite/" + encodeURIComponent(code)
-        : API + "/networks/public/" + encodeURIComponent(networkId);
-      fetchPluginJSON(path)
-        .then(function (payload) {
-          if (cancelled) return;
-          if (!payload || payload.success === false || !payload.network || !payload.network.id) {
-            throw new Error((payload && payload.error) || previewError);
-          }
-          setNetwork(payload.network);
-          setStep("preview");
-        })
-        .catch(function (e) {
-          if (cancelled) return;
-          setStep("error");
-          setErr((e && e.message) || previewError);
-        });
-      return function () { cancelled = true; };
-    }
-
-    useEffect(function () { return loadPreview(); }, [code, networkId]);
-
-    function join() {
-      setStep("joining");
-      setErr(null);
-      const path = isInvite
-        ? API + "/invite/" + encodeURIComponent(code) + "/accept"
-        : API + "/networks/" + encodeURIComponent(networkId) + "/join";
-      fetchPluginJSON(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-        .then(function (payload) {
-          if (!payload || payload.success === false) {
-            throw new Error((payload && payload.error) || joinError);
-          }
-          if (props.onJoined) props.onJoined(payload);
-          if (props.onClose) props.onClose();
-        })
-        .catch(function (e) {
-          setStep("error");
-          setErr((e && e.message) || joinError);
-        });
-    }
-
-    const memberCount = network && typeof network.memberCount === "number" ? network.memberCount : null;
-    const body = step === "loading"
-      ? React.createElement("p", { className: "index-dashboard__invite-copy" },
-        isInvite ? "Reading the invite…" : "Reading the network…")
-      : (step === "error"
-        ? [
-          React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" },
-            isInvite ? "Invite unavailable" : "Network unavailable"),
-          React.createElement("p", { key: "c", className: "index-dashboard__invite-copy" }, err),
-          React.createElement("div", { key: "a", className: "index-dashboard__invite-actions" },
-            React.createElement(Button, { type: "button", size: "sm", onClick: loadPreview }, "Retry"),
-            React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-          ),
-        ]
-        : [
-          isInvite
-            ? React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
-              "You're invited to join")
-            : null,
-          React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" }, network.title),
-          memberCount != null
-            ? React.createElement("p", { key: "m", className: "index-dashboard__invite-meta" },
-              memberCount + (memberCount === 1 ? " member" : " members"))
-            : null,
-          React.createElement("div", { key: "a", className: "index-dashboard__invite-actions" },
-            React.createElement(Button, {
-              type: "button",
-              size: "sm",
-              disabled: step === "joining",
-              onClick: join,
-            }, step === "joining" ? "Joining…" : "Join network"),
-            React.createElement(Button, { type: "button", outlined: true, size: "sm", onClick: props.onClose }, "Cancel"),
-          ),
-        ]);
-
-    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
-      React.createElement("div", {
-        className: "index-dashboard__profile-panel index-dashboard__invite-modal",
-        onClick: function (e) { e.stopPropagation(); },
-      },
-        React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Join network"),
-          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
-        ),
-        React.createElement("div", { className: "index-dashboard__invite-body" }, body),
-      ),
-    );
-  }
-
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
   // on the right. Create opens the (reviewed) request form as a modal. Owner
   // rows open a detail modal with Access-tab invite links (web parity).
@@ -3475,13 +3237,6 @@
     const editingRequestState = useState(null);
     const editingRequest = editingRequestState[0];
     const setEditingRequest = editingRequestState[1];
-    // Held through login/onboarding; modal mounts only when ready.
-    const pendingInviteState = useState(function () { return takePendingInvite(); });
-    const pendingInvite = pendingInviteState[0];
-    const setPendingInvite = pendingInviteState[1];
-    const pendingPublicJoinState = useState(function () { return takePendingPublicJoin(); });
-    const pendingPublicJoin = pendingPublicJoinState[0];
-    const setPendingPublicJoin = pendingPublicJoinState[1];
     const selectedState = useState(initial.intentId);
     const selectedId = selectedState[0];
     const setSelectedId = selectedState[1];
@@ -3878,10 +3633,6 @@
 
     function signOut() {
       setProfileOpen(false);
-      clearStoredInvite();
-      clearStoredPublicJoin();
-      setPendingInvite(null);
-      setPendingPublicJoin(null);
       fetchPluginJSON(API + "/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3893,80 +3644,9 @@
       });
     }
 
-    function closeInvite() {
-      clearStoredInvite();
-      setPendingInvite(null);
-    }
-
-    function closePublicJoin() {
-      clearStoredPublicJoin();
-      setPendingPublicJoin(null);
-    }
-
-    function onInviteJoined() {
-      load();
-    }
-
     useEffect(function () {
       checkAuth();
     }, []);
-
-    // Desktop deep links and web #invite= / #join= land here; hold until the
-    // user is signed in and past Getting started (Mac inviteReady parity).
-    useEffect(function () {
-      function onInviteEvent(ev) {
-        const code = storeInvite(ev && ev.detail && ev.detail.code);
-        if (code) {
-          setPendingPublicJoin(null);
-          setPendingInvite(code);
-        }
-      }
-      function onPublicJoinEvent(ev) {
-        const id = storePublicJoin(ev && ev.detail && ev.detail.networkId);
-        if (id) {
-          setPendingInvite(null);
-          setPendingPublicJoin(id);
-        }
-      }
-      window.addEventListener(INVITE_EVENT, onInviteEvent);
-      window.addEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
-      function onHashChange() {
-        const code = takePendingInvite();
-        if (code) {
-          setPendingPublicJoin(null);
-          setPendingInvite(code);
-          return;
-        }
-        const id = takePendingPublicJoin();
-        if (id) {
-          setPendingInvite(null);
-          setPendingPublicJoin(id);
-        }
-      }
-      window.addEventListener("hashchange", onHashChange);
-      return function () {
-        window.removeEventListener(INVITE_EVENT, onInviteEvent);
-        window.removeEventListener(PUBLIC_JOIN_EVENT, onPublicJoinEvent);
-        window.removeEventListener("hashchange", onHashChange);
-      };
-    }, []);
-
-    // Cold-start / late deep-link: a stash may land after the first render.
-    // Re-pull from sessionStorage / hash once the gates are open.
-    useEffect(function () {
-      if (auth !== "authed" || needsOnboarding) return;
-      const code = takePendingInvite();
-      if (code) {
-        setPendingPublicJoin(null);
-        setPendingInvite(code);
-        return;
-      }
-      const id = takePendingPublicJoin();
-      if (id) {
-        setPendingInvite(null);
-        setPendingPublicJoin(id);
-      }
-    }, [auth, needsOnboarding]);
 
     useEffect(function () {
       const header = document.querySelector('header[role="banner"]');
@@ -4196,19 +3876,6 @@
       createOpen
         ? React.createElement(NetworkCreateModal, { initial: editingRequest, onSubmit: submitNetworkRequest, onClose: closeCreate })
         : null,
-      (pendingInvite && auth === "authed" && !needsOnboarding)
-        ? React.createElement(InviteJoinModal, {
-          code: pendingInvite,
-          onJoined: onInviteJoined,
-          onClose: closeInvite,
-        })
-        : ((pendingPublicJoin && auth === "authed" && !needsOnboarding)
-          ? React.createElement(InviteJoinModal, {
-            networkId: pendingPublicJoin,
-            onJoined: onInviteJoined,
-            onClose: closePublicJoin,
-          })
-          : null),
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
