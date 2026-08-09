@@ -937,7 +937,7 @@ function symbolAtLocation(location: SymbolLocation, evidence: EvidenceContext): 
   return name ? canonicalSymbol(evidence.checker.getSymbolAtLocation(name), evidence.checker) : undefined;
 }
 
-function isDeclarationName(node: ts.Identifier): boolean {
+function isDeclarationName(node: ts.Node): boolean {
   const parent = node.parent;
   return Boolean(parent && ts.isDeclaration(parent) && (parent as ts.NamedDeclaration).name === node);
 }
@@ -1018,15 +1018,53 @@ function nodeIsInsideDeclaration(node: ts.Node, declaration: ts.Node): boolean {
   return false;
 }
 
+function isPureExportReference(expression: ts.Expression): boolean {
+  if (ts.isIdentifier(expression) || expression.kind === ts.SyntaxKind.ThisKeyword) return true;
+  if (ts.isPropertyAccessExpression(expression)) return isPureExportReference(expression.expression);
+  if (ts.isElementAccessExpression(expression)) {
+    return isPureExportReference(expression.expression)
+      && Boolean(expression.argumentExpression)
+      && (ts.isStringLiteralLike(expression.argumentExpression) || ts.isNumericLiteral(expression.argumentExpression));
+  }
+  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
+    || ts.isSatisfiesExpression(expression)) return isPureExportReference(expression.expression);
+  return false;
+}
+
 function isImportOrExportReference(node: ts.Node): boolean {
   let current: ts.Node | undefined = node;
   while (current && !ts.isSourceFile(current)) {
     if (ts.isImportDeclaration(current) || ts.isImportClause(current) || ts.isImportSpecifier(current)
       || ts.isNamespaceImport(current) || ts.isImportEqualsDeclaration(current)
-      || ts.isExportDeclaration(current) || ts.isExportSpecifier(current)) return true;
+      || ts.isExportDeclaration(current) || ts.isExportSpecifier(current)
+      || (ts.isExportAssignment(current) && isPureExportReference(current.expression))) return true;
     current = current.parent;
   }
   return false;
+}
+
+function canCarryValueSymbol(node: ts.Node): boolean {
+  return ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node);
+}
+
+function staticPropertyName(node: ts.Node): string | undefined {
+  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) return node.text;
+  if (ts.isComputedPropertyName(node)) return staticPropertyName(node.expression);
+  return undefined;
+}
+
+function bindingPropertySymbol(node: ts.Node, evidence: EvidenceContext): ts.Symbol | undefined {
+  const propertyName = ts.isComputedPropertyName(node.parent) ? node.parent : node;
+  const bindingElement = propertyName.parent;
+  if (!ts.isBindingElement(bindingElement) || bindingElement.propertyName !== propertyName) return undefined;
+  const bindingPattern = bindingElement.parent;
+  if (!ts.isObjectBindingPattern(bindingPattern)) return undefined;
+  const source = ts.isVariableDeclaration(bindingPattern.parent) && bindingPattern.parent.initializer
+    ? bindingPattern.parent.initializer
+    : bindingPattern;
+  const name = staticPropertyName(propertyName);
+  return name ? canonicalSymbol(evidence.checker.getPropertyOfType(evidence.checker.getTypeAtLocation(source), name), evidence.checker) : undefined;
 }
 
 function runtimeValueEscapes(
@@ -1047,11 +1085,16 @@ function runtimeValueEscapes(
   const references: string[] = [];
   for (const [path, module] of evidence.modules) {
     const visit = (node: ts.Node): void => {
-      if (ts.isIdentifier(node) && !isDeclarationName(node) && !isTypePosition(node) && !isImportOrExportReference(node)) {
-        const symbol = canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker);
-        const location = symbol && closureSymbols.get(symbol);
-        if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
-          references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
+      if (canCarryValueSymbol(node) && !isDeclarationName(node) && !isTypePosition(node) && !isImportOrExportReference(node)) {
+        const symbols = new Set([
+          canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker),
+          bindingPropertySymbol(node, evidence),
+        ].filter((symbol): symbol is ts.Symbol => Boolean(symbol)));
+        for (const symbol of symbols) {
+          const location = closureSymbols.get(symbol);
+          if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
+            references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
+          }
         }
       }
       ts.forEachChild(node, visit);
