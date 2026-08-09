@@ -401,8 +401,238 @@
     },
   ]);
 
+  const CONFIGURATION_DISCLAIMER = "This compares documented `packages/protocol` behavior against package fallbacks. It does not show any deployed environment and is not evidence that a capability is unused or removable.";
+
+  const configurationSettings = Object.freeze({
+    DISCOVERY_ALLOWED_TYPES: setting("DISCOVERY_ALLOWED_TYPES", [["packages/protocol/src/opportunity/discovery.env.ts", "discoveryAllowedTypes"]], "discoveryAllowedTypes", ["intent,profile", "intent", "profile"], "intent,profile"),
+    DISCOVERY_PROFILE_SOURCE: setting("DISCOVERY_PROFILE_SOURCE", [["packages/protocol/src/opportunity/discovery.env.ts", "discoveryProfileSource"]], "discoveryProfileSource", ["premise", "user_context"], "premise"),
+    DISCOVERY_CONTEXT_TO_INTENT: setting("DISCOVERY_CONTEXT_TO_INTENT", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["0", "1"], "1"),
+    DISCOVERY_SOURCE_PREMISE_LIMIT: setting("DISCOVERY_SOURCE_PREMISE_LIMIT", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getSourcePremiseDiscoveryLimit"]], "getSourcePremiseDiscoveryLimit", ["0", "40", "100"], "40"),
+    DISCOVERY_REJECTION_COOLDOWN_DAYS: setting("DISCOVERY_REJECTION_COOLDOWN_DAYS", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "getRejectionCooldownMs"]], "getRejectionCooldownMs", ["1", "7", "30"], "7"),
+    RUN_OPPORTUNITY_EVAL_IN_PARALLEL: setting("RUN_OPPORTUNITY_EVAL_IN_PARALLEL", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["false", "true"], "false"),
+    HYDE_FRAME_CONSTRAINTS_ENABLED: setting("HYDE_FRAME_CONSTRAINTS_ENABLED", [["packages/protocol/src/shared/hyde/hyde.env.ts", "getHydeGenerationMode"]], "getHydeGenerationMode", ["false", "true"], "false"),
+    PREMISE_DEDUP_SIMILARITY: setting("PREMISE_DEDUP_SIMILARITY", [["packages/protocol/src/premise/premise.graph.ts", "DEDUP_SIMILARITY_THRESHOLD"]], "DEDUP_SIMILARITY_THRESHOLD", ["0.85", "0.93", "0.98"], "0.93", "module-load"),
+    INTRODUCER_DISCOVERY_ENABLED: setting("INTRODUCER_DISCOVERY_ENABLED", [["packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled"]], "isIntroducerDiscoveryEnabled", ["false", "true"], "false"),
+    NEGOTIATION_INCLUDE_OTHER_INTENTS: setting("NEGOTIATION_INCLUDE_OTHER_INTENTS", [["packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts", "negotiationIncludesOtherIntents"]], "negotiationIncludesOtherIntents", ["false", "true"], "true"),
+    NEGOTIATION_MAX_TURNS_CHAT: setting("NEGOTIATION_MAX_TURNS_CHAT", [["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "OpportunityGraphFactory", ["2", "4", "8"], "4"),
+    NEGOTIATION_MAX_TURNS_AMBIENT: setting("NEGOTIATION_MAX_TURNS_AMBIENT", [["packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory"], ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"]], "NegotiationGraphFactory", ["3", "6", "12"], "6"),
+    NEGOTIATION_PROTOCOL_VERSION: setting("NEGOTIATION_PROTOCOL_VERSION", [["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "configuredProtocolVersion"]], "configuredProtocolVersion", ["v1", "v2"], "v1"),
+    NEGOTIATION_SCREEN_MODE: setting("NEGOTIATION_SCREEN_MODE", [["packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", "configuredScreenMode"]], "configuredScreenMode", ["off", "shadow", "enforce"], "off"),
+    NEGOTIATOR_STANCE: setting("NEGOTIATOR_STANCE", [["packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts", "configuredNegotiatorStance"]], "configuredNegotiatorStance", ["advocate", "evaluator", "skeptic"], "advocate"),
+    NEGOTIATION_ASK_USER_ENABLED: setting("NEGOTIATION_ASK_USER_ENABLED", [["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "configuredAskUserEnabled"]], "configuredAskUserEnabled", ["false", "true"], "false"),
+    NEGOTIATION_ASK_USER_WINDOW_MS: setting("NEGOTIATION_ASK_USER_WINDOW_MS", [["packages/protocol/src/negotiation/domain/negotiation.protocol.ts", "askUserAnswerWindowMs"]], "askUserAnswerWindowMs", ["60000", "86400000"], "86400000"),
+    NEGOTIATION_CONSULTATION_POLICY_MODE: setting("NEGOTIATION_CONSULTATION_POLICY_MODE", [["packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts", "negotiationConsultationPolicyMode"]], "negotiationConsultationPolicyMode", ["off", "shadow", "on"], "off"),
+    NEGOTIATION_DEADLOCK_SHIFT_ENABLED: setting("NEGOTIATION_DEADLOCK_SHIFT_ENABLED", [["packages/protocol/src/negotiation/domain/negotiation.deadlock.ts", "configuredDeadlockShiftEnabled"]], "configuredDeadlockShiftEnabled", ["false", "true"], "false"),
+    NEGOTIATION_DEADLOCK_THRESHOLD: setting("NEGOTIATION_DEADLOCK_THRESHOLD", [["packages/protocol/src/negotiation/domain/negotiation.deadlock.ts", "configuredDeadlockThreshold"]], "configuredDeadlockThreshold", ["2", "4"], "4"),
+    QUESTIONER_ENABLED: setting("QUESTIONER_ENABLED", [["packages/protocol/src/questions/application/question.env.ts", "isQuestionerEnabled"]], "isQuestionerEnabled", ["false", "true"], "false"),
+    QUESTIONER_UPTAKE_ENABLED: setting("QUESTIONER_UPTAKE_ENABLED", [["packages/protocol/src/questions/application/question.env.ts", "isUptakeGuardEnabled"]], "isUptakeGuardEnabled", ["false", "true"], "false", "invocation", [["packages/protocol/src/questions/application/question.env.ts", "isQuestionerEnabled"]]),
+    QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: setting("QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD", [["packages/protocol/src/questions/application/question.env.ts", "uptakeAuthorityThreshold"]], "uptakeAuthorityThreshold", ["70", "90"], "70"),
+    QUESTIONER_DISCOVERY_ENABLED: setting("QUESTIONER_DISCOVERY_ENABLED", [["packages/protocol/src/questions/application/question.env.ts", "isDiscoveryQuestionsEnabled"]], "isDiscoveryQuestionsEnabled", ["false", "true"], "false", "invocation", [["packages/protocol/src/questions/application/question.env.ts", "isQuestionerEnabled"]]),
+    QUESTIONER_DISCOVERY_INPUT_MODE: setting("QUESTIONER_DISCOVERY_INPUT_MODE", [["packages/protocol/src/questions/application/question.env.ts", "discoveryQuestionsInputMode"]], "discoveryQuestionsInputMode", ["transcripts", "insights"], "transcripts"),
+    POOL_QUESTIONS_MINING: setting("POOL_QUESTIONS_MINING", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsMiningMode"]], "poolQuestionsMiningMode", ["off", "shadow"], "off"),
+    POOL_QUESTIONS_MODE: setting("POOL_QUESTIONS_MODE", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsMode"]], "poolQuestionsMode", ["off", "on"], "off"),
+    POOL_QUESTIONS_PUSH: setting("POOL_QUESTIONS_PUSH", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsPushMode"]], "poolQuestionsPushMode", ["off", "on"], "off"),
+    POOL_QUESTIONS_VISIT_TRIGGER: setting("POOL_QUESTIONS_VISIT_TRIGGER", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsVisitTrigger"]], "poolQuestionsVisitTrigger", ["off", "on"], "off"),
+    POOL_QUESTIONS_STAMP_NEWBORN: setting("POOL_QUESTIONS_STAMP_NEWBORN", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsStampNewborn"]], "poolQuestionsStampNewborn", ["off", "on"], "off"),
+    POOL_QUESTIONS_RANKING: setting("POOL_QUESTIONS_RANKING", [["packages/protocol/src/opportunity/discriminator/discriminator.env.ts", "poolQuestionsRanking"]], "poolQuestionsRanking", ["off", "on"], "off"),
+    NEGOTIATION_EVIDENCE_QUESTIONS_MODE: setting("NEGOTIATION_EVIDENCE_QUESTIONS_MODE", [["packages/protocol/src/opportunity/negotiation-evidence/negotiation-evidence.env.ts", "negotiationEvidenceQuestionsMode"]], "negotiationEvidenceQuestionsMode", ["off", "shadow", "on"], "off"),
+    OUTCOME_QUESTIONS_MODE: setting("OUTCOME_QUESTIONS_MODE", [["packages/protocol/src/opportunity/outcome/outcome.env.ts", "outcomeQuestionsMode"]], "outcomeQuestionsMode", ["off", "shadow", "on"], "off", "invocation", [["packages/protocol/src/opportunity/outcome/outcome.env.ts", "isOutcomeQuestionsActivated"]]),
+  });
+
+  function setting(key, sites, entryAccessorSymbol, acceptedValues, fallback, readTiming = "invocation", accessorClosure = []) {
+    return {
+      key,
+      readSites: sites.map(([path, symbol]) => ({ path, symbol })),
+      entryAccessorSymbol,
+      accessorClosure: accessorClosure.map(([path, symbol]) => ({ path, symbol })),
+      acceptedValues,
+      fallback,
+      readTiming,
+    };
+  }
+
+  const definitiveEvidence = Object.freeze({
+    discovery: evidence("component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/discovery.env.spec.ts", "parses intent-only"),
+    sourcePremise: evidence("component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "premise discovery uses scoped capped source premises"),
+    evaluation: evidence("component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "splits into pairwise opportunities"),
+    turnCaps: evidence("component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts", "emits outcome='turn_cap'"),
+    hyde: evidence("component.hyde-graph-factory", "packages/protocol/src/shared/hyde/hyde.graph.ts", "HydeGraphFactory", "packages/protocol/src/shared/hyde/tests/hyde.frame.spec.ts", "enables frame-v1 only for the strict literal true"),
+    premise: evidence("component.premise-graph-factory", "packages/protocol/src/premise/premise.graph.ts", "PremiseGraphFactory", "packages/protocol/src/premise/tests/premise.graph.spec.ts", "skips persisting a near-duplicate premise"),
+    introducer: evidence("component.maintenance-graph-factory", "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts", "isIntroducerDiscoveryEnabled", "packages/protocol/src/opportunity/tests/opportunity.introducer-feature.spec.ts", "enables only for true"),
+    negotiationContext: evidence("component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts", "negotiateExistingOpportunity", "packages/protocol/src/opportunity/tests/opportunity.existing-negotiation.spec.ts", "false flag isolates both sides"),
+    protocol: evidence("component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.protocol.spec.ts", "configuredProtocolVersion: env switch, defaults v1"),
+    screen: evidence("component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts", "enforce"),
+    stance: evidence("component.index-negotiator", "packages/protocol/src/negotiation/application/negotiation.agent.ts", "IndexNegotiator", "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts", "configuredNegotiatorStance"),
+    consultation: evidence("component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts", "policy on"),
+    deadlock: evidence("component.negotiation-graph-factory", "packages/protocol/src/negotiation/application/negotiation.graph.ts", "NegotiationGraphFactory", "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts", "flag ON: bargaining stance from the threshold turn"),
+    uptake: evidence("component.opportunity-tools", "packages/protocol/src/opportunity/application/opportunity.tools.ts", "createOpportunityTools", "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts", "uptake soft interlock"),
+    ranking: evidence("component.radar-graph-factory", "packages/protocol/src/opportunity/radar/radar.graph.ts", "RadarGraphFactory", "packages/protocol/src/opportunity/tests/radar.graph.status-filter.spec.ts", "lifecycle order is unchanged while ranking is off and adjusted when on"),
+  });
+
+  function evidence(targetId, consumerPath, consumerSymbol, testPath, testName) {
+    return { targetId, consumerPath, consumerSymbol, testPath, testName };
+  }
+
+  function experiment(id, title, capability, keys, fallbackModeId, modeSpecs, evidenceRecord, affectedStepIds, coverage = "definitive", unresolvedSettingKeys = keys) {
+    const settings = keys.map((key) => configurationSettings[key]);
+    return {
+      id,
+      title,
+      summary: `${title} compares reviewed package fallback behavior with named non-secret assignments.`,
+      capability,
+      coverage,
+      fallbackModeId,
+      affectedChapterIds: [capability === "negotiation" ? "consent" : capability === "participant-context" ? "primitives" : "discovery", "explore"],
+      affectedStepIds,
+      settings,
+      modes: modeSpecs.map((spec) => configurationMode(id, settings, spec, evidenceRecord, coverage, unresolvedSettingKeys)),
+    };
+  }
+
+  function configurationMode(experimentId, settings, spec, evidenceRecord, coverage, unresolvedSettingKeys) {
+    const assignments = settings.map((settingRecord) => ({
+      key: settingRecord.key,
+      value: Object.prototype.hasOwnProperty.call(spec.values, settingRecord.key) ? spec.values[settingRecord.key] : null,
+    }));
+    const resolvedValues = assignments.map(({ key, value }) => ({ key, value: value === null ? configurationSettings[key].fallback : value }));
+    const deltas = spec.fallback || coverage === "documented-only" ? [] : [coverage === "unresolved"
+      ? { id: `${experimentId}.${spec.id}`, effect: "unresolved", targetKind: "node", targetId: spec.targetId || "component.opportunity-graph-factory", settingKeys: unresolvedSettingKeys, noDirectProtocolConsumer: true }
+      : {
+        id: `${experimentId}.${spec.id}`,
+        effect: spec.effect || "changed",
+        targetKind: "node",
+        targetId: evidenceRecord.targetId,
+        consumerPath: evidenceRecord.consumerPath,
+        consumerSymbol: evidenceRecord.consumerSymbol,
+        referenceChain: settings.flatMap((settingRecord) => [
+          ...settingRecord.readSites.map(({ path, symbol }) => ({ path, symbol })),
+          { path: evidenceRecord.consumerPath, symbol: evidenceRecord.consumerSymbol },
+        ]),
+        behaviorTest: { path: evidenceRecord.testPath, testName: evidenceRecord.testName },
+      }];
+    return {
+      id: spec.id,
+      assignments,
+      resolvedValues,
+      prerequisites: spec.prerequisites || [],
+      deltas,
+      explanation: spec.explanation,
+      caveats: spec.caveats || [],
+    };
+  }
+
+  const configurationExperiments = [
+    experiment("discovery-corpus", "Discovery corpus and source selection", "opportunities", ["DISCOVERY_ALLOWED_TYPES", "DISCOVERY_PROFILE_SOURCE", "DISCOVERY_CONTEXT_TO_INTENT"], "fallback", [
+      mode("fallback", {}, "Intent and premise-profile retrieval are eligible from package fallbacks.", true),
+      mode("intent-only", { DISCOVERY_ALLOWED_TYPES: "intent" }, "Profile retrieval is bypassed; intent retrieval remains eligible.", false, "bypassed"),
+      mode("premise-profile", { DISCOVERY_ALLOWED_TYPES: "profile", DISCOVERY_PROFILE_SOURCE: "premise" }, "Only premise-backed profile retrieval is eligible."),
+      mode("context-profile", { DISCOVERY_ALLOWED_TYPES: "profile", DISCOVERY_PROFILE_SOURCE: "user_context" }, "Only participant-context profile retrieval is eligible."),
+      mode("context-cross-match", { DISCOVERY_ALLOWED_TYPES: "intent,profile", DISCOVERY_PROFILE_SOURCE: "user_context", DISCOVERY_CONTEXT_TO_INTENT: "1" }, "Context-to-intent cross matching becomes eligible.", false, "activated"),
+    ], definitiveEvidence.discovery, ["retrieve-candidates"]),
+    experiment("discovery-premise-limit", "Discovery premise fan-out", "opportunities", ["DISCOVERY_SOURCE_PREMISE_LIMIT"], "fallback-40", [
+      mode("fallback-40", {}, "At most 40 source premises are loaded.", true),
+      mode("disabled-0", { DISCOVERY_SOURCE_PREMISE_LIMIT: "0" }, "Premise-to-premise discovery is bypassed.", false, "bypassed"),
+      mode("expanded-100", { DISCOVERY_SOURCE_PREMISE_LIMIT: "100" }, "The source-premise fan-out cap increases to 100."),
+    ], definitiveEvidence.sourcePremise, ["retrieve-candidates"]),
+    experiment("discovery-rejection-cooldown", "Discovery rejection cooldown", "opportunities", ["DISCOVERY_REJECTION_COOLDOWN_DAYS"], "fallback-7d", [
+      mode("fallback-7d", {}, "Recent rejection penalties use seven days.", true),
+      mode("short-1d", { DISCOVERY_REJECTION_COOLDOWN_DAYS: "1" }, "The rejection penalty window shortens to one day."),
+      mode("long-30d", { DISCOVERY_REJECTION_COOLDOWN_DAYS: "30" }, "The rejection penalty window extends to thirty days."),
+    ], null, ["evaluate-fit"], "documented-only"),
+    experiment("discovery-evaluation-topology", "Discovery evaluation topology", "opportunities", ["RUN_OPPORTUNITY_EVAL_IN_PARALLEL"], "bundled", [
+      mode("bundled", {}, "Fallback evaluation uses bundled actor normalization.", true),
+      mode("pairwise", { RUN_OPPORTUNITY_EVAL_IN_PARALLEL: "true" }, "Evaluation executes per pair with independent failure isolation.", false, "changed"),
+    ], definitiveEvidence.evaluation, ["evaluate-fit"]),
+    experiment("hyde-frame-constraints", "HyDE frame constraints", "participant-context", ["HYDE_FRAME_CONSTRAINTS_ENABLED"], "legacy", [
+      mode("legacy", {}, "HyDE generation uses the legacy representation.", true),
+      mode("frame-v1", { HYDE_FRAME_CONSTRAINTS_ENABLED: "true" }, "HyDE generation applies frame-v1 constraints.", false, "changed"),
+    ], definitiveEvidence.hyde, ["refresh-representations", "retrieve-candidates"]),
+    experiment("premise-deduplication", "Premise deduplication threshold", "participant-context", ["PREMISE_DEDUP_SIMILARITY"], "fallback-0.93", [
+      mode("fallback-0.93", {}, "Near-duplicate premises collapse at 0.93 similarity.", true),
+      mode("broad-0.85", { PREMISE_DEDUP_SIMILARITY: "0.85" }, "More paraphrases are treated as duplicates."),
+      mode("strict-0.98", { PREMISE_DEDUP_SIMILARITY: "0.98" }, "Only very close paraphrases are treated as duplicates."),
+    ], definitiveEvidence.premise, ["atomic-premises"]),
+    experiment("introducer-discovery", "Introducer discovery", "opportunities", ["INTRODUCER_DISCOVERY_ENABLED"], "off", [
+      mode("off", {}, "Introducer discovery is ineligible.", true),
+      mode("on", { INTRODUCER_DISCOVERY_ENABLED: "true" }, "Introducer discovery becomes eligible when its required protocol boundary is supplied.", false, "activated"),
+    ], definitiveEvidence.introducer, ["retrieve-candidates"]),
+    experiment("negotiation-context", "Negotiation context breadth", "negotiation", ["NEGOTIATION_INCLUDE_OTHER_INTENTS"], "include-active", [
+      mode("include-active", {}, "Negotiation context may include bounded active Signals.", true),
+      mode("exact-only", { NEGOTIATION_INCLUDE_OTHER_INTENTS: "false" }, "Negotiation context is limited to the triggering Signal.", false, "bypassed"),
+    ], definitiveEvidence.negotiationContext, ["negotiate-optional"]),
+    experiment("negotiation-turn-caps", "Negotiation turn caps", "negotiation", ["NEGOTIATION_MAX_TURNS_CHAT", "NEGOTIATION_MAX_TURNS_AMBIENT"], "fallback-4-6", [
+      mode("fallback-4-6", {}, "Chat and ambient negotiation use four and six turns.", true),
+      mode("short-2-3", { NEGOTIATION_MAX_TURNS_CHAT: "2", NEGOTIATION_MAX_TURNS_AMBIENT: "3" }, "Negotiations reach their turn cap sooner."),
+      mode("extended-8-12", { NEGOTIATION_MAX_TURNS_CHAT: "8", NEGOTIATION_MAX_TURNS_AMBIENT: "12" }, "Negotiations allow more turns before a cap outcome."),
+    ], definitiveEvidence.turnCaps, ["negotiate-optional"]),
+    experiment("negotiation-protocol", "Negotiation protocol version", "negotiation", ["NEGOTIATION_PROTOCOL_VERSION"], "v1", [
+      mode("v1", {}, "Fresh negotiations use the v1 action contract.", true),
+      mode("v2", { NEGOTIATION_PROTOCOL_VERSION: "v2" }, "Fresh negotiations stamp the v2 seat-aware action contract.", false, "changed", [], ["In-flight tasks remain pinned to their stored protocol version."]),
+    ], definitiveEvidence.protocol, ["negotiate-optional"]),
+    experiment("negotiation-screen", "Negotiation outreach screen", "negotiation", ["NEGOTIATION_SCREEN_MODE"], "off", [
+      mode("off", {}, "The outreach screen is bypassed.", true),
+      mode("shadow", { NEGOTIATION_SCREEN_MODE: "shadow" }, "Screen decisions are recorded without blocking outreach."),
+      mode("enforce", { NEGOTIATION_SCREEN_MODE: "enforce" }, "A pass decision is required before outreach.", false, "activated"),
+    ], definitiveEvidence.screen, ["negotiate-optional"]),
+    experiment("negotiation-stance", "Negotiator stance", "negotiation", ["NEGOTIATOR_STANCE"], "advocate", [
+      mode("advocate", {}, "The negotiator advocates for query fit.", true),
+      mode("evaluator", { NEGOTIATOR_STANCE: "evaluator" }, "The negotiator emphasizes bilateral value evaluation."),
+      mode("skeptic", { NEGOTIATOR_STANCE: "skeptic" }, "The negotiator requires stronger evidence and recognizes stalemate."),
+    ], definitiveEvidence.stance, ["negotiate-optional"]),
+    experiment("negotiation-consultation", "Negotiation participant consultation", "negotiation", ["NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_ASK_USER_WINDOW_MS", "NEGOTIATION_CONSULTATION_POLICY_MODE"], "off", [
+      mode("off", {}, "Participant consultation is bypassed.", true),
+      mode("shadow", { NEGOTIATION_CONSULTATION_POLICY_MODE: "shadow" }, "Consultation eligibility is observed without pausing negotiation."),
+      mode("v2-on", { NEGOTIATION_PROTOCOL_VERSION: "v2", NEGOTIATION_ASK_USER_ENABLED: "true", NEGOTIATION_CONSULTATION_POLICY_MODE: "on" }, "Eligible v2 negotiations may pause for participant input.", false, "activated", [{ kind: "setting", key: "NEGOTIATION_PROTOCOL_VERSION", value: "v2" }]),
+      mode("v2-short-window", { NEGOTIATION_PROTOCOL_VERSION: "v2", NEGOTIATION_ASK_USER_ENABLED: "true", NEGOTIATION_ASK_USER_WINDOW_MS: "60000", NEGOTIATION_CONSULTATION_POLICY_MODE: "on" }, "The consultation pause expires after one minute.", false, "changed", [{ kind: "setting", key: "NEGOTIATION_PROTOCOL_VERSION", value: "v2" }]),
+    ], definitiveEvidence.consultation, ["negotiate-optional"]),
+    experiment("negotiation-deadlock", "Negotiation deadlock shift", "negotiation", ["NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_DEADLOCK_SHIFT_ENABLED", "NEGOTIATION_DEADLOCK_THRESHOLD", "NEGOTIATOR_STANCE"], "off", [
+      mode("off", {}, "Deadlock bargaining shifts are bypassed.", true),
+      mode("v2-threshold-4", { NEGOTIATION_PROTOCOL_VERSION: "v2", NEGOTIATION_DEADLOCK_SHIFT_ENABLED: "true", NEGOTIATION_DEADLOCK_THRESHOLD: "4" }, "A v2 bargaining shift becomes eligible after four stagnant turns.", false, "activated"),
+      mode("v2-fast-2", { NEGOTIATION_PROTOCOL_VERSION: "v2", NEGOTIATION_DEADLOCK_SHIFT_ENABLED: "true", NEGOTIATION_DEADLOCK_THRESHOLD: "2" }, "A v2 bargaining shift becomes eligible after two stagnant turns."),
+      mode("v2-skeptic", { NEGOTIATION_PROTOCOL_VERSION: "v2", NEGOTIATION_DEADLOCK_SHIFT_ENABLED: "true", NEGOTIATION_DEADLOCK_THRESHOLD: "4", NEGOTIATOR_STANCE: "skeptic" }, "Skeptic stance can resolve persistent deadlock as stalemate."),
+    ], definitiveEvidence.deadlock, ["negotiate-optional"]),
+    experiment("questioner-uptake", "Questioner uptake guard", "questions", ["QUESTIONER_ENABLED", "QUESTIONER_UPTAKE_ENABLED", "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD"], "off", [
+      mode("off", {}, "The advisory uptake interlock is bypassed.", true),
+      mode("on-threshold-70", { QUESTIONER_ENABLED: "true", QUESTIONER_UPTAKE_ENABLED: "true", QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: "70" }, "Pending uptake questions can interlock low-authority acceptance.", false, "activated"),
+      mode("on-threshold-90", { QUESTIONER_ENABLED: "true", QUESTIONER_UPTAKE_ENABLED: "true", QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD: "90" }, "The uptake interlock covers a broader authority range."),
+    ], definitiveEvidence.uptake, ["accept-or-decline"]),
+    experiment("questioner-discovery-contract", "Questioner discovery contract", "questions", ["QUESTIONER_ENABLED", "QUESTIONER_DISCOVERY_ENABLED", "QUESTIONER_DISCOVERY_INPUT_MODE"], "off", [
+      mode("off", {}, "The discovery-question contract is inactive.", true),
+      mode("transcripts-unresolved", { QUESTIONER_ENABLED: "true", QUESTIONER_DISCOVERY_ENABLED: "true", QUESTIONER_DISCOVERY_INPUT_MODE: "transcripts" }, "The accessor resolves transcript input, but no direct package behavior consumer is established."),
+      mode("insights-unresolved", { QUESTIONER_ENABLED: "true", QUESTIONER_DISCOVERY_ENABLED: "true", QUESTIONER_DISCOVERY_INPUT_MODE: "insights" }, "The accessor resolves insight input, but no direct package behavior consumer is established."),
+    ], null, ["evaluate-fit"], "unresolved", ["QUESTIONER_DISCOVERY_ENABLED", "QUESTIONER_DISCOVERY_INPUT_MODE"]),
+    experiment("pool-question-contract", "Pool question activation contract", "opportunities", ["POOL_QUESTIONS_MINING", "POOL_QUESTIONS_MODE", "POOL_QUESTIONS_PUSH", "POOL_QUESTIONS_VISIT_TRIGGER", "POOL_QUESTIONS_STAMP_NEWBORN"], "off", [
+      mode("off", {}, "Pool-question activation contracts resolve off.", true),
+      mode("shadow-mining", { POOL_QUESTIONS_MINING: "shadow" }, "Shadow mining is declared; direct package activation remains unresolved."),
+      mode("on-pull", { POOL_QUESTIONS_MODE: "on" }, "Pull-mode question activation is declared; direct package activation remains unresolved."),
+      mode("on-push", { POOL_QUESTIONS_MODE: "on", POOL_QUESTIONS_PUSH: "on" }, "Push activation is declared; direct package activation remains unresolved."),
+      mode("on-visit", { POOL_QUESTIONS_MODE: "on", POOL_QUESTIONS_VISIT_TRIGGER: "on" }, "Visit-trigger activation is declared; direct package activation remains unresolved."),
+      mode("on-newborn", { POOL_QUESTIONS_MODE: "on", POOL_QUESTIONS_STAMP_NEWBORN: "on" }, "Newborn stamping is declared; direct package activation remains unresolved."),
+    ], null, ["evaluate-fit"], "unresolved"),
+    experiment("pool-ranking", "Pool-question Radar ranking", "opportunities", ["POOL_QUESTIONS_RANKING"], "off", [
+      mode("off", {}, "Radar confidence is not adjusted by answered discriminators.", true),
+      mode("on", { POOL_QUESTIONS_RANKING: "on" }, "Answered pool discriminators adjust Radar confidence.", false, "changed"),
+    ], definitiveEvidence.ranking, ["retrieve-candidates"]),
+    experiment("negotiation-evidence-contract", "Negotiation-evidence questions contract", "opportunities", ["NEGOTIATION_EVIDENCE_QUESTIONS_MODE"], "off", [
+      mode("off", {}, "Negotiation-evidence question mode resolves off.", true),
+      mode("shadow", { NEGOTIATION_EVIDENCE_QUESTIONS_MODE: "shadow" }, "Shadow mode resolves, but no direct package activation consumer is established."),
+      mode("on-alias", { NEGOTIATION_EVIDENCE_QUESTIONS_MODE: "on" }, "Current package handling treats on as the same shadow-pipeline activation contract."),
+    ], null, ["evaluate-fit"], "unresolved"),
+    experiment("outcome-questions-contract", "Outcome questions contract", "opportunities", ["OUTCOME_QUESTIONS_MODE"], "off", [
+      mode("off", {}, "Outcome-question mode resolves off.", true),
+      mode("shadow", { OUTCOME_QUESTIONS_MODE: "shadow" }, "The protocol accessor activates shadow capture; its invoking path remains unresolved here."),
+      mode("on-alias", { OUTCOME_QUESTIONS_MODE: "on" }, "Current package activation treats on as shadow-equivalent for capture and mining."),
+    ], null, ["evaluate-fit"], "unresolved"),
+  ];
+
+  function mode(id, values, explanation, fallback = false, effect = "changed", prerequisites = [], caveats = []) {
+    return { id, values, explanation, fallback, effect, prerequisites, caveats };
+  }
+
   root.ProtocolAtlasContent = Object.freeze({
     schemaVersion: 1,
+    configurationDisclaimer: CONFIGURATION_DISCLAIMER,
+    configurationExperiments,
     chapters: [
       {
         id: "orientation",

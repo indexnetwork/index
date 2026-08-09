@@ -150,6 +150,13 @@
     generated = generatedAvailable ? suppliedGenerated : { schemaVersion: 1, nodes: [], edges: [] };
     if (!generatedAvailable) {
       console.error("Protocol Atlas generated data validation failed:", fullValidation.errors);
+    } else {
+      const configuration = core.configurationAvailability(generated);
+      if (configuration.errors.length > 0 && generated.schemaVersion === 2) {
+        console.error("Protocol Atlas omitted malformed configuration experiments:", configuration.errors);
+        generatedWarning = [generatedWarning, ...configuration.errors].filter(Boolean).join(" ");
+      }
+      if (generated.schemaVersion === 2) generated = { ...generated, configurationExperiments: configuration.experiments };
     }
 
     state = restoredState(root.location ? root.location.hash : "");
@@ -212,6 +219,8 @@
     } else if (status && action && (action.type === "set-filters" || action.type === "reset-filters")) {
       const activeCount = Object.values(state.filters).reduce((total, values) => total + values.length, 0);
       status.textContent = activeCount === 0 ? "Filters reset." : `${activeCount} graph filter${activeCount === 1 ? "" : "s"} active.`;
+    } else if (status && state.announcement) {
+      status.textContent = state.announcement;
     }
   }
 
@@ -221,6 +230,12 @@
     renderChapter(atlasState, content, generated);
     renderInspector(atlasState.selectedNodeId, content, generated);
     renderFilters(atlasState);
+
+    if (atlasState.focusIntent) {
+      const selector = `input[name="configuration-mode"][data-experiment-id="${atlasState.focusIntent.experimentId}"][value="${atlasState.focusIntent.modeId}"]`;
+      const replacement = document.querySelector(selector);
+      if (replacement && typeof replacement.focus === "function") replacement.focus();
+    }
 
     const notice = document.getElementById("atlas-notice");
     if (notice) {
@@ -435,6 +450,10 @@
     if (!target) return;
     target.replaceChildren();
     if (!generatedAvailable || (atlasState.layer !== "implementation" && atlasState.chapterId !== "explore")) return;
+    if (atlasState.configurationExperimentId) {
+      target.append(element("p", "configuration-filter-note", "Explore filters are preserved but inactive while a Configuration Lab experiment is focused."));
+      return;
+    }
     const labels = { capabilities: "Capability", kinds: "Component kind", edgeKinds: "Edge kind" };
     for (const key of ["capabilities", "kinds", "edgeKinds"]) {
       const fieldset = element("fieldset", "atlas-filter-group");
@@ -544,6 +563,7 @@
       };
       appendText(target, "h2", null, exploreStep.title);
       appendText(target, "p", null, exploreStep.summary);
+      renderConfigurationLab(target, atlasState, atlasContent, atlasGenerated);
       target.append(renderDiagram(exploreStep, { ...atlasState, layer: "implementation" }, atlasContent, atlasGenerated));
       return;
     }
@@ -551,9 +571,134 @@
     target.append(element("p", "atlas-empty", "This chapter has no guided flow."));
   }
 
+  function configurationEffectLabel(effect) {
+    return { activated: "+ activated", bypassed: "− bypassed", changed: "~ changed", unresolved: "? unresolved" }[effect] || "? unresolved";
+  }
+
+  function renderConfigurationLab(target, atlasState, atlasContent, atlasGenerated) {
+    const section = element("section", "configuration-lab");
+    section.setAttribute("aria-labelledby", "configuration-lab-title");
+    const heading = element("h2", null, "Configuration Lab");
+    heading.id = "configuration-lab-title";
+    section.append(heading, element("p", "configuration-disclaimer", atlasContent.configurationDisclaimer || "Configuration comparisons use package fallbacks only."));
+    section.append(element("p", "configuration-coverage", "Coverage: reviewed non-secret behavior gates only. Credentials, provider tuning, ordinary timeouts, and throughput settings are excluded. Unresolved paths are not deprecated."));
+
+    const availability = core.configurationAvailability(atlasGenerated);
+    if (!availability.available) {
+      section.append(element("p", "atlas-empty configuration-unavailable", availability.errors[0]));
+      target.append(section);
+      return;
+    }
+    if (availability.errors.length > 0) section.append(element("p", "configuration-warning", availability.errors.join(" ")));
+
+    const experimentFieldset = element("fieldset", "configuration-experiments");
+    experimentFieldset.append(element("legend", null, "Behavior experiment"));
+    for (const experiment of availability.experiments) {
+      const label = element("label", "configuration-experiment-option");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "configuration-experiment";
+      input.value = experiment.id;
+      input.checked = atlasState.configurationExperimentId === experiment.id;
+      input.addEventListener("change", () => dispatch({ type: "select-configuration-experiment", experimentId: experiment.id }));
+      label.append(input, document.createTextNode(experiment.title));
+      experimentFieldset.append(label);
+    }
+    section.append(experimentFieldset);
+
+    const experiment = availability.experiments.find((candidate) => candidate.id === atlasState.configurationExperimentId);
+    if (!experiment) {
+      section.append(element("p", "configuration-empty", "Choose one experiment to compare a named mode with package fallback behavior."));
+      target.append(section);
+      return;
+    }
+
+    const modeFieldset = element("fieldset", "configuration-modes");
+    modeFieldset.append(element("legend", null, `${experiment.title} modes`));
+    for (const mode of records(experiment.modes)) {
+      const label = element("label", "configuration-mode-option");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "configuration-mode";
+      input.value = mode.id;
+      input.dataset.experimentId = experiment.id;
+      input.checked = atlasState.configurationModeId === mode.id;
+      input.addEventListener("change", () => dispatch({ type: "select-configuration-mode", experimentId: experiment.id, modeId: mode.id }));
+      label.append(input, document.createTextNode(mode.id === experiment.fallbackModeId ? `${mode.id} (package fallback)` : mode.id));
+      modeFieldset.append(label);
+    }
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.textContent = "Reset to package fallback";
+    reset.disabled = atlasState.configurationModeId === experiment.fallbackModeId;
+    reset.addEventListener("click", () => dispatch({ type: "reset-configuration" }));
+    modeFieldset.append(reset);
+    section.append(modeFieldset);
+
+    const comparison = core.deriveConfigurationComparison(experiment.id, atlasState.configurationModeId, atlasContent, atlasGenerated);
+    if (!comparison) {
+      section.append(element("p", "atlas-empty", "No reviewed comparison is available for this mode."));
+      target.append(section);
+      return;
+    }
+    const panel = element("section", "configuration-comparison");
+    appendText(panel, "h3", null, "Fallback versus selected mode");
+    appendText(panel, "p", "configuration-explanation", comparison.mode.explanation);
+    const assignments = element("dl", "configuration-assignments");
+    const resolved = new Map(records(comparison.resolvedValues).map((entry) => [entry.key, entry.value]));
+    for (const assignment of records(comparison.assignments)) {
+      assignments.append(
+        element("dt", null, assignment.key),
+        element("dd", null, `${assignment.value === null ? "unset" : assignment.value} → resolves ${resolved.get(assignment.key)}`),
+      );
+    }
+    panel.append(assignments);
+
+    if (records(comparison.prerequisites).length > 0) {
+      appendText(panel, "h3", null, "Prerequisites");
+      const list = element("ul", "configuration-prerequisites");
+      for (const prerequisite of comparison.prerequisites) list.append(element("li", `configuration-prerequisite--${prerequisite.status}`, `${prerequisite.kind}: ${prerequisite.key || prerequisite.nodeId} — ${prerequisite.status}`));
+      panel.append(list);
+    }
+
+    appendText(panel, "h3", null, "Visible behavior delta");
+    const deltas = element("ul", "configuration-deltas");
+    if (comparison.deltas.length === 0) {
+      const emptyText = comparison.mode.id === comparison.experiment.fallbackModeId
+        ? "Package fallback selected: no counterfactual delta is applied."
+        : "No reviewed visual delta is available for this mode; the atlas shows the assignment without inventing a topology effect.";
+      deltas.append(element("li", "configuration-delta-empty", emptyText));
+    }
+    for (const delta of comparison.deltas) {
+      const item = element("li", `configuration-delta configuration-delta--${delta.effect}`);
+      appendText(item, "strong", "configuration-delta__label", configurationEffectLabel(delta.effect));
+      appendText(item, "span", null, `${delta.targetKind}: ${delta.targetId}`);
+      if (delta.consumerPath) appendText(item, "code", "configuration-evidence", `${delta.consumerPath}#${delta.consumerSymbol}`);
+      if (delta.behaviorTest) appendText(item, "code", "configuration-evidence", `${delta.behaviorTest.path} — ${delta.behaviorTest.testName}`);
+      if (delta.effect === "unresolved") appendText(item, "span", "configuration-caveat", "No direct protocol behavior consumer is established; no effect is invented.");
+      deltas.append(item);
+    }
+    panel.append(deltas);
+    if (records(comparison.mode.caveats).length > 0) {
+      appendText(panel, "h3", null, "Caveats");
+      const caveats = element("ul", "configuration-caveats");
+      for (const caveat of comparison.mode.caveats) caveats.append(element("li", null, caveat));
+      panel.append(caveats);
+    }
+    section.append(panel);
+    target.append(section);
+  }
+
+  function activeConfigurationComparison(atlasState, atlasContent, atlasGenerated) {
+    return atlasState.configurationExperimentId && atlasState.configurationModeId
+      ? core.deriveConfigurationComparison(atlasState.configurationExperimentId, atlasState.configurationModeId, atlasContent, atlasGenerated)
+      : null;
+  }
+
   function diagramRecords(step, atlasState, atlasContent, atlasGenerated) {
     if (atlasState.layer === "implementation") {
-      const filteredIds = new Set(core.filterGraph(atlasState.filters, atlasGenerated).nodes.map((node) => node.id));
+      const appliedFilters = atlasState.configurationExperimentId ? { capabilities: [], kinds: [], edgeKinds: [] } : atlasState.filters;
+      const filteredIds = new Set(core.filterGraph(appliedFilters, atlasGenerated).nodes.map((node) => node.id));
       return records(step.nodeIds).map((id) => byId(atlasGenerated.nodes, id)).filter((node) => node && filteredIds.has(node.id));
     }
     return records(step.conceptIds).map((id) => byId(atlasContent.concepts, id)).filter(Boolean);
@@ -561,7 +706,8 @@
 
   function diagramEdges(step, atlasState, atlasContent, atlasGenerated, visibleIds) {
     if (atlasState.layer === "implementation") {
-      return core.filterGraph(atlasState.filters, atlasGenerated).edges
+      const appliedFilters = atlasState.configurationExperimentId ? { capabilities: [], kinds: [], edgeKinds: [] } : atlasState.filters;
+      return core.filterGraph(appliedFilters, atlasGenerated).edges
         .filter((edge) => visibleIds.has(edge.sourceId) && visibleIds.has(edge.targetId));
     }
     return records(atlasContent.relationships)
@@ -591,6 +737,9 @@
     description.textContent = `${nodes.length} ordered nodes. Select a node button to inspect its evidence.`;
     svg.append(title, description);
 
+    const comparison = activeConfigurationComparison(atlasState, atlasContent, atlasGenerated);
+    if (comparison) wrapper.classList.add("configuration-comparison-active");
+    const deltaByTarget = new Map(records(comparison && comparison.deltas).map((delta) => [delta.targetId, delta]));
     const positions = new Map(nodes.map((node, index) => [node.id, { x: 100 + index * 200, y: 80 }]));
     const visibleIds = new Set(positions.keys());
     for (const edge of diagramEdges(step, atlasState, atlasContent, atlasGenerated, visibleIds)) {
@@ -598,7 +747,8 @@
       const target = positions.get(edge.targetId);
       if (!source || !target) continue;
       const group = document.createElementNS(SVG_NS, "g");
-      group.setAttribute("class", `atlas-edge atlas-edge--${edge.kind || "conceptual"}`);
+      const edgeDelta = deltaByTarget.get(edge.id);
+      group.setAttribute("class", `atlas-edge atlas-edge--${edge.kind || "conceptual"}${edgeDelta ? ` configuration-delta--${edgeDelta.effect}` : ""}`);
       group.setAttribute("data-edge-kind", edge.kind || "conceptual");
       const line = document.createElementNS(SVG_NS, "line");
       line.setAttribute("x1", String(source.x));
@@ -641,6 +791,11 @@
       button.type = "button";
       button.className = "atlas-node";
       if (node.id === atlasState.selectedNodeId) button.classList.add("is-selected");
+      const nodeDelta = deltaByTarget.get(node.id);
+      if (nodeDelta) {
+        button.classList.add(`configuration-delta--${nodeDelta.effect}`);
+        appendText(button, "span", "configuration-delta__label", configurationEffectLabel(nodeDelta.effect));
+      }
       button.setAttribute("aria-pressed", String(node.id === atlasState.selectedNodeId));
       appendText(button, "span", "atlas-node__kind", node.kind || (node.normative ? "normative concept" : "reference concept"));
       appendText(button, "strong", null, node.label || node.title || node.id);

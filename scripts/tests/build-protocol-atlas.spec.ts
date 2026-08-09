@@ -3,9 +3,49 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { buildAtlasArtifact, loadProtocolGeneratorInput, serializeAtlasArtifact, validateAtlasArtifact, validateCuratedReferences, type AtlasArtifact, type GeneratorInput } from "../build-protocol-atlas.ts";
+import { buildAtlasArtifact, loadProtocolGeneratorInput, serializeAtlasArtifact, validateAtlasArtifact, validateConfigurationExperiments, validateCuratedReferences, type AtlasArtifact, type GeneratorInput } from "../build-protocol-atlas.ts";
+
+const APPROVED_CONFIGURATION_MODE_IDS = {
+  "discovery-corpus": ["fallback", "intent-only", "premise-profile", "context-profile", "context-cross-match"],
+  "discovery-premise-limit": ["fallback-40", "disabled-0", "expanded-100"],
+  "discovery-rejection-cooldown": ["fallback-7d", "short-1d", "long-30d"],
+  "discovery-evaluation-topology": ["bundled", "pairwise"],
+  "hyde-frame-constraints": ["legacy", "frame-v1"],
+  "premise-deduplication": ["fallback-0.93", "broad-0.85", "strict-0.98"],
+  "introducer-discovery": ["off", "on"],
+  "negotiation-context": ["include-active", "exact-only"],
+  "negotiation-turn-caps": ["fallback-4-6", "short-2-3", "extended-8-12"],
+  "negotiation-protocol": ["v1", "v2"],
+  "negotiation-screen": ["off", "shadow", "enforce"],
+  "negotiation-stance": ["advocate", "evaluator", "skeptic"],
+  "negotiation-consultation": ["off", "shadow", "v2-on", "v2-short-window"],
+  "negotiation-deadlock": ["off", "v2-threshold-4", "v2-fast-2", "v2-skeptic"],
+  "questioner-uptake": ["off", "on-threshold-70", "on-threshold-90"],
+  "questioner-discovery-contract": ["off", "transcripts-unresolved", "insights-unresolved"],
+  "pool-question-contract": ["off", "shadow-mining", "on-pull", "on-push", "on-visit", "on-newborn"],
+  "pool-ranking": ["off", "on"],
+  "negotiation-evidence-contract": ["off", "shadow", "on-alias"],
+  "outcome-questions-contract": ["off", "shadow", "on-alias"],
+} as const;
 
 const repoRoot = resolve(import.meta.dir, "../..");
+
+type MutableConfigurationContent = {
+  configurationExperiments: Array<{
+    id: string;
+    settings: Array<{ key: string; readSites: Array<{ path: string; symbol: string }> }>;
+    modes: Array<{
+      prerequisites: Array<Record<string, unknown>>;
+      deltas: Array<{
+        targetId: string;
+        consumerPath?: string;
+        consumerSymbol?: string;
+        referenceChain?: Array<{ path: string; symbol: string }>;
+        behaviorTest?: { path: string; testName: string };
+      }>;
+    }>;
+  }>;
+};
 
 async function loadAtlasContent() {
   delete (globalThis as { ProtocolAtlasContent?: unknown }).ProtocolAtlasContent;
@@ -97,6 +137,12 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   expect(css).toContain("--edge-injected-pattern: 3 4");
   expect(css).toContain("--edge-conceptual-pattern: 1 5");
   expect(css).toMatch(/\.atlas-edge text\s*\{/);
+  expect(css).toContain(".configuration-delta--activated");
+  expect(css).toContain(".configuration-delta--bypassed");
+  expect(css).toContain(".configuration-delta--changed");
+  expect(css).toContain(".configuration-delta--unresolved");
+  expect(css).toContain("@media (max-width: 375px)");
+  expect(css).toMatch(/\.configuration-mode-option[\s\S]*min-height:\s*(?:2\.75rem|44px)/);
 });
 
 test("loads dependency-free classic assets in deterministic order", async () => {
@@ -107,10 +153,11 @@ test("loads dependency-free classic assets in deterministic order", async () => 
 });
 
 describe("protocol atlas curated content", () => {
-  test("accepts the approved seven chapters and five flows", async () => {
+  test("accepts the approved seven chapters, five flows, and 20 configuration experiments", async () => {
     const content = await loadAtlasContent() as {
       chapters: Array<{ id: string }>;
       flows: Array<{ id: string }>;
+      configurationExperiments: Array<{ id: string; modes: Array<{ id: string }> }>;
     };
     expect(content.chapters.map(({ id }) => id)).toEqual([
       "orientation", "primitives", "trust-scope", "discovery", "consent", "runtime", "explore",
@@ -118,8 +165,15 @@ describe("protocol atlas curated content", () => {
     expect(content.flows.map(({ id }) => id)).toEqual([
       "trusted-context", "express-signal", "discover-opportunity", "consent-connect", "external-agent-mcp",
     ]);
-    const artifact = buildAtlasArtifact(await loadProtocolGeneratorInput(repoRoot));
+    expect(Object.fromEntries(content.configurationExperiments.map((experiment) => [
+      experiment.id,
+      experiment.modes.map((mode) => mode.id),
+    ]))).toEqual(APPROVED_CONFIGURATION_MODE_IDS);
+    expect(content.configurationExperiments.flatMap((experiment) => experiment.modes)).toHaveLength(61);
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
     expect(validateCuratedReferences(content, artifact)).toEqual([]);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
   });
 
   test("preserves approved concept, invariant, flow-step, and vocabulary contracts", async () => {
@@ -200,8 +254,10 @@ describe("protocol atlas curated content", () => {
 });
 
 describe("protocol atlas generator", () => {
-  test("sorts records and emits a classic-script global deterministically", () => {
+  test("sorts schema-2 records and emits a classic-script global deterministically", () => {
     const artifact = buildAtlasArtifact(fixtureInput());
+    expect(artifact.schemaVersion).toBe(2);
+    expect(artifact.configurationExperiments).toEqual([]);
     expect(artifact.nodes.map(({ id }) => id)).toEqual([...artifact.nodes.map(({ id }) => id)].sort());
     expect(serializeAtlasArtifact(artifact)).toBe(
       `globalThis.ProtocolAtlasGenerated = Object.freeze(${JSON.stringify(artifact, null, 2)});\n`,
@@ -343,4 +399,64 @@ describe("protocol atlas generator", () => {
       expect.stringContaining("evidencePath does not exist"),
     ]));
   });
+
+  test("rejects secret keys, incomplete read sites, malformed prerequisites, and missing targets", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const discovery = content.configurationExperiments.find(({ id }) => id === "discovery-corpus")!;
+    discovery.settings[0].key = "DISCOVERY_API_KEY";
+    discovery.settings[1].readSites = [];
+    Object.assign(discovery, { timestamp: "2026-08-07T00:00:00Z" });
+    discovery.modes[1].prerequisites = [{ kind: "setting", key: "DISCOVERY_ALLOWED_TYPES", mode: "intent-only" }];
+    discovery.modes[1].deltas[0].targetId = "component.missing";
+    discovery.modes[1].deltas.push({ ...structuredClone(discovery.modes[1].deltas[0]), consumerPath: undefined, targetId: "component.missing" });
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, content);
+    const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");
+    expect(issues).toContain("secret-shaped");
+    expect(issues).toContain("readSites do not match");
+    expect(issues).toContain("malformed setting prerequisite");
+    expect(issues).toContain("references missing node");
+    expect(issues).toContain("duplicate delta targets");
+    expect(issues).toContain("must not contain timestamps");
+  });
+
+  test("enforces definitive evidence and unresolved consumerlessness", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const definitive = content.configurationExperiments.find(({ id }) => id === "negotiation-screen")!.modes[1].deltas[0];
+    definitive.consumerSymbol = "MissingConsumer";
+    definitive.referenceChain![0].symbol = "MissingHop";
+    definitive.behaviorTest!.testName = "missing test name";
+    const unresolved = content.configurationExperiments.find(({ id }) => id === "questioner-discovery-contract")!.modes[1].deltas[0];
+    unresolved.consumerPath = "packages/protocol/src/opportunity/application/opportunity.graph.ts";
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/questions/application/unresolved-consumer.ts"] = [
+      'import { isDiscoveryQuestionsEnabled } from "./question.env.js";',
+      "export const active = isDiscoveryQuestionsEnabled();",
+    ].join("\n");
+    const artifact = buildAtlasArtifact(input, content);
+    const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");
+    expect(issues).toContain("consumer symbol is missing");
+    expect(issues).toContain("reference-chain hop is missing");
+    expect(issues).toContain("behavior test name is missing");
+    expect(issues).toContain("unresolved delta must not include consumerPath");
+    expect(issues).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("emits byte-identical stdout under different covered environment sentinels", () => {
+    const run = (sentinel: string) => Bun.spawnSync({
+      cmd: ["bun", "scripts/build-protocol-atlas.ts", "--stdout"],
+      cwd: repoRoot,
+      env: { ...process.env, NEGOTIATION_SCREEN_MODE: sentinel },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const first = run("atlas-sentinel-a");
+    const second = run("atlas-sentinel-b");
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(first.stdout).toEqual(second.stdout);
+    const output = first.stdout.toString();
+    expect(output).not.toContain("atlas-sentinel-a");
+    expect(output).not.toContain("atlas-sentinel-b");
+  }, 15_000);
 });

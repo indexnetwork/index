@@ -9,6 +9,8 @@ type AtlasCore = {
   validateData(content: unknown, generated: unknown): { ok: boolean; errors: string[] };
   searchItems(query: string, content: ReturnType<typeof fixtureContent>, generated: ReturnType<typeof fixtureGenerated>): Array<{ id: string }>;
   filterGraph(filters: Record<string, string[]>, generated: ReturnType<typeof fixtureGenerated>): ReturnType<typeof expectedOpportunityAgentSubgraph>;
+  configurationAvailability(generated: unknown): { available: boolean; experiments: Array<{ id: string }>; errors: string[] };
+  deriveConfigurationComparison(experimentId: string, modeId: string, content: ReturnType<typeof fixtureContent>, generated: ReturnType<typeof fixtureGenerated>): Record<string, unknown> | null;
 };
 
 beforeAll(async () => {
@@ -55,9 +57,14 @@ const fixtureContent = () => ({
   concepts: [{ id: "opportunity", title: "Opportunity", summary: "A participant-visible evaluated match.", normative: true }],
   invariants: [{ id: "candidate-private", text: "Candidates remain private." }],
   vocabulary: [], relationships: [],
+  configurationDisclaimer: "This compares documented `packages/protocol` behavior against package fallbacks. It does not show any deployed environment and is not evidence that a capability is unused or removable.",
+  configurationExperiments: [
+    { id: "negotiation-screen", title: "Negotiation screen", fallbackModeId: "off", modes: [{ id: "off" }, { id: "shadow" }, { id: "enforce" }] },
+    { id: "questioner-discovery-contract", title: "Questioner discovery", fallbackModeId: "off", modes: [{ id: "off" }, { id: "transcripts-unresolved" }] },
+  ],
 });
 const fixtureGenerated = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   nodes: [
     {
       id: "component.opportunity-graph-factory", label: "OpportunityGraphFactory", symbol: "OpportunityGraphFactory",
@@ -71,7 +78,32 @@ const fixtureGenerated = () => ({
     },
   ],
   edges: [{ id: "runtime.evaluate", sourceId: "component.opportunity-graph-factory", targetId: "component.opportunity-evaluator", kind: "runtime" }],
+  configurationExperiments: [
+    {
+      id: "negotiation-screen", title: "Negotiation screen", summary: "Controls first-turn screening.", capability: "negotiation",
+      fallbackModeId: "off", coverage: "definitive",
+      settings: [{ key: "NEGOTIATION_SCREEN_MODE", acceptedValues: ["off", "enforce"], readSites: [{ path: "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts", symbol: "configuredScreenMode" }], entryAccessorSymbol: "configuredScreenMode", accessorClosure: [], readTiming: "invocation" }],
+      modes: [
+        { id: "off", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: null }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "off" }], prerequisites: [], deltas: [], explanation: "Fallback bypasses screening.", caveats: [] },
+        { id: "shadow", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "shadow" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "shadow" }], prerequisites: [], deltas: [], explanation: "No reviewed topology delta.", caveats: [] },
+        { id: "enforce", assignments: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], resolvedValues: [{ key: "NEGOTIATION_SCREEN_MODE", value: "enforce" }], prerequisites: [], deltas: [{ id: "screen-enforce", effect: "activated", targetKind: "node", targetId: "component.opportunity-graph-factory", consumerPath: "packages/protocol/src/negotiation/application/negotiation.graph.ts", consumerSymbol: "NegotiationGraphFactory", referenceChain: [], behaviorTest: { path: "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts", testName: "enforce" } }], explanation: "Enforces screening.", caveats: [] },
+      ],
+    },
+    {
+      id: "questioner-discovery-contract", title: "Questioner discovery", summary: "Declared discovery-question contract.", capability: "questions",
+      fallbackModeId: "off", coverage: "unresolved",
+      settings: [{ key: "QUESTIONER_DISCOVERY_ENABLED", acceptedValues: ["false", "true"], readSites: [{ path: "packages/protocol/src/questions/application/question.env.ts", symbol: "isDiscoveryQuestionsEnabled" }], entryAccessorSymbol: "isDiscoveryQuestionsEnabled", accessorClosure: [], readTiming: "invocation" }],
+      modes: [
+        { id: "off", assignments: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: null }], resolvedValues: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "false" }], prerequisites: [], deltas: [], explanation: "Fallback is off.", caveats: [] },
+        { id: "transcripts-unresolved", assignments: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "true" }], resolvedValues: [{ key: "QUESTIONER_DISCOVERY_ENABLED", value: "true" }], prerequisites: [], deltas: [{ id: "questioner-unresolved", effect: "unresolved", targetKind: "node", targetId: "component.opportunity-graph-factory", noDirectProtocolConsumer: true }], explanation: "The package declares the accessor, but direct runtime effect is unresolved.", caveats: ["No direct package consumer."] },
+      ],
+    },
+  ],
 });
+const fixtureGeneratedV1 = () => {
+  const { configurationExperiments: _configurationExperiments, ...generated } = fixtureGenerated();
+  return { ...generated, schemaVersion: 1 };
+};
 const fixtureState = (overrides = {}) => ({
   chapterId: "orientation",
   stepId: null,
@@ -80,6 +112,10 @@ const fixtureState = (overrides = {}) => ({
   query: "",
   filters: { capabilities: [], kinds: [], edgeKinds: [] },
   notice: null,
+  configurationExperimentId: null,
+  configurationModeId: null,
+  focusIntent: null,
+  announcement: null,
   ...overrides,
 });
 const expectedOpportunityAgentSubgraph = () => ({
@@ -93,7 +129,7 @@ type RendererHarness = {
   cleanup(): void;
 };
 
-async function rendererHarness(options: { hash?: string; generated?: ReturnType<typeof fixtureGenerated> | null } = {}): Promise<RendererHarness> {
+async function rendererHarness(options: { hash?: string; generated?: ReturnType<typeof fixtureGenerated> | ReturnType<typeof fixtureGeneratedV1> | null } = {}): Promise<RendererHarness> {
   const window = new GlobalWindow({ url: `file:///protocol-atlas/index.html${options.hash ?? ""}` });
   window.document.body.innerHTML = `
     <header><div id="atlas-layer-toggle"></div><button id="atlas-search" type="button">Search</button></header>
@@ -194,6 +230,69 @@ describe("ProtocolAtlasCore routing", () => {
         notice: "That atlas location no longer exists. Returned to Orientation.",
       }));
     }
+  });
+});
+
+describe("ProtocolAtlasCore configuration lab", () => {
+  test("round-trips a valid experiment and mode after ordinary filters", () => {
+    const state = fixtureState({
+      chapterId: "explore",
+      layer: "implementation",
+      filters: { capabilities: ["opportunities"], kinds: [], edgeKinds: [] },
+      configurationExperimentId: "negotiation-screen",
+      configurationModeId: "enforce",
+    });
+    expect(core().serializeHash(state)).toBe("#chapter=explore&layer=implementation&capabilities=opportunities&experiment=negotiation-screen&mode=enforce");
+    expect(core().parseHash(core().serializeHash(state), fixtureContent(), fixtureGenerated())).toEqual(state);
+  });
+
+  test("rejects incomplete or unknown configuration pairs", () => {
+    for (const hash of ["#chapter=explore&layer=implementation&experiment=negotiation-screen", "#chapter=explore&layer=implementation&experiment=missing&mode=off"]) {
+      expect(core().parseHash(hash, fixtureContent(), fixtureGenerated())).toEqual(fixtureState({ notice: "That atlas location no longer exists. Returned to Orientation." }));
+    }
+  });
+
+  test("selects, resets, and clears configuration focus deterministically", () => {
+    const selected = core().transition(fixtureState({ filters: { capabilities: ["opportunities"], kinds: [], edgeKinds: [] } }), { type: "select-configuration-experiment", experimentId: "negotiation-screen" }, fixtureContent(), fixtureGenerated());
+    expect(selected).toMatchObject({ chapterId: "explore", layer: "implementation", configurationExperimentId: "negotiation-screen", configurationModeId: "off" });
+    const changed = core().transition(selected, { type: "select-configuration-mode", experimentId: "negotiation-screen", modeId: "enforce" }, fixtureContent(), fixtureGenerated());
+    expect(changed).toMatchObject({ configurationModeId: "enforce", focusIntent: { experimentId: "negotiation-screen", modeId: "enforce" } });
+    expect(String(changed.announcement)).toContain("activated");
+    const reset = core().transition(changed, { type: "reset-configuration" }, fixtureContent(), fixtureGenerated());
+    expect(reset).toMatchObject({ configurationModeId: "off", filters: { capabilities: ["opportunities"], kinds: [], edgeKinds: [] } });
+    expect(core().transition(reset, { type: "set-layer", layer: "protocol" }, fixtureContent(), fixtureGenerated())).toMatchObject({ configurationExperimentId: null, configurationModeId: null });
+  });
+
+  test("derives definitive and unresolved comparisons without removing targets", () => {
+    expect(core().deriveConfigurationComparison("negotiation-screen", "enforce", fixtureContent(), fixtureGenerated())).toMatchObject({
+      counts: { activated: 1, bypassed: 0, changed: 0, unresolved: 0 },
+    });
+    expect(core().deriveConfigurationComparison("questioner-discovery-contract", "transcripts-unresolved", fixtureContent(), fixtureGenerated())).toMatchObject({
+      counts: { activated: 0, bypassed: 0, changed: 0, unresolved: 1 },
+    });
+  });
+
+  test("keeps schema-1 ordinary atlas data while reporting the lab unavailable", () => {
+    expect(core().validateData(fixtureContent(), fixtureGeneratedV1()).ok).toBe(true);
+    expect(core().configurationAvailability(fixtureGeneratedV1())).toEqual({
+      available: false,
+      experiments: [],
+      errors: ["Configuration Lab unavailable for this artifact."],
+    });
+  });
+
+  test("isolates one malformed experiment without invalidating ordinary evidence", () => {
+    const generated = fixtureGenerated();
+    generated.configurationExperiments.push({
+      ...structuredClone(generated.configurationExperiments[0]),
+      id: "malformed",
+      fallbackModeId: "missing",
+    });
+    const availability = core().configurationAvailability(generated);
+    expect(availability.available).toBe(true);
+    expect(availability.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract"]);
+    expect(availability.errors.join(" ")).toContain("malformed");
+    expect(core().validateData(fixtureContent(), generated).ok).toBe(true);
   });
 });
 
@@ -399,6 +498,86 @@ describe("Protocol Atlas guided renderer", () => {
       expect(activeStep(harness.document)).toBe("Retrieve candidates");
     } finally {
       harness.cleanup();
+    }
+  });
+});
+
+describe("Protocol Atlas Configuration Lab renderer", () => {
+  test("renders semantic configuration controls, deltas, focus, and schema-1 degradation", async () => {
+    const harness = await rendererHarness();
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Explore")?.click();
+      expect(harness.document.querySelectorAll("#atlas-nav button")).toHaveLength(4);
+      expect(harness.document.querySelector(".configuration-lab")?.textContent).toContain("does not show any deployed environment");
+      expect(harness.document.querySelector(".configuration-lab fieldset legend")).not.toBeNull();
+      const experiment = harness.document.querySelector<HTMLInputElement>('input[name="configuration-experiment"][value="negotiation-screen"]');
+      experiment?.click();
+      const enforce = harness.document.querySelector<HTMLInputElement>('input[name="configuration-mode"][value="enforce"]');
+      enforce?.focus();
+      enforce?.click();
+      expect(harness.window.location.hash).toContain("experiment=negotiation-screen&mode=enforce");
+      expect(harness.document.querySelector(".configuration-delta--activated")?.textContent).toContain("+ activated");
+      expect(harness.document.querySelector(".configuration-comparison-active")).not.toBeNull();
+      expect(harness.document.querySelector(".configuration-comparison-active .atlas-node:not(.configuration-delta--activated)")).not.toBeNull();
+      expect(harness.document.activeElement?.getAttribute("value")).toBe("enforce");
+      expect(harness.document.querySelector("#atlas-status")?.textContent).toContain("activated");
+      harness.document.querySelector<HTMLInputElement>('input[name="configuration-mode"][value="shadow"]')?.click();
+      expect(harness.document.querySelector(".configuration-delta-empty")?.textContent).toContain("without inventing a topology effect");
+    } finally {
+      harness.cleanup();
+    }
+
+    const old = await rendererHarness({ generated: fixtureGeneratedV1() });
+    try {
+      buttonWithText(old.document, "#atlas-nav button", "Explore")?.click();
+      expect(old.document.querySelector(".configuration-lab")?.textContent).toContain("Configuration Lab unavailable for this artifact.");
+      expect(old.document.querySelectorAll(".atlas-node").length).toBeGreaterThan(0);
+    } finally {
+      old.cleanup();
+    }
+  });
+});
+
+describe("Protocol Atlas configuration history and filter composition", () => {
+  test("restores configuration history and preserves inactive filters", async () => {
+    const harness = await rendererHarness();
+    try {
+      buttonWithText(harness.document, "#atlas-nav button", "Explore")?.click();
+      harness.document.querySelector<HTMLInputElement>('#atlas-filters input[name="capabilities"][value="opportunities"]')?.click();
+      harness.document.querySelector<HTMLInputElement>('input[name="configuration-experiment"][value="negotiation-screen"]')?.click();
+      harness.document.querySelector<HTMLInputElement>('input[name="configuration-mode"][value="enforce"]')?.click();
+      const enforceHash = harness.window.location.hash;
+      expect(harness.document.querySelector(".configuration-filter-note")?.textContent).toContain("preserved but inactive");
+      buttonWithText(harness.document, ".configuration-modes button", "Reset to package fallback")?.click();
+      const fallbackHash = harness.window.location.hash;
+      expect(fallbackHash).not.toBe(enforceHash);
+      expect(harness.document.querySelector(".configuration-filter-note")).not.toBeNull();
+      harness.window.history.back();
+      await harness.window.happyDOM.waitUntilComplete();
+      expect(harness.window.location.hash).toBe(enforceHash);
+      expect(harness.document.querySelector<HTMLInputElement>('input[name="configuration-mode"][value="enforce"]')?.checked).toBe(true);
+      harness.document.querySelectorAll<HTMLButtonElement>("#atlas-layer-toggle button")[0].click();
+      expect(harness.document.querySelector<HTMLInputElement>('#atlas-filters input[name="capabilities"][value="opportunities"]')?.checked).toBe(true);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  test("omits a malformed experiment and keeps a valid comparison usable", async () => {
+    const generated = fixtureGenerated();
+    generated.configurationExperiments.push({ ...structuredClone(generated.configurationExperiments[0]), id: "malformed", fallbackModeId: "missing" });
+    const originalError = console.error;
+    console.error = () => {};
+    let harness: RendererHarness | undefined;
+    try {
+      harness = await rendererHarness({ generated });
+      buttonWithText(harness.document, "#atlas-nav button", "Explore")?.click();
+      expect(harness.document.querySelector('.configuration-lab input[value="malformed"]')).toBeNull();
+      expect(harness.document.querySelector('.configuration-lab input[value="negotiation-screen"]')).not.toBeNull();
+      expect(harness.document.querySelector("#atlas-notice")?.textContent).toContain("malformed");
+    } finally {
+      console.error = originalError;
+      harness?.cleanup();
     }
   });
 });

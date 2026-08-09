@@ -1,5 +1,5 @@
 globalThis.ProtocolAtlasGenerated = Object.freeze({
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "nodes": [
     {
       "id": "component.agent-tools",
@@ -1299,6 +1299,3868 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
       "kind": "static",
       "label": "imports at runtime",
       "evidencePath": "packages/protocol/src/index.ts"
+    }
+  ],
+  "configurationExperiments": [
+    {
+      "id": "discovery-corpus",
+      "title": "Discovery corpus and source selection",
+      "summary": "Discovery corpus and source selection compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "definitive",
+      "fallbackModeId": "fallback",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "retrieve-candidates"
+      ],
+      "settings": [
+        {
+          "key": "DISCOVERY_ALLOWED_TYPES",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discovery.env.ts",
+              "symbol": "discoveryAllowedTypes"
+            }
+          ],
+          "entryAccessorSymbol": "discoveryAllowedTypes",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "intent",
+            "intent,profile",
+            "profile"
+          ],
+          "fallback": "intent,profile",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "DISCOVERY_CONTEXT_TO_INTENT",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "symbol": "OpportunityGraphFactory"
+            }
+          ],
+          "entryAccessorSymbol": "OpportunityGraphFactory",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "0",
+            "1"
+          ],
+          "fallback": "1",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "DISCOVERY_PROFILE_SOURCE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discovery.env.ts",
+              "symbol": "discoveryProfileSource"
+            }
+          ],
+          "entryAccessorSymbol": "discoveryProfileSource",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "premise",
+            "user_context"
+          ],
+          "fallback": "premise",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "context-cross-match",
+          "assignments": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "intent,profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": "1"
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "user_context"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "intent,profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": "1"
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "user_context"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-corpus.context-cross-match",
+              "effect": "activated",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryAllowedTypes"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryProfileSource"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
+                "testName": "parses intent-only"
+              }
+            }
+          ],
+          "explanation": "Context-to-intent cross matching becomes eligible.",
+          "caveats": []
+        },
+        {
+          "id": "context-profile",
+          "assignments": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": null
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "user_context"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": "1"
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "user_context"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-corpus.context-profile",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryAllowedTypes"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryProfileSource"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
+                "testName": "parses intent-only"
+              }
+            }
+          ],
+          "explanation": "Only participant-context profile retrieval is eligible.",
+          "caveats": []
+        },
+        {
+          "id": "fallback",
+          "assignments": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": null
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": null
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "intent,profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": "1"
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "premise"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Intent and premise-profile retrieval are eligible from package fallbacks.",
+          "caveats": []
+        },
+        {
+          "id": "intent-only",
+          "assignments": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "intent"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": null
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "intent"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": "1"
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "premise"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-corpus.intent-only",
+              "effect": "bypassed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryAllowedTypes"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryProfileSource"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
+                "testName": "parses intent-only"
+              }
+            }
+          ],
+          "explanation": "Profile retrieval is bypassed; intent retrieval remains eligible.",
+          "caveats": []
+        },
+        {
+          "id": "premise-profile",
+          "assignments": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": null
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "premise"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_ALLOWED_TYPES",
+              "value": "profile"
+            },
+            {
+              "key": "DISCOVERY_CONTEXT_TO_INTENT",
+              "value": "1"
+            },
+            {
+              "key": "DISCOVERY_PROFILE_SOURCE",
+              "value": "premise"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-corpus.premise-profile",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryAllowedTypes"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/discovery.env.ts",
+                  "symbol": "discoveryProfileSource"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/discovery.env.spec.ts",
+                "testName": "parses intent-only"
+              }
+            }
+          ],
+          "explanation": "Only premise-backed profile retrieval is eligible.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "discovery-evaluation-topology",
+      "title": "Discovery evaluation topology",
+      "summary": "Discovery evaluation topology compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "definitive",
+      "fallbackModeId": "bundled",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "evaluate-fit"
+      ],
+      "settings": [
+        {
+          "key": "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "symbol": "OpportunityGraphFactory"
+            }
+          ],
+          "entryAccessorSymbol": "OpportunityGraphFactory",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "bundled",
+          "assignments": [
+            {
+              "key": "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
+              "value": "false"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Fallback evaluation uses bundled actor normalization.",
+          "caveats": []
+        },
+        {
+          "id": "pairwise",
+          "assignments": [
+            {
+              "key": "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "RUN_OPPORTUNITY_EVAL_IN_PARALLEL",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-evaluation-topology.pairwise",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "splits into pairwise opportunities"
+              }
+            }
+          ],
+          "explanation": "Evaluation executes per pair with independent failure isolation.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "discovery-premise-limit",
+      "title": "Discovery premise fan-out",
+      "summary": "Discovery premise fan-out compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "definitive",
+      "fallbackModeId": "fallback-40",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "retrieve-candidates"
+      ],
+      "settings": [
+        {
+          "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "symbol": "getSourcePremiseDiscoveryLimit"
+            }
+          ],
+          "entryAccessorSymbol": "getSourcePremiseDiscoveryLimit",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "0",
+            "100",
+            "40"
+          ],
+          "fallback": "40",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "disabled-0",
+          "assignments": [
+            {
+              "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+              "value": "0"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+              "value": "0"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-premise-limit.disabled-0",
+              "effect": "bypassed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "getSourcePremiseDiscoveryLimit"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "premise discovery uses scoped capped source premises"
+              }
+            }
+          ],
+          "explanation": "Premise-to-premise discovery is bypassed.",
+          "caveats": []
+        },
+        {
+          "id": "expanded-100",
+          "assignments": [
+            {
+              "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+              "value": "100"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+              "value": "100"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "discovery-premise-limit.expanded-100",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "consumerSymbol": "OpportunityGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "getSourcePremiseDiscoveryLimit"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
+                "testName": "premise discovery uses scoped capped source premises"
+              }
+            }
+          ],
+          "explanation": "The source-premise fan-out cap increases to 100.",
+          "caveats": []
+        },
+        {
+          "id": "fallback-40",
+          "assignments": [
+            {
+              "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_SOURCE_PREMISE_LIMIT",
+              "value": "40"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "At most 40 source premises are loaded.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "discovery-rejection-cooldown",
+      "title": "Discovery rejection cooldown",
+      "summary": "Discovery rejection cooldown compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "documented-only",
+      "fallbackModeId": "fallback-7d",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "evaluate-fit"
+      ],
+      "settings": [
+        {
+          "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "symbol": "getRejectionCooldownMs"
+            }
+          ],
+          "entryAccessorSymbol": "getRejectionCooldownMs",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "1",
+            "30",
+            "7"
+          ],
+          "fallback": "7",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "fallback-7d",
+          "assignments": [
+            {
+              "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+              "value": "7"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Recent rejection penalties use seven days.",
+          "caveats": []
+        },
+        {
+          "id": "long-30d",
+          "assignments": [
+            {
+              "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+              "value": "30"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+              "value": "30"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "The rejection penalty window extends to thirty days.",
+          "caveats": []
+        },
+        {
+          "id": "short-1d",
+          "assignments": [
+            {
+              "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+              "value": "1"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "DISCOVERY_REJECTION_COOLDOWN_DAYS",
+              "value": "1"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "The rejection penalty window shortens to one day.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "hyde-frame-constraints",
+      "title": "HyDE frame constraints",
+      "summary": "HyDE frame constraints compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "participant-context",
+      "coverage": "definitive",
+      "fallbackModeId": "legacy",
+      "affectedChapterIds": [
+        "explore",
+        "primitives"
+      ],
+      "affectedStepIds": [
+        "refresh-representations",
+        "retrieve-candidates"
+      ],
+      "settings": [
+        {
+          "key": "HYDE_FRAME_CONSTRAINTS_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/shared/hyde/hyde.env.ts",
+              "symbol": "getHydeGenerationMode"
+            }
+          ],
+          "entryAccessorSymbol": "getHydeGenerationMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "frame-v1",
+          "assignments": [
+            {
+              "key": "HYDE_FRAME_CONSTRAINTS_ENABLED",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "HYDE_FRAME_CONSTRAINTS_ENABLED",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "hyde-frame-constraints.frame-v1",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.hyde-graph-factory",
+              "consumerPath": "packages/protocol/src/shared/hyde/hyde.graph.ts",
+              "consumerSymbol": "HydeGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/shared/hyde/hyde.env.ts",
+                  "symbol": "getHydeGenerationMode"
+                },
+                {
+                  "path": "packages/protocol/src/shared/hyde/hyde.graph.ts",
+                  "symbol": "HydeGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/shared/hyde/tests/hyde.frame.spec.ts",
+                "testName": "enables frame-v1 only for the strict literal true"
+              }
+            }
+          ],
+          "explanation": "HyDE generation applies frame-v1 constraints.",
+          "caveats": []
+        },
+        {
+          "id": "legacy",
+          "assignments": [
+            {
+              "key": "HYDE_FRAME_CONSTRAINTS_ENABLED",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "HYDE_FRAME_CONSTRAINTS_ENABLED",
+              "value": "false"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "HyDE generation uses the legacy representation.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "introducer-discovery",
+      "title": "Introducer discovery",
+      "summary": "Introducer discovery compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "definitive",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "retrieve-candidates"
+      ],
+      "settings": [
+        {
+          "key": "INTRODUCER_DISCOVERY_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
+              "symbol": "isIntroducerDiscoveryEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "isIntroducerDiscoveryEnabled",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "INTRODUCER_DISCOVERY_ENABLED",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "INTRODUCER_DISCOVERY_ENABLED",
+              "value": "false"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Introducer discovery is ineligible.",
+          "caveats": []
+        },
+        {
+          "id": "on",
+          "assignments": [
+            {
+              "key": "INTRODUCER_DISCOVERY_ENABLED",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "INTRODUCER_DISCOVERY_ENABLED",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "introducer-discovery.on",
+              "effect": "activated",
+              "targetKind": "node",
+              "targetId": "component.maintenance-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
+              "consumerSymbol": "isIntroducerDiscoveryEnabled",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
+                  "symbol": "isIntroducerDiscoveryEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.introducer-feature.ts",
+                  "symbol": "isIntroducerDiscoveryEnabled"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.introducer-feature.spec.ts",
+                "testName": "enables only for true"
+              }
+            }
+          ],
+          "explanation": "Introducer discovery becomes eligible when its required protocol boundary is supplied.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-consultation",
+      "title": "Negotiation participant consultation",
+      "summary": "Negotiation participant consultation compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_ASK_USER_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "symbol": "configuredAskUserEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "configuredAskUserEnabled",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "symbol": "askUserAnswerWindowMs"
+            }
+          ],
+          "entryAccessorSymbol": "askUserAnswerWindowMs",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "60000",
+            "86400000"
+          ],
+          "fallback": "86400000",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+              "symbol": "negotiationConsultationPolicyMode"
+            }
+          ],
+          "entryAccessorSymbol": "negotiationConsultationPolicyMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on",
+            "shadow"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATION_PROTOCOL_VERSION",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "symbol": "configuredProtocolVersion"
+            }
+          ],
+          "entryAccessorSymbol": "configuredProtocolVersion",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "v1",
+            "v2"
+          ],
+          "fallback": "v1",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": "false"
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": "86400000"
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "off"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v1"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Participant consultation is bypassed.",
+          "caveats": []
+        },
+        {
+          "id": "shadow",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "shadow"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": "false"
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": "86400000"
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "shadow"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v1"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-consultation.shadow",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredAskUserEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "askUserAnswerWindowMs"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+                  "symbol": "negotiationConsultationPolicyMode"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
+                "testName": "policy on"
+              }
+            }
+          ],
+          "explanation": "Consultation eligibility is observed without pausing negotiation.",
+          "caveats": []
+        },
+        {
+          "id": "v2-on",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "on"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": "86400000"
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "on"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "prerequisites": [
+            {
+              "kind": "setting",
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "deltas": [
+            {
+              "id": "negotiation-consultation.v2-on",
+              "effect": "activated",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredAskUserEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "askUserAnswerWindowMs"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+                  "symbol": "negotiationConsultationPolicyMode"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
+                "testName": "policy on"
+              }
+            }
+          ],
+          "explanation": "Eligible v2 negotiations may pause for participant input.",
+          "caveats": []
+        },
+        {
+          "id": "v2-short-window",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": "60000"
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "on"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_ASK_USER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_ASK_USER_WINDOW_MS",
+              "value": "60000"
+            },
+            {
+              "key": "NEGOTIATION_CONSULTATION_POLICY_MODE",
+              "value": "on"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "prerequisites": [
+            {
+              "kind": "setting",
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "deltas": [
+            {
+              "id": "negotiation-consultation.v2-short-window",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredAskUserEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "askUserAnswerWindowMs"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.consultation-policy.ts",
+                  "symbol": "negotiationConsultationPolicyMode"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.ask-user.spec.ts",
+                "testName": "policy on"
+              }
+            }
+          ],
+          "explanation": "The consultation pause expires after one minute.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-context",
+      "title": "Negotiation context breadth",
+      "summary": "Negotiation context breadth compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "include-active",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_INCLUDE_OTHER_INTENTS",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+              "symbol": "negotiationIncludesOtherIntents"
+            }
+          ],
+          "entryAccessorSymbol": "negotiationIncludesOtherIntents",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "true",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "exact-only",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_INCLUDE_OTHER_INTENTS",
+              "value": "false"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_INCLUDE_OTHER_INTENTS",
+              "value": "false"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-context.exact-only",
+              "effect": "bypassed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+              "consumerSymbol": "negotiateExistingOpportunity",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+                  "symbol": "negotiationIncludesOtherIntents"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.existing-negotiation.ts",
+                  "symbol": "negotiateExistingOpportunity"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/opportunity.existing-negotiation.spec.ts",
+                "testName": "false flag isolates both sides"
+              }
+            }
+          ],
+          "explanation": "Negotiation context is limited to the triggering Signal.",
+          "caveats": []
+        },
+        {
+          "id": "include-active",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_INCLUDE_OTHER_INTENTS",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_INCLUDE_OTHER_INTENTS",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Negotiation context may include bounded active Signals.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-deadlock",
+      "title": "Negotiation deadlock shift",
+      "summary": "Negotiation deadlock shift compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+              "symbol": "configuredDeadlockShiftEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "configuredDeadlockShiftEnabled",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+              "symbol": "configuredDeadlockThreshold"
+            }
+          ],
+          "entryAccessorSymbol": "configuredDeadlockThreshold",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "2",
+            "4"
+          ],
+          "fallback": "4",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATION_PROTOCOL_VERSION",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "symbol": "configuredProtocolVersion"
+            }
+          ],
+          "entryAccessorSymbol": "configuredProtocolVersion",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "v1",
+            "v2"
+          ],
+          "fallback": "v1",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATOR_STANCE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+              "symbol": "configuredNegotiatorStance"
+            }
+          ],
+          "entryAccessorSymbol": "configuredNegotiatorStance",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "advocate",
+            "evaluator",
+            "skeptic"
+          ],
+          "fallback": "advocate",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "false"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "4"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v1"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "advocate"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Deadlock bargaining shifts are bypassed.",
+          "caveats": []
+        },
+        {
+          "id": "v2-fast-2",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "2"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "2"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "advocate"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-deadlock.v2-fast-2",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "symbol": "configuredDeadlockShiftEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "symbol": "configuredDeadlockThreshold"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "symbol": "configuredNegotiatorStance"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
+                "testName": "flag ON: bargaining stance from the threshold turn"
+              }
+            }
+          ],
+          "explanation": "A v2 bargaining shift becomes eligible after two stagnant turns.",
+          "caveats": []
+        },
+        {
+          "id": "v2-skeptic",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "4"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "skeptic"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "4"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "skeptic"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-deadlock.v2-skeptic",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "symbol": "configuredDeadlockShiftEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "symbol": "configuredDeadlockThreshold"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "symbol": "configuredNegotiatorStance"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
+                "testName": "flag ON: bargaining stance from the threshold turn"
+              }
+            }
+          ],
+          "explanation": "Skeptic stance can resolve persistent deadlock as stalemate.",
+          "caveats": []
+        },
+        {
+          "id": "v2-threshold-4",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "4"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "NEGOTIATION_DEADLOCK_THRESHOLD",
+              "value": "4"
+            },
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            },
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "advocate"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-deadlock.v2-threshold-4",
+              "effect": "activated",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "symbol": "configuredDeadlockShiftEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.deadlock.ts",
+                  "symbol": "configuredDeadlockThreshold"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "symbol": "configuredNegotiatorStance"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.deadlock-shift.spec.ts",
+                "testName": "flag ON: bargaining stance from the threshold turn"
+              }
+            }
+          ],
+          "explanation": "A v2 bargaining shift becomes eligible after four stagnant turns.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-evidence-contract",
+      "title": "Negotiation-evidence questions contract",
+      "summary": "Negotiation-evidence questions contract compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "unresolved",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "evaluate-fit"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/negotiation-evidence/negotiation-evidence.env.ts",
+              "symbol": "negotiationEvidenceQuestionsMode"
+            }
+          ],
+          "entryAccessorSymbol": "negotiationEvidenceQuestionsMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on",
+            "shadow"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Negotiation-evidence question mode resolves off.",
+          "caveats": []
+        },
+        {
+          "id": "on-alias",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+              "value": "on"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+              "value": "on"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-evidence-contract.on-alias",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_EVIDENCE_QUESTIONS_MODE"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Current package handling treats on as the same shadow-pipeline activation contract.",
+          "caveats": []
+        },
+        {
+          "id": "shadow",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+              "value": "shadow"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_EVIDENCE_QUESTIONS_MODE",
+              "value": "shadow"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-evidence-contract.shadow",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "NEGOTIATION_EVIDENCE_QUESTIONS_MODE"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Shadow mode resolves, but no direct package activation consumer is established.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-protocol",
+      "title": "Negotiation protocol version",
+      "summary": "Negotiation protocol version compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "v1",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_PROTOCOL_VERSION",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+              "symbol": "configuredProtocolVersion"
+            }
+          ],
+          "entryAccessorSymbol": "configuredProtocolVersion",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "v1",
+            "v2"
+          ],
+          "fallback": "v1",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "v1",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v1"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Fresh negotiations use the v1 action contract.",
+          "caveats": []
+        },
+        {
+          "id": "v2",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_PROTOCOL_VERSION",
+              "value": "v2"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-protocol.v2",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.protocol.ts",
+                  "symbol": "configuredProtocolVersion"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.protocol.spec.ts",
+                "testName": "configuredProtocolVersion: env switch, defaults v1"
+              }
+            }
+          ],
+          "explanation": "Fresh negotiations stamp the v2 seat-aware action contract.",
+          "caveats": [
+            "In-flight tasks remain pinned to their stored protocol version."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negotiation-screen",
+      "title": "Negotiation outreach screen",
+      "summary": "Negotiation outreach screen compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_SCREEN_MODE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts",
+              "symbol": "configuredScreenMode"
+            }
+          ],
+          "entryAccessorSymbol": "configuredScreenMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "enforce",
+            "off",
+            "shadow"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "enforce",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_SCREEN_MODE",
+              "value": "enforce"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_SCREEN_MODE",
+              "value": "enforce"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-screen.enforce",
+              "effect": "activated",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts",
+                  "symbol": "configuredScreenMode"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts",
+                "testName": "enforce"
+              }
+            }
+          ],
+          "explanation": "A pass decision is required before outreach.",
+          "caveats": []
+        },
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_SCREEN_MODE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_SCREEN_MODE",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "The outreach screen is bypassed.",
+          "caveats": []
+        },
+        {
+          "id": "shadow",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_SCREEN_MODE",
+              "value": "shadow"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_SCREEN_MODE",
+              "value": "shadow"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-screen.shadow",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.screen.contracts.ts",
+                  "symbol": "configuredScreenMode"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.screen-routing.spec.ts",
+                "testName": "enforce"
+              }
+            }
+          ],
+          "explanation": "Screen decisions are recorded without blocking outreach.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-stance",
+      "title": "Negotiator stance",
+      "summary": "Negotiator stance compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "advocate",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATOR_STANCE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+              "symbol": "configuredNegotiatorStance"
+            }
+          ],
+          "entryAccessorSymbol": "configuredNegotiatorStance",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "advocate",
+            "evaluator",
+            "skeptic"
+          ],
+          "fallback": "advocate",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "advocate",
+          "assignments": [
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "advocate"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "The negotiator advocates for query fit.",
+          "caveats": []
+        },
+        {
+          "id": "evaluator",
+          "assignments": [
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "evaluator"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "evaluator"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-stance.evaluator",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.index-negotiator",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+              "consumerSymbol": "IndexNegotiator",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "symbol": "configuredNegotiatorStance"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+                  "symbol": "IndexNegotiator"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts",
+                "testName": "configuredNegotiatorStance"
+              }
+            }
+          ],
+          "explanation": "The negotiator emphasizes bilateral value evaluation.",
+          "caveats": []
+        },
+        {
+          "id": "skeptic",
+          "assignments": [
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "skeptic"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATOR_STANCE",
+              "value": "skeptic"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-stance.skeptic",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.index-negotiator",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+              "consumerSymbol": "IndexNegotiator",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/negotiation/domain/negotiation.stance.contracts.ts",
+                  "symbol": "configuredNegotiatorStance"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.agent.ts",
+                  "symbol": "IndexNegotiator"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.stance.spec.ts",
+                "testName": "configuredNegotiatorStance"
+              }
+            }
+          ],
+          "explanation": "The negotiator requires stronger evidence and recognizes stalemate.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "negotiation-turn-caps",
+      "title": "Negotiation turn caps",
+      "summary": "Negotiation turn caps compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "negotiation",
+      "coverage": "definitive",
+      "fallbackModeId": "fallback-4-6",
+      "affectedChapterIds": [
+        "consent",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "negotiate-optional"
+      ],
+      "settings": [
+        {
+          "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "symbol": "NegotiationGraphFactory"
+            },
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "symbol": "OpportunityGraphFactory"
+            }
+          ],
+          "entryAccessorSymbol": "NegotiationGraphFactory",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "12",
+            "3",
+            "6"
+          ],
+          "fallback": "6",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "NEGOTIATION_MAX_TURNS_CHAT",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+              "symbol": "OpportunityGraphFactory"
+            }
+          ],
+          "entryAccessorSymbol": "OpportunityGraphFactory",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "2",
+            "4",
+            "8"
+          ],
+          "fallback": "4",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "extended-8-12",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+              "value": "12"
+            },
+            {
+              "key": "NEGOTIATION_MAX_TURNS_CHAT",
+              "value": "8"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+              "value": "12"
+            },
+            {
+              "key": "NEGOTIATION_MAX_TURNS_CHAT",
+              "value": "8"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-turn-caps.extended-8-12",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "testName": "emits outcome='turn_cap'"
+              }
+            }
+          ],
+          "explanation": "Negotiations allow more turns before a cap outcome.",
+          "caveats": []
+        },
+        {
+          "id": "fallback-4-6",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+              "value": null
+            },
+            {
+              "key": "NEGOTIATION_MAX_TURNS_CHAT",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+              "value": "6"
+            },
+            {
+              "key": "NEGOTIATION_MAX_TURNS_CHAT",
+              "value": "4"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Chat and ambient negotiation use four and six turns.",
+          "caveats": []
+        },
+        {
+          "id": "short-2-3",
+          "assignments": [
+            {
+              "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+              "value": "3"
+            },
+            {
+              "key": "NEGOTIATION_MAX_TURNS_CHAT",
+              "value": "2"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "NEGOTIATION_MAX_TURNS_AMBIENT",
+              "value": "3"
+            },
+            {
+              "key": "NEGOTIATION_MAX_TURNS_CHAT",
+              "value": "2"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "negotiation-turn-caps.short-2-3",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.negotiation-graph-factory",
+              "consumerPath": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+              "consumerSymbol": "NegotiationGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.graph.ts",
+                  "symbol": "OpportunityGraphFactory"
+                },
+                {
+                  "path": "packages/protocol/src/negotiation/application/negotiation.graph.ts",
+                  "symbol": "NegotiationGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/negotiation/tests/negotiation.graph.spec.ts",
+                "testName": "emits outcome='turn_cap'"
+              }
+            }
+          ],
+          "explanation": "Negotiations reach their turn cap sooner.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "outcome-questions-contract",
+      "title": "Outcome questions contract",
+      "summary": "Outcome questions contract compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "unresolved",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "evaluate-fit"
+      ],
+      "settings": [
+        {
+          "key": "OUTCOME_QUESTIONS_MODE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/outcome/outcome.env.ts",
+              "symbol": "outcomeQuestionsMode"
+            }
+          ],
+          "entryAccessorSymbol": "outcomeQuestionsMode",
+          "accessorClosure": [
+            {
+              "path": "packages/protocol/src/opportunity/outcome/outcome.env.ts",
+              "symbol": "isOutcomeQuestionsActivated"
+            }
+          ],
+          "acceptedValues": [
+            "off",
+            "on",
+            "shadow"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "OUTCOME_QUESTIONS_MODE",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "OUTCOME_QUESTIONS_MODE",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Outcome-question mode resolves off.",
+          "caveats": []
+        },
+        {
+          "id": "on-alias",
+          "assignments": [
+            {
+              "key": "OUTCOME_QUESTIONS_MODE",
+              "value": "on"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "OUTCOME_QUESTIONS_MODE",
+              "value": "on"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "outcome-questions-contract.on-alias",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "OUTCOME_QUESTIONS_MODE"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Current package activation treats on as shadow-equivalent for capture and mining.",
+          "caveats": []
+        },
+        {
+          "id": "shadow",
+          "assignments": [
+            {
+              "key": "OUTCOME_QUESTIONS_MODE",
+              "value": "shadow"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "OUTCOME_QUESTIONS_MODE",
+              "value": "shadow"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "outcome-questions-contract.shadow",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "OUTCOME_QUESTIONS_MODE"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "The protocol accessor activates shadow capture; its invoking path remains unresolved here.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "pool-question-contract",
+      "title": "Pool question activation contract",
+      "summary": "Pool question activation contract compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "unresolved",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "evaluate-fit"
+      ],
+      "settings": [
+        {
+          "key": "POOL_QUESTIONS_MINING",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "symbol": "poolQuestionsMiningMode"
+            }
+          ],
+          "entryAccessorSymbol": "poolQuestionsMiningMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "shadow"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "POOL_QUESTIONS_MODE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "symbol": "poolQuestionsMode"
+            }
+          ],
+          "entryAccessorSymbol": "poolQuestionsMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "POOL_QUESTIONS_PUSH",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "symbol": "poolQuestionsPushMode"
+            }
+          ],
+          "entryAccessorSymbol": "poolQuestionsPushMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "symbol": "poolQuestionsStampNewborn"
+            }
+          ],
+          "entryAccessorSymbol": "poolQuestionsStampNewborn",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "symbol": "poolQuestionsVisitTrigger"
+            }
+          ],
+          "entryAccessorSymbol": "poolQuestionsVisitTrigger",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Pool-question activation contracts resolve off.",
+          "caveats": []
+        },
+        {
+          "id": "on-newborn",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "pool-question-contract.on-newborn",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "POOL_QUESTIONS_MINING",
+                "POOL_QUESTIONS_MODE",
+                "POOL_QUESTIONS_PUSH",
+                "POOL_QUESTIONS_VISIT_TRIGGER",
+                "POOL_QUESTIONS_STAMP_NEWBORN"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Newborn stamping is declared; direct package activation remains unresolved.",
+          "caveats": []
+        },
+        {
+          "id": "on-pull",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "pool-question-contract.on-pull",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "POOL_QUESTIONS_MINING",
+                "POOL_QUESTIONS_MODE",
+                "POOL_QUESTIONS_PUSH",
+                "POOL_QUESTIONS_VISIT_TRIGGER",
+                "POOL_QUESTIONS_STAMP_NEWBORN"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Pull-mode question activation is declared; direct package activation remains unresolved.",
+          "caveats": []
+        },
+        {
+          "id": "on-push",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "pool-question-contract.on-push",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "POOL_QUESTIONS_MINING",
+                "POOL_QUESTIONS_MODE",
+                "POOL_QUESTIONS_PUSH",
+                "POOL_QUESTIONS_VISIT_TRIGGER",
+                "POOL_QUESTIONS_STAMP_NEWBORN"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Push activation is declared; direct package activation remains unresolved.",
+          "caveats": []
+        },
+        {
+          "id": "on-visit",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "on"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "on"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "on"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "pool-question-contract.on-visit",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "POOL_QUESTIONS_MINING",
+                "POOL_QUESTIONS_MODE",
+                "POOL_QUESTIONS_PUSH",
+                "POOL_QUESTIONS_VISIT_TRIGGER",
+                "POOL_QUESTIONS_STAMP_NEWBORN"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Visit-trigger activation is declared; direct package activation remains unresolved.",
+          "caveats": []
+        },
+        {
+          "id": "shadow-mining",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "shadow"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": null
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_MINING",
+              "value": "shadow"
+            },
+            {
+              "key": "POOL_QUESTIONS_MODE",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_PUSH",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_STAMP_NEWBORN",
+              "value": "off"
+            },
+            {
+              "key": "POOL_QUESTIONS_VISIT_TRIGGER",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "pool-question-contract.shadow-mining",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "POOL_QUESTIONS_MINING",
+                "POOL_QUESTIONS_MODE",
+                "POOL_QUESTIONS_PUSH",
+                "POOL_QUESTIONS_VISIT_TRIGGER",
+                "POOL_QUESTIONS_STAMP_NEWBORN"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "Shadow mining is declared; direct package activation remains unresolved.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "pool-ranking",
+      "title": "Pool-question Radar ranking",
+      "summary": "Pool-question Radar ranking compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "opportunities",
+      "coverage": "definitive",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "retrieve-candidates"
+      ],
+      "settings": [
+        {
+          "key": "POOL_QUESTIONS_RANKING",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+              "symbol": "poolQuestionsRanking"
+            }
+          ],
+          "entryAccessorSymbol": "poolQuestionsRanking",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "off",
+            "on"
+          ],
+          "fallback": "off",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_RANKING",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_RANKING",
+              "value": "off"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Radar confidence is not adjusted by answered discriminators.",
+          "caveats": []
+        },
+        {
+          "id": "on",
+          "assignments": [
+            {
+              "key": "POOL_QUESTIONS_RANKING",
+              "value": "on"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "POOL_QUESTIONS_RANKING",
+              "value": "on"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "pool-ranking.on",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.radar-graph-factory",
+              "consumerPath": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+              "consumerSymbol": "RadarGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/opportunity/discriminator/discriminator.env.ts",
+                  "symbol": "poolQuestionsRanking"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/radar/radar.graph.ts",
+                  "symbol": "RadarGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/radar.graph.status-filter.spec.ts",
+                "testName": "lifecycle order is unchanged while ranking is off and adjusted when on"
+              }
+            }
+          ],
+          "explanation": "Answered pool discriminators adjust Radar confidence.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "premise-deduplication",
+      "title": "Premise deduplication threshold",
+      "summary": "Premise deduplication threshold compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "participant-context",
+      "coverage": "definitive",
+      "fallbackModeId": "fallback-0.93",
+      "affectedChapterIds": [
+        "explore",
+        "primitives"
+      ],
+      "affectedStepIds": [
+        "atomic-premises"
+      ],
+      "settings": [
+        {
+          "key": "PREMISE_DEDUP_SIMILARITY",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/premise/premise.graph.ts",
+              "symbol": "DEDUP_SIMILARITY_THRESHOLD"
+            }
+          ],
+          "entryAccessorSymbol": "DEDUP_SIMILARITY_THRESHOLD",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "0.85",
+            "0.93",
+            "0.98"
+          ],
+          "fallback": "0.93",
+          "readTiming": "module-load"
+        }
+      ],
+      "modes": [
+        {
+          "id": "broad-0.85",
+          "assignments": [
+            {
+              "key": "PREMISE_DEDUP_SIMILARITY",
+              "value": "0.85"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "PREMISE_DEDUP_SIMILARITY",
+              "value": "0.85"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "premise-deduplication.broad-0.85",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.premise-graph-factory",
+              "consumerPath": "packages/protocol/src/premise/premise.graph.ts",
+              "consumerSymbol": "PremiseGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "symbol": "DEDUP_SIMILARITY_THRESHOLD"
+                },
+                {
+                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "symbol": "PremiseGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/premise/tests/premise.graph.spec.ts",
+                "testName": "skips persisting a near-duplicate premise"
+              }
+            }
+          ],
+          "explanation": "More paraphrases are treated as duplicates.",
+          "caveats": []
+        },
+        {
+          "id": "fallback-0.93",
+          "assignments": [
+            {
+              "key": "PREMISE_DEDUP_SIMILARITY",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "PREMISE_DEDUP_SIMILARITY",
+              "value": "0.93"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "Near-duplicate premises collapse at 0.93 similarity.",
+          "caveats": []
+        },
+        {
+          "id": "strict-0.98",
+          "assignments": [
+            {
+              "key": "PREMISE_DEDUP_SIMILARITY",
+              "value": "0.98"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "PREMISE_DEDUP_SIMILARITY",
+              "value": "0.98"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "premise-deduplication.strict-0.98",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.premise-graph-factory",
+              "consumerPath": "packages/protocol/src/premise/premise.graph.ts",
+              "consumerSymbol": "PremiseGraphFactory",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "symbol": "DEDUP_SIMILARITY_THRESHOLD"
+                },
+                {
+                  "path": "packages/protocol/src/premise/premise.graph.ts",
+                  "symbol": "PremiseGraphFactory"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/premise/tests/premise.graph.spec.ts",
+                "testName": "skips persisting a near-duplicate premise"
+              }
+            }
+          ],
+          "explanation": "Only very close paraphrases are treated as duplicates.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "questioner-discovery-contract",
+      "title": "Questioner discovery contract",
+      "summary": "Questioner discovery contract compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "questions",
+      "coverage": "unresolved",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "evaluate-fit"
+      ],
+      "settings": [
+        {
+          "key": "QUESTIONER_DISCOVERY_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "isDiscoveryQuestionsEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "isDiscoveryQuestionsEnabled",
+          "accessorClosure": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "isQuestionerEnabled"
+            }
+          ],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "discoveryQuestionsInputMode"
+            }
+          ],
+          "entryAccessorSymbol": "discoveryQuestionsInputMode",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "insights",
+            "transcripts"
+          ],
+          "fallback": "transcripts",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "QUESTIONER_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "isQuestionerEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "isQuestionerEnabled",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "insights-unresolved",
+          "assignments": [
+            {
+              "key": "QUESTIONER_DISCOVERY_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+              "value": "insights"
+            },
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "QUESTIONER_DISCOVERY_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+              "value": "insights"
+            },
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "questioner-discovery-contract.insights-unresolved",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "QUESTIONER_DISCOVERY_ENABLED",
+                "QUESTIONER_DISCOVERY_INPUT_MODE"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "The accessor resolves insight input, but no direct package behavior consumer is established.",
+          "caveats": []
+        },
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "QUESTIONER_DISCOVERY_ENABLED",
+              "value": null
+            },
+            {
+              "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+              "value": null
+            },
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "QUESTIONER_DISCOVERY_ENABLED",
+              "value": "false"
+            },
+            {
+              "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+              "value": "transcripts"
+            },
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "false"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "The discovery-question contract is inactive.",
+          "caveats": []
+        },
+        {
+          "id": "transcripts-unresolved",
+          "assignments": [
+            {
+              "key": "QUESTIONER_DISCOVERY_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+              "value": "transcripts"
+            },
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "QUESTIONER_DISCOVERY_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_DISCOVERY_INPUT_MODE",
+              "value": "transcripts"
+            },
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "questioner-discovery-contract.transcripts-unresolved",
+              "effect": "unresolved",
+              "targetKind": "node",
+              "targetId": "component.opportunity-graph-factory",
+              "settingKeys": [
+                "QUESTIONER_DISCOVERY_ENABLED",
+                "QUESTIONER_DISCOVERY_INPUT_MODE"
+              ],
+              "noDirectProtocolConsumer": true,
+              "referenceChain": []
+            }
+          ],
+          "explanation": "The accessor resolves transcript input, but no direct package behavior consumer is established.",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "id": "questioner-uptake",
+      "title": "Questioner uptake guard",
+      "summary": "Questioner uptake guard compares reviewed package fallback behavior with named non-secret assignments.",
+      "capability": "questions",
+      "coverage": "definitive",
+      "fallbackModeId": "off",
+      "affectedChapterIds": [
+        "discovery",
+        "explore"
+      ],
+      "affectedStepIds": [
+        "accept-or-decline"
+      ],
+      "settings": [
+        {
+          "key": "QUESTIONER_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "isQuestionerEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "isQuestionerEnabled",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "uptakeAuthorityThreshold"
+            }
+          ],
+          "entryAccessorSymbol": "uptakeAuthorityThreshold",
+          "accessorClosure": [],
+          "acceptedValues": [
+            "70",
+            "90"
+          ],
+          "fallback": "70",
+          "readTiming": "invocation"
+        },
+        {
+          "key": "QUESTIONER_UPTAKE_ENABLED",
+          "readSites": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "isUptakeGuardEnabled"
+            }
+          ],
+          "entryAccessorSymbol": "isUptakeGuardEnabled",
+          "accessorClosure": [
+            {
+              "path": "packages/protocol/src/questions/application/question.env.ts",
+              "symbol": "isQuestionerEnabled"
+            }
+          ],
+          "acceptedValues": [
+            "false",
+            "true"
+          ],
+          "fallback": "false",
+          "readTiming": "invocation"
+        }
+      ],
+      "modes": [
+        {
+          "id": "off",
+          "assignments": [
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": null
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+              "value": null
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_ENABLED",
+              "value": null
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "false"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+              "value": "70"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_ENABLED",
+              "value": "false"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [],
+          "explanation": "The advisory uptake interlock is bypassed.",
+          "caveats": []
+        },
+        {
+          "id": "on-threshold-70",
+          "assignments": [
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+              "value": "70"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_ENABLED",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+              "value": "70"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_ENABLED",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "questioner-uptake.on-threshold-70",
+              "effect": "activated",
+              "targetKind": "node",
+              "targetId": "component.opportunity-tools",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+              "consumerSymbol": "createOpportunityTools",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/questions/application/question.env.ts",
+                  "symbol": "isQuestionerEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "symbol": "createOpportunityTools"
+                },
+                {
+                  "path": "packages/protocol/src/questions/application/question.env.ts",
+                  "symbol": "isUptakeGuardEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "symbol": "createOpportunityTools"
+                },
+                {
+                  "path": "packages/protocol/src/questions/application/question.env.ts",
+                  "symbol": "uptakeAuthorityThreshold"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "symbol": "createOpportunityTools"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts",
+                "testName": "uptake soft interlock"
+              }
+            }
+          ],
+          "explanation": "Pending uptake questions can interlock low-authority acceptance.",
+          "caveats": []
+        },
+        {
+          "id": "on-threshold-90",
+          "assignments": [
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+              "value": "90"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_ENABLED",
+              "value": "true"
+            }
+          ],
+          "resolvedValues": [
+            {
+              "key": "QUESTIONER_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_AUTHORITY_THRESHOLD",
+              "value": "90"
+            },
+            {
+              "key": "QUESTIONER_UPTAKE_ENABLED",
+              "value": "true"
+            }
+          ],
+          "prerequisites": [],
+          "deltas": [
+            {
+              "id": "questioner-uptake.on-threshold-90",
+              "effect": "changed",
+              "targetKind": "node",
+              "targetId": "component.opportunity-tools",
+              "consumerPath": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+              "consumerSymbol": "createOpportunityTools",
+              "referenceChain": [
+                {
+                  "path": "packages/protocol/src/questions/application/question.env.ts",
+                  "symbol": "isQuestionerEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "symbol": "createOpportunityTools"
+                },
+                {
+                  "path": "packages/protocol/src/questions/application/question.env.ts",
+                  "symbol": "isUptakeGuardEnabled"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "symbol": "createOpportunityTools"
+                },
+                {
+                  "path": "packages/protocol/src/questions/application/question.env.ts",
+                  "symbol": "uptakeAuthorityThreshold"
+                },
+                {
+                  "path": "packages/protocol/src/opportunity/application/opportunity.tools.ts",
+                  "symbol": "createOpportunityTools"
+                }
+              ],
+              "behaviorTest": {
+                "path": "packages/protocol/src/opportunity/tests/update-opportunity.spec.ts",
+                "testName": "uptake soft interlock"
+              }
+            }
+          ],
+          "explanation": "The uptake interlock covers a broader authority range.",
+          "caveats": []
+        }
+      ]
     }
   ]
 });

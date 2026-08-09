@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -40,7 +40,10 @@ export type AtlasEdge = {
   evidencePath: string;
   evidenceSymbol?: string;
 };
-export type AtlasArtifact = { schemaVersion: 1; nodes: AtlasNode[]; edges: AtlasEdge[] };
+export type ConfigurationEffect = "activated" | "bypassed" | "changed" | "unresolved";
+export type GeneratedConfigurationExperiment = Record<string, unknown> & { id: string; modes: Array<Record<string, unknown> & { id: string }> };
+export type AtlasArtifactV1 = { schemaVersion: 1; nodes: AtlasNode[]; edges: AtlasEdge[] };
+export type AtlasArtifact = { schemaVersion: 2; nodes: AtlasNode[]; edges: AtlasEdge[]; configurationExperiments: GeneratedConfigurationExperiment[] };
 export type GeneratorInput = {
   exportInventory: {
     exports: Array<{
@@ -53,6 +56,7 @@ export type GeneratorInput = {
   components: Array<Omit<AtlasNode, "layer" | "stability"> & { rootExport?: string }>;
   edges: AtlasEdge[];
   sourceFiles: Record<string, string>;
+  behaviorTestFiles?: Record<string, string>;
 };
 
 type RootExport = GeneratorInput["exportInventory"]["exports"][number];
@@ -335,6 +339,21 @@ function assertProtocolPath(path: string, context: string): void {
   }
 }
 
+async function protocolTypeScriptFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await protocolTypeScriptFiles(path));
+    else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) files.push(path);
+  }
+  return files.sort();
+}
+
+function repositoryPath(repoRoot: string, absolutePath: string): string {
+  return absolutePath.slice(resolve(repoRoot).length + 1).split(sep).join("/");
+}
+
 export async function loadProtocolGeneratorInput(repoRoot: string): Promise<GeneratorInput> {
   const inventoryPath = "packages/protocol/architecture/exports.snapshot.json";
   const exportInventory = JSON.parse(await readFile(resolve(repoRoot, inventoryPath), "utf8")) as GeneratorInput["exportInventory"];
@@ -356,10 +375,18 @@ export async function loadProtocolGeneratorInput(repoRoot: string): Promise<Gene
     return componentForRootExport(symbol, exportEntry);
   });
   const components = [...selectedComponents, ...facadeComponents(), ...runtimeShellComponents()];
-  const sourcePaths = [...new Set(components.map(({ sourcePath }) => sourcePath))];
-  const sourceEntries = await Promise.all(sourcePaths.map(async (sourcePath) => {
-    assertProtocolPath(sourcePath, "component sourcePath");
-    return [sourcePath, await readFile(resolve(repoRoot, sourcePath), "utf8")] as const;
+  const allTypeScriptFiles = await protocolTypeScriptFiles(resolve(repoRoot, "packages/protocol/src"));
+  const productionFiles = allTypeScriptFiles.filter((path) => !path.split(sep).includes("tests") && !/\.(?:spec|test)\.ts$/.test(path));
+  const testFiles = allTypeScriptFiles.filter((path) => path.split(sep).includes("tests") || /\.(?:spec|test)\.ts$/.test(path));
+  const sourceEntries = await Promise.all(productionFiles.map(async (absolutePath) => {
+    const sourcePath = repositoryPath(repoRoot, absolutePath);
+    assertProtocolPath(sourcePath, "production sourcePath");
+    return [sourcePath, await readFile(absolutePath, "utf8")] as const;
+  }));
+  const behaviorTestEntries = await Promise.all(testFiles.map(async (absolutePath) => {
+    const sourcePath = repositoryPath(repoRoot, absolutePath);
+    assertProtocolPath(sourcePath, "behavior test path");
+    return [sourcePath, await readFile(absolutePath, "utf8")] as const;
   }));
 
   return {
@@ -367,6 +394,7 @@ export async function loadProtocolGeneratorInput(repoRoot: string): Promise<Gene
     components,
     edges: reviewedEdges(),
     sourceFiles: Object.fromEntries(sourceEntries),
+    behaviorTestFiles: Object.fromEntries(behaviorTestEntries),
   };
 }
 
@@ -456,7 +484,48 @@ function staticEdges(components: AtlasNode[], sourceFiles: Record<string, string
   return [...edges.values()];
 }
 
-export function buildAtlasArtifact(input: GeneratorInput): AtlasArtifact {
+function recordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object" && !Array.isArray(entry))
+    : [];
+}
+
+function compareField(field: string) {
+  return (left: Record<string, unknown>, right: Record<string, unknown>): number => {
+    const leftValue = String(left[field] ?? "");
+    const rightValue = String(right[field] ?? "");
+    return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+  };
+}
+
+function normalizedConfigurationExperiments(content: unknown): GeneratedConfigurationExperiment[] {
+  if (!content || typeof content !== "object" || Array.isArray(content)) return [];
+  return recordArray((content as Record<string, unknown>).configurationExperiments).map((experiment) => {
+    const normalized = structuredClone(experiment);
+    normalized.settings = recordArray(normalized.settings).map((setting) => ({
+      ...setting,
+      readSites: recordArray(setting.readSites).sort(compareField("path")),
+      accessorClosure: recordArray(setting.accessorClosure).sort(compareField("path")),
+      acceptedValues: Array.isArray(setting.acceptedValues) ? [...setting.acceptedValues].sort() : [],
+    })).sort(compareField("key"));
+    normalized.modes = recordArray(normalized.modes).map((mode) => ({
+      ...mode,
+      assignments: recordArray(mode.assignments).sort(compareField("key")),
+      resolvedValues: recordArray(mode.resolvedValues).sort(compareField("key")),
+      prerequisites: recordArray(mode.prerequisites).sort(compareField("key")),
+      deltas: recordArray(mode.deltas).map((delta) => ({
+        ...delta,
+        referenceChain: recordArray(delta.referenceChain),
+      })).sort(compareField("id")),
+      caveats: Array.isArray(mode.caveats) ? [...mode.caveats].sort() : [],
+    })).sort(compareField("id"));
+    normalized.affectedChapterIds = Array.isArray(normalized.affectedChapterIds) ? [...normalized.affectedChapterIds].sort() : [];
+    normalized.affectedStepIds = Array.isArray(normalized.affectedStepIds) ? [...normalized.affectedStepIds].sort() : [];
+    return normalized as GeneratedConfigurationExperiment;
+  }).sort(compareIds);
+}
+
+export function buildAtlasArtifact(input: GeneratorInput, content?: unknown): AtlasArtifact {
   const exportsByName = new Map(input.exportInventory.exports.map((entry) => [entry.name, entry]));
   const nodes: AtlasNode[] = input.components.map(({ rootExport, ...component }) => {
     const exportEntry = rootExport ? exportsByName.get(rootExport) : undefined;
@@ -470,7 +539,12 @@ export function buildAtlasArtifact(input: GeneratorInput): AtlasArtifact {
     };
   }).sort(compareIds);
   const edges = [...input.edges.map((edge) => ({ ...edge })), ...staticEdges(nodes, input.sourceFiles)].sort(compareIds);
-  return { schemaVersion: 1, nodes, edges };
+  return {
+    schemaVersion: 2,
+    nodes,
+    edges,
+    configurationExperiments: normalizedConfigurationExperiments(content),
+  };
 }
 
 function duplicateIds(records: Array<{ id: string }>): string[] {
@@ -497,8 +571,11 @@ function pathIssue(path: string, repoRoot: string, description: string): string 
 
 export function validateAtlasArtifact(artifact: AtlasArtifact, repoRoot: string): string[] {
   const issues: string[] = [];
+  if (artifact.schemaVersion !== 2) issues.push("generated schemaVersion must be 2");
+  if (!Array.isArray(artifact.configurationExperiments)) issues.push("generated configurationExperiments must be an array");
   for (const id of duplicateIds(artifact.nodes)) issues.push(`duplicate node id: ${id}`);
   for (const id of duplicateIds(artifact.edges)) issues.push(`duplicate edge id: ${id}`);
+  for (const id of duplicateIds(artifact.configurationExperiments)) issues.push(`duplicate configuration experiment id: ${id}`);
   const nodeIds = new Set(artifact.nodes.map(({ id }) => id));
   for (const node of artifact.nodes) {
     const issue = pathIssue(node.sourcePath, repoRoot, `node ${node.id} sourcePath`);
@@ -613,6 +690,276 @@ export function validateCuratedReferences(content: unknown, artifact: AtlasArtif
   return [...issues];
 }
 
+function processEnvironmentKey(node: ts.Node): string | undefined {
+  if (
+    ts.isPropertyAccessExpression(node)
+    && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.expression.getText() === "process"
+    && node.expression.name.text === "env"
+  ) return node.name.text;
+  if (
+    ts.isElementAccessExpression(node)
+    && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.expression.getText() === "process"
+    && node.expression.name.text === "env"
+    && node.argumentExpression
+    && ts.isStringLiteral(node.argumentExpression)
+  ) return node.argumentExpression.text;
+  return undefined;
+}
+
+function sourceDeclaresSymbol(path: string, symbol: string, sourceFiles: Record<string, string>): boolean {
+  const source = sourceFiles[path];
+  if (source === undefined) return false;
+  const sourceFile = parseSourceFile(path, source);
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    const named = node as ts.Node & { name?: ts.Node };
+    if (named.name && named.name.getText(sourceFile) === symbol) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
+
+function environmentReadPaths(sourceFiles: Record<string, string>): Map<string, Set<string>> {
+  const reads = new Map<string, Set<string>>();
+  for (const [path, source] of Object.entries(sourceFiles)) {
+    const sourceFile = parseSourceFile(path, source);
+    const visit = (node: ts.Node): void => {
+      const key = processEnvironmentKey(node);
+      if (key) {
+        const paths = reads.get(key) ?? new Set<string>();
+        paths.add(path);
+        reads.set(key, paths);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return reads;
+}
+
+function enclosingCallableName(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
+  let current = node.parent;
+  while (current) {
+    if ((ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current) || ts.isFunctionExpression(current)) && current.name) {
+      return current.name.getText(sourceFile);
+    }
+    if (ts.isArrowFunction(current) && ts.isVariableDeclaration(current.parent)) return current.parent.name.getText(sourceFile);
+    current = current.parent;
+  }
+  return undefined;
+}
+
+function runtimeCallReferences(
+  sourceFiles: Record<string, string>,
+  symbols: Set<string>,
+  allowedAccessorCallers: Set<string>,
+): string[] {
+  const references: string[] = [];
+  for (const [path, source] of Object.entries(sourceFiles)) {
+    const sourceFile = parseSourceFile(path, source);
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const expression = node.expression;
+        const symbol = ts.isIdentifier(expression) ? expression.text
+          : ts.isPropertyAccessExpression(expression) ? expression.name.text : undefined;
+        const caller = enclosingCallableName(node, sourceFile);
+        if (symbol && symbols.has(symbol) && (!caller || !allowedAccessorCallers.has(caller))) {
+          references.push(`${path}#${caller ? `${caller}->` : ""}${symbol}`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return [...new Set(references)].sort();
+}
+
+function ids(records: Array<Record<string, unknown>>): string[] {
+  return records.map(({ id }) => id).filter((id): id is string => typeof id === "string");
+}
+
+function sameStrings(left: Iterable<string>, right: Iterable<string>): boolean {
+  const a = [...left].sort();
+  const b = [...right].sort();
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export function validateConfigurationExperiments(
+  content: unknown,
+  artifact: AtlasArtifact,
+  input: GeneratorInput,
+  repoRoot: string,
+): string[] {
+  const issues: string[] = [];
+  if (!content || typeof content !== "object" || Array.isArray(content)) return ["configuration content must be an object"];
+  const experiments = recordArray((content as Record<string, unknown>).configurationExperiments);
+  const serializedExperiments = JSON.stringify(experiments);
+  if (/"(?:generatedAt|timestamp|lineNumber|sourceLine)"/.test(serializedExperiments)) issues.push("configuration experiments must not contain timestamps or line numbers");
+  if (serializedExperiments.includes(resolve(repoRoot))) issues.push("configuration experiments must not contain absolute machine paths");
+  for (const id of duplicateIds(experiments.filter((entry): entry is { id: string } => typeof entry.id === "string"))) {
+    issues.push(`duplicate configuration experiment id: ${id}`);
+  }
+  const generatedIds = artifact.configurationExperiments.map(({ id }) => id);
+  if (!sameStrings(ids(experiments), generatedIds)) issues.push("generated configuration experiments must exactly match curated experiment ids");
+
+  const nodeIds = new Set(artifact.nodes.map(({ id }) => id));
+  const edgeIds = new Set(artifact.edges.map(({ id }) => id));
+  const root = content as Record<string, unknown>;
+  const stepIds = new Set(recordArray(root.flows).flatMap((flow) => ids(recordArray(flow.steps))));
+  const chapterIds = new Set(ids(recordArray(root.chapters)));
+  const envReads = environmentReadPaths(input.sourceFiles);
+  const secretKey = /(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|CREDENTIAL)/i;
+
+  for (const experiment of experiments) {
+    const experimentId = typeof experiment.id === "string" ? experiment.id : "<missing>";
+    if (typeof experiment.id !== "string" || !experiment.id) issues.push("configuration experiments must have a non-empty id");
+    const settings = recordArray(experiment.settings);
+    const modes = recordArray(experiment.modes);
+    for (const id of duplicateIds(settings.filter((entry): entry is { id: string } => typeof entry.id === "string").map((entry) => ({ id: entry.id })))) {
+      issues.push(`duplicate configuration setting id in ${experimentId}: ${id}`);
+    }
+    const settingKeys = ids(settings.map((setting) => ({ id: setting.key })));
+    if (new Set(settingKeys).size !== settingKeys.length) issues.push(`duplicate configuration setting key in ${experimentId}`);
+    for (const id of duplicateIds(modes.filter((entry): entry is { id: string } => typeof entry.id === "string"))) {
+      issues.push(`duplicate configuration mode id in ${experimentId}: ${id}`);
+    }
+    if (!modes.some(({ id }) => id === experiment.fallbackModeId)) issues.push(`${experimentId} fallback mode is missing: ${String(experiment.fallbackModeId)}`);
+    for (const chapterId of Array.isArray(experiment.affectedChapterIds) ? experiment.affectedChapterIds : []) {
+      if (typeof chapterId !== "string" || !chapterIds.has(chapterId)) issues.push(`${experimentId} references missing chapter ${String(chapterId)}`);
+    }
+    for (const stepId of Array.isArray(experiment.affectedStepIds) ? experiment.affectedStepIds : []) {
+      if (typeof stepId !== "string" || !stepIds.has(stepId)) issues.push(`${experimentId} references missing step ${String(stepId)}`);
+    }
+
+    const settingsByKey = new Map<string, Record<string, unknown>>();
+    for (const setting of settings) {
+      const key = setting.key;
+      if (typeof key !== "string" || !key) {
+        issues.push(`${experimentId} has a setting without a key`);
+        continue;
+      }
+      settingsByKey.set(key, setting);
+      if (secretKey.test(key)) issues.push(`${experimentId} uses secret-shaped configuration key ${key}`);
+      const readSites = recordArray(setting.readSites);
+      const declaredPaths = new Set<string>();
+      for (const readSite of readSites) {
+        if (typeof readSite.path !== "string") {
+          issues.push(`${experimentId}.${key} read site must name a path`);
+          continue;
+        }
+        declaredPaths.add(readSite.path);
+        const pathError = pathIssue(readSite.path, repoRoot, `${experimentId}.${key} read site`);
+        if (pathError) issues.push(pathError);
+        if (typeof readSite.symbol !== "string" || !sourceDeclaresSymbol(readSite.path, readSite.symbol, input.sourceFiles)) issues.push(`${experimentId}.${key} read site symbol is missing: ${String(readSite.symbol)}`);
+      }
+      const actualPaths = envReads.get(key) ?? new Set<string>();
+      if (!sameStrings(declaredPaths, actualPaths)) issues.push(`${experimentId}.${key} readSites do not match current production reads`);
+      if (typeof setting.entryAccessorSymbol !== "string" || !readSites.some((site) => sourceDeclaresSymbol(String(site.path), String(setting.entryAccessorSymbol), input.sourceFiles))) {
+        issues.push(`${experimentId}.${key} entry accessor is missing: ${String(setting.entryAccessorSymbol)}`);
+      }
+      for (const hop of recordArray(setting.accessorClosure)) {
+        if (typeof hop.path !== "string" || typeof hop.symbol !== "string" || !sourceDeclaresSymbol(hop.path, hop.symbol, input.sourceFiles)) {
+          issues.push(`${experimentId}.${key} accessor closure hop is missing`);
+        }
+      }
+    }
+
+    for (const mode of modes) {
+      const modeId = `${experimentId}.${String(mode.id)}`;
+      const assignments = recordArray(mode.assignments);
+      const assignmentKeys = assignments.map(({ key }) => key).filter((key): key is string => typeof key === "string");
+      if (!sameStrings(assignmentKeys, settingsByKey.keys())) issues.push(`${modeId} assignments must cover every experiment setting exactly once`);
+      if (new Set(assignmentKeys).size !== assignmentKeys.length) issues.push(`${modeId} has duplicate assignments`);
+      for (const assignment of assignments) {
+        const setting = settingsByKey.get(String(assignment.key));
+        const accepted = Array.isArray(setting?.acceptedValues) ? setting.acceptedValues : [];
+        if (assignment.value !== null && (typeof assignment.value !== "string" || !accepted.includes(assignment.value))) {
+          issues.push(`${modeId} has unrestricted assignment ${String(assignment.key)}=${String(assignment.value)}`);
+        }
+      }
+      for (const prerequisite of recordArray(mode.prerequisites)) {
+        if (prerequisite.kind === "setting") {
+          const setting = settingsByKey.get(String(prerequisite.key));
+          if (!setting || !(prerequisite.value === null || (typeof prerequisite.value === "string" && (setting.acceptedValues as unknown[])?.includes(prerequisite.value)))) {
+            issues.push(`${modeId} has malformed setting prerequisite`);
+          }
+        } else if (prerequisite.kind === "injected-capability") {
+          if (typeof prerequisite.nodeId !== "string" || !nodeIds.has(prerequisite.nodeId)) issues.push(`${modeId} has missing injected capability`);
+        } else issues.push(`${modeId} has malformed prerequisite`);
+      }
+      const deltas = recordArray(mode.deltas);
+      const deltaIds = ids(deltas);
+      if (new Set(deltaIds).size !== deltaIds.length) issues.push(`${modeId} has duplicate deltas`);
+      const deltaTargets = deltas.map((delta) => `${String(delta.targetKind)}:${String(delta.targetId)}`);
+      if (new Set(deltaTargets).size !== deltaTargets.length) issues.push(`${modeId} has duplicate delta targets`);
+      for (const delta of deltas) {
+        const deltaId = `${modeId}.${String(delta.id)}`;
+        const targetExists = delta.targetKind === "node" ? nodeIds.has(String(delta.targetId))
+          : delta.targetKind === "edge" ? edgeIds.has(String(delta.targetId))
+            : delta.targetKind === "step" ? stepIds.has(String(delta.targetId)) : false;
+        if (!targetExists) issues.push(`${deltaId} references missing ${String(delta.targetKind)} ${String(delta.targetId)}`);
+        if (delta.effect === "unresolved") {
+          if (delta.noDirectProtocolConsumer !== true) issues.push(`${deltaId} unresolved delta must assert noDirectProtocolConsumer`);
+          for (const forbidden of ["consumerPath", "consumerSymbol", "referenceChain", "behaviorTest"]) {
+            if (delta[forbidden] !== undefined) issues.push(`${deltaId} unresolved delta must not include ${forbidden}`);
+          }
+          const unresolvedSettingKeys = Array.isArray(delta.settingKeys) ? new Set(delta.settingKeys.filter((key): key is string => typeof key === "string")) : new Set(settingsByKey.keys());
+          if (unresolvedSettingKeys.size === 0 || [...unresolvedSettingKeys].some((key) => !settingsByKey.has(key))) issues.push(`${deltaId} unresolved delta has malformed settingKeys`);
+          const targetAccessorSymbols = new Set<string>();
+          const allowedAccessorCallers = new Set<string>();
+          for (const setting of settings.filter((candidate) => unresolvedSettingKeys.has(String(candidate.key)))) {
+            if (typeof setting.entryAccessorSymbol === "string") {
+              targetAccessorSymbols.add(setting.entryAccessorSymbol);
+              allowedAccessorCallers.add(setting.entryAccessorSymbol);
+            }
+            for (const site of recordArray(setting.readSites)) if (typeof site.symbol === "string") {
+              targetAccessorSymbols.add(site.symbol);
+              allowedAccessorCallers.add(site.symbol);
+            }
+            for (const hop of recordArray(setting.accessorClosure)) if (typeof hop.symbol === "string") allowedAccessorCallers.add(hop.symbol);
+          }
+          const escapingReferences = runtimeCallReferences(input.sourceFiles, targetAccessorSymbols, allowedAccessorCallers);
+          if (escapingReferences.length > 0) issues.push(`${deltaId} unresolved accessor has direct production consumer: ${escapingReferences.join(", ")}`);
+          continue;
+        }
+        if (!["activated", "bypassed", "changed"].includes(String(delta.effect))) issues.push(`${deltaId} has invalid effect`);
+        for (const pathField of ["consumerPath"] as const) {
+          if (typeof delta[pathField] !== "string") issues.push(`${deltaId} must name ${pathField}`);
+          else {
+            const pathError = pathIssue(delta[pathField], repoRoot, `${deltaId} ${pathField}`);
+            if (pathError) issues.push(pathError);
+          }
+        }
+        if (typeof delta.consumerSymbol !== "string" || !sourceDeclaresSymbol(String(delta.consumerPath), delta.consumerSymbol, input.sourceFiles)) issues.push(`${deltaId} consumer symbol is missing`);
+        for (const hop of recordArray(delta.referenceChain)) {
+          if (typeof hop.path !== "string" || typeof hop.symbol !== "string" || !sourceDeclaresSymbol(hop.path, hop.symbol, input.sourceFiles)) issues.push(`${deltaId} reference-chain hop is missing`);
+        }
+        const behaviorTest = delta.behaviorTest;
+        if (!behaviorTest || typeof behaviorTest !== "object" || Array.isArray(behaviorTest)) {
+          issues.push(`${deltaId} definitive delta must cite a behavior test`);
+        } else {
+          const testRecord = behaviorTest as Record<string, unknown>;
+          if (typeof testRecord.path !== "string") issues.push(`${deltaId} behavior test must name a path`);
+          else {
+            const pathError = pathIssue(testRecord.path, repoRoot, `${deltaId} behavior test`);
+            if (pathError) issues.push(pathError);
+            const source = input.behaviorTestFiles?.[testRecord.path];
+            if (typeof testRecord.testName !== "string" || !source?.includes(testRecord.testName)) issues.push(`${deltaId} behavior test name is missing: ${String(testRecord.testName)}`);
+          }
+        }
+      }
+    }
+  }
+  return [...new Set(issues)].sort();
+}
+
 export function serializeAtlasArtifact(artifact: AtlasArtifact): string {
   return `globalThis.ProtocolAtlasGenerated = Object.freeze(${JSON.stringify(artifact, null, 2)});\n`;
 }
@@ -624,13 +971,19 @@ async function runCli(): Promise<void> {
     loadProtocolGeneratorInput(repoRoot),
     loadProtocolAtlasContent(repoRoot),
   ]);
-  const artifact = buildAtlasArtifact(input);
+  const artifact = buildAtlasArtifact(input, content);
   const issues = [
     ...validateAtlasArtifact(artifact, repoRoot),
     ...validateCuratedReferences(content, artifact),
+    ...validateConfigurationExperiments(content, artifact, input, repoRoot),
   ];
   if (issues.length > 0) throw new Error(`Protocol atlas validation failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`);
   const serialized = serializeAtlasArtifact(artifact);
+
+  if (process.argv.includes("--stdout")) {
+    process.stdout.write(serialized);
+    return;
+  }
 
   if (process.argv.includes("--check")) {
     const actual = existsSync(outputPath) ? await readFile(outputPath, "utf8") : "";
@@ -639,7 +992,8 @@ async function runCli(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    console.log(`Protocol atlas artifact is current (${artifact.nodes.length} nodes, ${artifact.edges.length} edges).`);
+    const modeCount = artifact.configurationExperiments.reduce((total, experiment) => total + experiment.modes.length, 0);
+    console.log(`Protocol atlas artifact is current (${artifact.nodes.length} nodes, ${artifact.edges.length} edges, ${artifact.configurationExperiments.length} experiments, ${modeCount} modes).`);
     return;
   }
 
@@ -651,7 +1005,8 @@ async function runCli(): Promise<void> {
   } finally {
     await rm(temporaryPath, { force: true });
   }
-  console.log(`Generated protocol atlas artifact (${artifact.nodes.length} nodes, ${artifact.edges.length} edges).`);
+  const modeCount = artifact.configurationExperiments.reduce((total, experiment) => total + experiment.modes.length, 0);
+  console.log(`Generated protocol atlas artifact (${artifact.nodes.length} nodes, ${artifact.edges.length} edges, ${artifact.configurationExperiments.length} experiments, ${modeCount} modes).`);
 }
 
 if (import.meta.main) await runCli();

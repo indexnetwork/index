@@ -901,6 +901,167 @@ noscript {
   border: 0;
 }
 
+.configuration-lab {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: rgb(9 25 37 / 0.94);
+}
+
+.configuration-disclaimer,
+.configuration-coverage,
+.configuration-warning {
+  margin: 0;
+  padding: var(--space-3);
+  border-left: 0.2rem solid var(--cyan);
+  background: rgb(110 231 255 / 0.06);
+  color: var(--ink-muted);
+}
+
+.configuration-warning {
+  border-left-color: var(--amber);
+}
+
+.configuration-experiments,
+.configuration-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+}
+
+.configuration-experiments legend,
+.configuration-modes legend {
+  padding-inline: var(--space-2);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+}
+
+.configuration-experiment-option,
+.configuration-mode-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.configuration-experiment-option:has(input:checked),
+.configuration-mode-option:has(input:checked) {
+  border-color: var(--cyan);
+  background: var(--surface-active);
+}
+
+.configuration-comparison {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.configuration-comparison > * {
+  margin-block: 0;
+}
+
+.configuration-assignments {
+  display: grid;
+  grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.configuration-assignments dt,
+.configuration-assignments dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.configuration-deltas,
+.configuration-prerequisites,
+.configuration-caveats {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.configuration-delta {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left-width: 0.3rem;
+  background: var(--surface-panel);
+}
+
+.configuration-delta__label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.configuration-comparison-active .atlas-node:not(.configuration-delta--activated, .configuration-delta--bypassed, .configuration-delta--changed, .configuration-delta--unresolved),
+.configuration-comparison-active .atlas-edge:not(.configuration-delta--activated, .configuration-delta--bypassed, .configuration-delta--changed, .configuration-delta--unresolved) {
+  opacity: 0.48;
+}
+
+.configuration-delta--activated {
+  border-style: double;
+  border-color: var(--green);
+  background-image: repeating-linear-gradient(90deg, transparent 0 0.75rem, rgb(115 242 178 / 0.05) 0.75rem 1.5rem);
+}
+
+.configuration-delta--bypassed {
+  border-style: dashed;
+  border-color: var(--danger);
+  opacity: 0.68;
+  background-image: repeating-linear-gradient(-45deg, transparent 0 0.5rem, rgb(255 142 158 / 0.06) 0.5rem 1rem);
+}
+
+.configuration-delta--changed {
+  border-style: dashed;
+  border-color: var(--amber);
+  background-image: repeating-linear-gradient(90deg, transparent 0 1rem, rgb(255 199 107 / 0.05) 1rem 1.5rem);
+}
+
+.configuration-delta--unresolved {
+  border-style: dotted;
+  border-color: var(--violet);
+  background-image: repeating-linear-gradient(45deg, transparent 0 0.35rem, rgb(196 167 255 / 0.06) 0.35rem 0.7rem);
+}
+
+.configuration-evidence,
+.configuration-caveat {
+  overflow-wrap: anywhere;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.configuration-filter-note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 900px) {
   .atlas-layout {
     grid-template-columns: 15rem minmax(0, 1fr);
@@ -998,6 +1159,10 @@ noscript {
     max-height: none;
   }
 
+  .configuration-assignments {
+    grid-template-columns: 1fr;
+  }
+
   #atlas-filters {
     position: static;
     display: grid;
@@ -1012,6 +1177,20 @@ noscript {
     width: calc(100vw - 1rem);
     max-height: calc(100vh - 1rem);
     padding: var(--space-3);
+  }
+}
+
+@media (max-width: 375px) {
+  #atlas-main,
+  #atlas-inspector,
+  .configuration-lab {
+    padding: var(--space-3);
+  }
+
+  .configuration-experiments,
+  .configuration-modes {
+    grid-template-columns: 1fr;
+    padding: var(--space-2);
   }
 }
 

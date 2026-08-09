@@ -18,6 +18,10 @@
       query: "",
       filters: emptyFilters(),
       notice: null,
+      configurationExperimentId: null,
+      configurationModeId: null,
+      focusIntent: null,
+      announcement: null,
     };
   }
 
@@ -52,6 +56,48 @@
       if (step) return step;
     }
     return null;
+  }
+
+  function configurationAvailability(generated) {
+    const unavailable = { available: false, experiments: [], errors: ["Configuration Lab unavailable for this artifact."] };
+    if (!isRecord(generated) || generated.schemaVersion !== 2 || !Array.isArray(generated.configurationExperiments)) return unavailable;
+    const experiments = [];
+    const errors = [];
+    const seen = new Set();
+    for (const candidate of generated.configurationExperiments) {
+      const localErrors = [];
+      if (!isRecord(candidate) || typeof candidate.id !== "string" || !candidate.id || seen.has(candidate.id)) {
+        localErrors.push("experiment id must be unique and non-empty");
+      }
+      const modes = records(candidate && candidate.modes);
+      const modeIds = new Set();
+      for (const mode of modes) {
+        if (!isRecord(mode) || typeof mode.id !== "string" || !mode.id || modeIds.has(mode.id)) localErrors.push("mode ids must be unique and non-empty");
+        else modeIds.add(mode.id);
+        for (const delta of records(mode && mode.deltas)) {
+          if (!isRecord(delta) || typeof delta.id !== "string" || !["activated", "bypassed", "changed", "unresolved"].includes(delta.effect)
+            || !["node", "edge", "step"].includes(delta.targetKind) || typeof delta.targetId !== "string") {
+            localErrors.push("delta records must name an effect and target");
+          }
+        }
+      }
+      if (!isRecord(candidate) || typeof candidate.fallbackModeId !== "string" || !modeIds.has(candidate.fallbackModeId)) localErrors.push("fallback mode must exist");
+      if (localErrors.length > 0) {
+        errors.push(`Configuration experiment ${isRecord(candidate) && candidate.id || "at unknown index"} omitted: ${[...new Set(localErrors)].join(", ")}.`);
+        continue;
+      }
+      seen.add(candidate.id);
+      experiments.push(candidate);
+    }
+    return { available: true, experiments, errors };
+  }
+
+  function configurationExperiment(generated, experimentId) {
+    return configurationAvailability(generated).experiments.find((experiment) => experiment.id === experimentId) || null;
+  }
+
+  function configurationMode(experiment, modeId) {
+    return records(experiment && experiment.modes).find((mode) => mode && mode.id === modeId) || null;
   }
 
   function validSelectedNode(nodeId, content, generated) {
@@ -93,6 +139,13 @@
       if (params.has("step")) state.stepId = params.get("step");
       if (params.has("layer")) state.layer = params.get("layer");
       if (params.has("node")) state.selectedNodeId = params.get("node");
+      const hasExperiment = params.has("experiment");
+      const hasMode = params.has("mode");
+      if (hasExperiment !== hasMode) return invalidLocation();
+      if (hasExperiment) {
+        state.configurationExperimentId = params.get("experiment");
+        state.configurationModeId = params.get("mode");
+      }
 
       for (const key of FILTER_KEYS) {
         const parsed = parseFilter(params.get(key));
@@ -103,9 +156,14 @@
       const chapter = chapterById(content, state.chapterId);
       const stepIsValid = state.stepId === null
         || (chapter && stringArray(chapter.stepIds).includes(state.stepId) && flowStep(content, state.stepId));
+      const experiment = state.configurationExperimentId === null ? null : configurationExperiment(generated, state.configurationExperimentId);
+      const configurationIsValid = state.configurationExperimentId === null
+        ? state.configurationModeId === null
+        : state.chapterId === "explore" && state.layer === "implementation" && Boolean(configurationMode(experiment, state.configurationModeId));
       if (!chapter || !stepIsValid || !LAYERS.has(state.layer)
         || !validSelectedNode(state.selectedNodeId, content, generated)
-        || !filtersAreValid(state.filters, generated)) {
+        || !filtersAreValid(state.filters, generated)
+        || !configurationIsValid) {
         return invalidLocation();
       }
       return state;
@@ -125,6 +183,10 @@
     if (typeof source.selectedNodeId === "string" && source.selectedNodeId.length > 0) params.set("node", source.selectedNodeId);
     for (const key of FILTER_KEYS) {
       if (filters[key].length > 0) params.set(key, [...filters[key]].sort().join(","));
+    }
+    if (typeof source.configurationExperimentId === "string" && typeof source.configurationModeId === "string") {
+      params.set("experiment", source.configurationExperimentId);
+      params.set("mode", source.configurationModeId);
     }
     return `#${params.toString()}`;
   }
@@ -170,7 +232,7 @@
       if (!isRecord(content)) errors.push("curated content must be an object");
       if (!isRecord(generated)) errors.push("generated data must be an object");
       if (!isRecord(content) || content.schemaVersion !== 1) errors.push("curated schemaVersion must be 1");
-      if (!isRecord(generated) || generated.schemaVersion !== 1) errors.push("generated schemaVersion must be 1");
+      if (!isRecord(generated) || (generated.schemaVersion !== 1 && generated.schemaVersion !== 2)) errors.push("generated schemaVersion must be 1 or 2");
 
       const listNames = ["chapters", "flows", "concepts", "invariants"];
       for (const listName of listNames) {
@@ -248,25 +310,66 @@
     return { ok: errors.length === 0, errors };
   }
 
+  function deriveConfigurationComparison(experimentId, modeId, content, generated) {
+    const experiment = configurationExperiment(generated, experimentId);
+    const mode = configurationMode(experiment, modeId);
+    if (!experiment || !mode) return null;
+    const assignments = new Map(records(mode.assignments).filter(isRecord).map((assignment) => [assignment.key, assignment.value]));
+    const resolvedValues = new Map(records(mode.resolvedValues).filter(isRecord).map((value) => [value.key, value.value]));
+    const prerequisites = records(mode.prerequisites).filter(isRecord).map((prerequisite) => {
+      if (prerequisite.kind === "setting") {
+        const actual = assignments.has(prerequisite.key) ? assignments.get(prerequisite.key) : resolvedValues.get(prerequisite.key);
+        return { ...prerequisite, status: actual === prerequisite.value ? "satisfied" : "unmet" };
+      }
+      return { ...prerequisite, status: "protocol-boundary" };
+    });
+    const deltas = records(mode.deltas).filter(isRecord).map((delta) => ({ ...delta }));
+    const counts = { activated: 0, bypassed: 0, changed: 0, unresolved: 0 };
+    for (const delta of deltas) if (Object.prototype.hasOwnProperty.call(counts, delta.effect)) counts[delta.effect] += 1;
+    return {
+      experiment,
+      mode,
+      assignments: records(mode.assignments),
+      resolvedValues: records(mode.resolvedValues),
+      prerequisites,
+      deltas,
+      counts,
+      affectedChapterIds: stringArray(experiment.affectedChapterIds),
+      affectedStepIds: stringArray(experiment.affectedStepIds),
+      disclaimer: content && content.configurationDisclaimer,
+    };
+  }
+
+  function comparisonAnnouncement(comparison) {
+    if (!comparison) return null;
+    const { activated, bypassed, changed, unresolved } = comparison.counts;
+    return `${comparison.experiment.title}, ${comparison.mode.id}: ${activated} activated, ${bypassed} bypassed, ${changed} changed, ${unresolved} unresolved.`;
+  }
+
   function cloneState(state) {
     const source = isRecord(state) ? state : defaultState();
     return { ...defaultState(), ...source, filters: normalizedFilters(source.filters) };
   }
 
+  function withoutConfiguration(next) {
+    return { ...next, configurationExperimentId: null, configurationModeId: null, focusIntent: null, announcement: null };
+  }
+
   function transition(state, action, content, generated) {
-    const next = cloneState(state);
+    const next = { ...cloneState(state), focusIntent: null, announcement: null };
     if (!isRecord(action) || typeof action.type !== "string") return next;
 
     if (action.type === "select-chapter") {
       const chapter = chapterById(content, action.chapterId);
       if (!chapter) return next;
-      return {
+      const selected = {
         ...next,
         chapterId: chapter.id,
         stepId: stringArray(chapter.stepIds)[0] || null,
         selectedNodeId: null,
         notice: null,
       };
+      return chapter.id === "explore" ? selected : withoutConfiguration(selected);
     }
     if (action.type === "select-step") {
       const chapter = chapterById(content, next.chapterId);
@@ -274,7 +377,52 @@
       return { ...next, stepId: action.stepId, selectedNodeId: null, notice: null };
     }
     if (action.type === "set-layer") {
-      return LAYERS.has(action.layer) ? { ...next, layer: action.layer, notice: null } : next;
+      if (!LAYERS.has(action.layer)) return next;
+      const selected = { ...next, layer: action.layer, notice: null };
+      return action.layer === "protocol" ? withoutConfiguration(selected) : selected;
+    }
+    if (action.type === "select-configuration-experiment") {
+      const experiment = configurationExperiment(generated, action.experimentId);
+      if (!experiment) return next;
+      const comparison = deriveConfigurationComparison(experiment.id, experiment.fallbackModeId, content, generated);
+      return {
+        ...next,
+        chapterId: "explore",
+        stepId: null,
+        layer: "implementation",
+        selectedNodeId: null,
+        configurationExperimentId: experiment.id,
+        configurationModeId: experiment.fallbackModeId,
+        focusIntent: { experimentId: experiment.id, modeId: experiment.fallbackModeId },
+        announcement: comparisonAnnouncement(comparison),
+        notice: null,
+      };
+    }
+    if (action.type === "select-configuration-mode") {
+      const experiment = configurationExperiment(generated, action.experimentId);
+      const mode = configurationMode(experiment, action.modeId);
+      if (!experiment || !mode || next.chapterId !== "explore" || next.layer !== "implementation") return next;
+      const comparison = deriveConfigurationComparison(experiment.id, mode.id, content, generated);
+      return {
+        ...next,
+        configurationExperimentId: experiment.id,
+        configurationModeId: mode.id,
+        focusIntent: { experimentId: experiment.id, modeId: mode.id },
+        announcement: comparisonAnnouncement(comparison),
+        notice: null,
+      };
+    }
+    if (action.type === "reset-configuration") {
+      const experiment = configurationExperiment(generated, next.configurationExperimentId);
+      if (!experiment) return next;
+      const comparison = deriveConfigurationComparison(experiment.id, experiment.fallbackModeId, content, generated);
+      return {
+        ...next,
+        configurationModeId: experiment.fallbackModeId,
+        focusIntent: { experimentId: experiment.id, modeId: experiment.fallbackModeId },
+        announcement: comparisonAnnouncement(comparison),
+        notice: null,
+      };
     }
     if (action.type === "select-node") {
       return validSelectedNode(action.nodeId, content, generated)
@@ -358,5 +506,7 @@
     validateData,
     searchItems,
     filterGraph,
+    configurationAvailability,
+    deriveConfigurationComparison,
   });
 }(globalThis));
