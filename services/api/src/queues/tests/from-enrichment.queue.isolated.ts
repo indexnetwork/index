@@ -16,6 +16,14 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class ChatDatabaseAdapter {},
+  chatDatabaseAdapter: {},
+}));
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class EmbedderAdapter {},
+  embedderAdapter: {},
+}));
 
 mock.module('../negotiations/run-existing.queue', () => ({
   negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
@@ -25,7 +33,10 @@ afterAll(() => {
   mock.restore();
 });
 
-import { FromEnrichmentQueue, QUEUE_NAME, type FromEnrichmentJobData } from '../opportunity/from-enrichment.queue';
+import { buildEnrichmentDiscoveryTrigger } from '../opportunity/discovery-trigger.builders';
+import type { FromEnrichmentJobData } from '../opportunity/from-enrichment.queue';
+
+const { FromEnrichmentQueue, QUEUE_NAME } = await import('../opportunity/from-enrichment.queue');
 
 describe('FromEnrichmentQueue', () => {
   describe('constructor and static', () => {
@@ -85,15 +96,14 @@ describe('FromEnrichmentQueue', () => {
       const invokeOpportunityGraph = mock(async () => {});
       const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', { userId: 'u1' });
-      expect(invokeOpportunityGraph).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'u1',
-          operationMode: 'create',
-          networkId: undefined,
-          options: { initialStatus: 'latent' },
-        })
-      );
+      expect(invokeOpportunityGraph).toHaveBeenCalledWith({
+        userId: 'u1',
+        operationMode: 'create',
+        networkId: undefined,
+        options: { initialStatus: 'latent' },
+      });
       const call = invokeOpportunityGraph.mock.calls[0][0] as Record<string, unknown>;
+      expect(Object.keys(call)).toEqual(['userId', 'networkId', 'operationMode', 'options']);
       expect(call).not.toHaveProperty('searchQuery');
       expect(call).not.toHaveProperty('triggerIntentId');
     });
@@ -102,19 +112,10 @@ describe('FromEnrichmentQueue', () => {
       const invokeOpportunityGraph = mock(async () => {});
       const queue = new FromEnrichmentQueue({ invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', { userId: 'u1', networkId: 'net1' });
-      expect(invokeOpportunityGraph).toHaveBeenCalledWith(
-        expect.objectContaining({ networkId: 'net1' })
-      );
+      const expected = buildEnrichmentDiscoveryTrigger({ userId: 'u1', networkId: 'net1' });
+      expect(JSON.stringify(invokeOpportunityGraph.mock.calls[0]![0])).toBe(JSON.stringify(expected));
     });
 
-    it('discover: without invokeOpportunityGraph uses real graph (may fail without infra)', async () => {
-      const queue = new FromEnrichmentQueue();
-      try {
-        await queue.processJob('discover_opportunities', { userId: 'u1' });
-      } catch {
-        // Real graph can fail without Redis/DB — we only verify it doesn't crash the queue class
-      }
-    });
   });
 
   describe('startWorker', () => {
