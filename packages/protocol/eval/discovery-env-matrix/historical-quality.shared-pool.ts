@@ -289,14 +289,14 @@ function buildSeedProjection(
 
   const sourceRows = new Map<string, { participantId: string; text: string; sourcePaths: string[]; sourceType: "premise" | "context"; expectedDocumentId: string }>();
   for (const row of rows) {
-    for (const [ordinal, rowPremise] of canonicalPremises(row).entries()) {
+    for (const rowPremise of canonicalPremises(row)) {
       const premiseId = stableQualityId("premise", `${row.participantId}:${rowPremise.sourcePath}`);
       sourceRows.set(premiseId, {
         participantId: row.participantId,
         text: rowPremise.text,
         sourcePaths: [rowPremise.sourcePath],
         sourceType: "premise",
-        expectedDocumentId: stableQualityId("document", `${row.participantId}:premise:${ordinal}`),
+        expectedDocumentId: stableQualityId("document", `premise:${premiseId}`),
       });
     }
   }
@@ -305,7 +305,7 @@ function buildSeedProjection(
     text: context.text,
     sourcePaths: [...context.sourcePaths],
     sourceType: "context",
-    expectedDocumentId: stableQualityId("document", `${context.participantId}:context`),
+    expectedDocumentId: stableQualityId("document", `context:${context.id}`),
   });
 
   const documents = sortedById(fixture.retrievalDocuments, (document) => document.documentId).map((document) => {

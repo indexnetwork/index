@@ -28,20 +28,23 @@ function syntheticFixture(): HistoricalSharedPoolFixture {
   });
 
   const retrievalDocuments = enrichmentRows.flatMap((row) => [
-    ...row.premises.map((premise, index) => ({
-      documentId: stableQualityId("document", `${row.participantId}:premise:${index}`),
-      participantId: row.participantId,
-      sourceRowId: stableQualityId("premise", `${row.participantId}:${row.premiseSourcePaths[index]!}`),
-      sourceType: "premise" as const,
-      strategy: "historical-quality-fixture",
-      targetCorpus: "premise",
-      targetFrame: "discovery",
-      text: premise,
-      sourcePaths: [row.premiseSourcePaths[index]!],
-      contentFingerprint: fingerprintCanonicalJson(premise),
-    })),
+    ...row.premises.map((premise, index) => {
+      const sourceRowId = stableQualityId("premise", `${row.participantId}:${row.premiseSourcePaths[index]!}`);
+      return {
+        documentId: stableQualityId("document", `premise:${sourceRowId}`),
+        participantId: row.participantId,
+        sourceRowId,
+        sourceType: "premise" as const,
+        strategy: "historical-quality-fixture",
+        targetCorpus: "premise",
+        targetFrame: "discovery",
+        text: premise,
+        sourcePaths: [row.premiseSourcePaths[index]!],
+        contentFingerprint: fingerprintCanonicalJson(premise),
+      };
+    }),
     {
-      documentId: stableQualityId("document", `${row.participantId}:context`),
+      documentId: stableQualityId("document", `context:${stableQualityId("context", row.participantId)}`),
       participantId: row.participantId,
       sourceRowId: stableQualityId("context", row.participantId),
       sourceType: "context" as const,
@@ -179,6 +182,26 @@ describe("historical shared-pool contract", () => {
     expect(historicalSharedPoolPlanFingerprint(shuffled)).toBe(historicalSharedPoolPlanFingerprint(canonical));
     expect(historicalSharedPoolSeedFingerprint(shuffled.seedProjection)).toBe(historicalSharedPoolSeedFingerprint(canonical.seedProjection));
     expect(historicalRetrievalDocumentFingerprint(shuffled.seedProjection.documents)).toBe(historicalRetrievalDocumentFingerprint(canonical.seedProjection.documents));
+  });
+
+  it("keeps a retrieval document ID stable when an earlier source row is removed", () => {
+    const fixture = syntheticFixture();
+    const enrichmentRow = fixture.enrichmentRows.find((row) => row.premises.length > 1)!;
+    const removedSourceRowId = stableQualityId("premise", `${enrichmentRow.participantId}:${enrichmentRow.premiseSourcePaths[0]!}`);
+    const retainedSourceRowId = stableQualityId("premise", `${enrichmentRow.participantId}:${enrichmentRow.premiseSourcePaths[1]!}`);
+    const originalPlan = buildHistoricalSharedPoolPlan({ cases: HISTORICAL_QUALITY_CASES, fixture });
+    const originalDocument = originalPlan.seedProjection.documents.find((document) => document.sourceRowId === retainedSourceRowId)!;
+    const reducedFixture: HistoricalSharedPoolFixture = {
+      ...fixture,
+      enrichmentRows: fixture.enrichmentRows.map((row) => row.participantId === enrichmentRow.participantId
+        ? { ...row, premises: row.premises.slice(1), premiseSourcePaths: row.premiseSourcePaths.slice(1) }
+        : row),
+      retrievalDocuments: fixture.retrievalDocuments.filter((document) => document.sourceRowId !== removedSourceRowId),
+    };
+
+    const reducedPlan = buildHistoricalSharedPoolPlan({ cases: HISTORICAL_QUALITY_CASES, fixture: reducedFixture });
+    expect(reducedPlan.seedProjection.documents.find((document) => document.sourceRowId === retainedSourceRowId)?.documentId)
+      .toBe(originalDocument.documentId);
   });
 
   it("keeps the seed projection model-safe and fingerprints three independent canonical domains", () => {
