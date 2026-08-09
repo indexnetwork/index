@@ -139,7 +139,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                         }
                       >
                         <Header 
-                          showHeaderButtons={!pathname?.startsWith('/index/') && !isCliAuth}
+                          showHeaderButtons={!isCliAuth}
                           keepButtonSpace={isCliAuth}
                           forcePublicView={isLandingOrBlog}
                         />

@@ -1409,6 +1409,31 @@ def update_network_permissions(network_id: str, body: dict[str, Any] | None = Bo
     return out
 
 
+@router.patch("/networks/{network_id}/regenerate-invitation")
+def regenerate_network_invitation(network_id: str) -> dict[str, Any]:
+    """Rotate the owner share link — REST `PATCH /networks/:id/regenerate-invitation`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/networks/{quote(network_id, safe='')}/regenerate-invitation",
+        {},
+    )
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload.get("network"), dict) else payload
+    if not isinstance(network, dict):
+        return {"success": True}
+    perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
+    out: dict[str, Any] = {"success": True, "id": _text(network.get("id") or network_id)}
+    invite = perms.get("invitationLink") if isinstance(perms, dict) else None
+    code = _text(invite.get("code")) if isinstance(invite, dict) else ""
+    if code:
+        out["invitationLink"] = {"code": code}
+    return out
+
+
 def _sanitize_network_request_input(body: Any) -> tuple[dict[str, Any] | None, str | None]:
     """Validate/normalize the early-access request form fields before forwarding.
 

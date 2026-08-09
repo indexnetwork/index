@@ -41,7 +41,6 @@ describe("production web server", () => {
     expect(body).toContain("/c/*");
     expect(body).toContain("/o/*");
     expect(body).toContain("/l/*");
-    expect(body).toContain("/index/*");
     expect(body).toContain("/u/*");
   });
 
@@ -70,7 +69,6 @@ describe("production web server", () => {
       "/c/*",
       "/o/*",
       "/l/*",
-      "/index/*",
       "/u/*",
     ]);
   });

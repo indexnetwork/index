@@ -57,6 +57,7 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('networks.updateMemberPermissions', (client) => client.networks.updateMemberPermissions('net/1', 'u1', ['owner']), { path: '/networks/net%2F1/members/u1', method: 'PATCH', body: { permissions: ['owner'] } });
     await expectCall('networks.inviteMember', (client) => client.networks.inviteMember('net/1', { email: 'a@b.co' }), { path: '/networks/net%2F1/members/invite', method: 'POST', body: { email: 'a@b.co' } });
     await expectCall('networks.searchUsers', (client) => client.networks.searchUsers('ada', 'net/1'), { path: '/networks/search-users?q=ada&networkId=net%2F1' });
+    await expectCall('networks.regenerateInvitationLink', (client) => client.networks.regenerateInvitationLink('net/1'), { path: '/networks/net%2F1/regenerate-invitation', method: 'PATCH', body: {} });
     await expectCall('intents.list', (client) => client.intents.list({ page: 1 }), { path: '/intents/list', method: 'POST', body: { page: 1 } });
     await expectCall('intents.get', (client) => client.intents.get('intent/1'), { path: '/intents/intent%2F1' });
     await expectCall('intents.archive', (client) => client.intents.archive('intent/1'), { path: '/intents/intent%2F1/archive', method: 'PATCH' });

@@ -264,10 +264,11 @@ def main() -> None:
     # Owner network detail: overview / settings / access (web parity, no integrations).
     assert "NetworkDetailModal" in dashboard_js
     assert "networkShareUrl" in dashboard_js
+    assert "/regenerate-invitation" in dashboard_js
     assert "resolveShareBase" in dashboard_js
-    assert "Invitation Link" in dashboard_js
-    assert "Network Link" in dashboard_js
+    assert "Invitation link" in dashboard_js
     assert "/permissions" in dashboard_js
+    assert "regenerate_network_invitation" in (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "/networks/search-users" in dashboard_js
     assert "/members/invite" in dashboard_js
     assert "Your Signals" in dashboard_js
@@ -298,6 +299,7 @@ def main() -> None:
     assert "handleIndexDeepLink" not in desktop_js
     assert "onDeepLink" not in desktop_js
     assert "NetworkDetailModal" in desktop_js
+    assert "/regenerate-invitation" in desktop_js
     assert "onOpenUser" in dashboard_js
     assert "onStartChat" in dashboard_js
     assert "unresolved_uptake_questions" in dashboard_js

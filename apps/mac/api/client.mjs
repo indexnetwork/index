@@ -195,6 +195,10 @@ export function createIndexApiClient(options = {}) {
         `/networks/${encodeURIComponent(networkId)}/permissions`,
         { ...options, method: 'PATCH', body },
       ),
+      regenerateInvitationLink: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/regenerate-invitation`,
+        { ...options, method: 'PATCH', body: {} },
+      ),
       getMembers: (networkId, options = {}) => request(
         `/networks/${encodeURIComponent(networkId)}/members`,
         options,

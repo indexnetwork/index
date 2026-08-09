@@ -80,15 +80,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.network;
   },
 
-  // Get public network by ID (public access - only works for public networks)
-  getPublicIndexById: async (id: string): Promise<Network> => {
-    const response = await api.get<APIResponse<Network>>(`/networks/public/${id}`);
-    if (!response.network) {
-      throw new Error('Network not found');
-    }
-    return response.network;
-  },
-
   // Upload network image (returns URL to use in create/update)
   uploadIndexImage: async (file: File): Promise<string> => {
     const result = await api.uploadFile<{ imageUrl?: string }>('/storage/network-images', file, undefined, 'image');
@@ -372,15 +363,6 @@ export const indexesService = {
   // Get network by share code (public access, no auth required)
   getIndexByShareCode: async (code: string): Promise<Network> => {
     const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/share/${code}`);
-    if (!response.network) {
-      throw new Error('Network not found');
-    }
-    return response.network;
-  },
-
-  // Get public network by ID (public access, no auth required - only works for public networks)
-  getPublicIndexById: async (id: string): Promise<Network> => {
-    const response = await apiClient.getPublic<APIResponse<Network>>(`/networks/public/${id}`);
     if (!response.network) {
       throw new Error('Network not found');
     }

@@ -135,11 +135,13 @@ describe("/l/:code invite landing", () => {
     expect(navigate).toHaveBeenCalledWith(DOWNLOAD_PATH, { replace: true });
   });
 
-  test("rejects public networks as non-invites", async () => {
+  test("accepts public networks via share code", async () => {
+    mockIsAuthenticated = true;
     getIndexByShareCode.mockResolvedValue({
       id: "net-2",
       title: "Open Club",
       permissions: { joinPolicy: "anyone" },
+      _count: { members: 5 },
     });
 
     const { default: InvitationPage } = await import("@/app/l/[code]/page");
@@ -153,8 +155,13 @@ describe("/l/:code invite landing", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/No invitation found/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Open Club" })).toBeInTheDocument();
     });
-    expect(acceptInvitation).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(acceptInvitation).toHaveBeenCalledWith("public-code");
+    });
+
+    expect(navigate).toHaveBeenCalledWith(DOWNLOAD_PATH, { replace: true });
   });
 });

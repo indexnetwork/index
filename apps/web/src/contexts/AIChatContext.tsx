@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
-import { useLocation } from "react-router";
 import { REPORTER_BRIEFING_KICKOFF } from "@indexnetwork/protocol";
 
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
@@ -246,13 +245,6 @@ interface AIChatContextType {
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
 
-/** Extract network ID from pathname when on /index/[networkId] (fallback when no dropdown selection). */
-function getScopeNetworkIdFromPathname(pathname: string | null): string | null {
-  if (!pathname) return null;
-  const match = pathname.match(/^\/index\/([^/]+)/);
-  return match ? match[1] : null;
-}
-
 /**
  * Merges tool step details from persisted debugMeta into trace events.
  * When traceEvents are persisted without steps but debugMeta has them,
@@ -361,18 +353,13 @@ function parseTurnBlock(value: unknown): ChatTurnBlock | null {
 }
 
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
-  const { pathname } = useLocation();
   const [scopeOverride, setScopeOverride] = useState<ChatScope>(null);
-  const pathNetworkScopeId = getScopeNetworkIdFromPathname(pathname);
-  const scopeFromPath: ChatScope = pathNetworkScopeId
-    ? { type: "network", id: pathNetworkScopeId }
-    : null;
-  // For existing sessions, the session's bound scope takes precedence over UI/path selection.
+  // For existing sessions, the session's bound scope takes precedence over UI selection.
   const [sessionScope, setSessionScope] = useState<ChatScope>(null);
   // Backward-compatible network alias for existing consumers.
   const [sessionNetworkId, setSessionNetworkId] = useState<string | null>(null);
-  // Effective scope: session-bound scope takes precedence, then UI override, then path.
-  const chatScope = sessionScope ?? scopeOverride ?? scopeFromPath;
+  // Effective scope: session-bound scope takes precedence, then UI override.
+  const chatScope = sessionScope ?? scopeOverride;
   const scopeNetworkId = chatScope?.type === "network" ? chatScope.id : null;
 
   const [isOpen, setIsOpen] = useState(false);

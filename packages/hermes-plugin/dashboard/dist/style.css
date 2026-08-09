@@ -1282,6 +1282,43 @@
   color: #16a34a;
 }
 
+.index-dashboard__net-regenerate {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-destructive, #dc2626) 35%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-destructive, #dc2626) 8%, transparent);
+}
+
+.index-dashboard__net-regenerate p {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-destructive, #dc2626);
+}
+
+.index-dashboard__net-regenerate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.index-dashboard__net-regenerate-actions button {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 35%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-card-foreground, inherit);
+  cursor: pointer;
+}
+
+.index-dashboard__net-regenerate-actions button:last-child {
+  border-color: var(--color-card-foreground, inherit);
+  background: var(--color-card-foreground, inherit);
+  color: var(--color-card, #fff);
+}
+
 .index-dashboard__net-invite-icon {
   width: 0.875rem;
   height: 0.875rem;

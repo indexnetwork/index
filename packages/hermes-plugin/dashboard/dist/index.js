@@ -819,9 +819,6 @@
     if (network.role !== "owner") return null;
     const base = resolveShareBase(webUrl, apiUrl);
     if (!base) return null;
-    if (network.joinPolicy === "anyone" && network.id) {
-      return base + "/index/" + encodeURIComponent(network.id);
-    }
     const code = network.invitationLink && network.invitationLink.code;
     if (code) return base + "/l/" + encodeURIComponent(code);
     return null;
@@ -857,6 +854,15 @@
   function ICON_CHECK() {
     return svgIcon("index-dashboard__net-invite-icon", [
       React.createElement("polyline", { key: "a", points: "20 6 9 17 4 12" }),
+    ]);
+  }
+
+  function ICON_REFRESH() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      svgPath("M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"),
+      svgPath("M21 3v5h-5"),
+      svgPath("M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"),
+      svgPath("M8 16H3v5"),
     ]);
   }
 
@@ -927,11 +933,14 @@
     const showDeleteState = React.useState(false);
     const showDelete = showDeleteState[0];
     const setShowDelete = showDeleteState[1];
+    const showRegenerateConfirmState = React.useState(false);
+    const showRegenerateConfirm = showRegenerateConfirmState[0];
+    const setShowRegenerateConfirm = showRegenerateConfirmState[1];
     const PAGE_SIZE = 10;
     const shareUrl = networkShareUrl(local, props.webUrl, props.apiUrl);
     const count = typeof local.memberCount === "number" ? local.memberCount : members.length || null;
     const isPublic = local.joinPolicy === "anyone";
-    const label = isPublic ? "Network Link" : "Invitation Link";
+    const label = "Invitation link";
     const settingsDirty = title !== (local.title || "")
       || prompt !== (local.detail || "")
       || !!imageData
@@ -1003,6 +1012,28 @@
         setCopied(true);
         setTimeout(function () { setCopied(false); }, 2000);
       }).catch(function () { /* leave idle */ });
+    }
+
+    function regenerateLink() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/regenerate-invitation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not regenerate invitation link.");
+          }
+          patchLocal({
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+          setShowRegenerateConfirm(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
     }
 
     function setJoinPolicy(anyone) {
@@ -1305,12 +1336,37 @@
               React.createElement("code", { className: "index-dashboard__net-invite-url" }, shareUrl),
               React.createElement("button", {
                 type: "button",
+                className: "index-dashboard__net-invite-copy" + (showRegenerateConfirm ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": "Regenerate invitation link",
+                title: "Regenerate invitation link",
+                disabled: busy,
+                onClick: function () { setShowRegenerateConfirm(!showRegenerateConfirm); },
+              }, ICON_REFRESH()),
+              React.createElement("button", {
+                type: "button",
                 className: "index-dashboard__net-invite-copy" + (copied ? " index-dashboard__net-invite-copy--ok" : ""),
                 "aria-label": copied ? "Copied" : "Copy link",
                 title: copied ? "Copied" : "Copy link",
                 onClick: onCopy,
               }, copied ? ICON_CHECK() : ICON_COPY()),
             ),
+            showRegenerateConfirm
+              ? React.createElement("div", { className: "index-dashboard__net-regenerate" },
+                React.createElement("p", null, "The current link stops working immediately. Regenerate?"),
+                React.createElement("div", { className: "index-dashboard__net-regenerate-actions" },
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: function () { setShowRegenerateConfirm(false); },
+                  }, "Cancel"),
+                  React.createElement("button", {
+                    type: "button",
+                    disabled: busy,
+                    onClick: regenerateLink,
+                  }, busy ? "Regenerating…" : "Regenerate"),
+                ),
+              )
+              : null,
           )
           : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet."))
         : null,

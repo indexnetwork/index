@@ -970,7 +970,6 @@ function networkShareUrl(net) {
   const base = (window.IndexApp && window.IndexApp.webBaseUrl
     ? window.IndexApp.webBaseUrl()
     : "https://index.network").replace(/\/+$/, "");
-  if (net.joinPolicy === "anyone" && net.id) return `${base}/index/${encodeURIComponent(net.id)}`;
   if (net.invitationCode) return `${base}/l/${encodeURIComponent(net.invitationCode)}`;
   return null;
 }
@@ -989,6 +988,7 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
   const isOwner = networkIsOwner(local);
   const [tab, setTab] = useState("overview");
   const [copied, setCopied] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState([]);
   // settings draft
@@ -1067,6 +1067,22 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) { /* leave idle */ }
+  };
+
+  const regenerateLink = async () => {
+    if (!client || !local.id || busy) return;
+    setBusy(true);
+    try {
+      const res = await client.networks.regenerateInvitationLink(local.id);
+      const n = (res && res.network) || res || {};
+      const perms = n.permissions || {};
+      const code = (perms.invitationLink && perms.invitationLink.code) || null;
+      const merged = { ...local, invitationCode: code };
+      setLocal(merged);
+      if (onUpdated) onUpdated(merged);
+      setShowRegenerateConfirm(false);
+    } catch (e) { /* leave idle */ }
+    finally { setBusy(false); }
   };
 
   const setJoinPolicy = async (anyone) => {
@@ -1356,7 +1372,7 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
 
                 {!local.hasMasterKey && (
                   <div>
-                    <RuleLabel>{isPublic ? "Network Link" : "Invitation Link"}</RuleLabel>
+                    <RuleLabel>Invitation link</RuleLabel>
                     <div style={{
                       marginTop:12, display:"flex", alignItems:"center", gap:8,
                       padding:"10px 12px",
@@ -1368,20 +1384,66 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
                         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
                       }}>{shareUrl || "No invitation link yet."}</code>
                       {shareUrl && (
-                        <button
-                          type="button"
-                          onClick={copyLink}
-                          title={copied ? "Copied" : "Copy link"}
-                          style={{
-                            flex:"0 0 auto", cursor:"pointer",
-                            padding:"4px 10px", border:"1px solid #000",
-                            background: copied ? "#000" : "#fff",
-                            color: copied ? "#fff" : "#000",
-                            fontFamily:"var(--mac-mono)", fontSize:11,
-                            boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                          }}>{copied ? "copied" : "copy"}</button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowRegenerateConfirm((v) => !v)}
+                            disabled={busy}
+                            title="Regenerate invitation link"
+                            aria-label="Regenerate invitation link"
+                            style={{
+                              flex:"0 0 auto", cursor: busy ? "default" : "pointer",
+                              padding:"4px 10px", border:"1px solid #000",
+                              background: showRegenerateConfirm ? "#000" : "#fff",
+                              color: showRegenerateConfirm ? "#fff" : "#000",
+                              fontFamily:"var(--mac-mono)", fontSize:11,
+                              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                              opacity: busy ? 0.5 : 1,
+                            }}>↻</button>
+                          <button
+                            type="button"
+                            onClick={copyLink}
+                            title={copied ? "Copied" : "Copy link"}
+                            style={{
+                              flex:"0 0 auto", cursor:"pointer",
+                              padding:"4px 10px", border:"1px solid #000",
+                              background: copied ? "#000" : "#fff",
+                              color: copied ? "#fff" : "#000",
+                              fontFamily:"var(--mac-mono)", fontSize:11,
+                              boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                            }}>{copied ? "copied" : "copy"}</button>
+                        </>
                       )}
                     </div>
+                    {showRegenerateConfirm && shareUrl && (
+                      <div style={{
+                        marginTop:8, padding:12,
+                        border:"1px solid #000", background:"#FFF5F5",
+                        display:"grid", gap:10,
+                      }}>
+                        <p style={{ margin:0, fontFamily:"var(--mac-sans)", fontSize:13, color:"#8A0000" }}>
+                          The current link stops working immediately. Regenerate?
+                        </p>
+                        <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setShowRegenerateConfirm(false)}
+                            style={{
+                              fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                              border:"1px solid #000", background:"#fff", color:"#000", cursor:"pointer",
+                            }}>Cancel</button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={regenerateLink}
+                            style={{
+                              fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                              border:"1px solid #000", background:"#000", color:"#fff", cursor:"pointer",
+                            }}>{busy ? "Regenerating…" : "Regenerate"}</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

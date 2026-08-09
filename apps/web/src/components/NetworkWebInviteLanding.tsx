@@ -53,11 +53,6 @@ export default function NetworkWebInviteLanding() {
       try {
         const loaded = await publicIndexesService.getIndexByShareCode(code);
         if (cancelled) return;
-        if (loaded.permissions?.joinPolicy === "anyone") {
-          setPreviewStep("error");
-          setPreviewError("No invitation found");
-          return;
-        }
         setNetwork(loaded);
         setPreviewStep("ready");
       } catch (err) {

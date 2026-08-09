@@ -195,7 +195,7 @@ vi.mock('@/contexts/SaveBarContext', () => ({
   useSaveBarVisible: () => false,
 }));
 
-// Mock indexes service (standalone, used by /index/[indexId] and /l/[code])
+// Mock indexes service (standalone, used by /l/[code])
 const noopServiceProxy = () =>
   new Proxy({}, { get: () => vi.fn().mockResolvedValue({}) });
 
@@ -310,14 +310,6 @@ describe('Route rendering smoke tests', () => {
     const { Component } = await import('@/app/i/[intentId]/page');
     const { container } = renderWithRouter(<Component />, {
       route: '/i/mock-intent-id',
-    });
-    expect(container).toBeTruthy();
-  });
-
-  test('/index/:indexId — Index detail page renders without crashing', async () => {
-    const { Component } = await import('@/app/index/[indexId]/page');
-    const { container } = renderWithRouter(<Component />, {
-      route: '/index/mock-index-id',
     });
     expect(container).toBeTruthy();
   });
