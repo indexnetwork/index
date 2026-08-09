@@ -56,6 +56,8 @@
 
   function sanitizeGeneratedEdges(value) {
     if (!value || typeof value !== "object" || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) return value;
+    const isRecord = (entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry);
+    if (value.nodes.some((node) => !isRecord(node)) || value.edges.some((edge) => !isRecord(edge))) return value;
     const nodeIds = new Set(value.nodes.map((node) => node && node.id).filter((id) => typeof id === "string"));
     const edgeIds = new Set();
     const omitted = [];

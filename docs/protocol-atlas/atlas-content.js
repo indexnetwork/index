@@ -461,7 +461,7 @@
       ["packages/protocol/src/opportunity/discovery.env.ts", "discoveryProfileSource"],
       ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
-    contextToIntent: evidence("DISCOVERY_CONTEXT_TO_INTENT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "lightweight mode: context→context runs when legacy context→intent switch is disabled", [
+    contextToIntent: evidence("DISCOVERY_CONTEXT_TO_INTENT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence", [
       ["packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory"],
     ]),
     sourcePremise: evidence("DISCOVERY_SOURCE_PREMISE_LIMIT", "component.opportunity-graph-factory", "packages/protocol/src/opportunity/application/opportunity.graph.ts", "OpportunityGraphFactory", "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts", "premise discovery uses scoped capped source premises and one batched DB search", [
@@ -730,7 +730,7 @@
         summary: "Meet the protocol concepts before following how approved material becomes attributable, scoped context.",
         stepIds: trustedContextSteps.map(({ id }) => id),
         sections: [
-          { id: "protocol-primitives", title: "Protocol primitives", summary: "The stable conceptual vocabulary used throughout the atlas.", items: ["Participant", "Software Agent", "Signal", "Premise", "Context", "Community", "Membership and agent permission", "Candidate", "Opportunity", "Negotiation", "Connection"] },
+          { id: "protocol-primitives", title: "Protocol primitives", summary: "The stable conceptual vocabulary used throughout the atlas.", items: ["Participant", "Software Agent", "Signal", "Premise", "Context", "Community", "Membership", "Agent Permission", "Effective Scope", "Candidate", "Opportunity", "Negotiation", "Connection", "Provider/helper role"] },
           { id: "agent-role-distinction", title: "Agent is not a valency role", summary: "A Software Agent is an attributable software actor. Provider/helper role is a negotiated relationship role that historical implementation vocabulary calls valency role agent.", items: ["Software Agent: registered actor", "Provider/helper role: relationship role, not software"] },
         ],
       },

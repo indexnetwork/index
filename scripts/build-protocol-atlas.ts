@@ -722,7 +722,13 @@ export function validateAtlasArtifact(artifact: AtlasArtifact, repoRoot: string)
   const edges = recordArray(root.edges);
   const experiments = root.configurationExperiments;
   if (!Array.isArray(root.nodes)) issues.push("generated nodes must be an array");
+  else root.nodes.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) issues.push(`generated nodes[${index}] must be a record`);
+  });
   if (!Array.isArray(root.edges)) issues.push("generated edges must be an array");
+  else root.edges.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) issues.push(`generated edges[${index}] must be a record`);
+  });
   issues.push(...validateGeneratedConfigurationShape(experiments));
   for (const id of duplicateIds(nodes.filter((record): record is { id: string } => nonEmptyString(record.id)))) issues.push(`duplicate node id: ${id}`);
   for (const id of duplicateIds(edges.filter((record): record is { id: string } => nonEmptyString(record.id)))) issues.push(`duplicate edge id: ${id}`);
@@ -825,6 +831,14 @@ export function validateCuratedReferences(content: unknown, artifact: AtlasArtif
     "trust-scope": ["effective-scope-intersection", "privacy-and-consent"],
     runtime: ["runtime-drilldown", "host-boundary-stop"],
   };
+  const requiredPrimitiveTitles = [
+    "Participant", "Software Agent", "Signal", "Premise", "Context", "Community", "Membership",
+    "Agent Permission", "Effective Scope", "Candidate", "Opportunity", "Negotiation", "Connection", "Provider/helper role",
+  ];
+  const requiredRuntimeStages = [
+    "Protocol entry surface", "Runtime shell", "Capability facade", "Tool or graph factory",
+    "Graph node or structured agent", "Domain state and schema", "Injected port", "Required host capability",
+  ];
   for (const [chapterId, requiredIds] of Object.entries(requiredTeachingSections)) {
     const chapter = chapters.find(({ id }) => id === chapterId);
     const sections = curatedRecords(chapter?.sections);
@@ -835,6 +849,21 @@ export function validateCuratedReferences(content: unknown, artifact: AtlasArtif
         issues.add(`chapter ${chapterId} has malformed required teaching section ${String(section.id)}`);
       }
     }
+    const itemsFor = (sectionId: string): string[] => {
+      const items = sections.find(({ id }) => id === sectionId)?.items;
+      return stringArrayValue(items) ? items : [];
+    };
+    if (chapterId === "primitives" && !sameStrings(itemsFor("protocol-primitives"), requiredPrimitiveTitles)) {
+      issues.add("chapter primitives must contain all approved primitive titles");
+    }
+    if (chapterId === "runtime" && !sameStrings(itemsFor("runtime-drilldown"), requiredRuntimeStages)) {
+      issues.add("chapter runtime must contain all runtime drill-down stages");
+    }
+  }
+  const trustedContext = flows.find(({ id }) => id === "trusted-context");
+  const trustedContextFirstStep = curatedRecords(trustedContext?.steps)[0];
+  if (!String(trustedContextFirstStep?.summary ?? "").includes("contact-data minimization")) {
+    issues.add("trusted-context first step must visibly teach contact-data minimization");
   }
   const requiredDiscrepancies = ["gap-bounded-negotiation", "gap-lifecycle-vocabulary", "gap-community-network", "gap-background-discovery", "gap-candidate-presentation"];
   const discrepancyIds = relationships.filter(({ kind }) => kind === "discrepancy").map(({ id }) => id).filter((id): id is string => typeof id === "string");

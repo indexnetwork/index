@@ -835,6 +835,38 @@ describe('Opportunity Graph', () => {
       expect(candidate?.evidence[0]?.kind).toBe('context_similarity');
     });
 
+    it('DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence', async () => {
+      process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
+      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
+      process.env.DISCOVERY_CONTEXT_TO_INTENT = '1';
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      mockDb.getUserContexts = async () => [
+        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
+      ];
+      mockDb.getHydeDocumentsForSource = mock(async () => []) as typeof mockDb.getHydeDocumentsForSource;
+      const contextIntentSearchSpy = mock(async () => [
+        { intentId: 'intent-bob', userId: gatingBob, networkId: 'idx-1', similarity: 0.86, payload: 'Looking for protocol collaborators', summary: null },
+      ]);
+      mockDb.searchIntentsByContextEmbedding = contextIntentSearchSpy as typeof mockDb.searchIntentsByContextEmbedding;
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+      const result = (await compiledGraph.invoke({
+        userId: gatingAlice as Id<'users'>,
+        searchQuery: 'protocol collaborator',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(contextIntentSearchSpy).toHaveBeenCalled();
+      expect(contextIntentSearchSpy.mock.calls[0]?.[0]).toMatchObject({
+        networkIds: ['idx-1'],
+        excludeUserId: gatingAlice,
+      });
+      const candidate = result.candidates.find((item) => item.candidateIntentId === 'intent-bob');
+      expect(candidate).toBeDefined();
+      expect(candidate?.discoverySource).toBe('context-to-intent');
+      expect(candidate?.evidence.some((item) => item.kind === 'context_to_intent')).toBe(true);
+    });
+
     it('premise mode (default): context→context does not run', async () => {
       const { compiledGraph, mockDb } = createMockGraph();
       mockDb.getUserContexts = async () => [

@@ -157,10 +157,20 @@ test("keeps responsive layouts bounded with touch and grayscale-safe interaction
   expect(css).toContain("--edge-static-pattern: 10 5");
   expect(css).toContain("--edge-injected-pattern: 2 5");
   expect(css).toContain("--edge-conceptual-pattern: 1 5");
+  expect(css).toMatch(/\.atlas-edge--runtime\s*\{[^}]*--edge-pattern:\s*var\(--edge-runtime-pattern\)[^}]*--edge-label:\s*"runtime"/s);
+  expect(css).toMatch(/\.atlas-edge--static\s*\{[^}]*--edge-pattern:\s*var\(--edge-static-pattern\)[^}]*--edge-label:\s*"static"/s);
+  expect(css).toMatch(/\.atlas-edge--injected\s*\{[^}]*--edge-pattern:\s*var\(--edge-injected-pattern\)[^}]*--edge-label:\s*"injected"/s);
+  expect(css).toMatch(/\.atlas-edge--conceptual\s*\{[^}]*--edge-color:\s*var\(--edge-conceptual\)[^}]*--edge-pattern:\s*var\(--edge-conceptual-pattern\)[^}]*--edge-label:\s*"conceptual"/s);
   expect(css).toMatch(/\.atlas-edge--runtime \.atlas-edge__line,[\s\S]*?border-top-style:\s*solid/);
   expect(css).toMatch(/\.atlas-edge--static \.atlas-edge__line,[\s\S]*?border-top-style:\s*dashed/);
-  expect(css).toContain(".atlas-diagram-relations");
-  expect(css).toMatch(/\.atlas-edge text\s*\{/);
+  expect(css).toMatch(/\.atlas-edge--injected \.atlas-edge__line,[\s\S]*?border-top-style:\s*dotted/);
+  expect(css).toMatch(/\.atlas-edge--conceptual \.atlas-edge__line,[\s\S]*?border-top-style:\s*dashed/);
+  expect(css).toMatch(/\.atlas-edge text\s*\{[^}]*fill:\s*currentcolor/s);
+  const mobile = css.slice(css.indexOf("@media (max-width: 640px)"), css.indexOf("@media (max-width: 375px)"));
+  expect(mobile).toMatch(/\.atlas-diagram-canvas svg\s*\{[^}]*display:\s*none/s);
+  expect(mobile).toMatch(/\.atlas-diagram-nodes\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*1fr/s);
+  expect(mobile).toMatch(/\.atlas-diagram-relations\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*1fr/s);
+  expect(mobile).toMatch(/\.atlas-relationship\s*\{[^}]*grid-template-columns:\s*1fr/s);
   expect(css).toContain(".configuration-delta--activated");
   expect(css).toContain(".configuration-delta--bypassed");
   expect(css).toContain(".configuration-delta--changed");
@@ -236,7 +246,12 @@ describe("protocol atlas curated content", () => {
       expect.objectContaining({ settingKeys: ["DISCOVERY_PROFILE_SOURCE"], behaviorTest: expect.objectContaining({ testName: expect.stringContaining("DISCOVERY_PROFILE_SOURCE=user_context") }) }),
     ]);
     expect(discovery.modes.find(({ id }) => id === "context-cross-match")?.deltas).toEqual([
-      expect.objectContaining({ settingKeys: ["DISCOVERY_CONTEXT_TO_INTENT"], behaviorTest: expect.objectContaining({ testName: expect.stringContaining("context→intent") }) }),
+      expect.objectContaining({
+        settingKeys: ["DISCOVERY_CONTEXT_TO_INTENT"],
+        behaviorTest: expect.objectContaining({
+          testName: "DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence",
+        }),
+      }),
     ]);
   });
 
@@ -308,11 +323,32 @@ describe("protocol atlas curated content", () => {
   });
 
   test("rejects missing or malformed required chapter teaching sections", async () => {
-    const content = await loadAtlasContent() as { chapters: Array<{ id: string; sections?: unknown }> };
-    const artifact = buildAtlasArtifact(await loadProtocolGeneratorInput(repoRoot), content);
-    const primitives = content.chapters.find(({ id }) => id === "primitives")!;
+    const source = await loadAtlasContent() as {
+      chapters: Array<{ id: string; sections?: Array<{ id: string; title: string; summary: string; items: string[] }> }>;
+      flows: Array<{ id: string; steps: Array<{ summary: string; notes: { protocol: string } }> }>;
+    };
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const artifact = buildAtlasArtifact(input, source);
+
+    const malformed = structuredClone(source);
+    const primitives = malformed.chapters.find(({ id }) => id === "primitives")!;
     primitives.sections = [{ id: "protocol-primitives", title: "", summary: "", items: [] }];
-    expect(validateCuratedReferences(content, artifact).join("\n")).toContain("required teaching section");
+    expect(validateCuratedReferences(malformed, artifact).join("\n")).toContain("required teaching section");
+
+    const missingPrimitive = structuredClone(source);
+    missingPrimitive.chapters.find(({ id }) => id === "primitives")!.sections!
+      .find(({ id }) => id === "protocol-primitives")!.items = ["Participant"];
+    expect(validateCuratedReferences(missingPrimitive, artifact).join("\n")).toContain("approved primitive titles");
+
+    const missingRuntimeStage = structuredClone(source);
+    missingRuntimeStage.chapters.find(({ id }) => id === "runtime")!.sections!
+      .find(({ id }) => id === "runtime-drilldown")!.items = ["Protocol entry surface"];
+    expect(validateCuratedReferences(missingRuntimeStage, artifact).join("\n")).toContain("runtime drill-down stages");
+
+    const missingMinimization = structuredClone(source);
+    const firstTrustedStep = missingMinimization.flows.find(({ id }) => id === "trusted-context")!.steps[0];
+    firstTrustedStep.summary = "Only approved material may become context.";
+    expect(validateCuratedReferences(missingMinimization, artifact).join("\n")).toContain("contact-data minimization");
   });
 
   test("forbids concrete host implementation paths in curated content", async () => {
@@ -365,6 +401,10 @@ describe("protocol atlas generator", () => {
       ["effect", (copy) => { const mode = (copy.configurationExperiments[0].modes as Array<Record<string, unknown>>).find(({ deltas }) => Array.isArray(deltas) && deltas.length > 0)!; (mode.deltas as Array<Record<string, unknown>>)[0].effect = "teleported"; }, "effect"],
       ["target kind", (copy) => { const mode = (copy.configurationExperiments[0].modes as Array<Record<string, unknown>>).find(({ deltas }) => Array.isArray(deltas) && deltas.length > 0)!; (mode.deltas as Array<Record<string, unknown>>)[0].targetKind = "route"; }, "targetKind"],
       ["assignment shape", (copy) => { (copy.configurationExperiments[0].modes[0].assignments as unknown[]) = [null]; }, "assignment"],
+      ["null node entry", (copy) => { (copy.nodes as unknown[]).push(null); }, "generated nodes["],
+      ["string node entry", (copy) => { (copy.nodes as unknown[]).push("not-a-record"); }, "generated nodes["],
+      ["null edge entry", (copy) => { (copy.edges as unknown[]).push(null); }, "generated edges["],
+      ["string edge entry", (copy) => { (copy.edges as unknown[]).push("not-a-record"); }, "generated edges["],
     ];
     for (const [label, mutate, expected] of mutations) {
       const copy = structuredClone(artifact);

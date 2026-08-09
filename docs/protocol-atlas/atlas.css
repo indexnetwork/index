@@ -1245,6 +1245,11 @@ noscript {
     padding: 0;
   }
 
+  .atlas-diagram-relations {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .atlas-diagram-nodes .atlas-node {
     max-height: none;
   }

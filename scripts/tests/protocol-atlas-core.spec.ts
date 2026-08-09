@@ -442,6 +442,16 @@ describe("ProtocolAtlasCore data validation", () => {
     expect(result.errors.join("\n")).toContain("edge kind");
   });
 
+  test("rejects non-record node and edge entries without throwing", () => {
+    for (const [field, entry] of [["nodes", null], ["nodes", "not-a-record"], ["edges", null], ["edges", "not-a-record"]] as const) {
+      const generated = fixtureGenerated() as unknown as Record<string, unknown[]>;
+      generated[field].push(entry);
+      const result = core().validateData(fixtureContent(), generated);
+      expect(result.ok).toBe(false);
+      expect(result.errors.join("\n")).toContain(`generated ${field}[`);
+    }
+  });
+
   test("returns validation errors instead of throwing on missing runtime data", () => {
     expect(() => core().validateData(null, undefined)).not.toThrow();
     expect(core().validateData(null, undefined).ok).toBe(false);
@@ -600,14 +610,19 @@ describe("Protocol Atlas chapter teaching and relationship fallback", () => {
         "Private Candidate versus surfaced Opportunity",
       ]) expect(orientation).toContain(title);
       buttonWithText(harness.document, "#atlas-nav button", "Primitives")?.click();
-      expect(harness.document.querySelector(".atlas-chapter-teaching")?.textContent).toContain("Provider/helper role");
+      const primitives = harness.document.querySelector(".atlas-chapter-teaching")?.textContent || "";
+      for (const title of [
+        "Participant", "Software Agent", "Signal", "Premise", "Context", "Community", "Membership",
+        "Agent Permission", "Effective Scope", "Candidate", "Opportunity", "Negotiation", "Connection", "Provider/helper role",
+      ]) expect(primitives).toContain(title);
+      expect(harness.document.querySelector(".atlas-step-summary")?.textContent).toContain("contact-data minimization");
       buttonWithText(harness.document, "#atlas-nav button", "Trust + Scope")?.click();
       const trust = harness.document.querySelector(".atlas-chapter-teaching")?.textContent || "";
       expect(trust).toContain("applicable Community policy");
       expect(trust).toContain("incognito");
       buttonWithText(harness.document, "#atlas-nav button", "Runtime")?.click();
       const runtime = harness.document.querySelector(".atlas-chapter-teaching")?.textContent || "";
-      expect(runtime).toMatch(/entry surface[\s\S]*runtime shell[\s\S]*capability facade[\s\S]*tool or graph factory[\s\S]*injected port[\s\S]*required host capability/i);
+      expect(runtime).toMatch(/Protocol entry surface[\s\S]*Runtime shell[\s\S]*Capability facade[\s\S]*Tool or graph factory[\s\S]*Graph node or structured agent[\s\S]*Domain state and schema[\s\S]*Injected port[\s\S]*Required host capability/);
     } finally {
       harness.cleanup();
     }
@@ -629,18 +644,32 @@ describe("Protocol Atlas chapter teaching and relationship fallback", () => {
     }
 
     const generated = fixtureGenerated();
+    const baseEdge = generated.edges[0];
+    generated.edges = ([
+      ["runtime.activated", "runtime"],
+      ["runtime.bypassed", "static"],
+      ["runtime.changed", "injected"],
+      ["runtime.unresolved", "conceptual"],
+    ] as const).map(([id, kind]) => ({ ...baseEdge, id, kind, label: `${kind} relationship` }));
     const enforce = generated.configurationExperiments[0].modes.find(({ id }) => id === "enforce")!;
-    enforce.deltas = [{ ...enforce.deltas[0], id: "screen-edge", effect: "changed", targetKind: "edge", targetId: "runtime.evaluate" }];
+    const definitive = enforce.deltas[0];
+    enforce.deltas = [
+      { ...definitive, id: "screen-activated", effect: "activated", targetKind: "edge", targetId: "runtime.activated" },
+      { ...definitive, id: "screen-bypassed", effect: "bypassed", targetKind: "edge", targetId: "runtime.bypassed" },
+      { ...definitive, id: "screen-changed", effect: "changed", targetKind: "edge", targetId: "runtime.changed" },
+      { id: "screen-unresolved", effect: "unresolved", targetKind: "edge", targetId: "runtime.unresolved", settingKeys: ["NEGOTIATION_SCREEN_MODE"], noDirectProtocolConsumer: true },
+    ];
     const implementationHarness = await rendererHarness({
       generated,
       hash: "#chapter=explore&layer=implementation&experiment=negotiation-screen&mode=enforce",
     });
     try {
-      const relationship = implementationHarness.document.querySelector(".atlas-diagram-relations li");
-      expect(relationship?.textContent).toContain("OpportunityGraphFactory");
-      expect(relationship?.textContent).toContain("runtime");
-      expect(relationship?.textContent).toContain("Opportunity Evaluator");
-      expect(relationship?.textContent).toContain("~ changed");
+      const relationships = Array.from(implementationHarness.document.querySelectorAll(".atlas-diagram-relations li"), (row) => row.textContent || "");
+      expect(relationships).toHaveLength(4);
+      for (const label of ["+ activated", "− bypassed", "~ changed", "? unresolved"]) {
+        expect(relationships.some((relationship) => relationship.includes(label))).toBe(true);
+      }
+      expect(relationships.every((relationship) => relationship.includes("OpportunityGraphFactory") && relationship.includes("Opportunity Evaluator"))).toBe(true);
     } finally {
       implementationHarness.cleanup();
     }
@@ -689,6 +718,29 @@ describe("Protocol Atlas Configuration Lab renderer", () => {
       expect(old.document.querySelectorAll(".atlas-node").length).toBeGreaterThan(0);
     } finally {
       old.cleanup();
+    }
+  });
+});
+
+describe("Protocol Atlas generated-data degradation", () => {
+  test("keeps curated chapters readable when node or edge arrays contain non-record entries", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      for (const field of ["nodes", "edges"] as const) {
+        const generated = fixtureGenerated();
+        (generated[field] as unknown[]).push(null);
+        const harness = await rendererHarness({ generated });
+        try {
+          expect(harness.document.querySelector("#atlas-notice")?.textContent).toContain("Implementation evidence is unavailable");
+          expect(harness.document.querySelector("#atlas-diagram")?.textContent).toContain("Protocol layer");
+          expect(harness.document.querySelectorAll<HTMLButtonElement>("#atlas-layer-toggle button")[1]?.disabled).toBe(true);
+        } finally {
+          harness.cleanup();
+        }
+      }
+    } finally {
+      console.error = originalError;
     }
   });
 });

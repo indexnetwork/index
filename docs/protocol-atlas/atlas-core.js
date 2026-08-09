@@ -360,7 +360,13 @@
         if (!isRecord(content) || !Array.isArray(content[listName])) errors.push(`curated ${listName} must be an array`);
       }
       if (!isRecord(generated) || !Array.isArray(generated.nodes)) errors.push("generated nodes must be an array");
+      else generated.nodes.forEach((entry, index) => {
+        if (!isRecord(entry)) errors.push(`generated nodes[${index}] must be a record`);
+      });
       if (!isRecord(generated) || !Array.isArray(generated.edges)) errors.push("generated edges must be an array");
+      else generated.edges.forEach((entry, index) => {
+        if (!isRecord(entry)) errors.push(`generated edges[${index}] must be a record`);
+      });
 
       const chapters = records(content && content.chapters);
       const flows = records(content && content.flows);

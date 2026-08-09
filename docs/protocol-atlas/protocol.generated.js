@@ -1421,7 +1421,7 @@ globalThis.ProtocolAtlasGenerated = Object.freeze({
               ],
               "behaviorTest": {
                 "path": "packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts",
-                "testName": "lightweight mode: context→context runs when legacy context→intent switch is disabled"
+                "testName": "DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence"
               }
             }
           ],
