@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { fileURLToPath } from "node:url";
 
 import { HISTORICAL_QUALITY_CASES } from "../../matching/matching.historical.js";
 import { fingerprintCanonicalJson } from "../../shared/index.js";
 import type { HistoricalQualityCase } from "../historical-quality.corpus.js";
-import { HISTORICAL_SHARED_NETWORK, HISTORICAL_SHARED_POOL_APPROVAL_RECORD, HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS, HISTORICAL_SHARED_POOL_FIXTURE, HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS } from "../historical-quality.shared-pool.fixture.js";
+import { HISTORICAL_SHARED_NETWORK, HISTORICAL_SHARED_POOL_APPROVAL_RECORD, HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS, HISTORICAL_SHARED_POOL_FIXTURE, HISTORICAL_SHARED_POOL_PLAN, HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS, HISTORICAL_SHARED_POOL_SEED_PROJECTION } from "../historical-quality.shared-pool.fixture.js";
 import { HistoricalSharedPoolApprovalReceiptSchema, admitHistoricalSharedPool, buildHistoricalSharedPoolPlan, historicalRetrievalDocumentFingerprint, historicalSharedPoolPlanFingerprint, historicalSharedPoolSeedFingerprint, stableQualityId, verifyHistoricalSharedPoolApprovalReceipt, type HistoricalSharedPoolApprovalReceipt, type HistoricalSharedPoolFixture } from "../historical-quality.shared-pool.js";
 
 const sortedCases = [...HISTORICAL_QUALITY_CASES].sort((left, right) => left.id.localeCompare(right.id));
@@ -112,6 +113,54 @@ const receipt = (): HistoricalSharedPoolApprovalReceipt => ({
   seedProjectionFingerprint: current.seedProjectionFingerprint,
   retrievalDocumentFingerprint: current.retrievalDocumentFingerprint,
 });
+
+const APPROVAL_RECEIPT_PATH = "docs/research/2026-08-07-ind-638a-shared-pool-approval.json";
+const APPROVAL_RECEIPT_COMMIT = "dbbae0c7887cd981e21162aa42a6da9b587076d3";
+const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
+
+interface ApprovalHandoffProvenance {
+  receiptParent: string;
+  receiptChangedPaths: readonly string[];
+  receiptObjectExists: boolean;
+  contentObjectExists: boolean;
+  contentAuthor: string;
+  receiptCommitAuthor: string;
+}
+
+function verifyApprovalHandoff(
+  input: unknown,
+  provenance: ApprovalHandoffProvenance,
+  currentValues: typeof current,
+): HistoricalSharedPoolApprovalReceipt {
+  const parsed = HistoricalSharedPoolApprovalReceiptSchema.parse(input);
+  if (!provenance.receiptObjectExists || !provenance.contentObjectExists) throw new Error("approval Git object is missing");
+  if (provenance.receiptParent !== parsed.contentRevision) throw new Error("receipt parent does not bind content revision");
+  if (provenance.receiptChangedPaths.length !== 1 || provenance.receiptChangedPaths[0] !== APPROVAL_RECEIPT_PATH) {
+    throw new Error("receipt commit must change only the canonical receipt");
+  }
+  if (provenance.contentAuthor !== parsed.authorId) throw new Error("receipt author does not match content commit author");
+  if (provenance.receiptCommitAuthor === provenance.contentAuthor) throw new Error("receipt commit author must be independent");
+  if (provenance.receiptCommitAuthor !== parsed.reviewerId) throw new Error("receipt signer does not match reviewer");
+  verifyHistoricalSharedPoolApprovalReceipt(parsed, currentValues);
+  return parsed;
+}
+
+function git(args: readonly string[]): string {
+  const result = Bun.spawnSync(["git", ...args], { cwd: REPOSITORY_ROOT });
+  if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr));
+  return new TextDecoder().decode(result.stdout).trim();
+}
+
+function gitObjectExists(revision: string): boolean {
+  return Bun.spawnSync(["git", "cat-file", "-e", `${revision}^{commit}`], { cwd: REPOSITORY_ROOT }).exitCode === 0;
+}
+
+function expectDeeplyFrozen(value: unknown, visited = new Set<unknown>()): void {
+  if (value === null || typeof value !== "object" || visited.has(value)) return;
+  visited.add(value);
+  expect(Object.isFrozen(value)).toBeTrue();
+  for (const nested of Object.values(value)) expectDeeplyFrozen(nested, visited);
+}
 
 describe("historical shared-pool contract", () => {
   it("derives the fixed 25-participant pool and direct 1/3/20 candidate roles", () => {
@@ -290,7 +339,7 @@ describe("historical shared-pool contract", () => {
 
   it("refuses pending admission and admits only an exact approved receipt", () => {
     const fixture = syntheticFixture();
-    expect(() => admitHistoricalSharedPool({ cases: HISTORICAL_QUALITY_CASES, fixture, current: { authorId: fixture.approval.authorId, contentRevision: "a".repeat(40) } })).toThrow(/pending approval/);
+    expect(() => admitHistoricalSharedPool({ cases: HISTORICAL_QUALITY_CASES, fixture, current: { authorId: fixture.approval.authorId, contentRevision: "a".repeat(40) } })).toThrow(/approval is pending/);
 
     const plan = buildHistoricalSharedPoolPlan({ cases: HISTORICAL_QUALITY_CASES, fixture });
     const approvedFixture: HistoricalSharedPoolFixture = {
@@ -307,13 +356,13 @@ describe("historical shared-pool contract", () => {
   });
 });
 
-describe("pending historical shared-pool fixture", () => {
+describe("approved historical shared-pool fixture", () => {
   const sourceParticipantIds = new Set(["h1-a", "h2-a", "h3-a", "h4-a", "h5-a"]);
   const caseByParticipantId = new Map(HISTORICAL_QUALITY_CASES.flatMap((historicalCase) =>
     historicalCase.input.entities.map((entity) => [entity.userId, historicalCase] as const)));
   const rowByParticipantId = new Map(HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS.map((row) => [row.participantId, row] as const));
   const fixturePlan = buildHistoricalSharedPoolPlan({ cases: HISTORICAL_QUALITY_CASES, fixture: HISTORICAL_SHARED_POOL_FIXTURE });
-  const projection = fixturePlan.seedProjection;
+  const projection = HISTORICAL_SHARED_POOL_SEED_PROJECTION;
   const isSorted = (ids: readonly string[]): boolean => ids.every((id, index) => index === 0 || ids[index - 1]! < id);
 
   it("uses the exact neutral shared network literal", () => {
@@ -458,35 +507,130 @@ describe("pending historical shared-pool fixture", () => {
     }
   });
 
-  it("contains actual pending authorship and exact current fingerprints without reviewer facts", () => {
+  it("transcribes the immutable approval receipt and strictly admits the exact content revision", async () => {
+    const canonicalReceipt = await Bun.file(new URL("../../../../../docs/research/2026-08-07-ind-638a-shared-pool-approval.json", import.meta.url)).json();
+    expect(HISTORICAL_SHARED_POOL_APPROVAL_RECORD).toEqual(canonicalReceipt);
     expect(HISTORICAL_SHARED_POOL_APPROVAL_RECORD).toEqual({
-      status: "pending",
+      status: "approved",
       authorId: "yanki@index.network",
+      reviewerId: "ind638.pool-auditor@index.network",
+      contentRevision: "0dfb578845697aa8f2773695a4a02ab2a5d3be2d",
+      reviewedAt: "2026-08-09T19:02:56Z",
+      decision: "approved",
+      independenceAttested: true,
+      recognizability: "medium",
+      rationale: "Independently reviewed the exact content revision's neutral shared prompt, five byte-exact source enrichments, twenty mechanical model-safe projections, all fifty-five retrieval documents and source identities, twenty-five participant mappings, direct 1/3/20 roles, anonymization, leakage boundaries, and recomputed corpus and fingerprints. Residual pooled recognizability is medium because domain-specific attribute combinations can still suggest well-known historical pairs despite anonymized identifiers and exclusion of names, dates, institutions, products, outcomes, and audit data from the shared prompt and pooled model-safe projection.",
       corpusVersion: HISTORICAL_SHARED_POOL_FIXTURE.corpusVersion,
-      planFingerprint: historicalSharedPoolPlanFingerprint(fixturePlan),
-      seedProjectionFingerprint: historicalSharedPoolSeedFingerprint(projection),
-      retrievalDocumentFingerprint: historicalRetrievalDocumentFingerprint(projection.documents),
+      planFingerprint: "288336f6511a366d8d49303bc3e76eb475a981966e1ffb0eb2a8539d53fc4ce6",
+      seedProjectionFingerprint: "8d27a7634c7def4857f5acd5b399ee82389d8c9baab23fe0b8b4df187a337c38",
+      retrievalDocumentFingerprint: "87142f9c46d5fa51f6327c169f6c25d0d90fe35def5ed8778cd27e3da98d7b35",
     });
-    expect(() => admitHistoricalSharedPool({
+    expect(HISTORICAL_SHARED_POOL_PLAN).toEqual(fixturePlan);
+    expect(admitHistoricalSharedPool({
       cases: HISTORICAL_QUALITY_CASES,
       fixture: HISTORICAL_SHARED_POOL_FIXTURE,
-      current: { authorId: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.authorId, contentRevision: "0".repeat(40) },
-    })).toThrow(/pending approval/);
+      current: {
+        authorId: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.authorId,
+        contentRevision: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.contentRevision,
+      },
+    })).toEqual(HISTORICAL_SHARED_POOL_PLAN);
   });
 
-  it("keeps pooled fixture and seed projections free of audit and reviewer leakage", () => {
-    const serialized = JSON.stringify({
-      network: HISTORICAL_SHARED_NETWORK,
-      enrichmentRows: HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS,
-      retrievalDocuments: HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS,
-      seedProjection: projection,
+  it("recomputes the three pairwise-distinct approval fingerprints", () => {
+    const recomputed = {
+      planFingerprint: historicalSharedPoolPlanFingerprint(HISTORICAL_SHARED_POOL_PLAN),
+      seedProjectionFingerprint: historicalSharedPoolSeedFingerprint(HISTORICAL_SHARED_POOL_SEED_PROJECTION),
+      retrievalDocumentFingerprint: historicalRetrievalDocumentFingerprint(HISTORICAL_SHARED_POOL_SEED_PROJECTION.documents),
+    };
+    expect(recomputed).toEqual({
+      planFingerprint: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.planFingerprint,
+      seedProjectionFingerprint: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.seedProjectionFingerprint,
+      retrievalDocumentFingerprint: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.retrievalDocumentFingerprint,
     });
+    expect(new Set(Object.values(recomputed)).size).toBe(3);
+  });
+
+  it("deeply freezes the approval, admitted plan, and exported seed projection", () => {
+    expectDeeplyFrozen(HISTORICAL_SHARED_POOL_APPROVAL_RECORD);
+    expectDeeplyFrozen(HISTORICAL_SHARED_POOL_PLAN);
+    expectDeeplyFrozen(HISTORICAL_SHARED_POOL_SEED_PROJECTION);
+    expect(HISTORICAL_SHARED_POOL_PLAN.seedProjection).toBe(HISTORICAL_SHARED_POOL_SEED_PROJECTION);
+
+    expect(() => ((HISTORICAL_SHARED_POOL_APPROVAL_RECORD as any).rationale = "mutated")).toThrow();
+    expect(() => (HISTORICAL_SHARED_POOL_PLAN.cases as any[]).push({})).toThrow();
+    expect(() => ((HISTORICAL_SHARED_POOL_SEED_PROJECTION.contexts[0] as any).text = "mutated")).toThrow();
+    expect(() => (HISTORICAL_SHARED_POOL_SEED_PROJECTION.documents[0]!.sourcePaths as any[]).push("mutated")).toThrow();
+  });
+
+  it("keeps pooled model-safe and downstream projections recursively free of approval leakage", () => {
+    const projections = {
+      model: {
+        network: HISTORICAL_SHARED_NETWORK,
+        enrichmentRows: HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS,
+        retrievalDocuments: HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS,
+      },
+      seed: HISTORICAL_SHARED_POOL_SEED_PROJECTION,
+      child: HISTORICAL_SHARED_POOL_PLAN.seedProjection,
+      artifact: structuredClone(HISTORICAL_SHARED_POOL_SEED_PROJECTION),
+    };
+    const serialized = JSON.stringify(projections);
     for (const forbidden of [
       "reportNames", "citations", "http://", "https://", "cutoff", "anonymizationReview",
-      "semanticNegatives", "semanticNegativeReason", "reviewerId", "reviewedAt", "rationale",
+      "semanticNegatives", "semanticNegativeReason", "approval", "status", "authorId", "reviewerId",
+      "contentRevision", "reviewedAt", "decision", "independenceAttested", "recognizability", "rationale",
+      "planFingerprint", "seedProjectionFingerprint", "retrievalDocumentFingerprint",
     ]) expect(serialized).not.toContain(forbidden);
-    expect(Object.keys(HISTORICAL_SHARED_POOL_APPROVAL_RECORD).sort()).toEqual([
-      "authorId", "corpusVersion", "planFingerprint", "retrievalDocumentFingerprint", "seedProjectionFingerprint", "status",
-    ]);
+  });
+
+  it("binds the canonical receipt to the immutable Git handoff and rejects provenance and receipt mutations", async () => {
+    const canonicalReceipt = await Bun.file(new URL("../../../../../docs/research/2026-08-07-ind-638a-shared-pool-approval.json", import.meta.url)).json();
+    const actualCurrent = {
+      authorId: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.authorId,
+      contentRevision: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.contentRevision,
+      corpusVersion: HISTORICAL_SHARED_POOL_FIXTURE.corpusVersion,
+      planFingerprint: historicalSharedPoolPlanFingerprint(HISTORICAL_SHARED_POOL_PLAN),
+      seedProjectionFingerprint: historicalSharedPoolSeedFingerprint(HISTORICAL_SHARED_POOL_SEED_PROJECTION),
+      retrievalDocumentFingerprint: historicalRetrievalDocumentFingerprint(HISTORICAL_SHARED_POOL_SEED_PROJECTION.documents),
+    };
+    const provenance: ApprovalHandoffProvenance = {
+      receiptParent: git(["rev-parse", `${APPROVAL_RECEIPT_COMMIT}^`]),
+      receiptChangedPaths: git(["diff-tree", "--no-commit-id", "--name-only", "-r", APPROVAL_RECEIPT_COMMIT]).split("\n"),
+      receiptObjectExists: gitObjectExists(APPROVAL_RECEIPT_COMMIT),
+      contentObjectExists: gitObjectExists(HISTORICAL_SHARED_POOL_APPROVAL_RECORD.contentRevision),
+      contentAuthor: git(["show", "-s", "--format=%ae", HISTORICAL_SHARED_POOL_APPROVAL_RECORD.contentRevision]),
+      receiptCommitAuthor: git(["show", "-s", "--format=%ae", APPROVAL_RECEIPT_COMMIT]),
+    };
+    expect(verifyApprovalHandoff(canonicalReceipt, provenance, actualCurrent)).toEqual(HISTORICAL_SHARED_POOL_APPROVAL_RECORD);
+
+    const provenanceMutations: ApprovalHandoffProvenance[] = [
+      { ...provenance, receiptParent: "f".repeat(40) },
+      { ...provenance, receiptChangedPaths: [APPROVAL_RECEIPT_PATH, "unexpected.ts"] },
+      { ...provenance, receiptObjectExists: false },
+      { ...provenance, contentObjectExists: false },
+      { ...provenance, contentAuthor: "wrong-author@index.network" },
+      { ...provenance, receiptCommitAuthor: provenance.contentAuthor },
+      { ...provenance, receiptCommitAuthor: "wrong-signer@index.network" },
+    ];
+    for (const mutation of provenanceMutations) {
+      expect(() => verifyApprovalHandoff(canonicalReceipt, mutation, actualCurrent)).toThrow();
+    }
+
+    const receiptMutations: unknown[] = [
+      { ...canonicalReceipt, authorId: canonicalReceipt.reviewerId, reviewerId: canonicalReceipt.reviewerId },
+      { ...canonicalReceipt, independenceAttested: false },
+      { ...canonicalReceipt, reviewedAt: "not-a-date" },
+      { ...canonicalReceipt, contentRevision: "invalid" },
+      { ...canonicalReceipt, contentRevision: "f".repeat(40) },
+      { ...canonicalReceipt, corpusVersion: "stale-corpus" },
+      { ...canonicalReceipt, planFingerprint: "f".repeat(64) },
+      { ...canonicalReceipt, seedProjectionFingerprint: "f".repeat(64) },
+      { ...canonicalReceipt, retrievalDocumentFingerprint: "f".repeat(64) },
+      { ...canonicalReceipt, recognizability: "high" },
+      { ...canonicalReceipt, decision: "pending" },
+      { ...canonicalReceipt, rationale: "   " },
+    ];
+    for (const mutation of receiptMutations) {
+      expect(() => verifyApprovalHandoff(mutation, provenance, actualCurrent)).toThrow();
+    }
   });
 });

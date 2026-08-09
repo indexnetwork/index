@@ -1,6 +1,6 @@
 import { HISTORICAL_QUALITY_CASES } from "../matching/matching.historical.js";
 import { fingerprintCanonicalJson } from "../shared/index.js";
-import { buildHistoricalSharedPoolPlan, historicalRetrievalDocumentFingerprint, historicalSharedPoolPlanFingerprint, historicalSharedPoolSeedFingerprint, stableQualityId, type HistoricalSharedPoolEnrichmentRow, type HistoricalSharedPoolFixture, type HistoricalSharedPoolPendingApproval, type HistoricalSharedPoolRetrievalDocument } from "./historical-quality.shared-pool.js";
+import { admitHistoricalSharedPool, stableQualityId, type HistoricalSharedPoolApprovalReceipt, type HistoricalSharedPoolEnrichmentRow, type HistoricalSharedPoolFixture, type HistoricalSharedPoolRetrievalDocument } from "./historical-quality.shared-pool.js";
 
 const CORPUS_VERSION = "historical-shared-pool-v1";
 const AUTHOR_ID = "yanki@index.network";
@@ -120,34 +120,29 @@ const retrievalDocuments: HistoricalSharedPoolRetrievalDocument[] = HISTORICAL_S
 retrievalDocuments.sort((left, right) => left.documentId < right.documentId ? -1 : left.documentId > right.documentId ? 1 : 0);
 export const HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS = Object.freeze(retrievalDocuments);
 
-const pendingFingerprintPlaceholder: HistoricalSharedPoolPendingApproval = {
-  status: "pending",
-  authorId: AUTHOR_ID,
-  corpusVersion: CORPUS_VERSION,
-  planFingerprint: "0".repeat(64),
-  seedProjectionFingerprint: "0".repeat(64),
-  retrievalDocumentFingerprint: "0".repeat(64),
-};
-const pendingFixture: HistoricalSharedPoolFixture = {
-  corpusVersion: CORPUS_VERSION,
-  network: HISTORICAL_SHARED_NETWORK,
-  enrichmentRows: HISTORICAL_SHARED_POOL_ENRICHMENT_ROWS,
-  retrievalDocuments: HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS,
-  approval: pendingFingerprintPlaceholder,
-};
-const pendingPlan = buildHistoricalSharedPoolPlan({
-  cases: HISTORICAL_QUALITY_CASES,
-  fixture: pendingFixture,
-});
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const nested of Object.values(value)) deepFreeze(nested);
+    Object.freeze(value);
+  }
+  return value;
+}
 
-export const HISTORICAL_SHARED_POOL_APPROVAL_RECORD = Object.freeze({
-  status: "pending",
+export const HISTORICAL_SHARED_POOL_APPROVAL_RECORD = deepFreeze({
+  status: "approved",
   authorId: AUTHOR_ID,
+  reviewerId: "ind638.pool-auditor@index.network",
+  contentRevision: "0dfb578845697aa8f2773695a4a02ab2a5d3be2d",
+  reviewedAt: "2026-08-09T19:02:56Z",
+  decision: "approved",
+  independenceAttested: true,
+  recognizability: "medium",
+  rationale: "Independently reviewed the exact content revision's neutral shared prompt, five byte-exact source enrichments, twenty mechanical model-safe projections, all fifty-five retrieval documents and source identities, twenty-five participant mappings, direct 1/3/20 roles, anonymization, leakage boundaries, and recomputed corpus and fingerprints. Residual pooled recognizability is medium because domain-specific attribute combinations can still suggest well-known historical pairs despite anonymized identifiers and exclusion of names, dates, institutions, products, outcomes, and audit data from the shared prompt and pooled model-safe projection.",
   corpusVersion: CORPUS_VERSION,
-  planFingerprint: historicalSharedPoolPlanFingerprint(pendingPlan),
-  seedProjectionFingerprint: historicalSharedPoolSeedFingerprint(pendingPlan.seedProjection),
-  retrievalDocumentFingerprint: historicalRetrievalDocumentFingerprint(pendingPlan.seedProjection.documents),
-} satisfies HistoricalSharedPoolPendingApproval);
+  planFingerprint: "288336f6511a366d8d49303bc3e76eb475a981966e1ffb0eb2a8539d53fc4ce6",
+  seedProjectionFingerprint: "8d27a7634c7def4857f5acd5b399ee82389d8c9baab23fe0b8b4df187a337c38",
+  retrievalDocumentFingerprint: "87142f9c46d5fa51f6327c169f6c25d0d90fe35def5ed8778cd27e3da98d7b35",
+} satisfies HistoricalSharedPoolApprovalReceipt);
 
 export const HISTORICAL_SHARED_POOL_FIXTURE = Object.freeze({
   corpusVersion: CORPUS_VERSION,
@@ -156,3 +151,14 @@ export const HISTORICAL_SHARED_POOL_FIXTURE = Object.freeze({
   retrievalDocuments: HISTORICAL_SHARED_POOL_RETRIEVAL_DOCUMENTS,
   approval: HISTORICAL_SHARED_POOL_APPROVAL_RECORD,
 } satisfies HistoricalSharedPoolFixture);
+
+export const HISTORICAL_SHARED_POOL_PLAN = deepFreeze(admitHistoricalSharedPool({
+  cases: HISTORICAL_QUALITY_CASES,
+  fixture: HISTORICAL_SHARED_POOL_FIXTURE,
+  current: {
+    authorId: AUTHOR_ID,
+    contentRevision: HISTORICAL_SHARED_POOL_APPROVAL_RECORD.contentRevision,
+  },
+}));
+
+export const HISTORICAL_SHARED_POOL_SEED_PROJECTION = HISTORICAL_SHARED_POOL_PLAN.seedProjection;

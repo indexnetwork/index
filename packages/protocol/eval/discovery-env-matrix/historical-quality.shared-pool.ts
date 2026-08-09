@@ -169,7 +169,7 @@ export function assertHistoricalSharedPoolApproval(
   approval: HistoricalSharedPoolApproval,
   current: HistoricalSharedPoolApprovalCurrent,
 ): asserts approval is HistoricalSharedPoolApprovalReceipt {
-  if (approval.status !== "approved") throw new Error("shared pool pending approval");
+  if (approval.status !== "approved") throw new Error("shared pool approval is pending");
   verifyHistoricalSharedPoolApprovalReceipt(approval, current);
 }
 
