@@ -291,6 +291,15 @@ describe("historical quality artifact governance", () => {
     expect(() => parseEvalArtifact({ ...makeHistoricalQualityArtifact(), schemaVersion: 1 }, { expectedType: EVAL_RUN_REPORT_ARTIFACT_TYPE })).toThrow();
   });
 
+  it("rejects terminal-failed rows with final ranks despite coherent execution-stage metrics", () => {
+    const artifact = structuredClone(makeIncompleteHistoricalQualityArtifact());
+    const failedRow = artifact.payload.cases[9];
+    failedRow.participantMetrics = structuredClone(artifact.payload.cases[0].participantMetrics)
+      .map((metric) => ({ ...metric, failureStage: "execution" as const }));
+
+    expect(() => parseQuality(artifact)).toThrow(/failed transport row final ranks must be null/);
+  });
+
   it("rejects every independent completion/pass/execution/funnel/verdict inconsistency", () => {
     const changes: Array<(value: ReturnType<typeof makeHistoricalQualityArtifact>) => void> = [
       (value) => { value.runs = 2 as never; },

@@ -433,6 +433,9 @@ function refineHistoricalQualityTransportRow(row: HistoricalQualityTransportRowI
     if (row.participantMetrics.some((metric) => metric.failureStage !== "execution")) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "failed transport row metrics must record execution failure" });
     }
+    if (row.participantMetrics.some((metric) => metric.finalRank !== null)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["participantMetrics"], message: "failed transport row final ranks must be null" });
+    }
   }
 }
 export const HistoricalQualityTransportRowSchema = historicalQualityTransportRowBaseSchema.superRefine(refineHistoricalQualityTransportRow);
