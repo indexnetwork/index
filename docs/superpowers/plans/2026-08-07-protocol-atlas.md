@@ -117,7 +117,7 @@ describe("protocol capability model", () => {
 
 - [ ] **Step 2: Run the test and verify the module is missing**
 
-Run: `cd packages/protocol && bun test scripts/architecture/tests/capability-model.spec.ts`  
+Run: `cd packages/protocol && bun test scripts/architecture/tests/capability-model.spec.ts`
 Expected: FAIL because `capability-model.ts` does not exist.
 
 - [ ] **Step 3: Create the shared capability model**
@@ -351,7 +351,7 @@ describe("protocol atlas generator", () => {
 
 - [ ] **Step 2: Run the new test and verify it fails**
 
-Run: `bun test scripts/tests/build-protocol-atlas.spec.ts`  
+Run: `bun test scripts/tests/build-protocol-atlas.spec.ts`
 Expected: FAIL because the generator module does not exist.
 
 - [ ] **Step 3: Define the selected core manifest**
@@ -614,7 +614,7 @@ describe("ProtocolAtlasCore search and filters", () => {
 
 - [ ] **Step 2: Run the core test and verify it fails**
 
-Run: `bun test scripts/tests/protocol-atlas-core.spec.ts`  
+Run: `bun test scripts/tests/protocol-atlas-core.spec.ts`
 Expected: FAIL because `atlas-core.js` does not exist.
 
 - [ ] **Step 3: Implement data validation**
@@ -651,7 +651,7 @@ Layer changes preserve chapter/step. Search exact label/symbol matches first, th
 
 - [ ] **Step 6: Run focused tests**
 
-Run: `bun test scripts/tests/protocol-atlas-core.spec.ts`  
+Run: `bun test scripts/tests/protocol-atlas-core.spec.ts`
 Expected: PASS.
 
 - [ ] **Step 7: Commit the core**
@@ -746,7 +746,7 @@ test("forbids concrete host implementation paths in curated content", async () =
 
 - [ ] **Step 2: Run the test and verify content is missing**
 
-Run: `bun test scripts/tests/build-protocol-atlas.spec.ts`  
+Run: `bun test scripts/tests/build-protocol-atlas.spec.ts`
 Expected: FAIL because `atlas-content.js` does not exist.
 
 - [ ] **Step 3: Define the protocol concepts and vocabulary**
@@ -878,7 +878,7 @@ test("loads dependency-free classic assets in deterministic order", async () => 
 
 - [ ] **Step 2: Run the test and verify the shell is missing**
 
-Run: `bun test scripts/tests/build-protocol-atlas.spec.ts -t "loads dependency-free classic assets"`  
+Run: `bun test scripts/tests/build-protocol-atlas.spec.ts -t "loads dependency-free classic assets"`
 Expected: FAIL because `index.html` does not exist.
 
 - [ ] **Step 3: Create the semantic HTML shell**
@@ -1011,7 +1011,7 @@ test("preserves chapter and step while switching layers", () => {
 
 - [ ] **Step 2: Run and verify the transition tests fail**
 
-Run: `bun test scripts/tests/protocol-atlas-core.spec.ts -t "moves within|preserves chapter"`  
+Run: `bun test scripts/tests/protocol-atlas-core.spec.ts -t "moves within|preserves chapter"`
 Expected: FAIL until transition behavior is complete.
 
 - [ ] **Step 3: Implement bootstrap and graceful data validation**
@@ -1090,7 +1090,7 @@ test("returns an explicit empty search result contract", () => {
 
 - [ ] **Step 2: Run the tests and verify failures**
 
-Run: `bun test scripts/tests/protocol-atlas-core.spec.ts -t "serializes filters|empty search"`  
+Run: `bun test scripts/tests/protocol-atlas-core.spec.ts -t "serializes filters|empty search"`
 Expected: FAIL until stable hash and empty-state behavior are complete.
 
 - [ ] **Step 3: Wire history state**
