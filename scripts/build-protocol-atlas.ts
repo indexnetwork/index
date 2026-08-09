@@ -855,10 +855,30 @@ function collectBindingIdentifiers(name: ts.BindingName, names: Set<string>): vo
   }
 }
 
+function declarationHasRuntimeEmit(declaration: ts.Declaration): boolean {
+  if (declaration.getSourceFile().isDeclarationFile) return false;
+  let current: ts.Node | undefined = declaration;
+  while (current && !ts.isSourceFile(current)) {
+    if ((current.flags & ts.NodeFlags.Ambient) !== 0
+      || hasModifier(current as ts.Node & { modifiers?: ts.NodeArray<ts.ModifierLike> }, ts.SyntaxKind.DeclareKeyword)) {
+      return false;
+    }
+    current = current.parent;
+  }
+  if ((ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)
+    || ts.isGetAccessorDeclaration(declaration) || ts.isSetAccessorDeclaration(declaration)) && !declaration.body) {
+    return false;
+  }
+  if (ts.isEnumDeclaration(declaration) && hasModifier(declaration, ts.SyntaxKind.ConstKeyword)) return false;
+  return true;
+}
+
 function exportSpecifierHasRuntimeValue(element: ts.ExportSpecifier, checker: ts.TypeChecker): boolean {
   if (element.isTypeOnly) return false;
   const symbol = canonicalSymbol(checker.getSymbolAtLocation(element.propertyName ?? element.name), checker);
-  return Boolean(symbol && (symbol.flags & ts.SymbolFlags.Value) !== 0);
+  return Boolean(symbol
+    && (symbol.flags & ts.SymbolFlags.Value) !== 0
+    && symbol.declarations?.some(declarationHasRuntimeEmit));
 }
 
 function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceContext {

@@ -963,6 +963,85 @@ describe("protocol atlas generator", () => {
     }
   }, 15_000);
 
+  test("does not let ambient value aliases mask runtime export-star provenance", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const cases = [
+      {
+        name: "local ambient alias",
+        maskedSource: [
+          "declare const ambientActivation: boolean;",
+          "export { ambientActivation as isOutcomeQuestionsActivated };",
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+        extra: {},
+        shouldMask: false,
+      },
+      {
+        name: "ambient named re-export",
+        maskedSource: [
+          'export { ambientActivation as isOutcomeQuestionsActivated } from "./ambient-value.js";',
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+        extra: {
+          "packages/protocol/src/opportunity/outcome/ambient-value.ts":
+            "export declare const ambientActivation: boolean;",
+        },
+        shouldMask: false,
+      },
+      {
+        name: "declaration-file named re-export",
+        maskedSource: [
+          'export { ambientActivation as isOutcomeQuestionsActivated } from "./ambient-value.d.ts";',
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+        extra: {
+          "packages/protocol/src/opportunity/outcome/ambient-value.d.ts":
+            "export const ambientActivation: boolean;",
+        },
+        shouldMask: false,
+      },
+      {
+        name: "runtime local alias control",
+        maskedSource: [
+          "const runtimeActivation = false;",
+          "export { runtimeActivation as isOutcomeQuestionsActivated };",
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+        extra: {},
+        shouldMask: true,
+      },
+      {
+        name: "runtime named re-export control",
+        maskedSource: [
+          'export { runtimeActivation as isOutcomeQuestionsActivated } from "./runtime-value.js";',
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+        extra: {
+          "packages/protocol/src/opportunity/outcome/runtime-value.ts":
+            "export const runtimeActivation = false;",
+        },
+        shouldMask: true,
+      },
+    ];
+
+    for (const fixture of cases) {
+      const input = await loadProtocolGeneratorInput(repoRoot);
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/masked-barrel.ts"] = fixture.maskedSource;
+      Object.assign(input.sourceFiles, fixture.extra);
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+        'import { isOutcomeQuestionsActivated } from "./masked-barrel.js";',
+        "export const escaped = isOutcomeQuestionsActivated;",
+      ].join("\n");
+      const artifact = buildAtlasArtifact(input, content);
+      const errors = validateConfigurationExperiments(content, artifact, input, repoRoot);
+      if (fixture.shouldMask) {
+        expect(errors, fixture.name).toEqual([]);
+      } else {
+        expect(errors.join("\n"), fixture.name).toContain("unresolved accessor has direct production consumer");
+      }
+    }
+  }, 20_000);
+
   test("rejects statically analyzable dynamic and import-equals namespace imports", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     for (const source of [
