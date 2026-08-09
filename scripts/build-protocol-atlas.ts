@@ -840,6 +840,27 @@ function topLevelDeclarations(sourceFile: ts.SourceFile): Map<string, ts.Node> {
   return declarations;
 }
 
+function hasModifier(node: ts.Node & { modifiers?: ts.NodeArray<ts.ModifierLike> }, kind: ts.SyntaxKind): boolean {
+  return Boolean(node.modifiers?.some((modifier) => modifier.kind === kind));
+}
+
+function collectBindingIdentifiers(name: ts.BindingName, names: Set<string>): void {
+  if (ts.isIdentifier(name)) {
+    names.add(name.text);
+    return;
+  }
+  for (const element of name.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    collectBindingIdentifiers(element.name, names);
+  }
+}
+
+function exportSpecifierHasRuntimeValue(element: ts.ExportSpecifier, checker: ts.TypeChecker): boolean {
+  if (element.isTypeOnly) return false;
+  const symbol = canonicalSymbol(checker.getSymbolAtLocation(element.propertyName ?? element.name), checker);
+  return Boolean(symbol && (symbol.flags & ts.SymbolFlags.Value) !== 0);
+}
+
 function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceContext {
   const parsed = new Map(Object.entries(sourceFiles).map(([path, source]) => [path, parseSourceFile(path, source)]));
   const compilerOptions: ts.CompilerOptions = {
@@ -897,7 +918,7 @@ function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceConte
           namespaceReexports.set(statement.exportClause.name.text, targetPath);
         } else if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
           for (const element of statement.exportClause.elements) {
-            if (element.isTypeOnly) continue;
+            if (!exportSpecifierHasRuntimeValue(element, checker)) continue;
             const exportedName = element.name.text;
             explicitExportNames.add(exportedName);
             if (targetPath) {
@@ -917,16 +938,22 @@ function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceConte
         explicitExportNames.add("default");
         exportAssignments.set("default", statement.expression);
       }
-      if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)
-        || ts.isVariableStatement(statement))
-        && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
-        if (statement.modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) {
-          explicitExportNames.add("default");
-        } else if (ts.isVariableStatement(statement)) {
-          for (const declaration of statement.declarationList.declarations) {
-            if (ts.isIdentifier(declaration.name)) explicitExportNames.add(declaration.name.text);
-          }
-        } else if (statement.name) {
+      const isExported = hasModifier(statement, ts.SyntaxKind.ExportKeyword);
+      const isAmbient = hasModifier(statement, ts.SyntaxKind.DeclareKeyword)
+        || (statement.flags & ts.NodeFlags.Ambient) !== 0;
+      if (!isExported || isAmbient) continue;
+      if (hasModifier(statement, ts.SyntaxKind.DefaultKeyword)) {
+        explicitExportNames.add("default");
+      } else if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          collectBindingIdentifiers(declaration.name, explicitExportNames);
+        }
+      } else if ((ts.isFunctionDeclaration(statement) && statement.body)
+        || ts.isClassDeclaration(statement)
+        || ts.isEnumDeclaration(statement)
+        || ts.isModuleDeclaration(statement)
+        || (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly)) {
+        if (statement.name && (ts.isIdentifier(statement.name) || ts.isStringLiteral(statement.name))) {
           explicitExportNames.add(statement.name.text);
         }
       }

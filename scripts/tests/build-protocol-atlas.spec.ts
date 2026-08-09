@@ -894,6 +894,75 @@ describe("protocol atlas generator", () => {
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
   });
 
+  test("honors every explicit runtime export form before export-star provenance", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const forms = [
+      {
+        name: "exported namespace",
+        source: [
+          "export namespace isOutcomeQuestionsActivated { export const safe = true; }",
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+      },
+      {
+        name: "object binding pattern",
+        source: [
+          "const safe = { value: 1 };",
+          "export const { value: isOutcomeQuestionsActivated } = safe;",
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+      },
+      {
+        name: "array binding pattern",
+        source: [
+          "const safe = [1] as const;",
+          "export const [isOutcomeQuestionsActivated] = safe;",
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+      },
+      {
+        name: "runtime import-equals alias",
+        source: [
+          'export import isOutcomeQuestionsActivated = require("./safe-value.js");',
+          'export * from "./outcome.env.js";',
+        ].join("\n"),
+        extra: { "packages/protocol/src/opportunity/outcome/safe-value.ts": "export const safe = 1;" },
+      },
+    ];
+    for (const form of forms) {
+      const input = await loadProtocolGeneratorInput(repoRoot);
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/masked-barrel.ts"] = form.source;
+      Object.assign(input.sourceFiles, form.extra ?? {});
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/resolved-consumer.ts"] = [
+        'import { isOutcomeQuestionsActivated } from "./masked-barrel.js";',
+        "export const safe = isOutcomeQuestionsActivated;",
+      ].join("\n");
+      const artifact = buildAtlasArtifact(input, content);
+      expect(validateConfigurationExperiments(content, artifact, input, repoRoot), form.name).toEqual([]);
+    }
+  }, 20_000);
+
+  test("does not let type-only explicit declarations mask runtime export-star provenance", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    for (const declaration of [
+      "export interface isOutcomeQuestionsActivated { readonly typeOnly: true }",
+      "export type isOutcomeQuestionsActivated = { readonly typeOnly: true };",
+    ]) {
+      const input = await loadProtocolGeneratorInput(repoRoot);
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/masked-barrel.ts"] = [
+        declaration,
+        'export * from "./outcome.env.js";',
+      ].join("\n");
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
+        'import { isOutcomeQuestionsActivated } from "./masked-barrel.js";',
+        "export const escaped = isOutcomeQuestionsActivated;",
+      ].join("\n");
+      const artifact = buildAtlasArtifact(input, content);
+      expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n"))
+        .toContain("unresolved accessor has direct production consumer");
+    }
+  }, 15_000);
+
   test("rejects statically analyzable dynamic and import-equals namespace imports", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     for (const source of [
