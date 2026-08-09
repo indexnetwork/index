@@ -1648,7 +1648,7 @@
         onClick: function (e) { e.stopPropagation(); },
       },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, local.title || "Network"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Network"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
         React.createElement("div", { className: "index-dashboard__net-detail-body" },
@@ -2106,8 +2106,10 @@
           ),
         ]
         : [
-          React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
-            isInvite ? "You're invited to join" : "Join this network"),
+          isInvite
+            ? React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
+              "You're invited to join")
+            : null,
           React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" }, network.title),
           memberCount != null
             ? React.createElement("p", { key: "m", className: "index-dashboard__invite-meta" },
@@ -4200,7 +4202,13 @@
           onJoined: onInviteJoined,
           onClose: closeInvite,
         })
-        : null,
+        : ((pendingPublicJoin && auth === "authed" && !needsOnboarding)
+          ? React.createElement(InviteJoinModal, {
+            networkId: pendingPublicJoin,
+            onJoined: onInviteJoined,
+            onClose: closePublicJoin,
+          })
+          : null),
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,

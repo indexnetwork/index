@@ -1709,7 +1709,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
         onClick: function (e) { e.stopPropagation(); },
       },
         React.createElement("div", { className: "index-dashboard__profile-header" },
-          React.createElement("h2", { className: "index-dashboard__profile-title" }, local.title || "Network"),
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, "Network"),
           React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
         ),
         React.createElement("div", { className: "index-dashboard__net-detail-body" },
@@ -2167,8 +2167,10 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           ),
         ]
         : [
-          React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
-            isInvite ? "You're invited to join" : "Join this network"),
+          isInvite
+            ? React.createElement("p", { key: "k", className: "index-dashboard__invite-kicker" },
+              "You're invited to join")
+            : null,
           React.createElement("h2", { key: "t", className: "index-dashboard__invite-title" }, network.title),
           memberCount != null
             ? React.createElement("p", { key: "m", className: "index-dashboard__invite-meta" },
@@ -4261,7 +4263,13 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
           onJoined: onInviteJoined,
           onClose: closeInvite,
         })
-        : null,
+        : ((pendingPublicJoin && auth === "authed" && !needsOnboarding)
+          ? React.createElement(InviteJoinModal, {
+            networkId: pendingPublicJoin,
+            onJoined: onInviteJoined,
+            onClose: closePublicJoin,
+          })
+          : null),
       error
         ? React.createElement("div", { className: "index-dashboard__error" }, error)
         : null,
@@ -4363,7 +4371,6 @@ function stashDesktopPublicJoin(networkId) {
   } catch (e) { /* noop */ }
 }
 
-/** Read ?invite= / ?join= from the desktop hash route (#/index-network?join=…). */
 function readJoinQueryFromHash() {
   const hash = String(window.location.hash || '')
   const q = hash.indexOf('?')
@@ -4394,16 +4401,12 @@ function openIndexNetwork(query) {
 function handleIndexDeepLink(payload) {
   if (!payload || !payload.name) return false
   const kind = String(payload.kind || '').toLowerCase()
-  // hermes://l/<code> — private invite
   if (kind === 'l') {
-    console.info('[index-network] deep-link invite', payload.name)
     stashDesktopInvite(payload.name)
     openIndexNetwork({ invite: payload.name })
     return true
   }
-  // hermes://index/<id> — public network join (also accept index-network/<id>)
   if (kind === 'index' || kind === 'index-network') {
-    console.info('[index-network] deep-link public join', payload.name)
     stashDesktopPublicJoin(payload.name)
     openIndexNetwork({ join: payload.name })
     return true
@@ -4411,23 +4414,26 @@ function handleIndexDeepLink(payload) {
   return false
 }
 
-// Attach as soon as this module evaluates — disk plugins often finish loading
-// after Hermes' core signalDeepLinkReady flush, which would otherwise drop
-// hermes://index|l/… on cold start. Calling ready again is a no-op once
-// flushed; if we win the race, we receive the pending payload ourselves.
-let deepLinkAttached = false
+let deepLinkOff = null
 function attachDeepLinkListener() {
-  if (deepLinkAttached) return null
+  if (deepLinkOff) return deepLinkOff
   if (!window.hermesDesktop || typeof window.hermesDesktop.onDeepLink !== 'function') return null
-  deepLinkAttached = true
   const off = window.hermesDesktop.onDeepLink(function (payload) {
     handleIndexDeepLink(payload)
   })
+  deepLinkOff = typeof off === 'function' ? off : function () { /* noop */ }
   try { void window.hermesDesktop.signalDeepLinkReady?.() } catch (e) { /* older shells */ }
-  return typeof off === 'function' ? off : null
+  return deepLinkOff
 }
 
-const earlyDeepLinkOff = attachDeepLinkListener()
+function detachDeepLinkListener() {
+  if (typeof deepLinkOff === 'function') {
+    try { deepLinkOff() } catch (e) { /* noop */ }
+  }
+  deepLinkOff = null
+}
+
+attachDeepLinkListener()
 
 function DesktopPage() {
   const tick = React.useState(0)
@@ -4438,8 +4444,6 @@ function DesktopPage() {
     })
     return function () { alive = false }
   }, [])
-  // Re-apply ?join= / ?invite= whenever this page is shown (cold start, remount,
-  // or same-route deep link while already here).
   React.useEffect(function () {
     applyJoinQueryFromHash()
     function onHash() { applyJoinQueryFromHash() }
@@ -4455,7 +4459,6 @@ export default {
   id: 'index-network',
   name: 'Index Network',
   register: function (ctx) {
-    console.info('[index-network] desktop plugin registered (dashboard component: ' + (DashboardComponent ? 'ok' : 'MISSING') + ')')
     restCall = function (path, opts) { return ctx.rest(path, opts) }
 
     const style = document.createElement('style')
@@ -4464,10 +4467,9 @@ export default {
     document.head.appendChild(style)
     ctx.onDispose(function () { style.remove() })
 
-    const offDeepLink = attachDeepLinkListener() || earlyDeepLinkOff
-    if (typeof offDeepLink === 'function') ctx.onDispose(offDeepLink)
+    attachDeepLinkListener()
+    ctx.onDispose(detachDeepLinkListener)
 
-    // If a link was stashed before this page contribution existed, open it now.
     try {
       const join = window.sessionStorage.getItem('index-public-join')
       const invite = window.sessionStorage.getItem('index-invite')

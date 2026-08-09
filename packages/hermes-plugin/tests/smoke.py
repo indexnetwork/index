@@ -260,12 +260,13 @@ def main() -> None:
     assert 'auth !== "authed"' in dashboard_js
     # Private invite + public join (hermes://l|index / #invite=|#join=), Mac parity.
     assert "InviteJoinModal" in dashboard_js
+    assert "networkId: pendingPublicJoin" in dashboard_js
     assert "/invite/" in dashboard_js
     assert "/networks/public/" in dashboard_js
     assert "index-network-invite" in dashboard_js
     assert "index-network-public-join" in dashboard_js
     assert "You're invited to join" in dashboard_js
-    assert "Join this network" in dashboard_js
+    assert "Join this network" not in dashboard_js
     assert "Join network" in dashboard_js
     # Owner network detail: overview / settings / access (web parity, no integrations).
     assert "NetworkDetailModal" in dashboard_js
@@ -302,6 +303,7 @@ def main() -> None:
     assert "index-dashboard__login" in desktop_js
     # Desktop claims hermes://l/<code> and hermes://index/<id> via onDeepLink.
     assert "InviteJoinModal" in desktop_js
+    assert "networkId: pendingPublicJoin" in desktop_js
     assert "NetworkDetailModal" in desktop_js
     assert "Invitation Link" in desktop_js
     assert "stashDesktopPublicJoin" in desktop_js
