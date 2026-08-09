@@ -401,6 +401,8 @@
 
 /* Page heroes (blog, about) — content-sized, image stays in column */
 .landing .hero.page-hero { min-height: auto; }
+.landing .page-hero .canvas-area,
+.landing .page-hero.h1 .canvas-area { min-height: 0; }
 .landing .page-hero .h1 .hero-image,
 .landing .page-hero.h1 .hero-image,
 .landing .page-hero .hero-image {
@@ -1072,14 +1074,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.landing .blog-row .spacer {
-  flex: 0 0 12px;
-  height: 1px;
-  align-self: end;
-  transform: translateY(-6px);
-  border-bottom: 1px dotted var(--rule);
-  opacity: 0.6;
-}
 .landing .blog-arrow {
   color: var(--cream-faint);
   font-size: 14px;
@@ -1527,7 +1521,6 @@
   .landing .blog-row { gap: 12px; flex-wrap: wrap; }
   .landing .blog-date { flex: 0 0 auto; }
   .landing .blog-title { font-size: 15px; white-space: normal; }
-  .landing .blog-row .spacer { display: none; }
 
   .landing .landing-footer { padding: 32px 22px; }
   .landing .landing-footer-inner { flex-direction: column; gap: 28px; }
