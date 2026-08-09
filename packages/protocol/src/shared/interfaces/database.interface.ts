@@ -384,7 +384,6 @@ export interface OwnedIndex {
   /** Permission settings */
   permissions: {
     joinPolicy: 'anyone' | 'invite_only';
-    allowGuestVibeCheck: boolean;
     invitationLink: { code: string } | null;
   };
   /** Whether this is a personal network */
@@ -461,8 +460,6 @@ export interface UpdateIndexSettingsData {
   imageUrl?: string | null;
   /** New join policy (optional) */
   joinPolicy?: 'anyone' | 'invite_only';
-  /** Allow guest vibe check (optional) */
-  allowGuestVibeCheck?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1188,7 +1185,7 @@ export interface Database {
     title: string;
     prompt: string | null;
     imageUrl: string | null;
-    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null };
   }>;
 
   /**
@@ -1992,7 +1989,7 @@ export interface UserDatabase {
     title: string;
     prompt: string | null;
     imageUrl: string | null;
-    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null };
   }>;
 
   /** Update index settings (owner only). */

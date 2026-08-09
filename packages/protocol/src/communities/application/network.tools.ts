@@ -418,7 +418,6 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
     prompt: z.string().nullable().optional(),
     imageUrl: z.string().url().nullable().optional(),
     joinPolicy: z.enum(['anyone', 'invite_only']).optional(),
-    allowGuestVibeCheck: z.boolean().optional(),
   }).strict();
 
   const updateNetwork = defineTool({
@@ -426,7 +425,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
     description:
       "Updates settings of an existing network (community). Only the network owner can perform updates.\n\n" +
       "**Updatable fields:** title (display name), prompt (purpose description used for intent auto-assignment), " +
-      "imageUrl (community avatar), joinPolicy ('anyone' for open or 'invite_only'), allowGuestVibeCheck (allow non-members to preview).\n\n" +
+      "imageUrl (community avatar), joinPolicy ('anyone' for open or 'invite_only').\n\n" +
       "**When to use:** When a network owner wants to change their community's settings — e.g. update the purpose description, " +
       "change from invite-only to open, or update the community image.\n\n" +
       "**Important:** Changing the prompt affects how future intents are evaluated for auto-assignment to this network. " +
@@ -434,7 +433,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       "**Returns:** Confirmation with the list of settings that were updated.",
     querySchema: z.object({
       networkId: z.string().optional().describe("Network UUID to update. Get from read_networks. Defaults to the scoped network in network-scoped chats."),
-      settings: updateNetworkSettingsSchema.describe("Object with fields to update. All fields are optional — only include the ones to change. title: display name. prompt: purpose description (used for intent auto-assignment). imageUrl: community image URL (null to remove). joinPolicy: 'anyone' or 'invite_only'. allowGuestVibeCheck: boolean."),
+      settings: updateNetworkSettingsSchema.describe("Object with fields to update. All fields are optional — only include the ones to change. title: display name. prompt: purpose description (used for intent auto-assignment). imageUrl: community image URL (null to remove). joinPolicy: 'anyone' or 'invite_only'."),
     }),
     handler: async ({ context, query }) => {
       const boundNetworkId = boundCommunityId(context);

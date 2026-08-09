@@ -44,7 +44,6 @@ export interface OnboardingState {
 export interface NetworkPermissionsState {
   joinPolicy: 'anyone' | 'invite_only';
   invitationLink: { code: string } | null;
-  allowGuestVibeCheck: boolean;
   contextInjection?: { discovery: boolean };
 }
 
@@ -798,7 +797,6 @@ export const networks = pgTable('networks', {
   permissions: json('permissions').$type<NetworkPermissionsState>().default({
     joinPolicy: 'invite_only',
     invitationLink: null,
-    allowGuestVibeCheck: false,
   }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

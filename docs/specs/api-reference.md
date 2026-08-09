@@ -1757,8 +1757,7 @@ Create a new index.
   "title": "string (required)",
   "prompt": "string (optional)",
   "imageUrl": "string | null (optional)",
-  "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "joinPolicy": "anyone | invite_only (optional)"
 }
 ```
 
@@ -1922,8 +1921,7 @@ Update an index (title, prompt, image, join policy). Owner only.
   "title": "string (optional)",
   "prompt": "string | null (optional)",
   "imageUrl": "string | null (optional)",
-  "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "joinPolicy": "anyone | invite_only (optional)"
 }
 ```
 
@@ -2079,7 +2077,7 @@ Remove a member from an index. Owner only. Cannot remove yourself.
 
 ### PATCH /api/networks/:id/permissions
 
-Update index permissions (join policy, guest vibe check). Owner only.
+Update index permissions (join policy). Owner only.
 
 **Auth**: AuthGuard
 
@@ -2089,8 +2087,7 @@ Update index permissions (join policy, guest vibe check). Owner only.
 **Request body**:
 ```json
 {
-  "joinPolicy": "anyone | invite_only (optional)",
-  "allowGuestVibeCheck": "boolean (optional)"
+  "joinPolicy": "anyone | invite_only (optional)"
 }
 ```
 

@@ -841,6 +841,13 @@
       "when": 1786282570397,
       "tag": "0120_medical_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1786282685733,
+      "tag": "0121_easy_master_chief",
+      "breakpoints": true
     }
   ]
 }

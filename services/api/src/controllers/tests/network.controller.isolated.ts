@@ -379,7 +379,7 @@ describe("NetworkController Integration", () => {
           permissions: {
             joinPolicy: 'anyone',
             invitationLink: { code: 'preserve-me' },
-            allowGuestVibeCheck: true,
+            contextInjection: { discovery: true },
           },
         })
         .where(eq(schema.networks.id, enableNetworkId));
@@ -395,7 +395,7 @@ describe("NetworkController Integration", () => {
         .from(schema.networks)
         .where(eq(schema.networks.id, enableNetworkId));
       expect(net.permissions.joinPolicy).toBe('invite_only');
-      expect(net.permissions.allowGuestVibeCheck).toBe(true);
+      expect(net.permissions.contextInjection).toEqual({ discovery: true });
       expect(net.permissions.invitationLink).toEqual({ code: 'preserve-me' });
     });
 

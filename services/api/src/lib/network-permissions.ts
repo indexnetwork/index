@@ -22,7 +22,6 @@ export function toPublicNetworkPermissions(value: unknown): NetworkPermissionsSt
   return {
     joinPolicy: stored.joinPolicy === 'anyone' ? 'anyone' : 'invite_only',
     invitationLink,
-    allowGuestVibeCheck: stored.allowGuestVibeCheck === true,
     ...(contextInjection ? { contextInjection } : {}),
   };
 }

@@ -222,7 +222,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Permissions Management
   // Update network permissions (joinPolicy)
-  updatePermissions: async (networkId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Network> => {
+  updatePermissions: async (networkId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only' }): Promise<Network> => {
     const response = await api.patch<APIResponse<Network>>(`/networks/${networkId}/permissions`, permissions);
     if (!response.network) {
       throw new Error('Failed to update permissions');
