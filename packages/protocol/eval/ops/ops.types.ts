@@ -153,6 +153,8 @@ export interface ArtifactRef {
   caseCount: number;
   /** True only for v2 artifacts that recorded complete execution evidence. */
   complete: boolean | null;
+  /** Indexed discriminator for descriptive measurement artifacts; null for scorecards. */
+  measurementKind: "historical-quality-pilot" | null;
   sizeBytes: number;
   mtimeMs: number;
 }

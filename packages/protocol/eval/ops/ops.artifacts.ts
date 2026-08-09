@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { EVAL_BASELINE_ARTIFACT_TYPE, EVAL_RUN_REPORT_ARTIFACT_TYPE, parseEvalArtifact, type EvalArtifactEnvelope } from "../shared/index.js";
+import { isHistoricalQualityArtifact } from "../shared/artifact.js";
 import { OPS_HARNESSES } from "./ops.registry.js";
 import type { ArtifactRef, IndexIssue, IndexResult, OpsHarness } from "./ops.types.js";
 
@@ -128,6 +129,7 @@ export class FsArtifactSource implements ArtifactSource {
       aggregatePassRate: envelope.payload.aggregatePassRate,
       caseCount: envelope.payload.cases.length,
       complete: typeof completeness.complete === "boolean" ? completeness.complete : null,
+      measurementKind: isHistoricalQualityArtifact(envelope) ? envelope.measurement.kind : null,
       sizeBytes: stats.size,
       mtimeMs: stats.mtimeMs,
     };

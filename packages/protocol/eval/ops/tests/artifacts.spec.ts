@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { decodeArtifactId, encodeArtifactId, FsArtifactSource } from "../ops.artifacts.js";
 import { OPS_HARNESSES } from "../ops.registry.js";
+import { makeHistoricalQualityArtifact } from "../../shared/tests/artifact.fixtures.js";
 
 function baselineArtifact(overrides: Record<string, unknown> = {}) {
   return {
@@ -150,6 +151,7 @@ describe("FsArtifactSource", () => {
     expect(ref.aggregatePassRate).toBe(1);
     expect(ref.caseCount).toBe(1);
     expect(ref.complete).toBeNull();
+    expect(ref.measurementKind).toBeNull();
     expect(ref.sizeBytes).toBeGreaterThan(0);
     expect(ref.mtimeMs).toBeGreaterThan(0);
   });
@@ -207,6 +209,21 @@ describe("FsArtifactSource", () => {
     expect(refs).toHaveLength(1);
     expect(refs[0].harness).toBe("discovery");
     expect(refs[0].kind).toBe("run");
+  });
+
+  it("indexes measurementKind for quality artifacts without changing scorecard refs", async () => {
+    const runId = "quality-run";
+    await mkdir(path.join(evalDir, ".ops-runs", runId), { recursive: true });
+    await writeFile(
+      path.join(evalDir, ".ops-runs", runId, "report.json"),
+      JSON.stringify(makeHistoricalQualityArtifact()),
+    );
+
+    const { refs, issues } = await new FsArtifactSource({ evalDir }).list();
+
+    expect(issues).toEqual([]);
+    expect(refs).toHaveLength(1);
+    expect(refs[0].measurementKind).toBe("historical-quality-pilot");
   });
 
   it("round-trips artifact ids and rejects traversal", async () => {
