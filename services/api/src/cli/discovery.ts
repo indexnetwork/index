@@ -64,34 +64,77 @@ function childSideId(args: readonly string[]): AbSideId | undefined {
   return side === 'a' || side === 'b' ? side : undefined;
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+interface DiscoveryRuntime {
+  main(args: readonly string[]): Promise<void>;
+}
+
+/**
+ * The complete provider-facing boundary below quality argument handling.
+ * Production supplies the existing legacy operations; tests can instrument the
+ * same boundary without importing or composing the runtime.
+ */
+export interface DiscoveryBootstrapDependencies {
+  assertConfirmation(env: NodeJS.ProcessEnv): void;
+  parseManifest(raw: string | undefined): AbManifest;
+  attestTargets(manifest: AbManifest, role: AbInvocationRole): Promise<void>;
+  importRuntime(): Promise<DiscoveryRuntime>;
+}
+
+const productionBootstrapDependencies: DiscoveryBootstrapDependencies = {
+  assertConfirmation: assertAbConfirmation,
+  parseManifest: parseAbManifest,
+  attestTargets: attestOrRefuse,
+  importRuntime: async () => await import('./discovery.main'),
+};
+
+/**
+ * Runs the dependency-free bootstrap contract. A numeric result is a complete
+ * pre-runtime response; undefined means the legacy runtime completed normally.
+ */
+export async function runDiscoveryBootstrap(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  io: Pick<Console, 'log' | 'error'>,
+  dependencies: DiscoveryBootstrapDependencies = productionBootstrapDependencies,
+): Promise<0 | 2 | undefined> {
   // The dedicated quality shape is parsed, costed, and refused before the
   // legacy confirmation gate, manifest, attestation, or dynamic runtime import.
   // PR A deliberately performs no provider or infrastructure operation.
   if (isHistoricalQualityRequest(args)) {
-    if (hasHistoricalQualityHelp(args)) return void console.log(historicalQualityUsage());
-    process.exitCode = runHistoricalQualityPrARefusal(parseHistoricalQualityArgs(args), console);
-    return;
+    if (hasHistoricalQualityHelp(args)) {
+      io.log(historicalQualityUsage());
+      return 0;
+    }
+    return runHistoricalQualityPrARefusal(parseHistoricalQualityArgs(args), io);
   }
   // Before the gate, and before any environment variable is read: the full
   // legacy contract, printed to anyone who asks for it.
-  if (args.includes('--help') || args.includes('-h')) return void console.log(abUsage());
+  if (args.includes('--help') || args.includes('-h')) {
+    io.log(abUsage());
+    return 0;
+  }
   // First, and before any network call: an unconfirmed run must not even
   // reach the control plane, let alone a database.
-  assertAbConfirmation(process.env);
-  const manifest = parseAbManifest(process.env.DISCOVERY_TARGETS);
-  await attestOrRefuse(manifest, abInvocationRole(args));
+  dependencies.assertConfirmation(env);
+  const manifest = dependencies.parseManifest(env.DISCOVERY_TARGETS);
+  await dependencies.attestTargets(manifest, abInvocationRole(args));
   const sideId = childSideId(args);
   if (sideId !== undefined) {
     const target = manifest.targets.find((candidate) => candidate.sideId === sideId);
     if (!target) throw new Error(`Discovery manifest does not name side ${sideId}`);
     // The branch label is derived from the attested manifest, never from
     // operator-supplied text, so the child's gate checks an attested fact.
-    process.env.DATABASE_URL = target.databaseUrl;
-    process.env[AB_SIDE_BRANCH_ENV] = AB_BRANCH_NAMES[sideId];
+    env.DATABASE_URL = target.databaseUrl;
+    env[AB_SIDE_BRANCH_ENV] = AB_BRANCH_NAMES[sideId];
   }
-  await (await import('./discovery.main')).main(args);
+  const runtime = await dependencies.importRuntime();
+  await runtime.main(args);
+  return undefined;
+}
+
+async function main(): Promise<void> {
+  const result = await runDiscoveryBootstrap(process.argv.slice(2), process.env, console);
+  if (result !== undefined) process.exitCode = result;
 }
 
 if (import.meta.main) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { runDiscoveryBootstrap, type DiscoveryBootstrapDependencies } from '../discovery';
 import { HISTORICAL_QUALITY_APPROVED_CASE_IDS, HISTORICAL_QUALITY_PR_A_REFUSAL, formatHistoricalQualityCost, historicalQualityCost, historicalQualityUsage, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal } from '../discovery-quality.contract';
 
 const BOOTSTRAP = path.resolve(import.meta.dir, '../discovery.ts');
@@ -120,12 +120,67 @@ describe('historical quality provider-free contract', () => {
     });
   }, 30_000);
 
-  it('places the quality refusal before every bootstrap operation and dynamic runtime import', async () => {
-    const source = await readFile(BOOTSTRAP, 'utf8');
-    const branch = source.indexOf('isHistoricalQualityRequest(args)');
-    expect(branch).toBeGreaterThan(-1);
-    for (const later of ['assertAbConfirmation(process.env)', 'parseAbManifest(process.env.DISCOVERY_TARGETS)', 'attestOrRefuse(', "await import('./discovery.main')"]) {
-      expect(source.indexOf(later, branch), later).toBeGreaterThan(branch);
-    }
+  it('refuses through the production bootstrap seam before every gate and runtime operation', async () => {
+    const calls = {
+      confirmation: 0,
+      manifestParsing: 0,
+      neonAttestation: 0,
+      neonNetwork: 0,
+      databaseComposition: 0,
+      providerComposition: 0,
+      redisComposition: 0,
+      graphComposition: 0,
+      dynamicRuntimeImport: 0,
+    };
+    const dependencies: DiscoveryBootstrapDependencies = {
+      assertConfirmation: () => { calls.confirmation += 1; },
+      parseManifest: () => {
+        calls.manifestParsing += 1;
+        throw new Error('manifest parsing must not run');
+      },
+      attestTargets: async () => {
+        calls.neonAttestation += 1;
+        calls.neonNetwork += 1;
+      },
+      importRuntime: async () => {
+        calls.dynamicRuntimeImport += 1;
+        return {
+          main: async () => {
+            calls.databaseComposition += 1;
+            calls.providerComposition += 1;
+            calls.redisComposition += 1;
+            calls.graphComposition += 1;
+          },
+        };
+      },
+    };
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const request = parseHistoricalQualityArgs([...fullArgs, '--runs', '1']);
+
+    const exitCode = await runDiscoveryBootstrap(
+      [...fullArgs, '--runs', '1'],
+      {},
+      {
+        log: (message?: unknown) => stdout.push(String(message)),
+        error: (message?: unknown) => stderr.push(String(message)),
+      },
+      dependencies,
+    );
+
+    expect(exitCode).toBe(2);
+    expect(stdout).toEqual([formatHistoricalQualityCost(request)]);
+    expect(stderr).toEqual([HISTORICAL_QUALITY_PR_A_REFUSAL]);
+    expect(calls).toEqual({
+      confirmation: 0,
+      manifestParsing: 0,
+      neonAttestation: 0,
+      neonNetwork: 0,
+      databaseComposition: 0,
+      providerComposition: 0,
+      redisComposition: 0,
+      graphComposition: 0,
+      dynamicRuntimeImport: 0,
+    });
   });
 });
