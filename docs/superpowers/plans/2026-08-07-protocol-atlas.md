@@ -1330,7 +1330,7 @@ Expected:
 
 - every approved setting has all current `packages/protocol` read sites, an entry accessor/direct-read symbol, and a complete accessor closure;
 - definitive deltas have a current runtime consumer outside that closure, ordered syntax-verifiable chain, target association, and DB-free behavior test;
-- unresolved deltas have read/accessor-closure evidence but no production reference escaping that closure;
+- unresolved deltas have read/accessor-closure evidence, no same-module value reference outside the closure, and no external runtime import surface that can expose a closure export;
 - any path changed by slimming is updated before the manifest is written;
 - no atlas evidence comes from a compatibility shim scheduled for deletion.
 
@@ -1397,8 +1397,8 @@ Add focused tests proving:
 6. a definitive delta fails if its consumer symbol or any ordered chain hop is removed;
 7. a definitive delta requires a behavior-test path and named test;
 8. accessor-to-accessor wrappers are traversed only through the declared, internally verified accessor closure;
-9. an unresolved delta rejects consumer/test fields and fails when a runtime reference escapes its accessor closure;
-10. declaration-only exports, type-only references, test files, declared accessor helpers, and barrels do not count as unresolved runtime consumers;
+9. an unresolved delta rejects consumer/test fields and fails on a same-module value reference outside its closure, an external named/default runtime import of a closure export, or a namespace import that can expose one;
+10. declaration-only barrel re-exports are allowed, but the first downstream runtime import through the barrel fails; type-only imports and named imports proven to target other exports remain allowed;
 11. setting prerequisites require an exact `{ key, value }` assignment and reject mode-shaped or cross-experiment ambiguity;
 12. secret-shaped keys, unrestricted assignments, malformed prerequisites, timestamps, line numbers, traversal paths, and host paths fail;
 13. `on-alias` normalizes to the current source-supported shadow-equivalent explanation rather than inventing an `on` consumer;
@@ -1452,7 +1452,7 @@ In `scripts/build-protocol-atlas.ts`:
 2. parse environment reads with the TypeScript AST, supporting direct property and string-literal element access without evaluating modules, and fail when a production read of an approved key is absent from its declared `readSites`;
 3. verify entry accessor declarations and every declared accessor-closure helper/reference;
 4. verify consumer declarations and each ordered reference-chain hop from outside the accessor closure with runtime import/reference semantics, excluding type-only references;
-5. reverse-index runtime references for unresolved checks, following declared accessor wrappers and excluding only the accessor closure, declaration-only re-exports, and barrels;
+5. validate unresolved records with a bounded import-surface gate: reject same-module value references outside the closure; reject external named/default runtime imports resolving to a closure export; reject namespace imports from the accessor module or declaration-only barrel chain when they can expose a closure export; permit barrel declarations themselves, type-only imports, and named imports proven to resolve to other exports;
 6. verify behavior-test path and named test citation;
 7. validate all node, edge, chapter, flow, and step targets;
 8. reject secret-shaped keys such as names containing `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE_KEY`, `API_KEY`, or credential equivalents;
