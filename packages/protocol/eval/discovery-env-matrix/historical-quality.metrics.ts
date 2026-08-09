@@ -21,8 +21,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_ERROR_CLASS = /^[a-z][a-z0-9_-]{0,63}$/;
 const EVIDENCE_TYPES = new Set<HistoricalEvidenceType>(["intent", "premise", "user_context"]);
 
-function assertSafeId(value: string, label: string): void {
-  if (!SAFE_ID.test(value)) throw new Error(`${label} must be a non-empty stable ID`);
+function assertSafeId(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || !SAFE_ID.test(value)) throw new Error(`${label} must be a non-empty stable ID`);
 }
 
 export function dedupeHistoricalRetrieval(rows: readonly HistoricalRetrievalEvidenceRow[]): HistoricalRetrievedUser[] {
@@ -171,7 +171,8 @@ function assertEvaluatorTrace(trace: HistoricalEvaluatorTrace, retrieved: boolea
   } else if (trace.score !== null) {
     throw new Error(`Historical evaluator ${trace.participantId} score requires a returned evaluation`);
   }
-  if (trace.errorClass !== undefined && !SAFE_ERROR_CLASS.test(trace.errorClass)) {
+  if (trace.errorClass !== undefined
+    && (typeof trace.errorClass !== "string" || !SAFE_ERROR_CLASS.test(trace.errorClass))) {
     throw new Error(`Historical evaluator ${trace.participantId} requires a safe error class`);
   }
 }
@@ -312,7 +313,9 @@ export type HistoricalQualityRunSummary =
   };
 
 function isSortedUnique(values: readonly string[]): boolean {
-  return values.every((value, index) => SAFE_ID.test(value) && (index === 0 || values[index - 1]!.localeCompare(value) < 0));
+  return values.every((value, index) => typeof value === "string"
+    && SAFE_ID.test(value)
+    && (index === 0 || values[index - 1]!.localeCompare(value) < 0));
 }
 
 function isValidMetricSet(metrics: readonly HistoricalParticipantMetric[]): boolean {
@@ -483,26 +486,27 @@ function isValidStageCounts(counts: HistoricalStageCounts, expectedTotal: number
     && counts.evaluatorReturned >= counts.finalIncluded;
 }
 
-function isValidRankSummary(summary: HistoricalRankSummary, expectedCount: number): boolean {
+function isValidRankSummary(summary: HistoricalRankSummary, expectedCount: number, population: number): boolean {
   return Number.isInteger(summary.count)
     && summary.count === expectedCount
+    && summary.count <= population
     && Number.isInteger(summary.sum)
     && summary.sum >= summary.count
-    && summary.sum <= summary.count * 24
+    && summary.sum <= summary.count * population
     && summary.mean === (summary.count === 0 ? null : summary.sum / summary.count);
 }
 
 function isValidSingleSlotFunnel(funnel: HistoricalStageFunnel): boolean {
+  const total = (key: keyof HistoricalStageCounts): number =>
+    funnel.target[key] + funnel.semanticNegatives[key] + funnel.backgrounds[key];
   if (funnel.slots !== 1
     || funnel.participants !== 24
     || !isValidStageCounts(funnel.target, 1)
     || !isValidStageCounts(funnel.semanticNegatives, 3)
     || !isValidStageCounts(funnel.backgrounds, 20)
-    || !isValidRankSummary(funnel.targetRetrievalRank, funnel.target.retrieved)
-    || !isValidRankSummary(funnel.targetFinalRank, funnel.target.finalIncluded)) return false;
+    || !isValidRankSummary(funnel.targetRetrievalRank, funnel.target.retrieved, total("retrieved"))
+    || !isValidRankSummary(funnel.targetFinalRank, funnel.target.finalIncluded, total("finalIncluded"))) return false;
 
-  const total = (key: keyof HistoricalStageCounts): number =>
-    funnel.target[key] + funnel.semanticNegatives[key] + funnel.backgrounds[key];
   return FAILURE_STAGES.every((stage) => Number.isInteger(funnel.failureStages[stage]) && funnel.failureStages[stage] >= 0)
     && funnel.failureStages.execution === 0
     && funnel.failureStages.retrieval === 24 - total("retrieved")

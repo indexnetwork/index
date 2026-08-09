@@ -340,6 +340,31 @@ describe("historical quality metrics", () => {
     });
   });
 
+  it("suppresses a run when forged target ranks exceed retrieved or final-included populations", () => {
+    const complete = summarizeHistoricalQualitySlot({
+      completed: true,
+      participantMetrics: buildHistoricalParticipantMetrics(transitionInput()),
+    });
+    const forgedRetrievalRank = structuredClone(complete);
+    const forgedFinalRank = structuredClone(complete);
+    if (forgedRetrievalRank.summary !== null) {
+      forgedRetrievalRank.summary.targetRetrievalRank = { count: 1, sum: 24, mean: 24 };
+    }
+    if (forgedFinalRank.summary !== null) {
+      forgedFinalRank.summary.targetFinalRank = { count: 1, sum: 24, mean: 24 };
+    }
+
+    for (const slot of [forgedRetrievalRank, forgedFinalRank]) {
+      expect(summarizeHistoricalQualityRun([slot])).toEqual({
+        qualityVerdictAvailable: false,
+        completedSlots: 0,
+        requestedSlots: 1,
+        summary: null,
+        message: "no quality verdict",
+      });
+    }
+  });
+
   it("aggregates only quality funnels and never transport passes", () => {
     const metrics = buildHistoricalParticipantMetrics(completeInput());
     const passingTransport = summarizeHistoricalQualitySlot({ completed: true, participantMetrics: metrics, passes: 1 });
@@ -359,6 +384,34 @@ describe("historical quality metrics", () => {
       targetRetrievalRank: { count: 2, sum: 2, mean: 1 },
       targetFinalRank: { count: 2, sum: 2, mean: 1 },
       failureStages: { none: 48 },
+    });
+  });
+
+  it("rejects coercible safe-ID and error-class objects instead of copying their enumerable secrets", () => {
+    const input = transitionInput();
+    const coercible = (value: string, secret: string): unknown => ({
+      secret,
+      toString: () => value,
+    });
+    const candidateIdInput = structuredClone(input) as HistoricalParticipantMetricsInput;
+    candidateIdInput.candidates[0]!.participantId = coercible("target", "candidate-secret") as string;
+    expect(() => buildHistoricalParticipantMetrics(candidateIdInput)).toThrow(/stable ID/);
+
+    const evidenceIdInput = structuredClone(input) as HistoricalParticipantMetricsInput;
+    evidenceIdInput.retrievalEvidence[0]!.evidenceId = coercible("evidence-1", "evidence-secret") as string;
+    expect(() => buildHistoricalParticipantMetrics(evidenceIdInput)).toThrow(/stable ID/);
+
+    const errorClassInput = structuredClone(input) as HistoricalParticipantMetricsInput;
+    errorClassInput.evaluatorTraces[3]!.errorClass = coercible("evaluator_timeout", "provider-credential") as string;
+    expect(() => buildHistoricalParticipantMetrics(errorClassInput)).toThrow(/safe error class/);
+
+    const metrics = buildHistoricalParticipantMetrics(input);
+    metrics[0]!.participantId = coercible(metrics[0]!.participantId, "summary-secret") as string;
+    expect(summarizeHistoricalQualitySlot({ completed: true, participantMetrics: metrics })).toEqual({
+      qualityVerdictAvailable: false,
+      completed: false,
+      summary: null,
+      message: "no quality verdict",
     });
   });
 
