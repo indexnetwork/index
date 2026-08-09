@@ -12,35 +12,10 @@ const SHELF_VISIBLE_ROWS = 6;
 
 /* ---------- account shelf ---------- */
 
-// Your photo if you've set one, otherwise a solid accent tile with lowercase
-// initials, deliberately not the photo Avatar used on the radar, so "you"
-// reads differently from "them".
-function InitialsTile({ name, size = 46, photo }) {
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // matches Avatar and the settings preview
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
-    );
-  }
-  const initials = (name || "")
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(w => w[0]).join("").toLowerCase();
+// Account shelf avatar — same bauhaus fallback as everywhere else.
+function InitialsTile({ id, name, size = 46, photo }) {
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000", background:"#FF8A00",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      fontFamily:"var(--mac-mono)", fontSize: size * 0.4,
-      fontWeight:700, color:"#000", letterSpacing:0.5,
-    }}>{initials}</span>
+    <Avatar id={id} name={name} photo={photo} size={size}/>
   );
 }
 
@@ -162,7 +137,7 @@ function UserMenu({ me, onSelect }) {
           padding:"7px 11px", textAlign:"left", cursor:"pointer",
           border:"1px solid #000", background: open ? "#F2EFE6" : "#fff",
         }}>
-        <InitialsTile name={me.name} size={34} photo={me.photo}/>
+        <InitialsTile id={me.id} name={me.name} size={34} photo={me.photo}/>
         <span style={{ flex:1, minWidth:0 }}>
           <span style={{
             display:"block",

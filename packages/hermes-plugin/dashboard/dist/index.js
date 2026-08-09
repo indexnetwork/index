@@ -616,11 +616,101 @@
 
   const OPP_RESOLVED_LABEL = { accepted: "Connected", expired: "Missed" };
 
-  function initialsFor(name) {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "?";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
+  // palette, so dashboard avatars match the Index web app exactly.
+  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+  function baHash(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = (hash << 5) - hash + name.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+
+  function baDigit(num, ntn) {
+    return Math.floor((num / Math.pow(10, ntn)) % 10);
+  }
+
+  function baBool(num, ntn) {
+    return !(baDigit(num, ntn) % 2);
+  }
+
+  function baUnit(num, range, index) {
+    const value = num % range;
+    if (index && baDigit(num, index) % 2 === 0) return -value;
+    return value;
+  }
+
+  function baColor(num) {
+    return BORING_PALETTE[num % BORING_PALETTE.length];
+  }
+
+  function BoringAvatar(props) {
+    const SIZE = 80;
+    const ELEMENTS = 4;
+    const seed = String(props.seed || "default");
+    const num = baHash(seed);
+    const props_ = [];
+    for (let t = 0; t < ELEMENTS; t++) {
+      props_.push({
+        color: baColor(num + t),
+        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+        rotate: baUnit(num * (t + 1), 360),
+        isSquare: baBool(num, 2),
+      });
+    }
+    const maskId = "ba-mask-" + num;
+    return React.createElement("svg", {
+      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
+      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
+    },
+      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
+        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
+      ),
+      React.createElement("g", { mask: "url(#" + maskId + ")" },
+        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
+        React.createElement("rect", {
+          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
+          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
+          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+        React.createElement("circle", {
+          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
+          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
+        }),
+        React.createElement("line", {
+          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
+          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
+        }),
+      ),
+    );
+  }
+
+  function UserAvatar(props) {
+    const seed = props.id || props.name || "default";
+    const size = props.size;
+    const className = (props.className || "index-dashboard__avatar")
+      + (props.ghost ? " index-dashboard__net-member-avatar--ghost" : "");
+    const style = size ? { width: size, height: size } : undefined;
+    const children = [React.createElement(BoringAvatar, { key: "fallback", seed: seed })];
+    if (props.avatar) {
+      children.push(React.createElement("img", {
+        key: "img",
+        className: "index-dashboard__avatar-img",
+        src: props.avatar,
+        alt: "",
+        loading: "lazy",
+        onError: function (e) { if (e && e.currentTarget) e.currentTarget.style.display = "none"; },
+      }));
+    }
+    return React.createElement("span", {
+      className: className,
+      style: style,
+      "aria-hidden": props.ariaHidden !== false ? "true" : undefined,
+    }, children);
   }
 
   function OpportunityCard(props) {
@@ -670,18 +760,11 @@
     return React.createElement("article", { className: "index-dashboard__opp" },
       React.createElement("div", { className: "index-dashboard__opp-head" },
         React.createElement("div", idProps,
-          React.createElement("span", { className: "index-dashboard__avatar", "aria-hidden": "true" },
-            initialsFor(opportunity.name),
-            opportunity.avatar
-              ? React.createElement("img", {
-                className: "index-dashboard__avatar-img",
-                src: opportunity.avatar,
-                alt: "",
-                loading: "lazy",
-                onError: function (e) { e.target.style.display = "none"; },
-              })
-              : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: opportunity.counterpartUserId,
+            name: opportunity.name,
+            avatar: opportunity.avatar,
+          }),
           React.createElement("div", { className: "index-dashboard__opp-meta" },
             React.createElement("strong", { className: "index-dashboard__opp-name" }, opportunity.name || "New match"),
             React.createElement("span", { className: "index-dashboard__opp-sub" }, opportunity.subtitle || "Suggested connection"),
@@ -1246,23 +1329,15 @@
       const sz = size || 28;
       const avatar = member.avatar;
       const looksAbsolute = avatar && /^(https?:|data:)/i.test(String(avatar));
-      if (avatar && looksAbsolute) {
-        return React.createElement("img", {
-          className: "index-dashboard__net-member-avatar" + (member.isGhost ? " index-dashboard__net-member-avatar--ghost" : ""),
-          src: avatar,
-          alt: "",
-          width: sz,
-          height: sz,
-          loading: "lazy",
-          onError: function (e) {
-            if (e && e.currentTarget) e.currentTarget.style.display = "none";
-          },
-        });
-      }
-      return React.createElement("span", {
-        className: "index-dashboard__net-member-avatar index-dashboard__net-member-avatar--fallback" + (member.isGhost ? " index-dashboard__net-member-avatar--ghost" : ""),
-        style: { width: sz, height: sz },
-      }, String(member.name || "?").slice(0, 1).toLowerCase());
+      return React.createElement(UserAvatar, {
+        id: member.id,
+        name: member.name,
+        avatar: looksAbsolute ? avatar : null,
+        size: sz,
+        ghost: !!member.isGhost,
+        className: "index-dashboard__net-member-avatar"
+          + (looksAbsolute ? "" : " index-dashboard__net-member-avatar--fallback"),
+      });
     }
 
     const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
@@ -1601,79 +1676,6 @@
             : null,
           body,
         ),
-      ),
-    );
-  }
-
-  // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
-  // palette, so dashboard network avatars match the Index web app exactly.
-  const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
-
-  function baHash(name) {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = (hash << 5) - hash + name.charCodeAt(i);
-      hash = hash & hash;
-    }
-    return Math.abs(hash);
-  }
-
-  function baDigit(num, ntn) {
-    return Math.floor((num / Math.pow(10, ntn)) % 10);
-  }
-
-  function baBool(num, ntn) {
-    return !(baDigit(num, ntn) % 2);
-  }
-
-  function baUnit(num, range, index) {
-    const value = num % range;
-    if (index && baDigit(num, index) % 2 === 0) return -value;
-    return value;
-  }
-
-  function baColor(num) {
-    return BORING_PALETTE[num % BORING_PALETTE.length];
-  }
-
-  function BoringAvatar(props) {
-    const SIZE = 80;
-    const ELEMENTS = 4;
-    const seed = String(props.seed || "default");
-    const num = baHash(seed);
-    const props_ = [];
-    for (let t = 0; t < ELEMENTS; t++) {
-      props_.push({
-        color: baColor(num + t),
-        translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
-        translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
-        rotate: baUnit(num * (t + 1), 360),
-        isSquare: baBool(num, 2),
-      });
-    }
-    const maskId = "ba-mask-" + num;
-    return React.createElement("svg", {
-      viewBox: "0 0 " + SIZE + " " + SIZE, fill: "none", role: "img",
-      xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%",
-    },
-      React.createElement("mask", { id: maskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: SIZE, height: SIZE },
-        React.createElement("rect", { width: SIZE, height: SIZE, rx: SIZE * 2, fill: "#FFFFFF" }),
-      ),
-      React.createElement("g", { mask: "url(#" + maskId + ")" },
-        React.createElement("rect", { width: SIZE, height: SIZE, fill: props_[0].color }),
-        React.createElement("rect", {
-          x: (SIZE - 60) / 2, y: (SIZE - 20) / 2, width: SIZE,
-          height: props_[1].isSquare ? SIZE : SIZE / 8, fill: props_[1].color,
-          transform: "translate(" + props_[1].translateX + " " + props_[1].translateY + ") rotate(" + props_[1].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
-        }),
-        React.createElement("circle", {
-          cx: SIZE / 2, cy: SIZE / 2, fill: props_[2].color, r: SIZE / 5,
-          transform: "translate(" + props_[2].translateX + " " + props_[2].translateY + ")",
-        }),
-        React.createElement("line", {
-          x1: 0, y1: SIZE / 2, x2: SIZE, y2: SIZE / 2, strokeWidth: 2, stroke: props_[3].color,
-          transform: "translate(" + props_[3].translateX + " " + props_[3].translateY + ") rotate(" + props_[3].rotate + " " + SIZE / 2 + " " + SIZE / 2 + ")",
-        }),
       ),
     );
   }
@@ -2628,15 +2630,16 @@
     }
 
     function profileTab() {
-      const initials = initialsFor(form.name);
       const avatarSrc = avatarPreview || form.avatar;
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
           React.createElement("label", { className: "index-dashboard__profile-avatar" },
-            React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-              initials,
-              avatarSrc ? React.createElement("img", { className: "index-dashboard__avatar-img", src: avatarSrc, alt: "", loading: "lazy" }) : null,
-            ),
+            React.createElement(UserAvatar, {
+              id: form.id,
+              name: form.name,
+              avatar: avatarSrc,
+              className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+            }),
             React.createElement("input", { type: "file", accept: "image/*", className: "index-dashboard__profile-avatar-input", onChange: onAvatarFile }),
           ),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
@@ -2692,14 +2695,15 @@
     }
 
     function readOnlyView() {
-      const initials = initialsFor(form.name);
       const socials = (form.socials || []).filter(function (s) { return s.value && s.value.trim(); });
       return React.createElement("div", { className: "index-dashboard__profile-section" },
         React.createElement("div", { className: "index-dashboard__profile-identity" },
-          React.createElement("span", { className: "index-dashboard__avatar index-dashboard__profile-avatar-circle", "aria-hidden": "true" },
-            initials,
-            form.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: form.avatar, alt: "", loading: "lazy" }) : null,
-          ),
+          React.createElement(UserAvatar, {
+            id: form.id,
+            name: form.name,
+            avatar: form.avatar,
+            className: "index-dashboard__avatar index-dashboard__profile-avatar-circle",
+          }),
           React.createElement("div", { className: "index-dashboard__profile-identity-main" },
             React.createElement("strong", { className: "index-dashboard__profile-identity-name" }, form.name || "Profile"),
             form.location ? React.createElement("span", { className: "index-dashboard__profile-identity-sub" }, form.location) : null,
@@ -3190,10 +3194,12 @@
                       className: "index-dashboard__msg-conv" + (active ? " index-dashboard__msg-conv--active" : "") + (unread ? " index-dashboard__msg-conv--unread" : ""),
                       onClick: function () { loadThread(c.id); },
                     },
-                      React.createElement("span", { className: "index-dashboard__avatar index-dashboard__msg-conv-avatar", "aria-hidden": "true" },
-                        initialsFor(c.counterpartName || c.title),
-                        c.avatar ? React.createElement("img", { className: "index-dashboard__avatar-img", src: c.avatar, alt: "", loading: "lazy" }) : null,
-                      ),
+                      React.createElement(UserAvatar, {
+                        id: c.counterpartUserId,
+                        name: c.counterpartName || c.title,
+                        avatar: c.avatar,
+                        className: "index-dashboard__avatar index-dashboard__msg-conv-avatar",
+                      }),
                       React.createElement("span", { className: "index-dashboard__msg-conv-main" },
                         React.createElement("span", { className: "index-dashboard__msg-conv-name" },
                           unread ? React.createElement("span", { className: "index-dashboard__msg-conv-dot", "aria-hidden": "true" }) : null,

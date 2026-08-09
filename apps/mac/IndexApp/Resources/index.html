@@ -34758,46 +34758,126 @@ function Tag({ children, inverted = false, style }) {
   );
 }
 
-/* ---------- Avatar: Workbench raised square, the person's photo or their
-   initials. No stand-in faces: a person without a picture shows their
-   initials rather than someone else's photo. ---------- */
-function Avatar({ name, photo, size = 28, ring = false }) {
-  const initials = (name || "")
-    .split(/\s+/).slice(0,2).map(p => p[0]).join("").toUpperCase();
-  // `photo` may be an S3 key rather than a URL; the live bridge resolves it
-  // against the API storage base. `broken` remembers which src failed, so a
-  // rerender with a new photo gets a fresh try.
+/* ---------- Avatar: circular, web-parity boring-avatars bauhaus fallback ---------- */
+const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
+
+function baHash(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+function baDigit(num, ntn) {
+  return Math.floor((num / Math.pow(10, ntn)) % 10);
+}
+
+function baBool(num, ntn) {
+  return !(baDigit(num, ntn) % 2);
+}
+
+function baUnit(num, range, index) {
+  const value = num % range;
+  if (index && baDigit(num, index) % 2 === 0) return -value;
+  return value;
+}
+
+function baColor(num) {
+  return BORING_PALETTE[num % BORING_PALETTE.length];
+}
+
+function BoringAvatar({ seed, size = 28 }) {
+  const SIZE = 80;
+  const ELEMENTS = 4;
+  const s = String(seed || "default");
+  const num = baHash(s);
+  const props_ = [];
+  for (let t = 0; t < ELEMENTS; t++) {
+    props_.push({
+      color: baColor(num + t),
+      translateX: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 1),
+      translateY: baUnit(num * (t + 1), SIZE / 2 - (t + 17), 2),
+      rotate: baUnit(num * (t + 1), 360),
+      isSquare: baBool(num, 2),
+    });
+  }
+  const maskId = "ba-mask-" + num;
+  return (
+    <svg
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      fill="none"
+      role="img"
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      style={{ display:"block" }}
+    >
+      <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={SIZE} height={SIZE}>
+        <rect width={SIZE} height={SIZE} rx={SIZE * 2} fill="#FFFFFF"/>
+      </mask>
+      <g mask={`url(#${maskId})`}>
+        <rect width={SIZE} height={SIZE} fill={props_[0].color}/>
+        <rect
+          x={(SIZE - 60) / 2}
+          y={(SIZE - 20) / 2}
+          width={SIZE}
+          height={props_[1].isSquare ? SIZE : SIZE / 8}
+          fill={props_[1].color}
+          transform={`translate(${props_[1].translateX} ${props_[1].translateY}) rotate(${props_[1].rotate} ${SIZE / 2} ${SIZE / 2})`}
+        />
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          fill={props_[2].color}
+          r={SIZE / 5}
+          transform={`translate(${props_[2].translateX} ${props_[2].translateY})`}
+        />
+        <line
+          x1={0}
+          y1={SIZE / 2}
+          x2={SIZE}
+          y2={SIZE / 2}
+          strokeWidth={2}
+          stroke={props_[3].color}
+          transform={`translate(${props_[3].translateX} ${props_[3].translateY}) rotate(${props_[3].rotate} ${SIZE / 2} ${SIZE / 2})`}
+        />
+      </g>
+    </svg>
+  );
+}
+
+function Avatar({ id, name, photo, size = 28, ring = false, blur = false }) {
+  const seed = id || name || "default";
   const src = photo
     ? (window.IndexApp && window.IndexApp.avatarUrl ? window.IndexApp.avatarUrl(photo) : photo)
     : null;
   const [broken, setBroken] = useState(null);
+  const frameStyle = {
+    width: size,
+    height: size,
+    borderRadius: "50%",
+    overflow: "hidden",
+    flex: "0 0 auto",
+    boxShadow: ring ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}` : undefined,
+    filter: blur ? "blur(3px)" : undefined,
+  };
+  if (!src || broken === src) {
+    return (
+      <div style={frameStyle}>
+        <BoringAvatar seed={seed} size={size}/>
+      </div>
+    );
+  }
   return (
-    <div style={{
-      width:size, height:size, display:"grid", placeItems:"center",
-      overflow:"hidden",
-      background: ring ? A.accent : A.paper,
-      border:`1px solid ${A.fg}`,
-      boxShadow: ring
-        ? `0 0 0 2px ${A.accent}, 0 0 0 3px ${A.fg}`
-        : `1px 1px 0 rgba(0,0,0,0.2)`,
-      color: A.fg,
-      fontFamily:"var(--mac-mono)",
-      fontSize: size * 0.38, letterSpacing:0.5,
-      fontWeight: 700,
-      flex:"0 0 auto",
-    }}>
-      {(!src || broken === src) ? initials : (
-        <img
-          src={src}
-          alt={name}
-          onError={() => setBroken(src)}
-          style={{
-            width:"100%", height:"100%", objectFit:"cover", display:"block",
-            // grayscale keeps the monochrome Workbench look
-            filter:"grayscale(1) contrast(1.05)",
-          }}
-        />
-      )}
+    <div style={frameStyle}>
+      <img
+        src={src}
+        alt={name}
+        onError={() => setBroken(src)}
+        style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}
+      />
     </div>
   );
 }
@@ -35041,11 +35121,10 @@ function MyAgentAvatar({ size = 22, style, title }) {
       {owner.photo ? (
         <img src={owner.photo} alt="" style={{
           width:"100%", height:"100%", objectFit:"cover", display:"block",
-          border:`1px solid ${FACE_INK}`, boxSizing:"border-box",
-          filter:"grayscale(1) contrast(1.05)",
+          borderRadius:"50%",
         }}/>
       ) : (
-        <Avatar name={owner.name} size={size}/>
+        <Avatar id={owner.id} name={owner.name} size={size}/>
       )}
       {/* bottom-right, held inside the footprint so the mark never overlaps
           whatever sits beside it in a tight row */}
@@ -35816,7 +35895,7 @@ function MacNotice({ text, onDismiss, timeoutMs = 7000 }) {
 }
 
 Object.assign(window, {
-  LiveDot, StreamText, KV, Tag, Avatar,
+  LiveDot, StreamText, KV, Tag, Avatar, BoringAvatar,
   AgentGlyph, AgentAvatar, agentOwner, agentLabel, SocialGlyph, RuleLabel, Btn, Chip,
   SOCIAL_PREFIX, socialPlatformOf, socialHandleOf, socialHrefOf, normalizeSocial,
   AgentFace, agentFaceFor, ownAgentSeed, myAgent, MyAgentAvatar, currentMe,
@@ -36584,13 +36663,9 @@ function PhotoPicker({ me, name, photo, onPick }) {
               alt=""
               style={{
                 width:54, height:54, objectFit:"cover", display:"block",
-                border:"1px solid #000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                // same treatment Avatar gives its photos, so an uploaded one
-                // doesn't arrive in colour and break the monochrome look
-                filter:"grayscale(1) contrast(1.05)",
+                borderRadius:"50%",
               }}/>
-          : <Avatar name={me.name} size={54}/>}
+          : <Avatar id={me.id} name={me.name} size={54}/>}
       </PicturePicker>
 
       <div style={{ minWidth:0 }}>
@@ -37287,35 +37362,25 @@ function Settings({ onClose, onDone, initialTab = "profile", profileOnly = false
 // Networks, the communities you're in, and the ones you could join. Reached
 // from the networks row on the hub's sidebar footer.
 
-// Deterministic 2x2 tile standing in for the generative avatar. Same name
-// always yields the same tile, so a network is recognisable by its colours.
-function NetworkTile({ name, size = 36, photo }) {
+// Deterministic bauhaus avatar matching the web app. Same id/name always
+// yields the same pattern, so a network is recognisable without a photo.
+function NetworkTile({ id, name, size = 36, photo }) {
+  const seed = id || name || "default";
+  const frameStyle = {
+    flex:"0 0 auto", width:size, height:size,
+    borderRadius:"50%", overflow:"hidden",
+  };
   if (photo) {
     return (
       <img
         src={photo}
         alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // same treatment as every other photo in the app
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
+        style={{ ...frameStyle, objectFit:"cover", display:"block" }}/>
     );
   }
-  const PAL = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
-  let h = 0;
-  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  // unsigned shift, a signed one goes negative on bit 31 and indexes off the end
-  const cells = [0, 1, 2, 3].map(i => PAL[(h >>> (i * 3)) % PAL.length]);
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000",
-      display:"grid", gridTemplateColumns:"1fr 1fr", gridTemplateRows:"1fr 1fr",
-    }}>
-      {cells.map((c, i) => <span key={i} style={{ background:c }}/>)}
+    <span style={frameStyle}>
+      <BoringAvatar seed={seed} size={size}/>
     </span>
   );
 }
@@ -37328,7 +37393,7 @@ function NetworkPhoto({ name, photo, onPick, size = 42 }) {
   return (
     <span style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
       <PicturePicker size={size} label="change network picture" onPick={onPick} onError={setErr}>
-        <NetworkTile name={name || "?"} size={size} photo={photo}/>
+        <NetworkTile id={name} name={name || "?"} size={size} photo={photo}/>
       </PicturePicker>
 
       {err && (
@@ -37836,7 +37901,7 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
       display:"flex", alignItems:"flex-start", gap:12,
       padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
     }}>
-      <NetworkTile name={req.title} photo={
+      <NetworkTile id={req.id} name={req.title} photo={
         req.imageUrl && window.IndexApp && window.IndexApp.avatarUrl
           ? window.IndexApp.avatarUrl(req.imageUrl)
           : req.imageUrl || undefined
@@ -37884,7 +37949,7 @@ function NetworkRow({ net, onOpen, onJoin }) {
         borderBottom:"1px solid #DDD8CC",
         background: hover ? "#FAF8F3" : "transparent",
       }}>
-      <NetworkTile name={net.name} photo={net.photo}/>
+      <NetworkTile id={net.id} name={net.name} photo={net.photo}/>
 
       <button
         onClick={() => onOpen && onOpen(net)}
@@ -37965,34 +38030,14 @@ function Signal({ sig, netName, onRemove, onOpen }) {
 }
 
 function MemberFace({ member, size = 28 }) {
-  const photo = member.avatar
-    ? (window.IndexApp && window.IndexApp.avatarUrl
-      ? window.IndexApp.avatarUrl(member.avatar)
-      : member.avatar)
-    : null;
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size, borderRadius:"50%",
-          objectFit:"cover", border:"1px solid #000",
-          filter: member.isGhost ? "grayscale(1) blur(1px)" : "grayscale(1) contrast(1.05)",
-        }}/>
-    );
-  }
-  const initials = String(member.name || "?")
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(w => w[0]).join("").toLowerCase();
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size, borderRadius:"50%",
-      border:"1px solid #000", background:"#F2F0EC",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      fontFamily:"var(--mac-mono)", fontSize:10, color:"#000",
-      filter: member.isGhost ? "blur(1px)" : "none",
-    }}>{initials}</span>
+    <Avatar
+      id={member.id}
+      name={member.name}
+      photo={member.avatar}
+      size={size}
+      blur={!!member.isGhost}
+    />
   );
 }
 
@@ -38490,7 +38535,7 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
               marginTop:12, marginBottom:14,
               display:"flex", alignItems:"center", gap:14,
             }}>
-              <NetworkTile name={local.name} size={48} photo={local.photo}/>
+              <NetworkTile id={local.id} name={local.name} size={48} photo={local.photo}/>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{
                   fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
@@ -40076,35 +40121,10 @@ const SHELF_VISIBLE_ROWS = 6;
 
 /* ---------- account shelf ---------- */
 
-// Your photo if you've set one, otherwise a solid accent tile with lowercase
-// initials, deliberately not the photo Avatar used on the radar, so "you"
-// reads differently from "them".
-function InitialsTile({ name, size = 46, photo }) {
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // matches Avatar and the settings preview
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
-    );
-  }
-  const initials = (name || "")
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(w => w[0]).join("").toLowerCase();
+// Account shelf avatar — same bauhaus fallback as everywhere else.
+function InitialsTile({ id, name, size = 46, photo }) {
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000", background:"#FF8A00",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      fontFamily:"var(--mac-mono)", fontSize: size * 0.4,
-      fontWeight:700, color:"#000", letterSpacing:0.5,
-    }}>{initials}</span>
+    <Avatar id={id} name={name} photo={photo} size={size}/>
   );
 }
 
@@ -40226,7 +40246,7 @@ function UserMenu({ me, onSelect }) {
           padding:"7px 11px", textAlign:"left", cursor:"pointer",
           border:"1px solid #000", background: open ? "#F2EFE6" : "#fff",
         }}>
-        <InitialsTile name={me.name} size={34} photo={me.photo}/>
+        <InitialsTile id={me.id} name={me.name} size={34} photo={me.photo}/>
         <span style={{ flex:1, minWidth:0 }}>
           <span style={{
             display:"block",
@@ -43311,7 +43331,7 @@ function MatchCard({ person, onOpenRoom, onAccept, onPass, onSummary, onProfile,
         transition:"all .12s ease",
       }}>
       <span onClick={openProfile} title="view profile" style={{ cursor:"pointer", lineHeight:0 }}>
-        <Avatar name={person.name} photo={person.photo} size={36} ring={accepted}/>
+        <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={36} ring={accepted}/>
       </span>
       <div style={{ display:"grid", gap:3, minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", minWidth:0 }}>
@@ -43483,7 +43503,7 @@ function Inbox({ conversations, onOpen, onClose, retention, onChangeRetention })
                 ? "inset 1px 1px 0 #FFD7A0, inset -1px -1px 0 #8A4500, 1px 1px 0 rgba(0,0,0,0.2)"
                 : "inset 1px 1px 0 #fff, inset -1px -1px 0 var(--ink-3), 1px 1px 0 rgba(0,0,0,0.2)",
             }}>
-              <Avatar name={c.name} photo={c.person ? c.person.photo : null} size={32}/>
+              <Avatar id={c.userId || c.id} name={c.name} photo={c.person ? c.person.photo : null} size={32}/>
               <div style={{ display:"grid", gap:3, minWidth:0 }}>
                 <div style={{ fontFamily:"var(--amiga-title)", fontSize:14, fontWeight:600, color:"#000" }}>
                   {c.name}
@@ -43557,7 +43577,7 @@ function SummaryWindow({ person, onClose }) {
           padding:"12px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} photo={person.photo} size={34}/>
+          <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
           <div style={{ display:"grid", gap:2, minWidth:0 }}>
             <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
               {person.name}
@@ -43761,7 +43781,7 @@ function ProfileWindow({ person, onClose, onAccept, onPass, onOpenChat, actions 
           padding:"14px 16px", borderBottom:"1px solid #000",
           display:"flex", gap:12, alignItems:"center", background:"#fff",
         }}>
-          <Avatar name={person.name} photo={merged.photo} size={42} ring={isAccepted}/>
+          <Avatar id={person.userId || person.id} name={person.name} photo={merged.photo} size={42} ring={isAccepted}/>
           <div style={{
             fontFamily:"var(--amiga-title)", fontSize:17, fontWeight:600, color:"#000",
             minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
@@ -43861,7 +43881,7 @@ function ChatWindow({ person, messages, draft, setDraft, onSend, onClose, retent
             padding:"12px 16px", borderBottom:"1px solid #000",
             display:"flex", gap:12, alignItems:"center", background:"#fff",
           }}>
-            <Avatar name={person.name} photo={person.photo} size={34}/>
+            <Avatar id={person.userId || person.id} name={person.name} photo={person.photo} size={34}/>
             <div style={{ display:"grid", gap:2, minWidth:0 }}>
               <div style={{ fontFamily:"var(--amiga-title)", fontSize:15, fontWeight:600, color:"#000" }}>
                 {person.name}

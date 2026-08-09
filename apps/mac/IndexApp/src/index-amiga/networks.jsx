@@ -1,35 +1,25 @@
 // Networks, the communities you're in, and the ones you could join. Reached
 // from the networks row on the hub's sidebar footer.
 
-// Deterministic 2x2 tile standing in for the generative avatar. Same name
-// always yields the same tile, so a network is recognisable by its colours.
-function NetworkTile({ name, size = 36, photo }) {
+// Deterministic bauhaus avatar matching the web app. Same id/name always
+// yields the same pattern, so a network is recognisable without a photo.
+function NetworkTile({ id, name, size = 36, photo }) {
+  const seed = id || name || "default";
+  const frameStyle = {
+    flex:"0 0 auto", width:size, height:size,
+    borderRadius:"50%", overflow:"hidden",
+  };
   if (photo) {
     return (
       <img
         src={photo}
         alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size,
-          objectFit:"cover", display:"block",
-          border:"1px solid #000",
-          // same treatment as every other photo in the app
-          filter:"grayscale(1) contrast(1.05)",
-        }}/>
+        style={{ ...frameStyle, objectFit:"cover", display:"block" }}/>
     );
   }
-  const PAL = ["#FF8A00", "#0055AA", "#C64B8C", "#3E8E7E", "#E8C547", "#7B5EA7"];
-  let h = 0;
-  for (let i = 0; i < (name || "").length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  // unsigned shift, a signed one goes negative on bit 31 and indexes off the end
-  const cells = [0, 1, 2, 3].map(i => PAL[(h >>> (i * 3)) % PAL.length]);
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size,
-      border:"1px solid #000",
-      display:"grid", gridTemplateColumns:"1fr 1fr", gridTemplateRows:"1fr 1fr",
-    }}>
-      {cells.map((c, i) => <span key={i} style={{ background:c }}/>)}
+    <span style={frameStyle}>
+      <BoringAvatar seed={seed} size={size}/>
     </span>
   );
 }
@@ -42,7 +32,7 @@ function NetworkPhoto({ name, photo, onPick, size = 42 }) {
   return (
     <span style={{ display:"flex", alignItems:"center", gap:13, minWidth:0 }}>
       <PicturePicker size={size} label="change network picture" onPick={onPick} onError={setErr}>
-        <NetworkTile name={name || "?"} size={size} photo={photo}/>
+        <NetworkTile id={name} name={name || "?"} size={size} photo={photo}/>
       </PicturePicker>
 
       {err && (
@@ -550,7 +540,7 @@ function RequestStatusRow({ req, onEdit, onDismiss }) {
       display:"flex", alignItems:"flex-start", gap:12,
       padding:"10px 12px", borderBottom:"1px solid #DDD8CC",
     }}>
-      <NetworkTile name={req.title} photo={
+      <NetworkTile id={req.id} name={req.title} photo={
         req.imageUrl && window.IndexApp && window.IndexApp.avatarUrl
           ? window.IndexApp.avatarUrl(req.imageUrl)
           : req.imageUrl || undefined
@@ -598,7 +588,7 @@ function NetworkRow({ net, onOpen, onJoin }) {
         borderBottom:"1px solid #DDD8CC",
         background: hover ? "#FAF8F3" : "transparent",
       }}>
-      <NetworkTile name={net.name} photo={net.photo}/>
+      <NetworkTile id={net.id} name={net.name} photo={net.photo}/>
 
       <button
         onClick={() => onOpen && onOpen(net)}
@@ -679,34 +669,14 @@ function Signal({ sig, netName, onRemove, onOpen }) {
 }
 
 function MemberFace({ member, size = 28 }) {
-  const photo = member.avatar
-    ? (window.IndexApp && window.IndexApp.avatarUrl
-      ? window.IndexApp.avatarUrl(member.avatar)
-      : member.avatar)
-    : null;
-  if (photo) {
-    return (
-      <img
-        src={photo}
-        alt=""
-        style={{
-          flex:"0 0 auto", width:size, height:size, borderRadius:"50%",
-          objectFit:"cover", border:"1px solid #000",
-          filter: member.isGhost ? "grayscale(1) blur(1px)" : "grayscale(1) contrast(1.05)",
-        }}/>
-    );
-  }
-  const initials = String(member.name || "?")
-    .split(/\s+/).filter(Boolean).slice(0, 2)
-    .map(w => w[0]).join("").toLowerCase();
   return (
-    <span style={{
-      flex:"0 0 auto", width:size, height:size, borderRadius:"50%",
-      border:"1px solid #000", background:"#F2F0EC",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      fontFamily:"var(--mac-mono)", fontSize:10, color:"#000",
-      filter: member.isGhost ? "blur(1px)" : "none",
-    }}>{initials}</span>
+    <Avatar
+      id={member.id}
+      name={member.name}
+      photo={member.avatar}
+      size={size}
+      blur={!!member.isGhost}
+    />
   );
 }
 
@@ -1204,7 +1174,7 @@ function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSigna
               marginTop:12, marginBottom:14,
               display:"flex", alignItems:"center", gap:14,
             }}>
-              <NetworkTile name={local.name} size={48} photo={local.photo}/>
+              <NetworkTile id={local.id} name={local.name} size={48} photo={local.photo}/>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{
                   fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",

@@ -51,11 +51,12 @@
   height: 32px;
   border-radius: 999px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--color-primary, #4fd1c5) 22%, transparent);
-  color: var(--color-card-foreground, inherit);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+}
+
+.index-dashboard__avatar svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .index-dashboard__avatar-img {
@@ -1014,11 +1015,7 @@
 
 .index-dashboard__net-member-avatar--fallback {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--color-muted-foreground, rgba(148, 163, 184, 0.92)) 18%, transparent);
-  font-size: 0.7rem;
-  text-transform: lowercase;
+  overflow: hidden;
 }
 
 .index-dashboard__net-member-avatar--ghost {

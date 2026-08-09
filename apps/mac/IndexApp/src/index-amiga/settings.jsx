@@ -125,13 +125,9 @@ function PhotoPicker({ me, name, photo, onPick }) {
               alt=""
               style={{
                 width:54, height:54, objectFit:"cover", display:"block",
-                border:"1px solid #000",
-                boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                // same treatment Avatar gives its photos, so an uploaded one
-                // doesn't arrive in colour and break the monochrome look
-                filter:"grayscale(1) contrast(1.05)",
+                borderRadius:"50%",
               }}/>
-          : <Avatar name={me.name} size={54}/>}
+          : <Avatar id={me.id} name={me.name} size={54}/>}
       </PicturePicker>
 
       <div style={{ minWidth:0 }}>
