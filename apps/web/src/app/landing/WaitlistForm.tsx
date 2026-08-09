@@ -12,12 +12,21 @@ type Props = {
   onStatusChange?: (status: SubscribeStatus) => void;
 };
 
+async function postSubscribe(email: string, type: "waitlist" | "newsletter") {
+  return fetch(apiUrl("/api/subscribe"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, type }),
+  });
+}
+
 /**
- * Waitlist signup form (POST /api/subscribe, type "waitlist").
- * Shared between the landing waitlist modal and the /waitlist page.
+ * Request-access signup (POST /api/subscribe, type "waitlist").
+ * Optional monthly updates toggle posts type "newsletter" as well.
  */
 export function WaitlistForm({ idPrefix, header, successAction, onStatusChange }: Props) {
   const [email, setEmail] = useState("");
+  const [monthlyUpdates, setMonthlyUpdates] = useState(true);
   const [status, setStatusState] = useState<SubscribeStatus>("idle");
 
   const setStatus = (s: SubscribeStatus) => {
@@ -30,12 +39,15 @@ export function WaitlistForm({ idPrefix, header, successAction, onStatusChange }
     if (!email) return;
     setStatus("loading");
     try {
-      const res = await fetch(apiUrl("/api/subscribe"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "waitlist" }),
-      });
-      setStatus(res.ok ? "success" : "error");
+      const waitlistRes = await postSubscribe(email, "waitlist");
+      if (!waitlistRes.ok) {
+        setStatus("error");
+        return;
+      }
+      if (monthlyUpdates) {
+        await postSubscribe(email, "newsletter");
+      }
+      setStatus("success");
     } catch {
       setStatus("error");
     }
@@ -48,7 +60,8 @@ export function WaitlistForm({ idPrefix, header, successAction, onStatusChange }
           you&rsquo;re on the list
         </h3>
         <p className="landing-modal-lede">
-          Check your inbox for your welcome email.
+          We&rsquo;ll be in touch when the next cycle opens.
+          {monthlyUpdates ? " Monthly updates are on." : ""}
         </p>
         {successAction}
       </div>
@@ -73,6 +86,17 @@ export function WaitlistForm({ idPrefix, header, successAction, onStatusChange }
           autoFocus
         />
 
+        <label className="landing-modal-toggle" htmlFor={`${idPrefix}-updates`}>
+          <input
+            id={`${idPrefix}-updates`}
+            type="checkbox"
+            checked={monthlyUpdates}
+            onChange={(e) => setMonthlyUpdates(e.target.checked)}
+            disabled={status === "loading"}
+          />
+          <span className="landing-modal-toggle-label">Get monthly notes from the team</span>
+        </label>
+
         {status === "error" && (
           <p className="landing-modal-error">
             Something went wrong. Please try again.
@@ -80,10 +104,10 @@ export function WaitlistForm({ idPrefix, header, successAction, onStatusChange }
         )}
         <button
           type="submit"
-          className="landing-modal-submit"
+          className="landing-modal-submit is-primary"
           disabled={status === "loading"}
         >
-          {status === "loading" ? "Submitting…" : "Join the waitlist"}
+          {status === "loading" ? "Submitting…" : "Request Access"}
         </button>
       </form>
     </>
