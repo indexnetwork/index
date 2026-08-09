@@ -802,6 +802,8 @@ type ModuleEvidence = {
   sourceFile: ts.SourceFile;
   declarations: Map<string, ts.Node>;
   reexports: Map<string, { targetPath: string; importedSymbol: string }>;
+  namespaceReexports: Map<string, string>;
+  exportAllTargets: string[];
   exportAssignments: Map<string, ts.Expression>;
 };
 
@@ -870,22 +872,35 @@ function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceConte
     const sourceFile = program.getSourceFile(path);
     if (!sourceFile) continue;
     const reexports = new Map<string, { targetPath: string; importedSymbol: string }>();
+    const namespaceReexports = new Map<string, string>();
+    const exportAllTargets: string[] = [];
     const exportAssignments = new Map<string, ts.Expression>();
     for (const statement of sourceFile.statements) {
       if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
-        && !statement.isTypeOnly && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        && !statement.isTypeOnly) {
         const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
         if (!targetPath) continue;
-        for (const element of statement.exportClause.elements) {
-          if (!element.isTypeOnly) reexports.set(element.name.text, {
-            targetPath,
-            importedSymbol: (element.propertyName ?? element.name).text,
-          });
+        if (!statement.exportClause) exportAllTargets.push(targetPath);
+        else if (ts.isNamespaceExport(statement.exportClause)) namespaceReexports.set(statement.exportClause.name.text, targetPath);
+        else if (ts.isNamedExports(statement.exportClause)) {
+          for (const element of statement.exportClause.elements) {
+            if (!element.isTypeOnly) reexports.set(element.name.text, {
+              targetPath,
+              importedSymbol: (element.propertyName ?? element.name).text,
+            });
+          }
         }
       }
       if (ts.isExportAssignment(statement) && !statement.isExportEquals) exportAssignments.set("default", statement.expression);
     }
-    modules.set(path, { sourceFile, declarations: topLevelDeclarations(sourceFile), reexports, exportAssignments });
+    modules.set(path, {
+      sourceFile,
+      declarations: topLevelDeclarations(sourceFile),
+      reexports,
+      namespaceReexports,
+      exportAllTargets: [...new Set(exportAllTargets)].sort(),
+      exportAssignments,
+    });
   }
   const evidence: EvidenceContext = { modules, checker, valueAliases: new Map() };
   indexAssignmentAliases(evidence);
@@ -1190,48 +1205,189 @@ function isPureExportReference(expression: ts.Expression, evidence: EvidenceCont
   return false;
 }
 
-function isImportOrExportReference(node: ts.Node, evidence: EvidenceContext): boolean {
+function isDeclarationOnlyExportReference(node: ts.Node, evidence: EvidenceContext): boolean {
   let current: ts.Node | undefined = node;
   while (current && !ts.isSourceFile(current)) {
-    if (ts.isImportDeclaration(current) || ts.isImportClause(current) || ts.isImportSpecifier(current)
-      || ts.isNamespaceImport(current) || ts.isImportEqualsDeclaration(current)
-      || ts.isExportDeclaration(current) || ts.isExportSpecifier(current)
-      || (ts.isExportAssignment(current) && isPureExportReference(current.expression, evidence))) return true;
+    if (ts.isExportDeclaration(current) || ts.isExportSpecifier(current)) return true;
+    if (ts.isExportAssignment(current)) return isPureExportReference(current.expression, evidence);
+    if (ts.isStatement(current)) return false;
     current = current.parent;
   }
   return false;
 }
 
-function canCarryValueSymbol(node: ts.Node): boolean {
-  return ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node);
+function importBindingIsDeclarationOnlyBarrel(name: ts.Identifier, evidence: EvidenceContext): boolean {
+  const symbol = canonicalSymbol(evidence.checker.getSymbolAtLocation(name), evidence.checker);
+  if (!symbol) return false;
+  let importDeclaration: ts.Node = name;
+  while (importDeclaration.parent && !ts.isImportDeclaration(importDeclaration)) importDeclaration = importDeclaration.parent;
+  let referenceCount = 0;
+  let runtimeReference = false;
+  const sourceFile = name.getSourceFile();
+  const visit = (node: ts.Node): void => {
+    if (runtimeReference || nodeIsInsideDeclaration(node, importDeclaration)) return;
+    if (ts.isIdentifier(node)
+      && canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker) === symbol) {
+      referenceCount += 1;
+      if (!isDeclarationOnlyExportReference(node, evidence)) runtimeReference = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return referenceCount > 0 && !runtimeReference;
 }
 
-function bindingPropertySymbol(node: ts.Node, evidence: EvidenceContext): ts.Symbol | undefined {
-  const propertyName = ts.isComputedPropertyName(node.parent) ? node.parent : node;
-  const parent = propertyName.parent;
-  let source: ts.Expression | undefined;
-  if (ts.isBindingElement(parent) && parent.propertyName === propertyName) {
-    const bindingPattern = parent.parent;
-    if (ts.isObjectBindingPattern(bindingPattern)
-      && ts.isVariableDeclaration(bindingPattern.parent)
-      && bindingPattern.parent.initializer) source = bindingPattern.parent.initializer;
-  } else if (ts.isPropertyAssignment(parent) && parent.name === propertyName
-    && ts.isObjectLiteralExpression(parent.parent)
-    && ts.isBinaryExpression(parent.parent.parent)
-    && parent.parent.parent.left === parent.parent
-    && parent.parent.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-    source = parent.parent.parent.right;
-  }
-  const name = source && constantPropertyKey(propertyName, evidence);
-  return source && name !== undefined
-    ? canonicalSymbol(evidence.checker.getPropertyOfType(evidence.checker.getTypeAtLocation(source), name), evidence.checker)
+type ExposureContext = {
+  closureSymbols: Set<ts.Symbol>;
+  evidence: EvidenceContext;
+};
+
+function moduleExportSymbol(path: string, name: string, evidence: EvidenceContext): ts.Symbol | undefined {
+  const sourceFile = evidence.modules.get(path)?.sourceFile;
+  const moduleSymbol = sourceFile && evidence.checker.getSymbolAtLocation(sourceFile);
+  return moduleSymbol
+    ? evidence.checker.getExportsOfModule(moduleSymbol).find((symbol) => symbol.name === name)
     : undefined;
 }
 
-function runtimeValueEscapes(
+function exportedModulePath(symbol: ts.Symbol | undefined, evidence: EvidenceContext): string | undefined {
+  const canonical = canonicalSymbol(symbol, evidence.checker);
+  for (const declaration of canonical?.declarations ?? []) {
+    if (ts.isSourceFile(declaration) && evidence.modules.has(declaration.fileName)) return declaration.fileName;
+  }
+  return undefined;
+}
+
+function namespaceImportTarget(expression: ts.Expression, evidence: EvidenceContext): string | undefined {
+  const candidate = unwrapExpression(expression);
+  if (!ts.isIdentifier(candidate)) return undefined;
+  const symbol = evidence.checker.getSymbolAtLocation(candidate);
+  for (const declaration of symbol?.declarations ?? []) {
+    if (!ts.isNamespaceImport(declaration)) continue;
+    const importDeclaration = declaration.parent.parent.parent;
+    if (!ts.isImportDeclaration(importDeclaration) || !ts.isStringLiteral(importDeclaration.moduleSpecifier)) continue;
+    return importedSourcePath(declaration.getSourceFile().fileName, importDeclaration.moduleSpecifier.text);
+  }
+  return undefined;
+}
+
+function expressionCanExposeClosure(
+  expression: ts.Expression,
+  context: ExposureContext,
+  seen: Set<string>,
+): boolean {
+  const origin = expressionOrigin(expression, context.evidence);
+  const originSymbol = origin && symbolAtLocation(origin, context.evidence);
+  if (originSymbol && context.closureSymbols.has(originSymbol)) return true;
+
+  const candidate = unwrapExpression(expression);
+  const namespaceTarget = namespaceImportTarget(candidate, context.evidence);
+  if (namespaceTarget) return moduleCanExposeClosure(namespaceTarget, context, seen);
+  if (ts.isPropertyAccessExpression(candidate)) {
+    const target = namespaceImportTarget(candidate.expression, context.evidence);
+    return Boolean(target && exportBindingCanExposeClosure(target, candidate.name.text, context, seen));
+  }
+  if (ts.isElementAccessExpression(candidate) && candidate.argumentExpression) {
+    const target = namespaceImportTarget(candidate.expression, context.evidence);
+    if (!target) return false;
+    const property = constantPropertyKey(candidate.argumentExpression, context.evidence);
+    return property === undefined
+      ? moduleCanExposeClosure(target, context, seen)
+      : exportBindingCanExposeClosure(target, property, context, seen);
+  }
+  if (ts.isIdentifier(candidate)) {
+    const symbol = context.evidence.checker.getSymbolAtLocation(candidate);
+    for (const declaration of symbol?.declarations ?? []) {
+      if (ts.isVariableDeclaration(declaration) && declaration.initializer
+        && expressionCanExposeClosure(declaration.initializer, context, seen)) return true;
+    }
+  }
+  return false;
+}
+
+function exportBindingCanExposeClosure(
+  path: string,
+  name: string,
+  context: ExposureContext,
+  seen = new Set<string>(),
+): boolean {
+  const key = `${path}#${name}`;
+  if (seen.has(key)) return false;
+  const nextSeen = new Set(seen).add(key);
+  const module = context.evidence.modules.get(path);
+  if (!module) return false;
+
+  const exported = canonicalSymbol(moduleExportSymbol(path, name, context.evidence), context.evidence.checker);
+  if (exported && context.closureSymbols.has(exported)) return true;
+  const exportedNamespacePath = exportedModulePath(exported, context.evidence);
+  if (exportedNamespacePath && exportedNamespacePath !== path
+    && moduleCanExposeClosure(exportedNamespacePath, context, nextSeen)) return true;
+
+  const reexport = module.reexports.get(name);
+  if (reexport && exportBindingCanExposeClosure(reexport.targetPath, reexport.importedSymbol, context, nextSeen)) return true;
+  const namespaceTarget = module.namespaceReexports.get(name);
+  if (namespaceTarget && moduleCanExposeClosure(namespaceTarget, context, nextSeen)) return true;
+  const assignment = module.exportAssignments.get(name);
+  if (assignment && expressionCanExposeClosure(assignment, context, nextSeen)) return true;
+  return module.exportAllTargets.some((targetPath) => exportBindingCanExposeClosure(targetPath, name, context, nextSeen));
+}
+
+function moduleCanExposeClosure(
+  path: string,
+  context: ExposureContext,
+  seen = new Set<string>(),
+): boolean {
+  const key = `${path}#*`;
+  if (seen.has(key)) return false;
+  const nextSeen = new Set(seen).add(key);
+  const module = context.evidence.modules.get(path);
+  if (!module) return false;
+
+  const sourceSymbol = context.evidence.checker.getSymbolAtLocation(module.sourceFile);
+  for (const exported of sourceSymbol ? context.evidence.checker.getExportsOfModule(sourceSymbol) : []) {
+    const canonical = canonicalSymbol(exported, context.evidence.checker);
+    if (canonical && context.closureSymbols.has(canonical)) return true;
+  }
+  for (const [name] of module.reexports) {
+    if (exportBindingCanExposeClosure(path, name, context, nextSeen)) return true;
+  }
+  for (const targetPath of module.namespaceReexports.values()) {
+    if (moduleCanExposeClosure(targetPath, context, nextSeen)) return true;
+  }
+  if (module.exportAssignments.get("default")
+    && exportBindingCanExposeClosure(path, "default", context, nextSeen)) return true;
+  return module.exportAllTargets.some((targetPath) => moduleCanExposeClosure(targetPath, context, nextSeen));
+}
+
+function exportGraphCycles(path: string, evidence: EvidenceContext): string[] {
+  const cycles = new Set<string>();
+  const complete = new Set<string>();
+  const visit = (current: string, stack: string[]): void => {
+    const cycleIndex = stack.indexOf(current);
+    if (cycleIndex >= 0) {
+      cycles.add([...stack.slice(cycleIndex), current].join(" -> "));
+      return;
+    }
+    if (complete.has(current)) return;
+    const module = evidence.modules.get(current);
+    if (!module) return;
+    const targets = new Set([
+      ...module.exportAllTargets,
+      ...module.namespaceReexports.values(),
+      ...[...module.reexports.values()].map(({ targetPath }) => targetPath),
+    ]);
+    const nextStack = [...stack, current];
+    for (const target of [...targets].sort()) visit(target, nextStack);
+    complete.add(current);
+  };
+  visit(path, []);
+  return [...cycles].sort();
+}
+
+function unresolvedImportSurfaceEscapes(
   closure: Set<string>,
   evidence: EvidenceContext,
-): string[] {
+): { references: string[]; cycles: string[] } {
   const closureSymbols = new Map<ts.Symbol, SymbolLocation>();
   const closureDeclarations: ts.Declaration[] = [];
   for (const key of closure) {
@@ -1243,43 +1399,56 @@ function runtimeValueEscapes(
     closureDeclarations.push(...(symbol.declarations ?? []));
   }
 
-  const references: string[] = [];
-  for (const [path, module] of evidence.modules) {
-    const record = (node: ts.Node, symbol: ts.Symbol | undefined): void => {
-      const location = symbol && closureSymbols.get(canonicalSymbol(symbol, evidence.checker)!);
-      if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
-        references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
-      }
-    };
+  const references = new Set<string>();
+  const cycles = new Set<string>();
+  const closurePaths = new Set([...closureSymbols.values()].map(({ path }) => path));
+  for (const path of closurePaths) {
+    const module = evidence.modules.get(path);
+    if (!module) continue;
     const visit = (node: ts.Node): void => {
-      if (ts.isElementAccessExpression(node) && node.argumentExpression
-        && !isTypePosition(node) && !isImportOrExportReference(node, evidence)) {
-        const property = constantPropertyKey(node.argumentExpression, evidence);
-        if (property !== undefined) {
-          const origin = propertyOrigin(node.expression, property, evidence);
-          record(node, origin && symbolAtLocation(origin, evidence));
-        } else {
-          const sourceType = evidence.checker.getTypeAtLocation(node.expression);
-          const possible = evidence.checker.getPropertiesOfType(sourceType)
-            .map((symbol) => canonicalSymbol(symbol, evidence.checker))
-            .find((symbol): symbol is ts.Symbol => Boolean(symbol && closureSymbols.has(symbol)));
-          record(node, possible);
+      if (ts.isIdentifier(node) && !isDeclarationName(node) && !isTypePosition(node)) {
+        const symbol = canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker);
+        const location = symbol && closureSymbols.get(symbol);
+        if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
+          references.add(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
         }
-      }
-      if (canCarryValueSymbol(node) && !isDeclarationName(node) && !isTypePosition(node) && !isImportOrExportReference(node, evidence)) {
-        const origin = ts.isExpression(node) ? expressionOrigin(node, evidence) : undefined;
-        const symbols = new Set([
-          canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker),
-          bindingPropertySymbol(node, evidence),
-          origin ? symbolAtLocation(origin, evidence) : undefined,
-        ].filter((symbol): symbol is ts.Symbol => Boolean(symbol)));
-        for (const symbol of symbols) record(node, symbol);
       }
       ts.forEachChild(node, visit);
     };
     visit(module.sourceFile);
   }
-  return [...new Set(references)].sort();
+
+  const context: ExposureContext = {
+    closureSymbols: new Set(closureSymbols.keys()),
+    evidence,
+  };
+  for (const [path, module] of evidence.modules) {
+    for (const statement of module.sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !statement.importClause || statement.importClause.isTypeOnly
+        || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const targetPath = importedSourcePath(path, statement.moduleSpecifier.text);
+      if (!targetPath || !evidence.modules.has(targetPath)) continue;
+      const imported = statement.importClause;
+      const record = (name: ts.Identifier, symbol: string, exposes: boolean): void => {
+        if (!exposes || importBindingIsDeclarationOnlyBarrel(name, evidence)) return;
+        references.add(`${path}#<module>->${symbol}`);
+        for (const cycle of exportGraphCycles(targetPath, evidence)) cycles.add(cycle);
+      };
+      if (imported.name) {
+        record(imported.name, "default", exportBindingCanExposeClosure(targetPath, "default", context));
+      }
+      if (imported.namedBindings && ts.isNamedImports(imported.namedBindings)) {
+        for (const element of imported.namedBindings.elements) {
+          if (element.isTypeOnly) continue;
+          const importedName = (element.propertyName ?? element.name).text;
+          record(element.name, importedName, exportBindingCanExposeClosure(targetPath, importedName, context));
+        }
+      } else if (imported.namedBindings && ts.isNamespaceImport(imported.namedBindings)) {
+        record(imported.namedBindings.name, "*", moduleCanExposeClosure(targetPath, context));
+      }
+    }
+  }
+  return { references: [...references].sort(), cycles: [...cycles].sort() };
 }
 
 function behaviorTestNames(source: string, path: string): Set<string> {
@@ -1474,8 +1643,13 @@ export function validateConfigurationExperiments(
               if (origin) accessorClosure.add(symbolKey(origin));
             }
           }
-          const escapingReferences = runtimeValueEscapes(accessorClosure, evidence);
-          if (escapingReferences.length > 0) issues.push(`${deltaId} unresolved accessor has direct production consumer: ${escapingReferences.join(", ")}`);
+          const importSurface = unresolvedImportSurfaceEscapes(accessorClosure, evidence);
+          if (importSurface.cycles.length > 0) {
+            issues.push(`${deltaId} unresolved export provenance cycle: ${importSurface.cycles.join(", ")}`);
+          }
+          if (importSurface.references.length > 0) {
+            issues.push(`${deltaId} unresolved accessor has direct production consumer: ${importSurface.references.join(", ")}`);
+          }
           continue;
         }
         if (!["activated", "bypassed", "changed"].includes(String(delta.effect))) issues.push(`${deltaId} has invalid effect`);

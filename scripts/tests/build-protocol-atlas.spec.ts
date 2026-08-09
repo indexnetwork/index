@@ -493,6 +493,24 @@ describe("protocol atlas generator", () => {
     }
   });
 
+  test("rejects a direct named import of an unresolved accessor even when unused", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] =
+      'import { isOutcomeQuestionsActivated } from "./outcome.env.js";\nexport const unrelated = 1;\n';
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("rejects a renamed import of an unresolved accessor even when unused", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] =
+      'import { isOutcomeQuestionsActivated as active } from "./outcome.env.js";\nexport const unrelated = 1;\n';
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
   test("detects an imported alias call escaping an unresolved accessor closure", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     const input = await loadProtocolGeneratorInput(repoRoot);
@@ -581,12 +599,12 @@ describe("protocol atlas generator", () => {
     ].join("\n");
     input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = [
       'import outcomeQuestionsActive from "./unresolved-default-barrel.js";',
-      "export function consumeOutcomeQuestions() { return outcomeQuestionsActive(); }",
+      "export const unrelated = 1;",
     ].join("\n");
     const artifact = buildAtlasArtifact(input, content);
     const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");
     expect(issues).toContain("unresolved accessor has direct production consumer");
-    expect(issues).toContain("unresolved-consumer.ts#consumeOutcomeQuestions");
+    expect(issues).toContain("unresolved-consumer.ts#<module>->default");
     expect(issues).not.toContain("unresolved-default-barrel.ts#<module>");
   });
 
@@ -603,7 +621,7 @@ describe("protocol atlas generator", () => {
     ].join("\n");
     const artifact = buildAtlasArtifact(input, content);
     const issues = validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n");
-    expect(issues).toContain("unresolved-consumer.ts#consumeOutcomeQuestions");
+    expect(issues).toContain("unresolved-consumer.ts#<module>->default");
     expect(issues).not.toContain("unresolved-default-barrel.ts#<module>");
   });
 
@@ -643,7 +661,7 @@ describe("protocol atlas generator", () => {
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
   });
 
-  test("does not flag a statically known different namespace export", async () => {
+  test("fails closed on a namespace import even when visible code uses a different export", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     const input = await loadProtocolGeneratorInput(repoRoot);
     input.sourceFiles["packages/protocol/src/opportunity/outcome/resolved-consumer.ts"] = [
@@ -652,7 +670,37 @@ describe("protocol atlas generator", () => {
       "export function readOutcomeLimit() { return outcomeQuestions[key]; }",
     ].join("\n");
     const artifact = buildAtlasArtifact(input, content);
-    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).not.toContain("unresolved accessor has direct production consumer");
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+  });
+
+  test("allows a named import proven to resolve to a different export", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/resolved-consumer.ts"] =
+      'import { OUTCOME_MAX_CANDIDATES } from "./outcome.env.js";\nexport const limit = OUTCOME_MAX_CANDIDATES;\n';
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
+  });
+
+  test("fails closed on reflective and dynamic destructuring access through a namespace import", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    for (const source of [
+      [
+        'import * as outcomeQuestions from "./outcome.env.js";',
+        "export function consume(key: string) { return Reflect.get(outcomeQuestions, key); }",
+      ].join("\n"),
+      [
+        'import * as outcomeQuestions from "./outcome.env.js";',
+        "const key: string = Math.random() ? 'x' : 'y';",
+        "const { [key]: active } = outcomeQuestions;",
+        "export { active };",
+      ].join("\n"),
+    ]) {
+      const input = await loadProtocolGeneratorInput(repoRoot);
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = source;
+      const artifact = buildAtlasArtifact(input, content);
+      expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+    }
   });
 
   for (const [shape, statements] of [
@@ -745,16 +793,74 @@ describe("protocol atlas generator", () => {
     expect(issues).toContain("setting prerequisite does not match its mode assignment");
   });
 
-  test("ignores type-only and barrel-only references for unresolved consumers", async () => {
+  test("ignores type-only and declaration-only barrel references for unresolved consumers", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     const input = await loadProtocolGeneratorInput(repoRoot);
     input.sourceFiles["packages/protocol/src/opportunity/outcome/type-only.ts"] = [
       'import type { isOutcomeQuestionsActivated as ActivationType } from "./outcome.env.js";',
       "export type Consumer = typeof ActivationType;",
     ].join("\n");
-    input.sourceFiles["packages/protocol/src/opportunity/outcome/barrel.ts"] = 'export { isOutcomeQuestionsActivated } from "./outcome.env.js";';
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/named-barrel.ts"] = 'export { isOutcomeQuestionsActivated } from "./outcome.env.js";';
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/namespace-barrel.ts"] = 'export * as outcomeQuestions from "./outcome.env.js";';
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/local-namespace-barrel.ts"] = [
+      'import * as outcomeQuestions from "./outcome.env.js";',
+      "export { outcomeQuestions };",
+    ].join("\n");
     const artifact = buildAtlasArtifact(input, content);
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot)).toEqual([]);
+  });
+
+  test("rejects the first downstream runtime import through single and multi-hop barrels", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    for (const sourceFiles of [
+      {
+        "packages/protocol/src/opportunity/outcome/barrel.ts": 'export { isOutcomeQuestionsActivated } from "./outcome.env.js";',
+        "packages/protocol/src/opportunity/outcome/unresolved-consumer.ts": 'import { isOutcomeQuestionsActivated } from "./barrel.js";\nexport const unrelated = 1;',
+      },
+      {
+        "packages/protocol/src/opportunity/outcome/namespace-barrel.ts": 'export * as outcomeQuestions from "./outcome.env.js";',
+        "packages/protocol/src/opportunity/outcome/unresolved-consumer.ts": 'import * as barrel from "./namespace-barrel.js";\nexport const unrelated = 1;',
+      },
+      {
+        "packages/protocol/src/opportunity/outcome/local-namespace-barrel.ts": [
+          'import * as outcomeQuestions from "./outcome.env.js";',
+          "export { outcomeQuestions };",
+        ].join("\n"),
+        "packages/protocol/src/opportunity/outcome/unresolved-consumer.ts": 'import { outcomeQuestions } from "./local-namespace-barrel.js";\nexport const unrelated = 1;',
+      },
+      {
+        "packages/protocol/src/opportunity/outcome/barrel-a.ts": 'export * from "./outcome.env.js";',
+        "packages/protocol/src/opportunity/outcome/barrel-b.ts": 'export * from "./barrel-a.js";',
+        "packages/protocol/src/opportunity/outcome/unresolved-consumer.ts": 'import * as outcomeQuestions from "./barrel-b.js";\nexport const unrelated = 1;',
+      },
+    ]) {
+      const input = await loadProtocolGeneratorInput(repoRoot);
+      Object.assign(input.sourceFiles, sourceFiles);
+      const artifact = buildAtlasArtifact(input, content);
+      expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+    }
+  });
+
+  test("fails malformed cyclic barrel provenance without recursing indefinitely", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/barrel-a.ts"] = [
+      'export * from "./barrel-b.js";',
+      'export * from "./outcome.env.js";',
+    ].join("\n");
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/barrel-b.ts"] = 'export * from "./barrel-a.js";';
+    input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = 'import * as outcomeQuestions from "./barrel-a.js";\nexport const unrelated = 1;';
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved export provenance cycle");
+  });
+
+  test("rejects a same-module reference outside the unresolved accessor closure", async () => {
+    const content = await loadAtlasContent() as MutableConfigurationContent;
+    const input = await loadProtocolGeneratorInput(repoRoot);
+    const path = "packages/protocol/src/opportunity/outcome/outcome.env.ts";
+    input.sourceFiles[path] += "\nexport const escapedOutcomeActivation = isOutcomeQuestionsActivated;\n";
+    const artifact = buildAtlasArtifact(input, content);
+    expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
   });
 
   test("normalizes real nested experiments deterministically without adding unresolved chains", async () => {
