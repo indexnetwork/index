@@ -160,7 +160,7 @@ The authorization code is not a credential. Only Index Connector can exchange it
 
 ### Credential identity
 
-Standalone Hermes credentials carry server-enforced identity metadata:
+Standalone Hermes credentials use an `idxh_` secret prefix and a dedicated `hermes_agent_credentials` table that older API binaries do not query. Therefore a rollback binary cannot reinterpret them as generic Better Auth API keys. They carry server-enforced identity metadata:
 
 - dedicated audience, distinct from owner and generic legacy keys;
 - owner user ID;
@@ -268,7 +268,7 @@ Before production rollout, automation checks:
 - no duplicate selected runtime executors exist;
 - migration duration and lock behavior on a production-sized disposable clone;
 - all new indexes and constraints are valid;
-- the previous production binary cannot treat the new dedicated audience as a generic credential.
+- the previous production binary rejects the `idxh_` credential because it has no row in the legacy API-key table and cannot treat the dedicated audience as a generic credential.
 
 Rollback is forward-fix-first after credentials are issued. The emergency rollback runbook first pauses Hermes globally and bulk-revokes all dedicated Hermes credentials before restoring an older server.
 
@@ -374,6 +374,7 @@ The production-hardening stack is code-ready when:
 - no production Hermes or owner credential is persisted outside Keychain;
 - production Hermes does not receive or print the raw server credential;
 - account-security operations remain unreachable to Hermes credentials;
+- the previous production API binary rejects every `idxh_` credential as unknown;
 - migration revokes plaintext-era credentials and requires fresh login;
 - expiry, disconnect, logout, and uncertain failures stop Hermes and preserve Index fallback;
 - real PostgreSQL race, fault, migration, and continuation suites pass in dedicated CI;
