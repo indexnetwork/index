@@ -318,13 +318,29 @@ describe("ProtocolAtlasCore configuration lab", () => {
     expect(availability.errors.join(" ")).toContain("bad-prerequisite");
   });
 
-  test("omits an experiment whose runtime delta references a missing curated step", () => {
+  test("keeps all committed experiments when curated content is omitted", async () => {
+    delete (globalThis as { ProtocolAtlasGenerated?: unknown }).ProtocolAtlasGenerated;
+    await import(`../../docs/protocol-atlas/protocol.generated.js?test=${crypto.randomUUID()}`);
+    const generated = structuredClone((globalThis as { ProtocolAtlasGenerated: unknown }).ProtocolAtlasGenerated);
+    delete (globalThis as { ProtocolAtlasGenerated?: unknown }).ProtocolAtlasGenerated;
+
+    const availability = core().configurationAvailability(generated);
+    expect(availability.available).toBe(true);
+    expect(availability.experiments).toHaveLength(20);
+    expect(availability.errors).toEqual([]);
+  });
+
+  test("omits an experiment whose runtime delta references a missing curated step only when content is supplied", () => {
     const generated = fixtureGenerated();
     const malformed = structuredClone(generated.configurationExperiments[0]);
     malformed.id = "bad-step-target";
     malformed.modes[2].deltas[0].targetKind = "step";
     malformed.modes[2].deltas[0].targetId = "missing-step";
     generated.configurationExperiments.push(malformed);
+
+    const withoutContent = core().configurationAvailability(generated);
+    expect(withoutContent.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract", "bad-step-target"]);
+    expect(withoutContent.errors).toEqual([]);
 
     const availability = core().configurationAvailability(generated, fixtureContent());
     expect(availability.experiments.map(({ id }) => id)).toEqual(["negotiation-screen", "questioner-discovery-contract"]);

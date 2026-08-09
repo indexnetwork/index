@@ -84,6 +84,7 @@
       if (!nonEmptyString(candidate[field])) errors.push(`${field} must be non-empty`);
     }
     if (!["definitive", "unresolved"].includes(candidate.coverage)) errors.push("coverage must be definitive or unresolved");
+    const validateStepTargets = isRecord(content) && Array.isArray(content.flows);
     const stepIds = new Set(records(content && content.flows).filter(isRecord)
       .flatMap((flow) => records(flow.steps).filter(isRecord).map((step) => step.id)));
     for (const field of ["affectedChapterIds", "affectedStepIds"]) {
@@ -176,7 +177,7 @@
         deltaIds.add(delta.id);
         if (delta.targetKind === "node" && !nodeIds.has(delta.targetId)) errors.push(`mode ${mode.id} delta node target is missing`);
         if (delta.targetKind === "edge" && !edgeIds.has(delta.targetId)) errors.push(`mode ${mode.id} delta edge target is missing`);
-        if (delta.targetKind === "step" && !stepIds.has(delta.targetId)) errors.push(`mode ${mode.id} delta step target is missing`);
+        if (delta.targetKind === "step" && validateStepTargets && !stepIds.has(delta.targetId)) errors.push(`mode ${mode.id} delta step target is missing`);
         if (!Array.isArray(delta.settingKeys) || delta.settingKeys.length === 0 || delta.settingKeys.some((key) => !settingsByKey.has(key))) errors.push(`mode ${mode.id} delta settingKeys are malformed`);
         if (delta.effect === "unresolved") {
           if (delta.noDirectProtocolConsumer !== true || ["consumerPath", "consumerSymbol", "referenceChain", "behaviorTest"].some((field) => delta[field] !== undefined)) errors.push(`mode ${mode.id} unresolved delta evidence is malformed`);

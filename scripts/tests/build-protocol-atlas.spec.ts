@@ -541,6 +541,36 @@ describe("protocol atlas generator", () => {
     expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
   });
 
+  for (const [shape, statements] of [
+    ["namespace destructuring", [
+      'import * as outcomeQuestions from "./outcome.env.js";',
+      "const { isOutcomeQuestionsActivated: active } = outcomeQuestions;",
+      "export function consumeOutcomeQuestions() { return active(); }",
+    ]],
+    ["object alias", [
+      'import { isOutcomeQuestionsActivated } from "./outcome.env.js";',
+      "const gates = { active: isOutcomeQuestionsActivated };",
+      "export function consumeOutcomeQuestions() { return gates.active(); }",
+    ]],
+    ["Function.call", [
+      'import { isOutcomeQuestionsActivated } from "./outcome.env.js";',
+      "export function consumeOutcomeQuestions() { return isOutcomeQuestionsActivated.call(undefined); }",
+    ]],
+    ["callback passing", [
+      'import { isOutcomeQuestionsActivated } from "./outcome.env.js";',
+      "const invoke = (callback: () => boolean) => callback();",
+      "export function consumeOutcomeQuestions() { return invoke(isOutcomeQuestionsActivated); }",
+    ]],
+  ] as const) {
+    test(`detects ${shape} as an unresolved accessor value escape`, async () => {
+      const content = await loadAtlasContent() as MutableConfigurationContent;
+      const input = await loadProtocolGeneratorInput(repoRoot);
+      input.sourceFiles["packages/protocol/src/opportunity/outcome/unresolved-consumer.ts"] = statements.join("\n");
+      const artifact = buildAtlasArtifact(input, content);
+      expect(validateConfigurationExperiments(content, artifact, input, repoRoot).join("\n")).toContain("unresolved accessor has direct production consumer");
+    });
+  }
+
   test("rejects shadowed same-name declarations as definitive chain evidence", async () => {
     const content = await loadAtlasContent() as MutableConfigurationContent;
     const input = await loadProtocolGeneratorInput(repoRoot);

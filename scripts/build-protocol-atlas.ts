@@ -1009,13 +1009,6 @@ function referenceHopLinked(
   return Boolean(toDeclaration && declarationReferences(toDeclaration, from, evidence));
 }
 
-function callTargetOrigin(
-  expression: ts.LeftHandSideExpression,
-  evidence: EvidenceContext,
-): SymbolLocation | undefined {
-  return expressionOrigin(expression, evidence);
-}
-
 function nodeIsInsideDeclaration(node: ts.Node, declaration: ts.Node): boolean {
   let current: ts.Node | undefined = node;
   while (current) {
@@ -1025,25 +1018,40 @@ function nodeIsInsideDeclaration(node: ts.Node, declaration: ts.Node): boolean {
   return false;
 }
 
-function runtimeCallReferences(
+function isImportOrExportReference(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current && !ts.isSourceFile(current)) {
+    if (ts.isImportDeclaration(current) || ts.isImportClause(current) || ts.isImportSpecifier(current)
+      || ts.isNamespaceImport(current) || ts.isImportEqualsDeclaration(current)
+      || ts.isExportDeclaration(current) || ts.isExportSpecifier(current)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function runtimeValueEscapes(
   closure: Set<string>,
   evidence: EvidenceContext,
 ): string[] {
+  const closureSymbols = new Map<ts.Symbol, SymbolLocation>();
+  const closureDeclarations: ts.Declaration[] = [];
+  for (const key of closure) {
+    const separator = key.lastIndexOf("#");
+    const location = { path: key.slice(0, separator), symbol: key.slice(separator + 1) };
+    const symbol = symbolAtLocation(location, evidence);
+    if (!symbol) continue;
+    closureSymbols.set(symbol, location);
+    closureDeclarations.push(...(symbol.declarations ?? []));
+  }
+
   const references: string[] = [];
   for (const [path, module] of evidence.modules) {
     const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node)) {
-        const target = callTargetOrigin(node.expression, evidence);
-        if (target && closure.has(symbolKey(target))) {
-          const insideClosure = [...closure].some((key) => {
-            const separator = key.lastIndexOf("#");
-            const closurePath = key.slice(0, separator);
-            const closureSymbol = key.slice(separator + 1);
-            if (closurePath !== path) return false;
-            const declaration = evidence.modules.get(closurePath)?.declarations.get(closureSymbol);
-            return Boolean(declaration && nodeIsInsideDeclaration(node, declaration));
-          });
-          if (!insideClosure) references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${target.symbol}`);
+      if (ts.isIdentifier(node) && !isDeclarationName(node) && !isTypePosition(node) && !isImportOrExportReference(node)) {
+        const symbol = canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker);
+        const location = symbol && closureSymbols.get(symbol);
+        if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
+          references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
         }
       }
       ts.forEachChild(node, visit);
@@ -1245,7 +1253,7 @@ export function validateConfigurationExperiments(
               if (origin) accessorClosure.add(symbolKey(origin));
             }
           }
-          const escapingReferences = runtimeCallReferences(accessorClosure, evidence);
+          const escapingReferences = runtimeValueEscapes(accessorClosure, evidence);
           if (escapingReferences.length > 0) issues.push(`${deltaId} unresolved accessor has direct production consumer: ${escapingReferences.join(", ")}`);
           continue;
         }
