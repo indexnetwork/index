@@ -21,7 +21,12 @@ while true; do
         sleep 0.1
       done
     fi
-    open -n dist/Index.app
+    if ! open -n dist/Index.app; then
+      # kLSIncompatibleSystemVersionErr (-10825) when the Mach-O minos is
+      # newer than the host — build.sh pins -target; this is a last resort.
+      echo "==> open failed; launching Contents/MacOS/Index directly"
+      dist/Index.app/Contents/MacOS/Index >/dev/null 2>&1 &
+    fi
   else
     echo "==> build failed — waiting for the next change"
   fi

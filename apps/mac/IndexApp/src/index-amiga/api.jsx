@@ -167,10 +167,34 @@ window.IndexApp = (function () {
     return {
       snapshot,
       me: mapMe(user),
-      networks: mapNetworks(networks),
+      networks: mapNetworks(networks, user),
       features,
       raw: { user, features, networks, intents, questions, radarItems },
     };
+  }
+
+  // Web origin for share / invitation links (Access tab). Prefer the configured
+  // APP_URL the shell injected — deepLinkHosts puts the associated-domains
+  // (often prod) host first, which must not drive share URLs on dev/staging.
+  function webBaseUrl() {
+    const appUrl = native().appUrl;
+    if (appUrl) return String(appUrl).replace(/\/+$/, "");
+
+    // Browser preview / missing shell: derive from the API base the same way
+    // Hermes pairs login with INDEX_API_URL (drop leading `protocol.`).
+    try {
+      const u = new URL(apiBaseUrl());
+      let host = u.hostname;
+      if (host === "localhost" || host === "127.0.0.1") {
+        return `${u.protocol}//${host}:3000`;
+      }
+      if (host.startsWith("protocol.")) host = host.slice("protocol.".length);
+      return `https://${host}`;
+    } catch (e) { /* fall through */ }
+
+    const hosts = native().deepLinkHosts;
+    const host = Array.isArray(hosts) && hosts.length ? String(hosts[0]) : "index.network";
+    return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
   }
 
   // Map an API user onto the shape the UI's ME expects. Live-only: there is no
@@ -195,20 +219,38 @@ window.IndexApp = (function () {
     };
   }
 
-  function mapNetworks(networks) {
-    return networks.map((n) => ({
-      id: n.id,
-      name: n.title || n.name || "untitled",
-      members: (n._count && n._count.members) || n.memberCount || 0,
-      role: n.isPersonal ? "personal" : (n.role || "member"),
-      joined: true,
-      isPersonal: n.isPersonal === true,
-      privacy: n.joinPolicy === "anyone" ? "public" : "private",
-      // Same key resolution as user avatars: S3 keys need the storage base.
-      photo: avatarUrl(n.imageUrl || n.photo || null),
-      signals: [],
-      source: n,
-    }));
+  function mapNetworks(networks, user) {
+    const meId = user && user.id;
+    return networks.map((n) => {
+      const joinPolicy = (n.permissions && n.permissions.joinPolicy) || n.joinPolicy || "invite_only";
+      const invite = (n.permissions && n.permissions.invitationLink) || n.invitationLink || null;
+      // Prefer API `role` (viewer membership). Falling back to user.id ===
+      // network.user.id is wrong for multi-owner networks.
+      const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
+      const ownerId = n.user && n.user.id;
+      const inferredOwner = !!(meId && ownerId && meId === ownerId);
+      const role = n.isPersonal
+        ? "personal"
+        : (apiRole || (inferredOwner ? "owner" : "member"));
+      return {
+        id: n.id,
+        name: n.title || n.name || "untitled",
+        blurb: n.prompt || n.description || "",
+        members: (n._count && n._count.members) || n.memberCount || 0,
+        role,
+        joined: true,
+        isPersonal: n.isPersonal === true,
+        hasMasterKey: n.hasMasterKey === true,
+        hidden: n.hidden === true,
+        privacy: joinPolicy === "anyone" ? "public" : "private",
+        joinPolicy,
+        invitationCode: invite && invite.code ? invite.code : null,
+        // Same key resolution as user avatars: S3 keys need the storage base.
+        photo: avatarUrl(n.imageUrl || n.photo || null),
+        signals: [],
+        source: n,
+      };
+    });
   }
 
   // ---- tools + enrichment -------------------------------------------------
@@ -392,6 +434,7 @@ window.IndexApp = (function () {
     isAuthed,
     apiBaseUrl,
     avatarUrl,
+    webBaseUrl,
     getClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,

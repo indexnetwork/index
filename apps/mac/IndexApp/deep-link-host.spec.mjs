@@ -7,6 +7,8 @@ test('injects the bundle-owned host into the native bridge', () => {
   expect(swift).toContain('static var deepLinkHosts: [String]');
   expect(swift).toContain('object(forInfoDictionaryKey: "IndexDeepLinkHost")');
   expect(swift).toContain('"deepLinkHosts": AppConfig.deepLinkHosts');
+  // Share links use APP_URL, not deepLinkHosts[0] (prod-associated host).
+  expect(swift).toContain('"appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL)');
 });
 
 test('claims the bundle host and also the APP_URL host', () => {

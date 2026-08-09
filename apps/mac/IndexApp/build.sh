@@ -25,8 +25,15 @@ echo "==> Cleaning previous build"
 rm -rf dist
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 
-echo "==> Compiling Swift (host arch)"
+# Pin the Mach-O minimum OS to match Info.plist LSMinimumSystemVersion.
+# Without -target, recent Xcode SDKs stamp a future minos (e.g. 28.0) and
+# LaunchServices then refuses `open` with kLSIncompatibleSystemVersionErr
+# (-10825) on current macOS even though the binary can still be exec'd.
+ARCH="$(uname -m)"
+DEPLOY_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+echo "==> Compiling Swift (${ARCH}, macosx${DEPLOY_TARGET})"
 swiftc -Onone \
+    -target "${ARCH}-apple-macosx${DEPLOY_TARGET}" \
     -framework Cocoa -framework WebKit \
     -o "${CONTENTS}/MacOS/${APP_NAME}" \
     Sources/main.swift

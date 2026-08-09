@@ -915,6 +915,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let cred = CredentialStore.load()
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
+            // Share / invitation links must use the configured web origin
+            // (APP_URL), not the associated-domains host list (prod first).
+            "appUrl": AppConfig.trimTrailingSlash(AppConfig.appURL),
             "apiKey": cred?.key ?? NSNull(),
             "deepLinkHosts": AppConfig.deepLinkHosts,
         ]
@@ -987,7 +990,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func notifyAuthChanged(apiKey: String?) {
         let key = jsonValue(apiKey)
         let js = """
-        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { apiBaseUrl: \(jsonValue(AppConfig.apiBaseURL)), apiKey: \(key) });
+        window.INDEX_NATIVE = Object.assign(window.INDEX_NATIVE || {}, { apiBaseUrl: \(jsonValue(AppConfig.apiBaseURL)), appUrl: \(jsonValue(AppConfig.trimTrailingSlash(AppConfig.appURL))), apiKey: \(key) });
         if (typeof window.__indexAuthChanged === 'function') { window.__indexAuthChanged(\(key)); }
         """
         webView.evaluateJavaScript(js, completionHandler: nil)

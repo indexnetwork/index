@@ -258,7 +258,17 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Settings initialTab={settingsTab} onClose={() => setSettingsTab(null)}/>;
   }
   if (showNetworks) {
-    return <Networks onClose={() => setShowNetworks(false)}/>;
+    return (
+      <Networks
+        onClose={() => setShowNetworks(false)}
+        onOpenSignal={(sig) => {
+          const intent = signals.find(s => s.id === sig.id)
+            || (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
+          setShowNetworks(false);
+          if (intent && onPickExisting) onPickExisting(intent);
+        }}
+      />
+    );
   }
   if (showAgents) {
     return <Agents onClose={() => setShowAgents(false)}/>;

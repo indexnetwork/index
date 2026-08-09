@@ -844,6 +844,742 @@
     ]);
   }
 
+  function ICON_LOCK() {
+    return svgIcon("index-dashboard__net-tab-icon", [
+      React.createElement("rect", { key: "a", x: 3, y: 11, width: 18, height: 11, rx: 2, ry: 2 }),
+      svgPath("M7 11V7a5 5 0 0 1 10 0v4"),
+    ]);
+  }
+
+  function networkShareUrl(network, webUrl) {
+    if (!network || network.isPersonal || network.hasMasterKey) return null;
+    if (network.role !== "owner") return null;
+    const base = String(webUrl || "https://index.network").replace(/\/+$/, "");
+    if (network.joinPolicy === "anyone" && network.id) {
+      return base + "/index/" + encodeURIComponent(network.id);
+    }
+    const code = network.invitationLink && network.invitationLink.code;
+    if (code) return base + "/l/" + encodeURIComponent(code);
+    return null;
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        resolve();
+      } catch (e) { reject(e); }
+    });
+  }
+
+  function ICON_COPY() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("rect", { key: "a", x: 9, y: 9, width: 13, height: 13, rx: 2, ry: 2 }),
+      svgPath("M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"),
+    ]);
+  }
+
+  function ICON_CHECK() {
+    return svgIcon("index-dashboard__net-invite-icon", [
+      React.createElement("polyline", { key: "a", points: "20 6 9 17 4 12" }),
+    ]);
+  }
+
+  // Owner network detail — web overview / settings / access parity (no integrations).
+  function NetworkDetailModal(props) {
+    const network = props.network || {};
+    const isOwner = network.role === "owner";
+    const showOwnerTabs = isOwner && !network.isPersonal;
+    const meId = props.currentUserId || "";
+    const tabState = React.useState("overview");
+    const tab = tabState[0];
+    const setTab = tabState[1];
+    const localState = React.useState(network);
+    const local = localState[0];
+    const setLocal = localState[1];
+    React.useEffect(function () { setLocal(network); }, [network]);
+    const copiedState = React.useState(false);
+    const copied = copiedState[0];
+    const setCopied = copiedState[1];
+    const busyState = React.useState(false);
+    const busy = busyState[0];
+    const setBusy = busyState[1];
+    const errState = React.useState(null);
+    const err = errState[0];
+    const setErr = errState[1];
+    const signalsState = React.useState([]);
+    const signals = signalsState[0];
+    const setSignals = signalsState[1];
+    const signalsLoadingState = React.useState(false);
+    const signalsLoading = signalsLoadingState[0];
+    const setSignalsLoading = signalsLoadingState[1];
+    const membersState = React.useState([]);
+    const members = membersState[0];
+    const setMembers = membersState[1];
+    const membersLoadingState = React.useState(false);
+    const membersLoading = membersLoadingState[0];
+    const setMembersLoading = membersLoadingState[1];
+    const queryState = React.useState("");
+    const query = queryState[0];
+    const setQuery = queryState[1];
+    const suggestionsState = React.useState([]);
+    const suggestions = suggestionsState[0];
+    const setSuggestions = suggestionsState[1];
+    const showSugState = React.useState(false);
+    const showSug = showSugState[0];
+    const setShowSug = showSugState[1];
+    const pageState = React.useState(1);
+    const page = pageState[0];
+    const setPage = pageState[1];
+    const titleState = React.useState(network.title || "");
+    const title = titleState[0];
+    const setTitle = titleState[1];
+    const promptState = React.useState(network.detail || "");
+    const prompt = promptState[0];
+    const setPrompt = promptState[1];
+    const imageState = React.useState(network.imageUrl || null);
+    const imagePreview = imageState[0];
+    const setImagePreview = imageState[1];
+    const imageDataState = React.useState(null);
+    const imageData = imageDataState[0];
+    const setImageData = imageDataState[1];
+    const removeImageState = React.useState(false);
+    const removeImage = removeImageState[0];
+    const setRemoveImage = removeImageState[1];
+    const deleteTextState = React.useState("");
+    const deleteText = deleteTextState[0];
+    const setDeleteText = deleteTextState[1];
+    const showDeleteState = React.useState(false);
+    const showDelete = showDeleteState[0];
+    const setShowDelete = showDeleteState[1];
+    const PAGE_SIZE = 10;
+    const shareUrl = networkShareUrl(local, props.webUrl);
+    const count = typeof local.memberCount === "number" ? local.memberCount : members.length || null;
+    const isPublic = local.joinPolicy === "anyone";
+    const label = isPublic ? "Network Link" : "Invitation Link";
+    const settingsDirty = title !== (local.title || "")
+      || prompt !== (local.detail || "")
+      || !!imageData
+      || removeImage;
+
+    React.useEffect(function () {
+      setTitle(network.title || "");
+      setPrompt(network.detail || "");
+      setImagePreview(network.imageUrl || null);
+      setImageData(null);
+      setRemoveImage(false);
+    }, [network.id, network.title, network.detail, network.imageUrl]);
+
+    React.useEffect(function () {
+      if (!local.id) return;
+      let cancelled = false;
+      setSignalsLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/overview")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load signals.");
+          setSignals(Array.isArray(payload.intents) ? payload.intents : []);
+        })
+        .catch(function () { if (!cancelled) setSignals([]); })
+        .finally(function () { if (!cancelled) setSignalsLoading(false); });
+      return function () { cancelled = true; };
+    }, [local.id]);
+
+    React.useEffect(function () {
+      if (!showOwnerTabs || !local.id || tab !== "access") return;
+      let cancelled = false;
+      setMembersLoading(true);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members")
+        .then(function (payload) {
+          if (cancelled) return;
+          if (!payload || payload.success === false) throw new Error((payload && payload.error) || "Failed to load members.");
+          setMembers(Array.isArray(payload.members) ? payload.members : []);
+        })
+        .catch(function () { if (!cancelled) setMembers([]); })
+        .finally(function () { if (!cancelled) setMembersLoading(false); });
+      return function () { cancelled = true; };
+    }, [showOwnerTabs, local.id, tab]);
+
+    React.useEffect(function () {
+      if (!query.trim()) { setSuggestions([]); return; }
+      const handle = setTimeout(function () {
+        fetchPluginJSON(API + "/networks/search-users?q=" + encodeURIComponent(query.trim()) + "&networkId=" + encodeURIComponent(local.id || ""))
+          .then(function (payload) {
+            const users = (payload && Array.isArray(payload.users)) ? payload.users : [];
+            const ids = {};
+            members.forEach(function (m) { if (m && m.id) ids[m.id] = true; });
+            setSuggestions(users.filter(function (u) { return u && u.id && !ids[u.id]; }));
+            setShowSug(true);
+          })
+          .catch(function () { setSuggestions([]); });
+      }, 220);
+      return function () { clearTimeout(handle); };
+    }, [query, local.id, members]);
+
+    function patchLocal(patch) {
+      const merged = Object.assign({}, local, patch);
+      setLocal(merged);
+      if (props.onUpdated) props.onUpdated(merged);
+    }
+
+    function onCopy() {
+      if (!shareUrl) return;
+      copyText(shareUrl).then(function () {
+        setCopied(true);
+        setTimeout(function () { setCopied(false); }, 2000);
+      }).catch(function () { /* leave idle */ });
+    }
+
+    function setJoinPolicy(anyone) {
+      if (!local.id || busy) return;
+      const next = anyone ? "anyone" : "invite_only";
+      if (local.joinPolicy === next) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/permissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ joinPolicy: next }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update visibility.");
+          }
+          patchLocal({
+            joinPolicy: payload.joinPolicy || next,
+            invitationLink: payload.invitationLink || local.invitationLink,
+          });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function onPickImage(event) {
+      const file = event.target && event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function () {
+        setImageData(String(reader.result || ""));
+        setImagePreview(String(reader.result || ""));
+        setRemoveImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function saveSettings() {
+      if (!local.id || busy || !title.trim()) return;
+      setBusy(true);
+      setErr(null);
+      const finish = function (imageUrl) {
+        const body = { title: title.trim(), prompt: prompt.trim() || null };
+        if (imageUrl !== undefined) body.imageUrl = imageUrl;
+        return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not save settings.");
+          }
+          const patch = {
+            title: payload.title || title.trim(),
+            detail: payload.detail != null ? payload.detail : (prompt.trim() || ""),
+          };
+          if (payload.imageUrl !== undefined) patch.imageUrl = payload.imageUrl;
+          else if (removeImage) patch.imageUrl = null;
+          patchLocal(patch);
+          setImageData(null);
+          setRemoveImage(false);
+        });
+      };
+      const upload = imageData
+        ? fetchPluginJSON(API + "/network-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataUrl: imageData }),
+        }).then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Image upload failed.");
+          }
+          return payload.imageUrl;
+        })
+        : Promise.resolve(removeImage ? null : undefined);
+      upload.then(finish)
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function deleteNetwork() {
+      if (!local.id || busy || deleteText !== local.title) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not delete network.");
+          }
+          if (props.onDeleted) props.onDeleted(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); setBusy(false); });
+    }
+
+    function leaveNetwork() {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/leave", { method: "POST" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not leave network.");
+          }
+          if (props.onLeft) props.onLeft(local);
+          else if (props.onClose) props.onClose();
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function addMember(user) {
+      if (!local.id || busy || !user || !user.id) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, permissions: ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not add member.");
+          }
+          if (payload.member) setMembers(function (prev) { return prev.concat([payload.member]); });
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function inviteEmail(email) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not invite.");
+          }
+          return fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members");
+        })
+        .then(function (payload) {
+          setMembers((payload && Array.isArray(payload.members)) ? payload.members : []);
+          setQuery("");
+          setSuggestions([]);
+          setShowSug(false);
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function removeMember(id) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), { method: "DELETE" })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not remove member.");
+          }
+          setMembers(function (prev) { return prev.filter(function (m) { return m.id !== id; }); });
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function setMemberRole(id, role) {
+      if (!local.id || busy) return;
+      setBusy(true);
+      setErr(null);
+      fetchPluginJSON(API + "/networks/" + encodeURIComponent(local.id) + "/members/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: role === "owner" ? ["owner"] : ["member"] }),
+      })
+        .then(function (payload) {
+          if (!payload || payload.success === false) {
+            throw new Error((payload && payload.error) || "Could not update role.");
+          }
+          const updated = payload.member;
+          if (updated) {
+            setMembers(function (prev) {
+              return prev.map(function (m) {
+                return m.id === id ? Object.assign({}, m, { permissions: updated.permissions || m.permissions }) : m;
+              });
+            });
+          }
+        })
+        .catch(function (e) { setErr(e && e.message ? e.message : String(e)); })
+        .finally(function () { setBusy(false); });
+    }
+
+    function tabButton(id, labelText) {
+      return React.createElement("button", {
+        type: "button",
+        className: "index-dashboard__profile-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
+        onClick: function () { setTab(id); },
+      }, labelText);
+    }
+
+    function memberAvatar(member, size) {
+      const sz = size || 28;
+      if (member.avatar) {
+        return React.createElement("img", {
+          className: "index-dashboard__net-member-avatar" + (member.isGhost ? " index-dashboard__net-member-avatar--ghost" : ""),
+          src: member.avatar,
+          alt: "",
+          width: sz,
+          height: sz,
+          loading: "lazy",
+        });
+      }
+      return React.createElement("span", {
+        className: "index-dashboard__net-member-avatar index-dashboard__net-member-avatar--fallback" + (member.isGhost ? " index-dashboard__net-member-avatar--ghost" : ""),
+        style: { width: sz, height: sz },
+      }, String(member.name || "?").slice(0, 1).toLowerCase());
+    }
+
+    const head = React.createElement("div", { className: "index-dashboard__net-detail-head" },
+      React.createElement("span", { className: "index-dashboard__net-avatar index-dashboard__net-avatar--lg", "aria-hidden": "true" },
+        local.imageUrl
+          ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: local.imageUrl, alt: "", loading: "lazy" })
+          : React.createElement(BoringAvatar, { seed: local.id || local.title }),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-detail-head-text" },
+        React.createElement("h3", { className: "index-dashboard__net-detail-title" }, local.title || "Untitled network"),
+        React.createElement("div", { className: "index-dashboard__net-detail-bits" },
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            isPublic ? ICON_GLOBE() : ICON_LOCK(),
+            isPublic ? "Public" : "Private",
+          ),
+          React.createElement("span", { className: "index-dashboard__net-detail-bit" },
+            ICON_USERS(),
+            (count !== null ? formatCount(count) : "0") + (count === 1 ? " member" : " members"),
+          ),
+          isOwner
+            ? React.createElement("span", { className: "index-dashboard__net-detail-owner" }, "Owner")
+            : null,
+        ),
+      ),
+      !isOwner
+        ? React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-leave-btn",
+          disabled: busy,
+          onClick: leaveNetwork,
+        }, "Leave")
+        : null,
+    );
+
+    const totalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const pageMembers = members.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const noResults = showSug && query.trim() && suggestions.length === 0;
+
+    const accessBody = React.createElement("div", { className: "index-dashboard__net-access-panel" },
+      !local.hasMasterKey
+        ? React.createElement("div", null,
+          React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Visibility"),
+          React.createElement("div", { className: "index-dashboard__net-visibility" },
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(true); },
+            }, ICON_GLOBE(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Public"),
+              React.createElement("span", null, "Anyone can join"),
+            )),
+            React.createElement("button", {
+              type: "button",
+              disabled: busy,
+              className: "index-dashboard__net-visibility-card" + (!isPublic ? " index-dashboard__net-visibility-card--on" : ""),
+              onClick: function () { setJoinPolicy(false); },
+            }, ICON_LOCK(), React.createElement("span", { className: "index-dashboard__net-access" },
+              React.createElement("strong", null, "Private"),
+              React.createElement("span", null, "Invite only"),
+            )),
+          ),
+        )
+        : null,
+      !local.hasMasterKey
+        ? (shareUrl
+          ? React.createElement("div", { className: "index-dashboard__net-invite" },
+            React.createElement("p", { className: "index-dashboard__net-invite-label" }, label),
+            React.createElement("div", { className: "index-dashboard__net-invite-row" },
+              React.createElement("code", { className: "index-dashboard__net-invite-url" }, shareUrl),
+              React.createElement("button", {
+                type: "button",
+                className: "index-dashboard__net-invite-copy" + (copied ? " index-dashboard__net-invite-copy--ok" : ""),
+                "aria-label": copied ? "Copied" : "Copy link",
+                title: copied ? "Copied" : "Copy link",
+                onClick: onCopy,
+              }, copied ? ICON_CHECK() : ICON_COPY()),
+            ),
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet."))
+        : null,
+      React.createElement("div", { className: "index-dashboard__net-members" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" },
+          "Members (", String(members.length), ")"),
+        React.createElement("div", { className: "index-dashboard__net-member-search" },
+          React.createElement("input", {
+            className: "index-dashboard__net-member-input",
+            value: query,
+            placeholder: "Search by name or add by email…",
+            onChange: function (e) { setQuery(e.target.value); setShowSug(true); },
+            onFocus: function () { setShowSug(true); },
+          }),
+          showSug && query.trim() && suggestions.length > 0
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              suggestions.map(function (u) {
+                return React.createElement("button", {
+                  key: u.id,
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  onClick: function () { addMember(u); },
+                }, memberAvatar(u, 24), React.createElement("span", null, u.name || u.email || "User"), React.createElement("em", null, "Add"));
+              }),
+            )
+            : null,
+          noResults
+            ? React.createElement("div", { className: "index-dashboard__net-member-suggestions" },
+              query.indexOf("@") >= 0
+                ? React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-suggestion",
+                  disabled: busy,
+                  onClick: function () { inviteEmail(query.trim()); },
+                }, "Invite \"" + query.trim() + "\"")
+                : React.createElement("div", { className: "index-dashboard__net-invite-empty" }, "No results found"),
+            )
+            : null,
+        ),
+        membersLoading
+          ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading members…")
+          : React.createElement("div", { className: "index-dashboard__net-member-list" },
+            pageMembers.map(function (m) {
+              const perms = Array.isArray(m.permissions) ? m.permissions : [];
+              const owner = perms.indexOf("owner") >= 0;
+              const isSelf = meId && m.id === meId;
+              return React.createElement("div", { key: m.id, className: "index-dashboard__net-member-row" },
+                React.createElement("button", {
+                  type: "button",
+                  className: "index-dashboard__net-member-main",
+                  onClick: function () { if (props.onOpenUser) props.onOpenUser(m.id); },
+                },
+                  memberAvatar(m),
+                  React.createElement("span", { className: "index-dashboard__net-member-name" },
+                    m.name || "Unknown",
+                    m.isGhost ? React.createElement("em", { className: "index-dashboard__net-member-ghost" }, "ghost") : null,
+                  ),
+                ),
+                React.createElement("span", {
+                  className: "index-dashboard__net-member-role" + (owner ? " index-dashboard__net-member-role--owner" : ""),
+                }, owner ? "Owner" : (perms.indexOf("member") >= 0 ? "Member" : "Contact")),
+                !owner && perms.indexOf("member") >= 0 && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Promote to owner", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "owner"); },
+                  }, "↑")
+                  : null,
+                owner && !isSelf
+                  ? React.createElement("button", {
+                    type: "button", title: "Demote to member", disabled: busy,
+                    className: "index-dashboard__net-member-act",
+                    onClick: function () { setMemberRole(m.id, "member"); },
+                  }, "↓")
+                  : null,
+                !owner
+                  ? React.createElement("button", {
+                    type: "button", title: "Remove member", disabled: busy,
+                    className: "index-dashboard__net-member-act index-dashboard__net-member-act--danger",
+                    onClick: function () { removeMember(m.id); },
+                  }, "×")
+                  : null,
+              );
+            }),
+          ),
+        totalPages > 1
+          ? React.createElement("div", { className: "index-dashboard__net-member-pager" },
+            React.createElement("span", null,
+              String((safePage - 1) * PAGE_SIZE + 1) + "–" + String(Math.min(safePage * PAGE_SIZE, members.length)) + " of " + String(members.length)),
+            React.createElement("span", null,
+              React.createElement("button", { type: "button", disabled: safePage <= 1, onClick: function () { setPage(safePage - 1); } }, "prev"),
+              React.createElement("button", { type: "button", disabled: safePage >= totalPages, onClick: function () { setPage(safePage + 1); } }, "next"),
+            ),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const settingsBody = React.createElement("div", { className: "index-dashboard__net-settings-panel" },
+      React.createElement("div", { className: "index-dashboard__net-settings-photo" },
+        React.createElement("label", { className: "index-dashboard__net-settings-photo-btn" },
+          (imagePreview && !removeImage)
+            ? React.createElement("img", { src: imagePreview, alt: "", className: "index-dashboard__net-settings-photo-img" })
+            : React.createElement(BoringAvatar, { seed: local.id || title }),
+          React.createElement("input", { type: "file", accept: "image/*", onChange: onPickImage, hidden: true }),
+        ),
+        imagePreview && !removeImage
+          ? React.createElement("button", {
+            type: "button",
+            className: "index-dashboard__net-settings-remove",
+            onClick: function () { setRemoveImage(true); setImageData(null); },
+          }, "Remove image")
+          : null,
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Title"),
+        React.createElement("input", {
+          value: title,
+          onChange: function (e) { setTitle(e.target.value); },
+        }),
+      ),
+      React.createElement("label", { className: "index-dashboard__net-settings-field" },
+        React.createElement("span", null, "Prompt"),
+        React.createElement("textarea", {
+          rows: 4,
+          value: prompt,
+          onChange: function (e) { setPrompt(e.target.value); },
+          placeholder: "What people can share in this network…",
+        }),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-settings-actions" },
+        React.createElement("button", {
+          type: "button",
+          disabled: !settingsDirty || busy,
+          onClick: function () {
+            setTitle(local.title || "");
+            setPrompt(local.detail || "");
+            setImagePreview(local.imageUrl || null);
+            setImageData(null);
+            setRemoveImage(false);
+          },
+        }, "Cancel"),
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-settings-save",
+          disabled: !settingsDirty || !title.trim() || busy,
+          onClick: saveSettings,
+        }, busy ? "Saving…" : "Save"),
+      ),
+      React.createElement("div", { className: "index-dashboard__net-danger" },
+        React.createElement("button", {
+          type: "button",
+          className: "index-dashboard__net-danger-toggle",
+          "aria-expanded": showDelete,
+          onClick: function () { setShowDelete(!showDelete); },
+        },
+          React.createElement("span", {
+            className: "index-dashboard__net-danger-chevron",
+            "aria-hidden": "true",
+          }, showDelete ? "▲" : "▼"),
+          "Danger Zone"),
+        showDelete
+          ? React.createElement("div", { className: "index-dashboard__net-danger-box" },
+            React.createElement("p", null, "Delete this network. Type the name to confirm."),
+            React.createElement("input", {
+              value: deleteText,
+              placeholder: local.title || "",
+              onChange: function (e) { setDeleteText(e.target.value); },
+            }),
+            React.createElement("button", {
+              type: "button",
+              disabled: deleteText !== local.title || busy,
+              onClick: deleteNetwork,
+            }, "Delete"),
+          )
+          : null,
+      ),
+      err ? React.createElement("div", { className: "index-dashboard__error" }, err) : null,
+    );
+
+    const overviewBody = React.createElement("div", { className: "index-dashboard__net-overview" },
+      React.createElement("div", { className: "index-dashboard__net-overview-head" },
+        React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Your Signals"),
+        React.createElement("span", { className: "index-dashboard__net-overview-count" },
+          signalsLoading ? "…" : (String(signals.length) + (signals.length === 1 ? " signal" : " signals"))),
+      ),
+      signalsLoading
+        ? React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "Loading signals…")
+        : (signals.length
+          ? React.createElement("div", { className: "index-dashboard__net-signal-list" },
+            signals.map(function (sig) {
+              const text = (sig.summary && String(sig.summary).trim()) || sig.payload || "Untitled signal";
+              return React.createElement("button", {
+                key: sig.id,
+                type: "button",
+                className: "index-dashboard__net-signal-row",
+                onClick: function () {
+                  if (props.onSelectIntent) props.onSelectIntent(sig.id);
+                  if (props.onClose) props.onClose();
+                },
+              }, React.createElement("span", null, text));
+            }),
+          )
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" },
+            "You haven't shared any signals in this network yet")),
+    );
+
+    const body = (showOwnerTabs && tab === "access")
+      ? accessBody
+      : (showOwnerTabs && tab === "settings")
+        ? settingsBody
+        : overviewBody;
+
+    return React.createElement("div", { className: "index-dashboard__profile-overlay", onClick: props.onClose },
+      React.createElement("div", {
+        className: "index-dashboard__profile-panel index-dashboard__net-detail-modal",
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement("div", { className: "index-dashboard__profile-header" },
+          React.createElement("h2", { className: "index-dashboard__profile-title" }, local.title || "Network"),
+          React.createElement("button", { type: "button", className: "index-dashboard__profile-close", "aria-label": "Close", onClick: props.onClose }, "×"),
+        ),
+        React.createElement("div", { className: "index-dashboard__net-detail-body" },
+          head,
+          showOwnerTabs
+            ? React.createElement("div", { className: "index-dashboard__profile-tabs" },
+              tabButton("overview", "overview"),
+              tabButton("settings", "settings"),
+              tabButton("access", "access"),
+            )
+            : null,
+          body,
+        ),
+      ),
+    );
+  }
+
   // Faithful re-implementation of boring-avatars' "bauhaus" variant + default
   // palette, so dashboard network avatars match the Index web app exactly.
   const BORING_PALETTE = ["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"];
@@ -921,7 +1657,11 @@
     const network = props.network;
     const count = typeof network.memberCount === "number" ? network.memberCount : null;
     const isOwner = network.role === "owner";
-    return React.createElement("div", { className: "index-dashboard__net-row" },
+    return React.createElement("button", {
+      type: "button",
+      className: "index-dashboard__net-row index-dashboard__net-row--button",
+      onClick: props.onOpen ? function () { props.onOpen(network); } : undefined,
+    },
       React.createElement("span", { className: "index-dashboard__net-avatar", "aria-hidden": "true" },
         network.imageUrl
           ? React.createElement("img", { className: "index-dashboard__net-avatar-img", src: network.imageUrl, alt: "", loading: "lazy" })
@@ -976,7 +1716,7 @@
       items.map(function (network, index) {
         return props.discover
           ? React.createElement(NetworkDiscoverRow, { key: network.id || String(index), network: network, onJoin: props.onJoin, joiningId: props.joiningId })
-          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+          : React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network, onOpen: props.onOpen });
       }),
     );
   }
@@ -1296,7 +2036,8 @@
   }
 
   // Networks card: "My networks" / "Discover" tabs on the left, a Create button
-  // on the right. Create opens the (reviewed) request form as a modal.
+  // on the right. Create opens the (reviewed) request form as a modal. Owner
+  // rows open a detail modal with Access-tab invite links (web parity).
   function NetworksMini(props) {
     const networks = props.networks || { items: [], count: 0, discover: [] };
     const items = Array.isArray(networks.items) ? networks.items : [];
@@ -1305,12 +2046,23 @@
     const tabState = React.useState("mine");
     const tab = tabState[0];
     const setTab = tabState[1];
+    const openState = React.useState(null);
+    const openNet = openState[0];
+    const setOpenNet = openState[1];
     function tabButton(id, label, icon) {
       return React.createElement("button", {
         type: "button",
         className: "index-dashboard__profile-tab index-dashboard__net-tab" + (tab === id ? " index-dashboard__profile-tab--active" : ""),
         onClick: function () { setTab(id); },
       }, icon || null, React.createElement("span", null, label));
+    }
+    function onUpdated(merged) {
+      setOpenNet(merged);
+      if (props.onNetworkUpdated) props.onNetworkUpdated(merged);
+    }
+    function onRemoved(net) {
+      setOpenNet(null);
+      if (props.onNetworkRemoved) props.onNetworkRemoved(net);
     }
     return React.createElement("section", { className: "index-dashboard__net-card" },
       React.createElement("div", { className: "index-dashboard__net-head" },
@@ -1338,10 +2090,27 @@
               ? React.createElement(EmptyState, null, "You are not joined to any networks yet.")
               : React.createElement("div", { className: "index-dashboard__net-list" },
                 items.map(function (network, index) {
-                  return React.createElement(NetworkMiniRow, { key: network.id || String(index), network: network });
+                  return React.createElement(NetworkMiniRow, {
+                    key: network.id || String(index),
+                    network: network,
+                    onOpen: setOpenNet,
+                  });
                 }),
               ),
         ),
+      openNet
+        ? React.createElement(NetworkDetailModal, {
+          network: openNet,
+          webUrl: props.webUrl,
+          currentUserId: props.currentUserId,
+          onClose: function () { setOpenNet(null); },
+          onUpdated: onUpdated,
+          onDeleted: onRemoved,
+          onLeft: onRemoved,
+          onOpenUser: props.onOpenUser,
+          onSelectIntent: props.onSelectIntent,
+        })
+        : null,
     );
   }
 
@@ -3209,7 +3978,45 @@
             React.createElement(IntentList, { intents: intents, selectedId: selectedId, onSelect: selectIntent }),
           ),
           React.createElement("div", { className: "index-dashboard__list-side" },
-            React.createElement(NetworksMini, { networks: summary && summary.networks, requests: networkRequests, onCreate: openCreate, onJoin: joinNetwork, joiningId: joiningId, onEditRequest: editNetworkRequest, onDismissRequest: dismissNetworkRequest }),
+            React.createElement(NetworksMini, {
+              networks: summary && summary.networks,
+              requests: networkRequests,
+              webUrl: summary && summary.webUrl,
+              currentUserId: summary && summary.currentUserId,
+              onCreate: openCreate,
+              onJoin: joinNetwork,
+              joiningId: joiningId,
+              onEditRequest: editNetworkRequest,
+              onDismissRequest: dismissNetworkRequest,
+              onOpenUser: openUser,
+              onSelectIntent: selectIntent,
+              onNetworkUpdated: function (merged) {
+                if (!merged || !merged.id) return;
+                setSummary(function (prev) {
+                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                  return Object.assign({}, prev, {
+                    networks: Object.assign({}, prev.networks, {
+                      items: prev.networks.items.map(function (n) {
+                        return n && n.id === merged.id ? Object.assign({}, n, merged) : n;
+                      }),
+                    }),
+                  });
+                });
+              },
+              onNetworkRemoved: function (net) {
+                if (!net || !net.id) return;
+                setSummary(function (prev) {
+                  if (!prev || !prev.networks || !Array.isArray(prev.networks.items)) return prev;
+                  const items = prev.networks.items.filter(function (n) { return !n || n.id !== net.id; });
+                  return Object.assign({}, prev, {
+                    networks: Object.assign({}, prev.networks, {
+                      items: items,
+                      count: items.length,
+                    }),
+                  });
+                });
+              },
+            }),
           ),
         ),
       );

@@ -264,6 +264,20 @@ def main() -> None:
     assert "index-network-invite" in dashboard_js
     assert "You're invited to join" in dashboard_js
     assert "Join network" in dashboard_js
+    # Owner network detail: overview / settings / access (web parity, no integrations).
+    assert "NetworkDetailModal" in dashboard_js
+    assert "networkShareUrl" in dashboard_js
+    assert "Invitation Link" in dashboard_js
+    assert "Network Link" in dashboard_js
+    assert "/permissions" in dashboard_js
+    assert "/networks/search-users" in dashboard_js
+    assert "/members/invite" in dashboard_js
+    assert "Your Signals" in dashboard_js
+    assert "Danger Zone" in dashboard_js
+    assert "index-dashboard__net-invite" in dashboard_js
+    assert "index-dashboard__net-visibility" in dashboard_js
+    assert "index-dashboard__net-members" in dashboard_js
+    assert "index-dashboard__net-settings-panel" in dashboard_js
 
     # Hermes Desktop ships the same Getting started gate via the built bundle.
     desktop_js_path = ROOT / "desktop" / "dist" / "plugin.js"
@@ -284,6 +298,8 @@ def main() -> None:
     assert "index-dashboard__login" in desktop_js
     # Desktop claims hermes://l/<code> via hermesDesktop.onDeepLink.
     assert "InviteJoinModal" in desktop_js
+    assert "NetworkDetailModal" in desktop_js
+    assert "Invitation Link" in desktop_js
     assert 'kind !== \'l\'' in desktop_js or 'kind !== "l"' in desktop_js
     assert "onDeepLink" in desktop_js
     assert "onOpenUser" in dashboard_js
@@ -809,7 +825,15 @@ def main() -> None:
                                 "prompt": "People building robotics companies.",
                                 "isPersonal": False,
                                 "type": "community",
-                                "user": {"id": "owner-x", "name": "Owner"},
+                                "hasMasterKey": False,
+                                "role": "owner",
+                                "permissions": {
+                                    "joinPolicy": "invite_only",
+                                    "invitationLink": {"code": "invite-abc"},
+                                },
+                                # Different from current user on purpose: role must
+                                # come from membership `role`, not network.user.id.
+                                "user": {"id": "other-owner", "name": "Owner"},
                                 "_count": {"members": 3},
                             }
                         ],
@@ -952,6 +976,9 @@ def main() -> None:
         assert summary["negotiations"]["items"][0]["counterpartUserId"] == "other"
         assert summary["networks"]["count"] == 1
         assert summary["networks"]["items"][0]["title"] == "Robotics Guild"
+        assert summary["networks"]["items"][0]["role"] == "owner"
+        assert summary["networks"]["items"][0]["joinPolicy"] == "invite_only"
+        assert summary["networks"]["items"][0]["invitationLink"] == {"code": "invite-abc"}
         assert summary["totals"] == {
             "intents": 1,
             "questions": 1,
@@ -1065,7 +1092,8 @@ def main() -> None:
         assert start_chat_result["success"] is True
         assert start_chat_result["conversationId"] == "conv-9"
         assert start_chat_result["counterpartUserId"] == "other"
-        assert start_chat_result["chatUrl"] == "https://index.network/chat/conv-9"
+        # chatUrl follows the active API env (api.example.test here), not prod.
+        assert start_chat_result["chatUrl"] == "https://api.example.test/chat/conv-9"
         assert captured[-1]["method"] == "POST"
         assert captured[-1]["url"] == "https://api.example.test/api/opportunities/opp-1/start-chat"
         assert captured[-1]["body"] == {"scopeType": "intent", "scopeId": "intent-1"}
@@ -1607,19 +1635,30 @@ def main() -> None:
             # Login origin pairs with the active API env: an explicit
             # INDEX_APP_BASE_URL wins, otherwise it derives from INDEX_API_URL by
             # dropping the leading `protocol.` label (so dev never mints a prod key).
+            # Invite/chat webUrl must follow the same pairing (not hardcode prod).
             saved_api_url = os.environ.get("INDEX_API_URL")
+            saved_web_url = os.environ.get("INDEX_WEB_URL")
             os.environ.pop("INDEX_APP_BASE_URL", None)
+            os.environ.pop("INDEX_WEB_URL", None)
             try:
                 os.environ["INDEX_API_URL"] = "https://protocol.dev.index.network/api"
                 assert dashboard_api._login_app_base_url() == "https://dev.index.network"
+                assert dashboard_api._web_url() == "https://dev.index.network"
                 os.environ["INDEX_API_URL"] = "https://protocol.index.network/api"
                 assert dashboard_api._login_app_base_url() == "https://index.network"
+                assert dashboard_api._web_url() == "https://index.network"
                 os.environ["INDEX_APP_BASE_URL"] = "https://staging.index.network"
                 assert dashboard_api._login_app_base_url() == "https://staging.index.network"
+                assert dashboard_api._web_url() == "https://staging.index.network"
+                os.environ["INDEX_WEB_URL"] = "https://custom.example"
+                assert dashboard_api._web_url() == "https://custom.example"
             finally:
                 os.environ.pop("INDEX_APP_BASE_URL", None)
+                os.environ.pop("INDEX_WEB_URL", None)
                 if saved_api_url is not None:
                     os.environ["INDEX_API_URL"] = saved_api_url
+                if saved_web_url is not None:
+                    os.environ["INDEX_WEB_URL"] = saved_web_url
 
             # Loopback handshake drives poll_status to success (real sockets).
             urllib.request.urlopen = old_urlopen

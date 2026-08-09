@@ -182,6 +182,43 @@ export function createIndexApiClient(options = {}) {
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
       create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      update: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'PUT', body },
+      ),
+      delete: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      // Owner Access-tab visibility toggle (public / invite-only).
+      updatePermissions: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/permissions`,
+        { ...options, method: 'PATCH', body },
+      ),
+      getMembers: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        options,
+      ),
+      addMember: (networkId, userId, permissions = ['member'], options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        { ...options, method: 'POST', body: { userId, permissions } },
+      ),
+      removeMember: (networkId, userId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      updateMemberPermissions: (networkId, userId, permissions, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'PATCH', body: { permissions } },
+      ),
+      inviteMember: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/invite`,
+        { ...options, method: 'POST', body },
+      ),
+      searchUsers: (query, networkId, options = {}) => request(
+        `/networks/search-users${toQueryString({ q: query, networkId })}`,
+        options,
+      ),
       // Public preview of an invite-link target: name, owner and member count,
       // no membership required (used by the invite deep-link join screen).
       shareByCode: (code, options = {}) => request(`/networks/share/${encodeURIComponent(code)}`, { ...options, auth: false }),

@@ -40,6 +40,9 @@ except Exception:  # Allows local smoke tests without dashboard dependencies.
         def post(self, *_args, **_kwargs):
             return lambda fn: fn
 
+        def put(self, *_args, **_kwargs):
+            return lambda fn: fn
+
         def patch(self, *_args, **_kwargs):
             return lambda fn: fn
 
@@ -226,9 +229,16 @@ def _call_questions_by_intent(
 
 
 def _web_url() -> str:
-    """Resolve the Index web app origin for outbound chat/profile links."""
+    """Resolve the Index web app origin for outbound chat/profile/invite links.
+
+    Prefer explicit `INDEX_WEB_URL`, then the same env-aware origin used for
+    `/cli-auth` (`INDEX_APP_BASE_URL` or derived from `INDEX_API_URL`). Never
+    hardcode production when the plugin is pointed at dev/staging.
+    """
     raw = os.environ.get("INDEX_WEB_URL", "").strip()
-    return (raw or "https://index.network").rstrip("/")
+    if raw:
+        return raw.rstrip("/")
+    return _login_app_base_url()
 
 
 def _update_opportunity(
@@ -716,7 +726,13 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         detail = _truncate(network.get("prompt") or network.get("description"))
         owner = network.get("user") if isinstance(network.get("user"), dict) else {}
         is_personal = network.get("isPersonal") is True
-        is_owner = bool(current_user_id) and _text(owner.get("id")) == current_user_id
+        # Prefer viewer membership role from GET /networks; owner-id compare
+        # fails when a network has multiple owners.
+        api_role = _text(network.get("role"))
+        if api_role in ("owner", "member"):
+            is_owner = api_role == "owner"
+        else:
+            is_owner = bool(current_user_id) and _text(owner.get("id")) == current_user_id
         item: dict[str, Any] = {"title": title}
         if network_id:
             item["id"] = network_id
@@ -728,6 +744,21 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
             item["memberCount"] = member_count
         item["isPersonal"] = is_personal
         item["role"] = "owner" if is_owner else "member"
+        if network.get("hasMasterKey") is True:
+            item["hasMasterKey"] = True
+        # Access-tab share links need joinPolicy + invitation code (web AccessTab).
+        perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
+        join_policy = _text(perms.get("joinPolicy") or network.get("joinPolicy"))
+        if join_policy in ("anyone", "invite_only"):
+            item["joinPolicy"] = join_policy
+        invite = perms.get("invitationLink") if isinstance(perms, dict) else None
+        if not isinstance(invite, dict):
+            invite = network.get("invitationLink") if isinstance(network.get("invitationLink"), dict) else None
+        invite_code = _text(invite.get("code")) if isinstance(invite, dict) else ""
+        if invite_code:
+            item["invitationLink"] = {"code": invite_code}
+        if network.get("hidden") is True:
+            item["hidden"] = True
         net_type = _text(network.get("type"))
         if net_type:
             item["type"] = net_type
@@ -1089,6 +1120,7 @@ def summary() -> dict[str, Any]:
     return {
         "success": True,
         "webUrl": _web_url(),
+        "currentUserId": current_user_id or None,
         "onboarding": onboarding,
         "intents": dashboard["intents"],
         "general": dashboard["general"],
@@ -1130,6 +1162,245 @@ def join_network(network_id: str) -> dict[str, Any]:
     if payload.get("success") is False:
         return payload
     return {"success": True}
+
+
+@router.post("/networks/{network_id}/leave")
+def leave_network(network_id: str) -> dict[str, Any]:
+    """Leave a network — REST `POST /networks/:id/leave`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("POST", f"/networks/{quote(network_id, safe='')}/leave")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@router.get("/networks/{network_id}/overview")
+def network_overview(network_id: str) -> dict[str, Any]:
+    """Caller overview for a network — REST `GET /networks/:id/overview`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("GET", f"/networks/{quote(network_id, safe='')}/overview")
+    if payload.get("success") is False:
+        return payload
+    intents = payload.get("intents") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "intents": [row for row in _list(intents) if isinstance(row, dict)],
+    }
+
+
+@router.put("/networks/{network_id}")
+def update_network(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Update network settings / directory hide — REST `PUT /networks/:id`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    forward: dict[str, Any] = {}
+    if "title" in payload_in:
+        title = _text(payload_in.get("title"))
+        if not title:
+            return {"success": False, "error": "Title cannot be empty."}
+        forward["title"] = title[:200]
+    if "prompt" in payload_in:
+        prompt = payload_in.get("prompt")
+        forward["prompt"] = None if prompt is None else _text(prompt)[:2000] or None
+    if "imageUrl" in payload_in:
+        image_url = payload_in.get("imageUrl")
+        forward["imageUrl"] = None if image_url is None else _text(image_url) or None
+    if "hidden" in payload_in:
+        forward["hidden"] = bool(payload_in.get("hidden"))
+    if not forward:
+        return {"success": False, "error": "No updatable fields provided."}
+    payload = tools._api_request("PUT", f"/networks/{quote(network_id, safe='')}", forward)
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload.get("network"), dict) else payload
+    if not isinstance(network, dict):
+        return {"success": True, "id": network_id}
+    out: dict[str, Any] = {
+        "success": True,
+        "id": _text(network.get("id") or network_id),
+        "title": _text(network.get("title"), "Untitled network"),
+        "detail": _truncate(network.get("prompt") or network.get("description")) or "",
+        "hidden": network.get("hidden") is True,
+    }
+    image_url = _text(network.get("imageUrl"))
+    if image_url:
+        out["imageUrl"] = _avatar_url(image_url) or image_url
+    elif "imageUrl" in forward and forward.get("imageUrl") is None:
+        out["imageUrl"] = None
+    return out
+
+
+@router.delete("/networks/{network_id}")
+def delete_network(network_id: str) -> dict[str, Any]:
+    """Delete a network — REST `DELETE /networks/:id`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("DELETE", f"/networks/{quote(network_id, safe='')}")
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@router.get("/networks/{network_id}/members")
+def list_network_members(network_id: str) -> dict[str, Any]:
+    """List members — REST `GET /networks/:id/members`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload = tools._api_request("GET", f"/networks/{quote(network_id, safe='')}/members")
+    if payload.get("success") is False:
+        return payload
+    members = payload.get("members") if isinstance(payload, dict) else None
+    return {
+        "success": True,
+        "members": [row for row in _list(members) if isinstance(row, dict)],
+    }
+
+
+@router.post("/networks/{network_id}/members")
+def add_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Add a member — REST `POST /networks/:id/members`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    user_id = _text(payload_in.get("userId"))
+    if not user_id:
+        return {"success": False, "error": "A userId is required."}
+    permissions = payload_in.get("permissions")
+    if not isinstance(permissions, list) or not permissions:
+        permissions = ["member"]
+    payload = tools._api_request(
+        "POST",
+        f"/networks/{quote(network_id, safe='')}/members",
+        {"userId": user_id, "permissions": permissions},
+    )
+    if payload.get("success") is False:
+        return payload
+    member = payload.get("member") if isinstance(payload, dict) else None
+    return {"success": True, "member": member if isinstance(member, dict) else None}
+
+
+@router.patch("/networks/{network_id}/members/{member_id}")
+def update_network_member(
+    network_id: str, member_id: str, body: dict[str, Any] | None = Body(default=None)
+) -> dict[str, Any]:
+    """Update member role — REST `PATCH /networks/:id/members/:memberId`."""
+    network_id = _text(network_id)
+    member_id = _text(member_id)
+    if not network_id or not member_id:
+        return {"success": False, "error": "Network id and member id are required."}
+    payload_in = body if isinstance(body, dict) else {}
+    permissions = payload_in.get("permissions")
+    if not isinstance(permissions, list) or not permissions:
+        return {"success": False, "error": "permissions must be a non-empty list."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/networks/{quote(network_id, safe='')}/members/{quote(member_id, safe='')}",
+        {"permissions": permissions},
+    )
+    if payload.get("success") is False:
+        return payload
+    member = payload.get("member") if isinstance(payload, dict) else None
+    return {"success": True, "member": member if isinstance(member, dict) else None}
+
+
+@router.delete("/networks/{network_id}/members/{member_id}")
+def remove_network_member(network_id: str, member_id: str) -> dict[str, Any]:
+    """Remove a member — REST `DELETE /networks/:id/members/:memberId`."""
+    network_id = _text(network_id)
+    member_id = _text(member_id)
+    if not network_id or not member_id:
+        return {"success": False, "error": "Network id and member id are required."}
+    payload = tools._api_request(
+        "DELETE",
+        f"/networks/{quote(network_id, safe='')}/members/{quote(member_id, safe='')}",
+    )
+    if payload.get("success") is False:
+        return payload
+    return {"success": True}
+
+
+@router.post("/networks/{network_id}/members/invite")
+def invite_network_member(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Invite by email — REST `POST /networks/:id/members/invite`."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    email = _text(payload_in.get("email"))
+    if not email or "@" not in email:
+        return {"success": False, "error": "A valid email is required."}
+    forward: dict[str, Any] = {"email": email}
+    name = _text(payload_in.get("name"))
+    if name:
+        forward["name"] = name[:200]
+    payload = tools._api_request(
+        "POST",
+        f"/networks/{quote(network_id, safe='')}/members/invite",
+        forward,
+    )
+    if payload.get("success") is False:
+        return payload
+    out = dict(payload) if isinstance(payload, dict) else {}
+    out.setdefault("success", True)
+    return out
+
+
+@router.get("/networks/search-users")
+def search_network_users(q: str = "", networkId: str = "") -> dict[str, Any]:
+    """Search users to add — REST `GET /networks/search-users`."""
+    query = _text(q)
+    if not query:
+        return {"success": True, "users": []}
+    path = f"/networks/search-users?q={quote(query)}"
+    network_id = _text(networkId)
+    if network_id:
+        path += f"&networkId={quote(network_id, safe='')}"
+    payload = tools._api_request("GET", path)
+    if payload.get("success") is False:
+        return payload
+    users = payload.get("users") if isinstance(payload, dict) else None
+    return {"success": True, "users": [row for row in _list(users) if isinstance(row, dict)]}
+
+
+@router.patch("/networks/{network_id}/permissions")
+def update_network_permissions(network_id: str, body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+    """Owner visibility toggle — REST `PATCH /networks/:id/permissions` (web Access tab)."""
+    network_id = _text(network_id)
+    if not network_id:
+        return {"success": False, "error": "A network id is required."}
+    payload_in = body if isinstance(body, dict) else {}
+    join_policy = _text(payload_in.get("joinPolicy"))
+    if join_policy not in ("anyone", "invite_only"):
+        return {"success": False, "error": "joinPolicy must be 'anyone' or 'invite_only'."}
+    payload = tools._api_request(
+        "PATCH",
+        f"/networks/{quote(network_id, safe='')}/permissions",
+        {"joinPolicy": join_policy},
+    )
+    if payload.get("success") is False:
+        return payload
+    network = payload.get("network") if isinstance(payload.get("network"), dict) else payload
+    if not isinstance(network, dict):
+        return {"success": True}
+    perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
+    out: dict[str, Any] = {"success": True, "id": _text(network.get("id") or network_id)}
+    jp = _text(perms.get("joinPolicy") or join_policy)
+    if jp in ("anyone", "invite_only"):
+        out["joinPolicy"] = jp
+    invite = perms.get("invitationLink") if isinstance(perms, dict) else None
+    code = _text(invite.get("code")) if isinstance(invite, dict) else ""
+    if code:
+        out["invitationLink"] = {"code": code}
+    return out
 
 
 @router.get("/invite/{code}")

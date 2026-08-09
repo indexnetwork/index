@@ -33935,6 +33935,43 @@ function createIndexApiClient(options = {}) {
       overview: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/overview`, options),
       myIntents: (networkId, options = {}) => request(`/networks/${encodeURIComponent(networkId)}/my-intents`, options),
       create: (body, options = {}) => request('/networks', { ...options, method: 'POST', body }),
+      update: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'PUT', body },
+      ),
+      delete: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      // Owner Access-tab visibility toggle (public / invite-only).
+      updatePermissions: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/permissions`,
+        { ...options, method: 'PATCH', body },
+      ),
+      getMembers: (networkId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        options,
+      ),
+      addMember: (networkId, userId, permissions = ['member'], options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members`,
+        { ...options, method: 'POST', body: { userId, permissions } },
+      ),
+      removeMember: (networkId, userId, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'DELETE' },
+      ),
+      updateMemberPermissions: (networkId, userId, permissions, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/${encodeURIComponent(userId)}`,
+        { ...options, method: 'PATCH', body: { permissions } },
+      ),
+      inviteMember: (networkId, body, options = {}) => request(
+        `/networks/${encodeURIComponent(networkId)}/members/invite`,
+        { ...options, method: 'POST', body },
+      ),
+      searchUsers: (query, networkId, options = {}) => request(
+        `/networks/search-users${toQueryString({ q: query, networkId })}`,
+        options,
+      ),
       // Public preview of an invite-link target: name, owner and member count,
       // no membership required (used by the invite deep-link join screen).
       shareByCode: (code, options = {}) => request(`/networks/share/${encodeURIComponent(code)}`, { ...options, auth: false }),
@@ -35965,10 +36002,34 @@ window.IndexApp = (function () {
     return {
       snapshot,
       me: mapMe(user),
-      networks: mapNetworks(networks),
+      networks: mapNetworks(networks, user),
       features,
       raw: { user, features, networks, intents, questions, radarItems },
     };
+  }
+
+  // Web origin for share / invitation links (Access tab). Prefer the configured
+  // APP_URL the shell injected — deepLinkHosts puts the associated-domains
+  // (often prod) host first, which must not drive share URLs on dev/staging.
+  function webBaseUrl() {
+    const appUrl = native().appUrl;
+    if (appUrl) return String(appUrl).replace(/\/+$/, "");
+
+    // Browser preview / missing shell: derive from the API base the same way
+    // Hermes pairs login with INDEX_API_URL (drop leading `protocol.`).
+    try {
+      const u = new URL(apiBaseUrl());
+      let host = u.hostname;
+      if (host === "localhost" || host === "127.0.0.1") {
+        return `${u.protocol}//${host}:3000`;
+      }
+      if (host.startsWith("protocol.")) host = host.slice("protocol.".length);
+      return `https://${host}`;
+    } catch (e) { /* fall through */ }
+
+    const hosts = native().deepLinkHosts;
+    const host = Array.isArray(hosts) && hosts.length ? String(hosts[0]) : "index.network";
+    return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
   }
 
   // Map an API user onto the shape the UI's ME expects. Live-only: there is no
@@ -35993,20 +36054,38 @@ window.IndexApp = (function () {
     };
   }
 
-  function mapNetworks(networks) {
-    return networks.map((n) => ({
-      id: n.id,
-      name: n.title || n.name || "untitled",
-      members: (n._count && n._count.members) || n.memberCount || 0,
-      role: n.isPersonal ? "personal" : (n.role || "member"),
-      joined: true,
-      isPersonal: n.isPersonal === true,
-      privacy: n.joinPolicy === "anyone" ? "public" : "private",
-      // Same key resolution as user avatars: S3 keys need the storage base.
-      photo: avatarUrl(n.imageUrl || n.photo || null),
-      signals: [],
-      source: n,
-    }));
+  function mapNetworks(networks, user) {
+    const meId = user && user.id;
+    return networks.map((n) => {
+      const joinPolicy = (n.permissions && n.permissions.joinPolicy) || n.joinPolicy || "invite_only";
+      const invite = (n.permissions && n.permissions.invitationLink) || n.invitationLink || null;
+      // Prefer API `role` (viewer membership). Falling back to user.id ===
+      // network.user.id is wrong for multi-owner networks.
+      const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
+      const ownerId = n.user && n.user.id;
+      const inferredOwner = !!(meId && ownerId && meId === ownerId);
+      const role = n.isPersonal
+        ? "personal"
+        : (apiRole || (inferredOwner ? "owner" : "member"));
+      return {
+        id: n.id,
+        name: n.title || n.name || "untitled",
+        blurb: n.prompt || n.description || "",
+        members: (n._count && n._count.members) || n.memberCount || 0,
+        role,
+        joined: true,
+        isPersonal: n.isPersonal === true,
+        hasMasterKey: n.hasMasterKey === true,
+        hidden: n.hidden === true,
+        privacy: joinPolicy === "anyone" ? "public" : "private",
+        joinPolicy,
+        invitationCode: invite && invite.code ? invite.code : null,
+        // Same key resolution as user avatars: S3 keys need the storage base.
+        photo: avatarUrl(n.imageUrl || n.photo || null),
+        signals: [],
+        source: n,
+      };
+    });
   }
 
   // ---- tools + enrichment -------------------------------------------------
@@ -36190,6 +36269,7 @@ window.IndexApp = (function () {
     isAuthed,
     apiBaseUrl,
     avatarUrl,
+    webBaseUrl,
     getClient,
     // `client` kept as an alias for callers that prefer the shorter name.
     client: getClient,
@@ -37827,6 +37907,8 @@ function NetworkRow({ net, onOpen, onJoin }) {
 
 /* ---------- detail ---------- */
 
+const MEMBERS_PAGE_SIZE = 10;
+
 function MetaBit({ glyph, children }) {
   return (
     <span style={{
@@ -37838,17 +37920,26 @@ function MetaBit({ glyph, children }) {
   );
 }
 
-function Signal({ sig, netName, onRemove }) {
+function formatSignalDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function Signal({ sig, netName, onRemove, onOpen }) {
   const [hover, setHover] = useState(false);
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onClick={() => onOpen && onOpen(sig)}
       style={{
         border:"1px solid #000", background:"#fff",
         boxShadow: hover ? "3px 3px 0 rgba(0,0,0,0.22)" : "2px 2px 0 rgba(0,0,0,0.22)",
         padding:"12px 14px",
         display:"flex", alignItems:"flex-start", gap:14,
+        cursor: onOpen ? "pointer" : "default",
       }}>
       <div style={{ flex:1, minWidth:0, display:"grid", gap:9 }}>
         <div style={{
@@ -37857,22 +37948,385 @@ function Signal({ sig, netName, onRemove }) {
         <MetaBit glyph="▤">{sig.date}</MetaBit>
       </div>
 
-      {/* Same gadget as pause/stop in the conversation pane. Removes it from
-          this network only, the signal keeps running everywhere else. */}
-      <span
-        title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
-        style={{ flex:"0 0 auto" }}>
-        <SignalAction label="− remove" onClick={() => onRemove && onRemove(sig)}/>
-      </span>
+      {onRemove && (
+        <span
+          title={`stop sharing this signal with ${netName}. it keeps running elsewhere`}
+          style={{ flex:"0 0 auto" }}
+          onClick={(e) => e.stopPropagation()}>
+          <SignalAction label="− remove" onClick={() => onRemove(sig)}/>
+        </span>
+      )}
     </div>
   );
 }
 
-function NetworkDetail({ net, onBack, onLeave }) {
+function MemberFace({ member, size = 28 }) {
+  const photo = member.avatar
+    ? (window.IndexApp && window.IndexApp.avatarUrl
+      ? window.IndexApp.avatarUrl(member.avatar)
+      : member.avatar)
+    : null;
+  if (photo) {
+    return (
+      <img
+        src={photo}
+        alt=""
+        style={{
+          flex:"0 0 auto", width:size, height:size, borderRadius:"50%",
+          objectFit:"cover", border:"1px solid #000",
+          filter: member.isGhost ? "grayscale(1) blur(1px)" : "grayscale(1) contrast(1.05)",
+        }}/>
+    );
+  }
+  const initials = String(member.name || "?")
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(w => w[0]).join("").toLowerCase();
+  return (
+    <span style={{
+      flex:"0 0 auto", width:size, height:size, borderRadius:"50%",
+      border:"1px solid #000", background:"#F2F0EC",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      fontFamily:"var(--mac-mono)", fontSize:10, color:"#000",
+      filter: member.isGhost ? "blur(1px)" : "none",
+    }}>{initials}</span>
+  );
+}
+
+function NetworkMembers({ networkId, meId, members, setMembers, busy, setBusy }) {
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSug, setShowSug] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!live || !networkId) return;
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    let cancelled = false;
+    setLoading(true);
+    c.networks.getMembers(networkId)
+      .then((res) => {
+        if (cancelled) return;
+        setMembers((res && res.members) || []);
+      })
+      .catch(() => { if (!cancelled) setMembers([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [live, networkId]);
+
+  useEffect(() => {
+    if (!live || !query.trim()) { setSuggestions([]); return; }
+    const c = window.IndexApp.getClient();
+    if (!c) return;
+    const t = setTimeout(() => {
+      c.networks.searchUsers(query.trim(), networkId)
+        .then((res) => {
+          const users = (res && res.users) || (Array.isArray(res) ? res : []);
+          const ids = new Set(members.map(m => m.id));
+          setSuggestions(users.filter(u => u && u.id && !ids.has(u.id)));
+          setShowSug(true);
+        })
+        .catch(() => setSuggestions([]));
+    }, 220);
+    return () => clearTimeout(t);
+  }, [query, live, networkId, members]);
+
+  const addUser = async (user) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const m = await client.networks.addMember(networkId, user.id, ["member"]);
+      setMembers(prev => [...prev, m.member || m]);
+      setQuery("");
+      setSuggestions([]);
+      setShowSug(false);
+    } catch (e) { /* keep list */ }
+    finally { setBusy(false); }
+  };
+
+  const inviteEmail = async (email) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.inviteMember(networkId, { email });
+      const res = await client.networks.getMembers(networkId);
+      setMembers((res && res.members) || []);
+      setQuery("");
+      setSuggestions([]);
+      setShowSug(false);
+    } catch (e) { /* keep list */ }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (id) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.removeMember(networkId, id);
+      setMembers(prev => prev.filter(m => m.id !== id));
+    } catch (e) { /* keep */ }
+    finally { setBusy(false); }
+  };
+
+  const setRole = async (id, role) => {
+    if (!client || busy) return;
+    setBusy(true);
+    try {
+      const updated = await client.networks.updateMemberPermissions(
+        networkId, id, role === "owner" ? ["owner"] : ["member"],
+      );
+      const m = updated.member || updated;
+      setMembers(prev => prev.map(x => x.id === id ? { ...x, permissions: m.permissions || x.permissions } : x));
+    } catch (e) { /* keep */ }
+    finally { setBusy(false); }
+  };
+
+  const openProfile = (id) => {
+    const base = (window.IndexApp && window.IndexApp.webBaseUrl
+      ? window.IndexApp.webBaseUrl()
+      : "https://index.network").replace(/\/+$/, "");
+    window.open(`${base}/u/${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const totalPages = Math.max(1, Math.ceil(members.length / MEMBERS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const slice = members.slice((safePage - 1) * MEMBERS_PAGE_SIZE, safePage * MEMBERS_PAGE_SIZE);
+  const noResults = showSug && query.trim() && !suggestions.length;
+
+  return (
+    <div>
+      <RuleLabel>Members ({members.length})</RuleLabel>
+      <div style={{ marginTop:12, position:"relative" }}>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowSug(true); }}
+          onFocus={() => setShowSug(true)}
+          placeholder="Search by name or add by email…"
+          style={{
+            width:"100%", boxSizing:"border-box",
+            padding:"9px 12px", border:"1px solid #000", background:"#fff",
+            fontFamily:"var(--mac-mono)", fontSize:12, color:"#000",
+          }}
+        />
+        {showSug && query.trim() && suggestions.length > 0 && (
+          <div style={{
+            position:"absolute", left:0, right:0, top:"100%", marginTop:2, zIndex:5,
+            border:"1px solid #000", background:"#fff", maxHeight:160, overflowY:"auto",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
+          }}>
+            {suggestions.map(u => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => addUser(u)}
+                style={{
+                  width:"100%", display:"flex", alignItems:"center", gap:10,
+                  padding:"8px 12px", border:"none", background:"transparent",
+                  cursor:"pointer", textAlign:"left",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>
+                <MemberFace member={u} size={24}/>
+                <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}</span>
+                <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>Add</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {noResults && (
+          <div style={{
+            position:"absolute", left:0, right:0, top:"100%", marginTop:2, zIndex:5,
+            border:"1px solid #000", background:"#fff",
+            boxShadow:"2px 2px 0 rgba(0,0,0,0.2)",
+          }}>
+            {query.includes("@") ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => inviteEmail(query.trim())}
+                style={{
+                  width:"100%", padding:"10px 12px", border:"none", background:"transparent",
+                  cursor:"pointer", textAlign:"left",
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                }}>Invite &quot;{query.trim()}&quot;</button>
+            ) : (
+              <div style={{
+                padding:"10px 12px", fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+              }}>No results found</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop:12, display:"grid", gap:2 }}>
+        {loading && (
+          <p style={{ fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)" }}>Loading members…</p>
+        )}
+        {!loading && slice.map(m => {
+          const perms = Array.isArray(m.permissions) ? m.permissions : [];
+          const isOwner = perms.includes("owner");
+          const isSelf = meId && m.id === meId;
+          return (
+            <div
+              key={m.id}
+              style={{
+                display:"flex", alignItems:"center", gap:10,
+                padding:"8px 10px",
+              }}>
+              <button
+                type="button"
+                onClick={() => openProfile(m.id)}
+                style={{
+                  flex:1, minWidth:0, display:"flex", alignItems:"center", gap:10,
+                  border:"none", background:"transparent", cursor:"pointer", textAlign:"left", padding:0,
+                }}>
+                <MemberFace member={m}/>
+                <span style={{
+                  fontFamily:"var(--mac-sans)", fontSize:13, color:"#000",
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                }}>
+                  {m.name}
+                  {m.isGhost && (
+                    <span style={{
+                      marginLeft:6, fontFamily:"var(--mac-mono)", fontSize:10, color:"var(--ink-3)",
+                    }}>ghost</span>
+                  )}
+                </span>
+              </button>
+              <span style={{
+                flex:"0 0 auto",
+                fontFamily:"var(--mac-mono)", fontSize:11,
+                padding:"2px 6px",
+                background: isOwner ? "#000" : "#E8E6E1",
+                color: isOwner ? "#fff" : "var(--ink-2)",
+              }}>{isOwner ? "Owner" : (perms.includes("member") ? "Member" : "Contact")}</span>
+              {!isOwner && perms.includes("member") && !isSelf && (
+                <button type="button" title="Promote to owner" disabled={busy}
+                  onClick={() => setRole(m.id, "owner")}
+                  style={memberActStyle}>↑</button>
+              )}
+              {isOwner && !isSelf && (
+                <button type="button" title="Demote to member" disabled={busy}
+                  onClick={() => setRole(m.id, "member")}
+                  style={memberActStyle}>↓</button>
+              )}
+              {!isOwner && (
+                <button type="button" title="Remove member" disabled={busy}
+                  onClick={() => remove(m.id)}
+                  style={{ ...memberActStyle, color:"var(--ink-warn)" }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {totalPages > 1 && (
+        <div style={{
+          marginTop:12, display:"flex", alignItems:"center", justifyContent:"space-between",
+          borderTop:"1px solid #ddd", paddingTop:10,
+          fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)",
+        }}>
+          <span>
+            {(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, members.length)} of {members.length}
+          </span>
+          <span style={{ display:"flex", gap:6 }}>
+            <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} style={memberActStyle}>prev</button>
+            <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)} style={memberActStyle}>next</button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const memberActStyle = {
+  flex:"0 0 auto", cursor:"pointer",
+  padding:"2px 8px", border:"1px solid #000", background:"#fff",
+  fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+};
+
+function networkShareUrl(net) {
+  if (!net || net.isPersonal || net.hasMasterKey || !networkIsOwner(net)) return null;
+  const base = (window.IndexApp && window.IndexApp.webBaseUrl
+    ? window.IndexApp.webBaseUrl()
+    : "https://index.network").replace(/\/+$/, "");
+  if (net.joinPolicy === "anyone" && net.id) return `${base}/index/${encodeURIComponent(net.id)}`;
+  if (net.invitationCode) return `${base}/l/${encodeURIComponent(net.invitationCode)}`;
+  return null;
+}
+
+function networkIsOwner(net) {
+  if (!net || net.isPersonal) return false;
+  const role = net.role || (net.source && net.source.role);
+  return role === "owner" || role === "admin";
+}
+
+function NetworkDetail({ net, onBack, onLeave, onUpdated, onDeleted, onOpenSignal }) {
+  const [local, setLocal] = useState(net);
   const [signals, setSignals] = useState(net.signals || []);
-  // Last removal, kept so it can be put back, removing is reversible by
-  // definition here, so the undo is the affordance that says "not deleted".
+  const [signalsLoading, setSignalsLoading] = useState(false);
   const [undo, setUndo] = useState(null);
+  const isOwner = networkIsOwner(local);
+  const [tab, setTab] = useState("overview");
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState([]);
+  // settings draft
+  const [title, setTitle] = useState(local.name || "");
+  const [prompt, setPrompt] = useState(local.blurb || "");
+  const [photo, setPhoto] = useState(local.photo || null);
+  const [photoDirty, setPhotoDirty] = useState(false);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [showDelete, setShowDelete] = useState(false);
+  const live = !!(window.IndexApp && window.IndexApp.isAuthed());
+  const client = live ? window.IndexApp.getClient() : null;
+  const meId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
+  const shareUrl = networkShareUrl(local);
+  const isPublic = local.joinPolicy === "anyone";
+  const settingsDirty = title !== (local.name || "") || prompt !== (local.blurb || "") || photoDirty || removePhoto;
+
+  useEffect(() => {
+    setLocal(net);
+    setTitle(net.name || "");
+    setPrompt(net.blurb || "");
+    setPhoto(net.photo || null);
+    setPhotoDirty(false);
+    setRemovePhoto(false);
+    if (networkIsOwner(net)) setTab((t) => (t === "overview" || t === "access" || t === "settings" ? t : "overview"));
+  }, [net]);
+
+  useEffect(() => {
+    if (!client || !local.id) return;
+    let cancelled = false;
+    setSignalsLoading(true);
+    client.networks.overview(local.id)
+      .then((res) => {
+        if (cancelled) return;
+        const intents = (res && res.intents) || [];
+        setSignals(intents.map(i => ({
+          id: i.id,
+          text: (i.summary && String(i.summary).trim()) || i.payload || "",
+          date: formatSignalDate(i.createdAt),
+          source: i,
+        })));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setSignalsLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, local.id]);
+
+  useEffect(() => {
+    if (isOwner && typeof members.length === "number" && members.length > 0) {
+      const merged = { ...local, members: members.length };
+      if (local.members !== members.length) {
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+      }
+    }
+  }, [members.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const remove = (sig) => {
     const at = signals.findIndex(s => s.id === sig.id);
@@ -37887,6 +38341,107 @@ function NetworkDetail({ net, onBack, onLeave }) {
     setSignals(next);
     setUndo(null);
   };
+
+  const copyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) { /* leave idle */ }
+  };
+
+  const setJoinPolicy = async (anyone) => {
+    const next = anyone ? "anyone" : "invite_only";
+    if (local.joinPolicy === next || busy) return;
+    setBusy(true);
+    const prev = local;
+    const optimistic = {
+      ...local,
+      joinPolicy: next,
+      privacy: anyone ? "public" : "private",
+    };
+    setLocal(optimistic);
+    if (onUpdated) onUpdated(optimistic);
+    try {
+      if (client) {
+        const res = await client.networks.updatePermissions(local.id, { joinPolicy: next });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        const jp = perms.joinPolicy || next;
+        const code = (perms.invitationLink && perms.invitationLink.code)
+          || prev.invitationCode;
+        const merged = {
+          ...optimistic,
+          joinPolicy: jp,
+          privacy: jp === "anyone" ? "public" : "private",
+          invitationCode: code || null,
+        };
+        setLocal(merged);
+        if (onUpdated) onUpdated(merged);
+      }
+    } catch (e) {
+      setLocal(prev);
+      if (onUpdated) onUpdated(prev);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    if (!client || !title.trim() || busy) return;
+    setBusy(true);
+    try {
+      let imageUrl = undefined;
+      if (photoDirty && photo && /^data:/i.test(photo)) {
+        imageUrl = await client.storage.uploadIndexImage(photo);
+      } else if (removePhoto) {
+        imageUrl = null;
+      }
+      const body = {
+        title: title.trim(),
+        prompt: prompt.trim() || null,
+      };
+      if (imageUrl !== undefined) body.imageUrl = imageUrl;
+      const res = await client.networks.update(local.id, body);
+      const n = (res && res.network) || res || {};
+      const merged = {
+        ...local,
+        name: n.title || title.trim(),
+        blurb: n.prompt != null ? n.prompt : (prompt.trim() || ""),
+        photo: window.IndexApp.avatarUrl(n.imageUrl) || (removePhoto ? null : photo),
+      };
+      setLocal(merged);
+      setTitle(merged.name);
+      setPrompt(merged.blurb || "");
+      setPhoto(merged.photo);
+      setPhotoDirty(false);
+      setRemovePhoto(false);
+      if (onUpdated) onUpdated(merged);
+    } catch (e) { /* keep draft */ }
+    finally { setBusy(false); }
+  };
+
+  const deleteNetwork = async () => {
+    if (!client || deleteText !== local.name || busy) return;
+    setBusy(true);
+    try {
+      await client.networks.delete(local.id);
+      if (onDeleted) onDeleted(local);
+      else onBack();
+    } catch (e) { setBusy(false); }
+  };
+
+  const tabStyle = (id) => ({
+    padding:"8px 14px", border:"none", cursor:"pointer",
+    borderBottom: tab === id ? "2px solid #000" : "2px solid transparent",
+    background:"transparent",
+    fontFamily:"var(--mac-mono)", fontSize:13,
+    fontWeight: tab === id ? 700 : 400,
+    color: tab === id ? "#000" : "var(--ink-2)",
+    textTransform:"capitalize",
+  });
+
   return (
     <div style={{
       position:"absolute", inset:0,
@@ -37899,11 +38454,11 @@ function NetworkDetail({ net, onBack, onLeave }) {
         height:"min(660px, calc(100vh - 112px))",
       }}>
         <MacWindow
-          title={`index · ${net.name.toLowerCase()}`}
+          title={`index · ${local.name.toLowerCase()}`}
           onClose={onBack}
           style={{ height:"100%", minHeight:0 }}>
 
-          <div style={{ padding:"14px 24px 16px", borderBottom:"2px solid #000" }}>
+          <div style={{ padding:"14px 24px 0", borderBottom:"2px solid #000" }}>
             <button
               onClick={onBack}
               style={{
@@ -37912,82 +38467,268 @@ function NetworkDetail({ net, onBack, onLeave }) {
               }}>← back</button>
 
             <div style={{
-              marginTop:12,
+              marginTop:12, marginBottom:14,
               display:"flex", alignItems:"center", gap:14,
             }}>
-              <NetworkTile name={net.name} size={48} photo={net.photo}/>
+              <NetworkTile name={local.name} size={48} photo={local.photo}/>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{
                   fontFamily:"var(--mac-mono)", fontSize:19, fontWeight:700, color:"#000",
-                }}>{net.name}</div>
+                }}>{local.name}</div>
                 <div style={{
                   marginTop:5, display:"flex", flexWrap:"wrap", gap:"4px 16px",
                 }}>
-                  {net.privacy && <MetaBit glyph="🔒">{net.privacy}</MetaBit>}
-                  <MetaBit glyph="👤">{net.members} members</MetaBit>
+                  {local.privacy && <MetaBit glyph="🔒">{local.privacy}</MetaBit>}
+                  <MetaBit glyph="👤">{local.members} members</MetaBit>
+                  {isOwner && <MetaBit glyph="★">owner</MetaBit>}
                 </div>
               </div>
 
-              {/* leaving is destructive, so it carries the red, but stays outline
-                  only, since it isn't the thing you came here to do */}
-              <button
-                onClick={() => onLeave && onLeave(net)}
-                style={{
-                  flex:"0 0 auto", cursor:"pointer",
-                  fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
-                  border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
-                  boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
-                }}>leave</button>
+              {!isOwner && (
+                <button
+                  onClick={() => onLeave && onLeave(local)}
+                  style={{
+                    flex:"0 0 auto", cursor:"pointer",
+                    fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                    border:"1px solid var(--ink-warn)", background:"#fff", color:"var(--ink-warn)",
+                    boxShadow:"1px 1px 0 rgba(138,0,0,0.3)",
+                  }}>leave</button>
+              )}
             </div>
+
+            {isOwner && (
+              <div style={{ display:"flex", gap:2 }}>
+                <button type="button" style={tabStyle("overview")} onClick={() => setTab("overview")}>overview</button>
+                <button type="button" style={tabStyle("settings")} onClick={() => setTab("settings")}>settings</button>
+                <button type="button" style={tabStyle("access")} onClick={() => setTab("access")}>access</button>
+              </div>
+            )}
           </div>
 
           <div className="mac-scroll" style={{
             flex:"1 1 auto", minHeight:0, overflowY:"auto",
             padding:"14px 24px 20px",
           }}>
-            <div style={{
-              display:"flex", alignItems:"baseline", justifyContent:"space-between",
-              gap:12, marginBottom:12,
-            }}>
-              <RuleLabel>my signals</RuleLabel>
-              <span style={{
-                flex:"0 0 auto",
-                fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
-              }}>{signals.length} signals</span>
-            </div>
-
-            {undo && (
-              <div className="fade-up" style={{
-                marginBottom:10, padding:"8px 12px",
-                border:"1px solid #000", background:"#F2F0EC",
-                display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
-              }}>
-                <span style={{
-                  fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
-                }}>
-                  removed from {net.name}. the signal is still running everywhere else.
-                </span>
-                <button
-                  onClick={putBack}
-                  style={{
-                    flex:"0 0 auto", cursor:"pointer",
-                    padding:"4px 11px", border:"1px solid #000", background:"#fff",
-                    fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
-                    boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
-                  }}>put it back</button>
+            {isOwner && tab === "settings" ? (
+              <div style={{ display:"grid", gap:16 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:13 }}>
+                  <NetworkPhoto
+                    name={title || local.name}
+                    photo={removePhoto ? null : photo}
+                    onPick={(p) => { setPhoto(p); setPhotoDirty(true); setRemovePhoto(false); }}
+                    size={72}
+                  />
+                  {photo && !removePhoto && (
+                    <button
+                      type="button"
+                      onClick={() => { setRemovePhoto(true); setPhotoDirty(true); }}
+                      style={{
+                        border:"none", background:"transparent", cursor:"pointer",
+                        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+                      }}>Remove image</button>
+                  )}
+                </div>
+                <TextField label="title" required value={title} onChange={setTitle} placeholder="Network title"/>
+                <div>
+                  <FieldLabel>prompt</FieldLabel>
+                  <div style={{ ...wellStyle(false), alignItems:"stretch" }}>
+                    <textarea
+                      value={prompt}
+                      onChange={e => setPrompt(e.target.value)}
+                      placeholder="What people can share in this network…"
+                      rows={4}
+                      style={{ ...inputReset(false), resize:"vertical", lineHeight:1.5 }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                  <button
+                    type="button"
+                    disabled={!settingsDirty || busy}
+                    onClick={() => {
+                      setTitle(local.name || "");
+                      setPrompt(local.blurb || "");
+                      setPhoto(local.photo || null);
+                      setPhotoDirty(false);
+                      setRemovePhoto(false);
+                    }}
+                    style={{
+                      fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                      border:"1px solid #000", background:"#fff", cursor:"pointer",
+                    }}>Cancel</button>
+                  <button
+                    type="button"
+                    disabled={!settingsDirty || !title.trim() || busy}
+                    onClick={saveSettings}
+                    style={{
+                      fontFamily:"var(--mac-mono)", fontSize:13, padding:"7px 15px",
+                      border:"1px solid #000", background:"#000", color:"#fff", cursor:"pointer",
+                    }}>{busy ? "Saving…" : "Save"}</button>
+                </div>
+                <div style={{ borderTop:"1px solid #ddd", paddingTop:14 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDelete(s => !s)}
+                    aria-expanded={showDelete}
+                    style={{
+                      display:"inline-flex", alignItems:"center", gap:6,
+                      border:"none", background:"transparent", cursor:"pointer",
+                      fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-warn)",
+                    }}>
+                    <span aria-hidden="true" style={{ fontSize:10, lineHeight:1 }}>
+                      {showDelete ? "▲" : "▼"}
+                    </span>
+                    Danger Zone
+                  </button>
+                  {showDelete && (
+                    <div style={{
+                      marginTop:10, padding:12, border:"1px solid var(--ink-warn)", background:"#FFF5F5",
+                      display:"grid", gap:10,
+                    }}>
+                      <p style={{ margin:0, fontFamily:"var(--mac-sans)", fontSize:13, color:"#8A0000" }}>
+                        Delete this network. Type the name to confirm.
+                      </p>
+                      <input
+                        value={deleteText}
+                        onChange={e => setDeleteText(e.target.value)}
+                        placeholder={local.name}
+                        style={{
+                          padding:"8px 10px", border:"1px solid #000",
+                          fontFamily:"var(--mac-mono)", fontSize:12,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={deleteText !== local.name || busy}
+                        onClick={deleteNetwork}
+                        style={{
+                          justifySelf:"end",
+                          fontFamily:"var(--mac-mono)", fontSize:12, padding:"7px 14px",
+                          border:"1px solid var(--ink-warn)", background:"#8A0000", color:"#fff",
+                          cursor:"pointer",
+                        }}>Delete</button>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            ) : isOwner && tab === "access" ? (
+              <div style={{ display:"grid", gap:22 }}>
+                {!local.hasMasterKey && (
+                  <div>
+                    <RuleLabel>Visibility</RuleLabel>
+                    <div style={{
+                      marginTop:12, display:"grid",
+                      gridTemplateColumns:"minmax(0, 1fr) minmax(0, 1fr)", gap:10,
+                    }}>
+                      <ChoiceCard
+                        title="Public"
+                        sub="Anyone can join"
+                        selected={isPublic}
+                        onClick={() => setJoinPolicy(true)}
+                      />
+                      <ChoiceCard
+                        title="Private"
+                        sub="Invite only"
+                        selected={!isPublic}
+                        onClick={() => setJoinPolicy(false)}
+                      />
+                    </div>
+                  </div>
+                )}
 
-            <div style={{ display:"grid", gap:10 }}>
-              {signals.map(s => (
-                <Signal key={s.id} sig={s} netName={net.name} onRemove={remove}/>
-              ))}
-            </div>
+                {!local.hasMasterKey && (
+                  <div>
+                    <RuleLabel>{isPublic ? "Network Link" : "Invitation Link"}</RuleLabel>
+                    <div style={{
+                      marginTop:12, display:"flex", alignItems:"center", gap:8,
+                      padding:"10px 12px",
+                      border:"1px solid #000", background:"#F2F0EC",
+                    }}>
+                      <code style={{
+                        flex:1, minWidth:0,
+                        fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      }}>{shareUrl || "No invitation link yet."}</code>
+                      {shareUrl && (
+                        <button
+                          type="button"
+                          onClick={copyLink}
+                          title={copied ? "Copied" : "Copy link"}
+                          style={{
+                            flex:"0 0 auto", cursor:"pointer",
+                            padding:"4px 10px", border:"1px solid #000",
+                            background: copied ? "#000" : "#fff",
+                            color: copied ? "#fff" : "#000",
+                            fontFamily:"var(--mac-mono)", fontSize:11,
+                            boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                          }}>{copied ? "copied" : "copy"}</button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-            {!signals.length && (
-              <p style={{
-                fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
-              }}>you haven't published anything into this network yet.</p>
+                <NetworkMembers
+                  networkId={local.id}
+                  meId={meId}
+                  members={members}
+                  setMembers={setMembers}
+                  busy={busy}
+                  setBusy={setBusy}
+                />
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  display:"flex", alignItems:"baseline", justifyContent:"space-between",
+                  gap:12, marginBottom:12,
+                }}>
+                  <RuleLabel>Your Signals</RuleLabel>
+                  <span style={{
+                    flex:"0 0 auto",
+                    fontFamily:"var(--mac-mono)", fontSize:12, color:"var(--ink-2)",
+                  }}>{signalsLoading ? "…" : `${signals.length} signal${signals.length === 1 ? "" : "s"}`}</span>
+                </div>
+
+                {undo && (
+                  <div className="fade-up" style={{
+                    marginBottom:10, padding:"8px 12px",
+                    border:"1px solid #000", background:"#F2F0EC",
+                    display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+                  }}>
+                    <span style={{
+                      fontFamily:"var(--mac-sans)", fontSize:12, color:"#000",
+                    }}>
+                      removed from {local.name}. the signal is still running everywhere else.
+                    </span>
+                    <button
+                      onClick={putBack}
+                      style={{
+                        flex:"0 0 auto", cursor:"pointer",
+                        padding:"4px 11px", border:"1px solid #000", background:"#fff",
+                        fontFamily:"var(--mac-mono)", fontSize:11, color:"#000",
+                        boxShadow:"1px 1px 0 rgba(0,0,0,0.2)",
+                      }}>put it back</button>
+                  </div>
+                )}
+
+                <div style={{ display:"grid", gap:10 }}>
+                  {signals.map(s => (
+                    <Signal
+                      key={s.id}
+                      sig={s}
+                      netName={local.name}
+                      onRemove={remove}
+                      onOpen={onOpenSignal ? () => onOpenSignal(s) : undefined}
+                    />
+                  ))}
+                </div>
+
+                {!signalsLoading && !signals.length && (
+                  <p style={{
+                    fontFamily:"var(--mac-sans)", fontSize:13, color:"var(--ink-2)",
+                  }}>You haven&apos;t shared any signals in this network yet</p>
+                )}
+              </>
             )}
           </div>
         </MacWindow>
@@ -37996,7 +38737,7 @@ function NetworkDetail({ net, onBack, onLeave }) {
   );
 }
 
-function Networks({ onClose }) {
+function Networks({ onClose, onOpenSignal }) {
   // Live-only: the mirror holds the signed-in user's networks (set by
   // applyLoaded). Ensure it is an array so the local unshift below still
   // persists a just-created network to the other screens.
@@ -38034,7 +38775,9 @@ function Networks({ onClose }) {
 
   // You made it, so you're in it and you run it. Picture is optional: a data
   // URL from the picker is uploaded first so imageUrl on the server is a real
-  // storage key, not a discarded local preview.
+  // storage key, not a discarded local preview. After create (or when a reviewed
+  // request is approved and the network lands in the list), owners open Access
+  // to copy the invitation / network link — same as the web Access tab.
   const createNetwork = async ({ name, desc, access, photo }) => {
     let imageUrl = null;
     let photoOut = photo || undefined;
@@ -38044,28 +38787,59 @@ function Networks({ onClose }) {
         photoOut = window.IndexApp.avatarUrl(imageUrl) || imageUrl;
       } catch (e) { /* keep the local data URL in the mirror */ }
     }
-    NETWORKS.unshift({
+    const joinPolicy = access === "public" ? "anyone" : "invite_only";
+    let created = {
       id: `net-${Date.now().toString(36)}`,
       name,
       blurb: desc || undefined,
       photo: photoOut,
       members: 1,
       privacy: access,
-      role: "admin",
+      joinPolicy,
+      invitationCode: null,
+      role: "owner",
       joined: true,
+      isPersonal: false,
+      hasMasterKey: false,
       signals: [],
-    });
+    };
+    if (client) {
+      try {
+        const res = await client.networks.create({
+          title: name,
+          prompt: desc || undefined,
+          imageUrl: imageUrl || undefined,
+          joinPolicy,
+        });
+        const n = (res && res.network) || res || {};
+        const perms = n.permissions || {};
+        const jp = perms.joinPolicy || joinPolicy;
+        const code = perms.invitationLink && perms.invitationLink.code;
+        created = {
+          ...created,
+          id: n.id || created.id,
+          name: n.title || created.name,
+          members: (n._count && n._count.members) || n.memberCount || 1,
+          joinPolicy: jp,
+          privacy: jp === "anyone" ? "public" : "private",
+          invitationCode: code || null,
+          hasMasterKey: n.hasMasterKey === true,
+          photo: window.IndexApp.avatarUrl(n.imageUrl) || created.photo,
+          source: n,
+        };
+      } catch (e) { /* keep the optimistic mirror */ }
+    }
+    NETWORKS.unshift(created);
     setNets([...NETWORKS]);
     setCreating(false);
     setTab("mine");
-    if (client) {
-      client.networks.create({
-        title: name,
-        prompt: desc || undefined,
-        imageUrl: imageUrl || undefined,
-        joinPolicy: access === "public" ? "anyone" : "invite_only",
-      }).catch(() => {});
-    }
+    setOpenNet(created);
+  };
+
+  const updateOpenNet = (merged) => {
+    setNets(prev => prev.map(n => n.id === merged.id ? { ...n, ...merged } : n));
+    const i = NETWORKS.findIndex(n => n.id === merged.id);
+    if (i >= 0) NETWORKS[i] = { ...NETWORKS[i], ...merged };
   };
 
   // Submit (or resubmit) a network request; resolves the request so the form
@@ -38116,13 +38890,31 @@ function Networks({ onClose }) {
   };
 
   const leaveNetwork = (net) => {
-    setNets(prev => prev.map(n => n.id === net.id ? { ...n, joined: false, role: undefined } : n));
+    setNets(prev => prev.filter(n => n.id !== net.id));
+    const i = NETWORKS.findIndex(n => n.id === net.id);
+    if (i >= 0) NETWORKS.splice(i, 1);
     if (client) client.networks.leave(net.id).catch(() => {});
     setOpenNet(null);
   };
 
+  const deleteNetwork = (net) => {
+    setNets(prev => prev.filter(n => n.id !== net.id));
+    const i = NETWORKS.findIndex(n => n.id === net.id);
+    if (i >= 0) NETWORKS.splice(i, 1);
+    setOpenNet(null);
+  };
+
   if (openNet) {
-    return <NetworkDetail net={openNet} onBack={() => setOpenNet(null)} onLeave={leaveNetwork}/>;
+    return (
+      <NetworkDetail
+        net={openNet}
+        onBack={() => setOpenNet(null)}
+        onLeave={leaveNetwork}
+        onUpdated={updateOpenNet}
+        onDeleted={deleteNetwork}
+        onOpenSignal={onOpenSignal}
+      />
+    );
   }
   // Its own window, like the profile screen, not an overlay on this one.
   if (creating) {
@@ -39464,7 +40256,17 @@ function Intents({ onPickExisting, onNew, onBack, onSignOut, fresh = false }) {
     return <Settings initialTab={settingsTab} onClose={() => setSettingsTab(null)}/>;
   }
   if (showNetworks) {
-    return <Networks onClose={() => setShowNetworks(false)}/>;
+    return (
+      <Networks
+        onClose={() => setShowNetworks(false)}
+        onOpenSignal={(sig) => {
+          const intent = signals.find(s => s.id === sig.id)
+            || (window.INDEX_DATA.INTENTS || []).find(s => s.id === sig.id);
+          setShowNetworks(false);
+          if (intent && onPickExisting) onPickExisting(intent);
+        }}
+      />
+    );
   }
   if (showAgents) {
     return <Agents onClose={() => setShowAgents(false)}/>;
