@@ -802,11 +802,18 @@ type ModuleEvidence = {
   sourceFile: ts.SourceFile;
   declarations: Map<string, ts.Node>;
   reexports: Map<string, { targetPath: string; importedSymbol: string }>;
+  exportAssignments: Map<string, ts.Expression>;
+};
+
+type ValueAliasOrigin = {
+  source: ts.Expression;
+  propertyPath: Array<ts.Node | string | number>;
 };
 
 type EvidenceContext = {
   modules: Map<string, ModuleEvidence>;
   checker: ts.TypeChecker;
+  valueAliases: Map<ts.Symbol, ValueAliasOrigin[]>;
 };
 
 function symbolKey(location: SymbolLocation): string {
@@ -863,6 +870,7 @@ function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceConte
     const sourceFile = program.getSourceFile(path);
     if (!sourceFile) continue;
     const reexports = new Map<string, { targetPath: string; importedSymbol: string }>();
+    const exportAssignments = new Map<string, ts.Expression>();
     for (const statement of sourceFile.statements) {
       if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
         && !statement.isTypeOnly && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
@@ -875,10 +883,13 @@ function buildModuleEvidence(sourceFiles: Record<string, string>): EvidenceConte
           });
         }
       }
+      if (ts.isExportAssignment(statement) && !statement.isExportEquals) exportAssignments.set("default", statement.expression);
     }
-    modules.set(path, { sourceFile, declarations: topLevelDeclarations(sourceFile), reexports });
+    modules.set(path, { sourceFile, declarations: topLevelDeclarations(sourceFile), reexports, exportAssignments });
   }
-  return { modules, checker };
+  const evidence: EvidenceContext = { modules, checker, valueAliases: new Map() };
+  indexAssignmentAliases(evidence);
+  return evidence;
 }
 
 function resolveExportOrigin(
@@ -893,9 +904,11 @@ function resolveExportOrigin(
   if (!module) return undefined;
   if (module.declarations.has(location.symbol)) return location;
   const reexport = module.reexports.get(location.symbol);
-  return reexport
-    ? resolveExportOrigin({ path: reexport.targetPath, symbol: reexport.importedSymbol }, evidence, seen)
-    : undefined;
+  if (reexport) return resolveExportOrigin({ path: reexport.targetPath, symbol: reexport.importedSymbol }, evidence, seen);
+  const exportAssignment = module.exportAssignments.get(location.symbol);
+  if (!exportAssignment) return undefined;
+  const assignmentOrigin = expressionOrigin(exportAssignment, evidence);
+  return assignmentOrigin ? resolveExportOrigin(assignmentOrigin, evidence, seen) : undefined;
 }
 
 function declarationName(node: ts.Node): ts.DeclarationName | undefined {
@@ -951,15 +964,161 @@ function isTypePosition(node: ts.Node): boolean {
   return false;
 }
 
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)
+    || ts.isSatisfiesExpression(current)) current = current.expression;
+  return current;
+}
+
+function constantPropertyKey(
+  node: ts.Node,
+  evidence: EvidenceContext,
+  seen = new Set<ts.Symbol>(),
+): string | undefined {
+  const candidate = ts.isComputedPropertyName(node) ? node.expression : node;
+  if (ts.isStringLiteralLike(candidate) || ts.isNumericLiteral(candidate)) return candidate.text;
+  if (!ts.isExpression(candidate)) return undefined;
+  const expression = unwrapExpression(candidate);
+  if (expression !== candidate) return constantPropertyKey(expression, evidence, seen);
+  const type = evidence.checker.getTypeAtLocation(expression);
+  if ((type.flags & ts.TypeFlags.StringLiteral) !== 0) return String((type as ts.StringLiteralType).value);
+  if ((type.flags & ts.TypeFlags.NumberLiteral) !== 0) return String((type as ts.NumberLiteralType).value);
+  if (!ts.isIdentifier(expression)) return undefined;
+  const symbol = evidence.checker.getSymbolAtLocation(expression);
+  if (!symbol || seen.has(symbol)) return undefined;
+  seen.add(symbol);
+  for (const declaration of symbol.declarations ?? []) {
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer
+      && ts.isVariableDeclarationList(declaration.parent)
+      && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
+      const value = constantPropertyKey(declaration.initializer, evidence, seen);
+      if (value !== undefined) return value;
+    }
+  }
+  return undefined;
+}
+
+function propertyOrigin(
+  source: ts.Expression,
+  property: string,
+  evidence: EvidenceContext,
+): SymbolLocation | undefined {
+  const symbol = canonicalSymbol(
+    evidence.checker.getPropertyOfType(evidence.checker.getTypeAtLocation(source), property),
+    evidence.checker,
+  );
+  const location = symbolLocation(symbol, evidence);
+  return location ? resolveExportOrigin(location, evidence) ?? location : undefined;
+}
+
+function importedAliasLocation(symbol: ts.Symbol): SymbolLocation | undefined {
+  for (const declaration of symbol.declarations ?? []) {
+    if (ts.isImportClause(declaration) && declaration.name) {
+      const moduleSpecifier = declaration.parent.moduleSpecifier;
+      if (!ts.isStringLiteral(moduleSpecifier)) continue;
+      const path = importedSourcePath(declaration.getSourceFile().fileName, moduleSpecifier.text);
+      if (path) return { path, symbol: "default" };
+    }
+    if (ts.isImportSpecifier(declaration)) {
+      const importDeclaration = declaration.parent.parent.parent;
+      if (!ts.isImportDeclaration(importDeclaration) || !ts.isStringLiteral(importDeclaration.moduleSpecifier)) continue;
+      const path = importedSourcePath(declaration.getSourceFile().fileName, importDeclaration.moduleSpecifier.text);
+      if (path) return { path, symbol: (declaration.propertyName ?? declaration.name).text };
+    }
+  }
+  return undefined;
+}
+
+function aliasPropertyOrigin(
+  alias: ValueAliasOrigin,
+  evidence: EvidenceContext,
+  seen: Set<ts.Symbol>,
+): SymbolLocation | undefined {
+  if (alias.propertyPath.length === 0) return expressionOrigin(alias.source, evidence, seen);
+  let type = evidence.checker.getTypeAtLocation(alias.source);
+  let location: SymbolLocation | undefined;
+  for (const propertyNode of alias.propertyPath) {
+    const property = typeof propertyNode === "string" || typeof propertyNode === "number"
+      ? String(propertyNode)
+      : constantPropertyKey(propertyNode, evidence);
+    if (property === undefined) return undefined;
+    const symbol = canonicalSymbol(evidence.checker.getPropertyOfType(type, property), evidence.checker);
+    location = symbolLocation(symbol, evidence);
+    if (!symbol || !location) return undefined;
+    const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
+    if (declaration) type = evidence.checker.getTypeOfSymbolAtLocation(symbol, declaration);
+  }
+  return location ? resolveExportOrigin(location, evidence) ?? location : undefined;
+}
+
+function recordValueAlias(
+  target: ts.Expression,
+  source: ts.Expression,
+  propertyPath: Array<ts.Node | string | number>,
+  evidence: EvidenceContext,
+): void {
+  const candidate = unwrapExpression(target);
+  if (ts.isIdentifier(candidate)) {
+    const symbol = evidence.checker.getSymbolAtLocation(candidate);
+    if (!symbol) return;
+    const aliases = evidence.valueAliases.get(symbol) ?? [];
+    aliases.push({ source, propertyPath });
+    evidence.valueAliases.set(symbol, aliases);
+    return;
+  }
+  if (ts.isObjectLiteralExpression(candidate)) {
+    for (const property of candidate.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        recordValueAlias(property.initializer, source, [...propertyPath, property.name], evidence);
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        recordValueAlias(property.name, source, [...propertyPath, property.name.text], evidence);
+      }
+    }
+    return;
+  }
+  if (ts.isArrayLiteralExpression(candidate)) {
+    candidate.elements.forEach((element, index) => {
+      if (!ts.isOmittedExpression(element) && !ts.isSpreadElement(element)) {
+        recordValueAlias(element, source, [...propertyPath, index], evidence);
+      }
+    });
+  }
+}
+
+function indexAssignmentAliases(evidence: EvidenceContext): void {
+  for (const { sourceFile } of evidence.modules.values()) {
+    const visit = (node: ts.Node): void => {
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        recordValueAlias(node.left, node.right, [], evidence);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+}
+
 function expressionOrigin(
   expression: ts.Expression,
   evidence: EvidenceContext,
   seen = new Set<ts.Symbol>(),
 ): SymbolLocation | undefined {
-  const symbolNode = ts.isPropertyAccessExpression(expression) ? expression.name : expression;
+  const candidate = unwrapExpression(expression);
+  if (ts.isElementAccessExpression(candidate) && candidate.argumentExpression) {
+    const property = constantPropertyKey(candidate.argumentExpression, evidence);
+    return property === undefined ? undefined : propertyOrigin(candidate.expression, property, evidence);
+  }
+  const symbolNode = ts.isPropertyAccessExpression(candidate) ? candidate.name : candidate;
   const symbol = evidence.checker.getSymbolAtLocation(symbolNode);
   if (!symbol || seen.has(symbol)) return undefined;
   seen.add(symbol);
+  const imported = importedAliasLocation(symbol);
+  if (imported) return resolveExportOrigin(imported, evidence);
+  for (const alias of evidence.valueAliases.get(symbol) ?? []) {
+    const origin = aliasPropertyOrigin(alias, evidence, seen);
+    if (origin) return origin;
+  }
   if ((symbol.flags & ts.SymbolFlags.Alias) === 0) {
     for (const declaration of symbol.declarations ?? []) {
       if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
@@ -968,7 +1127,8 @@ function expressionOrigin(
       }
     }
   }
-  return symbolLocation(canonicalSymbol(symbol, evidence.checker), evidence);
+  const location = symbolLocation(canonicalSymbol(symbol, evidence.checker), evidence);
+  return location ? resolveExportOrigin(location, evidence) ?? location : undefined;
 }
 
 function declarationReferences(node: ts.Node, from: SymbolLocation, evidence: EvidenceContext): boolean {
@@ -1018,27 +1178,25 @@ function nodeIsInsideDeclaration(node: ts.Node, declaration: ts.Node): boolean {
   return false;
 }
 
-function isPureExportReference(expression: ts.Expression): boolean {
-  if (ts.isIdentifier(expression) || expression.kind === ts.SyntaxKind.ThisKeyword) return true;
-  if (ts.isPropertyAccessExpression(expression)) return isPureExportReference(expression.expression);
-  if (ts.isElementAccessExpression(expression)) {
-    return isPureExportReference(expression.expression)
-      && Boolean(expression.argumentExpression)
-      && (ts.isStringLiteralLike(expression.argumentExpression) || ts.isNumericLiteral(expression.argumentExpression));
+function isPureExportReference(expression: ts.Expression, evidence: EvidenceContext): boolean {
+  const candidate = unwrapExpression(expression);
+  if (ts.isIdentifier(candidate) || candidate.kind === ts.SyntaxKind.ThisKeyword) return true;
+  if (ts.isPropertyAccessExpression(candidate)) return isPureExportReference(candidate.expression, evidence);
+  if (ts.isElementAccessExpression(candidate)) {
+    return isPureExportReference(candidate.expression, evidence)
+      && Boolean(candidate.argumentExpression)
+      && constantPropertyKey(candidate.argumentExpression!, evidence) !== undefined;
   }
-  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-    || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
-    || ts.isSatisfiesExpression(expression)) return isPureExportReference(expression.expression);
   return false;
 }
 
-function isImportOrExportReference(node: ts.Node): boolean {
+function isImportOrExportReference(node: ts.Node, evidence: EvidenceContext): boolean {
   let current: ts.Node | undefined = node;
   while (current && !ts.isSourceFile(current)) {
     if (ts.isImportDeclaration(current) || ts.isImportClause(current) || ts.isImportSpecifier(current)
       || ts.isNamespaceImport(current) || ts.isImportEqualsDeclaration(current)
       || ts.isExportDeclaration(current) || ts.isExportSpecifier(current)
-      || (ts.isExportAssignment(current) && isPureExportReference(current.expression))) return true;
+      || (ts.isExportAssignment(current) && isPureExportReference(current.expression, evidence))) return true;
     current = current.parent;
   }
   return false;
@@ -1048,23 +1206,26 @@ function canCarryValueSymbol(node: ts.Node): boolean {
   return ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node);
 }
 
-function staticPropertyName(node: ts.Node): string | undefined {
-  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)) return node.text;
-  if (ts.isComputedPropertyName(node)) return staticPropertyName(node.expression);
-  return undefined;
-}
-
 function bindingPropertySymbol(node: ts.Node, evidence: EvidenceContext): ts.Symbol | undefined {
   const propertyName = ts.isComputedPropertyName(node.parent) ? node.parent : node;
-  const bindingElement = propertyName.parent;
-  if (!ts.isBindingElement(bindingElement) || bindingElement.propertyName !== propertyName) return undefined;
-  const bindingPattern = bindingElement.parent;
-  if (!ts.isObjectBindingPattern(bindingPattern)) return undefined;
-  const source = ts.isVariableDeclaration(bindingPattern.parent) && bindingPattern.parent.initializer
-    ? bindingPattern.parent.initializer
-    : bindingPattern;
-  const name = staticPropertyName(propertyName);
-  return name ? canonicalSymbol(evidence.checker.getPropertyOfType(evidence.checker.getTypeAtLocation(source), name), evidence.checker) : undefined;
+  const parent = propertyName.parent;
+  let source: ts.Expression | undefined;
+  if (ts.isBindingElement(parent) && parent.propertyName === propertyName) {
+    const bindingPattern = parent.parent;
+    if (ts.isObjectBindingPattern(bindingPattern)
+      && ts.isVariableDeclaration(bindingPattern.parent)
+      && bindingPattern.parent.initializer) source = bindingPattern.parent.initializer;
+  } else if (ts.isPropertyAssignment(parent) && parent.name === propertyName
+    && ts.isObjectLiteralExpression(parent.parent)
+    && ts.isBinaryExpression(parent.parent.parent)
+    && parent.parent.parent.left === parent.parent
+    && parent.parent.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    source = parent.parent.parent.right;
+  }
+  const name = source && constantPropertyKey(propertyName, evidence);
+  return source && name !== undefined
+    ? canonicalSymbol(evidence.checker.getPropertyOfType(evidence.checker.getTypeAtLocation(source), name), evidence.checker)
+    : undefined;
 }
 
 function runtimeValueEscapes(
@@ -1084,18 +1245,35 @@ function runtimeValueEscapes(
 
   const references: string[] = [];
   for (const [path, module] of evidence.modules) {
+    const record = (node: ts.Node, symbol: ts.Symbol | undefined): void => {
+      const location = symbol && closureSymbols.get(canonicalSymbol(symbol, evidence.checker)!);
+      if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
+        references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
+      }
+    };
     const visit = (node: ts.Node): void => {
-      if (canCarryValueSymbol(node) && !isDeclarationName(node) && !isTypePosition(node) && !isImportOrExportReference(node)) {
+      if (ts.isElementAccessExpression(node) && node.argumentExpression
+        && !isTypePosition(node) && !isImportOrExportReference(node, evidence)) {
+        const property = constantPropertyKey(node.argumentExpression, evidence);
+        if (property !== undefined) {
+          const origin = propertyOrigin(node.expression, property, evidence);
+          record(node, origin && symbolAtLocation(origin, evidence));
+        } else {
+          const sourceType = evidence.checker.getTypeAtLocation(node.expression);
+          const possible = evidence.checker.getPropertiesOfType(sourceType)
+            .map((symbol) => canonicalSymbol(symbol, evidence.checker))
+            .find((symbol): symbol is ts.Symbol => Boolean(symbol && closureSymbols.has(symbol)));
+          record(node, possible);
+        }
+      }
+      if (canCarryValueSymbol(node) && !isDeclarationName(node) && !isTypePosition(node) && !isImportOrExportReference(node, evidence)) {
+        const origin = ts.isExpression(node) ? expressionOrigin(node, evidence) : undefined;
         const symbols = new Set([
           canonicalSymbol(evidence.checker.getSymbolAtLocation(node), evidence.checker),
           bindingPropertySymbol(node, evidence),
+          origin ? symbolAtLocation(origin, evidence) : undefined,
         ].filter((symbol): symbol is ts.Symbol => Boolean(symbol)));
-        for (const symbol of symbols) {
-          const location = closureSymbols.get(symbol);
-          if (location && !closureDeclarations.some((declaration) => nodeIsInsideDeclaration(node, declaration))) {
-            references.push(`${path}#${enclosingCallableName(node, module.sourceFile) ?? "<module>"}->${location.symbol}`);
-          }
-        }
+        for (const symbol of symbols) record(node, symbol);
       }
       ts.forEachChild(node, visit);
     };
