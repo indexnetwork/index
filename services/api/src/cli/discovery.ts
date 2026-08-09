@@ -22,6 +22,7 @@ import { AB_BRANCH_NAMES, attestAbTargets, parseAbManifest, type AbManifest } fr
 import { AB_SIDE_BRANCH_ENV, assertAbConfirmation } from './discovery.gate';
 import { abAttestationRefusal, abUsage, describeAbFailure, type AbInvocationRole } from './discovery.contract';
 import { createNeonControlPlane } from './discovery-env-matrix.neon';
+import { hasHistoricalQualityHelp, historicalQualityUsage, isHistoricalQualityRequest, parseHistoricalQualityArgs, runHistoricalQualityPrARefusal } from './discovery-quality.contract';
 
 import type { AbSideId } from './discovery.plan';
 
@@ -65,8 +66,16 @@ function childSideId(args: readonly string[]): AbSideId | undefined {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  // The dedicated quality shape is parsed, costed, and refused before the
+  // legacy confirmation gate, manifest, attestation, or dynamic runtime import.
+  // PR A deliberately performs no provider or infrastructure operation.
+  if (isHistoricalQualityRequest(args)) {
+    if (hasHistoricalQualityHelp(args)) return void console.log(historicalQualityUsage());
+    process.exitCode = runHistoricalQualityPrARefusal(parseHistoricalQualityArgs(args), console);
+    return;
+  }
   // Before the gate, and before any environment variable is read: the full
-  // contract, printed to anyone who asks for it.
+  // legacy contract, printed to anyone who asks for it.
   if (args.includes('--help') || args.includes('-h')) return void console.log(abUsage());
   // First, and before any network call: an unconfirmed run must not even
   // reach the control plane, let alone a database.
